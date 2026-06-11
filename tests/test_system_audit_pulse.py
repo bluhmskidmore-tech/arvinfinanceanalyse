@@ -23,6 +23,7 @@ def test_system_audit_pulse_aggregates_live_monitors_without_approval() -> None:
     assert report["full_score_ready"] is False
     assert report["completion_state"] == "not_complete"
     assert report["open_blocker_count"] == 5
+    assert report["calculation_post_owner_plan_renderer_sync"] is True
     assert report["evidence_scope"] == {
         "read_only": True,
         "writes_duckdb": False,
@@ -42,12 +43,85 @@ def test_system_audit_pulse_aggregates_live_monitors_without_approval() -> None:
     assert report["business_display"]["route_gap_count"] == 0
     assert report["completion_snapshot"]["status"] == "pass"
     assert report["completion_snapshot"]["open_blocker_count"] == 5
+    assert report["completion_snapshot"]["calculation_packet_p1_count"] == 10
+    assert report["completion_snapshot"]["calculation_meeting_record_complete"] is False
+    assert report["completion_snapshot"]["calculation_missing_meeting_field_count"] == 8
+    assert (
+        report["completion_snapshot"][
+            "calculation_post_owner_ready_for_implementation_count"
+        ]
+        == 0
+    )
+    assert (
+        report["completion_snapshot"][
+            "calculation_post_owner_owner_decision_capture_complete"
+        ]
+        is False
+    )
+    assert (
+        report["completion_snapshot"][
+            "calculation_post_owner_non_implementation_decision_count"
+        ]
+        == 0
+    )
+    assert report["completion_snapshot"]["calculation_post_owner_blocking_reasons"] == [
+        "owner_decision_capture_incomplete"
+    ]
+    assert report["completion_snapshot"]["calculation_post_owner_incomplete_count"] == 10
+    assert (
+        report["completion_snapshot"][
+            "calculation_post_owner_invalid_selected_decision_count"
+        ]
+        == 0
+    )
+    assert (
+        report["completion_snapshot"][
+            "calculation_post_owner_no_invalid_selected_decisions"
+        ]
+        is True
+    )
+    assert report["completion_snapshot"]["calculation_post_owner_global_gate_ready"] is False
+    assert (
+        report["completion_snapshot"]["calculation_post_owner_implementation_ready"]
+        is False
+    )
+    assert (
+        report["completion_snapshot"]["calculation_post_owner_plan_renderer_sync"]
+        is True
+    )
     assert report["completion_snapshot"]["follow_up_completion_order_status"] == "pass"
     assert report["completion_snapshot"]["follow_up_completion_order_error_count"] == 0
+    assert report["blocker_intake_board"]["status"] == "open_external_input_required"
+    assert report["blocker_intake_board"]["next_blocker_id"] == (
+        "calculation-display-p1-decisions"
+    )
+    assert report["blocker_intake_board"]["next_blocker_detail"] == {
+        "blocker_id": "calculation-display-p1-decisions",
+        "responsible_owner_type": "business_owner_and_metric_governance",
+        "strict_gate_command": (
+            "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
+            "--require-owner-decisions-captured"
+        ),
+        "required_external_input_count": 2,
+        "first_required_external_input": (
+            "business owner selects the authoritative convention for P1-01 "
+            "through P1-07 and P1-09 through P1-11"
+        ),
+        "required_output_count": 11,
+        "first_required_output": "authoritative convention selected for P1-01",
+        "fail_closed_until": (
+            "All 10 owner-decision rows are moved to verified-closed evidence "
+            "with targeted tests."
+        ),
+        "explicit_non_approval_boundary": (
+            "This packet records follow-up work only; it does not choose or approve "
+            "any calculation convention."
+        ),
+    }
     assert report["strict_gate_matrix"]["status"] == "pass"
     assert report["strict_gate_matrix"]["open_blocker_count"] == 5
-    assert report["strict_gate_matrix"]["gate_count"] == 7
-    assert report["strict_gate_matrix"]["expected_blocked_gate_count"] == 7
+    assert report["strict_gate_matrix"]["gate_count"] == 8
+    assert report["strict_gate_matrix"]["expected_blocked_gate_count"] == 8
     assert report["strict_gate_matrix"]["strict_pass_gate_count"] == 0
     assert report["strict_gate_matrix"]["unexpected_gate_count"] == 0
     assert report["all_page_readiness"]["source"] == "manifest_last_full_readiness"
@@ -139,9 +213,55 @@ def test_system_audit_pulse_cli_outputs_json() -> None:
     assert payload["status"] == "pass"
     assert payload["full_score_ready"] is False
     assert payload["open_blocker_count"] == 5
+    assert payload["calculation_post_owner_plan_renderer_sync"] is True
+    assert payload["blocker_intake_board"]["next_blocker_id"] == (
+        "calculation-display-p1-decisions"
+    )
+    assert payload["blocker_intake_board"]["next_blocker_detail"][
+        "responsible_owner_type"
+    ] == "business_owner_and_metric_governance"
+    assert payload["completion_snapshot"]["calculation_packet_p1_count"] == 10
+    assert payload["completion_snapshot"]["calculation_meeting_record_complete"] is False
+    assert payload["completion_snapshot"]["calculation_missing_meeting_field_count"] == 8
+    assert (
+        payload["completion_snapshot"][
+            "calculation_post_owner_ready_for_implementation_count"
+        ]
+        == 0
+    )
+    assert (
+        payload["completion_snapshot"][
+            "calculation_post_owner_owner_decision_capture_complete"
+        ]
+        is False
+    )
+    assert (
+        payload["completion_snapshot"][
+            "calculation_post_owner_non_implementation_decision_count"
+        ]
+        == 0
+    )
+    assert payload["completion_snapshot"]["calculation_post_owner_blocking_reasons"] == [
+        "owner_decision_capture_incomplete"
+    ]
+    assert payload["completion_snapshot"]["calculation_post_owner_incomplete_count"] == 10
+    assert (
+        payload["completion_snapshot"][
+            "calculation_post_owner_invalid_selected_decision_count"
+        ]
+        == 0
+    )
+    assert (
+        payload["completion_snapshot"]["calculation_post_owner_global_gate_ready"]
+        is False
+    )
+    assert (
+        payload["completion_snapshot"]["calculation_post_owner_plan_renderer_sync"]
+        is True
+    )
     assert payload["completion_snapshot"]["follow_up_completion_order_status"] == "pass"
     assert payload["strict_gate_matrix"]["strict_pass_gate_count"] == 0
-    assert payload["strict_gate_matrix"]["gate_count"] == 7
+    assert payload["strict_gate_matrix"]["gate_count"] == 8
     assert payload["all_page_readiness"]["source"] == "manifest_last_full_readiness"
 
 
@@ -153,10 +273,25 @@ def test_system_audit_pulse_formats_markdown_without_approval() -> None:
     assert markdown.startswith("# System Audit Pulse")
     assert "- Completion state: `not_complete`" in markdown
     assert "- Open blockers: `5`" in markdown
+    assert "- Next blocker: `calculation-display-p1-decisions`" in markdown
     assert "`business_contract_certified=0`" in markdown
     assert "`route_gaps=0`" in markdown
+    assert "`owner=business_owner_and_metric_governance`" in markdown
+    assert "## Next Blocker" in markdown
+    assert (
+        "`python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
+        "--require-owner-decisions-captured`"
+    ) in markdown
+    assert "`p1_packet=10`" in markdown
+    assert "`meeting_record=false`" in markdown
+    assert "`missing_meeting_fields=8`" in markdown
+    assert "`post_owner_ready=0`" in markdown
+    assert "`post_owner_incomplete=10`" in markdown
+    assert "`post_owner_invalid_selected=0`" in markdown
+    assert "`post_owner_gate=false`" in markdown
+    assert "`post_owner_sync=true`" in markdown
     assert "`order_guard=pass`" in markdown
-    assert "`pass=0/7`" in markdown
+    assert "`pass=0/8`" in markdown
     assert "`unexpected=0`" in markdown
     assert "`direct_evidence_null=0`" in markdown
     assert "`audit_review_null=0`" in markdown
@@ -185,9 +320,18 @@ def test_system_audit_pulse_cli_outputs_markdown() -> None:
     assert completed.returncode == 0
     assert "# System Audit Pulse" in completed.stdout
     assert "- Completion state: `not_complete`" in completed.stdout
+    assert "- Next blocker: `calculation-display-p1-decisions`" in completed.stdout
     assert "`business_contract_certified=0`" in completed.stdout
+    assert "`p1_packet=10`" in completed.stdout
+    assert "`meeting_record=false`" in completed.stdout
+    assert "`missing_meeting_fields=8`" in completed.stdout
+    assert "`post_owner_ready=0`" in completed.stdout
+    assert "`post_owner_incomplete=10`" in completed.stdout
+    assert "`post_owner_invalid_selected=0`" in completed.stdout
+    assert "`post_owner_gate=false`" in completed.stdout
+    assert "`post_owner_sync=true`" in completed.stdout
     assert "`order_guard=pass`" in completed.stdout
-    assert "`pass=0/7`" in completed.stdout
+    assert "`pass=0/8`" in completed.stdout
     assert "does not approve metrics" in completed.stdout
 
 

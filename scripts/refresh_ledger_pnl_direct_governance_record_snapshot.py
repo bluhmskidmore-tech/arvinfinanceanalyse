@@ -122,6 +122,47 @@ def _page_readiness_snapshot(readiness: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _post_write_validation(
+    *,
+    existing_record_line: int | None,
+    page_readiness: dict[str, Any],
+) -> dict[str, Any]:
+    governance = page_readiness.get("governance_record_validation") or {}
+    audit_review = page_readiness.get("audit_review") or {}
+    checks = {
+        "written_record_located": existing_record_line is not None,
+        "governance_direct_records_ready": (
+            governance.get("status") == "direct_records_ready_for_audit_review"
+            and int(governance.get("direct_record_count") or 0) > 0
+        ),
+        "audit_review_not_blocked_by_record_gaps": (
+            audit_review.get("status") != "blocked_by_record_gaps"
+        ),
+        "formal_use_still_false_until_owner_approval": (
+            page_readiness.get("formal_use_allowed") is False
+        ),
+        "closure_not_approved_without_owner_approval": (
+            page_readiness.get("closure_approved") is False
+        ),
+        "business_owner_approval_not_captured": (
+            page_readiness.get("business_owner_approval_captured") is False
+        ),
+    }
+    blocking_reasons = [
+        name for name, passed in checks.items() if not passed
+    ]
+    return {
+        "ready": not blocking_reasons,
+        "checks": checks,
+        "blocking_reasons": blocking_reasons,
+        "boundary": (
+            "A located record is not enough for Ledger PnL closure. Downstream "
+            "governance validation, page readiness, audit review, owner approval, "
+            "and live evidence must still be reviewed before formal use or closure."
+        ),
+    }
+
+
 def _written_record_search(target_path: Path) -> dict[str, Any]:
     matches = _line_match_counts(target_path, SEARCH_PATTERNS)
     found = any(count > 0 for count in matches.values())
@@ -159,6 +200,12 @@ def build_snapshot(
     target_path = Path(dry_run["target_path"])
     validation = dry_run["preflight"]["validation"]
     existing_record_line = dry_run["existing_record_line"]
+    page_readiness = _page_readiness_snapshot(readiness)
+    post_write_validation = _post_write_validation(
+        existing_record_line=existing_record_line,
+        page_readiness=page_readiness,
+    )
+    closure_blocked_by_missing_written_record = existing_record_line is None
     return {
         "report_kind": "ledger_pnl_direct_governance_record_snapshot",
         "generated_at": generated_at,
@@ -183,6 +230,7 @@ def build_snapshot(
             "approves_pages": False,
             "captures_business_owner_approval": False,
             "certifies_routes": False,
+            "closure_blocked_by_missing_written_record": closure_blocked_by_missing_written_record,
         },
         "dry_run_result": {
             "command": "python scripts\\emit_ledger_pnl_governance_record.py",
@@ -200,12 +248,16 @@ def build_snapshot(
         "record_key": dict(dry_run["record_key"]),
         "candidate_record": dict(record),
         "written_record_search": _written_record_search(target_path),
-        "page_readiness_result": _page_readiness_snapshot(readiness),
+        "page_readiness_result": page_readiness,
+        "post_write_validation": post_write_validation,
+        "closure_blocked_by_missing_written_record": closure_blocked_by_missing_written_record,
         "closure_gate": (
             "Only an approved governance workflow may write or locate the direct page/API record. "
-            "After that, rerun governance validation, Ledger PnL page readiness, owner approval "
-            "strict checks, and live page/API evidence review. Keep formal_use_allowed=false and "
-            "closure_approved=false until owner approval and all page-specific gates are captured."
+            "After that, post_write_validation.ready must be true, governance validation must no "
+            "longer be blocked by direct-record gaps, Ledger PnL page readiness, owner approval "
+            "strict checks, and live page/API evidence review must be rerun. Keep "
+            "formal_use_allowed=false and closure_approved=false until owner approval and all "
+            "page-specific gates are captured."
         ),
         "boundary": (
             "This snapshot is refreshed by a read-only preflight. It proves only whether a "
@@ -268,15 +320,22 @@ def main(argv: list[str] | None = None) -> int:
     print(payload)
     if (
         args.require_written_record_located
-        and snapshot["status"]["overall"] != "written_record_located"
+        and (
+            snapshot["status"]["overall"] != "written_record_located"
+            or snapshot["post_write_validation"]["ready"] is not True
+        )
     ):
         dry_run = snapshot["dry_run_result"]
+        post_write_validation = snapshot["post_write_validation"]
         print(
             (
                 "Ledger PnL direct governance record is not located: "
                 f"status={snapshot['status']['overall']}, "
                 f"record_write_status={dry_run['record_write_status']}, "
-                f"existing_record_line={dry_run['existing_record_line']}"
+                f"existing_record_line={dry_run['existing_record_line']}, "
+                f"post_write_ready={post_write_validation['ready']}, "
+                "post_write_blocking_reasons="
+                f"{post_write_validation['blocking_reasons']}"
             ),
             file=sys.stderr,
         )

@@ -11,11 +11,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.verify_system_audit_completion_snapshot import verify_completion_snapshot
+from scripts.verify_system_audit_completion_snapshot import verify_completion_snapshot  # noqa: E402
 
 
 DEFAULT_MANIFEST = ROOT / "docs" / "audits" / "2026-06-10-system-audit-manifest.json"
-
+EXPECTED_NEXT_BLOCKER_ID = "calculation-display-p1-decisions"
+EXPECTED_CALCULATION_STRICT_GATE_COMMAND = (
+    "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
+    "--require-owner-decisions-captured"
+)
+EXPECTED_NEXT_BLOCKER_OWNER_TYPE = "business_owner_and_metric_governance"
 EXPECTED_EVIDENCE_SCOPE = {
     "read_only": True,
     "writes_duckdb": False,
@@ -34,10 +39,45 @@ EXPECTED_STRICT_GATE_IDS = {
     "completion-zero-open-blockers",
     "monitoring-zero-open-blockers",
     "calculation-p1-owner-decisions-captured",
+    "calculation-p1-post-owner-implementation-ready",
     "ledger-pnl-written-record-located",
     "direct-app-mcp-gitnexus-evidence-captured",
     "local-secret-hygiene-clean-boundary",
 }
+COMPLETION_VERIFICATION_MIRROR_KEYS = [
+    "status",
+    "open_blocker_count",
+    "calculation_packet_p1_count",
+    "calculation_packet_execution_anchor_ready",
+    "calculation_packet_execution_referenced_path_count",
+    "calculation_packet_missing_execution_referenced_path_count",
+    "calculation_owner_meeting_checklist_count",
+    "calculation_owner_meeting_material_ready",
+    "calculation_owner_meeting_implementation_ready",
+    "calculation_owner_meeting_missing_capture_field_count",
+    "calculation_owner_meeting_missing_field_count",
+    "calculation_first_priority_count",
+    "calculation_first_priority_owner_intake_ready",
+    "calculation_first_priority_implementation_ready",
+    "calculation_post_owner_ready_for_implementation_count",
+    "calculation_post_owner_owner_decision_capture_complete",
+    "calculation_post_owner_non_implementation_decision_count",
+    "calculation_post_owner_blocking_reasons",
+    "calculation_post_owner_incomplete_count",
+    "calculation_post_owner_invalid_selected_decision_count",
+    "calculation_post_owner_no_invalid_selected_decisions",
+    "calculation_post_owner_global_gate_ready",
+    "calculation_post_owner_implementation_ready",
+    "calculation_post_owner_plan_renderer_sync",
+    "local_secret_owner_attestation_ready",
+    "local_secret_owner_attestation_closure_approved",
+    "local_secret_owner_attestation_secret_value_fields_present",
+    "calculation_meeting_record_complete",
+    "calculation_missing_meeting_field_count",
+    "follow_up_completion_order_status",
+    "follow_up_completion_order_error_count",
+    "errors",
+]
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -60,6 +100,7 @@ def _artifact_path(
     if not path_value:
         errors.append(f"manifest missing {key} artifact")
         return None
+
     path = _resolve(repo_root, str(path_value))
     if not path.exists():
         errors.append(f"{key} artifact is missing: {path}")
@@ -89,7 +130,28 @@ def _expect_false(
 
 
 def _blockers_by_id(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return {item.get("id"): item for item in manifest.get("open_blockers", [])}
+    return {
+        item.get("id"): item
+        for item in manifest.get("open_blockers", [])
+        if isinstance(item, dict)
+    }
+
+
+def _calculation_invalid_status_count(calculation: dict[str, Any]) -> int:
+    return len(
+        calculation.get("capture_template", {}).get("invalid_status_by_id") or {}
+    )
+
+
+def _calculation_invalid_selected_decision_count(calculation: dict[str, Any]) -> int:
+    capture = calculation.get("capture_template", {})
+    return int(
+        capture.get(
+            "invalid_selected_decision_count",
+            len(capture.get("invalid_selected_decision_by_id") or {}),
+        )
+        or 0
+    )
 
 
 def _verify_refresh_results(
@@ -107,6 +169,7 @@ def _verify_refresh_results(
     generated_at = monitoring.get("generated_at")
 
     calculation_result = refresh.get("calculation_owner_decision") or {}
+    calculation_capture = calculation.get("capture_template", {})
     _expect_equal(
         errors,
         label="calculation refresh status",
@@ -123,15 +186,25 @@ def _verify_refresh_results(
         errors,
         label="calculation refresh captured_decision_count",
         actual=calculation_result.get("captured_decision_count"),
-        expected=calculation.get("capture_template", {}).get("captured_decision_count"),
+        expected=calculation_capture.get("captured_decision_count"),
     )
     _expect_equal(
         errors,
         label="calculation refresh incomplete_decision_count",
         actual=calculation_result.get("incomplete_decision_count"),
-        expected=calculation.get("capture_template", {}).get(
-            "incomplete_decision_count"
-        ),
+        expected=calculation_capture.get("incomplete_decision_count"),
+    )
+    _expect_equal(
+        errors,
+        label="calculation refresh invalid_selected_decision_count",
+        actual=calculation_result.get("invalid_selected_decision_count"),
+        expected=_calculation_invalid_selected_decision_count(calculation),
+    )
+    _expect_equal(
+        errors,
+        label="calculation refresh invalid_status_count",
+        actual=calculation_result.get("invalid_status_count"),
+        expected=_calculation_invalid_status_count(calculation),
     )
     _expect_equal(
         errors,
@@ -142,9 +215,7 @@ def _verify_refresh_results(
     _expect_equal(
         errors,
         label="calculation blocker last_checked_at",
-        actual=(blockers.get("calculation-display-p1-decisions") or {}).get(
-            "last_checked_at"
-        ),
+        actual=(blockers.get(EXPECTED_NEXT_BLOCKER_ID) or {}).get("last_checked_at"),
         expected=calculation.get("generated_at"),
     )
     _expect_equal(
@@ -253,6 +324,18 @@ def _verify_refresh_results(
         actual=ledger_result.get("record_write_status"),
         expected=ledger.get("dry_run_result", {}).get("record_write_status"),
     )
+    _expect_equal(
+        errors,
+        label="Ledger PnL post_write_ready",
+        actual=ledger_result.get("post_write_ready"),
+        expected=ledger.get("post_write_validation", {}).get("ready"),
+    )
+    _expect_equal(
+        errors,
+        label="Ledger PnL post_write_blocking_reasons",
+        actual=ledger_result.get("post_write_blocking_reasons"),
+        expected=ledger.get("post_write_validation", {}).get("blocking_reasons"),
+    )
     _expect_false(
         errors,
         label="Ledger PnL formal_use_allowed",
@@ -279,6 +362,43 @@ def _verify_refresh_results(
     )
 
 
+def _verify_next_blocker_detail(
+    *,
+    detail: dict[str, Any],
+    owner_label: str,
+    errors: list[str],
+) -> None:
+    _expect_equal(
+        errors,
+        label=f"{owner_label} next blocker owner type",
+        actual=detail.get("responsible_owner_type"),
+        expected=EXPECTED_NEXT_BLOCKER_OWNER_TYPE,
+    )
+    _expect_equal(
+        errors,
+        label=f"{owner_label} next detail strict gate",
+        actual=detail.get("strict_gate_command"),
+        expected=EXPECTED_CALCULATION_STRICT_GATE_COMMAND,
+    )
+    _expect_equal(
+        errors,
+        label=f"{owner_label} next detail required_external_input_count",
+        actual=detail.get("required_external_input_count"),
+        expected=2,
+    )
+    _expect_equal(
+        errors,
+        label=f"{owner_label} next detail required_output_count",
+        actual=detail.get("required_output_count"),
+        expected=11,
+    )
+    boundary = detail.get("explicit_non_approval_boundary", "")
+    if "does not choose or approve" not in boundary:
+        errors.append(
+            f"{owner_label} next detail boundary must deny convention approval"
+        )
+
+
 def _verify_pulse(
     *,
     manifest: dict[str, Any],
@@ -287,6 +407,7 @@ def _verify_pulse(
     errors: list[str],
 ) -> None:
     monitor_pulse = monitoring.get("pulse") or {}
+    completion = monitoring.get("completion_verification") or {}
     open_blocker_count = len(manifest.get("open_blockers", []))
     _expect_equal(
         errors,
@@ -308,9 +429,21 @@ def _verify_pulse(
     )
     _expect_equal(
         errors,
+        label="monitoring pulse next_blocker_id",
+        actual=monitor_pulse.get("next_blocker_id"),
+        expected=EXPECTED_NEXT_BLOCKER_ID,
+    )
+    _expect_equal(
+        errors,
         label="monitoring pulse drift_errors",
         actual=monitor_pulse.get("drift_errors"),
         expected=[],
+    )
+    _expect_equal(
+        errors,
+        label="monitoring pulse calculation_post_owner_plan_renderer_sync",
+        actual=monitor_pulse.get("calculation_post_owner_plan_renderer_sync"),
+        expected=completion.get("calculation_post_owner_plan_renderer_sync"),
     )
     _expect_equal(
         errors,
@@ -332,9 +465,21 @@ def _verify_pulse(
     )
     _expect_equal(
         errors,
+        label="current pulse blocker intake next_blocker_id",
+        actual=pulse_snapshot.get("blocker_intake_board", {}).get("next_blocker_id"),
+        expected=monitor_pulse.get("next_blocker_id"),
+    )
+    _expect_equal(
+        errors,
         label="current pulse drift_errors",
         actual=pulse_snapshot.get("drift_errors"),
         expected=monitor_pulse.get("drift_errors"),
+    )
+    _expect_equal(
+        errors,
+        label="current pulse calculation_post_owner_plan_renderer_sync",
+        actual=pulse_snapshot.get("calculation_post_owner_plan_renderer_sync"),
+        expected=monitor_pulse.get("calculation_post_owner_plan_renderer_sync"),
     )
     _expect_equal(
         errors,
@@ -349,6 +494,16 @@ def _verify_pulse(
         label="current pulse business display route_gap_count",
         actual=pulse_snapshot.get("business_display", {}).get("route_gap_count"),
         expected=manifest.get("counts", {}).get("business_display_route_gaps"),
+    )
+
+    next_detail = monitor_pulse.get("next_blocker_detail")
+    if not isinstance(next_detail, dict):
+        errors.append("monitoring pulse next_blocker_detail must be an object")
+        return
+    _verify_next_blocker_detail(
+        detail=next_detail,
+        owner_label="monitoring pulse",
+        errors=errors,
     )
 
 
@@ -440,6 +595,7 @@ def _verify_strict_gate_matrix(
     if not isinstance(gates, list):
         errors.append("strict gate matrix gates must be a list")
         return
+
     gate_ids = {gate.get("gate_id") for gate in gates if isinstance(gate, dict)}
     if gate_ids != EXPECTED_STRICT_GATE_IDS:
         errors.append("strict gate matrix gate IDs do not match expected gates")
@@ -449,13 +605,18 @@ def _verify_strict_gate_matrix(
             continue
         gate_id = gate.get("gate_id")
         if gate.get("expected_current_exit") != "non_zero":
-            errors.append(f"strict gate {gate_id} expected_current_exit must be non_zero")
+            errors.append(
+                f"strict gate {gate_id} expected_current_exit must be non_zero"
+            )
         if gate.get("actual_current_exit") != "non_zero":
-            errors.append(f"strict gate {gate_id} actual_current_exit must be non_zero")
+            errors.append(
+                f"strict gate {gate_id} actual_current_exit must be non_zero"
+            )
         if gate.get("strict_pass") is not False:
             errors.append(f"strict gate {gate_id} strict_pass must be false")
         if gate.get("expectation_met") is not True:
             errors.append(f"strict gate {gate_id} expectation_met must be true")
+
     boundary = matrix.get("boundary", "")
     if "does not approve owner decisions" not in boundary:
         errors.append("strict gate matrix boundary must deny owner-decision approval")
@@ -503,8 +664,24 @@ def _verify_blocker_intake_board(
         errors,
         label="blocker intake board next_blocker_id",
         actual=board.get("next_blocker_id"),
-        expected="calculation-display-p1-decisions",
+        expected=EXPECTED_NEXT_BLOCKER_ID,
     )
+    if board.get("next_blocker_detail") != monitoring.get("pulse", {}).get(
+        "next_blocker_detail"
+    ):
+        errors.append(
+            "blocker intake board next_blocker_detail must match monitoring pulse"
+        )
+    next_detail = board.get("next_blocker_detail")
+    if isinstance(next_detail, dict):
+        _verify_next_blocker_detail(
+            detail=next_detail,
+            owner_label="blocker intake board",
+            errors=errors,
+        )
+    else:
+        errors.append("blocker intake board next_blocker_detail must be an object")
+
     scope = board.get("evidence_scope") or {}
     _expect_equal(
         errors,
@@ -554,6 +731,21 @@ def _verify_latest_session_recheck(
         actual=recheck.get("open_blocker_count"),
         expected=len(manifest.get("open_blockers", [])),
     )
+    _expect_equal(
+        errors,
+        label="latest session next blocker id",
+        actual=(recheck.get("next_blocker") or {}).get("blocker_id"),
+        expected=EXPECTED_NEXT_BLOCKER_ID,
+    )
+    _expect_equal(
+        errors,
+        label="latest session calculation_post_owner_plan_renderer_sync",
+        actual=recheck.get("calculation_post_owner_plan_renderer_sync"),
+        expected=monitoring.get("completion_verification", {}).get(
+            "calculation_post_owner_plan_renderer_sync"
+        ),
+    )
+
     strict = recheck.get("strict_gate_matrix") or {}
     _expect_equal(
         errors,
@@ -696,11 +888,39 @@ def _verify_latest_session_recheck(
         actual=calculation.get("incomplete_decision_count"),
         expected=10,
     )
+    _expect_equal(
+        errors,
+        label="latest session calculation invalid_selected_decision_count",
+        actual=calculation.get("invalid_selected_decision_count"),
+        expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="latest session calculation invalid_status_count",
+        actual=calculation.get("invalid_status_count"),
+        expected=0,
+    )
     _expect_false(
         errors,
         label="latest session chooses_or_approves_conventions",
         actual=calculation.get("chooses_or_approves_conventions"),
     )
+
+
+def _verify_completion_mirror(
+    *,
+    monitoring: dict[str, Any],
+    completion_verification: dict[str, Any],
+    errors: list[str],
+) -> None:
+    monitoring_completion = monitoring.get("completion_verification") or {}
+    for key in COMPLETION_VERIFICATION_MIRROR_KEYS:
+        _expect_equal(
+            errors,
+            label=f"monitoring completion {key}",
+            actual=monitoring_completion.get(key),
+            expected=completion_verification.get(key),
+        )
 
 
 def verify_monitoring_snapshot(
@@ -792,6 +1012,12 @@ def verify_monitoring_snapshot(
     )
     _expect_equal(
         errors,
+        label="monitoring generated_at",
+        actual=monitoring.get("generated_at"),
+        expected=manifest.get("generated_at"),
+    )
+    _expect_equal(
+        errors,
         label="monitoring evidence_scope",
         actual=monitoring.get("evidence_scope"),
         expected=EXPECTED_EVIDENCE_SCOPE,
@@ -816,39 +1042,10 @@ def verify_monitoring_snapshot(
         actual=completion_verification.get("status"),
         expected="pass",
     )
-    _expect_equal(
-        errors,
-        label="monitoring completion status",
-        actual=monitoring.get("completion_verification", {}).get("status"),
-        expected=completion_verification.get("status"),
-    )
-    _expect_equal(
-        errors,
-        label="monitoring completion open_blocker_count",
-        actual=monitoring.get("completion_verification", {}).get("open_blocker_count"),
-        expected=completion_verification.get("open_blocker_count"),
-    )
-    _expect_equal(
-        errors,
-        label="monitoring completion follow_up_completion_order_status",
-        actual=monitoring.get("completion_verification", {}).get(
-            "follow_up_completion_order_status"
-        ),
-        expected=completion_verification.get("follow_up_completion_order_status"),
-    )
-    _expect_equal(
-        errors,
-        label="monitoring completion follow_up_completion_order_error_count",
-        actual=monitoring.get("completion_verification", {}).get(
-            "follow_up_completion_order_error_count"
-        ),
-        expected=completion_verification.get("follow_up_completion_order_error_count"),
-    )
-    _expect_equal(
-        errors,
-        label="monitoring completion errors",
-        actual=monitoring.get("completion_verification", {}).get("errors"),
-        expected=completion_verification.get("errors"),
+    _verify_completion_mirror(
+        monitoring=monitoring,
+        completion_verification=completion_verification,
+        errors=errors,
     )
     _expect_equal(
         errors,
@@ -895,6 +1092,10 @@ def verify_monitoring_snapshot(
         "monitoring_snapshot_path": str(monitoring_path),
         "generated_at": monitoring.get("generated_at"),
         "open_blocker_count": len(manifest.get("open_blockers", [])),
+        "next_blocker_id": monitoring.get("pulse", {}).get("next_blocker_id"),
+        "calculation_post_owner_plan_renderer_sync": monitoring.get(
+            "pulse", {}
+        ).get("calculation_post_owner_plan_renderer_sync"),
         "completion_status": monitoring.get("completion_verification", {}).get("status"),
         "completion_order_guard_status": monitoring.get(
             "completion_verification",

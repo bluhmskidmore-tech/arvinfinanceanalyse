@@ -3,11 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 DEFAULT_MANIFEST = ROOT / "docs" / "audits" / "2026-06-10-system-audit-manifest.json"
 EXPECTED_OPEN_CALCULATION_P1_IDS = [
     "P1-01",
@@ -36,6 +40,25 @@ FOLLOW_UP_COMPLETION_ORDER_CONSTRAINTS = [
 FOLLOW_UP_COMPLETION_ORDER_ERROR_PREFIX = (
     "owner/governance follow-up packet completion_order"
 )
+
+
+def _render_current_post_owner_plan(
+    *,
+    matrix_path: Path,
+    snapshot_path: Path,
+    capture_template_path: Path,
+) -> str:
+    from scripts.calculation_p1_post_owner_execution_plan import (
+        build_plan,
+        render_markdown,
+    )
+
+    plan = build_plan(
+        matrix_path=matrix_path,
+        snapshot_path=snapshot_path,
+        capture_template_path=capture_template_path,
+    )
+    return render_markdown(plan)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -596,6 +619,20 @@ def _verify_calculation_p1_snapshot(
         errors.append("calculation owner decision snapshot pending count does not match manifest")
     if capture.get("captured_decision_count") != 0:
         errors.append("calculation owner decision snapshot must not capture owner decisions")
+    if capture.get("captured_statuses") != [
+        "approved-for-implementation",
+        "deferred",
+        "rejected",
+    ]:
+        errors.append("calculation owner decision snapshot captured statuses are invalid")
+    if capture.get("invalid_status_by_id") != {}:
+        errors.append("calculation owner decision snapshot has invalid owner-decision statuses")
+    if capture.get("invalid_selected_decision_by_id") != {}:
+        errors.append("calculation owner decision snapshot has invalid selected decisions")
+    if capture.get("invalid_selected_decision_count") != 0:
+        errors.append(
+            "calculation owner decision snapshot invalid selected decision count must be zero"
+        )
     if capture.get("incomplete_decision_count") != expected_count:
         errors.append(
             "calculation owner decision snapshot incomplete decision count does not match manifest"
@@ -603,6 +640,21 @@ def _verify_calculation_p1_snapshot(
     if capture.get("incomplete_decision_ids") != EXPECTED_OPEN_CALCULATION_P1_IDS:
         errors.append(
             "calculation owner decision snapshot incomplete decision IDs do not match expected"
+        )
+    meeting_record = snapshot.get("meeting_record", {})
+    if meeting_record.get("required_field_count") != 8:
+        errors.append(
+            "calculation owner decision snapshot meeting required field count is invalid"
+        )
+    if meeting_record.get("field_count") != 8:
+        errors.append("calculation owner decision snapshot meeting field count drifted")
+    if meeting_record.get("is_complete") is not False:
+        errors.append(
+            "calculation owner decision snapshot must not mark meeting record complete"
+        )
+    if not meeting_record.get("missing_required_fields"):
+        errors.append(
+            "calculation owner decision snapshot must report missing meeting fields"
         )
     if "does not choose or approve any calculation convention" not in snapshot.get(
         "boundary",
@@ -613,21 +665,518 @@ def _verify_calculation_p1_snapshot(
     return snapshot
 
 
+def _verify_calculation_p1_owner_decision_packet(
+    *,
+    manifest: dict[str, Any],
+    repo_root: Path,
+    errors: list[str],
+) -> dict[str, Any] | None:
+    packet_rel_path = manifest.get("artifacts", {}).get(
+        "calculation_owner_decision_packet"
+    )
+    if not packet_rel_path:
+        errors.append("manifest missing calculation_owner_decision_packet artifact")
+        return None
+
+    packet_path = repo_root / packet_rel_path
+    if not packet_path.exists():
+        errors.append("calculation owner decision packet artifact is missing")
+        return None
+
+    text = packet_path.read_text(encoding="utf-8")
+    required_phrases = [
+        "# Calculation P1 Owner Decision Packet",
+        "decision_status=owner_decision_required",
+        "Owner decision ready: `false`",
+        "Implementation ready: `false`",
+        "Execution anchor ready: `true`",
+        "`decision_item_count=10`",
+        "`pending_decision_count=10`",
+        "`captured_decision_count=0`",
+        (
+            "`post_owner_required_fields=selected_decision, owner_rationale, "
+            "implementation_owner, verification_gate, status`"
+        ),
+        "`invalid_selected_decision_count=0`",
+        "`missing_execution_referenced_path_count=0`",
+        "`all_execution_slices_present=true`",
+        "`all_execution_slice_paths_exist=true`",
+        "First priority group: `P1-09, P1-10, P1-11`",
+        "Owner decision gate",
+        "Component/model tests prove backend value wins",
+        "## Execution Anchor Checks",
+        "`captures_owner_decisions=false`",
+        "`chooses_or_approves_conventions=false`",
+        "treat proposed review defaults as approved rules",
+        "does not choose or approve conventions",
+    ]
+    for phrase in required_phrases:
+        if phrase not in text:
+            errors.append(f"calculation owner decision packet missing required phrase: {phrase}")
+
+    for p1_id in EXPECTED_OPEN_CALCULATION_P1_IDS:
+        if f"`{p1_id}`" not in text:
+            errors.append(f"calculation owner decision packet missing {p1_id}")
+
+    if "authorize Ledger PnL `--write`" not in text:
+        errors.append("calculation owner decision packet missing Ledger write boundary")
+    if "writes_governance_records=false" not in text:
+        errors.append("calculation owner decision packet must deny governance writes")
+    if "approves_metrics=false" not in text:
+        errors.append("calculation owner decision packet must deny metric approval")
+
+    path_count_match = re.search(
+        r"`execution_referenced_path_count=(\d+)`",
+        text,
+    )
+    missing_path_count_match = re.search(
+        r"`missing_execution_referenced_path_count=(\d+)`",
+        text,
+    )
+    referenced_path_count = (
+        int(path_count_match.group(1)) if path_count_match is not None else None
+    )
+    missing_referenced_path_count = (
+        int(missing_path_count_match.group(1))
+        if missing_path_count_match is not None
+        else None
+    )
+    if referenced_path_count is None:
+        errors.append("calculation owner decision packet missing execution path count")
+    elif referenced_path_count < len(EXPECTED_OPEN_CALCULATION_P1_IDS):
+        errors.append("calculation owner decision packet has too few execution anchors")
+
+    return {
+        "p1_count": sum(
+            1 for p1_id in EXPECTED_OPEN_CALCULATION_P1_IDS if f"`{p1_id}`" in text
+        ),
+        "execution_anchor_ready": "Execution anchor ready: `true`" in text,
+        "execution_referenced_path_count": referenced_path_count,
+        "missing_execution_referenced_path_count": missing_referenced_path_count,
+    }
+
+
+def _verify_calculation_p1_owner_meeting_checklist(
+    *,
+    manifest: dict[str, Any],
+    snapshot: dict[str, Any],
+    repo_root: Path,
+    errors: list[str],
+) -> dict[str, Any] | None:
+    packet_rel_path = manifest.get("artifacts", {}).get(
+        "calculation_owner_meeting_checklist"
+    )
+    if not packet_rel_path:
+        errors.append("manifest missing calculation_owner_meeting_checklist artifact")
+        return None
+
+    snapshot_rel_path = snapshot.get("source_artifacts", {}).get(
+        "calculation_owner_meeting_checklist"
+    )
+    if snapshot_rel_path != packet_rel_path:
+        errors.append(
+            "completion snapshot calculation_owner_meeting_checklist source mismatch"
+        )
+
+    packet_path = repo_root / packet_rel_path
+    if not packet_path.exists():
+        errors.append("calculation owner meeting checklist artifact is missing")
+        return None
+
+    text = packet_path.read_text(encoding="utf-8")
+    required_phrases = [
+        "# Calculation P1 Owner Meeting Checklist",
+        "source_snapshot_status=owner_decision_required",
+        "Owner meeting material ready: `true`",
+        "Implementation ready: `false`",
+        "Execution anchor ready: `true`",
+        "`decision_item_count=10`",
+        "`pending_decision_count=10`",
+        "`captured_decision_count=0`",
+        "`incomplete_decision_count=10`",
+        "`total_missing_capture_field_count=50`",
+        "`meeting_missing_field_count=8`",
+        "`meeting_record_complete=false`",
+        "`missing_execution_referenced_path_count=0`",
+        "`decision_ids_match_expected=true`",
+        "`all_rows_pending_owner_decision=true`",
+        "`captured_decision_count_is_zero=true`",
+        "`meeting_record_is_incomplete=true`",
+        "`captures_owner_decisions=false`",
+        "`chooses_or_approves_conventions=false`",
+        "`changes_implementation_code=false`",
+        "Owner decision gate",
+        "`docs/calc_rules.md` unit rule",
+        "Every row must have `selected_decision`",
+        "treat this checklist as owner approval",
+        "does not choose or approve calculation conventions",
+    ]
+    for phrase in required_phrases:
+        if phrase not in text:
+            errors.append(
+                f"calculation owner meeting checklist missing required phrase: {phrase}"
+            )
+
+    for p1_id in EXPECTED_OPEN_CALCULATION_P1_IDS:
+        if f"`{p1_id}`" not in text:
+            errors.append(f"calculation owner meeting checklist missing {p1_id}")
+
+    if "writes_governance_records=false" not in text:
+        errors.append("calculation owner meeting checklist must deny governance writes")
+    if "approves_metrics=false" not in text:
+        errors.append("calculation owner meeting checklist must deny metric approval")
+    if "authorizes_ledger_pnl_governance_write=false" not in text:
+        errors.append("calculation owner meeting checklist must deny Ledger write authorization")
+
+    return {
+        "decision_item_count": sum(
+            1 for p1_id in EXPECTED_OPEN_CALCULATION_P1_IDS if f"`{p1_id}`" in text
+        ),
+        "owner_meeting_material_ready": "Owner meeting material ready: `true`" in text,
+        "implementation_ready": "Implementation ready: `true`" in text,
+        "total_missing_capture_field_count": (
+            50 if "`total_missing_capture_field_count=50`" in text else None
+        ),
+        "meeting_missing_field_count": (
+            8 if "`meeting_missing_field_count=8`" in text else None
+        ),
+    }
+
+
+def _verify_calculation_p1_first_priority_readiness_packet(
+    *,
+    manifest: dict[str, Any],
+    snapshot: dict[str, Any],
+    repo_root: Path,
+    errors: list[str],
+) -> dict[str, Any] | None:
+    packet_rel_path = manifest.get("artifacts", {}).get(
+        "calculation_first_priority_readiness_packet"
+    )
+    if not packet_rel_path:
+        errors.append("manifest missing calculation_first_priority_readiness_packet artifact")
+        return None
+
+    snapshot_rel_path = snapshot.get("source_artifacts", {}).get(
+        "calculation_first_priority_readiness_packet"
+    )
+    if snapshot_rel_path != packet_rel_path:
+        errors.append(
+            "completion snapshot calculation_first_priority_readiness_packet source mismatch"
+        )
+
+    packet_path = repo_root / packet_rel_path
+    if not packet_path.exists():
+        errors.append("calculation first priority readiness packet artifact is missing")
+        return None
+
+    text = packet_path.read_text(encoding="utf-8")
+    required_phrases = [
+        "# Calculation P1 First Priority Readiness Packet",
+        "source_snapshot_status=owner_decision_required",
+        "Owner intake ready: `true`",
+        "Implementation ready: `false`",
+        "`first_priority_ids=P1-09, P1-10, P1-11`",
+        "`first_priority_count=3`",
+        "`captured_decision_count=0`",
+        (
+            "`post_owner_required_fields=selected_decision, owner_rationale, "
+            "implementation_owner, verification_gate, status`"
+        ),
+        "`owner_intake_ready=true`",
+        "`implementation_ready=false`",
+        "`captures_owner_decisions=false`",
+        "`chooses_or_approves_conventions=false`",
+        "`changes_implementation_code=false`",
+        "Owner Decision Gate",
+        "model/component tests proving backend value wins",
+        "backend DTO / frontend removal tests",
+        "API contract plus frontend test",
+        "BalanceMovementAnalysisPage.tsx",
+        "yieldAnalysisAggregates.ts",
+        "zqtzAdbAvgRollup.ts",
+        "CreditSpreadView.tsx",
+        "rating/tenor bucket-boundary regression remains pending",
+        "count this readiness packet as owner decision capture",
+        "does not choose or approve any calculation convention",
+    ]
+    for phrase in required_phrases:
+        if phrase not in text:
+            errors.append(
+                "calculation first priority readiness packet missing required phrase: "
+                f"{phrase}"
+            )
+
+    first_priority_ids = ["P1-09", "P1-10", "P1-11"]
+    for p1_id in first_priority_ids:
+        if f"`{p1_id}`" not in text:
+            errors.append(
+                f"calculation first priority readiness packet missing {p1_id}"
+            )
+
+    if "changes_code=false" not in text:
+        errors.append("calculation first priority readiness packet must deny code changes")
+    if "writes_governance_records=false" not in text:
+        errors.append(
+            "calculation first priority readiness packet must deny governance writes"
+        )
+    if "approves_metrics=false" not in text:
+        errors.append("calculation first priority readiness packet must deny metric approval")
+
+    return {
+        "first_priority_count": sum(
+            1 for p1_id in first_priority_ids if f"`{p1_id}`" in text
+        ),
+        "owner_intake_ready": "`owner_intake_ready=true`" in text,
+        "implementation_ready": "`implementation_ready=true`" in text,
+    }
+
+
+def _verify_calculation_p1_post_owner_execution_plan(
+    *,
+    manifest: dict[str, Any],
+    snapshot: dict[str, Any],
+    repo_root: Path,
+    errors: list[str],
+) -> dict[str, Any] | None:
+    packet_rel_path = manifest.get("artifacts", {}).get(
+        "calculation_post_owner_execution_plan"
+    )
+    if not packet_rel_path:
+        errors.append("manifest missing calculation_post_owner_execution_plan artifact")
+        return None
+
+    snapshot_rel_path = snapshot.get("source_artifacts", {}).get(
+        "calculation_post_owner_execution_plan"
+    )
+    if snapshot_rel_path != packet_rel_path:
+        errors.append(
+            "completion snapshot calculation_post_owner_execution_plan source mismatch"
+        )
+
+    packet_path = repo_root / packet_rel_path
+    if not packet_path.exists():
+        errors.append("calculation post-owner execution plan artifact is missing")
+        return None
+
+    text = packet_path.read_text(encoding="utf-8")
+    matrix_rel_path = manifest.get("artifacts", {}).get(
+        "calculation_owner_decision_matrix"
+    )
+    calculation_snapshot_rel_path = manifest.get("artifacts", {}).get(
+        "calculation_owner_decision_snapshot"
+    )
+    capture_template_rel_path = manifest.get("artifacts", {}).get(
+        "owner_decision_capture_template_zh"
+    )
+    if not matrix_rel_path:
+        errors.append("manifest missing calculation_owner_decision_matrix artifact")
+    if not calculation_snapshot_rel_path:
+        errors.append("manifest missing calculation_owner_decision_snapshot artifact")
+    if not capture_template_rel_path:
+        errors.append("manifest missing owner_decision_capture_template_zh artifact")
+
+    if matrix_rel_path and calculation_snapshot_rel_path and capture_template_rel_path:
+        matrix_path = repo_root / matrix_rel_path
+        calculation_snapshot_path = repo_root / calculation_snapshot_rel_path
+        capture_template_path = repo_root / capture_template_rel_path
+        missing_inputs = [
+            label
+            for label, path in [
+                ("calculation_owner_decision_matrix", matrix_path),
+                ("calculation_owner_decision_snapshot", calculation_snapshot_path),
+                ("owner_decision_capture_template_zh", capture_template_path),
+            ]
+            if not path.exists()
+        ]
+        if missing_inputs:
+            errors.append(
+                "calculation post-owner execution plan source inputs are missing: "
+                + ", ".join(missing_inputs)
+            )
+        else:
+            expected_text = _render_current_post_owner_plan(
+                matrix_path=matrix_path,
+                snapshot_path=calculation_snapshot_path,
+                capture_template_path=capture_template_path,
+            )
+            if text != expected_text:
+                errors.append(
+                    "calculation post-owner execution plan does not match current "
+                    "matrix/snapshot/capture-template renderer output"
+                )
+
+    required_phrases = [
+        "# Calculation P1 Post-Owner Execution Plan",
+        "source_snapshot_status=owner_decision_required",
+        "Global owner gate ready: `false`",
+        "Implementation ready: `false`",
+        "`row_count=10`",
+        "`captured_decision_count=0`",
+        "`ready_for_implementation_count=0`",
+        "`deferred_count=0`",
+        "`rejected_count=0`",
+        "`non_implementation_decision_count=0`",
+        "`incomplete_count=10`",
+        "`post_owner_blocking_reasons=owner_decision_capture_incomplete`",
+        "`meeting_record_complete=false`",
+        "`missing_meeting_field_count=8`",
+        "`invalid_selected_decision_count=0`",
+        "`no_invalid_selected_decisions=true`",
+        "`owner_decision_capture_complete=false`",
+        "`non_implementation_decisions_present=false`",
+        "`global_owner_decision_gate_ready=false`",
+        "`implementation_ready=false`",
+        "`captures_owner_decisions=false`",
+        "`chooses_or_approves_conventions=false`",
+        "`changes_implementation_code=false`",
+        "execute implementation when the meeting record is incomplete",
+        "does not choose or approve conventions",
+    ]
+    for phrase in required_phrases:
+        if phrase not in text:
+            errors.append(
+                f"calculation post-owner execution plan missing required phrase: {phrase}"
+            )
+
+    for p1_id in EXPECTED_OPEN_CALCULATION_P1_IDS:
+        if f"`{p1_id}`" not in text:
+            errors.append(f"calculation post-owner execution plan missing {p1_id}")
+
+    if "writes_governance_records=false" not in text:
+        errors.append("calculation post-owner execution plan must deny governance writes")
+    if "approves_metrics=false" not in text:
+        errors.append("calculation post-owner execution plan must deny metric approval")
+    if "authorizes_ledger_pnl_governance_write=false" not in text:
+        errors.append("calculation post-owner execution plan must deny Ledger write authorization")
+
+    renderer_sync = False
+    if matrix_rel_path and calculation_snapshot_rel_path and capture_template_rel_path:
+        matrix_path = repo_root / matrix_rel_path
+        calculation_snapshot_path = repo_root / calculation_snapshot_rel_path
+        capture_template_path = repo_root / capture_template_rel_path
+        if (
+            matrix_path.exists()
+            and calculation_snapshot_path.exists()
+            and capture_template_path.exists()
+        ):
+            expected_text = _render_current_post_owner_plan(
+                matrix_path=matrix_path,
+                snapshot_path=calculation_snapshot_path,
+                capture_template_path=capture_template_path,
+            )
+            renderer_sync = text == expected_text
+
+    return {
+        "renderer_sync": renderer_sync,
+        "ready_for_implementation_count": (
+            0 if "`ready_for_implementation_count=0`" in text else None
+        ),
+        "owner_decision_capture_complete": (
+            "`owner_decision_capture_complete=true`" in text
+        ),
+        "non_implementation_decision_count": (
+            0 if "`non_implementation_decision_count=0`" in text else None
+        ),
+        "post_owner_blocking_reasons": (
+            ["owner_decision_capture_incomplete"]
+            if "`post_owner_blocking_reasons=owner_decision_capture_incomplete`"
+            in text
+            else []
+        ),
+        "incomplete_count": 10 if "`incomplete_count=10`" in text else None,
+        "invalid_selected_decision_count": (
+            0 if "`invalid_selected_decision_count=0`" in text else None
+        ),
+        "no_invalid_selected_decisions": (
+            "`no_invalid_selected_decisions=true`" in text
+        ),
+        "global_owner_decision_gate_ready": (
+            "`global_owner_decision_gate_ready=true`" in text
+        ),
+        "implementation_ready": "`implementation_ready=true`" in text,
+    }
+
+
+def _verify_local_secret_hygiene_owner_attestation_packet(
+    *,
+    manifest: dict[str, Any],
+    repo_root: Path,
+    errors: list[str],
+) -> dict[str, Any] | None:
+    packet_rel_path = manifest.get("artifacts", {}).get(
+        "local_secret_hygiene_owner_attestation_packet"
+    )
+    if not packet_rel_path:
+        errors.append("manifest missing local_secret_hygiene_owner_attestation_packet artifact")
+        return None
+
+    packet_path = repo_root / packet_rel_path
+    if not packet_path.exists():
+        errors.append("local secret owner attestation packet artifact is missing")
+        return None
+
+    text = packet_path.read_text(encoding="utf-8")
+    required_phrases = [
+        "# Local Secret Hygiene Owner Attestation Packet",
+        "Owner attestation ready: `true`",
+        "Closure approved: `false`",
+        "Secret value fields present: `secret_value_fields_present=false`",
+        "`MOSS_TUSHARE_TOKEN`",
+        "`STITCH_API_KEY`",
+        "`captures_secret_values=false`",
+        "`reads_secret_values=false`",
+        "`requests_secret_values=false`",
+        "`writes_or_rotates_secrets=false`",
+        "`clears_secret_scan=false`",
+        "`approves_local_secret_hygiene=false`",
+        "Do not read or paste `config/.env` values.",
+        "does not read, request, capture, rotate, clear, or approve any secret value",
+    ]
+    for phrase in required_phrases:
+        if phrase not in text:
+            errors.append(
+                "local secret owner attestation packet missing required phrase: "
+                f"{phrase}"
+            )
+
+    if "Closure approved: `true`" in text:
+        errors.append("local secret owner attestation packet must deny closure approval")
+    if "`captures_secret_values=true`" in text:
+        errors.append(
+            "local secret owner attestation packet must deny captured secret values"
+        )
+    has_secret_value_field = any(
+        line.startswith("| `secret_value")
+        for line in text.splitlines()
+    )
+    if has_secret_value_field:
+        errors.append("local secret owner attestation packet must not add secret value fields")
+
+    return {
+        "owner_attestation_ready": "Owner attestation ready: `true`" in text,
+        "closure_approved": "Closure approved: `true`" in text,
+        "secret_value_fields_present": has_secret_value_field,
+    }
+
+
 def verify_completion_snapshot(
     *,
     manifest_path: Path = DEFAULT_MANIFEST,
     repo_root: Path = ROOT,
+    verify_monitoring: bool = True,
 ) -> dict[str, Any]:
     manifest = _load_json(manifest_path)
     snapshot_path = repo_root / manifest["artifacts"]["completion_snapshot"]
     snapshot = _load_json(snapshot_path)
     errors: list[str] = []
 
-    _verify_monitoring_snapshot(
-        manifest=manifest,
-        repo_root=repo_root,
-        errors=errors,
-    )
+    if verify_monitoring:
+        _verify_monitoring_snapshot(
+            manifest=manifest,
+            repo_root=repo_root,
+            errors=errors,
+        )
     if snapshot.get("generated_at") != manifest.get("generated_at"):
         errors.append("completion snapshot generated_at does not match manifest")
 
@@ -718,6 +1267,34 @@ def verify_completion_snapshot(
         repo_root=repo_root,
         errors=errors,
     )
+    calculation_packet = _verify_calculation_p1_owner_decision_packet(
+        manifest=manifest,
+        repo_root=repo_root,
+        errors=errors,
+    )
+    owner_meeting_checklist = _verify_calculation_p1_owner_meeting_checklist(
+        manifest=manifest,
+        snapshot=snapshot,
+        repo_root=repo_root,
+        errors=errors,
+    )
+    first_priority_readiness = _verify_calculation_p1_first_priority_readiness_packet(
+        manifest=manifest,
+        snapshot=snapshot,
+        repo_root=repo_root,
+        errors=errors,
+    )
+    post_owner_execution_plan = _verify_calculation_p1_post_owner_execution_plan(
+        manifest=manifest,
+        snapshot=snapshot,
+        repo_root=repo_root,
+        errors=errors,
+    )
+    local_secret_attestation = _verify_local_secret_hygiene_owner_attestation_packet(
+        manifest=manifest,
+        repo_root=repo_root,
+        errors=errors,
+    )
 
     return {
         "report_kind": "system_audit_completion_snapshot_verification",
@@ -731,6 +1308,129 @@ def verify_completion_snapshot(
         ),
         "follow_up_brief_blocker_count": follow_up_brief_blocker_count,
         "calculation_prework_p1_count": calculation_prework_p1_count,
+        "calculation_packet_p1_count": (
+            calculation_packet.get("p1_count") if calculation_packet else None
+        ),
+        "calculation_packet_execution_anchor_ready": (
+            calculation_packet.get("execution_anchor_ready")
+            if calculation_packet
+            else None
+        ),
+        "calculation_packet_execution_referenced_path_count": (
+            calculation_packet.get("execution_referenced_path_count")
+            if calculation_packet
+            else None
+        ),
+        "calculation_packet_missing_execution_referenced_path_count": (
+            calculation_packet.get("missing_execution_referenced_path_count")
+            if calculation_packet
+            else None
+        ),
+        "calculation_owner_meeting_checklist_count": (
+            owner_meeting_checklist.get("decision_item_count")
+            if owner_meeting_checklist
+            else None
+        ),
+        "calculation_owner_meeting_material_ready": (
+            owner_meeting_checklist.get("owner_meeting_material_ready")
+            if owner_meeting_checklist
+            else None
+        ),
+        "calculation_owner_meeting_implementation_ready": (
+            owner_meeting_checklist.get("implementation_ready")
+            if owner_meeting_checklist
+            else None
+        ),
+        "calculation_owner_meeting_missing_capture_field_count": (
+            owner_meeting_checklist.get("total_missing_capture_field_count")
+            if owner_meeting_checklist
+            else None
+        ),
+        "calculation_owner_meeting_missing_field_count": (
+            owner_meeting_checklist.get("meeting_missing_field_count")
+            if owner_meeting_checklist
+            else None
+        ),
+        "calculation_first_priority_count": (
+            first_priority_readiness.get("first_priority_count")
+            if first_priority_readiness
+            else None
+        ),
+        "calculation_first_priority_owner_intake_ready": (
+            first_priority_readiness.get("owner_intake_ready")
+            if first_priority_readiness
+            else None
+        ),
+        "calculation_first_priority_implementation_ready": (
+            first_priority_readiness.get("implementation_ready")
+            if first_priority_readiness
+            else None
+        ),
+        "calculation_post_owner_ready_for_implementation_count": (
+            post_owner_execution_plan.get("ready_for_implementation_count")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_owner_decision_capture_complete": (
+            post_owner_execution_plan.get("owner_decision_capture_complete")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_non_implementation_decision_count": (
+            post_owner_execution_plan.get("non_implementation_decision_count")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_blocking_reasons": (
+            post_owner_execution_plan.get("post_owner_blocking_reasons")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_incomplete_count": (
+            post_owner_execution_plan.get("incomplete_count")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_invalid_selected_decision_count": (
+            post_owner_execution_plan.get("invalid_selected_decision_count")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_no_invalid_selected_decisions": (
+            post_owner_execution_plan.get("no_invalid_selected_decisions")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_global_gate_ready": (
+            post_owner_execution_plan.get("global_owner_decision_gate_ready")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_implementation_ready": (
+            post_owner_execution_plan.get("implementation_ready")
+            if post_owner_execution_plan
+            else None
+        ),
+        "calculation_post_owner_plan_renderer_sync": (
+            post_owner_execution_plan.get("renderer_sync")
+            if post_owner_execution_plan
+            else None
+        ),
+        "local_secret_owner_attestation_ready": (
+            local_secret_attestation.get("owner_attestation_ready")
+            if local_secret_attestation
+            else None
+        ),
+        "local_secret_owner_attestation_closure_approved": (
+            local_secret_attestation.get("closure_approved")
+            if local_secret_attestation
+            else None
+        ),
+        "local_secret_owner_attestation_secret_value_fields_present": (
+            local_secret_attestation.get("secret_value_fields_present")
+            if local_secret_attestation
+            else None
+        ),
         "calculation_snapshot_status": (
             (calculation_snapshot or {}).get("status", {}).get("overall")
             if calculation_snapshot
@@ -739,6 +1439,21 @@ def verify_completion_snapshot(
         "calculation_incomplete_decision_count": (
             (calculation_snapshot or {}).get("capture_template", {}).get(
                 "incomplete_decision_count"
+            )
+            if calculation_snapshot
+            else None
+        ),
+        "calculation_meeting_record_complete": (
+            (calculation_snapshot or {}).get("meeting_record", {}).get("is_complete")
+            if calculation_snapshot
+            else None
+        ),
+        "calculation_missing_meeting_field_count": (
+            len(
+                (calculation_snapshot or {})
+                .get("meeting_record", {})
+                .get("missing_required_fields")
+                or []
             )
             if calculation_snapshot
             else None

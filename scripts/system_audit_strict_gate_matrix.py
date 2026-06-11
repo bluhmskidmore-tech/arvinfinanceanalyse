@@ -29,16 +29,92 @@ from scripts.system_audit_pulse import build_pulse  # noqa: E402
 from scripts.verify_system_audit_completion_snapshot import (  # noqa: E402
     verify_completion_snapshot,
 )
-from scripts.verify_system_audit_monitoring_snapshot import (  # noqa: E402
-    verify_monitoring_snapshot,
-)
 
 
 DEFAULT_MANIFEST = ROOT / "docs" / "audits" / "2026-06-10-system-audit-manifest.json"
+EXPECTED_GATE_IDS = {
+    "system-audit-full-score",
+    "completion-zero-open-blockers",
+    "monitoring-zero-open-blockers",
+    "calculation-p1-owner-decisions-captured",
+    "calculation-p1-post-owner-implementation-ready",
+    "ledger-pnl-written-record-located",
+    "direct-app-mcp-gitnexus-evidence-captured",
+    "local-secret-hygiene-clean-boundary",
+}
 
 
 def _default_generated_at() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _resolve_artifact_path(manifest_path: Path, artifact: str) -> Path:
+    path = Path(artifact)
+    return path if path.is_absolute() else ROOT / artifact
+
+
+def verify_monitoring_snapshot(*, manifest_path: Path) -> dict[str, Any]:
+    from scripts.verify_system_audit_monitoring_snapshot import (
+        verify_monitoring_snapshot as _verify_monitoring_snapshot,
+    )
+
+    return _verify_monitoring_snapshot(manifest_path=manifest_path)
+
+
+def _matrix_from_monitoring_snapshot(
+    *,
+    generated_at: str,
+    manifest_path: Path,
+) -> dict[str, Any] | None:
+    manifest = _load_json(manifest_path)
+    monitoring_artifact = (manifest.get("artifacts") or {}).get(
+        "system_audit_monitoring_snapshot"
+    )
+    if not monitoring_artifact:
+        return None
+
+    monitoring_path = _resolve_artifact_path(manifest_path, str(monitoring_artifact))
+    if not monitoring_path.is_file():
+        return None
+
+    monitoring = _load_json(monitoring_path)
+    matrix = monitoring.get("strict_gate_matrix")
+    if not isinstance(matrix, dict) or not matrix:
+        return None
+    gate_ids = {
+        gate.get("gate_id")
+        for gate in matrix.get("gates") or []
+        if isinstance(gate, dict)
+    }
+    if gate_ids != EXPECTED_GATE_IDS:
+        return None
+
+    return {
+        "report_kind": "system_audit_strict_gate_matrix",
+        "generated_at": generated_at,
+        "repo_root": str(ROOT),
+        "manifest_path": str(manifest_path),
+        "status": matrix.get("status"),
+        "completion_state": matrix.get("completion_state"),
+        "full_score_ready": matrix.get("full_score_ready"),
+        "open_blocker_count": matrix.get("open_blocker_count"),
+        "completion_order_guard_status": matrix.get("completion_order_guard_status"),
+        "completion_order_guard_error_count": matrix.get(
+            "completion_order_guard_error_count"
+        ),
+        "gate_count": matrix.get("gate_count"),
+        "expected_blocked_gate_count": matrix.get("expected_blocked_gate_count"),
+        "strict_pass_gate_count": matrix.get("strict_pass_gate_count"),
+        "unexpected_gate_count": matrix.get("unexpected_gate_count"),
+        "guard_error_count": matrix.get("guard_error_count"),
+        "guard_errors": list(matrix.get("guard_errors") or []),
+        "gates": list(matrix.get("gates") or []),
+        "boundary": matrix.get("boundary"),
+    }
 
 
 def _gate(
@@ -79,7 +155,42 @@ def build_matrix_from_inputs(
     secret: dict[str, Any],
 ) -> dict[str, Any]:
     calculation_capture = calculation["capture_template"]
+    calculation_meeting_record = calculation.get("meeting_record") or {}
+    invalid_selected_decision_count = calculation_capture.get(
+        "invalid_selected_decision_count",
+        len(calculation_capture.get("invalid_selected_decision_by_id") or {}),
+    )
+    invalid_status_count = len(calculation_capture.get("invalid_status_by_id") or {})
+    calculation_owner_decisions_complete = (
+        calculation_capture["captured_decision_count"]
+        == calculation_capture["row_count"]
+        and invalid_selected_decision_count == 0
+        and invalid_status_count == 0
+        and calculation_meeting_record.get("is_complete") is True
+    )
+    post_owner = completion.get("calculation_post_owner") or {
+        "owner_decision_capture_complete": completion.get(
+            "calculation_post_owner_owner_decision_capture_complete"
+        ),
+        "implementation_ready": completion.get(
+            "calculation_post_owner_implementation_ready"
+        ),
+        "ready_for_implementation_count": completion.get(
+            "calculation_post_owner_ready_for_implementation_count"
+        ),
+        "non_implementation_decision_count": completion.get(
+            "calculation_post_owner_non_implementation_decision_count"
+        ),
+        "incomplete_count": completion.get("calculation_post_owner_incomplete_count"),
+        "blocking_reasons": completion.get(
+            "calculation_post_owner_blocking_reasons"
+        )
+        or [],
+    }
+    post_owner_implementation_ready = post_owner.get("implementation_ready") is True
     ledger_dry_run = ledger["dry_run_result"]
+    ledger_post_write = ledger.get("post_write_validation") or {}
+    ledger_post_write_ready = ledger_post_write.get("ready") is True
     direct_status = direct["status"]
     secret_latest = secret["latest_boundary_only_recheck"]
     secret_status = secret["status"]
@@ -164,22 +275,54 @@ def build_matrix_from_inputs(
                 "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
                 "--require-owner-decisions-captured"
             ),
-            strict_pass=calculation_capture["captured_decision_count"]
-            == calculation_capture["row_count"],
+            strict_pass=calculation_owner_decisions_complete,
             expected_current_exit="non_zero",
             actual_current_exit=(
-                "zero"
-                if calculation_capture["captured_decision_count"]
-                == calculation_capture["row_count"]
-                else "non_zero"
+                "zero" if calculation_owner_decisions_complete else "non_zero"
             ),
             blocker_id="calculation-display-p1-decisions",
             blocking_detail=(
                 f"captured_decision_count={calculation_capture['captured_decision_count']}; "
                 f"row_count={calculation_capture['row_count']}; "
-                f"pending_count={calculation_capture['pending_count']}"
+                f"pending_count={calculation_capture['pending_count']}; "
+                f"invalid_selected_decision_count={invalid_selected_decision_count}; "
+                f"invalid_status_count={invalid_status_count}; "
+                "meeting_record_complete="
+                f"{str(calculation_meeting_record.get('is_complete')).lower()}; "
+                "missing_meeting_field_count="
+                f"{len(calculation_meeting_record.get('missing_required_fields') or [])}"
             ),
             boundary="This gate does not choose or approve calculation conventions.",
+        ),
+        _gate(
+            gate_id="calculation-p1-post-owner-implementation-ready",
+            command=(
+                "python scripts\\calculation_p1_post_owner_execution_plan.py "
+                "--require-implementation-ready"
+            ),
+            strict_pass=post_owner_implementation_ready,
+            expected_current_exit="non_zero",
+            actual_current_exit=(
+                "zero" if post_owner_implementation_ready else "non_zero"
+            ),
+            blocker_id="calculation-display-p1-decisions",
+            blocking_detail=(
+                "owner_decision_capture_complete="
+                f"{str(post_owner.get('owner_decision_capture_complete')).lower()}; "
+                "implementation_ready="
+                f"{str(post_owner.get('implementation_ready')).lower()}; "
+                "ready_for_implementation_count="
+                f"{post_owner.get('ready_for_implementation_count')}; "
+                "non_implementation_decision_count="
+                f"{post_owner.get('non_implementation_decision_count')}; "
+                f"incomplete_count={post_owner.get('incomplete_count')}; "
+                "post_owner_blocking_reasons="
+                f"{post_owner.get('blocking_reasons') or []}"
+            ),
+            boundary=(
+                "This gate routes already captured owner decisions only; it does not "
+                "choose conventions or execute implementation."
+            ),
         ),
         _gate(
             gate_id="ledger-pnl-written-record-located",
@@ -187,20 +330,30 @@ def build_matrix_from_inputs(
                 "python scripts\\refresh_ledger_pnl_direct_governance_record_snapshot.py "
                 "--require-written-record-located"
             ),
-            strict_pass=ledger["status"]["overall"] == "written_record_located",
+            strict_pass=(
+                ledger["status"]["overall"] == "written_record_located"
+                and ledger_post_write_ready
+            ),
             expected_current_exit="non_zero",
             actual_current_exit=(
                 "zero"
                 if ledger["status"]["overall"] == "written_record_located"
+                and ledger_post_write_ready
                 else "non_zero"
             ),
             blocker_id="ledger-pnl-direct-governance-record",
             blocking_detail=(
                 f"status={ledger['status']['overall']}; "
                 f"record_write_status={ledger_dry_run['record_write_status']}; "
-                f"existing_record_line={ledger_dry_run['existing_record_line']}"
+                f"existing_record_line={ledger_dry_run['existing_record_line']}; "
+                f"post_write_ready={str(ledger_post_write_ready).lower()}; "
+                "post_write_blocking_reasons="
+                f"{ledger_post_write.get('blocking_reasons') or []}"
             ),
-            boundary="This gate locates a record only; it never authorizes or writes one.",
+            boundary=(
+                "This gate locates and validates a record only; it never authorizes "
+                "or writes one."
+            ),
         ),
         _gate(
             gate_id="direct-app-mcp-gitnexus-evidence-captured",
@@ -292,6 +445,13 @@ def build_matrix(
     manifest_path: Path = DEFAULT_MANIFEST,
 ) -> dict[str, Any]:
     generated_at = generated_at or _default_generated_at()
+    snapshot_matrix = _matrix_from_monitoring_snapshot(
+        generated_at=generated_at,
+        manifest_path=manifest_path,
+    )
+    if snapshot_matrix is not None:
+        return snapshot_matrix
+
     pulse = build_pulse(manifest_path=manifest_path, generated_at=generated_at)
     completion = verify_completion_snapshot(manifest_path=manifest_path)
     monitoring = verify_monitoring_snapshot(manifest_path=manifest_path)

@@ -212,6 +212,31 @@ def _stub_readiness() -> dict[str, object]:
     }
 
 
+def _stub_post_write_ready_readiness() -> dict[str, object]:
+    readiness = _stub_readiness()
+    readiness["governance_record_validation"] = {
+        "status": "direct_records_ready_for_audit_review",
+        "ready_record_count": 1,
+        "incomplete_record_count": 0,
+        "direct_record_count": 1,
+        "expanded_anchor_record_count": 1,
+    }
+    readiness["audit_review"] = {
+        "status": "direct_records_ready_for_audit_review",
+        "closure_approved": False,
+        "checks": [
+            {
+                "name": "direct_page_api_record_fields",
+                "status": "ready_for_audit_review",
+            },
+        ],
+    }
+    readiness["residual_gaps"] = [
+        "owner approval and live evidence remain required before closure.",
+    ]
+    return readiness
+
+
 def test_ledger_pnl_direct_governance_snapshot_refresh_is_read_only(
     tmp_path: Path,
     monkeypatch,
@@ -235,8 +260,31 @@ def test_ledger_pnl_direct_governance_snapshot_refresh_is_read_only(
     )
     assert snapshot["status"]["overall"] == "dry_run_candidate_only"
     assert snapshot["status"]["writes_governance_records"] is False
+    assert snapshot["status"]["closure_blocked_by_missing_written_record"] is True
     assert snapshot["dry_run_result"]["record_write_status"] == "not_requested"
     assert snapshot["dry_run_result"]["existing_record_line"] is None
+    assert snapshot["closure_blocked_by_missing_written_record"] is True
+    assert snapshot["post_write_validation"] == {
+        "ready": False,
+        "checks": {
+            "written_record_located": False,
+            "governance_direct_records_ready": False,
+            "audit_review_not_blocked_by_record_gaps": False,
+            "formal_use_still_false_until_owner_approval": True,
+            "closure_not_approved_without_owner_approval": True,
+            "business_owner_approval_not_captured": True,
+        },
+        "blocking_reasons": [
+            "written_record_located",
+            "governance_direct_records_ready",
+            "audit_review_not_blocked_by_record_gaps",
+        ],
+        "boundary": (
+            "A located record is not enough for Ledger PnL closure. Downstream "
+            "governance validation, page readiness, audit review, owner approval, "
+            "and live evidence must still be reviewed before formal use or closure."
+        ),
+    }
     assert snapshot["written_record_search"]["matches"] == {
         "PAGE-LEDGER-PNL-001": 0,
         "/api/ledger-pnl/summary": 0,
@@ -272,8 +320,15 @@ def test_ledger_pnl_direct_governance_snapshot_refresh_can_locate_existing_recor
 
     assert snapshot["status"]["overall"] == "written_record_located"
     assert snapshot["status"]["writes_governance_records"] is False
+    assert snapshot["status"]["closure_blocked_by_missing_written_record"] is False
     assert snapshot["dry_run_result"]["record_write_status"] == "not_requested"
     assert snapshot["dry_run_result"]["existing_record_line"] == 1
+    assert snapshot["closure_blocked_by_missing_written_record"] is False
+    assert snapshot["post_write_validation"]["ready"] is False
+    assert snapshot["post_write_validation"]["blocking_reasons"] == [
+        "governance_direct_records_ready",
+        "audit_review_not_blocked_by_record_gaps",
+    ]
     assert snapshot["written_record_search"]["matches"] == {
         "PAGE-LEDGER-PNL-001": 1,
         "/api/ledger-pnl/summary": 1,
@@ -341,10 +396,11 @@ def test_ledger_pnl_direct_governance_snapshot_strict_gate_rejects_missing_recor
     assert payload["status"]["overall"] == "dry_run_candidate_only"
     assert payload["dry_run_result"]["record_write_status"] == "not_requested"
     assert payload["dry_run_result"]["existing_record_line"] is None
+    assert payload["post_write_validation"]["ready"] is False
     assert not governance_dir.exists()
 
 
-def test_ledger_pnl_direct_governance_snapshot_strict_gate_accepts_existing_record(
+def test_ledger_pnl_direct_governance_snapshot_strict_gate_rejects_record_without_post_write_validation(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -381,8 +437,57 @@ def test_ledger_pnl_direct_governance_snapshot_strict_gate_accepts_existing_reco
         for line in stream_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    assert exit_code == 1
+    assert payload["status"]["overall"] == "written_record_located"
+    assert payload["post_write_validation"]["ready"] is False
+    assert payload["post_write_validation"]["blocking_reasons"] == [
+        "governance_direct_records_ready",
+        "audit_review_not_blocked_by_record_gaps",
+    ]
+    assert written_records == [record]
+
+
+def test_ledger_pnl_direct_governance_snapshot_strict_gate_accepts_validated_existing_record(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output_path = tmp_path / "snapshot.json"
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir()
+    record = refresh_module.build_record("2026-06-10T20:30:00+08:00")
+    stream_path = governance_dir / "cache_manifest.jsonl"
+    stream_path.write_text(
+        json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        refresh_module,
+        "build_page_readiness_report",
+        lambda _page_slug: _stub_post_write_ready_readiness(),
+    )
+
+    exit_code = refresh_module.main(
+        [
+            "--generated-at",
+            "2026-06-10T20:30:00+08:00",
+            "--governance-dir",
+            str(governance_dir),
+            "--output",
+            str(output_path),
+            "--require-written-record-located",
+        ]
+    )
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    written_records = [
+        json.loads(line)
+        for line in stream_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     assert exit_code == 0
     assert payload["status"]["overall"] == "written_record_located"
     assert payload["dry_run_result"]["record_write_status"] == "not_requested"
     assert payload["dry_run_result"]["existing_record_line"] == 1
+    assert payload["post_write_validation"]["ready"] is True
+    assert payload["post_write_validation"]["blocking_reasons"] == []
     assert written_records == [record]

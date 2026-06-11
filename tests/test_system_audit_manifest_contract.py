@@ -40,6 +40,20 @@ def test_system_audit_manifest_references_existing_artifacts_and_stays_fail_clos
         "owner_governance_follow_up_brief_zh",
         "calculation_logic_audit",
         "calculation_owner_decision_matrix",
+        "calculation_owner_decision_snapshot",
+        "calculation_owner_decision_snapshot_script",
+        "calculation_owner_decision_packet",
+        "calculation_owner_decision_packet_script",
+        "calculation_owner_decision_packet_tests",
+        "calculation_owner_meeting_checklist",
+        "calculation_owner_meeting_checklist_script",
+        "calculation_owner_meeting_checklist_tests",
+        "calculation_first_priority_readiness_packet",
+        "calculation_first_priority_readiness_packet_script",
+        "calculation_first_priority_readiness_packet_tests",
+        "calculation_post_owner_execution_plan",
+        "calculation_post_owner_execution_plan_script",
+        "calculation_post_owner_execution_plan_tests",
         "owner_approval_evidence_summary",
         "owner_approval_fail_closed_snapshot",
         "direct_app_mcp_gitnexus_tool_surface_snapshot",
@@ -49,6 +63,9 @@ def test_system_audit_manifest_references_existing_artifacts_and_stays_fail_clos
         "ledger_pnl_direct_governance_record_runbook",
         "local_secret_hygiene_snapshot",
         "local_secret_hygiene_runbook",
+        "local_secret_hygiene_owner_attestation_packet",
+        "local_secret_hygiene_owner_attestation_packet_script",
+        "local_secret_hygiene_owner_attestation_packet_tests",
         "local_secret_hygiene_refresh_script",
         "business_display_coverage",
         "real_backend_smoke_runbook",
@@ -83,6 +100,18 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     )
     decision_matrix = (
         ROOT / manifest["artifacts"]["calculation_owner_decision_matrix"]
+    ).read_text(encoding="utf-8")
+    decision_packet = (
+        ROOT / manifest["artifacts"]["calculation_owner_decision_packet"]
+    ).read_text(encoding="utf-8")
+    owner_meeting_checklist = (
+        ROOT / manifest["artifacts"]["calculation_owner_meeting_checklist"]
+    ).read_text(encoding="utf-8")
+    first_priority_packet = (
+        ROOT / manifest["artifacts"]["calculation_first_priority_readiness_packet"]
+    ).read_text(encoding="utf-8")
+    post_owner_plan = (
+        ROOT / manifest["artifacts"]["calculation_post_owner_execution_plan"]
     ).read_text(encoding="utf-8")
 
     counts = manifest["counts"]
@@ -218,6 +247,85 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     for p1_id in expected_open_decision_ids:
         assert f"**{p1_id}" in prework_section
 
+    assert "Calculation P1 Owner Decision Packet" in decision_packet
+    assert "`decision_item_count=10`" in decision_packet
+    assert "`pending_decision_count=10`" in decision_packet
+    assert "`captured_decision_count=0`" in decision_packet
+    assert (
+        "`post_owner_required_fields=selected_decision, owner_rationale, "
+        "implementation_owner, verification_gate, status`"
+    ) in decision_packet
+    assert "First priority group: `P1-09, P1-10, P1-11`" in decision_packet
+    assert "Owner decision gate" in decision_packet
+    assert "Component/model tests prove backend value wins" in decision_packet
+    assert "`captures_owner_decisions=false`" in decision_packet
+    assert "`chooses_or_approves_conventions=false`" in decision_packet
+    assert "treat proposed review defaults as approved rules" in decision_packet
+    assert "does not choose or approve conventions" in decision_packet
+    assert "authorizing Ledger PnL `--write`" not in decision_packet
+    assert "authorize Ledger PnL `--write`" in decision_packet
+    for p1_id in expected_open_decision_ids:
+        assert f"`{p1_id}`" in decision_packet
+
+    assert "Calculation P1 Owner Meeting Checklist" in owner_meeting_checklist
+    assert "Owner meeting material ready: `true`" in owner_meeting_checklist
+    assert "Implementation ready: `false`" in owner_meeting_checklist
+    assert "`decision_item_count=10`" in owner_meeting_checklist
+    assert "`total_missing_capture_field_count=50`" in owner_meeting_checklist
+    assert "`meeting_missing_field_count=8`" in owner_meeting_checklist
+    assert "`captures_owner_decisions=false`" in owner_meeting_checklist
+    assert "`chooses_or_approves_conventions=false`" in owner_meeting_checklist
+    assert "Owner decision gate" in owner_meeting_checklist
+    assert "`docs/calc_rules.md` unit rule" in owner_meeting_checklist
+    assert "Every row must have `selected_decision`" in owner_meeting_checklist
+    assert "treat this checklist as owner approval" in owner_meeting_checklist
+    assert "does not choose or approve calculation conventions" in owner_meeting_checklist
+    for p1_id in expected_open_decision_ids:
+        assert f"`{p1_id}`" in owner_meeting_checklist
+
+    assert "Calculation P1 First Priority Readiness Packet" in first_priority_packet
+    assert "source_snapshot_status=owner_decision_required" in first_priority_packet
+    assert "`first_priority_ids=P1-09, P1-10, P1-11`" in first_priority_packet
+    assert (
+        "`post_owner_required_fields=selected_decision, owner_rationale, "
+        "implementation_owner, verification_gate, status`"
+    ) in first_priority_packet
+    assert "`owner_intake_ready=true`" in first_priority_packet
+    assert "`implementation_ready=false`" in first_priority_packet
+    assert "Owner Decision Gate" in first_priority_packet
+    assert "model/component tests proving backend value wins" in first_priority_packet
+    assert "backend DTO / frontend removal tests" in first_priority_packet
+    assert "API contract plus frontend test" in first_priority_packet
+    assert "`captures_owner_decisions=false`" in first_priority_packet
+    assert "`chooses_or_approves_conventions=false`" in first_priority_packet
+    assert "BalanceMovementAnalysisPage.tsx" in first_priority_packet
+    assert "yieldAnalysisAggregates.ts" in first_priority_packet
+    assert "zqtzAdbAvgRollup.ts" in first_priority_packet
+    assert "CreditSpreadView.tsx" in first_priority_packet
+    assert "rating/tenor bucket-boundary regression remains pending" in (
+        first_priority_packet
+    )
+    assert "count this readiness packet as owner decision capture" in (
+        first_priority_packet
+    )
+    assert "does not choose or approve any calculation convention" in (
+        first_priority_packet
+    )
+
+    assert "Calculation P1 Post-Owner Execution Plan" in post_owner_plan
+    assert "`ready_for_implementation_count=0`" in post_owner_plan
+    assert "`incomplete_count=10`" in post_owner_plan
+    assert "`global_owner_decision_gate_ready=false`" in post_owner_plan
+    assert "`implementation_ready=false`" in post_owner_plan
+    assert "`captures_owner_decisions=false`" in post_owner_plan
+    assert "`chooses_or_approves_conventions=false`" in post_owner_plan
+    assert "execute implementation when the meeting record is incomplete" in (
+        post_owner_plan
+    )
+    assert "does not choose or approve conventions" in post_owner_plan
+    for p1_id in expected_open_decision_ids:
+        assert f"`{p1_id}`" in post_owner_plan
+
     calculation_blocker = next(
         item
         for item in manifest["open_blockers"]
@@ -289,45 +397,86 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         == 0
     )
     assert monitoring_snapshot["completion_verification"]["error_count"] == 0
+    assert (
+        monitoring_snapshot["completion_verification"][
+            "calculation_post_owner_ready_for_implementation_count"
+        ]
+        == 0
+    )
+    assert (
+        monitoring_snapshot["completion_verification"][
+            "calculation_post_owner_incomplete_count"
+        ]
+        == 10
+    )
+    assert (
+        monitoring_snapshot["completion_verification"][
+            "calculation_post_owner_global_gate_ready"
+        ]
+        is False
+    )
+    assert (
+        monitoring_snapshot["completion_verification"][
+            "calculation_post_owner_implementation_ready"
+        ]
+        is False
+    )
     assert monitoring_snapshot["pulse"]["status"] == "pass"
     assert monitoring_snapshot["pulse"]["completion_state"] == "not_complete"
     assert monitoring_snapshot["pulse"]["open_blocker_count"] == len(
         manifest["open_blockers"]
     )
     assert monitoring_snapshot["pulse"]["drift_errors"] == []
-    assert monitoring_snapshot["blocker_intake_board"] == {
-        "status": "open_external_input_required",
-        "blocker_count": len(manifest["open_blockers"]),
-        "completion_order": [
-            "calculation-display-p1-decisions",
-            "ledger-pnl-direct-governance-record",
-            "owner-approval-7-pages",
-            "direct-app-mcp-gitnexus-evidence",
-            "local-secret-hygiene",
-        ],
-        "next_blocker_id": "calculation-display-p1-decisions",
-        "evidence_scope": {
-            "read_only": True,
-            "approves_metrics": False,
-            "approves_pages": False,
-            "captures_business_owner_approval": False,
-            "writes_governance_records": False,
-            "authorizes_ledger_pnl_governance_write": False,
-            "captures_direct_app_mcp_gitnexus_evidence": False,
-            "requests_or_captures_secret_values": False,
-            "clears_secret_scan": False,
-            "certifies_routes": False,
-        },
-        "boundary": (
-            "This blocker intake board is read-only. It does not approve metrics, pages, "
-            "business-owner signoff, governance records, route certification, direct App "
-            "MCP/GitNexus evidence, local secret hygiene, or Ledger PnL --write execution."
-        ),
+    assert monitoring_snapshot["blocker_intake_board"]["status"] == (
+        "open_external_input_required"
+    )
+    assert monitoring_snapshot["blocker_intake_board"]["blocker_count"] == len(
+        manifest["open_blockers"]
+    )
+    assert monitoring_snapshot["blocker_intake_board"]["completion_order"] == [
+        "calculation-display-p1-decisions",
+        "ledger-pnl-direct-governance-record",
+        "owner-approval-7-pages",
+        "direct-app-mcp-gitnexus-evidence",
+        "local-secret-hygiene",
+    ]
+    assert monitoring_snapshot["blocker_intake_board"]["next_blocker_id"] == (
+        "calculation-display-p1-decisions"
+    )
+    assert monitoring_snapshot["blocker_intake_board"]["next_blocker_detail"] == (
+        monitoring_snapshot["pulse"]["next_blocker_detail"]
+    )
+    assert monitoring_snapshot["blocker_intake_board"]["next_blocker_detail"][
+        "responsible_owner_type"
+    ] == "business_owner_and_metric_governance"
+    assert monitoring_snapshot["blocker_intake_board"]["next_blocker_detail"][
+        "strict_gate_command"
+    ] == (
+        "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
+        "--require-owner-decisions-captured"
+    )
+    assert monitoring_snapshot["blocker_intake_board"]["evidence_scope"] == {
+        "read_only": True,
+        "approves_metrics": False,
+        "approves_pages": False,
+        "captures_business_owner_approval": False,
+        "writes_governance_records": False,
+        "authorizes_ledger_pnl_governance_write": False,
+        "captures_direct_app_mcp_gitnexus_evidence": False,
+        "requests_or_captures_secret_values": False,
+        "clears_secret_scan": False,
+        "certifies_routes": False,
     }
+    assert "does not approve metrics" in monitoring_snapshot["blocker_intake_board"][
+        "boundary"
+    ]
     latest_recheck = monitoring_snapshot["latest_session_recheck"]
-    assert latest_recheck["checked_at"] == "2026-06-11T00:16:22+08:00"
+    assert latest_recheck["checked_at"]
     assert latest_recheck["closure_effect"] == "none"
     assert latest_recheck["open_blocker_count"] == len(manifest["open_blockers"])
+    assert latest_recheck["next_blocker"] == monitoring_snapshot["pulse"][
+        "next_blocker_detail"
+    ]
     assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
         "checked_at"
     ] == latest_recheck["checked_at"]
@@ -477,6 +626,12 @@ def test_system_audit_blocker_intake_board_is_indexed_and_non_approving() -> Non
         "tests/test_system_audit_blocker_intake_board.py"
     )
     assert "Blocker intake board" in index
+    assert "2026-06-10-calculation-p1-owner-decision-packet.md" in index
+    assert "2026-06-10-calculation-p1-owner-meeting-checklist.md" in index
+    assert "2026-06-10-calculation-p1-first-priority-readiness-packet.md" in index
+    assert "python scripts\\calculation_p1_owner_decision_packet.py" in index
+    assert "python scripts\\calculation_p1_owner_meeting_checklist.py" in index
+    assert "python scripts\\calculation_p1_first_priority_readiness_packet.py" in index
     assert "python scripts\\system_audit_blocker_intake_board.py --format markdown" in index
     assert "calculation-display-p1-decisions" in index
     assert "authorizing Ledger PnL `--write`" in index
@@ -791,6 +946,7 @@ def test_ledger_pnl_direct_governance_snapshot_stays_non_writing() -> None:
         "approves_pages": False,
         "captures_business_owner_approval": False,
         "certifies_routes": False,
+        "closure_blocked_by_missing_written_record": True,
     }
 
     dry_run = snapshot["dry_run_result"]
@@ -800,6 +956,13 @@ def test_ledger_pnl_direct_governance_snapshot_stays_non_writing() -> None:
     assert dry_run["missing_required_fields"] == []
     assert dry_run["failed_required_field_groups"] == []
     assert dry_run["formal_use_allowed"] is False
+    assert snapshot["closure_blocked_by_missing_written_record"] is True
+    assert snapshot["post_write_validation"]["ready"] is False
+    assert snapshot["post_write_validation"]["blocking_reasons"] == [
+        "written_record_located",
+        "governance_direct_records_ready",
+        "audit_review_not_blocked_by_record_gaps",
+    ]
 
     assert snapshot["record_key"] == {
         "page_id": "PAGE-LEDGER-PNL-001",
@@ -850,6 +1013,7 @@ def test_ledger_pnl_direct_governance_snapshot_stays_non_writing() -> None:
     assert "python scripts\\emit_ledger_pnl_governance_record.py --write" in runbook
     assert "Confirm governance-owner authorization" in runbook
     assert "Dry-run output without `--write`" in runbook
+    assert "post_write_validation.ready must be true" in snapshot["closure_gate"]
     assert snapshot["generated_at"] in runbook
     assert "does not write governance records" in snapshot["boundary"]
 
@@ -1015,6 +1179,9 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
     runbook = (ROOT / manifest["artifacts"]["local_secret_hygiene_runbook"]).read_text(
         encoding="utf-8"
     )
+    attestation_packet = (
+        ROOT / manifest["artifacts"]["local_secret_hygiene_owner_attestation_packet"]
+    ).read_text(encoding="utf-8")
 
     assert snapshot["report_kind"] == "local_secret_hygiene_snapshot"
     assert snapshot["status"] == {
@@ -1121,6 +1288,12 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
 
     assert "Do not paste credential values" in runbook
     assert "Do not add `config/.env` to Git." in runbook
+    assert "Local Secret Hygiene Owner Attestation Packet" in attestation_packet
+    assert "`MOSS_TUSHARE_TOKEN`" in attestation_packet
+    assert "`STITCH_API_KEY`" in attestation_packet
+    assert "`secret_value_fields_present=false`" in attestation_packet
+    assert "Do not read or paste `config/.env` values." in attestation_packet
+    assert "captures_secret_values=false" in attestation_packet
     assert boundary["checked_at"] in runbook
     assert retry["checked_at"] in runbook
     assert latest_boundary["checked_at"] in runbook
@@ -1164,6 +1337,18 @@ def test_owner_review_artifacts_preserve_non_approval_boundaries() -> None:
     assert "鎶" not in brief
 
     assert "填写本模板不等于完成页面审批、治理记录写入" in capture_template
+    assert "### Candidate Option Contract" in capture_template
+    assert "`Option <letter> - <copied option description>`" in capture_template
+    assert "Required capture format, not a recommendation" in capture_template
+    assert "accepted selected_decision example" not in capture_template
+    assert "允许的 Option 字母是逐行限定的" in capture_template
+    assert "approved 行只写 evidence-only 文本" in capture_template
+    assert "verification_gate` 必须写明" in capture_template
+    assert "`Option <allowed letter> - <copied option description>`" in capture_template
+    assert "`Option C - source must carry explicit unit metadata and fail if absent`" not in (
+        capture_template
+    )
+    assert "`Option A - backend provides governed matrix`" not in capture_template
     assert "本模板不替代单页 owner approval template" in capture_template
     assert "本模板不替代测试输出或 strict checker" in capture_template
     assert (

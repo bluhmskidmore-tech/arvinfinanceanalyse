@@ -27,6 +27,15 @@
     "calculation_owner_decision_matrix": "docs/audits/2026-06-10-calculation-p1-owner-decision-matrix.md",
     "calculation_owner_decision_snapshot": "docs/audits/2026-06-10-calculation-p1-owner-decision-snapshot.json",
     "calculation_owner_decision_snapshot_script": "scripts/refresh_calculation_p1_owner_decision_snapshot.py",
+    "calculation_owner_decision_packet": "docs/audits/2026-06-10-calculation-p1-owner-decision-packet.md",
+    "calculation_owner_decision_packet_script": "scripts/calculation_p1_owner_decision_packet.py",
+    "calculation_owner_decision_packet_tests": "tests/test_calculation_p1_owner_decision_packet.py",
+    "calculation_owner_meeting_checklist": "docs/audits/2026-06-10-calculation-p1-owner-meeting-checklist.md",
+    "calculation_owner_meeting_checklist_script": "scripts/calculation_p1_owner_meeting_checklist.py",
+    "calculation_owner_meeting_checklist_tests": "tests/test_calculation_p1_owner_meeting_checklist.py",
+    "calculation_first_priority_readiness_packet": "docs/audits/2026-06-10-calculation-p1-first-priority-readiness-packet.md",
+    "calculation_first_priority_readiness_packet_script": "scripts/calculation_p1_first_priority_readiness_packet.py",
+    "calculation_first_priority_readiness_packet_tests": "tests/test_calculation_p1_first_priority_readiness_packet.py",
     "owner_approval_evidence_summary": "docs/audits/2026-06-10-owner-approval-mcp-evidence-summary.md",
     "owner_approval_fail_closed_snapshot": "docs/audits/2026-06-10-owner-approval-fail-closed-snapshot.json",
     "direct_app_mcp_gitnexus_tool_surface_snapshot": "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
@@ -36,6 +45,9 @@
     "ledger_pnl_direct_governance_record_runbook": "docs/audits/2026-06-10-ledger-pnl-direct-governance-record-runbook.md",
     "local_secret_hygiene_snapshot": "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",
     "local_secret_hygiene_runbook": "docs/audits/2026-06-10-local-secret-hygiene-runbook.md",
+    "local_secret_hygiene_owner_attestation_packet": "docs/audits/2026-06-10-local-secret-hygiene-owner-attestation-packet.md",
+    "local_secret_hygiene_owner_attestation_packet_script": "scripts/local_secret_hygiene_owner_attestation_packet.py",
+    "local_secret_hygiene_owner_attestation_packet_tests": "tests/test_local_secret_hygiene_owner_attestation_packet.py",
     "local_secret_hygiene_refresh_script": "scripts/refresh_local_secret_hygiene_snapshot.py",
     "business_display_coverage": "docs/audits/business-display-coverage-report.json",
     "real_backend_smoke_runbook": "docs/audits/2026-06-10-real-backend-smoke-runbook.md",
@@ -50,7 +62,10 @@
     "system_audit_monitoring_verifier_tests": "tests/test_system_audit_monitoring_snapshot_verifier.py",
     "system_audit_blocker_intake_board_script": "scripts/system_audit_blocker_intake_board.py",
     "system_audit_blocker_intake_board_tests": "tests/test_system_audit_blocker_intake_board.py",
-    "ledger_pnl_direct_governance_record_refresh_script": "scripts/refresh_ledger_pnl_direct_governance_record_snapshot.py"
+    "ledger_pnl_direct_governance_record_refresh_script": "scripts/refresh_ledger_pnl_direct_governance_record_snapshot.py",
+    "calculation_post_owner_execution_plan": "docs/audits/2026-06-10-calculation-p1-post-owner-execution-plan.md",
+    "calculation_post_owner_execution_plan_script": "scripts/calculation_p1_post_owner_execution_plan.py",
+    "calculation_post_owner_execution_plan_tests": "tests/test_calculation_p1_post_owner_execution_plan.py"
   },
   "counts": {
     "seeded_pages": 39,
@@ -187,6 +202,7 @@
       "last_checked_at": "2026-06-10T21:25:00+08:00",
       "snapshot": "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",
       "runbook": "docs/audits/2026-06-10-local-secret-hygiene-runbook.md",
+      "owner_attestation_packet": "docs/audits/2026-06-10-local-secret-hygiene-owner-attestation-packet.md",
       "closure_gate": "environment owner rotates or accepts local-only findings; do not commit secret values"
     }
   ],

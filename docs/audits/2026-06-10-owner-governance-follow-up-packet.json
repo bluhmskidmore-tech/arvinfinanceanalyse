@@ -230,6 +230,7 @@
       "required_input_artifacts": [
         "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",
         "docs/audits/2026-06-10-local-secret-hygiene-runbook.md",
+        "docs/audits/2026-06-10-local-secret-hygiene-owner-attestation-packet.md",
         "test_output/security-scans/osv-report.json",
         "test_output/security-scans/gitleaks-report.json"
       ],

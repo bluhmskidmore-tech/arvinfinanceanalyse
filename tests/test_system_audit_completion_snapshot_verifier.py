@@ -36,6 +36,21 @@ def _copy_audit_files(tmp_path: Path) -> Path:
             encoding="utf-8"
         )
     )
+    calculation_packet = (
+        ROOT / manifest["artifacts"]["calculation_owner_decision_packet"]
+    ).read_text(encoding="utf-8")
+    owner_meeting_checklist = (
+        ROOT / manifest["artifacts"]["calculation_owner_meeting_checklist"]
+    ).read_text(encoding="utf-8")
+    first_priority_packet = (
+        ROOT / manifest["artifacts"]["calculation_first_priority_readiness_packet"]
+    ).read_text(encoding="utf-8")
+    post_owner_plan = (
+        ROOT / manifest["artifacts"]["calculation_post_owner_execution_plan"]
+    ).read_text(encoding="utf-8")
+    local_secret_attestation = (
+        ROOT / manifest["artifacts"]["local_secret_hygiene_owner_attestation_packet"]
+    ).read_text(encoding="utf-8")
     monitoring_snapshot = json.loads(
         (ROOT / manifest["artifacts"]["system_audit_monitoring_snapshot"]).read_text(
             encoding="utf-8"
@@ -47,6 +62,19 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     follow_up_brief_path = audit_dir / "owner-governance-follow-up-brief.zh.md"
     calculation_matrix_path = audit_dir / "calculation-p1-owner-decision-matrix.md"
     calculation_snapshot_path = audit_dir / "calculation-p1-owner-decision-snapshot.json"
+    calculation_packet_path = audit_dir / "calculation-p1-owner-decision-packet.md"
+    owner_meeting_checklist_path = (
+        audit_dir / "calculation-p1-owner-meeting-checklist.md"
+    )
+    first_priority_packet_path = (
+        audit_dir / "calculation-p1-first-priority-readiness-packet.md"
+    )
+    post_owner_plan_path = (
+        audit_dir / "calculation-p1-post-owner-execution-plan.md"
+    )
+    local_secret_attestation_path = (
+        audit_dir / "local-secret-hygiene-owner-attestation-packet.md"
+    )
     monitoring_snapshot_path = audit_dir / "system-audit-monitoring-snapshot.json"
     original_follow_up_packet_path = manifest["artifacts"][
         "owner_governance_follow_up_packet"
@@ -75,6 +103,21 @@ def _copy_audit_files(tmp_path: Path) -> Path:
         "calculation_owner_decision_snapshot"
     ] = "docs/audits/calculation-p1-owner-decision-snapshot.json"
     manifest["artifacts"][
+        "calculation_owner_decision_packet"
+    ] = "docs/audits/calculation-p1-owner-decision-packet.md"
+    manifest["artifacts"][
+        "calculation_owner_meeting_checklist"
+    ] = "docs/audits/calculation-p1-owner-meeting-checklist.md"
+    manifest["artifacts"][
+        "calculation_first_priority_readiness_packet"
+    ] = "docs/audits/calculation-p1-first-priority-readiness-packet.md"
+    manifest["artifacts"][
+        "calculation_post_owner_execution_plan"
+    ] = "docs/audits/calculation-p1-post-owner-execution-plan.md"
+    manifest["artifacts"][
+        "local_secret_hygiene_owner_attestation_packet"
+    ] = "docs/audits/local-secret-hygiene-owner-attestation-packet.md"
+    manifest["artifacts"][
         "system_audit_monitoring_snapshot"
     ] = "docs/audits/system-audit-monitoring-snapshot.json"
     follow_up_brief = follow_up_brief.replace(
@@ -94,6 +137,15 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     snapshot["source_artifacts"][
         "system_audit_monitoring_snapshot"
     ] = "docs/audits/system-audit-monitoring-snapshot.json"
+    snapshot["source_artifacts"][
+        "calculation_first_priority_readiness_packet"
+    ] = "docs/audits/calculation-p1-first-priority-readiness-packet.md"
+    snapshot["source_artifacts"][
+        "calculation_owner_meeting_checklist"
+    ] = "docs/audits/calculation-p1-owner-meeting-checklist.md"
+    snapshot["source_artifacts"][
+        "calculation_post_owner_execution_plan"
+    ] = "docs/audits/calculation-p1-post-owner-execution-plan.md"
     follow_up_packet["source_artifacts"][
         "system_audit_monitoring_snapshot"
     ] = "docs/audits/system-audit-monitoring-snapshot.json"
@@ -107,6 +159,14 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     calculation_matrix_path.write_text(calculation_matrix, encoding="utf-8")
     calculation_snapshot_path.write_text(
         json.dumps(calculation_snapshot, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    calculation_packet_path.write_text(calculation_packet, encoding="utf-8")
+    owner_meeting_checklist_path.write_text(owner_meeting_checklist, encoding="utf-8")
+    first_priority_packet_path.write_text(first_priority_packet, encoding="utf-8")
+    post_owner_plan_path.write_text(post_owner_plan, encoding="utf-8")
+    local_secret_attestation_path.write_text(
+        local_secret_attestation,
         encoding="utf-8",
     )
     monitoring_snapshot_path.write_text(
@@ -125,8 +185,34 @@ def test_verify_completion_snapshot_passes_for_checked_in_audit_package() -> Non
     assert result["follow_up_packet_count"] == 5
     assert result["follow_up_brief_blocker_count"] == 5
     assert result["calculation_prework_p1_count"] == 10
+    assert result["calculation_packet_p1_count"] == 10
+    assert result["calculation_packet_execution_anchor_ready"] is True
+    assert result["calculation_packet_execution_referenced_path_count"] == 24
+    assert result["calculation_packet_missing_execution_referenced_path_count"] == 0
+    assert result["calculation_owner_meeting_checklist_count"] == 10
+    assert result["calculation_owner_meeting_material_ready"] is True
+    assert result["calculation_owner_meeting_implementation_ready"] is False
+    assert result["calculation_owner_meeting_missing_capture_field_count"] == 50
+    assert result["calculation_owner_meeting_missing_field_count"] == 8
+    assert result["calculation_first_priority_count"] == 3
+    assert result["calculation_first_priority_owner_intake_ready"] is True
+    assert result["calculation_first_priority_implementation_ready"] is False
+    assert result["calculation_post_owner_ready_for_implementation_count"] == 0
+    assert result["calculation_post_owner_owner_decision_capture_complete"] is False
+    assert result["calculation_post_owner_non_implementation_decision_count"] == 0
+    assert result["calculation_post_owner_blocking_reasons"] == [
+        "owner_decision_capture_incomplete"
+    ]
+    assert result["calculation_post_owner_incomplete_count"] == 10
+    assert result["calculation_post_owner_invalid_selected_decision_count"] == 0
+    assert result["calculation_post_owner_no_invalid_selected_decisions"] is True
+    assert result["calculation_post_owner_global_gate_ready"] is False
+    assert result["calculation_post_owner_implementation_ready"] is False
+    assert result["calculation_post_owner_plan_renderer_sync"] is True
     assert result["calculation_snapshot_status"] == "owner_decision_required"
     assert result["calculation_incomplete_decision_count"] == 10
+    assert result["calculation_meeting_record_complete"] is False
+    assert result["calculation_missing_meeting_field_count"] == 8
     assert result["follow_up_completion_order_status"] == "pass"
     assert result["follow_up_completion_order_error_count"] == 0
     assert result["errors"] == []
@@ -349,6 +435,347 @@ def test_verify_completion_snapshot_fails_when_calculation_incomplete_count_drif
     )
 
 
+def test_verify_completion_snapshot_fails_when_calculation_owner_status_is_invalid(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    snapshot_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_snapshot"]
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot["capture_template"]["invalid_status_by_id"] = {"P1-01": "maybe"}
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner decision snapshot has invalid owner-decision statuses"
+        in result["errors"]
+    )
+
+
+def test_verify_completion_snapshot_fails_when_calculation_selected_decision_is_invalid(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    snapshot_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_snapshot"]
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot["capture_template"]["invalid_selected_decision_by_id"] = {"P1-01": "Z"}
+    snapshot["capture_template"]["invalid_selected_decision_count"] = 1
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner decision snapshot has invalid selected decisions"
+        in result["errors"]
+    )
+    assert (
+        "calculation owner decision snapshot invalid selected decision count must be zero"
+        in result["errors"]
+    )
+
+
+def test_verify_completion_snapshot_fails_when_calculation_meeting_record_claims_complete(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    snapshot_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_snapshot"]
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot["meeting_record"]["is_complete"] = True
+    snapshot["meeting_record"]["missing_required_fields"] = []
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner decision snapshot must not mark meeting record complete"
+        in result["errors"]
+    )
+    assert (
+        "calculation owner decision snapshot must report missing meeting fields"
+        in result["errors"]
+    )
+
+
+def test_verify_completion_snapshot_fails_when_calculation_packet_claims_approval(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_packet"]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "`captures_owner_decisions=false`",
+        "`captures_owner_decisions=true`",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner decision packet missing required phrase: `captures_owner_decisions=false`"
+        in result["errors"]
+    )
+
+
+def test_verify_completion_snapshot_fails_when_calculation_packet_drops_execution_anchor(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_packet"]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "Execution anchor ready: `true`",
+        "Execution anchor ready: `false`",
+    )
+    packet = packet.replace(
+        "`all_execution_slice_paths_exist=true`",
+        "`all_execution_slice_paths_exist=false`",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner decision packet missing required phrase: "
+        "Execution anchor ready: `true`"
+    ) in result["errors"]
+    assert (
+        "calculation owner decision packet missing required phrase: "
+        "`all_execution_slice_paths_exist=true`"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_calculation_packet_drops_owner_gate(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_packet"]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "Owner decision gate",
+        "Owner gate removed",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner decision packet missing required phrase: "
+        "Owner decision gate"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_owner_meeting_checklist_claims_implementation(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"]["calculation_owner_meeting_checklist"]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "Implementation ready: `false`",
+        "Implementation ready: `true`",
+    )
+    packet = packet.replace(
+        "`captures_owner_decisions=false`",
+        "`captures_owner_decisions=true`",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner meeting checklist missing required phrase: "
+        "Implementation ready: `false`"
+    ) in result["errors"]
+    assert (
+        "calculation owner meeting checklist missing required phrase: "
+        "`captures_owner_decisions=false`"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_owner_meeting_checklist_drops_owner_gate(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"]["calculation_owner_meeting_checklist"]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "Owner decision gate",
+        "Owner gate removed",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner meeting checklist missing required phrase: "
+        "Owner decision gate"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_first_priority_packet_claims_implementation(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"][
+        "calculation_first_priority_readiness_packet"
+    ]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "`implementation_ready=false`",
+        "`implementation_ready=true`",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation first priority readiness packet missing required phrase: "
+        "`implementation_ready=false`"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_first_priority_packet_drops_anchor(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"][
+        "calculation_first_priority_readiness_packet"
+    ]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "CreditSpreadView.tsx",
+        "CreditSpreadView-removed.tsx",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation first priority readiness packet missing required phrase: "
+        "CreditSpreadView.tsx"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_first_priority_packet_drops_owner_gate(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"][
+        "calculation_first_priority_readiness_packet"
+    ]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "Owner Decision Gate",
+        "Owner Gate Removed",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation first priority readiness packet missing required phrase: "
+        "Owner Decision Gate"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_post_owner_plan_claims_ready(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"][
+        "calculation_post_owner_execution_plan"
+    ]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "`ready_for_implementation_count=0`",
+        "`ready_for_implementation_count=1`",
+    )
+    packet = packet.replace(
+        "`global_owner_decision_gate_ready=false`",
+        "`global_owner_decision_gate_ready=true`",
+    )
+    packet = packet.replace(
+        "Global owner gate ready: `false`",
+        "Global owner gate ready: `true`",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert (
+        "calculation post-owner execution plan missing required phrase: "
+        "`ready_for_implementation_count=0`"
+    ) in result["errors"]
+    assert (
+        "calculation post-owner execution plan missing required phrase: "
+        "`global_owner_decision_gate_ready=false`"
+    ) in result["errors"]
+    assert (
+        "calculation post-owner execution plan missing required phrase: "
+        "Global owner gate ready: `false`"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_post_owner_plan_is_stale(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"][
+        "calculation_post_owner_execution_plan"
+    ]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "| `incomplete` | 10 |",
+        "| `incomplete` | 10 | `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-07`, `P1-09`, `P1-10`, `P1-11`, `P1-99` |",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert result["calculation_post_owner_plan_renderer_sync"] is False
+    assert (
+        "calculation post-owner execution plan does not match current "
+        "matrix/snapshot/capture-template renderer output"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_post_owner_plan_sources_drift(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    matrix_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_matrix"]
+    matrix = matrix_path.read_text(encoding="utf-8").replace(
+        "Component/model tests prove backend value wins and missing share remains missing.",
+        "Component/model tests prove backend value wins after source drift.",
+    )
+    matrix_path.write_text(matrix, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert result["calculation_post_owner_plan_renderer_sync"] is False
+    assert (
+        "calculation post-owner execution plan does not match current "
+        "matrix/snapshot/capture-template renderer output"
+    ) in result["errors"]
+
+
 def test_verify_completion_snapshot_fails_when_ledger_write_guard_is_removed(
     tmp_path: Path,
 ) -> None:
@@ -414,6 +841,37 @@ def test_verify_completion_snapshot_fails_when_secret_boundary_is_removed(
     assert "local secret follow-up must require no-value closure evidence" in result[
         "errors"
     ]
+
+
+def test_verify_completion_snapshot_fails_when_local_secret_attestation_claims_approval(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"][
+        "local_secret_hygiene_owner_attestation_packet"
+    ]
+    packet = packet_path.read_text(encoding="utf-8").replace(
+        "Closure approved: `false`",
+        "Closure approved: `true`",
+    )
+    packet = packet.replace(
+        "`captures_secret_values=false`",
+        "`captures_secret_values=true`",
+    )
+    packet_path.write_text(packet, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "local secret owner attestation packet must deny closure approval"
+        in result["errors"]
+    )
+    assert (
+        "local secret owner attestation packet must deny captured secret values"
+        in result["errors"]
+    )
 
 
 def test_verify_completion_snapshot_fails_when_follow_up_brief_drops_blocker(

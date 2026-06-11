@@ -21,7 +21,10 @@
     "owner_governance_follow_up_packet": "docs/audits/2026-06-10-owner-governance-follow-up-packet.json",
     "owner_governance_follow_up_brief_zh": "docs/audits/2026-06-10-owner-governance-follow-up-brief.zh.md",
     "calculation_owner_decision_snapshot": "docs/audits/2026-06-10-calculation-p1-owner-decision-snapshot.json",
-    "system_audit_monitoring_snapshot": "docs/audits/2026-06-10-system-audit-monitoring-snapshot.json"
+    "calculation_owner_meeting_checklist": "docs/audits/2026-06-10-calculation-p1-owner-meeting-checklist.md",
+    "calculation_first_priority_readiness_packet": "docs/audits/2026-06-10-calculation-p1-first-priority-readiness-packet.md",
+    "system_audit_monitoring_snapshot": "docs/audits/2026-06-10-system-audit-monitoring-snapshot.json",
+    "calculation_post_owner_execution_plan": "docs/audits/2026-06-10-calculation-p1-post-owner-execution-plan.md"
   },
   "summary": {
     "open_blocker_count": 5,

@@ -1,10 +1,46 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import scripts.refresh_system_audit_monitoring as monitor
 import scripts.system_audit_pulse as pulse
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MONITORING_SNAPSHOT = (
+    ROOT
+    / "docs"
+    / "audits"
+    / "2026-06-10-system-audit-monitoring-snapshot.json"
+)
+
+
+def test_write_json_preserves_existing_file_when_replace_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output_path = tmp_path / "snapshot.json"
+    original = '{"status": "old"}\n'
+    output_path.write_text(original, encoding="utf-8")
+
+    def fail_replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(monitor.os, "replace", fail_replace)
+
+    try:
+        monitor._write_json(output_path, {"status": "new"})
+    except OSError as exc:
+        assert "simulated replace failure" in str(exc)
+    else:  # pragma: no cover - defensive assertion for monkeypatch failure
+        raise AssertionError("expected simulated replace failure")
+
+    assert output_path.read_text(encoding="utf-8") == original
+    assert (tmp_path / ".snapshot.json.tmp").read_text(encoding="utf-8") == (
+        '{\n  "status": "new"\n}\n'
+    )
 
 
 def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
@@ -37,6 +73,8 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         "open_decision_count": 10,
         "captured_decision_count": 0,
         "incomplete_decision_count": 10,
+        "invalid_selected_decision_count": 0,
+        "invalid_status_count": 0,
         "drift_error_count": 0,
     }
     assert report["refresh_results"]["direct_app_mcp_gitnexus_tool_surface"][
@@ -55,12 +93,144 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         "record_write_status"
     ] == "not_requested"
     assert report["refresh_results"]["ledger_pnl_direct_governance_record"][
+        "post_write_ready"
+    ] is False
+    assert report["refresh_results"]["ledger_pnl_direct_governance_record"][
+        "post_write_blocking_reasons"
+    ] == [
+        "written_record_located",
+        "governance_direct_records_ready",
+        "audit_review_not_blocked_by_record_gaps",
+    ]
+    assert report["refresh_results"]["ledger_pnl_direct_governance_record"][
         "formal_use_allowed"
     ] is False
     assert report["refresh_results"]["ledger_pnl_direct_governance_record"][
         "closure_approved"
     ] is False
     assert report["completion_verification"]["status"] == "pass"
+    assert (
+        report["completion_verification"]["calculation_packet_execution_anchor_ready"]
+        is True
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_packet_execution_referenced_path_count"
+        ]
+        == 24
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_packet_missing_execution_referenced_path_count"
+        ]
+        == 0
+    )
+    assert report["completion_verification"]["calculation_owner_meeting_checklist_count"] == 10
+    assert (
+        report["completion_verification"]["calculation_owner_meeting_material_ready"]
+        is True
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_owner_meeting_implementation_ready"
+        ]
+        is False
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_owner_meeting_missing_capture_field_count"
+        ]
+        == 50
+    )
+    assert (
+        report["completion_verification"]["calculation_owner_meeting_missing_field_count"]
+        == 8
+    )
+    assert report["completion_verification"]["calculation_first_priority_count"] == 3
+    assert (
+        report["completion_verification"][
+            "calculation_first_priority_owner_intake_ready"
+        ]
+        is True
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_first_priority_implementation_ready"
+        ]
+        is False
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_post_owner_ready_for_implementation_count"
+        ]
+        == 0
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_post_owner_owner_decision_capture_complete"
+        ]
+        is False
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_post_owner_non_implementation_decision_count"
+        ]
+        == 0
+    )
+    assert report["completion_verification"][
+        "calculation_post_owner_blocking_reasons"
+    ] == ["owner_decision_capture_incomplete"]
+    assert (
+        report["completion_verification"][
+            "calculation_post_owner_incomplete_count"
+        ]
+        == 10
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_post_owner_invalid_selected_decision_count"
+        ]
+        == 0
+    )
+    assert (
+        report["completion_verification"][
+            "calculation_post_owner_no_invalid_selected_decisions"
+        ]
+        is True
+    )
+    assert (
+        report["completion_verification"]["calculation_post_owner_global_gate_ready"]
+        is False
+    )
+    assert (
+        report["completion_verification"]["calculation_post_owner_implementation_ready"]
+        is False
+    )
+    assert (
+        report["completion_verification"]["calculation_post_owner_plan_renderer_sync"]
+        is True
+    )
+    assert (
+        report["completion_verification"]["local_secret_owner_attestation_ready"]
+        is True
+    )
+    assert (
+        report["completion_verification"][
+            "local_secret_owner_attestation_closure_approved"
+        ]
+        is False
+    )
+    assert (
+        report["completion_verification"][
+            "local_secret_owner_attestation_secret_value_fields_present"
+        ]
+        is False
+    )
+    assert (
+        report["completion_verification"]["calculation_meeting_record_complete"]
+        is False
+    )
+    assert report["completion_verification"]["calculation_missing_meeting_field_count"] == 8
     assert (
         report["completion_verification"]["follow_up_completion_order_status"] == "pass"
     )
@@ -69,43 +239,50 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
     assert report["pulse"]["status"] == "pass"
     assert report["pulse"]["completion_state"] == "not_complete"
     assert report["pulse"]["open_blocker_count"] == 5
+    assert report["pulse"]["next_blocker_id"] == "calculation-display-p1-decisions"
+    assert report["pulse"]["next_blocker_detail"]["responsible_owner_type"] == (
+        "business_owner_and_metric_governance"
+    )
+    assert report["pulse"]["next_blocker_detail"]["strict_gate_command"] == (
+        "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
+        "--require-owner-decisions-captured"
+    )
     assert report["pulse"]["drift_error_count"] == 0
-    assert report["blocker_intake_board"] == {
-        "status": "open_external_input_required",
-        "blocker_count": 5,
-        "completion_order": [
-            "calculation-display-p1-decisions",
-            "ledger-pnl-direct-governance-record",
-            "owner-approval-7-pages",
-            "direct-app-mcp-gitnexus-evidence",
-            "local-secret-hygiene",
-        ],
-        "next_blocker_id": "calculation-display-p1-decisions",
-        "evidence_scope": {
-            "read_only": True,
-            "approves_metrics": False,
-            "approves_pages": False,
-            "captures_business_owner_approval": False,
-            "writes_governance_records": False,
-            "authorizes_ledger_pnl_governance_write": False,
-            "captures_direct_app_mcp_gitnexus_evidence": False,
-            "requests_or_captures_secret_values": False,
-            "clears_secret_scan": False,
-            "certifies_routes": False,
-        },
-        "boundary": (
-            "This blocker intake board is read-only. It does not approve metrics, pages, "
-            "business-owner signoff, governance records, route certification, direct App "
-            "MCP/GitNexus evidence, local secret hygiene, or Ledger PnL --write execution."
-        ),
+    assert report["blocker_intake_board"]["status"] == "open_external_input_required"
+    assert report["blocker_intake_board"]["blocker_count"] == 5
+    assert report["blocker_intake_board"]["completion_order"] == [
+        "calculation-display-p1-decisions",
+        "ledger-pnl-direct-governance-record",
+        "owner-approval-7-pages",
+        "direct-app-mcp-gitnexus-evidence",
+        "local-secret-hygiene",
+    ]
+    assert report["blocker_intake_board"]["next_blocker_id"] == (
+        "calculation-display-p1-decisions"
+    )
+    assert report["blocker_intake_board"]["next_blocker_detail"] == (
+        report["pulse"]["next_blocker_detail"]
+    )
+    assert report["blocker_intake_board"]["evidence_scope"] == {
+        "read_only": True,
+        "approves_metrics": False,
+        "approves_pages": False,
+        "captures_business_owner_approval": False,
+        "writes_governance_records": False,
+        "authorizes_ledger_pnl_governance_write": False,
+        "captures_direct_app_mcp_gitnexus_evidence": False,
+        "requests_or_captures_secret_values": False,
+        "clears_secret_scan": False,
+        "certifies_routes": False,
     }
+    assert "does not approve metrics" in report["blocker_intake_board"]["boundary"]
     assert report["strict_gate_matrix"]["status"] == "pass"
     assert report["strict_gate_matrix"]["full_score_ready"] is False
     assert report["strict_gate_matrix"]["open_blocker_count"] == 5
     assert report["strict_gate_matrix"]["completion_order_guard_status"] == "pass"
     assert report["strict_gate_matrix"]["completion_order_guard_error_count"] == 0
-    assert report["strict_gate_matrix"]["gate_count"] == 7
-    assert report["strict_gate_matrix"]["expected_blocked_gate_count"] == 7
+    assert report["strict_gate_matrix"]["gate_count"] == 8
+    assert report["strict_gate_matrix"]["expected_blocked_gate_count"] == 8
     assert report["strict_gate_matrix"]["strict_pass_gate_count"] == 0
     assert report["strict_gate_matrix"]["unexpected_gate_count"] == 0
     assert report["strict_gate_matrix"]["guard_error_count"] == 0
@@ -117,6 +294,7 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
         "completion-zero-open-blockers",
         "monitoring-zero-open-blockers",
         "calculation-p1-owner-decisions-captured",
+        "calculation-p1-post-owner-implementation-ready",
         "ledger-pnl-written-record-located",
         "direct-app-mcp-gitnexus-evidence-captured",
         "local-secret-hygiene-clean-boundary",
@@ -124,9 +302,12 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
     assert report["latest_session_recheck"]["checked_at"] == "2026-06-10T21:25:00+08:00"
     assert report["latest_session_recheck"]["closure_effect"] == "none"
     assert report["latest_session_recheck"]["open_blocker_count"] == 5
+    assert report["latest_session_recheck"]["next_blocker"] == (
+        report["pulse"]["next_blocker_detail"]
+    )
     assert report["latest_session_recheck"]["strict_gate_matrix"] == {
         "status": "pass",
-        "gate_count": 7,
+        "gate_count": 8,
         "strict_pass_gate_count": 0,
         "unexpected_gate_count": 0,
         "completion_order_guard_status": "pass",
@@ -159,12 +340,28 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
     assert report["latest_session_recheck"]["ledger_pnl_direct_governance_record"][
         "record_write_status"
     ] == "not_requested"
+    assert report["latest_session_recheck"]["ledger_pnl_direct_governance_record"][
+        "post_write_ready"
+    ] is False
+    assert report["latest_session_recheck"]["ledger_pnl_direct_governance_record"][
+        "post_write_blocking_reasons"
+    ] == [
+        "written_record_located",
+        "governance_direct_records_ready",
+        "audit_review_not_blocked_by_record_gaps",
+    ]
     assert report["latest_session_recheck"]["calculation_owner_decision"][
         "captured_decision_count"
     ] == 0
     assert report["latest_session_recheck"]["calculation_owner_decision"][
         "incomplete_decision_count"
     ] == 10
+    assert report["latest_session_recheck"]["calculation_owner_decision"][
+        "invalid_selected_decision_count"
+    ] == 0
+    assert report["latest_session_recheck"]["calculation_owner_decision"][
+        "invalid_status_count"
+    ] == 0
     assert "does not write DuckDB or governance records" in report["boundary"]
     assert "read or rotate secret values" in report["boundary"]
 
@@ -193,6 +390,39 @@ def test_system_audit_monitoring_refresh_does_not_read_stale_strict_gate_summary
     assert report["strict_gate_matrix"]["strict_pass_gate_count"] == 0
 
 
+def test_system_audit_monitoring_refresh_does_not_reuse_stale_monitoring_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    stale_monitoring = json.loads(MONITORING_SNAPSHOT.read_text(encoding="utf-8"))
+    stale_monitoring["completion_verification"]["status"] = "fail"
+    stale_monitoring["completion_verification"]["errors"] = ["stale monitoring failure"]
+    stale_monitoring["completion_verification"]["error_count"] = 1
+    stale_monitoring["pulse"]["status"] = "fail"
+    stale_monitoring["pulse"]["drift_errors"] = ["stale monitoring failure"]
+    stale_monitoring["pulse"]["drift_error_count"] = 1
+    stale_path = tmp_path / "stale-monitoring.json"
+    stale_path.write_text(
+        json.dumps(stale_monitoring, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(monitor, "DEFAULT_OUTPUT", stale_path)
+
+    report = monitor.build_monitoring_snapshot(
+        generated_at="2026-06-10T21:25:00+08:00",
+        gitnexus_tool_names=[
+            "codex_app.handoff_thread",
+            "codex_app.fork_thread",
+            "codex_app.automation_update",
+        ],
+    )
+
+    assert report["completion_verification"]["status"] == "pass"
+    assert report["completion_verification"]["errors"] == []
+    assert report["pulse"]["status"] == "pass"
+    assert report["pulse"]["drift_errors"] == []
+
+
 def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
     tmp_path: Path,
 ) -> None:
@@ -218,11 +448,134 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
     assert payload["write_outputs"] is False
     assert payload["completion_verification"]["status"] == "pass"
     assert (
+        payload["completion_verification"]["calculation_packet_execution_anchor_ready"]
+        is True
+    )
+    assert (
+        payload["completion_verification"][
+            "calculation_packet_execution_referenced_path_count"
+        ]
+        == 24
+    )
+    assert (
+        payload["completion_verification"][
+            "calculation_packet_missing_execution_referenced_path_count"
+        ]
+        == 0
+    )
+    assert (
+        payload["completion_verification"]["calculation_owner_meeting_checklist_count"]
+        == 10
+    )
+    assert (
+        payload["completion_verification"]["calculation_owner_meeting_material_ready"]
+        is True
+    )
+    assert (
+        payload["completion_verification"][
+            "calculation_owner_meeting_implementation_ready"
+        ]
+        is False
+    )
+    assert (
+        payload["completion_verification"][
+            "calculation_owner_meeting_missing_capture_field_count"
+        ]
+        == 50
+    )
+    assert (
+        payload["completion_verification"]["calculation_owner_meeting_missing_field_count"]
+        == 8
+    )
+    assert payload["completion_verification"]["calculation_first_priority_count"] == 3
+    assert (
+        payload["completion_verification"][
+            "calculation_first_priority_owner_intake_ready"
+        ]
+        is True
+    )
+    assert (
+        payload["completion_verification"][
+            "calculation_first_priority_implementation_ready"
+        ]
+        is False
+    )
+    assert (
+        payload["completion_verification"][
+            "calculation_post_owner_ready_for_implementation_count"
+        ]
+        == 0
+    )
+    assert (
+        payload["completion_verification"][
+            "calculation_post_owner_owner_decision_capture_complete"
+        ]
+        is False
+    )
+    assert (
+        payload["completion_verification"][
+            "calculation_post_owner_non_implementation_decision_count"
+        ]
+        == 0
+    )
+    assert payload["completion_verification"][
+        "calculation_post_owner_blocking_reasons"
+    ] == ["owner_decision_capture_incomplete"]
+    assert payload["completion_verification"]["calculation_post_owner_incomplete_count"] == 10
+    assert (
+        payload["completion_verification"]["calculation_post_owner_global_gate_ready"]
+        is False
+    )
+    assert (
+        payload["completion_verification"]["calculation_post_owner_implementation_ready"]
+        is False
+    )
+    assert (
+        payload["completion_verification"]["calculation_post_owner_plan_renderer_sync"]
+        is True
+    )
+    assert (
+        payload["completion_verification"]["local_secret_owner_attestation_ready"]
+        is True
+    )
+    assert (
+        payload["completion_verification"][
+            "local_secret_owner_attestation_closure_approved"
+        ]
+        is False
+    )
+    assert (
+        payload["completion_verification"][
+            "local_secret_owner_attestation_secret_value_fields_present"
+        ]
+        is False
+    )
+    assert (
+        payload["completion_verification"]["calculation_meeting_record_complete"]
+        is False
+    )
+    assert payload["completion_verification"]["calculation_missing_meeting_field_count"] == 8
+    assert (
         payload["completion_verification"]["follow_up_completion_order_status"] == "pass"
     )
     assert payload["pulse"]["status"] == "pass"
+    assert payload["pulse"]["calculation_post_owner_plan_renderer_sync"] is True
+    assert payload["pulse"]["next_blocker_id"] == "calculation-display-p1-decisions"
+    assert payload["pulse"]["next_blocker_detail"]["strict_gate_command"] == (
+        "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py "
+        "--require-owner-decisions-captured"
+    )
     assert payload["blocker_intake_board"]["next_blocker_id"] == (
         "calculation-display-p1-decisions"
+    )
+    assert (
+        payload["latest_session_recheck"][
+            "calculation_post_owner_plan_renderer_sync"
+        ]
+        is True
+    )
+    assert payload["blocker_intake_board"]["next_blocker_detail"] == (
+        payload["pulse"]["next_blocker_detail"]
     )
     assert payload["strict_gate_matrix"]["strict_pass_gate_count"] == 0
     assert payload["strict_gate_matrix"]["completion_order_guard_status"] == "pass"

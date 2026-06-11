@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -28,6 +29,7 @@ from scripts.system_audit_blocker_intake_board import (  # noqa: E402
     build_board as build_blocker_intake_board,
 )
 from scripts.system_audit_pulse import (  # noqa: E402
+    blocker_intake_summary_from_board,
     build_pulse,
     strict_gate_summary_from_matrix,
 )
@@ -70,7 +72,13 @@ def _now_shanghai() -> str:
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    temp_path = path.with_name(f".{path.name}.tmp")
+    with temp_path.open("w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temp_path, path)
 
 
 def _timestamp(prefix: str, generated_at: str) -> str:
@@ -156,7 +164,7 @@ def build_monitoring_snapshot(
         record_created_at=generated_at,
     )
     blocker_intake_board = build_blocker_intake_board(generated_at=generated_at)
-    completion = verify_completion_snapshot()
+    completion = verify_completion_snapshot(verify_monitoring=False)
     pulse_for_matrix = {
         "full_score_ready": False,
         "completion_state": (
@@ -191,6 +199,7 @@ def build_monitoring_snapshot(
             source=str(DEFAULT_OUTPUT),
             source_generated_at=generated_at,
         ),
+        completion_override=completion,
     )
 
     outputs = {
@@ -240,6 +249,12 @@ def build_monitoring_snapshot(
                 "incomplete_decision_count": calc_snapshot["capture_template"][
                     "incomplete_decision_count"
                 ],
+                "invalid_selected_decision_count": calc_snapshot["capture_template"][
+                    "invalid_selected_decision_count"
+                ],
+                "invalid_status_count": len(
+                    calc_snapshot["capture_template"]["invalid_status_by_id"]
+                ),
                 "drift_error_count": len(calc_snapshot["drift_errors"]),
             },
             "direct_app_mcp_gitnexus_tool_surface": {
@@ -268,6 +283,10 @@ def build_monitoring_snapshot(
                 "record_write_status": ledger_snapshot["dry_run_result"][
                     "record_write_status"
                 ],
+                "post_write_ready": ledger_snapshot["post_write_validation"]["ready"],
+                "post_write_blocking_reasons": ledger_snapshot[
+                    "post_write_validation"
+                ]["blocking_reasons"],
                 "formal_use_allowed": ledger_snapshot["dry_run_result"][
                     "formal_use_allowed"
                 ],
@@ -279,6 +298,87 @@ def build_monitoring_snapshot(
         "completion_verification": {
             "status": completion["status"],
             "open_blocker_count": completion["open_blocker_count"],
+            "calculation_packet_p1_count": completion[
+                "calculation_packet_p1_count"
+            ],
+            "calculation_packet_execution_anchor_ready": completion[
+                "calculation_packet_execution_anchor_ready"
+            ],
+            "calculation_packet_execution_referenced_path_count": completion[
+                "calculation_packet_execution_referenced_path_count"
+            ],
+            "calculation_packet_missing_execution_referenced_path_count": completion[
+                "calculation_packet_missing_execution_referenced_path_count"
+            ],
+            "calculation_owner_meeting_checklist_count": completion[
+                "calculation_owner_meeting_checklist_count"
+            ],
+            "calculation_owner_meeting_material_ready": completion[
+                "calculation_owner_meeting_material_ready"
+            ],
+            "calculation_owner_meeting_implementation_ready": completion[
+                "calculation_owner_meeting_implementation_ready"
+            ],
+            "calculation_owner_meeting_missing_capture_field_count": completion[
+                "calculation_owner_meeting_missing_capture_field_count"
+            ],
+            "calculation_owner_meeting_missing_field_count": completion[
+                "calculation_owner_meeting_missing_field_count"
+            ],
+            "calculation_first_priority_count": completion[
+                "calculation_first_priority_count"
+            ],
+            "calculation_first_priority_owner_intake_ready": completion[
+                "calculation_first_priority_owner_intake_ready"
+            ],
+            "calculation_first_priority_implementation_ready": completion[
+                "calculation_first_priority_implementation_ready"
+            ],
+            "calculation_post_owner_ready_for_implementation_count": completion[
+                "calculation_post_owner_ready_for_implementation_count"
+            ],
+            "calculation_post_owner_owner_decision_capture_complete": completion[
+                "calculation_post_owner_owner_decision_capture_complete"
+            ],
+            "calculation_post_owner_non_implementation_decision_count": completion[
+                "calculation_post_owner_non_implementation_decision_count"
+            ],
+            "calculation_post_owner_blocking_reasons": completion[
+                "calculation_post_owner_blocking_reasons"
+            ],
+            "calculation_post_owner_incomplete_count": completion[
+                "calculation_post_owner_incomplete_count"
+            ],
+            "calculation_post_owner_invalid_selected_decision_count": completion[
+                "calculation_post_owner_invalid_selected_decision_count"
+            ],
+            "calculation_post_owner_no_invalid_selected_decisions": completion[
+                "calculation_post_owner_no_invalid_selected_decisions"
+            ],
+            "calculation_post_owner_global_gate_ready": completion[
+                "calculation_post_owner_global_gate_ready"
+            ],
+            "calculation_post_owner_implementation_ready": completion[
+                "calculation_post_owner_implementation_ready"
+            ],
+            "calculation_post_owner_plan_renderer_sync": completion[
+                "calculation_post_owner_plan_renderer_sync"
+            ],
+            "local_secret_owner_attestation_ready": completion[
+                "local_secret_owner_attestation_ready"
+            ],
+            "local_secret_owner_attestation_closure_approved": completion[
+                "local_secret_owner_attestation_closure_approved"
+            ],
+            "local_secret_owner_attestation_secret_value_fields_present": completion[
+                "local_secret_owner_attestation_secret_value_fields_present"
+            ],
+            "calculation_meeting_record_complete": completion[
+                "calculation_meeting_record_complete"
+            ],
+            "calculation_missing_meeting_field_count": completion[
+                "calculation_missing_meeting_field_count"
+            ],
             "follow_up_completion_order_status": completion[
                 "follow_up_completion_order_status"
             ],
@@ -292,17 +392,21 @@ def build_monitoring_snapshot(
             "status": pulse_snapshot["status"],
             "completion_state": pulse_snapshot["completion_state"],
             "open_blocker_count": pulse_snapshot["open_blocker_count"],
+            "next_blocker_id": pulse_snapshot["blocker_intake_board"][
+                "next_blocker_id"
+            ],
+            "next_blocker_detail": pulse_snapshot["blocker_intake_board"][
+                "next_blocker_detail"
+            ],
+            "calculation_post_owner_plan_renderer_sync": pulse_snapshot[
+                "calculation_post_owner_plan_renderer_sync"
+            ],
             "drift_error_count": len(pulse_snapshot["drift_errors"]),
             "drift_errors": pulse_snapshot["drift_errors"],
         },
-        "blocker_intake_board": {
-            "status": blocker_intake_board["status"],
-            "blocker_count": blocker_intake_board["blocker_count"],
-            "completion_order": blocker_intake_board["completion_order"],
-            "next_blocker_id": blocker_intake_board["next_blocker_id"],
-            "evidence_scope": blocker_intake_board["evidence_scope"],
-            "boundary": blocker_intake_board["boundary"],
-        },
+        "blocker_intake_board": blocker_intake_summary_from_board(
+            blocker_intake_board
+        ),
         "strict_gate_matrix": {
             "status": strict_gate_matrix["status"],
             "completion_state": strict_gate_matrix["completion_state"],
@@ -329,6 +433,9 @@ def build_monitoring_snapshot(
             "checked_at": latest_session_recheck_at,
             "closure_effect": "none",
             "open_blocker_count": len(pulse_snapshot["open_blockers"]),
+            "next_blocker": pulse_snapshot["blocker_intake_board"][
+                "next_blocker_detail"
+            ],
             "strict_gate_matrix": {
                 "status": strict_gate_matrix["status"],
                 "gate_count": strict_gate_matrix["gate_count"],
@@ -339,6 +446,9 @@ def build_monitoring_snapshot(
                 ],
                 "guard_error_count": strict_gate_matrix["guard_error_count"],
             },
+            "calculation_post_owner_plan_renderer_sync": pulse_snapshot[
+                "calculation_post_owner_plan_renderer_sync"
+            ],
             "direct_app_mcp_gitnexus_tool_surface": {
                 "checked_at": latest_session_recheck_at,
                 "status": direct_snapshot["status"]["overall"],
@@ -379,6 +489,10 @@ def build_monitoring_snapshot(
                 "record_write_status": ledger_snapshot["dry_run_result"][
                     "record_write_status"
                 ],
+                "post_write_ready": ledger_snapshot["post_write_validation"]["ready"],
+                "post_write_blocking_reasons": ledger_snapshot[
+                    "post_write_validation"
+                ]["blocking_reasons"],
                 "writes_governance_records": ledger_snapshot["status"][
                     "writes_governance_records"
                 ],
@@ -394,6 +508,12 @@ def build_monitoring_snapshot(
                 "incomplete_decision_count": calc_snapshot["capture_template"][
                     "incomplete_decision_count"
                 ],
+                "invalid_selected_decision_count": calc_snapshot["capture_template"][
+                    "invalid_selected_decision_count"
+                ],
+                "invalid_status_count": len(
+                    calc_snapshot["capture_template"]["invalid_status_by_id"]
+                ),
                 "chooses_or_approves_conventions": calc_snapshot["status"][
                     "chooses_or_approves_conventions"
                 ],

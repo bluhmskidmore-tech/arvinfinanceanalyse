@@ -18,6 +18,9 @@ from scripts.codex_page_readiness import (
     build_all_page_readiness_report,
     build_route_scope_classification_report,
 )
+from scripts.system_audit_blocker_intake_board import (
+    build_board as build_blocker_intake_board,
+)
 from scripts.verify_system_audit_completion_snapshot import verify_completion_snapshot
 
 
@@ -92,6 +95,43 @@ def _completion_summary(completion: dict[str, Any]) -> dict[str, Any]:
             "follow_up_completion_order_error_count"
         ),
         "calculation_prework_p1_count": completion.get("calculation_prework_p1_count"),
+        "calculation_packet_p1_count": completion.get("calculation_packet_p1_count"),
+        "calculation_meeting_record_complete": completion.get(
+            "calculation_meeting_record_complete"
+        ),
+        "calculation_missing_meeting_field_count": completion.get(
+            "calculation_missing_meeting_field_count"
+        ),
+        "calculation_post_owner_ready_for_implementation_count": completion.get(
+            "calculation_post_owner_ready_for_implementation_count"
+        ),
+        "calculation_post_owner_owner_decision_capture_complete": completion.get(
+            "calculation_post_owner_owner_decision_capture_complete"
+        ),
+        "calculation_post_owner_non_implementation_decision_count": completion.get(
+            "calculation_post_owner_non_implementation_decision_count"
+        ),
+        "calculation_post_owner_blocking_reasons": completion.get(
+            "calculation_post_owner_blocking_reasons"
+        ),
+        "calculation_post_owner_incomplete_count": completion.get(
+            "calculation_post_owner_incomplete_count"
+        ),
+        "calculation_post_owner_invalid_selected_decision_count": completion.get(
+            "calculation_post_owner_invalid_selected_decision_count"
+        ),
+        "calculation_post_owner_no_invalid_selected_decisions": completion.get(
+            "calculation_post_owner_no_invalid_selected_decisions"
+        ),
+        "calculation_post_owner_global_gate_ready": completion.get(
+            "calculation_post_owner_global_gate_ready"
+        ),
+        "calculation_post_owner_implementation_ready": completion.get(
+            "calculation_post_owner_implementation_ready"
+        ),
+        "calculation_post_owner_plan_renderer_sync": completion.get(
+            "calculation_post_owner_plan_renderer_sync"
+        ),
         "error_count": len(completion.get("errors") or []),
     }
 
@@ -175,6 +215,42 @@ def strict_gate_summary_from_matrix(
     }
 
 
+def _next_blocker_detail(board: dict[str, Any]) -> dict[str, Any] | None:
+    next_blocker_id = board.get("next_blocker_id")
+    for item in board.get("blockers") or []:
+        if item.get("blocker_id") == next_blocker_id:
+            return {
+                "blocker_id": item.get("blocker_id"),
+                "responsible_owner_type": item.get("responsible_owner_type"),
+                "strict_gate_command": item.get("strict_gate_command"),
+                "required_external_input_count": item.get(
+                    "required_external_input_count"
+                ),
+                "first_required_external_input": item.get(
+                    "first_required_external_input"
+                ),
+                "required_output_count": item.get("required_output_count"),
+                "first_required_output": item.get("first_required_output"),
+                "fail_closed_until": item.get("fail_closed_until"),
+                "explicit_non_approval_boundary": item.get(
+                    "explicit_non_approval_boundary"
+                ),
+            }
+    return None
+
+
+def blocker_intake_summary_from_board(board: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": board.get("status"),
+        "blocker_count": board.get("blocker_count"),
+        "completion_order": board.get("completion_order"),
+        "next_blocker_id": board.get("next_blocker_id"),
+        "next_blocker_detail": _next_blocker_detail(board),
+        "evidence_scope": board.get("evidence_scope"),
+        "boundary": board.get("boundary"),
+    }
+
+
 def _all_page_readiness_summary(
     *,
     manifest: dict[str, Any],
@@ -239,12 +315,23 @@ def build_pulse(
     generated_at: str | None = None,
     include_full_readiness: bool = False,
     strict_gate_summary_override: dict[str, Any] | None = None,
+    completion_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    generated_at = generated_at or _default_generated_at()
     manifest = _load_json(manifest_path)
     counts = dict(manifest.get("counts") or {})
     route_scope = build_route_scope_classification_report()
     coverage = build_business_display_coverage_report(repo_root=repo_root)
-    completion = verify_completion_snapshot(manifest_path=manifest_path, repo_root=repo_root)
+    completion = (
+        dict(completion_override)
+        if completion_override is not None
+        else verify_completion_snapshot(manifest_path=manifest_path, repo_root=repo_root)
+    )
+    blocker_intake_board = build_blocker_intake_board(
+        generated_at=generated_at,
+        manifest_path=manifest_path,
+        repo_root=repo_root,
+    )
 
     open_blockers = list(manifest.get("open_blockers") or [])
     route_summary = _route_scope_summary(route_scope)
@@ -358,13 +445,16 @@ def build_pulse(
 
     return {
         "report_kind": "system_audit_pulse",
-        "generated_at": generated_at or _default_generated_at(),
+        "generated_at": generated_at,
         "repo_root": str(repo_root),
         "manifest_path": str(manifest_path),
         "status": "pass" if not drift_errors else "fail",
         "full_score_ready": False,
         "completion_state": "not_complete" if open_blockers else "ready_for_completion_audit",
         "open_blocker_count": len(open_blockers),
+        "calculation_post_owner_plan_renderer_sync": completion_status.get(
+            "calculation_post_owner_plan_renderer_sync"
+        ),
         "open_blockers": [
             {
                 "id": blocker.get("id"),
@@ -377,6 +467,9 @@ def build_pulse(
         "route_scope": route_summary,
         "business_display": coverage_summary,
         "completion_snapshot": completion_status,
+        "blocker_intake_board": blocker_intake_summary_from_board(
+            blocker_intake_board
+        ),
         "strict_gate_matrix": strict_gate_status,
         "all_page_readiness": readiness_summary,
         "drift_errors": drift_errors,
@@ -392,6 +485,8 @@ def format_markdown_pulse(report: dict[str, Any]) -> str:
     route_scope = report["route_scope"]
     business_display = report["business_display"]
     completion = report["completion_snapshot"]
+    blocker_intake = report["blocker_intake_board"]
+    next_blocker = blocker_intake.get("next_blocker_detail") or {}
     strict_gates = report["strict_gate_matrix"]
     readiness = report["all_page_readiness"]
     lines = [
@@ -402,6 +497,7 @@ def format_markdown_pulse(report: dict[str, Any]) -> str:
         f"- Completion state: `{report['completion_state']}`",
         f"- Full score ready: `{str(report['full_score_ready']).lower()}`",
         f"- Open blockers: `{report['open_blocker_count']}`",
+        f"- Next blocker: `{blocker_intake['next_blocker_id']}`",
         "",
         "## Live Counts",
         "",
@@ -425,8 +521,22 @@ def format_markdown_pulse(report: dict[str, Any]) -> str:
             "| Completion snapshot | "
             f"`status={completion['status']}`, "
             f"`open_blockers={completion['open_blocker_count']}`, "
+            f"`p1_packet={completion['calculation_packet_p1_count']}`, "
+            f"`meeting_record={str(completion['calculation_meeting_record_complete']).lower()}`, "
+            f"`missing_meeting_fields={completion['calculation_missing_meeting_field_count']}`, "
+            f"`post_owner_ready={completion['calculation_post_owner_ready_for_implementation_count']}`, "
+            f"`post_owner_incomplete={completion['calculation_post_owner_incomplete_count']}`, "
+            f"`post_owner_invalid_selected={completion['calculation_post_owner_invalid_selected_decision_count']}`, "
+            f"`post_owner_gate={str(completion['calculation_post_owner_global_gate_ready']).lower()}`, "
+            f"`post_owner_sync={str(completion['calculation_post_owner_plan_renderer_sync']).lower()}`, "
             f"`order_guard={completion['follow_up_completion_order_status']}`, "
             f"`errors={completion['error_count']}` |"
+        ),
+        (
+            "| Blocker intake | "
+            f"`status={blocker_intake['status']}`, "
+            f"`next={blocker_intake['next_blocker_id']}`, "
+            f"`owner={next_blocker.get('responsible_owner_type')}` |"
         ),
         (
             "| Strict gates | "
@@ -444,9 +554,31 @@ def format_markdown_pulse(report: dict[str, Any]) -> str:
             f"`audit_review_null={readiness.get('audit_review_null_count')}` |"
         ),
         "",
-        "## Open Blockers",
+        "## Next Blocker",
         "",
     ]
+    if next_blocker:
+        lines.extend(
+            [
+                f"- ID: `{next_blocker['blocker_id']}`",
+                f"- Owner type: `{next_blocker['responsible_owner_type']}`",
+                f"- Strict gate: `{next_blocker['strict_gate_command']}`",
+                (
+                    "- First required external input: "
+                    f"{next_blocker['first_required_external_input']}"
+                ),
+                f"- Fail-closed until: {next_blocker['fail_closed_until']}",
+            ]
+        )
+    else:
+        lines.append("- None")
+    lines.extend(
+        [
+            "",
+            "## Open Blockers",
+            "",
+        ]
+    )
     if report["open_blockers"]:
         lines.extend(
             f"- `{item['id']}`: `{item['status']}`; last_checked_at=`{item['last_checked_at']}`"

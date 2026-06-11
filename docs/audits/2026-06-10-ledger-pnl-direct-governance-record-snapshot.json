@@ -17,7 +17,8 @@
     "approves_metrics": false,
     "approves_pages": false,
     "captures_business_owner_approval": false,
-    "certifies_routes": false
+    "certifies_routes": false,
+    "closure_blocked_by_missing_written_record": true
   },
   "dry_run_result": {
     "command": "python scripts\\emit_ledger_pnl_governance_record.py",
@@ -105,6 +106,24 @@
       "Existing golden sample is supporting or page DTO evidence only, not dictionary-level approval."
     ]
   },
-  "closure_gate": "Only an approved governance workflow may write or locate the direct page/API record. After that, rerun governance validation, Ledger PnL page readiness, owner approval strict checks, and live page/API evidence review. Keep formal_use_allowed=false and closure_approved=false until owner approval and all page-specific gates are captured.",
+  "post_write_validation": {
+    "ready": false,
+    "checks": {
+      "written_record_located": false,
+      "governance_direct_records_ready": false,
+      "audit_review_not_blocked_by_record_gaps": false,
+      "formal_use_still_false_until_owner_approval": true,
+      "closure_not_approved_without_owner_approval": true,
+      "business_owner_approval_not_captured": true
+    },
+    "blocking_reasons": [
+      "written_record_located",
+      "governance_direct_records_ready",
+      "audit_review_not_blocked_by_record_gaps"
+    ],
+    "boundary": "A located record is not enough for Ledger PnL closure. Downstream governance validation, page readiness, audit review, owner approval, and live evidence must still be reviewed before formal use or closure."
+  },
+  "closure_blocked_by_missing_written_record": true,
+  "closure_gate": "Only an approved governance workflow may write or locate the direct page/API record. After that, post_write_validation.ready must be true, governance validation must no longer be blocked by direct-record gaps, Ledger PnL page readiness, owner approval strict checks, and live page/API evidence review must be rerun. Keep formal_use_allowed=false and closure_approved=false until owner approval and all page-specific gates are captured.",
   "boundary": "This snapshot is refreshed by a read-only preflight. It proves only whether a field-complete dry-run candidate exists and whether matching direct-record anchors are visible in the configured governance stream. It does not write governance records, approve metrics/pages, certify routes, prove live page/API execution, or capture business-owner approval."
 }

@@ -30,7 +30,7 @@
 | `ledger-pnl-direct-governance-record` | `docs/audits/2026-06-10-ledger-pnl-direct-governance-record-snapshot.json`; `docs/audits/2026-06-10-ledger-pnl-direct-governance-record-runbook.md`; `docs/audits/2026-06-10-owner-approval-mcp-evidence-summary.md` |
 | `owner-approval-7-pages` | `docs/audits/2026-06-10-owner-review-brief.zh.md`; `docs/audits/2026-06-10-owner-decision-capture-template.zh.md`; `docs/audits/2026-06-10-owner-approval-mcp-evidence-summary.md`; `docs/audits/2026-06-10-owner-approval-fail-closed-snapshot.json` |
 | `direct-app-mcp-gitnexus-evidence` | `docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json`; `docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-runbook.md`; `.codex/config.toml`; `.mcp.json`; `docs/MCP_RUNBOOK.md` |
-| `local-secret-hygiene` | `docs/audits/2026-06-10-local-secret-hygiene-snapshot.json`; `docs/audits/2026-06-10-local-secret-hygiene-runbook.md`; `test_output/security-scans/osv-report.json`; `test_output/security-scans/gitleaks-report.json` |
+| `local-secret-hygiene` | `docs/audits/2026-06-10-local-secret-hygiene-snapshot.json`; `docs/audits/2026-06-10-local-secret-hygiene-runbook.md`; `docs/audits/2026-06-10-local-secret-hygiene-owner-attestation-packet.md`; `test_output/security-scans/osv-report.json`; `test_output/security-scans/gitleaks-report.json` |
 
 ## 会后验证
 

@@ -23,22 +23,42 @@ Boundary: this template does not approve calculation conventions, pages, governa
 
 填写规则：
 
-- `selected_decision` 必须引用候选项，或写明需要补充的源数据证据。
+- `selected_decision` 对 `approved-for-implementation` 行必须引用该 P1 行允许的候选项，并包含与候选描述匹配的实质文本；推荐格式为 `Option <letter> - <copied option description>`。
+- 允许的 Option 字母是逐行限定的，不能把其他 P1 行的 Option 描述搬到当前行；裸写 `Option A`、未定义字母、无关 Option 文本、或 approved 行只写 evidence-only 文本都会被 strict checker 判为无效。
+- 如果需要补充源数据证据，`status` 应填 `deferred` 或 `rejected` 并在 `selected_decision` 写清 evidence gap；evidence-only 文本不能作为 `approved-for-implementation` 的正式口径裁决。
 - `owner_rationale` 不能为空；如果只是沿用现状，也必须说明为什么。
-- `implementation_owner` 和 `verification_gate` 不能为空，否则不能进入工程实现。
+- `implementation_owner` 和 `verification_gate` 不能为空，否则不能进入工程实现；`verification_gate` 必须写明将复跑的目标规则、contract 或 regression。
+- 本节下方的 Candidate Option Contract 来自 `docs/audits/2026-06-10-calculation-p1-owner-decision-matrix.md` 的 `Candidate Decisions` 列，只用于帮助 owner 选择，仍不构成默认批准。
+
+### Candidate Option Contract
+
+`selected_decision` 的最安全填写形态是 `Option <letter> - <copied option description>`。请复制当前 P1 行的候选描述，避免用中文转述或同义改写导致关键词校验失败。
+
+| P1 | 允许的候选项 | Required capture format, not a recommendation |
+| --- | --- | --- |
+| `P1-01` | A: source values are decimals; B: source values are percentages and must be divided by 100; C: source must carry explicit unit metadata and fail if absent. | `Option <allowed letter> - <copied option description>` |
+| `P1-02` | A: all source rates are decimals; B: all source rates are percentages; C: source supplies explicit unit metadata. | `Option <allowed letter> - <copied option description>` |
+| `P1-03` | A: `attribution_daily` convention, `-MD * (y_realized - y_prior) * MV`; B: current `pnl_bridge` convention; C: report both with explicit labels. | `Option <allowed letter> - <copied option description>` |
+| `P1-04` | A: require independent position and ledger source anchors; B: keep current same-source comparison but label it non-control. | `Option <allowed letter> - <copied option description>` |
+| `P1-05` | A: period average scale; B: sum of month-end snapshots; C: weighted daily average when daily facts exist. | `Option <allowed letter> - <copied option description>` |
+| `P1-06` | A: nonzero explained/residual with zero actual is warning/undefined; B: force ratio to 0 and mark ok. | `Option <allowed letter> - <copied option description>` |
+| `P1-07` | A: all components tightness-positive; B: liquidity remains looseness-positive but enters composite with inverse sign; C: separate liquidity narrative from composite. | `Option <allowed letter> - <copied option description>` |
+| `P1-09` | A: backend `current_balance_pct` is authoritative; B: frontend recomputes from visible rows; C: backend provides both official and visible-row share. | `Option <allowed letter> - <copied option description>` |
+| `P1-10` | A: backend DTO only; B: frontend may derive display aggregates; C: frontend derives only clearly non-formal UI helpers. | `Option <allowed letter> - <copied option description>` |
+| `P1-11` | A: backend provides governed matrix; B: frontend aggregates rows and owns bucket mapping. | `Option <allowed letter> - <copied option description>` |
 
 | P1 | 决策主题 | selected_decision | owner_rationale | implementation_owner | verification_gate | status |
 | --- | --- | --- | --- | --- | --- | --- |
-| P1-01 | Campisi coupon income: `coupon_rate` 单位 |  |  |  | `docs/calc_rules.md` + numeric golden tests | pending |
-| P1-02 | Bond analytics rate unit: `ytm_value` / coupon rate 单位 |  |  |  | source contract evidence + sub-1% regression | pending |
-| P1-03 | Roll-down sign convention |  |  |  | shared rule/helper + losing-side tests updated | pending |
-| P1-04 | QDB position-vs-ledger reconciliation control status |  |  |  | independent source anchors or non-control label | pending |
-| P1-05 | Quarterly/yearly yield denominator |  |  |  | monthly/quarterly/yearly numeric tests | pending |
-| P1-06 | PnL bridge zero-actual residual quality |  |  |  | zero-actual nonzero-explained warning regression | pending |
-| P1-07 | Macro liquidity score polarity |  |  |  | isolated liquidity movement test + contract copy | pending |
-| P1-09 | Balance movement share source |  |  |  | model/component tests proving backend value wins | pending |
-| P1-10 | Frontend formal aggregation boundary |  |  |  | backend DTO / frontend removal tests | pending |
-| P1-11 | Credit spread rating-tenor matrix owner |  |  |  | API contract + frontend renders provided matrix | pending |
+| P1-01 | Campisi coupon income: `coupon_rate` 单位 |  |  |  | suggested: `docs/calc_rules.md` + numeric golden tests | pending |
+| P1-02 | Bond analytics rate unit: `ytm_value` / coupon rate 单位 |  |  |  | suggested: source contract evidence + sub-1% regression | pending |
+| P1-03 | Roll-down sign convention |  |  |  | suggested: shared rule/helper + losing-side tests updated | pending |
+| P1-04 | QDB position-vs-ledger reconciliation control status |  |  |  | suggested: independent source anchors or non-control label | pending |
+| P1-05 | Quarterly/yearly yield denominator |  |  |  | suggested: monthly/quarterly/yearly numeric tests | pending |
+| P1-06 | PnL bridge zero-actual residual quality |  |  |  | suggested: zero-actual nonzero-explained warning regression | pending |
+| P1-07 | Macro liquidity score polarity |  |  |  | suggested: isolated liquidity movement test + contract copy | pending |
+| P1-09 | Balance movement share source |  |  |  | suggested: model/component tests proving backend value wins | pending |
+| P1-10 | Frontend formal aggregation boundary |  |  |  | suggested: backend DTO / frontend removal tests | pending |
+| P1-11 | Credit spread rating-tenor matrix owner |  |  |  | suggested: API contract + frontend renders provided matrix | pending |
 
 ## 7 个页面 owner approval 采集
 

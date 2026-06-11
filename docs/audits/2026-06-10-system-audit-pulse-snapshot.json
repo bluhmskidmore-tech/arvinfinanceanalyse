@@ -7,6 +7,7 @@
   "full_score_ready": false,
   "completion_state": "not_complete",
   "open_blocker_count": 5,
+  "calculation_post_owner_plan_renderer_sync": true,
   "open_blockers": [
     {
       "id": "owner-approval-7-pages",
@@ -73,7 +74,58 @@
     "follow_up_completion_order_status": "pass",
     "follow_up_completion_order_error_count": 0,
     "calculation_prework_p1_count": 10,
+    "calculation_packet_p1_count": 10,
+    "calculation_meeting_record_complete": false,
+    "calculation_missing_meeting_field_count": 8,
+    "calculation_post_owner_ready_for_implementation_count": 0,
+    "calculation_post_owner_owner_decision_capture_complete": false,
+    "calculation_post_owner_non_implementation_decision_count": 0,
+    "calculation_post_owner_blocking_reasons": [
+      "owner_decision_capture_incomplete"
+    ],
+    "calculation_post_owner_incomplete_count": 10,
+    "calculation_post_owner_invalid_selected_decision_count": 0,
+    "calculation_post_owner_no_invalid_selected_decisions": true,
+    "calculation_post_owner_global_gate_ready": false,
+    "calculation_post_owner_implementation_ready": false,
+    "calculation_post_owner_plan_renderer_sync": true,
     "error_count": 0
+  },
+  "blocker_intake_board": {
+    "status": "open_external_input_required",
+    "blocker_count": 5,
+    "completion_order": [
+      "calculation-display-p1-decisions",
+      "ledger-pnl-direct-governance-record",
+      "owner-approval-7-pages",
+      "direct-app-mcp-gitnexus-evidence",
+      "local-secret-hygiene"
+    ],
+    "next_blocker_id": "calculation-display-p1-decisions",
+    "next_blocker_detail": {
+      "blocker_id": "calculation-display-p1-decisions",
+      "responsible_owner_type": "business_owner_and_metric_governance",
+      "strict_gate_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py --require-owner-decisions-captured",
+      "required_external_input_count": 2,
+      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11",
+      "required_output_count": 11,
+      "first_required_output": "authoritative convention selected for P1-01",
+      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests.",
+      "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
+    },
+    "evidence_scope": {
+      "read_only": true,
+      "approves_metrics": false,
+      "approves_pages": false,
+      "captures_business_owner_approval": false,
+      "writes_governance_records": false,
+      "authorizes_ledger_pnl_governance_write": false,
+      "captures_direct_app_mcp_gitnexus_evidence": false,
+      "requests_or_captures_secret_values": false,
+      "clears_secret_scan": false,
+      "certifies_routes": false
+    },
+    "boundary": "This blocker intake board is read-only. It does not approve metrics, pages, business-owner signoff, governance records, route certification, direct App MCP/GitNexus evidence, local secret hygiene, or Ledger PnL --write execution."
   },
   "strict_gate_matrix": {
     "status": "pass",
@@ -82,8 +134,8 @@
     "completion_state": "not_complete",
     "full_score_ready": false,
     "open_blocker_count": 5,
-    "gate_count": 7,
-    "expected_blocked_gate_count": 7,
+    "gate_count": 8,
+    "expected_blocked_gate_count": 8,
     "strict_pass_gate_count": 0,
     "unexpected_gate_count": 0
   },
