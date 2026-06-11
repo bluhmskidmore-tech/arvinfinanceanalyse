@@ -29,6 +29,15 @@ EXPECTED_EVIDENCE_SCOPE = {
     "clears_secret_scan": False,
     "promotes_candidate_data": False,
 }
+EXPECTED_STRICT_GATE_IDS = {
+    "system-audit-full-score",
+    "completion-zero-open-blockers",
+    "monitoring-zero-open-blockers",
+    "calculation-p1-owner-decisions-captured",
+    "ledger-pnl-written-record-located",
+    "direct-app-mcp-gitnexus-evidence-captured",
+    "local-secret-hygiene-clean-boundary",
+}
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -115,6 +124,14 @@ def _verify_refresh_results(
         label="calculation refresh captured_decision_count",
         actual=calculation_result.get("captured_decision_count"),
         expected=calculation.get("capture_template", {}).get("captured_decision_count"),
+    )
+    _expect_equal(
+        errors,
+        label="calculation refresh incomplete_decision_count",
+        actual=calculation_result.get("incomplete_decision_count"),
+        expected=calculation.get("capture_template", {}).get(
+            "incomplete_decision_count"
+        ),
     )
     _expect_equal(
         errors,
@@ -335,6 +352,189 @@ def _verify_pulse(
     )
 
 
+def _verify_strict_gate_matrix(
+    *,
+    manifest: dict[str, Any],
+    monitoring: dict[str, Any],
+    errors: list[str],
+) -> None:
+    matrix = monitoring.get("strict_gate_matrix") or {}
+    gates = matrix.get("gates")
+    open_blocker_count = len(manifest.get("open_blockers", []))
+
+    _expect_equal(
+        errors,
+        label="strict gate matrix status",
+        actual=matrix.get("status"),
+        expected="pass",
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix completion_state",
+        actual=matrix.get("completion_state"),
+        expected=monitoring.get("pulse", {}).get("completion_state"),
+    )
+    _expect_false(
+        errors,
+        label="strict gate matrix full_score_ready",
+        actual=matrix.get("full_score_ready"),
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix open_blocker_count",
+        actual=matrix.get("open_blocker_count"),
+        expected=open_blocker_count,
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix completion_order_guard_status",
+        actual=matrix.get("completion_order_guard_status"),
+        expected=monitoring.get("completion_verification", {}).get(
+            "follow_up_completion_order_status"
+        ),
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix completion_order_guard_error_count",
+        actual=matrix.get("completion_order_guard_error_count"),
+        expected=monitoring.get("completion_verification", {}).get(
+            "follow_up_completion_order_error_count"
+        ),
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix gate_count",
+        actual=matrix.get("gate_count"),
+        expected=len(EXPECTED_STRICT_GATE_IDS),
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix expected_blocked_gate_count",
+        actual=matrix.get("expected_blocked_gate_count"),
+        expected=len(EXPECTED_STRICT_GATE_IDS),
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix strict_pass_gate_count",
+        actual=matrix.get("strict_pass_gate_count"),
+        expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix unexpected_gate_count",
+        actual=matrix.get("unexpected_gate_count"),
+        expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix guard_error_count",
+        actual=matrix.get("guard_error_count"),
+        expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="strict gate matrix guard_errors",
+        actual=matrix.get("guard_errors"),
+        expected=[],
+    )
+    if not isinstance(gates, list):
+        errors.append("strict gate matrix gates must be a list")
+        return
+    gate_ids = {gate.get("gate_id") for gate in gates if isinstance(gate, dict)}
+    if gate_ids != EXPECTED_STRICT_GATE_IDS:
+        errors.append("strict gate matrix gate IDs do not match expected gates")
+    for gate in gates:
+        if not isinstance(gate, dict):
+            errors.append("strict gate matrix gates must contain objects")
+            continue
+        gate_id = gate.get("gate_id")
+        if gate.get("expected_current_exit") != "non_zero":
+            errors.append(f"strict gate {gate_id} expected_current_exit must be non_zero")
+        if gate.get("actual_current_exit") != "non_zero":
+            errors.append(f"strict gate {gate_id} actual_current_exit must be non_zero")
+        if gate.get("strict_pass") is not False:
+            errors.append(f"strict gate {gate_id} strict_pass must be false")
+        if gate.get("expectation_met") is not True:
+            errors.append(f"strict gate {gate_id} expectation_met must be true")
+    boundary = matrix.get("boundary", "")
+    if "does not approve owner decisions" not in boundary:
+        errors.append("strict gate matrix boundary must deny owner-decision approval")
+    if "governance writes" not in boundary:
+        errors.append("strict gate matrix boundary must deny governance writes")
+
+
+def _verify_blocker_intake_board(
+    *,
+    manifest: dict[str, Any],
+    monitoring: dict[str, Any],
+    errors: list[str],
+) -> None:
+    board = monitoring.get("blocker_intake_board") or {}
+    open_blocker_ids = [item.get("id") for item in manifest.get("open_blockers", [])]
+    expected_order = [
+        "calculation-display-p1-decisions",
+        "ledger-pnl-direct-governance-record",
+        "owner-approval-7-pages",
+        "direct-app-mcp-gitnexus-evidence",
+        "local-secret-hygiene",
+    ]
+
+    _expect_equal(
+        errors,
+        label="blocker intake board status",
+        actual=board.get("status"),
+        expected="open_external_input_required",
+    )
+    _expect_equal(
+        errors,
+        label="blocker intake board blocker_count",
+        actual=board.get("blocker_count"),
+        expected=len(open_blocker_ids),
+    )
+    _expect_equal(
+        errors,
+        label="blocker intake board completion_order",
+        actual=board.get("completion_order"),
+        expected=expected_order,
+    )
+    if set(board.get("completion_order") or []) != set(open_blocker_ids):
+        errors.append("blocker intake board completion_order does not cover open blockers")
+    _expect_equal(
+        errors,
+        label="blocker intake board next_blocker_id",
+        actual=board.get("next_blocker_id"),
+        expected="calculation-display-p1-decisions",
+    )
+    scope = board.get("evidence_scope") or {}
+    _expect_equal(
+        errors,
+        label="blocker intake board read_only",
+        actual=scope.get("read_only"),
+        expected=True,
+    )
+    for flag in [
+        "approves_metrics",
+        "approves_pages",
+        "captures_business_owner_approval",
+        "writes_governance_records",
+        "authorizes_ledger_pnl_governance_write",
+        "captures_direct_app_mcp_gitnexus_evidence",
+        "requests_or_captures_secret_values",
+        "clears_secret_scan",
+        "certifies_routes",
+    ]:
+        _expect_false(
+            errors,
+            label=f"blocker intake board {flag}",
+            actual=scope.get(flag),
+        )
+    boundary = board.get("boundary", "")
+    if "does not approve metrics" not in boundary:
+        errors.append("blocker intake board boundary must deny metric approval")
+    if "does not approve metrics" in boundary and "Ledger PnL --write" not in boundary:
+        errors.append("blocker intake board boundary must deny Ledger PnL --write")
+
+
 def _verify_latest_session_recheck(
     *,
     manifest: dict[str, Any],
@@ -354,13 +554,82 @@ def _verify_latest_session_recheck(
         actual=recheck.get("open_blocker_count"),
         expected=len(manifest.get("open_blockers", [])),
     )
+    strict = recheck.get("strict_gate_matrix") or {}
+    _expect_equal(
+        errors,
+        label="latest session strict gate matrix status",
+        actual=strict.get("status"),
+        expected="pass",
+    )
+    _expect_equal(
+        errors,
+        label="latest session strict gate count",
+        actual=strict.get("gate_count"),
+        expected=len(EXPECTED_STRICT_GATE_IDS),
+    )
+    _expect_equal(
+        errors,
+        label="latest session strict pass gate count",
+        actual=strict.get("strict_pass_gate_count"),
+        expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="latest session unexpected strict gate count",
+        actual=strict.get("unexpected_gate_count"),
+        expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="latest session completion order guard status",
+        actual=strict.get("completion_order_guard_status"),
+        expected=monitoring.get("completion_verification", {}).get(
+            "follow_up_completion_order_status"
+        ),
+    )
+    _expect_equal(
+        errors,
+        label="latest session guard error count",
+        actual=strict.get("guard_error_count"),
+        expected=0,
+    )
 
     direct = recheck.get("direct_app_mcp_gitnexus_tool_surface") or {}
+    _expect_equal(
+        errors,
+        label="latest session direct App checked_at",
+        actual=direct.get("checked_at"),
+        expected=recheck.get("checked_at"),
+    )
     _expect_equal(
         errors,
         label="latest session direct App status",
         actual=direct.get("status"),
         expected="tool_surface_unavailable_in_current_codex_app_session",
+    )
+    _expect_equal(
+        errors,
+        label="latest session returned primary tool count",
+        actual=direct.get("returned_primary_tool_count"),
+        expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="latest session returned GitNexus tool count",
+        actual=direct.get("returned_gitnexus_tool_count"),
+        expected=3,
+    )
+    _expect_equal(
+        errors,
+        label="latest session returned MOSS general tool count",
+        actual=direct.get("returned_moss_general_tool_count"),
+        expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="latest session returned MOSS named tool count",
+        actual=direct.get("returned_moss_named_tool_count"),
+        expected=0,
     )
     _expect_equal(
         errors,
@@ -420,6 +689,12 @@ def _verify_latest_session_recheck(
         label="latest session calculation captured_decision_count",
         actual=calculation.get("captured_decision_count"),
         expected=0,
+    )
+    _expect_equal(
+        errors,
+        label="latest session calculation incomplete_decision_count",
+        actual=calculation.get("incomplete_decision_count"),
+        expected=10,
     )
     _expect_false(
         errors,
@@ -555,6 +830,22 @@ def verify_monitoring_snapshot(
     )
     _expect_equal(
         errors,
+        label="monitoring completion follow_up_completion_order_status",
+        actual=monitoring.get("completion_verification", {}).get(
+            "follow_up_completion_order_status"
+        ),
+        expected=completion_verification.get("follow_up_completion_order_status"),
+    )
+    _expect_equal(
+        errors,
+        label="monitoring completion follow_up_completion_order_error_count",
+        actual=monitoring.get("completion_verification", {}).get(
+            "follow_up_completion_order_error_count"
+        ),
+        expected=completion_verification.get("follow_up_completion_order_error_count"),
+    )
+    _expect_equal(
+        errors,
         label="monitoring completion errors",
         actual=monitoring.get("completion_verification", {}).get("errors"),
         expected=completion_verification.get("errors"),
@@ -570,6 +861,16 @@ def verify_monitoring_snapshot(
         manifest=manifest,
         monitoring=monitoring,
         pulse_snapshot=pulse_snapshot,
+        errors=errors,
+    )
+    _verify_strict_gate_matrix(
+        manifest=manifest,
+        monitoring=monitoring,
+        errors=errors,
+    )
+    _verify_blocker_intake_board(
+        manifest=manifest,
+        monitoring=monitoring,
         errors=errors,
     )
     _verify_refresh_results(
@@ -595,8 +896,20 @@ def verify_monitoring_snapshot(
         "generated_at": monitoring.get("generated_at"),
         "open_blocker_count": len(manifest.get("open_blockers", [])),
         "completion_status": monitoring.get("completion_verification", {}).get("status"),
+        "completion_order_guard_status": monitoring.get(
+            "completion_verification",
+            {},
+        ).get("follow_up_completion_order_status"),
         "pulse_status": monitoring.get("pulse", {}).get("status"),
         "pulse_completion_state": monitoring.get("pulse", {}).get("completion_state"),
+        "strict_gate_status": monitoring.get("strict_gate_matrix", {}).get("status"),
+        "strict_pass_gate_count": monitoring.get("strict_gate_matrix", {}).get(
+            "strict_pass_gate_count"
+        ),
+        "strict_gate_count": monitoring.get("strict_gate_matrix", {}).get("gate_count"),
+        "strict_completion_order_guard_status": monitoring.get(
+            "strict_gate_matrix", {}
+        ).get("completion_order_guard_status"),
         "error_count": len(errors),
         "errors": errors,
     }

@@ -98,7 +98,82 @@
     "unexpected_ids": [],
     "pending_count": 10,
     "captured_decision_count": 0,
-    "captured_decision_ids": []
+    "captured_decision_ids": [],
+    "incomplete_decision_count": 10,
+    "incomplete_decision_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-07",
+      "P1-09",
+      "P1-10",
+      "P1-11"
+    ],
+    "incomplete_fields_by_id": {
+      "P1-01": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-02": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-03": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-04": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-05": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-06": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-07": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-09": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-10": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ],
+      "P1-11": [
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "status"
+      ]
+    }
   },
   "drift_errors": [],
   "closure_gate": "Business owner and metric governance must select the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11 before implementation closure. After that, docs/calc_rules.md, contracts, implementation, and targeted tests must move each selected row to verified-closed evidence without reopening P1-08.",

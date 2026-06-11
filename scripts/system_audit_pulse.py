@@ -85,6 +85,12 @@ def _completion_summary(completion: dict[str, Any]) -> dict[str, Any]:
         "completion_gate_count": completion.get("completion_gate_count"),
         "follow_up_packet_count": completion.get("follow_up_packet_count"),
         "follow_up_brief_blocker_count": completion.get("follow_up_brief_blocker_count"),
+        "follow_up_completion_order_status": completion.get(
+            "follow_up_completion_order_status"
+        ),
+        "follow_up_completion_order_error_count": completion.get(
+            "follow_up_completion_order_error_count"
+        ),
         "calculation_prework_p1_count": completion.get("calculation_prework_p1_count"),
         "error_count": len(completion.get("errors") or []),
     }
@@ -100,6 +106,72 @@ def _display_coverage_summary(coverage: dict[str, Any]) -> dict[str, Any]:
         ),
         "browser_smoke_a11y_gap_count": summary.get("browser_smoke_a11y_gap_count"),
         "coverage_status": summary.get("coverage_status"),
+    }
+
+
+def _resolve_path(repo_root: Path, path_value: str) -> Path:
+    path = Path(path_value)
+    return path if path.is_absolute() else repo_root / path
+
+
+def _strict_gate_summary(
+    *,
+    manifest: dict[str, Any],
+    repo_root: Path,
+) -> dict[str, Any]:
+    path_value = (manifest.get("artifacts") or {}).get("system_audit_monitoring_snapshot")
+    if not path_value:
+        return {
+            "status": "missing_artifact_link",
+            "source": None,
+            "gate_count": None,
+            "strict_pass_gate_count": None,
+            "unexpected_gate_count": None,
+            "expected_blocked_gate_count": None,
+        }
+    path = _resolve_path(repo_root, str(path_value))
+    if not path.is_file():
+        return {
+            "status": "missing_artifact",
+            "source": str(path),
+            "gate_count": None,
+            "strict_pass_gate_count": None,
+            "unexpected_gate_count": None,
+            "expected_blocked_gate_count": None,
+        }
+    monitoring = _load_json(path)
+    matrix = monitoring.get("strict_gate_matrix") or {}
+    return {
+        "status": matrix.get("status"),
+        "source": str(path),
+        "source_generated_at": monitoring.get("generated_at"),
+        "completion_state": matrix.get("completion_state"),
+        "full_score_ready": matrix.get("full_score_ready"),
+        "open_blocker_count": matrix.get("open_blocker_count"),
+        "gate_count": matrix.get("gate_count"),
+        "expected_blocked_gate_count": matrix.get("expected_blocked_gate_count"),
+        "strict_pass_gate_count": matrix.get("strict_pass_gate_count"),
+        "unexpected_gate_count": matrix.get("unexpected_gate_count"),
+    }
+
+
+def strict_gate_summary_from_matrix(
+    matrix: dict[str, Any],
+    *,
+    source: str | None = None,
+    source_generated_at: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": matrix.get("status"),
+        "source": source,
+        "source_generated_at": source_generated_at,
+        "completion_state": matrix.get("completion_state"),
+        "full_score_ready": matrix.get("full_score_ready"),
+        "open_blocker_count": matrix.get("open_blocker_count"),
+        "gate_count": matrix.get("gate_count"),
+        "expected_blocked_gate_count": matrix.get("expected_blocked_gate_count"),
+        "strict_pass_gate_count": matrix.get("strict_pass_gate_count"),
+        "unexpected_gate_count": matrix.get("unexpected_gate_count"),
     }
 
 
@@ -166,6 +238,7 @@ def build_pulse(
     repo_root: Path = ROOT,
     generated_at: str | None = None,
     include_full_readiness: bool = False,
+    strict_gate_summary_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     manifest = _load_json(manifest_path)
     counts = dict(manifest.get("counts") or {})
@@ -173,9 +246,15 @@ def build_pulse(
     coverage = build_business_display_coverage_report(repo_root=repo_root)
     completion = verify_completion_snapshot(manifest_path=manifest_path, repo_root=repo_root)
 
+    open_blockers = list(manifest.get("open_blockers") or [])
     route_summary = _route_scope_summary(route_scope)
     coverage_summary = _display_coverage_summary(coverage)
     completion_status = _completion_summary(completion)
+    strict_gate_status = (
+        dict(strict_gate_summary_override)
+        if strict_gate_summary_override is not None
+        else _strict_gate_summary(manifest=manifest, repo_root=repo_root)
+    )
     readiness_summary = _all_page_readiness_summary(
         manifest=manifest,
         include_full_readiness=include_full_readiness,
@@ -184,6 +263,28 @@ def build_pulse(
     drift_errors: list[str] = []
     if completion.get("status") != "pass":
         drift_errors.extend(str(error) for error in completion.get("errors") or [])
+    if strict_gate_status.get("status") != "pass":
+        drift_errors.append(
+            f"strict_gate_matrix.status expected 'pass', got {strict_gate_status.get('status')!r}"
+        )
+    _append_mismatch(
+        drift_errors,
+        field="strict_gate_matrix.open_blocker_count",
+        expected=len(open_blockers),
+        actual=strict_gate_status.get("open_blocker_count"),
+    )
+    _append_mismatch(
+        drift_errors,
+        field="strict_gate_matrix.strict_pass_gate_count",
+        expected=0,
+        actual=strict_gate_status.get("strict_pass_gate_count"),
+    )
+    _append_mismatch(
+        drift_errors,
+        field="strict_gate_matrix.unexpected_gate_count",
+        expected=0,
+        actual=strict_gate_status.get("unexpected_gate_count"),
+    )
     _append_mismatch(
         drift_errors,
         field="route_scope.seeded_trace_bundle_count",
@@ -255,7 +356,6 @@ def build_pulse(
             actual=readiness_summary.get("audit_review_null_count"),
         )
 
-    open_blockers = list(manifest.get("open_blockers") or [])
     return {
         "report_kind": "system_audit_pulse",
         "generated_at": generated_at or _default_generated_at(),
@@ -277,6 +377,7 @@ def build_pulse(
         "route_scope": route_summary,
         "business_display": coverage_summary,
         "completion_snapshot": completion_status,
+        "strict_gate_matrix": strict_gate_status,
         "all_page_readiness": readiness_summary,
         "drift_errors": drift_errors,
         "claim_boundary": (
@@ -291,6 +392,7 @@ def format_markdown_pulse(report: dict[str, Any]) -> str:
     route_scope = report["route_scope"]
     business_display = report["business_display"]
     completion = report["completion_snapshot"]
+    strict_gates = report["strict_gate_matrix"]
     readiness = report["all_page_readiness"]
     lines = [
         "# System Audit Pulse",
@@ -323,7 +425,15 @@ def format_markdown_pulse(report: dict[str, Any]) -> str:
             "| Completion snapshot | "
             f"`status={completion['status']}`, "
             f"`open_blockers={completion['open_blocker_count']}`, "
+            f"`order_guard={completion['follow_up_completion_order_status']}`, "
             f"`errors={completion['error_count']}` |"
+        ),
+        (
+            "| Strict gates | "
+            f"`status={strict_gates['status']}`, "
+            f"`pass={strict_gates['strict_pass_gate_count']}/{strict_gates['gate_count']}`, "
+            f"`expected_blocked={strict_gates['expected_blocked_gate_count']}`, "
+            f"`unexpected={strict_gates['unexpected_gate_count']}` |"
         ),
         (
             "| All-page readiness | "

@@ -126,6 +126,9 @@ def test_verify_completion_snapshot_passes_for_checked_in_audit_package() -> Non
     assert result["follow_up_brief_blocker_count"] == 5
     assert result["calculation_prework_p1_count"] == 10
     assert result["calculation_snapshot_status"] == "owner_decision_required"
+    assert result["calculation_incomplete_decision_count"] == 10
+    assert result["follow_up_completion_order_status"] == "pass"
+    assert result["follow_up_completion_order_error_count"] == 0
     assert result["errors"] == []
 
 
@@ -210,6 +213,58 @@ def test_verify_completion_snapshot_fails_when_follow_up_packet_approves_metrics
     )
 
 
+def test_verify_completion_snapshot_fails_when_follow_up_completion_order_breaks_dependencies(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"]["owner_governance_follow_up_packet"]
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    packet["completion_order"] = [
+        "owner-approval-7-pages",
+        "calculation-display-p1-decisions",
+        "ledger-pnl-direct-governance-record",
+        "direct-app-mcp-gitnexus-evidence",
+        "local-secret-hygiene",
+    ]
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert result["follow_up_completion_order_status"] == "fail"
+    assert result["follow_up_completion_order_error_count"] == 2
+    assert (
+        "owner/governance follow-up packet completion_order invalid: "
+        "calculation-display P1 decisions must precede owner approval closure"
+    ) in result["errors"]
+    assert (
+        "owner/governance follow-up packet completion_order invalid: "
+        "Ledger PnL direct governance record must precede owner approval closure"
+    ) in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_follow_up_completion_order_has_duplicates(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"]["owner_governance_follow_up_packet"]
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    packet["completion_order"].append("local-secret-hygiene")
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert result["follow_up_completion_order_status"] == "fail"
+    assert result["follow_up_completion_order_error_count"] == 1
+    assert (
+        "owner/governance follow-up packet completion_order length does not match open blockers"
+        in result["errors"]
+    )
+
+
 def test_verify_completion_snapshot_fails_when_follow_up_input_artifact_is_missing(
     tmp_path: Path,
 ) -> None:
@@ -268,6 +323,30 @@ def test_verify_completion_snapshot_fails_when_calculation_snapshot_drift_is_pre
 
     assert result["status"] == "fail"
     assert "calculation owner decision snapshot has drift_errors" in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_calculation_incomplete_count_drifts(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    snapshot_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_snapshot"]
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot["capture_template"]["incomplete_decision_count"] = 0
+    snapshot["capture_template"]["incomplete_decision_ids"] = []
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation owner decision snapshot incomplete decision count does not match manifest"
+        in result["errors"]
+    )
+    assert (
+        "calculation owner decision snapshot incomplete decision IDs do not match expected"
+        in result["errors"]
+    )
 
 
 def test_verify_completion_snapshot_fails_when_ledger_write_guard_is_removed(

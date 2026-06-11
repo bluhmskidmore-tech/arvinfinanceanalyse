@@ -61,6 +61,8 @@ def test_system_audit_manifest_references_existing_artifacts_and_stays_fail_clos
         "system_audit_monitoring_tests",
         "system_audit_monitoring_verifier_script",
         "system_audit_monitoring_verifier_tests",
+        "system_audit_blocker_intake_board_script",
+        "system_audit_blocker_intake_board_tests",
     }
     assert required_artifacts <= set(manifest["artifacts"])
 
@@ -274,6 +276,18 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert monitoring_snapshot["completion_verification"]["open_blocker_count"] == len(
         manifest["open_blockers"]
     )
+    assert (
+        monitoring_snapshot["completion_verification"][
+            "follow_up_completion_order_status"
+        ]
+        == "pass"
+    )
+    assert (
+        monitoring_snapshot["completion_verification"][
+            "follow_up_completion_order_error_count"
+        ]
+        == 0
+    )
     assert monitoring_snapshot["completion_verification"]["error_count"] == 0
     assert monitoring_snapshot["pulse"]["status"] == "pass"
     assert monitoring_snapshot["pulse"]["completion_state"] == "not_complete"
@@ -281,9 +295,54 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         manifest["open_blockers"]
     )
     assert monitoring_snapshot["pulse"]["drift_errors"] == []
+    assert monitoring_snapshot["blocker_intake_board"] == {
+        "status": "open_external_input_required",
+        "blocker_count": len(manifest["open_blockers"]),
+        "completion_order": [
+            "calculation-display-p1-decisions",
+            "ledger-pnl-direct-governance-record",
+            "owner-approval-7-pages",
+            "direct-app-mcp-gitnexus-evidence",
+            "local-secret-hygiene",
+        ],
+        "next_blocker_id": "calculation-display-p1-decisions",
+        "evidence_scope": {
+            "read_only": True,
+            "approves_metrics": False,
+            "approves_pages": False,
+            "captures_business_owner_approval": False,
+            "writes_governance_records": False,
+            "authorizes_ledger_pnl_governance_write": False,
+            "captures_direct_app_mcp_gitnexus_evidence": False,
+            "requests_or_captures_secret_values": False,
+            "clears_secret_scan": False,
+            "certifies_routes": False,
+        },
+        "boundary": (
+            "This blocker intake board is read-only. It does not approve metrics, pages, "
+            "business-owner signoff, governance records, route certification, direct App "
+            "MCP/GitNexus evidence, local secret hygiene, or Ledger PnL --write execution."
+        ),
+    }
     latest_recheck = monitoring_snapshot["latest_session_recheck"]
+    assert latest_recheck["checked_at"] == "2026-06-11T00:16:22+08:00"
     assert latest_recheck["closure_effect"] == "none"
     assert latest_recheck["open_blocker_count"] == len(manifest["open_blockers"])
+    assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
+        "checked_at"
+    ] == latest_recheck["checked_at"]
+    assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
+        "returned_primary_tool_count"
+    ] == 0
+    assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
+        "returned_gitnexus_tool_count"
+    ] == 3
+    assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
+        "returned_moss_general_tool_count"
+    ] == 0
+    assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
+        "returned_moss_named_tool_count"
+    ] == 0
     assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
         "direct_app_mcp_evidence_captured"
     ] is False
@@ -305,6 +364,9 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "captured_decision_count"
     ] == 0
     assert latest_recheck["calculation_owner_decision"][
+        "incomplete_decision_count"
+    ] == counts["calculation_display_open_p1"]
+    assert latest_recheck["calculation_owner_decision"][
         "chooses_or_approves_conventions"
     ] is False
     assert monitoring_snapshot["refresh_results"]["calculation_owner_decision"][
@@ -313,6 +375,9 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert monitoring_snapshot["refresh_results"]["calculation_owner_decision"][
         "captured_decision_count"
     ] == 0
+    assert monitoring_snapshot["refresh_results"]["calculation_owner_decision"][
+        "incomplete_decision_count"
+    ] == counts["calculation_display_open_p1"]
     assert monitoring_snapshot["refresh_results"]["ledger_pnl_direct_governance_record"][
         "record_write_status"
     ] == "not_requested"
@@ -347,7 +412,10 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     ]
     assert monitoring_snapshot["generated_at"] in monitoring_evidence["result"]
     assert "drift_errors=[]" in monitoring_evidence["result"]
-    assert "monitoring refresh tests 2 passed" in monitoring_evidence["result"]
+    assert "blocker intake board next=calculation-display-p1-decisions" in (
+        monitoring_evidence["result"]
+    )
+    assert "monitoring refresh/intake tests 7 passed" in monitoring_evidence["result"]
 
     monitoring_verifier_evidence = next(
         item
@@ -396,6 +464,22 @@ def test_completion_checklist_maps_open_blockers_without_approval() -> None:
     assert "redacted gitleaks 2 ignored/untracked" in checklist
     assert "do not run `python scripts\\emit_ledger_pnl_governance_record.py --write`" in checklist
     assert "do not copy credential values" in checklist
+
+
+def test_system_audit_blocker_intake_board_is_indexed_and_non_approving() -> None:
+    manifest = _load_json(MANIFEST_PATH)
+    index = (ROOT / manifest["artifacts"]["index"]).read_text(encoding="utf-8")
+
+    assert manifest["artifacts"]["system_audit_blocker_intake_board_script"] == (
+        "scripts/system_audit_blocker_intake_board.py"
+    )
+    assert manifest["artifacts"]["system_audit_blocker_intake_board_tests"] == (
+        "tests/test_system_audit_blocker_intake_board.py"
+    )
+    assert "Blocker intake board" in index
+    assert "python scripts\\system_audit_blocker_intake_board.py --format markdown" in index
+    assert "calculation-display-p1-decisions" in index
+    assert "authorizing Ledger PnL `--write`" in index
 
 
 def test_completion_snapshot_matches_open_blockers_and_stays_non_approving() -> None:
@@ -497,8 +581,15 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     }
     assert set(packet_blockers) == set(manifest_blockers)
     assert packet["blocker_packet_count"] == len(manifest_blockers)
+    assert len(packet["completion_order"]) == len(manifest_blockers)
     assert set(packet["completion_order"]) == set(manifest_blockers)
     assert packet["completion_order"][0] == "calculation-display-p1-decisions"
+    assert packet["completion_order"].index("calculation-display-p1-decisions") < packet[
+        "completion_order"
+    ].index("owner-approval-7-pages")
+    assert packet["completion_order"].index("ledger-pnl-direct-governance-record") < packet[
+        "completion_order"
+    ].index("owner-approval-7-pages")
 
     for blocker_id, blocker in manifest_blockers.items():
         follow_up = packet_blockers[blocker_id]

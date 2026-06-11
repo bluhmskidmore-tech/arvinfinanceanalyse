@@ -2,6 +2,8 @@
 
 ## 边界
 
+Boundary: this template does not approve calculation conventions, pages, governance records, owner approvals, direct MCP/GitNexus evidence, or strict checker results.
+
 这是一份 owner 决策采集模板。填写本模板不等于完成页面审批、治理记录写入、route certification 或 metric approval。正式闭环仍以各页面 owner approval template、治理记录、MCP evidence、测试输出和 strict checker 为准。
 
 ## 会议记录

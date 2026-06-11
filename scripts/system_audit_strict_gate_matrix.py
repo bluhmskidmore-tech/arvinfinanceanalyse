@@ -66,20 +66,18 @@ def _gate(
     }
 
 
-def build_matrix(
+def build_matrix_from_inputs(
     *,
-    generated_at: str | None = None,
-    manifest_path: Path = DEFAULT_MANIFEST,
+    generated_at: str,
+    manifest_path: Path,
+    pulse: dict[str, Any],
+    completion: dict[str, Any],
+    monitoring: dict[str, Any],
+    calculation: dict[str, Any],
+    ledger: dict[str, Any],
+    direct: dict[str, Any],
+    secret: dict[str, Any],
 ) -> dict[str, Any]:
-    generated_at = generated_at or _default_generated_at()
-    pulse = build_pulse(manifest_path=manifest_path, generated_at=generated_at)
-    completion = verify_completion_snapshot(manifest_path=manifest_path)
-    monitoring = verify_monitoring_snapshot(manifest_path=manifest_path)
-    calculation = build_calculation_snapshot(generated_at=generated_at)
-    ledger = build_ledger_snapshot(generated_at=generated_at, record_created_at=generated_at)
-    direct = build_direct_tool_snapshot(generated_at=generated_at)
-    secret = build_secret_snapshot(generated_at=generated_at)
-
     calculation_capture = calculation["capture_template"]
     ledger_dry_run = ledger["dry_run_result"]
     direct_status = direct["status"]
@@ -88,6 +86,23 @@ def build_matrix(
     secret_ignored_status = secret_latest["boundary_checks"]["git_status_ignored"][
         "result"
     ]
+    completion_order_guard_status = completion.get(
+        "follow_up_completion_order_status"
+    )
+    completion_order_guard_error_count = completion.get(
+        "follow_up_completion_order_error_count"
+    )
+    guard_errors = []
+    if completion_order_guard_status != "pass":
+        guard_errors.append(
+            "completion order guard status expected 'pass', "
+            f"got {completion_order_guard_status!r}"
+        )
+    if completion_order_guard_error_count != 0:
+        guard_errors.append(
+            "completion order guard error count expected 0, "
+            f"got {completion_order_guard_error_count!r}"
+        )
 
     gates = [
         _gate(
@@ -248,16 +263,20 @@ def build_matrix(
         "generated_at": generated_at,
         "repo_root": str(ROOT),
         "manifest_path": str(manifest_path),
-        "status": "pass" if not unexpected else "fail",
+        "status": "pass" if not unexpected and not guard_errors else "fail",
         "completion_state": pulse["completion_state"],
         "full_score_ready": pulse["full_score_ready"],
         "open_blocker_count": pulse["open_blocker_count"],
+        "completion_order_guard_status": completion_order_guard_status,
+        "completion_order_guard_error_count": completion_order_guard_error_count,
         "gate_count": len(gates),
         "expected_blocked_gate_count": sum(
             1 for gate in gates if gate["expected_current_exit"] == "non_zero"
         ),
         "strict_pass_gate_count": len(strict_passes),
         "unexpected_gate_count": len(unexpected),
+        "guard_error_count": len(guard_errors),
+        "guard_errors": guard_errors,
         "gates": gates,
         "boundary": (
             "This matrix is read-only. It reports strict-gate expectations and current "
@@ -265,6 +284,33 @@ def build_matrix(
             "governance writes, direct App evidence, secret hygiene, or route certification."
         ),
     }
+
+
+def build_matrix(
+    *,
+    generated_at: str | None = None,
+    manifest_path: Path = DEFAULT_MANIFEST,
+) -> dict[str, Any]:
+    generated_at = generated_at or _default_generated_at()
+    pulse = build_pulse(manifest_path=manifest_path, generated_at=generated_at)
+    completion = verify_completion_snapshot(manifest_path=manifest_path)
+    monitoring = verify_monitoring_snapshot(manifest_path=manifest_path)
+    calculation = build_calculation_snapshot(generated_at=generated_at)
+    ledger = build_ledger_snapshot(generated_at=generated_at, record_created_at=generated_at)
+    direct = build_direct_tool_snapshot(generated_at=generated_at)
+    secret = build_secret_snapshot(generated_at=generated_at)
+
+    return build_matrix_from_inputs(
+        generated_at=generated_at,
+        manifest_path=manifest_path,
+        pulse=pulse,
+        completion=completion,
+        monitoring=monitoring,
+        calculation=calculation,
+        ledger=ledger,
+        direct=direct,
+        secret=secret,
+    )
 
 
 def format_markdown_matrix(report: dict[str, Any]) -> str:
@@ -277,6 +323,11 @@ def format_markdown_matrix(report: dict[str, Any]) -> str:
         f"- Full score ready: `{str(report['full_score_ready']).lower()}`",
         f"- Open blockers: `{report['open_blocker_count']}`",
         f"- Strict pass gates: `{report['strict_pass_gate_count']}/{report['gate_count']}`",
+        (
+            "- Completion order guard: "
+            f"`{report['completion_order_guard_status']}` "
+            f"(errors `{report['completion_order_guard_error_count']}`)"
+        ),
         "",
         "| Gate | Expected Now | Actual Now | Blocker | Detail |",
         "| --- | --- | --- | --- | --- |",
@@ -290,6 +341,9 @@ def format_markdown_matrix(report: dict[str, Any]) -> str:
             f"`{gate['blocker_id']}` | "
             f"{gate['blocking_detail']} |"
         )
+    if report["guard_errors"]:
+        lines.extend(["", "## Guard Errors", ""])
+        lines.extend(f"- `{error}`" for error in report["guard_errors"])
     lines.extend(["", "## Boundary", "", report["boundary"], ""])
     return "\n".join(lines)
 

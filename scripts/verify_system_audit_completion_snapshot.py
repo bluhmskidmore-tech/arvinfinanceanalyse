@@ -21,6 +21,21 @@ EXPECTED_OPEN_CALCULATION_P1_IDS = [
     "P1-10",
     "P1-11",
 ]
+FOLLOW_UP_COMPLETION_ORDER_CONSTRAINTS = [
+    (
+        "calculation-display-p1-decisions",
+        "owner-approval-7-pages",
+        "calculation-display P1 decisions must precede owner approval closure",
+    ),
+    (
+        "ledger-pnl-direct-governance-record",
+        "owner-approval-7-pages",
+        "Ledger PnL direct governance record must precede owner approval closure",
+    ),
+]
+FOLLOW_UP_COMPLETION_ORDER_ERROR_PREFIX = (
+    "owner/governance follow-up packet completion_order"
+)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -35,6 +50,39 @@ def _resolve(repo_root: Path, path_value: str) -> Path:
 def _append_if_missing(value: Any, *, errors: list[str], message: str) -> None:
     if not value:
         errors.append(message)
+
+
+def _verify_completion_order(
+    *,
+    completion_order: Any,
+    blocker_ids: set[str],
+    errors: list[str],
+) -> None:
+    if not isinstance(completion_order, list):
+        errors.append("owner/governance follow-up packet completion_order must be a list")
+        return
+
+    if len(completion_order) != len(blocker_ids):
+        errors.append(
+            "owner/governance follow-up packet completion_order length does not match open blockers"
+        )
+    if set(completion_order) != blocker_ids:
+        errors.append(
+            "owner/governance follow-up packet completion_order does not cover all blockers"
+        )
+
+    order_index = {
+        blocker_id: index
+        for index, blocker_id in enumerate(completion_order)
+        if isinstance(blocker_id, str)
+    }
+    for predecessor, successor, message in FOLLOW_UP_COMPLETION_ORDER_CONSTRAINTS:
+        if predecessor not in order_index or successor not in order_index:
+            continue
+        if order_index[predecessor] > order_index[successor]:
+            errors.append(
+                f"owner/governance follow-up packet completion_order invalid: {message}"
+            )
 
 
 def _verify_source_artifact_link(
@@ -111,6 +159,30 @@ def _verify_monitoring_snapshot(
         errors.append("system audit monitoring pulse blocker count does not match manifest")
     if pulse.get("drift_errors") != []:
         errors.append("system audit monitoring pulse has drift_errors")
+
+    blocker_board = snapshot.get("blocker_intake_board", {})
+    if blocker_board.get("status") != "open_external_input_required":
+        errors.append("system audit monitoring blocker intake board must remain open")
+    if blocker_board.get("blocker_count") != open_blocker_count:
+        errors.append("system audit monitoring blocker intake count does not match manifest")
+    if blocker_board.get("next_blocker_id") != "calculation-display-p1-decisions":
+        errors.append("system audit monitoring blocker intake next blocker drifted")
+    board_scope = blocker_board.get("evidence_scope", {})
+    if board_scope.get("read_only") is not True:
+        errors.append("system audit monitoring blocker intake board must be read-only")
+    for flag in [
+        "approves_metrics",
+        "approves_pages",
+        "captures_business_owner_approval",
+        "writes_governance_records",
+        "authorizes_ledger_pnl_governance_write",
+        "captures_direct_app_mcp_gitnexus_evidence",
+        "requests_or_captures_secret_values",
+        "clears_secret_scan",
+        "certifies_routes",
+    ]:
+        if board_scope.get(flag) is not False:
+            errors.append(f"system audit monitoring blocker intake flag {flag} must be false")
 
     refresh = snapshot.get("refresh_results", {})
     calculation = refresh.get("calculation_owner_decision", {})
@@ -202,8 +274,11 @@ def _verify_follow_up_packet(
         errors.append("owner/governance follow-up packet IDs do not match manifest open_blockers")
     if packet.get("blocker_packet_count") != len(open_blockers):
         errors.append("owner/governance follow-up packet count does not match manifest")
-    if set(packet.get("completion_order", [])) != set(blockers_by_id):
-        errors.append("owner/governance follow-up packet completion_order does not cover all blockers")
+    _verify_completion_order(
+        completion_order=packet.get("completion_order"),
+        blocker_ids=set(blockers_by_id),
+        errors=errors,
+    )
 
     for blocker_id, blocker in blockers_by_id.items():
         follow_up = packet_blockers.get(blocker_id)
@@ -521,6 +596,14 @@ def _verify_calculation_p1_snapshot(
         errors.append("calculation owner decision snapshot pending count does not match manifest")
     if capture.get("captured_decision_count") != 0:
         errors.append("calculation owner decision snapshot must not capture owner decisions")
+    if capture.get("incomplete_decision_count") != expected_count:
+        errors.append(
+            "calculation owner decision snapshot incomplete decision count does not match manifest"
+        )
+    if capture.get("incomplete_decision_ids") != EXPECTED_OPEN_CALCULATION_P1_IDS:
+        errors.append(
+            "calculation owner decision snapshot incomplete decision IDs do not match expected"
+        )
     if "does not choose or approve any calculation convention" not in snapshot.get(
         "boundary",
         "",
@@ -652,6 +735,26 @@ def verify_completion_snapshot(
             (calculation_snapshot or {}).get("status", {}).get("overall")
             if calculation_snapshot
             else None
+        ),
+        "calculation_incomplete_decision_count": (
+            (calculation_snapshot or {}).get("capture_template", {}).get(
+                "incomplete_decision_count"
+            )
+            if calculation_snapshot
+            else None
+        ),
+        "follow_up_completion_order_status": (
+            "fail"
+            if any(
+                error.startswith(FOLLOW_UP_COMPLETION_ORDER_ERROR_PREFIX)
+                for error in errors
+            )
+            else "pass"
+        ),
+        "follow_up_completion_order_error_count": sum(
+            1
+            for error in errors
+            if error.startswith(FOLLOW_UP_COMPLETION_ORDER_ERROR_PREFIX)
         ),
         "errors": errors,
     }

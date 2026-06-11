@@ -24,7 +24,16 @@ from scripts.refresh_ledger_pnl_direct_governance_record_snapshot import (  # no
 from scripts.refresh_local_secret_hygiene_snapshot import (  # noqa: E402
     build_snapshot as build_secret_snapshot,
 )
-from scripts.system_audit_pulse import build_pulse  # noqa: E402
+from scripts.system_audit_blocker_intake_board import (  # noqa: E402
+    build_board as build_blocker_intake_board,
+)
+from scripts.system_audit_pulse import (  # noqa: E402
+    build_pulse,
+    strict_gate_summary_from_matrix,
+)
+from scripts.system_audit_strict_gate_matrix import (  # noqa: E402
+    build_matrix_from_inputs as build_strict_gate_matrix,
+)
 from scripts.verify_system_audit_completion_snapshot import (  # noqa: E402
     verify_completion_snapshot,
 )
@@ -33,6 +42,12 @@ from scripts.verify_system_audit_completion_snapshot import (  # noqa: E402
 AUDIT_DATE = "2026-06-10"
 DEFAULT_OUTPUT = (
     ROOT / "docs" / "audits" / f"{AUDIT_DATE}-system-audit-monitoring-snapshot.json"
+)
+DEFAULT_DIRECT_TOOL_OUTPUT = (
+    ROOT
+    / "docs"
+    / "audits"
+    / f"{AUDIT_DATE}-direct-app-mcp-gitnexus-tool-surface-snapshot.json"
 )
 EVIDENCE_SCOPE = {
     "read_only": True,
@@ -62,6 +77,38 @@ def _timestamp(prefix: str, generated_at: str) -> str:
     return f"{generated_at}::{prefix}"
 
 
+def _tool_names(rows: Any) -> list[str]:
+    if not isinstance(rows, list):
+        return []
+    return [row["name"] for row in rows if isinstance(row, dict) and isinstance(row.get("name"), str)]
+
+
+def _existing_direct_tool_names(path: Path = DEFAULT_DIRECT_TOOL_OUTPUT) -> dict[str, list[str]]:
+    if not path.is_file():
+        return {
+            "primary_tool_names": [],
+            "gitnexus_tool_names": [],
+            "moss_general_tool_names": [],
+            "moss_named_tool_names": [],
+        }
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    focused = payload.get("focused_rechecks") or []
+    return {
+        "primary_tool_names": _tool_names(
+            (payload.get("tool_discovery") or {}).get("discovered_tools")
+        ),
+        "gitnexus_tool_names": _tool_names(
+            focused[0].get("returned_tools") if len(focused) > 0 and isinstance(focused[0], dict) else []
+        ),
+        "moss_general_tool_names": _tool_names(
+            focused[1].get("returned_tools") if len(focused) > 1 and isinstance(focused[1], dict) else []
+        ),
+        "moss_named_tool_names": _tool_names(
+            focused[2].get("returned_tools") if len(focused) > 2 and isinstance(focused[2], dict) else []
+        ),
+    }
+
+
 def build_monitoring_snapshot(
     *,
     generated_at: str | None = None,
@@ -74,21 +121,77 @@ def build_monitoring_snapshot(
 ) -> dict[str, Any]:
     generated_at = generated_at or _now_shanghai()
     latest_session_recheck_at = latest_session_recheck_at or generated_at
+    existing_direct_tool_names = _existing_direct_tool_names()
+    resolved_primary_tool_names = (
+        primary_tool_names
+        if primary_tool_names is not None
+        else existing_direct_tool_names["primary_tool_names"]
+    )
+    resolved_gitnexus_tool_names = (
+        gitnexus_tool_names
+        if gitnexus_tool_names is not None
+        else existing_direct_tool_names["gitnexus_tool_names"]
+    )
+    resolved_moss_general_tool_names = (
+        moss_general_tool_names
+        if moss_general_tool_names is not None
+        else existing_direct_tool_names["moss_general_tool_names"]
+    )
+    resolved_moss_named_tool_names = (
+        moss_named_tool_names
+        if moss_named_tool_names is not None
+        else existing_direct_tool_names["moss_named_tool_names"]
+    )
     calc_snapshot = build_calculation_snapshot(generated_at=generated_at)
     direct_snapshot = build_direct_tool_snapshot(
         generated_at=generated_at,
-        primary_tool_names=primary_tool_names or [],
-        gitnexus_tool_names=gitnexus_tool_names or [],
-        moss_general_tool_names=moss_general_tool_names or [],
-        moss_named_tool_names=moss_named_tool_names or [],
+        primary_tool_names=resolved_primary_tool_names,
+        gitnexus_tool_names=resolved_gitnexus_tool_names,
+        moss_general_tool_names=resolved_moss_general_tool_names,
+        moss_named_tool_names=resolved_moss_named_tool_names,
     )
     secret_snapshot = build_secret_snapshot(generated_at=generated_at)
     ledger_snapshot = build_ledger_snapshot(
         generated_at=generated_at,
         record_created_at=generated_at,
     )
-    pulse_snapshot = build_pulse(generated_at=generated_at)
+    blocker_intake_board = build_blocker_intake_board(generated_at=generated_at)
     completion = verify_completion_snapshot()
+    pulse_for_matrix = {
+        "full_score_ready": False,
+        "completion_state": (
+            "not_complete"
+            if completion["open_blocker_count"]
+            else "ready_for_completion_audit"
+        ),
+        "open_blocker_count": completion["open_blocker_count"],
+    }
+    strict_gate_matrix = build_strict_gate_matrix(
+        generated_at=generated_at,
+        manifest_path=ROOT
+        / "docs"
+        / "audits"
+        / f"{AUDIT_DATE}-system-audit-manifest.json",
+        pulse=pulse_for_matrix,
+        completion=completion,
+        monitoring={
+            "status": "pass" if completion["status"] == "pass" else "fail",
+            "open_blocker_count": pulse_for_matrix["open_blocker_count"],
+            "pulse_completion_state": pulse_for_matrix["completion_state"],
+        },
+        calculation=calc_snapshot,
+        ledger=ledger_snapshot,
+        direct=direct_snapshot,
+        secret=secret_snapshot,
+    )
+    pulse_snapshot = build_pulse(
+        generated_at=generated_at,
+        strict_gate_summary_override=strict_gate_summary_from_matrix(
+            strict_gate_matrix,
+            source=str(DEFAULT_OUTPUT),
+            source_generated_at=generated_at,
+        ),
+    )
 
     outputs = {
         "calculation_owner_decision_snapshot": ROOT
@@ -134,6 +237,9 @@ def build_monitoring_snapshot(
                 "captured_decision_count": calc_snapshot["capture_template"][
                     "captured_decision_count"
                 ],
+                "incomplete_decision_count": calc_snapshot["capture_template"][
+                    "incomplete_decision_count"
+                ],
                 "drift_error_count": len(calc_snapshot["drift_errors"]),
             },
             "direct_app_mcp_gitnexus_tool_surface": {
@@ -173,6 +279,12 @@ def build_monitoring_snapshot(
         "completion_verification": {
             "status": completion["status"],
             "open_blocker_count": completion["open_blocker_count"],
+            "follow_up_completion_order_status": completion[
+                "follow_up_completion_order_status"
+            ],
+            "follow_up_completion_order_error_count": completion[
+                "follow_up_completion_order_error_count"
+            ],
             "error_count": len(completion["errors"]),
             "errors": completion["errors"],
         },
@@ -183,11 +295,52 @@ def build_monitoring_snapshot(
             "drift_error_count": len(pulse_snapshot["drift_errors"]),
             "drift_errors": pulse_snapshot["drift_errors"],
         },
+        "blocker_intake_board": {
+            "status": blocker_intake_board["status"],
+            "blocker_count": blocker_intake_board["blocker_count"],
+            "completion_order": blocker_intake_board["completion_order"],
+            "next_blocker_id": blocker_intake_board["next_blocker_id"],
+            "evidence_scope": blocker_intake_board["evidence_scope"],
+            "boundary": blocker_intake_board["boundary"],
+        },
+        "strict_gate_matrix": {
+            "status": strict_gate_matrix["status"],
+            "completion_state": strict_gate_matrix["completion_state"],
+            "full_score_ready": strict_gate_matrix["full_score_ready"],
+            "open_blocker_count": strict_gate_matrix["open_blocker_count"],
+            "completion_order_guard_status": strict_gate_matrix[
+                "completion_order_guard_status"
+            ],
+            "completion_order_guard_error_count": strict_gate_matrix[
+                "completion_order_guard_error_count"
+            ],
+            "gate_count": strict_gate_matrix["gate_count"],
+            "expected_blocked_gate_count": strict_gate_matrix[
+                "expected_blocked_gate_count"
+            ],
+            "strict_pass_gate_count": strict_gate_matrix["strict_pass_gate_count"],
+            "unexpected_gate_count": strict_gate_matrix["unexpected_gate_count"],
+            "guard_error_count": strict_gate_matrix["guard_error_count"],
+            "guard_errors": strict_gate_matrix["guard_errors"],
+            "gates": strict_gate_matrix["gates"],
+            "boundary": strict_gate_matrix["boundary"],
+        },
         "latest_session_recheck": {
             "checked_at": latest_session_recheck_at,
             "closure_effect": "none",
             "open_blocker_count": len(pulse_snapshot["open_blockers"]),
+            "strict_gate_matrix": {
+                "status": strict_gate_matrix["status"],
+                "gate_count": strict_gate_matrix["gate_count"],
+                "strict_pass_gate_count": strict_gate_matrix["strict_pass_gate_count"],
+                "unexpected_gate_count": strict_gate_matrix["unexpected_gate_count"],
+                "completion_order_guard_status": strict_gate_matrix[
+                    "completion_order_guard_status"
+                ],
+                "guard_error_count": strict_gate_matrix["guard_error_count"],
+            },
             "direct_app_mcp_gitnexus_tool_surface": {
+                "checked_at": latest_session_recheck_at,
                 "status": direct_snapshot["status"]["overall"],
                 "returned_primary_tool_count": direct_snapshot["tool_discovery"][
                     "discovered_tool_count"
@@ -195,6 +348,12 @@ def build_monitoring_snapshot(
                 "returned_gitnexus_tool_count": direct_snapshot["focused_rechecks"][0][
                     "returned_tool_count"
                 ],
+                "returned_moss_general_tool_count": direct_snapshot["focused_rechecks"][
+                    1
+                ]["returned_tool_count"],
+                "returned_moss_named_tool_count": direct_snapshot["focused_rechecks"][
+                    2
+                ]["returned_tool_count"],
                 "relevant_direct_tool_count": sum(
                     item["relevant_direct_tool_count"]
                     for item in direct_snapshot["focused_rechecks"]
@@ -232,6 +391,9 @@ def build_monitoring_snapshot(
                 "captured_decision_count": calc_snapshot["capture_template"][
                     "captured_decision_count"
                 ],
+                "incomplete_decision_count": calc_snapshot["capture_template"][
+                    "incomplete_decision_count"
+                ],
                 "chooses_or_approves_conventions": calc_snapshot["status"][
                     "chooses_or_approves_conventions"
                 ],
@@ -254,10 +416,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--generated-at", default=None)
     parser.add_argument("--latest-session-recheck-at", default=None)
     parser.add_argument("--write-outputs", action="store_true")
-    parser.add_argument("--primary-tool-names", nargs="*", default=[])
-    parser.add_argument("--gitnexus-tool-names", nargs="*", default=[])
-    parser.add_argument("--moss-general-tool-names", nargs="*", default=[])
-    parser.add_argument("--moss-named-tool-names", nargs="*", default=[])
+    parser.add_argument("--primary-tool-names", nargs="*", default=None)
+    parser.add_argument("--gitnexus-tool-names", nargs="*", default=None)
+    parser.add_argument("--moss-general-tool-names", nargs="*", default=None)
+    parser.add_argument("--moss-named-tool-names", nargs="*", default=None)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args(argv)
 

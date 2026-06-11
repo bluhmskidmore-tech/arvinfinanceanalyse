@@ -9,6 +9,7 @@ import pytest
 
 from scripts.system_audit_strict_gate_matrix import (
     build_matrix,
+    build_matrix_from_inputs,
     format_markdown_matrix,
 )
 
@@ -32,10 +33,14 @@ def test_system_audit_strict_gate_matrix_reports_expected_blocked_gates(
     assert report["completion_state"] == "not_complete"
     assert report["full_score_ready"] is False
     assert report["open_blocker_count"] == 5
+    assert report["completion_order_guard_status"] == "pass"
+    assert report["completion_order_guard_error_count"] == 0
     assert report["gate_count"] == 7
     assert report["expected_blocked_gate_count"] == 7
     assert report["strict_pass_gate_count"] == 0
     assert report["unexpected_gate_count"] == 0
+    assert report["guard_error_count"] == 0
+    assert report["guard_errors"] == []
 
     gates = {item["gate_id"]: item for item in report["gates"]}
     assert set(gates) == {
@@ -65,6 +70,76 @@ def test_system_audit_strict_gate_matrix_reports_expected_blocked_gates(
     assert "does not approve owner decisions" in report["boundary"]
 
 
+def test_system_audit_strict_gate_matrix_fails_when_completion_order_guard_fails() -> None:
+    report = build_matrix_from_inputs(
+        generated_at="2026-06-10T22:55:00+08:00",
+        manifest_path=ROOT / "docs" / "audits" / "2026-06-10-system-audit-manifest.json",
+        pulse={
+            "completion_state": "not_complete",
+            "full_score_ready": False,
+            "open_blocker_count": 5,
+        },
+        completion={
+            "status": "pass",
+            "open_blocker_count": 5,
+            "completion_gate_count": 5,
+            "follow_up_completion_order_status": "fail",
+            "follow_up_completion_order_error_count": 2,
+        },
+        monitoring={
+            "status": "pass",
+            "open_blocker_count": 5,
+            "pulse_completion_state": "not_complete",
+        },
+        calculation={
+            "capture_template": {
+                "captured_decision_count": 0,
+                "row_count": 10,
+                "pending_count": 10,
+            },
+        },
+        ledger={
+            "status": {"overall": "dry_run_candidate_only"},
+            "dry_run_result": {
+                "record_write_status": "not_requested",
+                "existing_record_line": None,
+            },
+        },
+        direct={
+            "status": {
+                "direct_app_mcp_evidence_captured": False,
+                "direct_gitnexus_evidence_captured": False,
+            },
+            "missing_direct_servers": ["gitnexus"],
+        },
+        secret={
+            "latest_boundary_only_recheck": {
+                "secret_values_captured": False,
+                "boundary_checks": {
+                    "git_status_ignored": {"result": "!! config/.env"},
+                },
+            },
+            "status": {
+                "secret_values_captured": False,
+                "clears_secret_scan": False,
+            },
+        },
+    )
+
+    assert report["status"] == "fail"
+    assert report["completion_order_guard_status"] == "fail"
+    assert report["completion_order_guard_error_count"] == 2
+    assert report["guard_error_count"] == 2
+    assert (
+        "completion order guard status expected 'pass', got 'fail'"
+        in report["guard_errors"]
+    )
+    assert (
+        "completion order guard error count expected 0, got 2"
+        in report["guard_errors"]
+    )
+
+
 def test_system_audit_strict_gate_matrix_formats_markdown(
     strict_gate_matrix: dict,
 ) -> None:
@@ -73,6 +148,7 @@ def test_system_audit_strict_gate_matrix_formats_markdown(
     assert markdown.startswith("# System Audit Strict Gate Matrix")
     assert "- Status: `pass`" in markdown
     assert "- Strict pass gates: `0/7`" in markdown
+    assert "- Completion order guard: `pass` (errors `0`)" in markdown
     assert "`calculation-p1-owner-decisions-captured`" in markdown
     assert "`local-secret-hygiene-clean-boundary`" in markdown
     assert "does not approve owner decisions" in markdown
@@ -98,4 +174,5 @@ def test_system_audit_strict_gate_matrix_cli_outputs_markdown() -> None:
     assert completed.returncode == 0
     assert "# System Audit Strict Gate Matrix" in completed.stdout
     assert "- Strict pass gates: `0/7`" in completed.stdout
+    assert "- Completion order guard: `pass` (errors `0`)" in completed.stdout
     assert "`ledger-pnl-written-record-located`" in completed.stdout

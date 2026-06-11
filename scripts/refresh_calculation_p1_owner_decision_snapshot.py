@@ -28,6 +28,10 @@ DEFAULT_OUTPUT = (
     ROOT / "docs" / "audits" / f"{AUDIT_DATE}-calculation-p1-owner-decision-snapshot.json"
 )
 REFRESH_COMMAND = "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py"
+CAPTURE_TEMPLATE_NON_APPROVAL_BOUNDARY = (
+    "Boundary: this template does not approve calculation conventions, pages, "
+    "governance records, owner approvals, direct MCP/GitNexus evidence, or strict checker results."
+)
 P1_ROW_RE = re.compile(r"^\|\s*(P1-\d{2})\s*\|")
 PREWORK_RE = re.compile(r"^-\s+\*\*(P1-\d{2})\b")
 TIMESTAMP_RE = re.compile(r"Refreshed at `([^`]+)`")
@@ -88,6 +92,29 @@ def _capture_rows(section: str) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _is_blank(value: str) -> bool:
+    return not value.strip()
+
+
+def _is_pending_status(value: str) -> bool:
+    return value.strip().lower() in {"", "pending", "draft"}
+
+
+def _incomplete_capture_fields(row: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for field in (
+        "selected_decision",
+        "owner_rationale",
+        "implementation_owner",
+        "verification_gate",
+    ):
+        if _is_blank(str(row[field])):
+            missing.append(field)
+    if _is_pending_status(str(row["status"])):
+        missing.append("status")
+    return missing
 
 
 def _prework_ids(prework_section: str) -> list[str]:
@@ -159,13 +186,13 @@ def build_snapshot(
     prework_ids = _prework_ids(prework_section)
     capture_rows = _capture_rows(capture_section)
     capture_ids = [row["id"] for row in capture_rows]
-    captured_decision_rows = [
-        row
+    incomplete_capture_by_id = {
+        row["id"]: _incomplete_capture_fields(row)
         for row in capture_rows
-        if row["selected_decision"]
-        or row["owner_rationale"]
-        or row["implementation_owner"]
-        or row["status"] not in {"", "pending"}
+        if _incomplete_capture_fields(row)
+    }
+    captured_decision_rows = [
+        row for row in capture_rows if row["id"] not in incomplete_capture_by_id
     ]
 
     boundary_checks = {
@@ -176,8 +203,8 @@ def build_snapshot(
         "does_not_certify_routes_pages": "does not certify routes/pages" in prework_section,
         "matrix_non_approval_boundary": "This matrix does not approve any calculation convention."
         in matrix_text,
-        "capture_template_non_approval_boundary": "不批准任何计算口径" in capture_text
-        or "涓嶆壒鍑嗕换浣曡绠楀彛寰" in capture_text,
+        "capture_template_non_approval_boundary": CAPTURE_TEMPLATE_NON_APPROVAL_BOUNDARY
+        in capture_text,
     }
 
     drift_errors: list[str] = []
@@ -243,6 +270,9 @@ def build_snapshot(
             "pending_count": sum(1 for row in capture_rows if row["status"] == "pending"),
             "captured_decision_count": len(captured_decision_rows),
             "captured_decision_ids": [row["id"] for row in captured_decision_rows],
+            "incomplete_decision_count": len(incomplete_capture_by_id),
+            "incomplete_decision_ids": list(incomplete_capture_by_id),
+            "incomplete_fields_by_id": incomplete_capture_by_id,
         },
         "drift_errors": drift_errors,
         "closure_gate": (

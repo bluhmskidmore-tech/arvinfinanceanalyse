@@ -85,8 +85,13 @@ def test_verify_monitoring_snapshot_passes_for_checked_in_audit_package() -> Non
     assert result["generated_at"] == "2026-06-10T21:25:00+08:00"
     assert result["open_blocker_count"] == 5
     assert result["completion_status"] == "pass"
+    assert result["completion_order_guard_status"] == "pass"
     assert result["pulse_status"] == "pass"
     assert result["pulse_completion_state"] == "not_complete"
+    assert result["strict_gate_status"] == "pass"
+    assert result["strict_pass_gate_count"] == 0
+    assert result["strict_gate_count"] == 7
+    assert result["strict_completion_order_guard_status"] == "pass"
     assert result["errors"] == []
 
 
@@ -164,6 +169,31 @@ def test_verify_monitoring_snapshot_fails_when_latest_recheck_claims_closure(
     assert "latest session recheck closure_effect expected 'none', got 'closed'" in result["errors"]
 
 
+def test_verify_monitoring_snapshot_fails_when_latest_direct_recheck_drifts(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_monitoring_package(tmp_path)
+    monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
+    direct = monitoring["latest_session_recheck"][
+        "direct_app_mcp_gitnexus_tool_surface"
+    ]
+    direct["checked_at"] = "2026-06-10T21:25:00+08:00"
+    direct["returned_moss_general_tool_count"] = 1
+    _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
+
+    result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "latest session direct App checked_at expected '2026-06-11T00:16:22+08:00', "
+        "got '2026-06-10T21:25:00+08:00'"
+    ) in result["errors"]
+    assert (
+        "latest session returned MOSS general tool count expected 0, got 1"
+        in result["errors"]
+    )
+
+
 def test_verify_monitoring_snapshot_fails_when_pulse_completion_state_drifts(
     tmp_path: Path,
 ) -> None:
@@ -178,6 +208,115 @@ def test_verify_monitoring_snapshot_fails_when_pulse_completion_state_drifts(
     assert "monitoring pulse completion_state expected 'not_complete', got 'complete'" in result[
         "errors"
     ]
+
+
+def test_verify_monitoring_snapshot_fails_when_completion_order_guard_drifts(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_monitoring_package(tmp_path)
+    monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
+    monitoring["completion_verification"][
+        "follow_up_completion_order_status"
+    ] = "missing"
+    monitoring["completion_verification"]["follow_up_completion_order_error_count"] = 1
+    _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
+
+    result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "monitoring completion follow_up_completion_order_status expected 'pass', got 'missing'"
+        in result["errors"]
+    )
+    assert (
+        "monitoring completion follow_up_completion_order_error_count expected 0, got 1"
+        in result["errors"]
+    )
+
+
+def test_verify_monitoring_snapshot_fails_when_strict_gate_is_promoted(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_monitoring_package(tmp_path)
+    monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
+    monitoring["strict_gate_matrix"]["strict_pass_gate_count"] = 1
+    monitoring["strict_gate_matrix"]["gates"][0]["strict_pass"] = True
+    _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
+
+    result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert "strict gate matrix strict_pass_gate_count expected 0, got 1" in result[
+        "errors"
+    ]
+    assert "strict gate system-audit-full-score strict_pass must be false" in result[
+        "errors"
+    ]
+
+
+def test_verify_monitoring_snapshot_fails_when_blocker_intake_board_claims_closure(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_monitoring_package(tmp_path)
+    monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
+    monitoring["blocker_intake_board"]["status"] = "complete"
+    monitoring["blocker_intake_board"]["next_blocker_id"] = None
+    monitoring["blocker_intake_board"]["evidence_scope"][
+        "writes_governance_records"
+    ] = True
+    _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
+
+    result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "blocker intake board status expected 'open_external_input_required', got 'complete'"
+        in result["errors"]
+    )
+    assert (
+        "blocker intake board next_blocker_id expected 'calculation-display-p1-decisions', got None"
+        in result["errors"]
+    )
+    assert "blocker intake board writes_governance_records must be false" in result[
+        "errors"
+    ]
+
+
+def test_verify_monitoring_snapshot_fails_when_strict_gate_guard_drifts(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_monitoring_package(tmp_path)
+    monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
+    monitoring["strict_gate_matrix"]["completion_order_guard_status"] = "missing"
+    monitoring["strict_gate_matrix"]["completion_order_guard_error_count"] = 1
+    monitoring["strict_gate_matrix"]["guard_error_count"] = 1
+    monitoring["strict_gate_matrix"]["guard_errors"] = ["forced drift"]
+    monitoring["latest_session_recheck"]["strict_gate_matrix"][
+        "completion_order_guard_status"
+    ] = "missing"
+    monitoring["latest_session_recheck"]["strict_gate_matrix"]["guard_error_count"] = 1
+    _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
+
+    result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "strict gate matrix completion_order_guard_status expected 'pass', got 'missing'"
+        in result["errors"]
+    )
+    assert (
+        "strict gate matrix completion_order_guard_error_count expected 0, got 1"
+        in result["errors"]
+    )
+    assert "strict gate matrix guard_error_count expected 0, got 1" in result["errors"]
+    assert "strict gate matrix guard_errors expected [], got ['forced drift']" in result[
+        "errors"
+    ]
+    assert (
+        "latest session completion order guard status expected 'pass', got 'missing'"
+        in result["errors"]
+    )
+    assert "latest session guard error count expected 0, got 1" in result["errors"]
 
 
 def test_verify_monitoring_snapshot_cli_outputs_json() -> None:
@@ -196,6 +335,10 @@ def test_verify_monitoring_snapshot_cli_outputs_json() -> None:
     assert payload["status"] == "pass"
     assert payload["open_blocker_count"] == 5
     assert payload["pulse_completion_state"] == "not_complete"
+    assert payload["completion_order_guard_status"] == "pass"
+    assert payload["strict_gate_status"] == "pass"
+    assert payload["strict_pass_gate_count"] == 0
+    assert payload["strict_completion_order_guard_status"] == "pass"
     assert payload["errors"] == []
 
 

@@ -22,6 +22,7 @@
       "status": "owner_decision_required",
       "open_decision_count": 10,
       "captured_decision_count": 0,
+      "incomplete_decision_count": 10,
       "drift_error_count": 0
     },
     "direct_app_mcp_gitnexus_tool_surface": {
@@ -53,6 +54,8 @@
   "completion_verification": {
     "status": "pass",
     "open_blocker_count": 5,
+    "follow_up_completion_order_status": "pass",
+    "follow_up_completion_order_error_count": 0,
     "error_count": 0,
     "errors": []
   },
@@ -63,14 +66,144 @@
     "drift_error_count": 0,
     "drift_errors": []
   },
+  "blocker_intake_board": {
+    "status": "open_external_input_required",
+    "blocker_count": 5,
+    "completion_order": [
+      "calculation-display-p1-decisions",
+      "ledger-pnl-direct-governance-record",
+      "owner-approval-7-pages",
+      "direct-app-mcp-gitnexus-evidence",
+      "local-secret-hygiene"
+    ],
+    "next_blocker_id": "calculation-display-p1-decisions",
+    "evidence_scope": {
+      "read_only": true,
+      "approves_metrics": false,
+      "approves_pages": false,
+      "captures_business_owner_approval": false,
+      "writes_governance_records": false,
+      "authorizes_ledger_pnl_governance_write": false,
+      "captures_direct_app_mcp_gitnexus_evidence": false,
+      "requests_or_captures_secret_values": false,
+      "clears_secret_scan": false,
+      "certifies_routes": false
+    },
+    "boundary": "This blocker intake board is read-only. It does not approve metrics, pages, business-owner signoff, governance records, route certification, direct App MCP/GitNexus evidence, local secret hygiene, or Ledger PnL --write execution."
+  },
+  "strict_gate_matrix": {
+    "status": "pass",
+    "completion_state": "not_complete",
+    "full_score_ready": false,
+    "open_blocker_count": 5,
+    "completion_order_guard_status": "pass",
+    "completion_order_guard_error_count": 0,
+    "gate_count": 7,
+    "expected_blocked_gate_count": 7,
+    "strict_pass_gate_count": 0,
+    "unexpected_gate_count": 0,
+    "guard_error_count": 0,
+    "guard_errors": [],
+    "gates": [
+      {
+        "gate_id": "system-audit-full-score",
+        "command": "python scripts\\system_audit_pulse.py --require-full-score-ready",
+        "strict_pass": false,
+        "expected_current_exit": "non_zero",
+        "actual_current_exit": "non_zero",
+        "expectation_met": true,
+        "blocker_id": "system-audit-open-blockers",
+        "blocking_detail": "completion_state=not_complete; open_blocker_count=5",
+        "boundary": "This gate does not approve metrics, pages, records, secrets, or routes."
+      },
+      {
+        "gate_id": "completion-zero-open-blockers",
+        "command": "python scripts\\verify_system_audit_completion_snapshot.py --require-complete",
+        "strict_pass": false,
+        "expected_current_exit": "non_zero",
+        "actual_current_exit": "non_zero",
+        "expectation_met": true,
+        "blocker_id": "system-audit-open-blockers",
+        "blocking_detail": "open_blocker_count=5; completion_gate_count=5",
+        "boundary": "This gate verifies zero open blockers; it does not close them."
+      },
+      {
+        "gate_id": "monitoring-zero-open-blockers",
+        "command": "python scripts\\verify_system_audit_monitoring_snapshot.py --require-complete",
+        "strict_pass": false,
+        "expected_current_exit": "non_zero",
+        "actual_current_exit": "non_zero",
+        "expectation_met": true,
+        "blocker_id": "system-audit-open-blockers",
+        "blocking_detail": "open_blocker_count=5; pulse_completion_state=not_complete",
+        "boundary": "This gate verifies monitoring alignment; it does not approve blockers."
+      },
+      {
+        "gate_id": "calculation-p1-owner-decisions-captured",
+        "command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py --require-owner-decisions-captured",
+        "strict_pass": false,
+        "expected_current_exit": "non_zero",
+        "actual_current_exit": "non_zero",
+        "expectation_met": true,
+        "blocker_id": "calculation-display-p1-decisions",
+        "blocking_detail": "captured_decision_count=0; row_count=10; pending_count=10",
+        "boundary": "This gate does not choose or approve calculation conventions."
+      },
+      {
+        "gate_id": "ledger-pnl-written-record-located",
+        "command": "python scripts\\refresh_ledger_pnl_direct_governance_record_snapshot.py --require-written-record-located",
+        "strict_pass": false,
+        "expected_current_exit": "non_zero",
+        "actual_current_exit": "non_zero",
+        "expectation_met": true,
+        "blocker_id": "ledger-pnl-direct-governance-record",
+        "blocking_detail": "status=dry_run_candidate_only; record_write_status=not_requested; existing_record_line=None",
+        "boundary": "This gate locates a record only; it never authorizes or writes one."
+      },
+      {
+        "gate_id": "direct-app-mcp-gitnexus-evidence-captured",
+        "command": "python scripts\\refresh_direct_app_mcp_gitnexus_tool_surface_snapshot.py --require-direct-evidence-captured",
+        "strict_pass": false,
+        "expected_current_exit": "non_zero",
+        "actual_current_exit": "non_zero",
+        "expectation_met": true,
+        "blocker_id": "direct-app-mcp-gitnexus-evidence",
+        "blocking_detail": "missing_direct_servers=['gitnexus', 'moss-metric-contracts', 'moss-lineage-evidence', 'moss-data-catalog', 'moss-data-quality']; expected_direct_servers=['gitnexus', 'moss-metric-contracts', 'moss-lineage-evidence', 'moss-data-catalog', 'moss-data-quality']",
+        "boundary": "This gate does not treat local stdio evidence as direct App closure."
+      },
+      {
+        "gate_id": "local-secret-hygiene-clean-boundary",
+        "command": "python scripts\\refresh_local_secret_hygiene_snapshot.py --require-clean-boundary",
+        "strict_pass": false,
+        "expected_current_exit": "non_zero",
+        "actual_current_exit": "non_zero",
+        "expectation_met": true,
+        "blocker_id": "local-secret-hygiene",
+        "blocking_detail": "ignored_status='!! config/.env'; secret_values_captured=False; clears_secret_scan=False",
+        "boundary": "This gate is value-free and does not read, rotate, or clear secrets."
+      }
+    ],
+    "boundary": "This matrix is read-only. It reports strict-gate expectations and current blocked status; it does not approve owner decisions, pages, metrics, governance writes, direct App evidence, secret hygiene, or route certification."
+  },
   "latest_session_recheck": {
-    "checked_at": "2026-06-10T22:44:04+08:00",
+    "checked_at": "2026-06-11T00:16:22+08:00",
     "closure_effect": "none",
     "open_blocker_count": 5,
+    "strict_gate_matrix": {
+      "status": "pass",
+      "gate_count": 7,
+      "strict_pass_gate_count": 0,
+      "unexpected_gate_count": 0,
+      "completion_order_guard_status": "pass",
+      "guard_error_count": 0
+    },
     "direct_app_mcp_gitnexus_tool_surface": {
+      "checked_at": "2026-06-11T00:16:22+08:00",
       "status": "tool_surface_unavailable_in_current_codex_app_session",
       "returned_primary_tool_count": 0,
       "returned_gitnexus_tool_count": 3,
+      "returned_moss_general_tool_count": 0,
+      "returned_moss_named_tool_count": 0,
       "relevant_direct_tool_count": 0,
       "direct_app_mcp_evidence_captured": false,
       "direct_gitnexus_evidence_captured": false
@@ -90,6 +223,7 @@
     "calculation_owner_decision": {
       "status": "owner_decision_required",
       "captured_decision_count": 0,
+      "incomplete_decision_count": 10,
       "chooses_or_approves_conventions": false
     }
   },

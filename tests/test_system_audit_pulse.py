@@ -42,6 +42,14 @@ def test_system_audit_pulse_aggregates_live_monitors_without_approval() -> None:
     assert report["business_display"]["route_gap_count"] == 0
     assert report["completion_snapshot"]["status"] == "pass"
     assert report["completion_snapshot"]["open_blocker_count"] == 5
+    assert report["completion_snapshot"]["follow_up_completion_order_status"] == "pass"
+    assert report["completion_snapshot"]["follow_up_completion_order_error_count"] == 0
+    assert report["strict_gate_matrix"]["status"] == "pass"
+    assert report["strict_gate_matrix"]["open_blocker_count"] == 5
+    assert report["strict_gate_matrix"]["gate_count"] == 7
+    assert report["strict_gate_matrix"]["expected_blocked_gate_count"] == 7
+    assert report["strict_gate_matrix"]["strict_pass_gate_count"] == 0
+    assert report["strict_gate_matrix"]["unexpected_gate_count"] == 0
     assert report["all_page_readiness"]["source"] == "manifest_last_full_readiness"
     assert report["all_page_readiness"]["direct_evidence_null_count"] == 0
     assert report["all_page_readiness"]["audit_review_null_count"] == 0
@@ -131,6 +139,9 @@ def test_system_audit_pulse_cli_outputs_json() -> None:
     assert payload["status"] == "pass"
     assert payload["full_score_ready"] is False
     assert payload["open_blocker_count"] == 5
+    assert payload["completion_snapshot"]["follow_up_completion_order_status"] == "pass"
+    assert payload["strict_gate_matrix"]["strict_pass_gate_count"] == 0
+    assert payload["strict_gate_matrix"]["gate_count"] == 7
     assert payload["all_page_readiness"]["source"] == "manifest_last_full_readiness"
 
 
@@ -144,6 +155,9 @@ def test_system_audit_pulse_formats_markdown_without_approval() -> None:
     assert "- Open blockers: `5`" in markdown
     assert "`business_contract_certified=0`" in markdown
     assert "`route_gaps=0`" in markdown
+    assert "`order_guard=pass`" in markdown
+    assert "`pass=0/7`" in markdown
+    assert "`unexpected=0`" in markdown
     assert "`direct_evidence_null=0`" in markdown
     assert "`audit_review_null=0`" in markdown
     assert "- `none`" in markdown
@@ -172,6 +186,8 @@ def test_system_audit_pulse_cli_outputs_markdown() -> None:
     assert "# System Audit Pulse" in completed.stdout
     assert "- Completion state: `not_complete`" in completed.stdout
     assert "`business_contract_certified=0`" in completed.stdout
+    assert "`order_guard=pass`" in completed.stdout
+    assert "`pass=0/7`" in completed.stdout
     assert "does not approve metrics" in completed.stdout
 
 

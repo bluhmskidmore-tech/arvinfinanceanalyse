@@ -70,8 +70,22 @@
     "completion_gate_count": 5,
     "follow_up_packet_count": 5,
     "follow_up_brief_blocker_count": 5,
+    "follow_up_completion_order_status": "pass",
+    "follow_up_completion_order_error_count": 0,
     "calculation_prework_p1_count": 10,
     "error_count": 0
+  },
+  "strict_gate_matrix": {
+    "status": "pass",
+    "source": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-system-audit-monitoring-snapshot.json",
+    "source_generated_at": "2026-06-10T21:25:00+08:00",
+    "completion_state": "not_complete",
+    "full_score_ready": false,
+    "open_blocker_count": 5,
+    "gate_count": 7,
+    "expected_blocked_gate_count": 7,
+    "strict_pass_gate_count": 0,
+    "unexpected_gate_count": 0
   },
   "all_page_readiness": {
     "source": "manifest_last_full_readiness",

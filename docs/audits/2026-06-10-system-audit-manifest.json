@@ -48,6 +48,8 @@
     "system_audit_monitoring_tests": "tests/test_system_audit_monitoring_refresh.py",
     "system_audit_monitoring_verifier_script": "scripts/verify_system_audit_monitoring_snapshot.py",
     "system_audit_monitoring_verifier_tests": "tests/test_system_audit_monitoring_snapshot_verifier.py",
+    "system_audit_blocker_intake_board_script": "scripts/system_audit_blocker_intake_board.py",
+    "system_audit_blocker_intake_board_tests": "tests/test_system_audit_blocker_intake_board.py",
     "ledger_pnl_direct_governance_record_refresh_script": "scripts/refresh_ledger_pnl_direct_governance_record_snapshot.py"
   },
   "counts": {
@@ -265,8 +267,8 @@
     },
     {
       "scope": "system_audit_monitoring_refresh",
-      "command": "python scripts\\refresh_system_audit_monitoring.py --generated-at 2026-06-10T21:25:00+08:00 --write-outputs --gitnexus-tool-names codex_app.handoff_thread codex_app.fork_thread codex_app.automation_update; pytest tests/test_system_audit_monitoring_refresh.py -q --basetemp C:\\tmp\\moss-pytest-monitoring-unit",
-      "result": "read-only unified monitoring snapshot refreshed at 2026-06-10T21:25:00+08:00; calculation, direct App MCP/GitNexus, local secret hygiene, Ledger PnL direct governance record, and pulse snapshots were regenerated; monitoring status pass, completion verifier pass, pulse pass/not_complete with 5 blockers and drift_errors=[]; boundaries still deny DuckDB writes, governance-record writes, secret-value reads/rotation, owner approval, metric/page approval, route certification, secret clearance, and candidate-data promotion; monitoring refresh tests 2 passed"
+      "command": "python scripts\\refresh_system_audit_monitoring.py --generated-at 2026-06-10T21:25:00+08:00 --latest-session-recheck-at 2026-06-11T00:16:22+08:00 --write-outputs --gitnexus-tool-names codex_app.handoff_thread codex_app.fork_thread codex_app.automation_update; pytest tests/test_system_audit_monitoring_refresh.py tests/test_system_audit_blocker_intake_board.py -q --basetemp test_output\\pytest-blocker-intake-monitoring-green",
+      "result": "read-only unified monitoring snapshot refreshed at 2026-06-10T21:25:00+08:00; calculation, direct App MCP/GitNexus, local secret hygiene, Ledger PnL direct governance record, blocker intake board, and pulse snapshots were regenerated; monitoring status pass, completion verifier pass, pulse pass/not_complete with 5 blockers and drift_errors=[]; blocker intake board next=calculation-display-p1-decisions and remains open_external_input_required; boundaries still deny DuckDB writes, governance-record writes, secret-value reads/rotation, owner approval, metric/page approval, route certification, secret clearance, Ledger PnL --write authorization, and candidate-data promotion; monitoring refresh/intake tests 7 passed"
     },
     {
       "scope": "system_audit_monitoring_snapshot_verifier",
