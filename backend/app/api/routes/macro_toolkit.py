@@ -18,6 +18,8 @@ from backend.app.core_finance.macro import (
     clean_low_crowding_observations,
     compute_credit_spread_risk,
     compute_crisis_score_payload,
+    DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+    build_crisis_score_history_payload,
     compute_economic_cycle,
     compute_leading_indicator,
     compute_liquidity_stress_test,
@@ -93,6 +95,20 @@ _SOURCE_BACKFILL_TARGETS = {
         "series_id": "NCD.SHIBOR.3M",
         "series_name": "SHIBOR:3M",
         "default_sources": ["tushare_macro"],
+        "backfill_mode": "macro_series",
+    },
+    "m0041653": {
+        "alias": "M0041653",
+        "series_id": "EMM00088132",
+        "series_name": "公开市场操作:逆回购:7天:中标利率",
+        "default_sources": ["choice_edb"],
+        "backfill_mode": "crisis_score_inputs",
+    },
+    "m0017126": {
+        "series_id": "M0017126",
+        "series_name": "制造业PMI",
+        "default_sources": ["tushare_macro"],
+        "backfill_mode": "macro_series",
     },
 }
 
@@ -327,16 +343,22 @@ def macro_toolkit_scripts(
 def macro_toolkit_analysis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     detail: Annotated[str, Query(pattern="^(full|core)$")] = "full",
+    history_limit: Annotated[int | None, Query(ge=1, le=1000)] = None,
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_macro_toolkit_read_allowed(auth, settings)
+    resolved_history_limit = history_limit or DEFAULT_CRISIS_SCORE_HISTORY_LIMIT
     return market_home_response_cache.get_or_build(
-        market_home_macro_analysis_cache_key(settings.duckdb_path, detail),
-        lambda: _build_macro_toolkit_analysis(detail),
+        market_home_macro_analysis_cache_key(
+            settings.duckdb_path,
+            detail,
+            history_limit=resolved_history_limit if detail == "full" else None,
+        ),
+        lambda: _build_macro_toolkit_analysis(detail, history_limit=resolved_history_limit),
     )
 
 
-def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
+def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT) -> dict[str, object]:
     settings = get_settings()
     indicators = _analysis_indicators(settings.duckdb_path)
     indicator_by_key = {str(item["key"]): item for item in indicators}
@@ -358,6 +380,7 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
         capability_results = _macro_capability_results(
             settings.duckdb_path,
             report_date=analysis_date,
+            history_limit=history_limit,
         )
         strategy_summaries = _equity_strategy_summaries(settings.duckdb_path)
         source_checks = _source_checks(settings.duckdb_path)
@@ -597,12 +620,12 @@ def macro_toolkit_refresh_source_backfill(
     start_date = request.start_date or _default_source_backfill_start_date(request.end_date)
     end_date = request.end_date or date.today().isoformat()
     try:
-        payload = backfill_macro_series(
+        payload = _execute_source_backfill(
+            target=target,
+            alias=request.alias,
             duckdb_path=str(settings.duckdb_path),
-            series_names=[str(target["series_name"])],
             start_date=start_date,
             end_date=end_date,
-            dry_run=False,
             sources_filter=request.sources or list(target["default_sources"]),
         )
     except ValueError as exc:
@@ -671,6 +694,9 @@ def macro_toolkit_refresh_commodity_futures(
         "after_status": after_status,
         "summary": summary,
     }
+    if not refresh_request.dry_run and status in {"completed", "queued"}:
+        market_home_response_cache.invalidate()
+        clear_system_macro_source_cache()
     return _envelope(
         "macro_toolkit.commodity_futures_refresh",
         {
@@ -864,6 +890,46 @@ def _source_backfill_target(alias: str) -> dict[str, object]:
     if target is None:
         raise HTTPException(status_code=400, detail=f"Unsupported macro source backfill alias: {alias}")
     return target
+
+
+def _execute_source_backfill(
+    *,
+    target: dict[str, object],
+    alias: str,
+    duckdb_path: str,
+    start_date: str,
+    end_date: str,
+    sources_filter: list[str] | None,
+) -> dict[str, object]:
+    mode = str(target.get("backfill_mode") or "macro_series")
+    if mode == "crisis_score_inputs":
+        from backend.scripts.backfill_crisis_score_inputs import backfill_crisis_score_inputs
+
+        backfill_alias = str(target.get("alias") or alias)
+        payload = backfill_crisis_score_inputs(
+            duckdb_path=duckdb_path,
+            start_date=start_date,
+            end_date=end_date,
+            dry_run=False,
+            aliases=[backfill_alias],
+        )
+        result = (payload.get("results") or {}).get(backfill_alias) or {}
+        total_added = int(result.get("written_rows") or result.get("row_count") or 0)
+        return {
+            "dry_run": False,
+            "processed_count": 0 if payload.get("errors") else 1,
+            "total_added": total_added,
+            "results": {backfill_alias: total_added},
+            "errors": payload.get("errors") or {},
+        }
+    return backfill_macro_series(
+        duckdb_path=duckdb_path,
+        series_names=[str(target["series_name"])],
+        start_date=start_date,
+        end_date=end_date,
+        dry_run=False,
+        sources_filter=sources_filter,
+    )
 
 
 def _default_source_backfill_start_date(end_date: str | None) -> str:
@@ -1420,6 +1486,7 @@ def _macro_capability_results(
     duckdb_path: str | Path,
     *,
     report_date: str | None,
+    history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
 ) -> list[dict[str, object]]:
     parsed_report_date = _parse_report_date(report_date)
     if parsed_report_date is None:
@@ -1467,7 +1534,11 @@ def _macro_capability_results(
         ),
         "crisis_score_cn": _run_capability(
             "crisis_score_cn",
-            lambda: _compute_crisis_score_capability(duckdb_path, parsed_report_date),
+            lambda: _compute_crisis_score_capability(
+                duckdb_path,
+                parsed_report_date,
+                history_limit=history_limit,
+            ),
         ),
         "cross_market_linkage": _run_capability(
             "cross_market_linkage",
@@ -1993,7 +2064,12 @@ def _strategy_summary(
     }
 
 
-def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date) -> dict[str, object]:
+def _compute_crisis_score_capability(
+    duckdb_path: str | Path,
+    report_date: date,
+    *,
+    history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+) -> dict[str, object]:
     start = report_date - timedelta(days=420)
     series_data: dict[str, list[tuple[date, float]]] = {}
     inputs: list[dict[str, object]] = []
@@ -2067,6 +2143,7 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         admission=commodity_admission,
         shadow_impact=enriched["shadow_impact"],
     )
+    enriched["score_history"] = build_crisis_score_history_payload(crisis_history, limit=history_limit)
     return enriched
 
 

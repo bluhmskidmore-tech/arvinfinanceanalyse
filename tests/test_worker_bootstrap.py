@@ -39,6 +39,7 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.snapshot_materialize",
         "backend.app.tasks.fx_mid_materialize",
         "backend.app.tasks.commodity_daily_ingest",
+        "backend.app.tasks.crisis_score_inputs_refresh",
         "backend.app.tasks.choice_macro",
         "backend.app.tasks.choice_news",
         "backend.app.tasks.stock_factor_refresh",

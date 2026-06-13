@@ -32,7 +32,7 @@ _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "usdcny": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY", "USD/CNY"),
     "nh0100.nhf": ("NHCI.NH", "tushare.index_daily.NHCI.NH.close"),
     "nhci.nh": ("NH0100.NHF", "tushare.index_daily.NHCI.NH.close"),
-    "m0041653": ("cn_repo_7d", "M001", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
+    "m0041653": ("EMM00088132", "cn_repo_7d", "M001", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
     "cn-repo-7d": ("M001", "m0041653", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
     "m001": ("cn_repo_7d", "m0041653", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
     "公开市场7天逆回购利率": ("M001", "cn_repo_7d", "m0041653"),

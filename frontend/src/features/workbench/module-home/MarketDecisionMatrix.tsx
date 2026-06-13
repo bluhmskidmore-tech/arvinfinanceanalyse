@@ -98,6 +98,31 @@ function matrixChangeText(item: MatrixItem) {
   return item.summary[0] ?? "—";
 }
 
+function matrixImplication(item: MatrixItem, direction: string | undefined) {
+  if (item.key === "rates") {
+    if (item.headline === "待曲线核验") return "先补曲线，再定久期";
+    if (direction === "up") return "长端上行，复核久期压力";
+    if (direction === "down") return "长端下行，观察久期弹性";
+    return "长端平稳，维持曲线监控";
+  }
+  if (item.key === "liquidity") {
+    if (direction === "up") return "资金收紧，控制融资敏感仓位";
+    if (direction === "down") return "资金缓和，观察杠杆承接";
+    return "资金平稳，维持杠杆监控";
+  }
+  if (item.key === "cross-asset") {
+    if (direction === "up") return "风险偏好抬升，观察债市承压";
+    if (direction === "down") return "风险偏好走弱，复核股债传导";
+    return "跨资产平稳，等待下钻确认";
+  }
+  if (item.key === "macro") {
+    if (item.tone === "error") return "宏观缺口，先核验读链路";
+    if (item.tone === "watch") return "宏观中性，策略保持复核";
+    return "宏观信号可读，跟踪策略摘要";
+  }
+  return "作为读链路状态复核";
+}
+
 function findRow(panel: ModuleHomeDetailPanel | undefined, patterns: string[]) {
   return panel?.rows.find((row) => patterns.some((pattern) => `${row.key} ${row.label} ${row.source}`.includes(pattern)));
 }
@@ -130,6 +155,7 @@ export function MarketDecisionMatrix({
   const ratePanel = panelWithRows(yieldCurvePanel, keyRatePanel);
   const crossAsset = macroPanel?.rows[0];
   const macroStance =
+    macroOverviewPanel?.rows.find((row) => row.key === "macro-stance") ??
     macroOverviewPanel?.rows.find((row) => row.key.includes("stance") || row.label.includes("结论")) ??
     macroOverviewPanel?.rows[0];
   const watchCount = statusCount(view, "watch");
@@ -199,7 +225,7 @@ export function MarketDecisionMatrix({
     >
       <div className={marketStyles.decisionMatrixHeader}>
         <span>市场决策要点</span>
-        <em>利率 / 流动性 / 跨资产 / 宏观</em>
+        <em>读数 / 变动 / 组合观察</em>
         <i className={marketStyles.marketAuditOnly} data-testid="module-home-market-matrix-audit-label" hidden>
           Market Decision Tape
         </i>
@@ -209,6 +235,7 @@ export function MarketDecisionMatrix({
           <span>维度</span>
           <span>读数</span>
           <span>变动</span>
+          <span>组合观察</span>
         </div>
         {items.map((item) => {
           const summaryChange = marketChangePresentation(
@@ -217,6 +244,7 @@ export function MarketDecisionMatrix({
             MARKET_CHANGE_CLASSES,
           );
           const changeText = matrixChangeText(item);
+          const implication = matrixImplication(item, summaryChange.direction);
 
           if (item.auditOnly) {
             return (
@@ -230,6 +258,7 @@ export function MarketDecisionMatrix({
                 <span className={marketStyles.decisionMatrixTableLabel}>{item.label}</span>
                 <strong data-testid={`module-home-market-matrix-cell-${item.key}-headline`}>{item.headline}</strong>
                 <span data-testid={`module-home-market-matrix-cell-${item.key}-summary`}>—</span>
+                <span data-testid={`module-home-market-matrix-cell-${item.key}-implication`}>{implication}</span>
                 <em
                   aria-label={item.meta.length > 0 ? item.meta.join(" / ") : undefined}
                   className={marketStyles.decisionMatrixMeta}
@@ -268,6 +297,12 @@ export function MarketDecisionMatrix({
                 data-testid={`module-home-market-matrix-cell-${item.key}-summary`}
               >
                 {changeText}
+              </span>
+              <span
+                className={marketStyles.decisionMatrixTableImplication}
+                data-testid={`module-home-market-matrix-cell-${item.key}-implication`}
+              >
+                {implication}
               </span>
               <em
                 aria-label={item.meta.length > 0 ? item.meta.join(" / ") : undefined}

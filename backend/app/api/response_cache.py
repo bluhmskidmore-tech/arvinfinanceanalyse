@@ -128,7 +128,14 @@ def market_home_choice_latest_cache_key(
     return f"choice-series/latest::{category or 'all'}::{duckdb_path}"
 
 
-def market_home_macro_analysis_cache_key(duckdb_path: str, detail: str = "full") -> str:
+def market_home_macro_analysis_cache_key(
+    duckdb_path: str,
+    detail: str = "full",
+    *,
+    history_limit: int | None = None,
+) -> str:
+    if detail == "full" and history_limit is not None:
+        return f"macro-toolkit/analysis::{detail}::{history_limit}::{duckdb_path}"
     return f"macro-toolkit/analysis::{detail}::{duckdb_path}"
 
 

@@ -89,6 +89,18 @@ def first_available_rate(
     return None, None, None
 
 
+def latest_available_rate_on_or_before(
+    curves_by_date: Mapping[date, Mapping[str, Mapping[str, Decimal]]],
+    target_date: date,
+    candidates: Iterable[tuple[str, str]],
+) -> tuple[str | None, str | None, Decimal | None, date | None]:
+    for sample_date in sorted((sample for sample in curves_by_date if sample <= target_date), reverse=True):
+        curve_id, tenor, rate = first_available_rate(curves_by_date, sample_date, candidates)
+        if rate is not None:
+            return curve_id, tenor, rate, sample_date
+    return None, None, None, None
+
+
 def clamp(value: Decimal, minimum: Decimal, maximum: Decimal) -> Decimal:
     return max(minimum, min(maximum, value))
 

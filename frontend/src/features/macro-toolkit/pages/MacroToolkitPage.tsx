@@ -37,6 +37,7 @@ import type {
   MacroToolkitInputEvidence,
   MacroToolkitIndicator,
   MacroToolkitModelReadiness,
+  MacroToolkitReadinessSummary,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
   MacroToolkitScriptRecord,
@@ -54,8 +55,21 @@ import {
   PageSectionLead,
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
+import {
+  MT_SHELL_MAIN,
+  MT_SHELL_NUM,
+  MT_SHELL_PAGE,
+  MT_SHELL_STATUS_PILL,
+  MT_SHELL_STATUS_ROW,
+  MT_SHELL_TITLE,
+  MT_SHELL_TITLE_BRAND,
+  MT_SHELL_TOPBAR,
+  MT_SHELL_TOPBAR_LEFT,
+  MT_SHELL_TOPBAR_RIGHT,
+} from "../lib/macroToolkitPageChrome";
+import { isEvidenceBookRowPending } from "../lib/macroToolkitCommitteeEvidence";
 
-import "./MacroToolkitPage.css";
+import { formatCrisisTopContributorSummary } from "../lib/crisisScoreDisplay";
 
 const GROUP_LABELS: Record<string, string> = {
   allocation: "配置",
@@ -81,7 +95,13 @@ const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
 const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
 const MACRO_TOOLKIT_READ_STALE_MS = 60_000;
 const MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS = 1_500;
-const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = ["macro-toolkit", "analysis", "full"] as const;
+const MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT = 430;
+const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = [
+  "macro-toolkit",
+  "analysis",
+  "full",
+  MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT,
+] as const;
 const MACRO_COMMODITY_SHADOW_RULE_VERSION = "shadow_rule_v1";
 const MACRO_COMMODITY_SHADOW_MIN_SAMPLES = 20;
 const MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES = 5;
@@ -764,6 +784,19 @@ function formatObservationSignalStance(card: MacroToolkitSignalCard) {
   return card.stance;
 }
 
+function formatSignalCardScore(card: MacroToolkitSignalCard): string | number {
+  if (card.score !== null && card.score !== undefined) {
+    return card.score;
+  }
+  if (card.stance === "完整结果待加载") {
+    return "待加载";
+  }
+  if (card.key === "a_share_stampede_risk" && card.stance === "数据不足" && card.tone === "missing") {
+    return "待加载";
+  }
+  return "缺失";
+}
+
 function macroStatusIconTone(tone: MacroToolkitSignalCard["tone"] | "positive" | "neutral" | "missing") {
   if (tone === "positive") return "positive";
   if (tone === "negative") return "negative";
@@ -969,7 +1002,7 @@ function ObservationSignalRiskComparison({
           </div>
           <strong>{signal ? formatObservationSignalTitle(signal) : isLoading ? "观察证据加载中" : "信号待确认"}</strong>
           <div className="macro-toolkit-observation-signal-risk__score">
-            <b>{signal?.score === null || signal?.score === undefined ? "缺失" : signal.score}</b>
+            <b>{signal ? formatSignalCardScore(signal) : isLoading ? "加载中" : "待确认"}</b>
             <ScoreTrack score={signal?.score} />
           </div>
           <small title={signalEvidence}>{compactText(signalEvidence, 58)}</small>
@@ -1247,6 +1280,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [runError, setRunError] = useState<string | null>(null);
   const [chainRunResult, setChainRunResult] = useState<MacroToolkitScriptChainRun | null>(null);
   const [chainRunError, setChainRunError] = useState<string | null>(null);
+  const [chainRunModelId, setChainRunModelId] = useState<string | null>(null);
   const [isRunningChain, setIsRunningChain] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -1297,7 +1331,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   });
 
   const fetchFullAnalysis = useCallback(
-    () => client.getMacroToolkitAnalysis({ detail: "full" }),
+    () =>
+      client.getMacroToolkitAnalysis({
+        detail: "full",
+        historyLimit: MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT,
+      }),
     [client],
   );
 
@@ -1888,8 +1926,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     : [];
   const committeePackItems: MacroToolkitCommitteePackItem[] = evidenceBookRows.map((row) => {
     const isBlocking = row.key === "data-health" && hasDataHealthHardBlocker;
-    const isPending =
-      !isBlocking && /待|降级|失败|缺失|不可用|延后|等待/.test(`${row.support} ${row.gap}`);
+    const isPending = !isBlocking && isEvidenceBookRowPending(row.support, row.gap);
     const receipt =
       actionReceipts.find((item) =>
         receiptMatchesCommitteeEvidence(
@@ -2234,14 +2271,27 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     if (fullAnalysisEnvelope || analysisQuery.data?.result.runtime_status?.analysis_scope !== "core") {
       return;
     }
+    let cancelled = false;
     const timeoutId = window.setTimeout(() => {
-      void queryClient.prefetchQuery({
-        queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
-        queryFn: fetchFullAnalysis,
-        staleTime: MACRO_TOOLKIT_READ_STALE_MS,
-      });
+      void (async () => {
+        try {
+          const response = await queryClient.fetchQuery({
+            queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY,
+            queryFn: fetchFullAnalysis,
+            staleTime: MACRO_TOOLKIT_READ_STALE_MS,
+          });
+          if (!cancelled) {
+            setFullAnalysisEnvelope(response);
+          }
+        } catch {
+          // Keep the core screen until the user explicitly retries full analysis.
+        }
+      })();
     }, MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS);
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [analysisQuery.data?.result.runtime_status?.analysis_scope, fetchFullAnalysis, fullAnalysisEnvelope, queryClient]);
 
   const loadFullAnalysis = useCallback(async (options?: { force?: boolean }) => {
@@ -2465,9 +2515,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     strategyQuery,
   ]);
 
-  const runScriptChain = useCallback(async (dryRun: boolean) => {
+  const runScriptChain = useCallback(async (dryRun: boolean, modelId?: string) => {
     const receiptId = nextActionReceiptId(dryRun ? "script-chain-dry-run" : "script-chain");
     const receiptDecision = actionReceiptDecisionFields("script");
+    setChainRunModelId(modelId ?? null);
     setIsRunningChain(true);
     setChainRunError(null);
     setChainRunResult(null);
@@ -3240,8 +3291,21 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 {showOperations ? card.stance : formatObservationSignalStance(card)}
               </Tag>
             </div>
-            <strong>{card.score === null ? "缺失" : card.score}</strong>
+            <strong>{formatSignalCardScore(card)}</strong>
             <ScoreTrack score={card.score} />
+            {card.key === "crisis_score_cn" && crisisScoreResult
+              ? (() => {
+                  const rawComponents = Array.isArray(crisisScoreResult.result?.components)
+                    ? crisisScoreResult.result.components.filter(isCrisisComponent)
+                    : [];
+                  const summary = formatCrisisTopContributorSummary(rawComponents);
+                  return summary ? (
+                    <small className="macro-toolkit-signal-component-summary" data-testid="macro-toolkit-crisis-signal-component-summary">
+                      {summary}
+                    </small>
+                  ) : null;
+                })()
+              : null}
             <small>{showOperations ? card.evidence.join(" / ") : formatObservationEvidence(card.evidence)}</small>
           </div>
         ))}
@@ -3566,6 +3630,23 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       strategy={hasonStrategy}
       modelReadiness={analysis?.model_readiness}
       variant={showOperations ? "detail" : "observation"}
+    />
+  ) : null;
+  const modelSignalReadiness = analysis?.model_readiness?.length
+    ? analysis.model_readiness
+    : hasonStrategySection && analysis?.hason_strategy
+      ? deriveModelReadinessFromHasonStrategy(analysis.hason_strategy)
+      : [];
+  const modelSignalMatrixSection = modelSignalReadiness.length ? (
+    <ModelSignalMatrix
+      modelReadiness={modelSignalReadiness}
+      readinessSummary={analysis?.readiness_summary}
+      chainRunResult={chainRunResult}
+      chainRunError={chainRunError}
+      chainRunModelId={chainRunModelId}
+      isRunningChain={isRunningChain}
+      showActions={showOperations}
+      onRunChain={runScriptChain}
     />
   ) : null;
   const observationEvidenceTraceSummary = analysis ? (
@@ -4549,55 +4630,80 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   }
 
   return (
-    <div
-      className={`macro-toolkit-page macro-toolkit-page--details-${detailDensity}`}
+    <section
+      className={`${MT_SHELL_PAGE} macro-toolkit-page macro-toolkit-page--details-${detailDensity}`}
       data-testid="macro-toolkit-page"
     >
+      <header
+        className={`${MT_SHELL_TOPBAR} macro-toolkit-page__header`}
+        data-testid="macro-toolkit-toolbar"
+      >
+        <div className={`${MT_SHELL_TOPBAR_LEFT} macro-toolkit-page__header-main`}>
+          <div className={MT_SHELL_TITLE_BRAND}>
+            <h1 className={MT_SHELL_TITLE}>{showOperations ? "宏观工具" : "宏观分析结果"}</h1>
+          </div>
+          <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__badge`}>
+            {showOperations ? "工具控制台" : "只读观察"}
+          </span>
+          <div className={`${MT_SHELL_STATUS_ROW} macro-toolkit-page__toolbar-info`} aria-label="宏观工具状态">
+            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+              <ClockCircleOutlined aria-hidden="true" />
+              观察日{" "}
+              <span className={MT_SHELL_NUM}>{analysis?.as_of_date ?? "DATE_MISSING"}</span>
+            </span>
+            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+              <SafetyCertificateOutlined aria-hidden="true" />
+              门禁 {committeeDecisionStatus}
+            </span>
+            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+              <DatabaseOutlined aria-hidden="true" />
+              缺口 {repairItemCount}
+            </span>
+            <span className={`${MT_SHELL_STATUS_PILL} macro-toolkit-page__toolbar-pill`}>
+              <ThunderboltOutlined aria-hidden="true" />
+              能力 {readyCapabilityCount}/{capabilityItems.length || 0}
+            </span>
+          </div>
+        </div>
+        <div className={`${MT_SHELL_TOPBAR_RIGHT} macro-toolkit-page__header-controls`}>
+          {showOperations ? (
+            <>
+              <Button
+                className="macro-toolkit-page__dh-topbar-btn"
+                icon={<ReloadOutlined />}
+                onClick={() => {
+                  void clearFullAnalysisCache();
+                  void analysisQuery.refetch();
+                  void scriptsQuery.refetch();
+                  void strategyQuery.refetch();
+                }}
+                loading={isMacroRefreshing}
+              >
+                刷新结果
+              </Button>
+              <Button
+                className="macro-toolkit-page__dh-topbar-btn"
+                icon={<ReloadOutlined />}
+                onClick={() => void scriptsQuery.refetch()}
+                loading={scriptsQuery.isFetching}
+              >
+                刷新注册表
+              </Button>
+            </>
+          ) : null}
+        </div>
+        <p className="macro-toolkit-page__header-summary">
+          {showOperations
+            ? "把宏观分析、数据刷新、脚本运行和产物确认收在同一个首屏闭环里。"
+            : "只展示宏观分析证据；刷新、脚本和注册表保留在宏观工具页。"}
+        </p>
+      </header>
+
+      <main className={`${MT_SHELL_MAIN} macro-toolkit-page__main`}>
       <section
         data-testid="macro-toolkit-tailwind-cockpit"
         className={`macro-toolkit-cockpit macro-toolkit-cockpit--${showOperations ? "toolkit" : "observation"}`}
       >
-        <div className="macro-toolkit-cockpit__header">
-          <div className="macro-toolkit-cockpit__title-block">
-            <div className="macro-toolkit-cockpit__meta">
-              <ClockCircleOutlined />
-              <span>{analysis?.as_of_date ?? "DATE_MISSING"}</span>
-              <Tag color={showOperations ? "blue" : "default"}>{showOperations ? "工具控制台" : "只读观察"}</Tag>
-            </div>
-            <h1>{showOperations ? "宏观工具" : "宏观分析结果"}</h1>
-            <p>
-              {showOperations
-                ? "把宏观分析、数据刷新、脚本运行和产物确认收在同一个首屏闭环里。"
-                : "只展示宏观分析证据；刷新、脚本和注册表保留在宏观工具页。"}
-            </p>
-          </div>
-          <div className="macro-toolkit-cockpit__header-actions">
-            {showOperations ? (
-              <>
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => {
-                    void clearFullAnalysisCache();
-                    void analysisQuery.refetch();
-                    void scriptsQuery.refetch();
-                    void strategyQuery.refetch();
-                  }}
-                  loading={isMacroRefreshing}
-                >
-                  刷新结果
-                </Button>
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => void scriptsQuery.refetch()}
-                  loading={scriptsQuery.isFetching}
-                >
-                  刷新注册表
-                </Button>
-              </>
-            ) : null}
-          </div>
-        </div>
-
         <div className="macro-toolkit-cockpit__body">
           <div
             className="macro-toolkit-cockpit__analysis macro-toolkit-house-view"
@@ -5297,6 +5403,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               {hasonStrategySection}
               {analysisWarningsAlert}
               {signalSection}
+              {modelSignalMatrixSection}
               {crisisEvidenceSection}
               {riskSection}
               {indicatorSection}
@@ -5308,6 +5415,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               {analysisWarningsAlert}
               <div className="macro-toolkit-observation-flow" aria-label="宏观观察阅读顺序">
                 {observationSignalRiskComparisonSection}
+                {modelSignalMatrixSection}
                 {investmentEvidenceSection}
               </div>
               <div className="macro-toolkit-observation-evidence-flow" aria-label="宏观观察证据追踪">
@@ -5862,7 +5970,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           </aside>
         </section>
       ) : null}
-    </div>
+      </main>
+    </section>
   );
 }
 
@@ -5870,6 +5979,13 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
   const metric = result.primary_metric;
   const evidence = result.evidence.length ? result.evidence : result.warnings;
   const inputEvidence = normalizeInputEvidence(result);
+  const rawResult = result.result;
+  const crisisComponents =
+    result.key === "crisis_score_cn" && Array.isArray(rawResult.components)
+      ? rawResult.components.filter(isCrisisComponent)
+      : [];
+  const componentSummary =
+    result.key === "crisis_score_cn" ? formatCrisisTopContributorSummary(crisisComponents) : null;
   return (
     <div
       className={`macro-toolkit-capability-result macro-toolkit-capability-result--${result.tone}`}
@@ -5883,6 +5999,11 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
       <strong>{metric ? formatMetricDisplay(metric) : result.score ?? statusLabel(result.status)}</strong>
       <ScoreTrack score={result.score} />
       <p>{result.headline}</p>
+      {componentSummary ? (
+        <small className="macro-toolkit-crisis-component-summary" data-testid="macro-toolkit-crisis-capability-component-summary">
+          {componentSummary}
+        </small>
+      ) : null}
       <small>{evidence.slice(0, 3).join(" / ") || "暂无证据"}</small>
       {inputEvidence ? (
         <div className="macro-toolkit-input-evidence">
@@ -6734,6 +6855,7 @@ function CrisisScoreEvidencePanel({
 
   return (
     <section
+      id="macro-toolkit-crisis-detail"
       className="macro-toolkit-section macro-toolkit-crisis-evidence"
       aria-label="Crisis Score 数据来源"
     >
@@ -7190,6 +7312,328 @@ function formatHasonRuntimeOutput(item: MacroToolkitHasonStrategy["runtime_outpu
     `${hasonContentDateText(item)}` +
     `${hasonInvalidDateText(item)}` +
     `${item.modified_date ? ` file ${item.modified_date}` : ""}`
+  );
+}
+
+const MODEL_SIGNAL_MATRIX_ORDER = [
+  "merrill_clock",
+  "crisis_score",
+  "bond_futures_four_factor",
+  "funding_conditions",
+  "crowding",
+  "dcc_garch",
+  "cta_trend",
+  "bond_futures_basis",
+  "final_signal",
+  "risk_monitor",
+] as const;
+
+const MODEL_SIGNAL_MATRIX_LABELS: Record<string, string> = {
+  merrill_clock: "Merrill Clock",
+  crisis_score: "Crisis Score",
+  bond_futures_basis: "Bond Futures Basis / IRR / Safety Margin",
+  bond_futures_four_factor: "Bond Futures Four-Factor Trend",
+  funding_conditions: "Funding Conditions / Flow",
+  crowding: "Crowding",
+  dcc_garch: "DCC-GARCH",
+  cta_trend: "CTA Trend",
+  final_signal: "Final Signal Aggregator",
+  risk_monitor: "Risk Monitor",
+};
+
+function modelSignalMatrixOrder(item: MacroToolkitModelReadiness) {
+  const index = MODEL_SIGNAL_MATRIX_ORDER.indexOf(item.id as (typeof MODEL_SIGNAL_MATRIX_ORDER)[number]);
+  return index === -1 ? MODEL_SIGNAL_MATRIX_ORDER.length : index;
+}
+
+function modelReadinessStatusColor(readiness: MacroToolkitModelReadiness["readiness"]) {
+  if (readiness === "artifact_backed") return "green";
+  if (readiness === "stale" || readiness === "degraded" || readiness === "registered_only") return "gold";
+  if (readiness === "missing_output") return "red";
+  return "default";
+}
+
+function modelSignalDateText(item: MacroToolkitModelReadiness) {
+  return item.latest_content_date ?? item.artifact_receipt?.data_asof ?? item.latest_modified_at ?? "date pending";
+}
+
+function modelSignalEvidenceText(item: MacroToolkitModelReadiness) {
+  const artifacts = item.artifact_receipt?.artifact_paths ?? [];
+  if (artifacts.length) return `artifacts ${artifacts.join(" / ")}`;
+  if (item.missing_outputs.length) return `missing ${item.missing_outputs.join(" / ")}`;
+  if (item.stale_outputs.length) return `stale ${item.stale_outputs.join(" / ")}`;
+  if (item.expected_outputs.length) return `expected ${item.expected_outputs.join(" / ")}`;
+  return item.evidence_level ?? "evidence pending";
+}
+
+function modelSignalThresholdText(item: MacroToolkitModelReadiness) {
+  const gaps = [
+    item.degraded_reason ?? "",
+    item.degraded_outputs?.length ? `degraded ${item.degraded_outputs.join(" / ")}` : "",
+    item.missing_outputs.length ? `missing output ${item.missing_outputs.length}` : "",
+    item.stale_outputs.length ? `stale output ${item.stale_outputs.length}` : "",
+  ].filter(Boolean);
+  return gaps.join(" · ") || "threshold clear by current artifacts";
+}
+
+function modelSignalSummaryText(
+  readinessEntries: MacroToolkitModelReadiness[],
+  readinessSummary?: MacroToolkitReadinessSummary,
+) {
+  const total = readinessSummary?.total_count ?? readinessEntries.length;
+  const backed =
+    readinessSummary?.artifact_backed_count ??
+    readinessEntries.filter((item) => item.readiness === "artifact_backed").length;
+  const degraded =
+    readinessSummary?.degraded_count ??
+    readinessEntries.filter((item) => item.readiness !== "artifact_backed").length;
+  return `artifact-backed ${backed}/${total} · degraded ${degraded}`;
+}
+
+function modelSignalArtifactList(items: string[] | undefined, fallback = "none") {
+  return items?.length ? items.join(" / ") : fallback;
+}
+
+function modelSignalReceiptRuntime(item: MacroToolkitModelReadiness) {
+  return item.artifact_receipt?.runtime_endpoint ?? "runtime endpoint pending";
+}
+
+function modelSignalRunReceipt(
+  item: MacroToolkitModelReadiness,
+  chainRunResult: MacroToolkitScriptChainRun | null,
+) {
+  return chainRunResult?.receipts.find((receipt) => receipt.script_name === item.script_name) ?? null;
+}
+
+function ModelSignalDetail({
+  item,
+  chainRunResult,
+  chainRunError,
+  chainRunModelId,
+  isSharedScript,
+  isRunningChain,
+  showActions,
+  onRunChain,
+}: {
+  item: MacroToolkitModelReadiness;
+  chainRunResult: MacroToolkitScriptChainRun | null;
+  chainRunError: string | null;
+  chainRunModelId: string | null;
+  isSharedScript: boolean;
+  isRunningChain: boolean;
+  showActions: boolean;
+  onRunChain: (dryRun: boolean, modelId?: string) => void;
+}) {
+  const receipt = item.artifact_receipt;
+  const isLatestChainModel = chainRunModelId === item.id;
+  const runReceipt = isLatestChainModel ? modelSignalRunReceipt(item, chainRunResult) : null;
+  return (
+    <aside className="macro-toolkit-model-signal-detail" data-testid="macro-toolkit-model-signal-detail">
+      <div className="macro-toolkit-model-signal-detail__head">
+        <div>
+          <span>model evidence</span>
+          <strong>{MODEL_SIGNAL_MATRIX_LABELS[item.id] ?? item.label}</strong>
+          <small>
+            {item.script_name} 路 {modelReadinessStatusLabel(item.readiness)} 路 {modelSignalDateText(item)}
+          </small>
+        </div>
+        <div className="macro-toolkit-model-signal-matrix__boundary">
+          <Tag color={item.observation_only ? "gold" : "green"}>
+            {item.observation_only ? "observation-only" : "actionable"}
+          </Tag>
+          <Tag color={item.formal_use_allowed ? "green" : "default"}>
+            {item.formal_use_allowed ? "formal" : "non-formal"}
+          </Tag>
+        </div>
+      </div>
+      <div className="macro-toolkit-model-signal-detail__grid">
+        <div>
+          <span>Expected outputs</span>
+          <strong>{modelSignalArtifactList(item.expected_outputs)}</strong>
+        </div>
+        <div>
+          <span>Present artifacts</span>
+          <strong>{modelSignalArtifactList(receipt?.artifact_paths)}</strong>
+        </div>
+        <div>
+          <span>Missing artifacts</span>
+          <strong>{modelSignalArtifactList(receipt?.missing_artifacts ?? item.missing_outputs)}</strong>
+        </div>
+        <div>
+          <span>Stale artifacts</span>
+          <strong>{modelSignalArtifactList(item.stale_outputs)}</strong>
+        </div>
+        <div>
+          <span>Runtime endpoint</span>
+          <strong>{modelSignalReceiptRuntime(item)}</strong>
+        </div>
+        <div>
+          <span>Threshold note</span>
+          <strong>{modelSignalThresholdText(item)}</strong>
+        </div>
+      </div>
+      {item.notes.length ? <p>{item.notes.join(" / ")}</p> : null}
+      {showActions ? (
+        <div className="macro-toolkit-model-signal-detail__acceptance">
+          <div>
+            <span>Artifact-backed acceptance</span>
+            <strong>{item.readiness === "artifact_backed" ? "current artifacts accepted" : "run-chain required"}</strong>
+            <small>
+              {item.readiness === "artifact_backed"
+                ? "Current backend readiness marks this model artifact-backed."
+                : "Run preflight first, then run the model chain and compare latest receipt with expected outputs."}
+            </small>
+          </div>
+          <div className="macro-toolkit-model-signal-detail__actions">
+            <Button
+              data-testid="macro-toolkit-model-signal-chain-preflight"
+              icon={<InfoCircleOutlined />}
+              loading={isRunningChain}
+              disabled={isRunningChain}
+              size="small"
+              onClick={() => onRunChain(true, item.id)}
+            >
+              Preflight chain
+            </Button>
+            <Button
+              data-testid="macro-toolkit-model-signal-chain-run"
+              icon={<PlayCircleOutlined />}
+              loading={isRunningChain}
+              disabled={isRunningChain}
+              size="small"
+              onClick={() => onRunChain(false, item.id)}
+            >
+              Run chain
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {runReceipt ? (
+        <div className="macro-toolkit-model-signal-detail__receipt">
+          <span>Latest script run receipt</span>
+          <strong>
+            {runReceipt.script_name} · {runReceipt.status}
+          </strong>
+          <small>
+            expected {modelSignalArtifactList(runReceipt.expected_outputs)} · produced{" "}
+            {modelSignalArtifactList(runReceipt.produced_outputs)} · missing{" "}
+            {modelSignalArtifactList(runReceipt.missing_outputs_after)} ·{" "}
+            {isSharedScript ? "shared script receipt 路 " : ""}
+            {runReceipt.degraded_reason ?? "no degraded reason"}
+          </small>
+        </div>
+      ) : null}
+      {isLatestChainModel && chainRunError ? (
+        <div className="macro-toolkit-model-signal-detail__receipt macro-toolkit-model-signal-detail__receipt--error">
+          <span>Latest run issue</span>
+          <strong>{chainRunError}</strong>
+          <small>Check execute permission, script dependencies, and run-chain receipt.</small>
+        </div>
+      ) : null}
+      <div className="macro-toolkit-model-signal-detail__links">
+        <a href="#macro-toolkit-script-artifact-detail">查看脚本产物</a>
+        <a href="#macro-toolkit-model-readiness-detail">查看 readiness 摘要</a>
+      </div>
+    </aside>
+  );
+}
+
+function ModelSignalMatrix({
+  modelReadiness,
+  readinessSummary,
+  chainRunResult,
+  chainRunError,
+  chainRunModelId,
+  isRunningChain,
+  showActions,
+  onRunChain,
+}: {
+  modelReadiness: MacroToolkitModelReadiness[];
+  readinessSummary?: MacroToolkitReadinessSummary;
+  chainRunResult: MacroToolkitScriptChainRun | null;
+  chainRunError: string | null;
+  chainRunModelId: string | null;
+  isRunningChain: boolean;
+  showActions: boolean;
+  onRunChain: (dryRun: boolean, modelId?: string) => void;
+}) {
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  if (!modelReadiness.length) {
+    return null;
+  }
+  const rows = [...modelReadiness].sort((left, right) => {
+    const byOrder = modelSignalMatrixOrder(left) - modelSignalMatrixOrder(right);
+    return byOrder || left.label.localeCompare(right.label);
+  });
+  const selectedModel = rows.find((item) => item.id === selectedModelId) ?? null;
+  const scriptCounts = rows.reduce<Record<string, number>>((counts, item) => {
+    counts[item.script_name] = (counts[item.script_name] ?? 0) + 1;
+    return counts;
+  }, {});
+  const boundaryText = readinessSummary
+    ? `${readinessSummary.observation_only ? "observation-only" : "actionable"} · ${
+        readinessSummary.formal_use_allowed ? "formal use allowed" : "formal use blocked"
+      }`
+    : "boundary pending backend summary · formal use blocked";
+
+  return (
+    <section className="macro-toolkit-section macro-toolkit-model-signal-matrix" data-testid="macro-toolkit-model-signal-matrix">
+      <div className="macro-toolkit-model-signal-matrix__head">
+        <div>
+          <span>model signals</span>
+          <strong>模型信号矩阵</strong>
+          <small>
+            {modelSignalSummaryText(rows, readinessSummary)} · {boundaryText}
+          </small>
+        </div>
+        <a href="#macro-toolkit-script-artifact-detail">查看脚本产物证据</a>
+      </div>
+      <div className="macro-toolkit-model-signal-matrix__grid">
+        {rows.map((item) => (
+          <article className="macro-toolkit-model-signal-matrix__row" key={`${item.id}-${item.script_name}`}>
+            <div className="macro-toolkit-model-signal-matrix__title">
+              <span>{MODEL_SIGNAL_MATRIX_LABELS[item.id] ?? item.label}</span>
+              <Tag color={modelReadinessStatusColor(item.readiness)}>{modelReadinessStatusLabel(item.readiness)}</Tag>
+            </div>
+            <strong>{modelSignalDateText(item)}</strong>
+            <small>{modelSignalThresholdText(item)}</small>
+            <div className="macro-toolkit-model-signal-matrix__evidence">
+              <span>{item.script_name}</span>
+              <em>{modelSignalEvidenceText(item)}</em>
+            </div>
+            <div className="macro-toolkit-model-signal-matrix__boundary">
+              <Tag color={item.observation_only ? "gold" : "green"}>
+                {item.observation_only ? "observation-only" : "actionable"}
+              </Tag>
+              <Tag color={item.formal_use_allowed ? "green" : "default"}>
+                {item.formal_use_allowed ? "formal" : "non-formal"}
+              </Tag>
+            </div>
+            <button
+              className="macro-toolkit-model-signal-matrix__detail-button"
+              type="button"
+              aria-label={`查看 ${MODEL_SIGNAL_MATRIX_LABELS[item.id] ?? item.label} 模型证据`}
+              aria-expanded={selectedModelId === item.id}
+              onClick={() => setSelectedModelId((current) => (current === item.id ? null : item.id))}
+            >
+              证据
+            </button>
+          </article>
+        ))}
+      </div>
+      {selectedModel ? (
+        <ModelSignalDetail
+          item={selectedModel}
+          chainRunResult={chainRunResult}
+          chainRunError={chainRunError}
+          chainRunModelId={chainRunModelId}
+          isSharedScript={(scriptCounts[selectedModel.script_name] ?? 0) > 1}
+          isRunningChain={isRunningChain}
+          showActions={showActions}
+          onRunChain={onRunChain}
+        />
+      ) : null}
+    </section>
   );
 }
 

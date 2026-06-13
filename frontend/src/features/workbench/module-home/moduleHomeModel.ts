@@ -9,8 +9,10 @@ import type {
   MacroToolkitShadowPortfolioReport,
   MacroToolkitStrategySummariesPayload,
 } from "../../../api/macroToolkitClient";
+import { summarizeMacroNewsEvent } from "../dashboard-home/adapters/macroNewsPresentation";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import { choiceSeriesById, enrichMarketHomeRows } from "./marketHomeRowEnrichment";
+import { formatMacroSignalEvidence } from "./marketEvidenceVisual";
 import { formatRawAsNumeric } from "../../../utils/format";
 import type {
   ApiEnvelope,
@@ -24,6 +26,7 @@ import type {
   CashflowProjectionPayload,
   ChoiceMacroLatestPayload,
   ChoiceMacroLatestPoint,
+  ChoiceNewsEventsPayload,
   CubeDimensionsPayload,
   HealthResponse,
   HealthStatusResponse,
@@ -56,6 +59,7 @@ import {
 import {
   formatDv01Wan,
   formatMomRatio,
+  formatBp,
   formatRatePercent,
   formatYi,
   formatYears,
@@ -80,6 +84,12 @@ import {
   buildPortfolioReadinessGate,
   type PortfolioEvidenceSource,
 } from "./portfolioReadinessGate";
+import {
+  buildRiskKrdChart,
+  dv01LimitStatusLabel,
+  enrichRiskSectionsWithSparklines,
+  riskKpiSparklineFromTensor,
+} from "./riskHomeAdapter";
 
 export type ModuleHomeTone = "ok" | "watch" | "error" | "muted";
 
@@ -166,6 +176,12 @@ export type ModuleHomeDetailRow = {
   detail?: string;
   /** 来自 recent_points 的迷你走势，仅展示用途 */
   sparkline?: readonly number[];
+  /** portfolio-comparison 分列读数（仅展示，不补算） */
+  scaleDisplay?: string;
+  durationDisplay?: string;
+  ytmDisplay?: string;
+  dv01Display?: string;
+  countDisplay?: string;
 };
 
 export type ModuleHomeDetailChart = {
@@ -176,6 +192,14 @@ export type ModuleHomeDetailChart = {
   values: number[];
 };
 
+export type ModuleHomeDetailSection = {
+  key: string;
+  title: string;
+  subtitle?: string;
+  rows: ModuleHomeDetailRow[];
+  defaultExpanded?: boolean;
+};
+
 export type ModuleHomeDetailPanel = {
   key: string;
   title: string;
@@ -183,8 +207,57 @@ export type ModuleHomeDetailPanel = {
   stateLabel: string;
   stateDetail: string;
   rows: ModuleHomeDetailRow[];
+  sections?: ModuleHomeDetailSection[];
   tone: ModuleHomeTone;
   chart?: ModuleHomeDetailChart;
+};
+
+export type MarketCrisisExplainComponent = {
+  key: string;
+  label: string;
+  zScore: number | null;
+  weight: number | null;
+  rawValue: number | null;
+};
+
+export type MarketCrisisHistoryPoint = {
+  date: string;
+  crisisScore: number;
+  percentile: number | null;
+};
+
+export type MarketDeskIndicatorHighlight = {
+  key: string;
+  label: string;
+  value: string;
+  group: string;
+  tone: ModuleHomeTone;
+};
+
+export type MarketDeskIntelView = {
+  curveShape: string | null;
+  curveShapeLabel: string | null;
+  curveInterpretation: string | null;
+  spread10y1yBp: number | null;
+  curvePercentile1y: number | null;
+  indicators: MarketDeskIndicatorHighlight[];
+};
+
+export type MarketCrisisExplainView = {
+  crisisScore: number | null;
+  regime: string | null;
+  percentile: number | null;
+  headline: string | null;
+  recommendation: string | null;
+  dataStatus: string | null;
+  availableComponentCount: number | null;
+  componentCount: number | null;
+  scoreDelta: number | null;
+  percentileDelta: number | null;
+  components: MarketCrisisExplainComponent[];
+  scoreHistory: MarketCrisisHistoryPoint[];
+  warnings: string[];
+  tone: ModuleHomeTone;
 };
 
 export type ModuleHomeView = {
@@ -201,6 +274,8 @@ export type ModuleHomeView = {
   decision?: ModuleHomeDecision;
   distributionPanels?: ModuleHomeDistributionPanel[];
   detailPanels?: ModuleHomeDetailPanel[];
+  marketCrisisExplain?: MarketCrisisExplainView | null;
+  marketDeskIntel?: MarketDeskIntelView | null;
   dataNote: ModuleHomeDataNote;
 };
 
@@ -237,6 +312,7 @@ export type ModuleHomeSourceQueries = {
   cubeDimensions?: UseQueryResult<CubeDimensionsPayload>;
   macroToolkitAnalysis?: UseQueryResult<ApiEnvelope<MacroToolkitAnalysisPayload>>;
   macroToolkitStrategySummaries?: UseQueryResult<ApiEnvelope<MacroToolkitStrategySummariesPayload>>;
+  newsEvents?: UseQueryResult<ApiEnvelope<ChoiceNewsEventsPayload>>;
 };
 
 const YUAN_PER_YI = 100_000_000;
@@ -337,6 +413,22 @@ function queryStatus(
   };
 }
 
+function emptyRowsWatchStatus(
+  status: ModuleHomeStatus,
+  rows: readonly unknown[],
+  emptyDetail: string,
+): ModuleHomeStatus {
+  if (status.tone !== "ok" || rows.length > 0) {
+    return status;
+  }
+  return {
+    ...status,
+    value: "明细为空",
+    detail: emptyDetail,
+    tone: "watch",
+  };
+}
+
 function hasError(queries: ModuleHomeSourceQueries) {
   return Object.values(queries).some((query) => query?.isError);
 }
@@ -384,6 +476,18 @@ function marketDataMeta(
   const date =
     meta?.as_of_date ?? meta?.resolved_report_date ?? meta?.fallback_date ?? fallbackDate ?? "-";
   return `来源 ${source} · ${date}`;
+}
+
+/** Home depth zone: keep source labels, drop YYYY-MM-DD segments from panel meta. */
+export function formatPanelMetaForHome(meta: string | undefined): string | undefined {
+  if (!meta?.trim()) {
+    return meta;
+  }
+  const parts = meta
+    .split(/\s*·\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part && !/^\d{4}-\d{2}-\d{2}$/.test(part));
+  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 function combinedQueryStatus(
@@ -438,9 +542,11 @@ function buildDetailPanel(args: {
   meta: string;
   status: ModuleHomeStatus;
   rows: ModuleHomeDetailRow[];
+  sections?: ModuleHomeDetailSection[];
   chart?: ModuleHomeDetailChart;
 }): ModuleHomeDetailPanel {
   const ready = args.status.tone === "ok";
+  const sections = ready ? args.sections : undefined;
   return {
     key: args.key,
     title: args.title,
@@ -448,9 +554,14 @@ function buildDetailPanel(args: {
     stateLabel: args.status.value,
     stateDetail: args.status.detail,
     rows: ready ? args.rows : [],
+    sections,
     tone: args.status.tone,
     chart: ready ? args.chart : undefined,
   };
+}
+
+function flattenDetailSections(sections: ModuleHomeDetailSection[]): ModuleHomeDetailRow[] {
+  return sections.flatMap((section) => section.rows);
 }
 
 function findMacroPoint(
@@ -574,6 +685,12 @@ const HOME_KEY_RATE_PICKS: HomeKeyRatePick[] = [
     match: (row) => row.variety === "国债" && row.tenor === "10Y",
   },
   {
+    key: "gov-2y",
+    label: "2Y 国债",
+    kind: "rate",
+    match: (row) => row.variety === "国债" && row.tenor === "2Y",
+  },
+  {
     key: "gov-1y",
     label: "1Y 国债",
     kind: "rate",
@@ -590,6 +707,12 @@ const HOME_KEY_RATE_PICKS: HomeKeyRatePick[] = [
     label: "5Y 国债",
     kind: "rate",
     match: (row) => row.variety === "国债" && row.tenor === "5Y",
+  },
+  {
+    key: "gov-30y",
+    label: "30Y 国债",
+    kind: "rate",
+    match: (row) => row.variety === "国债" && row.tenor === "30Y",
   },
   {
     key: "gov-7y",
@@ -628,6 +751,13 @@ const HOME_KEY_RATE_PICKS: HomeKeyRatePick[] = [
     match: (row) => row.name === "DR007",
   },
   {
+    key: "r007",
+    label: "R007",
+    kind: "macro",
+    seriesIds: ["CA.R007", "M003", "EMM00167614"],
+    nameIncludes: ["R007", "R-007", "质押式回购加权利率:R007"],
+  },
+  {
     key: "omo-7d",
     label: "7天逆回购",
     kind: "macro",
@@ -656,6 +786,60 @@ const HOME_KEY_RATE_PICKS: HomeKeyRatePick[] = [
     nameIncludes: ["SHIBOR 隔夜", "Shibor 隔夜", "SHIBOR隔夜"],
   },
 ];
+
+function mergeDerivedSpreads(
+  formal: Partial<Record<string, number | null>> | undefined,
+  latest: Partial<Record<string, number | null>> | undefined,
+): Partial<Record<string, number | null>> | undefined {
+  if (!formal && !latest) {
+    return undefined;
+  }
+  const keys = new Set([...Object.keys(formal ?? {}), ...Object.keys(latest ?? {})]);
+  const merged: Partial<Record<string, number | null>> = {};
+  for (const key of keys) {
+    const formalValue = formal?.[key];
+    if (formalValue !== null && formalValue !== undefined && Number.isFinite(formalValue)) {
+      merged[key] = formalValue;
+      continue;
+    }
+    const latestValue = latest?.[key];
+    if (latestValue !== null && latestValue !== undefined && Number.isFinite(latestValue)) {
+      merged[key] = latestValue;
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function buildDerivedSpreadRows(
+  derivedSpreads: Partial<Record<string, number | null>> | undefined,
+  tradeDate: string,
+): ModuleHomeDetailRow[] {
+  if (!derivedSpreads) {
+    return [];
+  }
+  const rows: ModuleHomeDetailRow[] = [];
+  const spreadSpecs: Array<{ key: string; label: string; field: string }> = [
+    { key: "term-spread-10y-2y", label: "10Y-2Y 利差", field: "term_spread_10y_2y" },
+    { key: "term-spread-10y-1y", label: "10Y-1Y 利差", field: "term_spread_10y_1y" },
+    { key: "term-spread-10y-5y", label: "10Y-5Y 利差", field: "term_spread_10y_5y" },
+    { key: "credit-spread-aa-3y", label: "AA-3Y 信用利差", field: "credit_spread_aa_3y" },
+  ];
+  for (const spec of spreadSpecs) {
+    const value = derivedSpreads[spec.field];
+    if (value === null || value === undefined || !Number.isFinite(value)) {
+      continue;
+    }
+    rows.push({
+      key: spec.key,
+      label: spec.label,
+      value: `${value.toFixed(1)} bp`,
+      tradeDate,
+      source: "market_derived",
+      tone: "ok",
+    });
+  }
+  return rows;
+}
 
 function buildMarketKeyRateRows(
   latestSeries: ChoiceMacroLatestPoint[],
@@ -821,8 +1005,11 @@ function formatBondHeadlineKpi(
   if (key === "total_market_value" || key === "unrealized_pnl") {
     return `${formatYi(value)} 亿元`;
   }
-  if (key === "weighted_ytm" || key === "weighted_coupon" || key === "credit_spread_median") {
+  if (key === "weighted_ytm" || key === "weighted_coupon") {
     return `${formatRatePercent(value)}%`;
+  }
+  if (key === "credit_spread_median") {
+    return value.unit === "bp" ? `${formatBp(value)} bp` : `${formatRatePercent(value)}%`;
   }
   if (key === "weighted_duration") {
     return `${formatYears(value)} 年`;
@@ -836,6 +1023,7 @@ function formatBondHeadlineKpi(
 function distributionRows(
   items: Array<{ key: string; label: string; marketValue: Numeric; percentage: Numeric | null }>,
   totalMarketValue?: Numeric,
+  options: { emptyLabel?: string } = {},
 ): ModuleHomeDistributionRow[] {
   const totalRaw =
     totalMarketValue !== undefined
@@ -848,13 +1036,48 @@ function distributionRows(
     const share = item.percentage ? plain(item.percentage) : "-";
     return {
       key: item.key,
-      label: item.label?.trim() || "未分类",
+      label: item.label?.trim() || options.emptyLabel || "未分类",
       marketValue: `${formatYi(item.marketValue)} 亿元`,
       share,
       barPct: Math.min(100, Math.max(0, barPct)),
       tone: mvRaw !== null && mvRaw > 0 ? "ok" : "muted",
     };
   });
+}
+
+function zqtzAssetCnyMarketValue(balanceBasis: BalanceAnalysisBasisBreakdownPayload | undefined) {
+  if (!balanceBasis) {
+    return null;
+  }
+  const rows = balanceBasis.rows.filter(
+    (row) =>
+      row.source_family === "zqtz" &&
+      row.position_scope === "asset" &&
+      row.currency_basis === "CNY",
+  );
+  if (rows.length === 0) {
+    return null;
+  }
+  return rows.reduce((sum, row) => sum + (decimalToNumber(row.market_value_amount) ?? 0), 0);
+}
+
+function ratingTieOutSubtitle(
+  assetRating: AssetStructurePayload | undefined,
+  balanceBasis: BalanceAnalysisBasisBreakdownPayload | undefined,
+) {
+  if (!assetRating) {
+    return undefined;
+  }
+  const ratingTotal = nativeToNumber(assetRating.total_market_value);
+  const basisTotal = zqtzAssetCnyMarketValue(balanceBasis);
+  const tieOut =
+    ratingTotal !== null && basisTotal !== null
+      ? `正式余额核对差异 ${((ratingTotal - basisTotal) / YUAN_PER_YI).toLocaleString("zh-CN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })} 亿`
+      : "正式余额核对待 basis 分解返回";
+  return `ZQTZ 资产端 CNY；${tieOut}；无评级含利率债或未填评级。`;
 }
 
 function buildDistributionPanel(args: {
@@ -869,19 +1092,30 @@ function buildDistributionPanel(args: {
   viewAllPath?: string;
 }): ModuleHomeDistributionPanel {
   const status = queryStatus(args.key, args.title, args.query, args.readyDetail);
+  const emptyReadyStatus: ModuleHomeStatus | null =
+    status.tone === "ok" && args.rows.length === 0
+      ? {
+          key: args.key,
+          label: args.title,
+          value: "明细为空",
+          detail: `${args.title}明细为空；正式读链路已返回但无分组行，请复核源表过滤条件。`,
+          tone: "watch",
+        }
+      : null;
+  const panelStatus = emptyReadyStatus ?? status;
   return {
     key: args.key,
     title: args.title,
     meta: bondDashboardMeta(args.reportDate),
-    stateLabel: status.value,
-    stateDetail: status.detail,
-    rows: status.tone === "ok" ? args.rows : [],
-    tone: status.tone,
+    stateLabel: panelStatus.value,
+    stateDetail: panelStatus.detail,
+    rows: panelStatus.tone === "ok" ? args.rows : [],
+    tone: panelStatus.tone,
     totalDisplay:
-      status.tone === "ok" && args.totalMarketValue !== undefined
+      panelStatus.tone === "ok" && args.totalMarketValue !== undefined
         ? `${formatYi(args.totalMarketValue)} 亿`
         : undefined,
-    subtitle: status.tone === "ok" ? args.subtitle : undefined,
+    subtitle: panelStatus.tone === "ok" ? args.subtitle : undefined,
     viewAllPath: args.viewAllPath,
   };
 }
@@ -1009,14 +1243,24 @@ function buildRiskIndicatorDetailRows(risk: RiskIndicatorsPayload): ModuleHomeDe
 function buildPortfolioComparisonRows(
   payload: PortfolioComparisonPayload,
 ): ModuleHomeDetailRow[] {
-  return payload.items.slice(0, 8).map((item) => ({
-    key: `portfolio-${item.portfolio_name}`,
-    label: item.portfolio_name,
-    value: `${formatYi(item.total_market_value)} 亿 · 久期 ${formatYears(item.weighted_duration)} · YTM ${formatRatePercent(item.weighted_ytm)}%`,
-    tradeDate: payload.report_date,
-    source: `DV01 ${formatDv01Wan(item.total_dv01)} 万 · ${item.bond_count} 只`,
-    tone: "ok",
-  }));
+  return payload.items
+    .slice(0, 8)
+    .map((item, index) => {
+      const portfolioLabel = item.portfolio_name.trim() || `未命名组合 ${index + 1}`;
+      return {
+        key: `portfolio-${portfolioLabel}`,
+        label: portfolioLabel,
+        value: `${formatYi(item.total_market_value)} 亿`,
+        tradeDate: payload.report_date,
+        source: `DV01 ${formatDv01Wan(item.total_dv01)} 万 · ${item.bond_count} 只`,
+        tone: "ok",
+        scaleDisplay: `${formatYi(item.total_market_value)} 亿`,
+        durationDisplay: `${formatYears(item.weighted_duration)} 年`,
+        ytmDisplay: `${formatRatePercent(item.weighted_ytm)}%`,
+        dv01Display: `${formatDv01Wan(item.total_dv01)} 万`,
+        countDisplay: item.bond_count.toLocaleString("zh-CN"),
+      };
+    });
 }
 
 function parseRatePercent(value: string): number | null {
@@ -1099,7 +1343,7 @@ function buildLatestMacroSnapshotRows(
   }
 
   for (const point of latestSeries) {
-    if (rows.length >= 18) {
+    if (rows.length >= 24) {
       break;
     }
     if (seen.has(point.series_id) || excludeSeriesIds.has(point.series_id)) {
@@ -1111,6 +1355,37 @@ function buildLatestMacroSnapshotRows(
     }
   }
 
+  return rows;
+}
+
+function buildNewsEventsSnapshotRows(
+  payload: ChoiceNewsEventsPayload | undefined,
+): ModuleHomeDetailRow[] {
+  if (!payload || payload.events.length === 0) {
+    return [];
+  }
+  const rows: ModuleHomeDetailRow[] = [
+    {
+      key: "news-events-total",
+      label: "事件总数",
+      value: `${payload.total_rows} 条`,
+      tradeDate: "-",
+      source: "choice-events",
+      tone: payload.total_rows > 0 ? "ok" : "muted",
+    },
+  ];
+  for (const [index, event] of payload.events.slice(0, 5).entries()) {
+    const headline = summarizeMacroNewsEvent(event);
+    rows.push({
+      key: `news-event-${event.event_key || index}`,
+      label: event.topic_code || "新闻事件",
+      value: headline || event.payload_text?.trim() || "待解析标题",
+      detail: event.received_at?.slice(0, 10) ?? undefined,
+      tradeDate: event.received_at?.slice(0, 10) ?? "-",
+      source: event.content_type || "choice-events",
+      tone: event.error_code === 0 ? "ok" : "watch",
+    });
+  }
   return rows;
 }
 
@@ -1138,31 +1413,261 @@ function formatMacroToolkitPrimaryMetric(
 }
 
 function pickMacroSignalChangeDetail(evidence: string[]): string | undefined {
-  return evidence.find((line) => /bp|%|日变动|[+-]\d/.test(line));
+  return evidence.find((line) => {
+    const trimmed = line.trim();
+    if (/^(?:score|regime|percentile)=/i.test(trimmed)) {
+      return false;
+    }
+    return /bp|日变动|[+-]\d/.test(trimmed);
+  });
 }
 
-function macroSignalScoreSparkline(score: number | null): readonly number[] | undefined {
-  if (score === null || !Number.isFinite(score)) {
-    return undefined;
+export const MARKET_HOME_MACRO_SIGNAL_ORDER = [
+  "crisis_score_cn",
+  "liquidity",
+  "credit",
+  "risk_appetite",
+  "a_share_stampede_risk",
+] as const;
+
+function marketHomeMacroSignalSortIndex(key: string): number {
+  const index = MARKET_HOME_MACRO_SIGNAL_ORDER.indexOf(key as (typeof MARKET_HOME_MACRO_SIGNAL_ORDER)[number]);
+  return index === -1 ? MARKET_HOME_MACRO_SIGNAL_ORDER.length : index;
+}
+
+export const MARKET_CURVE_TERM_SPREAD_KEYS = [
+  "term-spread-10y-2y",
+  "term-spread-10y-5y",
+  "term-spread-10y-1y",
+] as const;
+
+const MARKET_CURVE_CREDIT_SPREAD_MATCHERS = [
+  "credit-spread",
+  "credit_spread",
+  "信用利差",
+  "aa-国债",
+  "aa5y",
+] as const;
+
+export function findMarketCreditSpreadRow(rows: ModuleHomeDetailRow[]): ModuleHomeDetailRow | undefined {
+  return rows.find((row) => {
+    if (row.key.startsWith("term-spread-")) {
+      return false;
+    }
+    const haystack = `${row.key} ${row.label}`.toLowerCase();
+    return MARKET_CURVE_CREDIT_SPREAD_MATCHERS.some((token) => haystack.includes(token.toLowerCase()));
+  });
+}
+
+export function buildMarketCurveSpreadRows(keyRatePanel?: ModuleHomeDetailPanel): {
+  termSpreadRows: ModuleHomeDetailRow[];
+  creditSpreadRow?: ModuleHomeDetailRow;
+} {
+  const rows = keyRatePanel?.rows ?? [];
+  const termSpreadRows = MARKET_CURVE_TERM_SPREAD_KEYS.map((key) => rows.find((row) => row.key === key)).filter(
+    (row): row is ModuleHomeDetailRow => Boolean(row),
+  );
+  const creditSpreadRow = findMarketCreditSpreadRow(rows);
+  return { termSpreadRows, creditSpreadRow };
+}
+
+const MARKET_CURVE_SHAPE_LABELS: Record<string, string> = {
+  Inverted: "倒挂",
+  Flat: "平坦",
+  Hump: "驼峰",
+  ModerateSteep: "中度陡峭",
+  NormalSteep: "偏陡",
+  Unavailable: "不可用",
+};
+
+const MARKET_DESK_INTEL_INDICATOR_LIMIT = 6;
+
+function crisisHistoryDelta(history: MarketCrisisHistoryPoint[]): {
+  scoreDelta: number | null;
+  percentileDelta: number | null;
+} {
+  if (history.length < 2) {
+    return { scoreDelta: null, percentileDelta: null };
   }
-  const anchor = Math.max(0, score - Math.max(4, Math.round(score * 0.06)));
-  if (anchor === score) {
-    return undefined;
+  const first = history[0];
+  const last = history[history.length - 1];
+  const scoreDelta =
+    first && last && Number.isFinite(first.crisisScore) && Number.isFinite(last.crisisScore)
+      ? Number((last.crisisScore - first.crisisScore).toFixed(4))
+      : null;
+  const percentileDelta =
+    first?.percentile !== null &&
+    first?.percentile !== undefined &&
+    last?.percentile !== null &&
+    last?.percentile !== undefined
+      ? Number((last.percentile - first.percentile).toFixed(2))
+      : null;
+  return { scoreDelta, percentileDelta };
+}
+
+function readCrisisResultNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function buildMarketDeskIntel(
+  analysis: MacroToolkitAnalysisPayload | null | undefined,
+): MarketDeskIntelView | null {
+  if (!analysis) {
+    return null;
   }
-  return [anchor, score];
+
+  const curveCapability = analysis.capability_results.find((item) => item.key === "yield_curve_shape");
+  const curveResult = curveCapability?.result ?? {};
+  const curveShape = readCrisisResultString(curveResult.shape);
+  const spreads =
+    curveResult.spreads && typeof curveResult.spreads === "object"
+      ? (curveResult.spreads as Record<string, unknown>)
+      : {};
+  const spread10y1yRaw = spreads["10Y-1Y"];
+  const spread10y1yBp =
+    typeof spread10y1yRaw === "number"
+      ? spread10y1yRaw
+      : typeof spread10y1yRaw === "string"
+        ? readCrisisResultNumber(Number.parseFloat(spread10y1yRaw))
+        : readCrisisResultNumber(spread10y1yRaw);
+
+  const indicators = analysis.indicators
+    .filter((indicator) => indicator.latest_value !== null && indicator.latest_value !== undefined)
+    .slice(0, MARKET_DESK_INTEL_INDICATOR_LIMIT)
+    .map((indicator) => {
+      const changeText =
+        indicator.change_pct !== null && indicator.change_pct !== undefined
+          ? ` · ${indicator.change_pct >= 0 ? "+" : ""}${indicator.change_pct.toFixed(2)}%`
+          : "";
+      return {
+        key: indicator.key,
+        label: indicator.label,
+        value: `${indicator.latest_value}${indicator.unit ?? ""}${changeText}`,
+        group: indicator.group,
+        tone: (indicator.quality === "ok" ? "ok" : "watch") as ModuleHomeTone,
+      };
+    });
+
+  if (!curveShape && indicators.length === 0) {
+    return null;
+  }
+
+  return {
+    curveShape,
+    curveShapeLabel: curveShape ? MARKET_CURVE_SHAPE_LABELS[curveShape] ?? curveShape : null,
+    curveInterpretation: readCrisisResultString(curveResult.interpretation),
+    spread10y1yBp,
+    curvePercentile1y: readCrisisResultNumber(curveResult.percentile_1y),
+    indicators,
+  };
+}
+
+function readCrisisResultString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function readMarketCrisisScoreHistory(raw: unknown): MarketCrisisHistoryPoint[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const point = item as Record<string, unknown>;
+      const crisisScore = readCrisisResultNumber(point.crisis_score);
+      const date = readCrisisResultString(point.date);
+      if (crisisScore === null || !date) {
+        return null;
+      }
+      return {
+        date,
+        crisisScore,
+        percentile: readCrisisResultNumber(point.percentile),
+      };
+    })
+    .filter((item): item is MarketCrisisHistoryPoint => Boolean(item));
+}
+
+export function buildMarketCrisisExplain(
+  analysis: MacroToolkitAnalysisPayload | null | undefined,
+): MarketCrisisExplainView | null {
+  if (!analysis) {
+    return null;
+  }
+  const capability = analysis.capability_results.find((item) => item.key === "crisis_score_cn");
+  if (!capability) {
+    return null;
+  }
+  const result = capability.result ?? {};
+  const rawComponents = Array.isArray(result.components) ? result.components : [];
+  const components: MarketCrisisExplainComponent[] = rawComponents
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const component = item as Record<string, unknown>;
+      const key = readCrisisResultString(component.key) ?? "";
+      if (!key) {
+        return null;
+      }
+      return {
+        key,
+        label: readCrisisResultString(component.label) ?? key,
+        zScore: readCrisisResultNumber(component.z_score),
+        weight: readCrisisResultNumber(component.weight),
+        rawValue: readCrisisResultNumber(component.raw_value),
+      };
+    })
+    .filter((item): item is MarketCrisisExplainComponent => Boolean(item));
+  const warnings = Array.isArray(result.warnings)
+    ? result.warnings.map((item) => String(item).trim()).filter(Boolean)
+    : capability.warnings ?? [];
+  const scoreHistory = readMarketCrisisScoreHistory(result.score_history);
+  const { scoreDelta, percentileDelta } = crisisHistoryDelta(scoreHistory);
+
+  return {
+    crisisScore: readCrisisResultNumber(result.crisis_score) ?? capability.score,
+    regime: readCrisisResultString(result.regime),
+    percentile: readCrisisResultNumber(result.percentile),
+    headline: readCrisisResultString(result.headline) ?? capability.headline ?? null,
+    recommendation: readCrisisResultString(result.recommendation),
+    dataStatus: readCrisisResultString(result.data_status) ?? capability.status,
+    availableComponentCount: readCrisisResultNumber(result.available_component_count),
+    componentCount: readCrisisResultNumber(result.component_count),
+    scoreDelta,
+    percentileDelta,
+    components,
+    scoreHistory,
+    warnings,
+    tone: macroToolkitModuleTone(capability.status),
+  };
 }
 
 function buildMacroToolkitSignalRows(analysis: MacroToolkitAnalysisPayload): ModuleHomeDetailRow[] {
-  return analysis.signal_cards.map((card) => ({
-    key: card.key,
-    label: card.title,
-    value: card.score !== null ? `${card.stance} · ${card.score}` : card.stance,
-    detail: pickMacroSignalChangeDetail(card.evidence),
-    sparkline: macroSignalScoreSparkline(card.score),
-    tradeDate: analysis.as_of_date ?? "-",
-    source: card.evidence.join(" · ") || "macro-toolkit",
-    tone: macroToolkitModuleTone(card.tone),
-  }));
+  return analysis.signal_cards
+    .map((card) => {
+      const evidenceLines = card.evidence
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0 && !/^(?:score|regime|percentile)=/i.test(line));
+      const detail = evidenceLines.slice(0, 2).join(" · ") || pickMacroSignalChangeDetail(card.evidence);
+
+      return {
+        key: card.key,
+        label: card.title,
+        value: card.score !== null ? `${card.stance} · ${card.score}` : card.stance,
+        detail,
+        tradeDate: analysis.as_of_date ?? "-",
+        source: formatMacroSignalEvidence(card.evidence) || "macro-toolkit",
+        tone: macroToolkitModuleTone(card.tone),
+      };
+    })
+    .sort((left, right) => marketHomeMacroSignalSortIndex(left.key) - marketHomeMacroSignalSortIndex(right.key));
 }
 
 function buildMacroToolkitCapabilityRows(analysis: MacroToolkitAnalysisPayload): ModuleHomeDetailRow[] {
@@ -1541,7 +2046,7 @@ function buildPortfolioComparisonChart(
     title: "子组合市值规模",
     unit: "亿元",
     orientation: "horizontal",
-    categories: items.map((item) => item.portfolio_name),
+    categories: items.map((item, index) => item.portfolio_name.trim() || `未命名组合 ${index + 1}`),
     values: items.map((item) => (nativeToNumber(item.total_market_value) ?? 0) / 1e8),
   };
 }
@@ -1622,7 +2127,9 @@ function buildBusinessTypeRows(
     label: item.name,
     value: `YTM ${item.weighted_avg_ytm_pct}% · 久期 ${item.weighted_avg_duration}`,
     tradeDate: payload.report_date,
-    source: `市值 ${formatYiFromYuan(item.market_value)} · ${item.duration_source}`,
+    source: ["市值 " + formatYiFromYuan(item.market_value), item.duration_source]
+      .filter((part) => part.trim().length > 0)
+      .join(" · "),
     tone: "ok",
   }));
 }
@@ -1946,8 +2453,10 @@ function portfolioView(
           percentage: item.percentage,
         })),
         assetRating?.total_market_value,
+        { emptyLabel: "未填评级 / 不适用评级" },
       ),
       totalMarketValue: assetRating?.total_market_value,
+      subtitle: ratingTieOutSubtitle(assetRating, balanceBasis),
     }),
     buildDistributionPanel({
       key: "maturity",
@@ -2036,39 +2545,55 @@ function portfolioView(
     evidenceState,
     readiness,
   });
-  const portfolioStatus = queryStatus(
-    "portfolio-comparison",
-    "子组合对比",
-    queries.bondPortfolioComparison,
-    portfolioRows.length > 0
-      ? `portfolio-comparison 已返回 ${portfolioRows.length} 个子组合。`
-      : "子组合对比为空。",
+  const portfolioStatus = emptyRowsWatchStatus(
+    queryStatus(
+      "portfolio-comparison",
+      "子组合对比",
+      queries.bondPortfolioComparison,
+      portfolioRows.length > 0
+        ? `portfolio-comparison 已返回 ${portfolioRows.length} 个子组合。`
+        : "子组合对比为空。",
+    ),
+    portfolioRows,
+    "子组合对比为空；正式读链路已返回但无子组合明细，请复核组合分层读链路。",
   );
 
   const yieldRows = yieldDist ? buildYieldDistributionRows(yieldDist) : [];
-  const yieldStatus = queryStatus(
-    "yield-distribution",
-    "收益率分布",
-    queries.bondYield,
-    yieldRows.length > 0 ? `yield-distribution 已返回 ${yieldRows.length} 项。` : "收益率分布为空。",
+  const yieldStatus = emptyRowsWatchStatus(
+    queryStatus(
+      "yield-distribution",
+      "收益率分布",
+      queries.bondYield,
+      yieldRows.length > 0 ? `yield-distribution 已返回 ${yieldRows.length} 项。` : "收益率分布为空。",
+    ),
+    yieldRows,
+    "收益率分布为空；正式读链路已返回但无收益率桶明细，请复核源表过滤条件。",
   );
 
   const spreadRows = spread ? buildSpreadAnalysisRows(spread) : [];
-  const spreadStatus = queryStatus(
-    "spread-analysis",
-    "利差结构",
-    queries.bondSpread,
-    spreadRows.length > 0 ? `spread-analysis 已返回 ${spreadRows.length} 项。` : "利差结构为空。",
+  const spreadStatus = emptyRowsWatchStatus(
+    queryStatus(
+      "spread-analysis",
+      "利差结构",
+      queries.bondSpread,
+      spreadRows.length > 0 ? `spread-analysis 已返回 ${spreadRows.length} 项。` : "利差结构为空。",
+    ),
+    spreadRows,
+    "利差结构为空；正式读链路已返回但无券种利差明细，请复核源表过滤条件。",
   );
 
   const businessTypeRows = businessType ? buildBusinessTypeRows(businessType) : [];
-  const businessTypeStatus = queryStatus(
-    "business-type-metrics",
-    "业务类型指标",
-    queries.bondBusinessType,
-    businessTypeRows.length > 0
-      ? `business-type-metrics 已返回 ${businessTypeRows.length} 项。`
-      : "业务类型指标为空。",
+  const businessTypeStatus = emptyRowsWatchStatus(
+    queryStatus(
+      "business-type-metrics",
+      "业务类型指标",
+      queries.bondBusinessType,
+      businessTypeRows.length > 0
+        ? `business-type-metrics 已返回 ${businessTypeRows.length} 项。`
+        : "业务类型指标为空。",
+    ),
+    businessTypeRows,
+    "业务类型指标为空；正式读链路已返回但无业务类型明细，请复核源表过滤条件。",
   );
 
   const basisRows = balanceBasis ? buildBalanceBasisRows(balanceBasis) : [];
@@ -2254,8 +2779,20 @@ function marketView(
     rateSeries.find((item) => item.series_name.includes("10年"));
 
   const seriesById = choiceSeriesById(latestSeries, rateSeries);
+  const baseKeyRateRows = buildMarketKeyRateRows(latestSeries, rateSeries, terminalModel);
+  const spreadTradeDate =
+    baseKeyRateRows[0]?.tradeDate ?? latestSeries[0]?.trade_date ?? rateSeries[0]?.trade_date ?? "-";
   const keyRateRows = enrichMarketHomeRows(
-    buildMarketKeyRateRows(latestSeries, rateSeries, terminalModel),
+    [
+      ...baseKeyRateRows,
+      ...buildDerivedSpreadRows(
+        mergeDerivedSpreads(
+          queries.marketRates?.data?.result.derived_spreads,
+          queries.choiceLatest?.data?.result.derived_spreads,
+        ),
+        spreadTradeDate,
+      ),
+    ],
     seriesById,
   );
   const keyRateStatus = combinedQueryStatus(
@@ -2278,7 +2815,7 @@ function marketView(
     rows: keyRateRows,
   });
 
-  const formalRateRows: ModuleHomeDetailRow[] = rateSeries.slice(0, 12).map((point) =>
+  const formalRateRows: ModuleHomeDetailRow[] = rateSeries.slice(0, 24).map((point) =>
     macroPointToDetailRow(point, point.series_name, point.series_id),
   );
   const formalRateStatus = queryStatus(
@@ -2390,6 +2927,15 @@ function marketView(
     queries.macroToolkitAnalysis?.data?.result,
     queries.macroToolkitStrategySummaries?.data?.result,
   );
+  const newsEventsPayload = queries.newsEvents?.data?.result;
+  const newsEventsStatus = queryStatus(
+    "news-events",
+    "新闻事件",
+    queries.newsEvents,
+    newsEventsPayload
+      ? `choice-events 已返回 ${newsEventsPayload.total_rows} 条事件摘要。`
+      : "新闻事件摘要待读取。",
+  );
   const macroToolkitMeta = queries.macroToolkitAnalysis?.data?.result_meta;
   const macroToolkitStatus = queryStatus(
     "macro-toolkit",
@@ -2468,6 +3014,14 @@ function marketView(
     status: macroToolkitStatus,
     rows: macroAnalysis ? buildMacroToolkitRuntimeRows(macroAnalysis) : [],
   });
+  const newsEventsSnapshotRows = buildNewsEventsSnapshotRows(newsEventsPayload);
+  const newsEventsPanel = buildDetailPanel({
+    key: "news-events-snapshot",
+    title: "新闻事件",
+    meta: marketDataMeta("choice-events", queries.newsEvents?.data?.result_meta),
+    status: newsEventsStatus,
+    rows: newsEventsSnapshotRows,
+  });
 
   return {
     stateLabel: hasError(queries)
@@ -2524,6 +3078,7 @@ function marketView(
       queryStatus("rates", "市场数据", queries.marketRates, "market-data rates 已返回。"),
       queryStatus("catalog", "数据目录", queries.marketCatalog, "catalog 已返回。"),
       macroToolkitStatus,
+      newsEventsStatus,
       {
         key: "cross-asset",
         label: "跨资产",
@@ -2541,15 +3096,7 @@ function marketView(
               tone: aShareRiskModuleTone(macroAnalysis.a_share_risk),
             },
           ]
-        : [
-            {
-              key: "events",
-              label: "新闻事件",
-              value: "下钻页",
-              detail: "新闻事件摘要以 /news-events 页面为准。",
-              tone: "muted" as ModuleHomeTone,
-            },
-          ]),
+        : []),
     ],
     briefings: (() => {
       const csi300 = findMacroPoint(latestSeries, rateSeries, ["CA.CSI300"], ["沪深300"]);
@@ -2589,6 +3136,18 @@ function marketView(
           tone: csi300 || brent || macroSnapshotRows.length > 0 ? "ok" : "muted",
         },
         {
+          title: "事件状态",
+          conclusion: newsEventsPayload
+            ? newsEventsSnapshotRows.length > 1
+              ? `choice-events 已返回 ${newsEventsPayload.total_rows} 条；最新 ${newsEventsSnapshotRows[1]?.value ?? "待解析"}。`
+              : `choice-events 已注册 ${newsEventsPayload.total_rows} 条事件摘要。`
+            : "新闻事件摘要待读取。",
+          evidence: newsEventsSnapshotRows.length > 1
+            ? `最近收到 ${newsEventsSnapshotRows[1]?.tradeDate ?? "—"} · 进入 /news-events 查看全文。`
+            : "首页仅展示事件计数与最新标题，完整列表见新闻事件页。",
+          tone: newsEventsPayload && newsEventsPayload.total_rows > 0 ? "ok" : "muted",
+        },
+        {
           title: "宏观工具",
           conclusion: macroAnalysis
             ? `${macroAnalysis.conclusion.stance}：${macroAnalysis.conclusion.summary}`
@@ -2615,7 +3174,10 @@ function marketView(
       macroHasonPanel,
       macroShadowPanel,
       macroRuntimePanel,
+      newsEventsPanel,
     ],
+    marketCrisisExplain: buildMarketCrisisExplain(macroAnalysis),
+    marketDeskIntel: buildMarketDeskIntel(macroAnalysis),
     dataNote: baseDataNote("market", queries),
   };
 }
@@ -2648,8 +3210,23 @@ const RISK_KRD_FIELDS: ReadonlyArray<{ key: keyof RiskTensorPayload; label: stri
   { key: "krd_30y", label: "KRD 30Y" },
 ];
 
+const RISK_ACCOUNTING_DV01_FIELDS: ReadonlyArray<{ key: keyof RiskTensorPayload; label: string }> = [
+  { key: "ac_dv01", label: "AC DV01（摊余成本）" },
+  { key: "oci_dv01", label: "OCI DV01（其他综合收益）" },
+  { key: "tpl_dv01", label: "TPL DV01（交易性）" },
+  { key: "other_dv01", label: "未分类 DV01" },
+];
+
 function riskTensorRawOrNull(value: RiskTensorDisplayValue): number | null {
   return bondNumericRawOrNull(value);
+}
+
+function shouldShowAccountingDv01Split(value: RiskTensorDisplayValue): boolean {
+  if (!hasRiskTensorValue(value)) {
+    return false;
+  }
+  const raw = riskTensorRawOrNull(value);
+  return raw === null || raw !== 0;
 }
 
 function riskTensorDisplay(value: RiskTensorDisplayValue): string {
@@ -2748,17 +3325,12 @@ function pushRiskTensorDetailRow(
   });
 }
 
-function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailRow[] {
+function buildRiskTensorDetailSections(tensor: RiskTensorPayload): ModuleHomeDetailSection[] {
   const reportDate = tensor.report_date;
-  const rows: ModuleHomeDetailRow[] = [];
 
-  for (const field of RISK_KRD_FIELDS) {
-    pushRiskTensorDetailRow(rows, field.key, field.label, tensor[field.key] as RiskTensorDisplayValue, "wan", reportDate);
-  }
-
-  pushRiskTensorDetailRow(rows, "cs01", "CS01", tensor.cs01, "wan", reportDate);
+  const rateRows: ModuleHomeDetailRow[] = [];
   pushRiskTensorDetailRow(
-    rows,
+    rateRows,
     "regulatory_dv01",
     "监管口径 DV01",
     tensor.regulatory_dv01,
@@ -2766,23 +3338,55 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
   pushRiskTensorDetailRow(
-    rows,
+    rateRows,
+    "portfolio_dv01",
+    "估值 DV01",
+    tensor.portfolio_dv01,
+    "wan",
+    reportDate,
+  );
+  pushRiskTensorDetailRow(
+    rateRows,
     "rate_risk_dv01",
     "利率风险 DV01",
     tensor.rate_risk_dv01,
     "wan",
     reportDate,
   );
+  pushRiskTensorDetailRow(rateRows, "cs01", "CS01", tensor.cs01, "wan", reportDate);
   pushRiskTensorDetailRow(
-    rows,
+    rateRows,
     "portfolio_convexity",
     "组合凸性",
     tensor.portfolio_convexity,
     "display",
     reportDate,
   );
+
+  const accountingRows: ModuleHomeDetailRow[] = [];
+  for (const field of RISK_ACCOUNTING_DV01_FIELDS) {
+    const value = tensor[field.key] as RiskTensorDisplayValue;
+    if (!shouldShowAccountingDv01Split(value)) {
+      continue;
+    }
+    pushRiskTensorDetailRow(accountingRows, field.key, field.label, value, "wan", reportDate);
+  }
+
+  const krdRows: ModuleHomeDetailRow[] = [];
+  for (const field of RISK_KRD_FIELDS) {
+    pushRiskTensorDetailRow(
+      krdRows,
+      field.key,
+      field.label,
+      tensor[field.key] as RiskTensorDisplayValue,
+      "wan",
+      reportDate,
+    );
+  }
+
+  const concentrationRows: ModuleHomeDetailRow[] = [];
   pushRiskTensorDetailRow(
-    rows,
+    concentrationRows,
     "issuer_concentration_hhi",
     "发行人 HHI",
     tensor.issuer_concentration_hhi,
@@ -2790,15 +3394,17 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
   pushRiskTensorDetailRow(
-    rows,
+    concentrationRows,
     "issuer_top5_weight",
     "前五大发行人权重",
     tensor.issuer_top5_weight,
     "ratio",
     reportDate,
   );
+
+  const liquidityRows: ModuleHomeDetailRow[] = [];
   pushRiskTensorDetailRow(
-    rows,
+    liquidityRows,
     "liquidity_gap_30d",
     "30 日流动性缺口",
     tensor.liquidity_gap_30d,
@@ -2806,7 +3412,7 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
   pushRiskTensorDetailRow(
-    rows,
+    liquidityRows,
     "liquidity_gap_90d",
     "90 日流动性缺口",
     tensor.liquidity_gap_90d,
@@ -2814,7 +3420,7 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
   pushRiskTensorDetailRow(
-    rows,
+    liquidityRows,
     "liquidity_gap_30d_ratio",
     "30 日缺口比例",
     tensor.liquidity_gap_30d_ratio,
@@ -2822,7 +3428,7 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
   pushRiskTensorDetailRow(
-    rows,
+    liquidityRows,
     "asset_cashflow_30d",
     "30 日资产现金流",
     tensor.asset_cashflow_30d,
@@ -2830,7 +3436,7 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
   pushRiskTensorDetailRow(
-    rows,
+    liquidityRows,
     "asset_cashflow_90d",
     "90 日资产现金流",
     tensor.asset_cashflow_90d,
@@ -2838,7 +3444,7 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
   pushRiskTensorDetailRow(
-    rows,
+    liquidityRows,
     "liability_cashflow_30d",
     "30 日负债现金流",
     tensor.liability_cashflow_30d,
@@ -2846,7 +3452,7 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
   pushRiskTensorDetailRow(
-    rows,
+    liquidityRows,
     "liability_cashflow_90d",
     "90 日负债现金流",
     tensor.liability_cashflow_90d,
@@ -2854,7 +3460,52 @@ function buildRiskTensorDetailRows(tensor: RiskTensorPayload): ModuleHomeDetailR
     reportDate,
   );
 
-  return rows;
+  const sections: ModuleHomeDetailSection[] = [];
+  if (rateRows.length > 0) {
+    sections.push({
+      key: "rate-sensitivity",
+      title: "利率敏感度",
+      subtitle: "监管 / 估值 / 利率风险 / CS01 / 凸性",
+      rows: rateRows,
+      defaultExpanded: true,
+    });
+  }
+  if (accountingRows.length > 0) {
+    sections.push({
+      key: "accounting-dv01",
+      title: "会计分类 DV01",
+      subtitle: "AC / OCI / TPL 拆分",
+      rows: accountingRows,
+      defaultExpanded: true,
+    });
+  }
+  if (krdRows.length > 0) {
+    sections.push({
+      key: "krd-detail",
+      title: "KRD 明细",
+      subtitle: "上方图表已展示分布，展开查看数值",
+      rows: krdRows,
+      defaultExpanded: false,
+    });
+  }
+  if (concentrationRows.length > 0) {
+    sections.push({
+      key: "concentration",
+      title: "集中度",
+      rows: concentrationRows,
+      defaultExpanded: false,
+    });
+  }
+  if (liquidityRows.length > 0) {
+    sections.push({
+      key: "liquidity-detail",
+      title: "流动性明细",
+      rows: liquidityRows,
+      defaultExpanded: false,
+    });
+  }
+
+  return sections;
 }
 
 function numericDetailRow(
@@ -2874,9 +3525,9 @@ function numericDetailRow(
   };
 }
 
-function buildCashflowDetailRows(cashflow: CashflowProjectionPayload): ModuleHomeDetailRow[] {
+function buildCashflowDetailSections(cashflow: CashflowProjectionPayload): ModuleHomeDetailSection[] {
   const reportDate = cashflow.report_date;
-  const rows: ModuleHomeDetailRow[] = [
+  const forecastRows: ModuleHomeDetailRow[] = [
     numericDetailRow("duration_gap", "久期缺口", cashflow.duration_gap, reportDate, "duration_gap"),
     numericDetailRow(
       "asset_duration",
@@ -2900,7 +3551,6 @@ function buildCashflowDetailRows(cashflow: CashflowProjectionPayload): ModuleHom
       "equity_duration",
     ),
     {
-      // rate_sensitivity_1bp 为 unit:"yuan" 的 Numeric，按 DV01 同口径折算万元，保持本页金额单位一致。
       key: "rate_sensitivity_1bp",
       label: "1bp 敏感度",
       value: `${formatDv01Wan(cashflow.rate_sensitivity_1bp)} 万元`,
@@ -2917,9 +3567,9 @@ function buildCashflowDetailRows(cashflow: CashflowProjectionPayload): ModuleHom
     ),
   ];
 
+  const monthlyRows: ModuleHomeDetailRow[] = [];
   for (const bucket of cashflow.monthly_buckets.slice(0, 6)) {
-    // net_cashflow / cumulative_net 为 unit:"yuan"，统一折算亿元（与现金流图表“单位按亿元显示”一致）。
-    rows.push({
+    monthlyRows.push({
       key: `bucket-${bucket.year_month}`,
       label: `${bucket.year_month} 净现金流`,
       value: `${formatYi(bucket.net_cashflow)} 亿元`,
@@ -2927,7 +3577,7 @@ function buildCashflowDetailRows(cashflow: CashflowProjectionPayload): ModuleHom
       source: "net_cashflow",
       tone: "ok",
     });
-    rows.push({
+    monthlyRows.push({
       key: `bucket-cum-${bucket.year_month}`,
       label: `${bucket.year_month} 累计净现金流`,
       value: `${formatYi(bucket.cumulative_net)} 亿元`,
@@ -2937,7 +3587,25 @@ function buildCashflowDetailRows(cashflow: CashflowProjectionPayload): ModuleHom
     });
   }
 
-  return rows;
+  const sections: ModuleHomeDetailSection[] = [
+    {
+      key: "cashflow-forecast",
+      title: "现金流预测",
+      subtitle: "久期四要素 / 1bp / 12M 再投资",
+      rows: forecastRows,
+      defaultExpanded: true,
+    },
+  ];
+  if (monthlyRows.length > 0) {
+    sections.push({
+      key: "monthly-buckets",
+      title: "月度净现金流",
+      subtitle: "近 6 个月 bucket",
+      rows: monthlyRows,
+      defaultExpanded: false,
+    });
+  }
+  return sections;
 }
 
 function riskView(
@@ -2983,7 +3651,10 @@ function riskView(
     tensor?.prior_period_change?.summary ??
     "下方保留字段级证据；正式处置进入风险张量、集中度和现金流页面。";
 
-  const riskTensorRows = tensor ? buildRiskTensorDetailRows(tensor) : [];
+  const riskTensorSections = tensor
+    ? enrichRiskSectionsWithSparklines(buildRiskTensorDetailSections(tensor), tensor)
+    : [];
+  const riskTensorRows = flattenDetailSections(riskTensorSections);
   const riskTensorStatus = queryStatus(
     "risk-tensor-detail",
     "风险张量明细",
@@ -2998,9 +3669,12 @@ function riskView(
     meta: riskSourceMeta("risk-tensor", reportDate),
     status: riskTensorStatus,
     rows: riskTensorRows,
+    sections: riskTensorSections,
+    chart: tensor ? buildRiskKrdChart(tensor) : undefined,
   });
 
-  const cashflowRows = cashflow ? buildCashflowDetailRows(cashflow) : [];
+  const cashflowSections = cashflow ? buildCashflowDetailSections(cashflow) : [];
+  const cashflowRows = flattenDetailSections(cashflowSections);
   const cashflowStatus = queryStatus(
     "cashflow-projection-detail",
     "现金流与缺口",
@@ -3015,6 +3689,7 @@ function riskView(
     meta: riskSourceMeta("cashflow-projection", cashflowReportDate),
     status: cashflowStatus,
     rows: cashflowRows,
+    sections: cashflowSections,
   });
 
   const durationGapKpi = cashflow
@@ -3043,6 +3718,7 @@ function riskView(
         value: tensor ? riskTensorPendingOrWan(tensor.regulatory_dv01) : "-",
         detail: "来自 regulatory_dv01；缺失时不使用估值 DV01 替代。",
         tone: tensor ? riskTensorValueTone(tensor.regulatory_dv01) : "watch",
+        sparkline: tensor ? riskKpiSparklineFromTensor(tensor, "regulatory_dv01") : undefined,
       },
       {
         key: "portfolio-dv01",
@@ -3057,6 +3733,7 @@ function riskView(
         value: tensor ? riskTensorDisplay(tensor.portfolio_modified_duration) : "-",
         detail: "portfolio_modified_duration。",
         tone: tensor ? "ok" : "watch",
+        sparkline: tensor ? riskKpiSparklineFromTensor(tensor, "portfolio_modified_duration") : undefined,
       },
       {
         key: "liquidity-gap",
@@ -3064,6 +3741,7 @@ function riskView(
         value: cashflow || tensor ? durationGapKpi.value : "-",
         detail: durationGapKpi.detail,
         tone: cashflow || tensor ? "ok" : "watch",
+        sparkline: tensor ? riskKpiSparklineFromTensor(tensor, "liquidity_gap_30d_ratio") : undefined,
       },
     ],
     statuses: [
@@ -3092,8 +3770,15 @@ function riskView(
         },
         {
           label: "限额状态",
-          value: tensor?.dv01_controls?.limit_status ?? "未返回",
-          tone: tensor?.dv01_controls?.limit_status === "within_limit" ? "ok" : "watch",
+          value: tensor?.dv01_controls?.limit_status
+            ? dv01LimitStatusLabel(tensor.dv01_controls.limit_status)
+            : "未返回",
+          tone:
+            tensor?.dv01_controls?.limit_status === "ok"
+              ? "ok"
+              : tensor?.dv01_controls?.limit_status === "breach"
+                ? "error"
+                : "watch",
         },
         {
           label: "数据提示",

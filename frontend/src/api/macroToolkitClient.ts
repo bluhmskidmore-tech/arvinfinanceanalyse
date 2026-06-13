@@ -734,6 +734,7 @@ export type MacroToolkitCommodityFuturesRefreshResponse = ApiEnvelope<{
 
 export type MacroToolkitAnalysisRequest = {
   detail?: "core" | "full";
+  historyLimit?: number;
 };
 
 export type MacroToolkitRequestOptions = {
@@ -1014,6 +1015,32 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
     },
   },
   {
+    key: "yield_curve_shape",
+    legacy_module: "M8",
+    label: "收益率曲线形态",
+    group: "曲线",
+    status: "complete",
+    tone: "neutral",
+    score: null,
+    headline: "ModerateSteep · 10Y-1Y 34bp",
+    primary_metric: { label: "10Y-1Y", value: 34, unit: "bp" },
+    evidence: ["shape=ModerateSteep", "percentile_1y=62.5"],
+    warnings: [],
+    result: {
+      data_status: "complete",
+      report_date: "2026-04-30",
+      shape: "ModerateSteep",
+      slope: 0.18,
+      butterfly_spread: 0.04,
+      curvature: "neutral",
+      spreads: { "10Y-1Y": 34, "10Y-5Y": 18, "5Y-1Y": 16 },
+      percentile_1y: 62.5,
+      interpretation: "收益率曲线中度陡峭，久期不必极端化。",
+      curve: { "1Y": 1.72, "5Y": 2.05, "10Y": 2.06 },
+      warnings: [],
+    },
+  },
+  {
     key: "crisis_score_cn",
     legacy_module: "Crisis",
     label: "Crisis Score",
@@ -1134,6 +1161,12 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
       percentile: 36.21,
       available_component_count: 5,
       component_count: 5,
+      score_history: [
+        { date: "2026-03-20", crisis_score: -0.72, percentile: 28.5 },
+        { date: "2026-03-27", crisis_score: -0.68, percentile: 31.2 },
+        { date: "2026-04-03", crisis_score: -0.63, percentile: 34.0 },
+        { date: "2026-04-10", crisis_score: -0.57, percentile: 36.21 },
+      ],
       components: [
         { key: "equity_vol", label: "HS300 realized volatility", raw_value: 12.32, z_score: -0.42, weight: 0.25 },
         { key: "credit_spread", label: "AA 5Y - treasury 5Y", raw_value: 0.73, z_score: -0.35, weight: 0.25 },
@@ -2797,10 +2830,14 @@ export function createRealMacroToolkitClient({
   return {
     getMacroToolkitAnalysis: (options?: MacroToolkitAnalysisRequest) => {
       const detail = options?.detail ?? "core";
+      const params = new URLSearchParams({ detail });
+      if (options?.historyLimit != null) {
+        params.set("history_limit", String(options.historyLimit));
+      }
       return requestJson<MacroToolkitAnalysisPayload>(
         fetchImpl,
         baseUrl,
-        `/ui/macro/toolkit/analysis?detail=${detail}`,
+        `/ui/macro/toolkit/analysis?${params.toString()}`,
       );
     },
     getMacroToolkitStrategySummaries: (options) =>

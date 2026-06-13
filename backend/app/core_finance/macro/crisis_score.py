@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 CRISIS_SCORE_RULE_VERSION = "rv_macro_crisis_score_cn_v1"
+DEFAULT_CRISIS_SCORE_HISTORY_LIMIT = 430
 CRISIS_SCORE_WEIGHTS: dict[str, float] = {
     "equity_vol": 0.25,
     "credit_spread": 0.25,
@@ -262,3 +263,29 @@ def _dedupe(values: Sequence[str]) -> list[str]:
         seen.add(value)
         out.append(value)
     return out
+
+
+def build_crisis_score_history_payload(
+    score_frame: pd.DataFrame,
+    *,
+    limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+) -> list[dict[str, Any]]:
+    if score_frame.empty or "crisis_score" not in score_frame.columns:
+        return []
+    scores = score_frame["crisis_score"].dropna()
+    if scores.empty:
+        return []
+    tail = scores.tail(max(1, int(limit)))
+    history: list[dict[str, Any]] = []
+    for index, value in tail.items():
+        prefix = scores.loc[:index]
+        percentile = float((prefix <= value).mean() * 100) if len(prefix) else None
+        point_date = index.date() if hasattr(index, "date") else index
+        history.append(
+            {
+                "date": point_date.isoformat() if hasattr(point_date, "isoformat") else str(point_date)[:10],
+                "crisis_score": round(float(value), 4),
+                "percentile": round(percentile, 2) if percentile is not None else None,
+            }
+        )
+    return history

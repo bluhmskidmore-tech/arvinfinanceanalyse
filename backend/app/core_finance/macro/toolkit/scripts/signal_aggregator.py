@@ -358,7 +358,7 @@ def main():
         r = run_three_layer_filter(sym, merrill, basis_df, crowding_df, crisis, signal_date=signal_date)
         rows.append(r)
 
-        status = "✓ 开仓" if r['最终信号'] != '空仓' else "✗ 空仓"
+        status = "OPEN" if r['最终信号'] != '空仓' else "FLAT"
         print(f"  {sym}: {status}  {r['最终信号']}  仓位={r['仓位比例']:.1%}  "
               f"置信度={r['置信度']}/3  {r['信号说明'][:50]}")
 

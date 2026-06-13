@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
-import { marketChangePresentation } from "./marketHomeChangeTone";
-import type { ModuleHomeDetailPanel, ModuleHomeTone, ModuleHomeView } from "./moduleHomeModel";
+import { marketChangePresentation, resolveMarketChangeDirection } from "./marketHomeChangeTone";
+import type { ModuleHomeDetailPanel, ModuleHomeDetailRow, ModuleHomeTone, ModuleHomeView } from "./moduleHomeModel";
+import { buildMarketCurveSpreadRows } from "./moduleHomeModel";
 import marketStyles from "./marketHome.module.css";
 
 const MARKET_CHANGE_CLASSES = {
@@ -125,7 +126,27 @@ function panelHasNoRows(panel?: ModuleHomeDetailPanel) {
   return Boolean(panel && panel.rows.length === 0 && (!panel.chart || panel.chart.categories.length === 0));
 }
 
-function buildActionQueue({
+function rowIndicatesMovement(row?: ModuleHomeDetailRow): boolean {
+  if (!row) {
+    return false;
+  }
+  const direction = resolveMarketChangeDirection(row.detail, row.sparkline);
+  return direction === "up" || direction === "down";
+}
+
+function findTenYearRow(panel?: ModuleHomeDetailPanel): ModuleHomeDetailRow | undefined {
+  return panel?.rows.find((row) => /10Y|10年|十年|gov-10y/i.test(`${row.key} ${row.label}`));
+}
+
+function spreadOrTenYearMoved(keyRatePanel?: ModuleHomeDetailPanel): boolean {
+  if (rowIndicatesMovement(findTenYearRow(keyRatePanel))) {
+    return true;
+  }
+  const { termSpreadRows, creditSpreadRow } = buildMarketCurveSpreadRows(keyRatePanel);
+  return [...termSpreadRows, creditSpreadRow].some((row) => rowIndicatesMovement(row));
+}
+
+export function buildActionQueue({
   view,
   keyRatePanel,
   yieldCurvePanel,
@@ -139,6 +160,8 @@ function buildActionQueue({
   const hasKeyRates = (keyRatePanel?.rows.length ?? 0) > 0;
   const keyRateLabel = keyRatePanel?.rows[0]?.label ?? "关键利率";
   const crossAssetEvidence = firstRowEvidence(macroPanel);
+  const ratesMoved = spreadOrTenYearMoved(keyRatePanel);
+  const blockingAShare = aShareRisk?.tone === "error";
 
   if (failedStatus) {
     queue.push({
@@ -163,17 +186,17 @@ function buildActionQueue({
     });
   }
 
-  if (aShareRisk) {
+  if (aShareRisk && blockingAShare) {
     queue.push({
       key: "a-share-risk",
-      rank: aShareRisk.tone === "error" ? "P0" : "P1",
+      rank: "P0",
       title: `复核${aShareRisk.label}`,
       evidence: compactParts([aShareRisk.value, aShareRisk.detail]),
       evidencePack: compactParts([aShareRisk.label, aShareRisk.value, aShareRisk.detail, "macro-toolkit"]),
       task: {
         owner: "宏观策略岗",
-        sla: aShareRisk.tone === "error" ? "T+0 午盘前" : "T+0 收盘前",
-        state: aShareRisk.tone === "error" ? "阻塞" : "待复核",
+        sla: "T+0 午盘前",
+        state: "阻塞",
       },
       gate: {
         trigger: "A股风险",
@@ -210,18 +233,18 @@ function buildActionQueue({
   } else if (hasKeyRates) {
     queue.push({
       key: "key-rate-check",
-      rank: "P2",
-      title: "确认关键利率变动",
+      rank: ratesMoved ? "P1" : "P2",
+      title: ratesMoved ? "确认关键利率与利差变动" : "确认关键利率变动",
       evidence: firstRowEvidence(keyRatePanel),
       evidenceSparkline: keyRatePanel?.rows[0]?.sparkline,
       evidencePack: firstRowEvidencePack(keyRatePanel, keyRateLabel, "market-data"),
       task: {
         owner: "市场数据岗",
-        sla: "T+1 早盘",
-        state: "监控",
+        sla: ratesMoved ? "T+0 收盘前" : "T+1 早盘",
+        state: ratesMoved ? "待复核" : "监控",
       },
       gate: {
-        trigger: "利率变动",
+        trigger: ratesMoved ? "利率/利差变动" : "利率变动",
         check: keyRateLabel,
         next: "利率序列",
       },
@@ -231,9 +254,32 @@ function buildActionQueue({
     });
   }
 
+  if (aShareRisk && !blockingAShare) {
+    queue.push({
+      key: "a-share-risk",
+      rank: "P2",
+      title: `复核${aShareRisk.label}`,
+      evidence: compactParts([aShareRisk.value, aShareRisk.detail]),
+      evidencePack: compactParts([aShareRisk.label, aShareRisk.value, aShareRisk.detail, "macro-toolkit"]),
+      task: {
+        owner: "宏观策略岗",
+        sla: "T+0 收盘前",
+        state: "待复核",
+      },
+      gate: {
+        trigger: "A股风险",
+        check: "跨资产传导",
+        next: "宏观工具",
+      },
+      path: "/macro-toolkit",
+      label: "宏观工具",
+      tone: aShareRisk.tone,
+    });
+  }
+
   queue.push({
     key: "cross-asset-path",
-    rank: "P3",
+    rank: "P2",
     title: "跟踪跨资产传导",
     evidence: crossAssetEvidence.length > 0 ? crossAssetEvidence : compactParts([crossAssetStatus?.detail, "跨资产传导解释以 /cross-asset 为准。"]),
     evidenceSparkline: macroPanel?.rows[0]?.sparkline,
@@ -312,7 +358,11 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
               <b className={marketStyles.actionQueueTableTarget} data-testid={`module-home-market-action-${item.key}-target`}>
                 {item.label}
               </b>
-              <div className={marketStyles.actionQueueMetaGrid}>
+              <div
+                aria-label={[...taskParts, ...gateParts, ...packParts].join(" / ")}
+                className={`${marketStyles.actionQueueMetaGrid} ${marketStyles.marketAuditOnly}`}
+                hidden
+              >
                 <span
                   aria-label={taskParts.join(" / ")}
                   className={marketStyles.actionQueueTaskMeta}

@@ -1836,14 +1836,15 @@ def _macro_output_health(
     content_date_invalid_count = int(content_dates["invalid_count"] or 0)
     has_content_date_column = bool(content_dates["date_column"])
     freshness_basis = "csv_content" if has_content_date_column else "file_modified_date"
-    freshness_status = (
-        "invalid_date"
-        if content_date_invalid_count
-        else "mixed"
-        if content_date_min and content_date_max and content_date_min != content_date_max
-        else "unknown"
-        if has_content_date_column and not content_date
-        else _macro_output_freshness(content_date or modified_date, reference_date)
+    freshness_status = _macro_output_health_status(
+        name=name,
+        content_date=content_date,
+        content_date_min=content_date_min,
+        content_date_max=content_date_max,
+        content_date_invalid_count=content_date_invalid_count,
+        has_content_date_column=has_content_date_column,
+        modified_date=modified_date,
+        reference_date=reference_date,
     )
     return {
         "name": name,
@@ -1926,6 +1927,41 @@ def _macro_output_content_dates(file_payload: dict[str, object]) -> dict[str, st
     }
 
 
+def _macro_output_health_status(
+    *,
+    name: str,
+    content_date: str | None,
+    content_date_min: str | None,
+    content_date_max: str | None,
+    content_date_invalid_count: int,
+    has_content_date_column: bool,
+    modified_date: str | None,
+    reference_date: str | None,
+) -> str:
+    if content_date_invalid_count:
+        return "invalid_date"
+    if has_content_date_column and not content_date:
+        return "unknown"
+    if _is_generation_evidence_artifact(name):
+        return _macro_generation_freshness(content_date or modified_date, reference_date)
+    if content_date_min and content_date_max and content_date_min != content_date_max:
+        if _is_history_artifact(name):
+            return _macro_output_freshness(content_date, reference_date)
+        return "mixed"
+    if has_content_date_column:
+        return _macro_output_freshness(content_date, reference_date)
+    return _macro_generation_freshness(modified_date, reference_date)
+
+
+def _is_history_artifact(name: str) -> bool:
+    stem = Path(name).stem.lower()
+    return stem.endswith("_history") or stem.endswith("_results") or stem.endswith("_log")
+
+
+def _is_generation_evidence_artifact(name: str) -> bool:
+    return Path(name).name.lower() in {"risk_state.csv", "risk_log.csv"}
+
+
 def _macro_output_freshness(output_date: str | None, reference_date: str | None) -> str:
     if not output_date:
         return "unknown"
@@ -1939,6 +1975,11 @@ def _macro_output_freshness(output_date: str | None, reference_date: str | None)
     if output_day > reference_day:
         return "future"
     return "current" if output_day == reference_day else "stale"
+
+
+def _macro_generation_freshness(modified_date: str | None, reference_date: str | None) -> str:
+    status = _macro_output_freshness(modified_date, reference_date)
+    return "current" if status == "future" else status
 
 
 def _macro_run_manifest() -> list[dict[str, object]]:

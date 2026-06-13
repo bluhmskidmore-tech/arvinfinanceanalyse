@@ -28,6 +28,7 @@ beforeAll(async () => {
 type MacroToolkitAnalysisEnvelope = Awaited<ReturnType<ApiClient["getMacroToolkitAnalysis"]>>;
 type MacroToolkitCapabilityResultFixture =
   MacroToolkitAnalysisEnvelope["result"]["capability_results"][number];
+type MacroToolkitModelReadinessFixture = NonNullable<MacroToolkitAnalysisEnvelope["result"]["model_readiness"]>[number];
 type MacroToolkitInputEvidenceFixture = NonNullable<
   NonNullable<MacroToolkitCapabilityResultFixture["input_evidence"]>["inputs"]
 >[number];
@@ -51,6 +52,94 @@ function requireClosestElement(element: Element | null, label: string): HTMLElem
 
 function expectElementBefore(first: HTMLElement, second: HTMLElement) {
   expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+}
+
+function macroModelReadinessFixture(
+  item: Pick<
+    MacroToolkitModelReadinessFixture,
+    "id" | "label" | "script_name" | "expected_outputs" | "readiness" | "missing_outputs" | "stale_outputs"
+  > &
+    Partial<MacroToolkitModelReadinessFixture>,
+): MacroToolkitModelReadinessFixture {
+  return {
+    script_available: true,
+    degraded_reason: null,
+    evidence_level: "fixture",
+    date_basis: "fixture",
+    observation_only: true,
+    formal_use_allowed: false,
+    latest_modified_at: null,
+    latest_content_date: null,
+    degraded_outputs: [],
+    notes: [],
+    ...item,
+  };
+}
+
+function macroCoreModelReadinessFixtures(): MacroToolkitModelReadinessFixture[] {
+  const specs = [
+    ["merrill_clock", "Merrill Clock", "merrill_clock_cn", ["merrill_clock_latest.csv", "merrill_clock_history.csv"]],
+    ["crisis_score", "Crisis Score", "crisis_score_cn", ["crisis_score_latest.csv", "crisis_score_history.csv"]],
+    ["bond_futures_four_factor", "Bond Futures Four-Factor Trend", "bond_futures_signals", ["bond_signals_latest.csv"]],
+    ["funding_conditions", "Funding Conditions / Flow", "merrill_clock_cn", ["merrill_clock_latest.csv"]],
+    ["crowding", "Crowding", "crowding_cn", ["crowding_latest.csv", "crowding_history.csv"]],
+    ["dcc_garch", "DCC-GARCH", "dcc_garch_cn", ["dcc_latest.csv", "dcc_results.csv"]],
+    ["cta_trend", "CTA Trend", "cta_trend_cn", ["cta_results.csv"]],
+    [
+      "bond_futures_basis",
+      "Bond Futures Basis / IRR / Safety Margin",
+      "bond_futures_data",
+      ["bond_futures_basis.csv", "bond_futures_irr.csv", "bond_futures_safety_margin.csv"],
+    ],
+    ["final_signal", "Final Signal Aggregator", "signal_aggregator", ["final_signal.csv"]],
+    ["risk_monitor", "Risk Monitor", "risk_monitor", ["risk_state.csv", "risk_log.csv"]],
+  ] as const;
+
+  return specs.map(([id, label, script_name, expected_outputs], index) => {
+    const readiness = index < 2 ? "artifact_backed" : "missing_output";
+    const missing_outputs = readiness === "artifact_backed" ? [] : [...expected_outputs];
+    const latest_content_date = readiness === "artifact_backed" ? "2026-04-30" : null;
+    return macroModelReadinessFixture({
+      id,
+      label,
+      script_name,
+      expected_outputs: [...expected_outputs],
+      readiness,
+      evidence_level: readiness === "artifact_backed" ? "fresh_artifacts" : "registered_script_only",
+      date_basis: readiness === "artifact_backed" ? "csv_content" : "missing",
+      degraded_reason: readiness === "artifact_backed" ? null : "missing_expected_outputs",
+      artifact_receipt: {
+        status: readiness,
+        model_id: id,
+        script_name,
+        artifact_paths: readiness === "artifact_backed" ? [...expected_outputs] : [],
+        missing_artifacts: missing_outputs,
+        degraded_reason: readiness === "artifact_backed" ? null : "missing_expected_outputs",
+        data_asof: latest_content_date,
+        generated_at: "2026-04-30T09:00:00+00:00",
+        runtime_endpoint: "/ui/macro/toolkit/scripts/run-chain",
+        page_surface: "/macro-toolkit#macro-toolkit-script-artifact-detail",
+        formal_use_allowed: false,
+        observation_only: true,
+      },
+      latest_modified_at: readiness === "artifact_backed" ? "2026-04-30T15:00:00+00:00" : null,
+      latest_content_date,
+      missing_outputs,
+      stale_outputs: [],
+      notes: [`${label} artifact acceptance fixture.`],
+    });
+  });
+}
+
+async function openModelSignalDetail(
+  signalMatrix: HTMLElement,
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+) {
+  const rowTitle = within(signalMatrix).getByText(label);
+  const row = requireClosestElement(rowTitle.closest("article"), `${label} signal row`);
+  await user.click(within(row).getByRole("button"));
+  return screen.findByTestId("macro-toolkit-model-signal-detail");
 }
 
 function extractCssBlock(css: string, selector: string): string {
@@ -130,19 +219,22 @@ describe("MacroToolkitPage", () => {
     const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
 
     expect(source).toContain('client.getMacroToolkitAnalysis({ detail: "core" })');
+    expect(source).toContain("MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS");
+    expect(source).toContain("historyLimit: MACRO_TOOLKIT_CRISIS_SCORE_HISTORY_LIMIT");
+    expect(source).toContain("formatCrisisTopContributorSummary");
+    expect(source).toContain('data-testid="macro-toolkit-crisis-capability-component-summary"');
   });
 
-  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
+  it("keeps page-local decorative colors on the IB light institutional token family", () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
 
     expect(css).not.toMatch(/moss-color-warm-/);
     expect(css).not.toMatch(/rgba\((255, 253, 248|120, 99, 76|147, 111, 88|111, 139, 106|171, 95, 62|143, 63, 63|55, 42, 30)/);
     expect(css).not.toMatch(/#(fffdf8|fffaf4|456882|6f8b6a|8f3f3f|2b2520|f0e7dc)/i);
-    expect(css).toContain("var(--moss-color-primary-600)");
-    expect(css).toContain("var(--moss-color-info-600)");
-    expect(css).toContain("var(--moss-color-success-600)");
-    expect(css).toContain("var(--moss-color-danger-600)");
-    expect(css).toContain("var(--moss-color-warning-600)");
+    expect(css).toContain("var(--ib-accent)");
+    expect(css).toContain("var(--ib-up)");
+    expect(css).toContain("var(--ib-down)");
+    expect(css).toContain("var(--ib-warn)");
     expect(css).toContain(".macro-toolkit-crisis-shadow-impact");
     expect(css).toContain(".macro-toolkit-crisis-shadow-impact__metrics");
     expect(css).toContain(".macro-toolkit-crisis-shadow-impact__grid");
@@ -172,15 +264,15 @@ describe("MacroToolkitPage", () => {
       /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-committee-closure-rail__axis\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
     );
     expect(css).toMatch(/\.macro-toolkit-committee-closure-rail__step small\s*\{\s*display:\s*none/);
-    expect(css).toContain(".macro-toolkit-committee-pack,\n  .macro-toolkit-committee-checklist,\n  .macro-toolkit-committee-decision-language");
+    expect(css).toMatch(/\.macro-toolkit-committee-pack,\s*[\r\n]+\s*\.macro-toolkit-committee-checklist,\s*[\r\n]+\s*\.macro-toolkit-committee-decision-language/);
   });
 
   it("compresses the macro toolkit mobile first screen before the investment brief", () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
 
     expect(css).toContain("Mobile first-screen compression pass");
-    expect(css).toMatch(/\.macro-toolkit-cockpit__title-block p\s*\{\s*display:\s*none/);
-    expect(css).toMatch(/\.macro-toolkit-cockpit__header\s*\{[\s\S]*?padding:\s*8px/);
+    expect(css).toMatch(/\.macro-toolkit-page__header-summary\s*\{\s*display:\s*none/);
+    expect(css).toMatch(/\.macro-toolkit-page__header\s*\{[\s\S]*?padding:\s*8px/);
     expect(css).toMatch(/\.macro-toolkit-mobile-committee-strip\s*\{[\s\S]*?display:\s*grid/);
     expect(css).toMatch(/\.macro-toolkit-committee-decision-memo__grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
   });
@@ -2417,7 +2509,7 @@ describe("MacroToolkitPage", () => {
     expect(evidenceTraceSummary).toHaveTextContent("数据健康");
     expect(evidenceTraceSummary).toHaveTextContent("指标覆盖");
     expect(evidenceTraceSummary).toHaveTextContent("能力证据");
-    expect(evidenceTraceSummary).toHaveTextContent("5 项证据");
+    expect(evidenceTraceSummary).toHaveTextContent("6 项证据");
     expect(evidenceTraceSummary).toHaveTextContent("不是正式投资信号");
     expect(evidenceTraceSummary).toHaveTextContent("观察框架");
     expect(evidenceTraceSummary).toHaveTextContent("观察就绪");
@@ -4291,7 +4383,7 @@ describe("MacroToolkitPage", () => {
     }
   });
 
-  it("prefetches full analysis after the core screen without revealing evidence early", async () => {
+  it("loads full analysis in the background after the core screen", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
     const calls: Array<Parameters<ApiClient["getMacroToolkitAnalysis"]>[0]> = [];
@@ -4342,6 +4434,13 @@ describe("MacroToolkitPage", () => {
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
     expect(await screen.findByText("完整结果待加载")).toBeInTheDocument();
+    const crisisSignalCard = screen
+      .getAllByText("Crisis Score")
+      .map((node) => node.closest(".macro-toolkit-signal-card"))
+      .find((node): node is HTMLElement => node instanceof HTMLElement);
+    expect(crisisSignalCard).toBeTruthy();
+    expect(crisisSignalCard).toHaveTextContent("待加载");
+    expect(crisisSignalCard).not.toHaveTextContent("缺失");
     expect(calls.filter((item) => item?.detail === "full")).toHaveLength(0);
     expect(screen.queryByLabelText("Crisis Score 数据来源")).not.toBeInTheDocument();
     expect(screen.queryByText("影子评估结果")).not.toBeInTheDocument();
@@ -4349,9 +4448,7 @@ describe("MacroToolkitPage", () => {
     await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(1), {
       timeout: 3_000,
     });
-    expect(screen.queryByLabelText("Crisis Score 数据来源")).not.toBeInTheDocument();
-
-    await user.click(screen.getAllByRole("button", { name: /查看完整分析/ })[0]!);
+    expect(calls).toContainEqual({ detail: "full", historyLimit: 430 });
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     expect(crisisEvidence).toHaveTextContent("5/5");
     expect(crisisEvidence).toHaveTextContent("Nanhua commodity index");
@@ -6603,6 +6700,298 @@ describe("MacroToolkitPage", () => {
     expect(readinessDetail).not.toHaveTextContent("DCC-GARCH artifact-backed");
     expect(readinessDetail).not.toHaveTextContent("CTA Trend artifact-backed");
     expect(readinessDetail).not.toHaveTextContent("Risk Monitor artifact-backed");
+  });
+
+  it("presents model readiness as a signal matrix before raw script artifacts", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const modelReadiness = macroCoreModelReadinessFixtures();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          model_readiness: modelReadiness,
+          readiness_summary: {
+            total_count: modelReadiness.length,
+            artifact_backed_count: 2,
+            degraded_count: 8,
+            status_counts: { artifact_backed: 2, missing_output: 8 },
+            observation_only: true,
+            formal_use_allowed: false,
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    const artifactDetail = await screen.findByTestId("macro-toolkit-script-artifact-detail");
+
+    expectElementBefore(signalMatrix, artifactDetail);
+    expect(signalMatrix).toHaveTextContent("model signals");
+    expect(signalMatrix).toHaveTextContent("artifact-backed 2/10");
+    expect(signalMatrix).toHaveTextContent("Merrill Clock");
+    expect(signalMatrix).toHaveTextContent("Crisis Score");
+    expect(signalMatrix).toHaveTextContent("Bond Futures Four-Factor Trend");
+    expect(signalMatrix).toHaveTextContent("Funding Conditions / Flow");
+    expect(signalMatrix).toHaveTextContent("Crowding");
+    expect(signalMatrix).toHaveTextContent("DCC-GARCH");
+    expect(signalMatrix).toHaveTextContent("CTA Trend");
+    expect(signalMatrix).toHaveTextContent("missing output");
+    expect(signalMatrix.querySelector("a")).toHaveAttribute("href", "#macro-toolkit-script-artifact-detail");
+  });
+
+  it("opens artifact-backed acceptance actions for each core model signal", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const modelReadiness = macroCoreModelReadinessFixtures();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          model_readiness: modelReadiness,
+          readiness_summary: {
+            total_count: modelReadiness.length,
+            artifact_backed_count: 2,
+            degraded_count: 8,
+            status_counts: { artifact_backed: 2, missing_output: 8 },
+            observation_only: true,
+            formal_use_allowed: false,
+          },
+        },
+      }),
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    const coreModelLabels = [
+      "Merrill Clock",
+      "Crisis Score",
+      "Bond Futures Four-Factor Trend",
+      "Funding Conditions / Flow",
+      "Crowding",
+      "DCC-GARCH",
+      "CTA Trend",
+      "Bond Futures Basis / IRR / Safety Margin",
+      "Final Signal Aggregator",
+      "Risk Monitor",
+    ];
+
+    for (const label of coreModelLabels) {
+      const detail = await openModelSignalDetail(signalMatrix, user, label);
+
+      expect(detail).toHaveTextContent(label);
+      expect(detail).toHaveTextContent("Expected outputs");
+      expect(detail).toHaveTextContent("/ui/macro/toolkit/scripts/run-chain");
+      expect(detail).toHaveTextContent("Artifact-backed acceptance");
+      expect(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight")).toBeEnabled();
+      expect(within(detail).getByTestId("macro-toolkit-model-signal-chain-run")).toBeEnabled();
+    }
+  });
+
+  it("runs the model chain from model evidence and surfaces the selected script receipt", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const chainCalls: Array<{ dryRun?: boolean; timeoutSeconds?: number }> = [];
+    const client = {
+      ...baseClient,
+      runMacroToolkitScriptChain: async (options) => {
+        chainCalls.push(options ?? {});
+        return baseClient.runMacroToolkitScriptChain(options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    let detail = await openModelSignalDetail(signalMatrix, user, "DCC-GARCH");
+    await user.click(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight"));
+
+    await waitFor(() => expect(chainCalls).toEqual([{ dryRun: true }]));
+    detail = await screen.findByTestId("macro-toolkit-model-signal-detail");
+
+    expect(detail).toHaveTextContent("Latest script run receipt");
+    expect(detail).toHaveTextContent("dcc_garch_cn");
+    expect(detail).toHaveTextContent("dry_run");
+    expect(detail).toHaveTextContent("dcc_latest.csv");
+    expect(detail).toHaveTextContent("dcc_results.csv");
+    expect(detail).toHaveTextContent("dry_run_not_executed");
+
+    detail = await openModelSignalDetail(signalMatrix, user, "CTA Trend");
+    expect(detail).toHaveTextContent("CTA Trend");
+    expect(detail).not.toHaveTextContent("Latest script run receipt");
+
+    detail = await openModelSignalDetail(signalMatrix, user, "Risk Monitor");
+    expect(detail).toHaveTextContent("Risk Monitor");
+    expect(detail).not.toHaveTextContent("Latest script run receipt");
+  });
+
+  it("surfaces model-chain execution blockers inside the selected model evidence", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const client = {
+      ...baseClient,
+      runMacroToolkitScriptChain: async () => {
+        throw new Error("User is not allowed to execute macro_toolkit.script.");
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    const detail = await openModelSignalDetail(signalMatrix, user, "DCC-GARCH");
+    await user.click(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("macro-toolkit-model-signal-detail")).toHaveTextContent("Latest run issue");
+    });
+    expect(screen.getByTestId("macro-toolkit-model-signal-detail")).toHaveTextContent(
+      "User is not allowed to execute macro_toolkit.script.",
+    );
+  });
+
+  it("keeps model-chain execution blockers scoped to the model that launched them", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const client = {
+      ...baseClient,
+      runMacroToolkitScriptChain: async () => {
+        throw new Error("User is not allowed to execute macro_toolkit.script.");
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    let detail = await openModelSignalDetail(signalMatrix, user, "DCC-GARCH");
+    await user.click(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("macro-toolkit-model-signal-detail")).toHaveTextContent("Latest run issue");
+    });
+
+    detail = await openModelSignalDetail(signalMatrix, user, "CTA Trend");
+
+    expect(detail).toHaveTextContent("CTA Trend");
+    expect(detail).not.toHaveTextContent("Latest run issue");
+    expect(detail).not.toHaveTextContent("User is not allowed to execute macro_toolkit.script.");
+  });
+
+  it("labels shared-script receipts as script-level evidence instead of model-specific acceptance", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const modelReadiness = macroCoreModelReadinessFixtures();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          model_readiness: modelReadiness,
+          readiness_summary: {
+            total_count: modelReadiness.length,
+            artifact_backed_count: 2,
+            degraded_count: 8,
+            status_counts: { artifact_backed: 2, missing_output: 8 },
+            observation_only: true,
+            formal_use_allowed: false,
+          },
+        },
+      }),
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+    let detail = await openModelSignalDetail(signalMatrix, user, "Funding Conditions / Flow");
+    await user.click(within(detail).getByTestId("macro-toolkit-model-signal-chain-preflight"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("macro-toolkit-model-signal-detail")).toHaveTextContent("Latest script run receipt");
+    });
+    detail = screen.getByTestId("macro-toolkit-model-signal-detail");
+
+    expect(detail).toHaveTextContent("Funding Conditions / Flow");
+    expect(detail).toHaveTextContent("merrill_clock_cn");
+    expect(detail).toHaveTextContent("shared script receipt");
+    expect(detail).not.toHaveTextContent("Latest run receipt");
+  });
+
+  it("renders the model signal matrix from Hason fallback readiness when backend readiness is absent", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          model_readiness: undefined,
+          readiness_summary: undefined,
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const readinessDetail = await screen.findByTestId("macro-toolkit-model-readiness-detail");
+    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+
+    expect(readinessDetail).toHaveTextContent("signal_aggregator");
+    expect(readinessDetail).toHaveTextContent("crisis_score_cn");
+    expect(signalMatrix).toHaveTextContent("signal_aggregator");
+    expect(signalMatrix).toHaveTextContent("crisis_score_cn");
+    expect(signalMatrix).toHaveTextContent("boundary pending backend summary");
+    expect(signalMatrix).toHaveTextContent("formal use blocked");
+  });
+
+  it("keeps the model signal matrix formal boundary conservative without a backend readiness summary", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis();
+    const modelReadiness = [
+      macroModelReadinessFixture({
+        id: "crisis_score",
+        label: "Crisis Score",
+        script_name: "crisis_score_cn",
+        expected_outputs: ["crisis_score_latest.csv"],
+        readiness: "artifact_backed",
+        evidence_level: "fresh_artifacts",
+        date_basis: "csv_content",
+        observation_only: false,
+        formal_use_allowed: true,
+        latest_modified_at: "2026-04-30T15:00:00+00:00",
+        latest_content_date: "2026-04-30",
+        missing_outputs: [],
+        stale_outputs: [],
+      }),
+    ] satisfies NonNullable<MacroToolkitAnalysisEnvelope["result"]["model_readiness"]>;
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => ({
+        ...analysisEnvelope,
+        result: {
+          ...analysisEnvelope.result,
+          model_readiness: modelReadiness,
+          readiness_summary: undefined,
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const signalMatrix = await screen.findByTestId("macro-toolkit-model-signal-matrix");
+
+    expect(signalMatrix).toHaveTextContent("boundary pending backend summary");
+    expect(signalMatrix).toHaveTextContent("formal use blocked");
+    expect(signalMatrix).not.toHaveTextContent("formal use allowed");
   });
 
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {

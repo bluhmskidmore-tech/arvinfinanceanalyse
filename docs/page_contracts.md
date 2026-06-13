@@ -1431,13 +1431,22 @@
 
 | Client 方法 / Endpoint | 用途 | DTO/Schema | 口径 |
 | --- | --- | --- | --- |
-| `getMacroToolkitAnalysis()` -> `GET /ui/macro/toolkit/analysis?detail=core` | 核心分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
+| `getMacroToolkitAnalysis({ detail })` -> `GET /ui/macro/toolkit/analysis?detail=core\|full` | 核心/完整分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
+| `getMacroToolkitAnalysis({ detail: "full", historyLimit })` -> `GET /ui/macro/toolkit/analysis?detail=full&history_limit=430` | 完整分析下的 Crisis Score 历史序列（`score_history`） | `MacroToolkitAnalysisPayload.capability_results[crisis_score_cn].result.score_history` | analytical / tooling |
 | `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
 | `getMacroToolkitScripts()` -> `GET /ui/macro/toolkit/scripts` | 脚本注册表、源命中、产物列表 | `MacroToolkitPayload` | tooling |
 | `runMacroToolkitScript()` -> `POST /ui/macro/toolkit/scripts/{name}/run` | 显式运行选中脚本 | `MacroToolkitRunResponse` | operational |
+| `refreshMacroSourceBackfill()` -> `POST /ui/macro/toolkit/source-backfill/refresh` | Crisis Score / 宏观来源缺口补齐（按 alias 滚动回填） | `MacroToolkitSourceBackfillRefreshResponse` | operational / permission-gated |
 | `refreshCffexMemberRank()` -> `POST /ui/macro/toolkit/cffex-member-rank/refresh` | 中金所席位数据刷新 | `MacroToolkitCffexRefreshResponse` | operational / permission-gated |
 | `refreshChoiceStock()` -> `POST /ui/macro/toolkit/choice-stock/refresh` | 股票历史与因子快照刷新 | `MacroToolkitChoiceStockRefreshResponse` | operational / permission-gated |
 | `getChoiceStockRefreshStatus()` -> `GET /ui/macro/toolkit/choice-stock/refresh-status` | 刷新任务状态 | `MacroToolkitChoiceStockRefreshResponse` | operational |
+
+**分析 detail 语义**
+
+- `detail=core`：首屏快速返回；`runtime_status.deferred_sections` 可能延后策略、完整能力结果与 `data_health` 细项。
+- `detail=full`：返回完整能力结果（含 `crisis_score_cn` 组件、`score_history`）与 `data_health` 覆盖/修复项；`history_limit` 默认 430，仅对 full 生效。
+- `data_health`：来源覆盖、能力结果 complete/degraded/unavailable 计数与 repair_items；不得在前端重算 Crisis Score。
+- `source-backfill/refresh`：仅补齐缺失 alias，不改变 Crisis Score 公式权重。
 
 ### F. 指标映射
 
@@ -1928,9 +1937,10 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 
 ### C. Data chain
 
-- `useMarketHomeQueries` loads Choice macro latest data, market rate series, market catalog, and macro toolkit analysis summaries.
-- `buildModuleHomeView(... kind="market")` maps query envelopes into market KPI cards, rate tables, macro/toolkit panels, and source statuses.
+- `useMarketHomeQueries` loads Choice macro latest data, market rate series, market catalog, and macro toolkit **full** analysis with `historyLimit: 430` (Crisis Score 历史窗口)。
+- `buildModuleHomeView(... kind="market")` maps query envelopes into market KPI cards, rate tables, macro/toolkit panels, `MarketCrisisExplainBand`（Crisis Score 解释带）、`MarketDeskIntelStrip`（含 `yield_curve_shape` 形态标签）与 source statuses。
 - The page references market data result metadata and child-page readiness instead of defining a new market metric contract.
+- 商品旁证 / 影子评估不在市场首页完整展开；仅保留研究说明链接至 `/macro-toolkit#macro-toolkit-crisis-detail`。
 
 ### D. Units, dates, and status
 
