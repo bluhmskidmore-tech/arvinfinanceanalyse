@@ -655,6 +655,57 @@ describe("MarketDataPage", () => {
     );
   });
 
+  it("surfaces formal rates result_meta in the first-screen data status strip", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const rateSeries = [
+      buildMacroPoint({
+        series_id: "EMM00166466",
+        series_name: "中债国债到期收益率:10年",
+        value_numeric: 1.94,
+        latest_change: -0.012,
+      }),
+    ];
+    const getMarketDataRates = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        trace_id: "tr_formal_rates_status_strip",
+        quality_flag: "stale",
+        fallback_mode: "latest_snapshot",
+        source_version: "sv_rates_status_strip",
+        generated_at: "2026-05-01T08:00:00Z",
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: rateSeries,
+      },
+    }));
+    const getChoiceMacroLatest = vi.fn(async () => ({
+      result_meta: buildResultMeta({
+        basis: "analytical" as const,
+        result_kind: "macro.choice.latest",
+        formal_use_allowed: false,
+      }),
+      result: {
+        read_target: "duckdb" as const,
+        series: rateSeries,
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getMarketDataRates,
+      getChoiceMacroLatest,
+    });
+
+    const statusStrip = await screen.findByTestId("market-data-data-status-strip");
+    await within(await screen.findByTestId("market-data-rate-quote-table")).findByText(
+      "EMM00166466",
+    );
+    expect(statusStrip).toHaveTextContent("质量标记：陈旧");
+    expect(statusStrip).toHaveTextContent("降级模式：最新快照降级");
+    expect(statusStrip).toHaveTextContent("生成时间：2026-05-01T08:00:00Z");
+    expect(statusStrip).toHaveTextContent("来源版本：sv_rates_status_strip");
+  });
+
   it("renders explicit empty states for missing rate and money sources instead of demo rows", async () => {
     const base = createApiClient({ mode: "mock" });
     const getMarketDataRates = vi.fn(async () => ({

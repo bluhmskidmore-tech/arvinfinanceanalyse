@@ -345,6 +345,7 @@ export default function MarketDataPage() {
         catalogCount={catalog.length}
         stableCount={stableSeries.length}
         stableCatalogCount={stableCatalogSeries.length}
+        formalRatesMeta={formalRatesMeta}
         overviewMetrics={overviewMetrics}
         refreshStatus={refreshStatus}
         refreshError={refreshError}

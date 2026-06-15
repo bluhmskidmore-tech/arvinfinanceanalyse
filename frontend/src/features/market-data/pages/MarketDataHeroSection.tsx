@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Select } from "antd";
 
+import type { ResultMeta } from "../../../api/contracts";
 import { FilterBar } from "../../../components/FilterBar";
 import {
   DataStatusStrip,
@@ -29,6 +30,7 @@ type MarketDataHeroSectionProps = {
   catalogCount: number;
   stableCount: number;
   stableCatalogCount: number;
+  formalRatesMeta?: ResultMeta | null;
   overviewMetrics: MarketOverviewMetric[];
   refreshStatus: string;
   refreshError: string;
@@ -78,6 +80,25 @@ function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] 
   );
 }
 
+function formatFormalRatesQuality(flag: ResultMeta["quality_flag"]) {
+  const labels: Record<ResultMeta["quality_flag"], string> = {
+    ok: "正常",
+    warning: "预警",
+    error: "错误",
+    stale: "陈旧",
+    missing: "缺失",
+  };
+  return labels[flag] ?? flag;
+}
+
+function formatFormalRatesFallback(mode: ResultMeta["fallback_mode"]) {
+  const labels: Record<ResultMeta["fallback_mode"], string> = {
+    none: "未降级",
+    latest_snapshot: "最新快照降级",
+  };
+  return labels[mode] ?? mode;
+}
+
 export function MarketDataHeroSection({
   clientMode,
   watchDate,
@@ -86,6 +107,7 @@ export function MarketDataHeroSection({
   catalogCount,
   stableCount,
   stableCatalogCount,
+  formalRatesMeta,
   overviewMetrics,
   refreshStatus,
   refreshError,
@@ -135,6 +157,14 @@ export function MarketDataHeroSection({
             <span>
               稳定回收 {stableCount} / {stableCatalogCount}
             </span>
+            {formalRatesMeta ? (
+              <>
+                <span>质量标记：{formatFormalRatesQuality(formalRatesMeta.quality_flag)}</span>
+                <span>降级模式：{formatFormalRatesFallback(formalRatesMeta.fallback_mode)}</span>
+                <span>生成时间：{formalRatesMeta.generated_at}</span>
+                <span>来源版本：{formalRatesMeta.source_version}</span>
+              </>
+            ) : null}
           </div>
         </DataStatusStrip>
 
