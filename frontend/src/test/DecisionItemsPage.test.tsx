@@ -373,4 +373,31 @@ describe("DecisionItemsPage", () => {
     const warn = await screen.findByTestId("decision-items-contract-warning");
     expect(warn).toHaveTextContent(/missing or empty title/i);
   });
+
+  it("surfaces decision-items result_meta vendor version, generation time and fallback date", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getBalanceAnalysisDates").mockResolvedValue({
+      result_meta: testMeta,
+      result: { report_dates: ["2026-03-31"] },
+    });
+    vi.spyOn(client, "getBalanceAnalysisDecisionItems").mockResolvedValue({
+      result_meta: {
+        ...testMeta,
+        vendor_version: "vv_decision_items_vendor_20260330",
+        generated_at: "2026-04-24T01:23:00Z",
+        fallback_mode: "latest_snapshot",
+        fallback_date: "2026-03-30",
+      },
+      result: decisionItemsPayload({ rows: [] }),
+    });
+
+    renderPage(client);
+
+    await waitFor(() => {
+      const metaPanel = screen.getByTestId("decision-items-result-meta");
+      expect(metaPanel).toHaveTextContent("vendor_version=vv_decision_items_vendor_20260330");
+      expect(metaPanel).toHaveTextContent("generated_at=2026-04-24T01:23:00Z");
+      expect(metaPanel).toHaveTextContent("fallback_date=2026-03-30");
+    });
+  });
 });
