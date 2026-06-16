@@ -256,6 +256,22 @@ function formatFallbackMode(meta: ResultMeta | undefined): string {
   return meta.fallback_mode;
 }
 
+function formatVendorStatus(meta: ResultMeta | undefined): string {
+  if (!meta?.vendor_status) {
+    return "—";
+  }
+  if (meta.vendor_status === "ok") {
+    return "供应商正常";
+  }
+  if (meta.vendor_status === "vendor_stale") {
+    return "供应商陈旧";
+  }
+  if (meta.vendor_status === "vendor_unavailable") {
+    return "供应商不可用";
+  }
+  return meta.vendor_status;
+}
+
 function formatFormalAllowed(meta: ResultMeta | undefined): string {
   if (!meta) {
     return "—";
@@ -742,6 +758,9 @@ export default function BalanceAnalysisWorkbenchLayout({
       : null,
     formalStatus?.fallback_mode && formalStatus.fallback_mode !== "none"
       ? { key: "fallback", label: "降级", value: formatFallbackMode(formalStatus) }
+      : null,
+    formalStatus?.vendor_status && formalStatus.vendor_status !== "ok"
+      ? { key: "vendor", label: "供应商", value: formatVendorStatus(formalStatus) }
       : null,
   ].filter((item): item is { key: string; label: string; value: string } => item !== null);
   const activeStateSentinels = stateSentinels.filter((sentinel) => sentinel.active);
