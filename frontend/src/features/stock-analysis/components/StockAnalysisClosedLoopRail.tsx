@@ -47,9 +47,7 @@ export function StockAnalysisClosedLoopSummaryRail({
     >
       <div className={SA_SECTION_HEAD}>
         <h2 className={SA_CARD_TITLE}>闭环摘要</h2>
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${tonePillClass(summary.referenceRating.tone)}`}
-        >
+        <span className={tonePillClass(summary.referenceRating.tone)}>
           {summary.referenceRating.label}
         </span>
       </div>
@@ -92,16 +90,16 @@ export function StockAnalysisClosedLoopSummaryRail({
               key: "closed-loop-verdict-detail",
               label: "依据明细",
               children: (
-                <div className="text-xs text-neutral-600">
-                  <p className="m-0">{summary.verdict.primaryReason}</p>
-                  <ul className="mt-2 space-y-1 pl-4" aria-label="闭环结论证据">
+                <div className="stock-analysis-page__collapse-detail">
+                  <p>{summary.verdict.primaryReason}</p>
+                  <ul aria-label="闭环结论证据">
                     {summary.verdict.evidence.map((item) => (
-                      <li key={item} className="list-disc" title={item}>
+                      <li key={item} title={item}>
                         {item}
                       </li>
                     ))}
                   </ul>
-                  <p className="m-0 mt-2 text-neutral-500">{summary.verdict.nextStep}</p>
+                  <p className="stock-analysis-page__collapse-detail--muted">{summary.verdict.nextStep}</p>
                 </div>
               ),
             },
@@ -188,7 +186,7 @@ export function StockAnalysisClosedLoopSummaryRail({
                     key: `${item.key}-detail`,
                     label: "明细",
                     children: (
-                      <p className="m-0 text-[11px] leading-snug text-neutral-500">{item.detail}</p>
+                      <p className="stock-analysis-page__collapse-detail stock-analysis-page__collapse-detail--compact stock-analysis-page__collapse-detail--muted">{item.detail}</p>
                     ),
                   },
                 ]}

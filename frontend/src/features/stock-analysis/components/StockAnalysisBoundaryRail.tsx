@@ -37,12 +37,40 @@ export function StockAnalysisBoundaryRail({
   boundaryItems,
   boundarySummary,
   strategyPayload,
+  diagnosticsDrawerOpen,
+  onOpenDiagnostics,
+  onCloseDiagnostics,
+  showInlineDiagnosticsAction = true,
 }: {
   boundaryItems: StockAnalysisEvidenceStatusItem[];
   boundarySummary: StockDataBoundarySummary | null;
   strategyPayload: LivermoreStrategyPayload | null;
+  diagnosticsDrawerOpen?: boolean;
+  onOpenDiagnostics?: () => void;
+  onCloseDiagnostics?: () => void;
+  showInlineDiagnosticsAction?: boolean;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const isControlled = diagnosticsDrawerOpen !== undefined;
+  const isDrawerOpen = isControlled ? diagnosticsDrawerOpen : drawerOpen;
+
+  const openDiagnostics = () => {
+    if (isControlled) {
+      onOpenDiagnostics?.();
+      return;
+    }
+
+    setDrawerOpen(true);
+  };
+
+  const closeDiagnostics = () => {
+    if (isControlled) {
+      onCloseDiagnostics?.();
+      return;
+    }
+
+    setDrawerOpen(false);
+  };
 
   return (
     <section className={SA_FIRST_CARD} data-testid="stock-analysis-boundary-rail">
@@ -75,18 +103,20 @@ export function StockAnalysisBoundaryRail({
           </span>
         </div>
       ) : null}
-      <Button
-        type="link"
-        className="stock-analysis-page__rail-action"
-        aria-expanded={drawerOpen}
-        onClick={() => setDrawerOpen(true)}
-      >
-        查看完整诊断
-      </Button>
+      {showInlineDiagnosticsAction ? (
+        <Button
+          type="link"
+          className="stock-analysis-page__rail-action"
+          aria-expanded={isDrawerOpen}
+          onClick={openDiagnostics}
+        >
+          查看完整诊断
+        </Button>
+      ) : null}
       <Drawer
         title="数据口径诊断"
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        open={isDrawerOpen}
+        onClose={closeDiagnostics}
         destroyOnClose
         width={480}
       >
@@ -136,12 +166,17 @@ export function StockAnalysisBoundaryRail({
             </ul>
             <Typography.Title level={5}>数据缺口</Typography.Title>
             <ul>
-              {strategyPayload.data_gaps.map((gap) => (
-                <li key={`${gap.input_family}-${gap.status}`}>
-                  <strong>{dataGapFamilyLabel(gap.input_family)}</strong> {stockStatusLabel(gap.status)}:{" "}
-                  {localizeStockBackendText(gap.evidence, gap.input_family)}
-                </li>
-              ))}
+              {strategyPayload.data_gaps.map((gap) => {
+                const familyLabel = dataGapFamilyLabel(gap.input_family);
+                const status = stockStatusLabel(gap.status);
+                return (
+                  <li key={`${gap.input_family}-${gap.status}`}>
+                    <span className="sr-only">{familyLabel} {status}</span>
+                    <strong>{familyLabel}</strong> {status}:{" "}
+                    {localizeStockBackendText(gap.evidence, gap.input_family)}
+                  </li>
+                );
+              })}
             </ul>
             <Typography.Title level={5}>可用输出</Typography.Title>
             <p>{strategyPayload.supported_outputs.map(outputKeyLabel).join("、") || "无"}</p>

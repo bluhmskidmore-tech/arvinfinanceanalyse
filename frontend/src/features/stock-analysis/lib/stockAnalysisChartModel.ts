@@ -4,6 +4,7 @@ import type {
   StockSectorViewKind,
   StockSectorViewRow,
 } from "./stockAnalysisPageModel";
+import type { SectorSeriesTrendLine } from "./stockAnalysisSectorSeriesModel";
 
 export type CompactChartRow = {
   key: string;
@@ -44,16 +45,17 @@ export type SectorSortKey =
   | "constituentCount";
 
 export const stockChartPalette = {
-  ink: "#0c1c33",
-  muted: "#6b7d95",
-  grid: "#e4e9f0",
-  track: "#eef2f7",
-  primary: "#1850a1",
-  primaryLight: "#4d84cc",
-  accent: "#2f68b8",
-  success: "#1f7a55",
-  successLight: "#86acdb",
-  danger: "#b94743",
+  ink: "#16191d",
+  muted: "#8a8f98",
+  grid: "#e2e0da",
+  track: "#e2e0da",
+  primary: "#14366b",
+  primaryLight: "#3a5e96",
+  accent: "#6f8ab8",
+  success: "#1f7a4d",
+  successLight: "#a9bcd6",
+  danger: "#b42318",
+  gold: "#c9a85c",
 } as const;
 
 export const sectorViewTabs: { key: StockSectorViewKind; label: string }[] = [
@@ -324,6 +326,65 @@ export function buildSectorStrengthOption({
           view === "score" ? row.score : view === "pctchange" ? row.pctChange : view === "turnover" ? row.turnover : row.amplitude
         }<br/>成分 ${row.constituentCount}`;
       },
+    },
+  };
+}
+
+const sectorSeriesTrendColors = [
+  stockChartPalette.primary,
+  stockChartPalette.accent,
+  stockChartPalette.gold,
+  stockChartPalette.success,
+  stockChartPalette.danger,
+] as const;
+
+export function buildSectorSeriesTrendOption(lines: SectorSeriesTrendLine[]): EChartsOption {
+  const tradeDates = [...new Set(lines.flatMap((line) => line.dates))].sort();
+  if (tradeDates.length === 0 || lines.length === 0) {
+    return { animation: false, series: [] };
+  }
+
+  return {
+    animation: false,
+    legend: {
+      bottom: 0,
+      type: "scroll",
+      textStyle: { color: stockChartPalette.muted, fontSize: 10 },
+    },
+    grid: { top: 12, right: 12, bottom: 48, left: 48, containLabel: false },
+    xAxis: {
+      type: "category",
+      data: tradeDates,
+      axisLine: { lineStyle: { color: stockChartPalette.grid } },
+      axisTick: { show: false },
+      axisLabel: { color: stockChartPalette.muted, fontSize: 10 },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      max: 1,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: stockChartPalette.muted, fontSize: 10 },
+      splitLine: { lineStyle: { color: stockChartPalette.grid, type: "dashed" } },
+    },
+    series: lines.map((line, index) => ({
+      name: line.sectorName,
+      type: "line",
+      smooth: false,
+      symbol: "circle",
+      symbolSize: 5,
+      data: tradeDates.map((tradeDate) => {
+        const pointIndex = line.dates.indexOf(tradeDate);
+        return pointIndex >= 0 ? line.scores[pointIndex] : null;
+      }),
+      itemStyle: { color: sectorSeriesTrendColors[index % sectorSeriesTrendColors.length] },
+      lineStyle: { width: 2 },
+      connectNulls: false,
+    })),
+    tooltip: {
+      trigger: "axis",
+      confine: true,
     },
   };
 }

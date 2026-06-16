@@ -9,6 +9,7 @@ import type {
   LivermoreCycleProxyBacktestPayload,
   LivermoreMarketGateState,
   LivermoreSignalConfluencePayload,
+  LivermoreSectorRankSeriesPoint,
   LivermoreStockCandidateItem,
   LivermoreStrategyOptimizationPayload,
   LivermoreStrategyPayload,
@@ -909,6 +910,22 @@ export function localizeStockBackendText(
   if (lower.includes("breadth inputs are unavailable")) {
     return "市场宽度输入不可用。";
   }
+  if (
+    lower.includes("choice limit-up quality catalog is confirmed") &&
+    lower.includes("trend-only slice")
+  ) {
+    return "涨停质量目录已确认，但落地输入不可用；市场门控已限制为仅趋势切片。";
+  }
+  if (lower.includes("choice stock materialized input coverage is incomplete")) {
+    const dateMatch = value.match(/for (\d{4}-\d{2}-\d{2})/i);
+    const itemsMatch = value.match(/request items:\s*(.+)$/i);
+    const datePart = dateMatch?.[1] ?? "目标日";
+    const itemsPart = itemsMatch?.[1]?.replace(/:/g, "：") ?? "部分输入";
+    return `Choice 股票物化输入覆盖不完整（${datePart}）；缺数据项：${itemsPart}。`;
+  }
+  if (lower.includes("materialized input coverage incomplete")) {
+    return `${familyLabel || "策略"}物化输入覆盖不完整。`;
+  }
   if (lower.includes("5-day breadth input family is not landed")) {
     return "5日市场宽度输入未落地。";
   }
@@ -1301,12 +1318,96 @@ export function buildStockAnalysisKpiStrip(
 export type StockStrategyLensItem = {
   key: string;
   label: string;
+  subtitle: string;
   value: string;
+  unitLabel: string;
   detail: string;
   tone: "positive" | "warning" | "negative" | "neutral";
+  state: "ready" | "blocked" | "empty" | "paused" | "pending";
+  statusLabel: string;
+  statusDetail: string;
+  blockerLabel: string;
+  focusLabel: string;
+  actionLabel: string;
+  candidateCountLabel: string;
+  dateLabel: string;
+  formulaLabel: string;
+  evidence: Array<{ key: string; label: string; value: string }>;
+  candidates: Array<{
+    key: string;
+    rankLabel: string;
+    stockCode: string;
+    stockName: string;
+    sectorName: string;
+    metricLabel: string;
+  }>;
   scrollTarget: string;
   progress?: number;
 };
+
+function meanReversionMarketActiveLabel(
+  marketState: LivermoreMarketGateState,
+  candidateCount: number,
+): string {
+  if (marketState !== "WARM") return "门控暂停";
+  return candidateCount > 0 ? "条件触发" : "";
+}
+
+function compactStrategyLedgerText(value: string, maxLength = 38): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength)}…`;
+}
+
+function shortStrategyBlockerLabel(value: string): string {
+  if (value.includes("物化输入覆盖不完整")) {
+    return "物化输入覆盖不完整，详见证据账本。";
+  }
+  if (value.includes("持仓快照缺失")) {
+    return "持仓快照缺失，暂不生成该输出。";
+  }
+  return compactStrategyLedgerText(value);
+}
+
+function shortStrategyCoverageLabel(
+  text: string | null | undefined,
+  inputFamily: string,
+  fallback: string,
+): string {
+  if (!text?.trim()) return fallback;
+  const localized = localizeStockBackendText(text, inputFamily);
+  if (/hybrid fusion/i.test(text)) return fallback;
+  const firstClause = localized.split(/[。；;]/)[0] || localized;
+  return compactStrategyLedgerText(firstClause, 42);
+}
+
+function strategyCandidateCountLabel(count: number): string {
+  return `${count} 只候选`;
+}
+
+function strategyBlockerLabel(state: StockStrategyLensItem["state"], statusDetail: string): string {
+  if (state === "ready" || state === "empty") return "无阻断";
+  return statusDetail || "阻断待确认";
+}
+
+function strategyFocusLabel(params: {
+  label: string;
+  state: StockStrategyLensItem["state"];
+  candidates: StockStrategyLensItem["candidates"];
+  fallback: string;
+}): string {
+  const top = params.candidates[0];
+  if (top) {
+    return `优先核验 ${top.stockName} ${top.stockCode}，再复核${params.label}证据边界。`;
+  }
+  if (params.state === "blocked" || params.state === "pending") {
+    return `补齐${params.label}输入后复核。`;
+  }
+  if (params.state === "paused") {
+    return `${params.label}受门控暂停，等待市场状态重新开放。`;
+  }
+  return params.fallback;
+}
 
 export type StockThemeLeaderPreviewItem = {
   stockCode: string;
@@ -1604,100 +1705,275 @@ export function buildSectorHeavyweightPreview(
 
 export function buildStrategyLensItems(
   payload: LivermoreStrategyPayload,
-  consensus: ConsensusSummary,
+  _consensus: ConsensusSummary,
 ): StockStrategyLensItem[] {
-  const reviewCount = buildCandidateReviewQueue(payload).length;
-  const resonanceCount = consensus.items.filter((item) => item.consensusCount >= 2).length;
-  const themeCards = buildThemeBreakoutCards(payload);
-  const themeLeaderCount = buildThemeLeaderPreviewItems(themeCards).length;
-  const sectorHeavyweightPreview = buildSectorHeavyweightPreview(payload);
+  type StrategyOutputKey = LivermoreStrategyPayload["unsupported_outputs"][number]["key"];
+
+  const unsupportedReason = (key: StrategyOutputKey) =>
+    payload.unsupported_outputs.find((output) => output.key === key)?.reason;
+  const localizedReason = (key: StrategyOutputKey) =>
+    localizeStockBackendText(unsupportedReason(key), key);
+  const shortReason = (key: StrategyOutputKey) => shortStrategyBlockerLabel(localizedReason(key));
+  const outputState = (key: StrategyOutputKey, candidateCount: number, exists: boolean) => {
+    const reason = unsupportedReason(key);
+    if (candidateCount > 0) {
+      return {
+        state: "ready" as const,
+        tone: "positive" as const,
+        statusLabel: "已返回",
+        statusDetail: "已有候选，进入只读复核。",
+      };
+    }
+    if (reason) {
+      return {
+        state: "blocked" as const,
+        tone: "warning" as const,
+        statusLabel: "被阻断",
+        statusDetail: shortReason(key),
+      };
+    }
+    if (exists) {
+      return {
+        state: "empty" as const,
+        tone: "neutral" as const,
+        statusLabel: "0 候选",
+        statusDetail: "策略已计算，本日没有命中标的。",
+      };
+    }
+    return {
+      state: "pending" as const,
+      tone: "warning" as const,
+      statusLabel: "待返回",
+      statusDetail: "接口未返回该策略候选，请查看数据边界。",
+    };
+  };
+
+  const stockPayload = payload.stock_candidates;
+  const hybridPayload = payload.hybrid_fusion_candidates;
+  const factorPayload = payload.factor_screen_candidates;
+  const meanReversionPayload = payload.mean_reversion_candidates;
+  const strategyCandidateCounts = {
+    hybrid: hybridPayload?.candidate_count ?? 0,
+    livermore: stockPayload?.candidate_count ?? 0,
+    factor: factorPayload?.candidate_count ?? 0,
+    mean_reversion: meanReversionPayload?.candidate_count ?? 0,
+  };
+  const meanReversionBaseStatus = outputState(
+    "mean_reversion_candidates",
+    strategyCandidateCounts.mean_reversion,
+    Boolean(meanReversionPayload),
+  );
+  const meanReversionGatePaused = payload.market_gate.state !== "WARM" && !meanReversionPayload;
+  const meanReversionStatus = unsupportedReason("mean_reversion_candidates")
+    ? {
+        ...meanReversionBaseStatus,
+        statusDetail: meanReversionGatePaused
+          ? `${meanReversionBaseStatus.statusDetail}；门控暂停。`
+          : meanReversionBaseStatus.statusDetail,
+      }
+    : meanReversionGatePaused
+      ? {
+          state: "paused" as const,
+          tone: "neutral" as const,
+          statusLabel: "门控暂停",
+          statusDetail: `当前市场门控为${localizeMarketDataStatus(payload.market_gate.state)}，超跌观察不触发。`,
+        }
+      : meanReversionBaseStatus;
+  const strategyStatuses = {
+    hybrid: outputState("hybrid_fusion", strategyCandidateCounts.hybrid, Boolean(hybridPayload)),
+    livermore: outputState("stock_candidates", strategyCandidateCounts.livermore, Boolean(stockPayload)),
+    factor: outputState("factor_screen_candidates", strategyCandidateCounts.factor, Boolean(factorPayload)),
+    mean_reversion: meanReversionStatus,
+  };
   const strategyMax = Math.max(
     1,
-    reviewCount,
-    resonanceCount,
-    consensus.strategyCounts.hybrid_fusion,
-    consensus.strategyCounts.livermore,
-    consensus.strategyCounts.factor_screen,
-    consensus.strategyCounts.mean_reversion,
-    themeLeaderCount,
-    sectorHeavyweightPreview.totalSampleCount,
+    strategyCandidateCounts.hybrid,
+    strategyCandidateCounts.livermore,
+    strategyCandidateCounts.factor,
+    strategyCandidateCounts.mean_reversion,
   );
+  const hybridCandidates =
+    hybridPayload?.items.slice(0, 3).map((item) => ({
+      key: item.stock_code,
+      rankLabel: `#${item.rank}`,
+      stockCode: item.stock_code,
+      stockName: item.stock_name,
+      sectorName: item.sector_name,
+      metricLabel: `融合分 ${formatNumber(item.fusion_score, 3)}`,
+    })) ?? [];
+  const livermoreCandidates =
+    stockPayload?.items.slice(0, 3).map((item) => ({
+      key: item.stock_code,
+      rankLabel: `#${item.rank}`,
+      stockCode: item.stock_code,
+      stockName: item.stock_name,
+      sectorName: item.sector_name,
+      metricLabel: `收盘强度 ${formatRatioAsPercent(item.close_strength, 0)}`,
+    })) ?? [];
+  const factorCandidates =
+    factorPayload?.items.slice(0, 3).map((item) => ({
+      key: item.stock_code,
+      rankLabel: `#${item.rank}`,
+      stockCode: item.stock_code,
+      stockName: item.stock_name,
+      sectorName: item.sector_name || item.industry,
+      metricLabel: `因子分 ${formatNumber(item.score, 3)}`,
+    })) ?? [];
+  const meanReversionCandidates =
+    meanReversionPayload?.items.slice(0, 3).map((item) => ({
+      key: item.stock_code,
+      rankLabel: `#${item.rank}`,
+      stockCode: item.stock_code,
+      stockName: item.stock_name,
+      sectorName: item.sector_name,
+      metricLabel: `20日回撤 ${formatRatioAsPercent(item.drawdown_20d, 1)}`,
+    })) ?? [];
+  const hybridDetail = hybridPayload?.coverage_note
+    ? shortStrategyCoverageLabel(hybridPayload.coverage_note, "hybrid_fusion", "周期/价格/拥挤度合成，仅观察输出")
+    : hybridPayload?.observation_only
+      ? "只读观察候选"
+      : strategyStatuses.hybrid.statusDetail;
+  const livermoreDetail = stockPayload?.selection_policy
+    ? localizeStockBackendText(stockPayload.selection_policy, "stock_candidates")
+    : strategyStatuses.livermore.state === "blocked"
+      ? "价格趋势输入未完整落地"
+      : strategyStatuses.livermore.statusDetail;
+  const factorDetail = factorPayload?.coverage_note
+    ? shortStrategyCoverageLabel(factorPayload.coverage_note, "factor_screen_candidates", "因子覆盖已返回")
+    : strategyStatuses.factor.statusDetail;
+  const meanReversionDetail =
+    strategyStatuses.mean_reversion.state === "blocked"
+      ? strategyStatuses.mean_reversion.statusDetail
+      : meanReversionMarketActiveLabel(payload.market_gate.state, strategyCandidateCounts.mean_reversion) ||
+        strategyStatuses.mean_reversion.statusDetail;
 
   return [
     {
-      key: "review",
-      label: "复核队列",
-      value: String(reviewCount),
-      detail: reviewCount > 0 ? "优先人工复核" : "暂无主候选",
-      tone: reviewCount > 0 ? "positive" : "warning",
-      scrollTarget: "stock-analysis-review-queue",
-      progress: clampRatio(reviewCount / strategyMax),
-    },
-    {
-      key: "resonance",
-      label: "策略共振",
-      value: String(resonanceCount),
-      detail: consensus.tripleCount > 0 ? `${consensus.tripleCount} 只三重共振` : "双策略及以上",
-      tone: resonanceCount > 0 ? "positive" : "neutral",
-      scrollTarget: "stock-analysis-consensus-first-screen",
-      progress: clampRatio(resonanceCount / strategyMax),
-    },
-    {
       key: "hybrid",
       label: "融合策略",
-      value: String(consensus.strategyCounts.hybrid_fusion),
-      detail: "多策略观察池",
-      tone: consensus.strategyCounts.hybrid_fusion > 0 ? "positive" : "neutral",
-      scrollTarget: "stock-analysis-observation-preview",
-      progress: clampRatio(consensus.strategyCounts.hybrid_fusion / strategyMax),
+      subtitle: "多策略合成",
+      value: String(strategyCandidateCounts.hybrid),
+      unitLabel: "候选",
+      detail: hybridDetail,
+      tone: strategyStatuses.hybrid.tone,
+      state: strategyStatuses.hybrid.state,
+      statusLabel: strategyStatuses.hybrid.statusLabel,
+      statusDetail: strategyStatuses.hybrid.statusDetail,
+      blockerLabel: strategyBlockerLabel(strategyStatuses.hybrid.state, strategyStatuses.hybrid.statusDetail),
+      focusLabel: strategyFocusLabel({
+        label: "融合策略",
+        state: strategyStatuses.hybrid.state,
+        candidates: hybridCandidates,
+        fallback: "复核周期、趋势、拥挤度证据是否同向。",
+      }),
+      actionLabel: "查看复核队列",
+      candidateCountLabel: strategyCandidateCountLabel(strategyCandidateCounts.hybrid),
+      dateLabel: hybridPayload?.as_of_date ?? payload.as_of_date ?? "日期待补",
+      formulaLabel: hybridPayload?.formula_version ?? "公式待补",
+      evidence: [
+        { key: "gate", label: "门控", value: localizeMarketDataStatus(hybridPayload?.market_state ?? payload.market_gate.state) },
+        { key: "mode", label: "口径", value: hybridPayload?.observation_only ? "只读观察" : "复核候选" },
+        { key: "count", label: "候选", value: hybridPayload ? `${hybridPayload.candidate_count} 只` : "待补" },
+      ],
+      candidates: hybridCandidates,
+      scrollTarget: "stock-analysis-review-queue",
+      progress: clampRatio(strategyCandidateCounts.hybrid / strategyMax),
     },
     {
       key: "livermore",
       label: "趋势突破",
-      value: String(consensus.strategyCounts.livermore),
-      detail: "趋势突破",
-      tone: consensus.strategyCounts.livermore > 0 ? "positive" : "neutral",
-      scrollTarget: "stock-analysis-observation-preview",
-      progress: clampRatio(consensus.strategyCounts.livermore / strategyMax),
+      subtitle: "价格趋势",
+      value: String(strategyCandidateCounts.livermore),
+      unitLabel: "候选",
+      detail: livermoreDetail,
+      tone: strategyStatuses.livermore.tone,
+      state: strategyStatuses.livermore.state,
+      statusLabel: strategyStatuses.livermore.statusLabel,
+      statusDetail: strategyStatuses.livermore.statusDetail,
+      blockerLabel: strategyBlockerLabel(strategyStatuses.livermore.state, strategyStatuses.livermore.statusDetail),
+      focusLabel: strategyFocusLabel({
+        label: "趋势突破",
+        state: strategyStatuses.livermore.state,
+        candidates: livermoreCandidates,
+        fallback: "复核均线结构、观察位与行业强度是否一致。",
+      }),
+      actionLabel: "查看复核队列",
+      candidateCountLabel: strategyCandidateCountLabel(strategyCandidateCounts.livermore),
+      dateLabel: stockPayload?.as_of_date ?? payload.as_of_date ?? "日期待补",
+      formulaLabel: stockPayload?.formula_version ?? "公式待补",
+      evidence: [
+        { key: "input", label: "输入", value: stockPayload ? `${stockPayload.input_stock_count} 只` : "待补" },
+        { key: "excluded", label: "剔除", value: stockPayload ? `${stockPayload.excluded_stock_count} 只` : "待补" },
+        { key: "history", label: "历史不足", value: stockPayload ? `${stockPayload.insufficient_history_count} 只` : "待补" },
+      ],
+      candidates: livermoreCandidates,
+      scrollTarget: "stock-analysis-review-queue",
+      progress: clampRatio(strategyCandidateCounts.livermore / strategyMax),
     },
     {
       key: "factor",
       label: "多因子",
-      value: String(consensus.strategyCounts.factor_screen),
-      detail: "因子池",
-      tone: consensus.strategyCounts.factor_screen > 0 ? "positive" : "neutral",
+      subtitle: "价值质量动量",
+      value: String(strategyCandidateCounts.factor),
+      unitLabel: "候选",
+      detail: factorDetail,
+      tone: strategyStatuses.factor.tone,
+      state: strategyStatuses.factor.state,
+      statusLabel: strategyStatuses.factor.statusLabel,
+      statusDetail: strategyStatuses.factor.statusDetail,
+      blockerLabel: strategyBlockerLabel(strategyStatuses.factor.state, strategyStatuses.factor.statusDetail),
+      focusLabel: strategyFocusLabel({
+        label: "多因子",
+        state: strategyStatuses.factor.state,
+        candidates: factorCandidates,
+        fallback: "复核因子覆盖、估值质量与动量分位。",
+      }),
+      actionLabel: "查看观察池",
+      candidateCountLabel: strategyCandidateCountLabel(strategyCandidateCounts.factor),
+      dateLabel: factorPayload?.factor_snapshot_as_of_date ?? factorPayload?.as_of_date ?? payload.as_of_date ?? "日期待补",
+      formulaLabel: factorPayload?.formula_version ?? "公式待补",
+      evidence: [
+        { key: "input", label: "输入", value: factorPayload ? `${factorPayload.input_stock_count} 只` : "待补" },
+        { key: "gate", label: "门控", value: localizeMarketDataStatus(factorPayload?.market_state ?? payload.market_gate.state) },
+        { key: "mode", label: "口径", value: factorPayload?.observation_only ? "只读观察" : "复核候选" },
+      ],
+      candidates: factorCandidates,
       scrollTarget: "stock-analysis-observation-preview",
-      progress: clampRatio(consensus.strategyCounts.factor_screen / strategyMax),
+      progress: clampRatio(strategyCandidateCounts.factor / strategyMax),
     },
     {
       key: "mean_reversion",
       label: "超跌反弹",
-      value: String(consensus.strategyCounts.mean_reversion),
-      detail: payload.market_gate.state === "WARM" ? "条件触发" : "门控暂停",
-      tone:
-        payload.market_gate.state === "WARM" && consensus.strategyCounts.mean_reversion > 0
-          ? "positive"
-          : "neutral",
+      subtitle: "回撤修复",
+      value: String(strategyCandidateCounts.mean_reversion),
+      unitLabel: "候选",
+      detail: meanReversionDetail,
+      tone: strategyStatuses.mean_reversion.tone,
+      state: strategyStatuses.mean_reversion.state,
+      statusLabel: strategyStatuses.mean_reversion.statusLabel,
+      statusDetail: strategyStatuses.mean_reversion.statusDetail,
+      blockerLabel: strategyBlockerLabel(
+        strategyStatuses.mean_reversion.state,
+        strategyStatuses.mean_reversion.statusDetail,
+      ),
+      focusLabel: strategyFocusLabel({
+        label: "超跌反弹",
+        state: strategyStatuses.mean_reversion.state,
+        candidates: meanReversionCandidates,
+        fallback: "复核回撤深度、均线距离与市场门控。",
+      }),
+      actionLabel: "查看观察池",
+      candidateCountLabel: strategyCandidateCountLabel(strategyCandidateCounts.mean_reversion),
+      dateLabel: meanReversionPayload?.as_of_date ?? payload.as_of_date ?? "日期待补",
+      formulaLabel: meanReversionPayload?.formula_version ?? "公式待补",
+      evidence: [
+        { key: "input", label: "输入", value: meanReversionPayload ? `${meanReversionPayload.input_stock_count} 只` : "待补" },
+        { key: "gate", label: "门控", value: localizeMarketDataStatus(meanReversionPayload?.market_state ?? payload.market_gate.state) },
+        { key: "history", label: "历史不足", value: meanReversionPayload ? `${meanReversionPayload.insufficient_history_count} 只` : "待补" },
+      ],
+      candidates: meanReversionCandidates,
       scrollTarget: "stock-analysis-observation-preview",
-      progress: clampRatio(consensus.strategyCounts.mean_reversion / strategyMax),
-    },
-    {
-      key: "theme",
-      label: "题材龙头",
-      value: String(themeLeaderCount),
-      detail: `${themeCards.length} 个题材簇`,
-      tone: themeCards.length > 0 ? "positive" : "neutral",
-      scrollTarget: "stock-analysis-theme-leaders-first-screen",
-      progress: clampRatio(themeLeaderCount / strategyMax),
-    },
-    {
-      key: "sector_heavyweight",
-      label: "板块权重",
-      value: String(sectorHeavyweightPreview.totalSampleCount),
-      detail: `${sectorHeavyweightPreview.sectorsWithSamples} 个板块有样本`,
-      tone: sectorHeavyweightPreview.totalSampleCount > 0 ? "positive" : "neutral",
-      scrollTarget: "stock-analysis-sector-heavyweights-first-screen",
-      progress: clampRatio(sectorHeavyweightPreview.totalSampleCount / strategyMax),
+      progress: clampRatio(strategyCandidateCounts.mean_reversion / strategyMax),
     },
   ];
 }
@@ -2374,6 +2650,67 @@ export function buildSectorRows(payload: LivermoreStrategyPayload): StockSectorR
   });
 }
 
+export function buildSectorRowsFromSectorSeries(
+  rows: LivermoreSectorRankSeriesPoint[],
+): StockSectorRow[] {
+  const items = [...rows].sort((left, right) => {
+    const leftRank = finiteNumber(left.rank) ?? 9999;
+    const rightRank = finiteNumber(right.rank) ?? 9999;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    return left.sector_code.localeCompare(right.sector_code);
+  });
+  const n = items.length;
+  const scores = items
+    .map((item) => finiteNumber(item.score))
+    .filter((score): score is number => score != null);
+  const maxScore = scores.length ? Math.max(...scores) : 0;
+  const pctAbs = items
+    .map((item) => finiteNumber(item.avg_pctchange))
+    .filter((value): value is number => value != null)
+    .map((value) => Math.abs(value))
+    .filter(Boolean);
+  const maxPctAbs = pctAbs.length ? Math.max(...pctAbs) : 0;
+
+  return items.map((item, index) => {
+    const rank = finiteNumber(item.rank) ?? index + 1;
+    const scoreVal = finiteNumber(item.score);
+    const pctVal = finiteNumber(item.avg_pctchange);
+    const turnoverVal = finiteNumber(item.avg_turn);
+    const amplitudeVal = finiteNumber(item.avg_amplitude);
+    const constituentCount = finiteNumber(item.constituent_count) ?? 0;
+    const scoreNormalized =
+      maxScore > 0 && scoreVal != null ? Math.min(1, Math.max(0, scoreVal / maxScore)) : 0;
+
+    let pctBar = 0;
+    if (pctVal != null) {
+      if (maxPctAbs > 0) {
+        pctBar = (Math.abs(pctVal) / maxPctAbs) * 100;
+      } else if (pctVal !== 0) {
+        pctBar = 50;
+      }
+    }
+
+    return {
+      rank,
+      sectorCode: item.sector_code,
+      sectorName: item.sector_name,
+      score: formatNumber(scoreVal, 3),
+      pctChange: formatPercent(pctVal),
+      turnover: formatNumber(turnoverVal, 2),
+      amplitude: formatPercent(amplitudeVal),
+      constituentCount,
+      scoreValue: scoreVal,
+      pctChangeValue: pctVal,
+      turnoverValue: turnoverVal,
+      amplitudeValue: amplitudeVal,
+      scoreNormalized,
+      pctChangeBar: pctBar,
+      isTop: n > 0 && rank <= 5,
+      isBottom: n > 0 && rank >= n - 4,
+    };
+  });
+}
+
 export function buildStockSectorOverviewState<TRow extends StockSectorRow>(
   rows: TRow[],
 ): StockSectorOverviewState<TRow> {
@@ -2390,7 +2727,13 @@ export function buildSectorViewModel(
   payload: LivermoreStrategyPayload,
   view: StockSectorViewKind,
 ): StockSectorViewRow[] {
-  const rows = buildSectorRows(payload);
+  return buildSectorViewRows(buildSectorRows(payload), view);
+}
+
+export function buildSectorViewRows(
+  rows: StockSectorRow[],
+  view: StockSectorViewKind,
+): StockSectorViewRow[] {
   const sorted = [...rows].sort((a, b) => {
     const av = metricValueForView(a, view);
     const bv = metricValueForView(b, view);

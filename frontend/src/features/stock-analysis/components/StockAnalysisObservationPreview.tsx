@@ -50,14 +50,14 @@ export function StockAnalysisObservationPreview({
       data-testid="stock-analysis-observation-preview"
     >
       <div className={SA_SECTION_HEAD}>
-        <div className="min-w-0">
+        <div className="stock-analysis-page__min-w-0">
           <p className={SA_SECTION_EYEBROW}>多策略观察池</p>
           <h2 className={SA_CARD_TITLE}>多因子 / 超跌观察池</h2>
           <div className="stock-analysis-page__lower-signal-strip" aria-label="观察池状态">
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+            <span className="stock-analysis-page__signal-pill">
               <DatabaseOutlined aria-hidden="true" /> 多因子 {factorScreenPayload?.candidate_count ?? 0}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+            <span className="stock-analysis-page__signal-pill">
               <FireOutlined aria-hidden="true" /> 超跌 {meanReversionCount}
             </span>
           </div>
@@ -69,7 +69,7 @@ export function StockAnalysisObservationPreview({
 
       <div className="stock-analysis-page__observation-preview-grid">
         <div className="stock-analysis-page__observation-preview-panel">
-          <h3>多因子 Top {factorPreviewItems.length || 0}</h3>
+          <h3>多因子候选</h3>
           {!factorScreenPayload ? (
             <CompactStatusTile
               icon={<DatabaseOutlined />}
@@ -123,7 +123,7 @@ export function StockAnalysisObservationPreview({
         </div>
 
         <div className="stock-analysis-page__observation-preview-panel">
-          <h3>超跌{meanReversionMarketActive ? " Top" : ""}</h3>
+          <h3>{meanReversionMarketActive ? "超跌候选" : "超跌状态"}</h3>
           {!meanReversionMarketActive ? (
             <CompactStatusTile
               icon={<FireOutlined />}

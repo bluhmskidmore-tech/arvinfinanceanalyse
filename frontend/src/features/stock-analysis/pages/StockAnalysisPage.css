@@ -1,22 +1,20 @@
 .stock-analysis-page {
-  --sa-dh-page-bg: #f4f7fb;
-  --sa-dh-card: #ffffff;
-  --sa-dh-card-soft: #f7f9fc;
-  --sa-dh-line: #e4e9f0;
-  --sa-dh-line-soft: #eef2f7;
-  --sa-dh-ink: #0c1c33;
-  --sa-dh-ink-2: #2c3e5a;
-  --sa-dh-muted: #6b7d95;
-  --sa-dh-muted-2: #8a99af;
-  --sa-dh-blue: #1850a1;
-  --sa-dh-blue-deep: #10356a;
-  --sa-dh-blue-soft: #e8f1fb;
-  --sa-dh-green: #1f7a55;
-  --sa-dh-green-soft: #eef7f2;
-  --sa-dh-red: #b94743;
-  --sa-dh-shadow-card:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 8px 24px rgba(15, 23, 42, 0.06);
+  --sa-dh-page-bg: var(--ib-paper, #f4f3f0);
+  --sa-dh-card: var(--ib-surface, #ffffff);
+  --sa-dh-card-soft: var(--ib-surface-muted, #f7f6f3);
+  --sa-dh-line: var(--ib-hairline, #e2e0da);
+  --sa-dh-line-soft: var(--ib-hairline, #e2e0da);
+  --sa-dh-ink: var(--ib-ink, #16191d);
+  --sa-dh-ink-2: var(--ib-ink-secondary, #5c6370);
+  --sa-dh-muted: var(--ib-ink-secondary, #5c6370);
+  --sa-dh-muted-2: var(--ib-ink-muted, #8a8f98);
+  --sa-dh-blue: var(--ib-accent, #14366b);
+  --sa-dh-blue-deep: var(--ib-accent, #14366b);
+  --sa-dh-blue-soft: var(--ib-accent-surface, #eef2f8);
+  --sa-dh-green: var(--ib-up, #1f7a4d);
+  --sa-dh-green-soft: var(--ib-paper, #f4f3f0);
+  --sa-dh-red: var(--ib-down, #b42318);
+  --sa-dh-shadow-card: none;
   position: relative;
   display: grid;
   gap: 12px;
@@ -344,7 +342,7 @@
     align-items: stretch;
     min-height: 100vh !important;
     padding: 16px clamp(14px, 1.8vw, 26px) 34px !important;
-    background: #f4f7fb !important;
+    background: var(--ib-paper) !important;
   }
 
   .workbench-shell-grid--stock-analysis .workbench-main-column,
@@ -362,31 +360,34 @@
     height: calc(100vh - 32px) !important;
     min-height: 0 !important;
     padding: 18px 14px !important;
-    border-right: 1px solid #e4e9f0 !important;
-    border-radius: 10px !important;
-    background: #ffffff !important;
-    box-shadow: var(--sa-dh-shadow-card) !important;
+    border: 1px solid var(--ib-rail-border) !important;
+    border-right: 1px solid var(--ib-rail-border) !important;
+    border-radius: 2px !important;
+    background: var(--ib-rail-bg) !important;
+    box-shadow: none !important;
   }
 
   .workbench-shell-grid--stock-analysis .workbench-shell-aside *,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside * {
-    color: #2c3e5a !important;
+    color: var(--ib-rail-text) !important;
   }
 
   .workbench-shell-grid--stock-analysis .workbench-shell-aside > div:first-child,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside > div:first-child {
-    border-bottom-color: #e4e9f0 !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
   }
 
   .workbench-shell-grid--stock-analysis .workbench-shell-aside > div:first-child > div > div:first-child,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-aside > div:first-child > div > div:first-child {
-    background: #1850a1 !important;
-    color: #ffffff !important;
+    border: 1px solid var(--ib-rail-border) !important;
+    border-radius: 2px !important;
+    background: transparent !important;
+    color: var(--ib-rail-text-active) !important;
   }
 
   .workbench-shell-grid--stock-analysis .workbench-shell-section-label--rail,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-section-label--rail {
-    color: #6b7d95 !important;
+    color: var(--ib-rail-section-label) !important;
   }
 
   .workbench-shell-grid--stock-analysis [data-testid="workbench-group-nav"] a,
@@ -395,8 +396,8 @@
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-group-nav"] a,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-support-nav"] a,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-agent-nav__link {
-    border: 1px solid transparent !important;
-    border-radius: 9px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
   }
 
   .workbench-shell-grid--stock-analysis [data-testid="workbench-group-nav"] a[data-active="true"],
@@ -405,26 +406,35 @@
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-group-nav"] a[data-active="true"],
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-support-nav"] a[data-active="true"],
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-agent-nav__link[data-active="true"] {
-    border-color: rgba(24, 80, 161, 0.18) !important;
-    background: #e8f1fb !important;
-    box-shadow: inset 3px 0 0 #1850a1 !important;
+    background: var(--ib-rail-active-bg) !important;
+    color: var(--ib-rail-text-active) !important;
+    box-shadow: inset 2px 0 0 var(--ib-rail-active-bar) !important;
+  }
+
+  .workbench-shell-grid--stock-analysis [data-testid="workbench-group-nav"] a[data-active="true"] *,
+  .workbench-shell-grid--stock-analysis [data-testid="workbench-support-nav"] a[data-active="true"] *,
+  .workbench-shell-grid--stock-analysis .workbench-shell-agent-nav__link[data-active="true"] *,
+  .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-group-nav"] a[data-active="true"] *,
+  .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-support-nav"] a[data-active="true"] *,
+  .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-agent-nav__link[data-active="true"] * {
+    color: var(--ib-rail-text-active) !important;
   }
 
   .workbench-shell-grid--stock-analysis [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child,
   .workbench-shell-grid--stock-analysis .workbench-shell-agent-nav__label,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-shell-agent-nav__label {
-    color: #10356a !important;
+    color: var(--ib-rail-text-active) !important;
   }
 
   .workbench-shell-grid--stock-analysis .workbench-main-column > main,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-main-column > main {
     gap: 12px !important;
     padding: 14px !important;
-    border: 1px solid var(--moss-color-border-default) !important;
-    border-radius: 10px !important;
-    background: #ffffff !important;
-    box-shadow: var(--sa-dh-shadow-card) !important;
+    border: 1px solid var(--ib-hairline) !important;
+    border-radius: 2px !important;
+    background: var(--ib-surface) !important;
+    box-shadow: none !important;
   }
 
   .workbench-shell-grid--stock-analysis [data-testid="workbench-terminal-bar"],
@@ -477,7 +487,8 @@
     height: calc(100vh - 20px) !important;
     min-height: 0 !important;
     padding: 16px 10px !important;
-    border-radius: 10px !important;
+    border-radius: 0 !important;
+    background: var(--ib-rail-bg) !important;
     overflow: auto !important;
   }
 
@@ -492,7 +503,7 @@
 .stock-analysis-page__header,
 .stock-analysis-page__panel {
   border: 1px solid var(--sa-dh-line-soft);
-  border-radius: 10px;
+  border-radius: var(--ib-radius, 2px);
   background: var(--sa-dh-card);
 }
 
@@ -511,10 +522,10 @@
   flex-wrap: wrap;
   margin-bottom: 0;
   padding: 12px 14px 12px 16px;
-  background: #ffffff;
-  border: 1px solid color-mix(in srgb, var(--sa-dh-blue) 12%, transparent);
-  border-radius: 10px;
-  box-shadow: var(--moss-shadow-card);
+  background: var(--ib-surface);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  box-shadow: none;
 }
 
 .stock-analysis-page__dh-topbar-main {
@@ -835,9 +846,9 @@
 }
 
 .stock-analysis-page__badge {
-  background: #e8f1fb;
-  color: #10356a;
-  border: 1px solid rgba(24, 80, 161, 0.18);
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
+  border: 1px solid var(--ib-hairline);
 }
 
 /* 首屏 — 对齐 dashboard-home 终端视觉语言 */
@@ -4971,14 +4982,14 @@
   .workbench-shell-grid--stock-analysis .workbench-main-column > main,
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) .workbench-main-column > main {
     padding: 8px !important;
-    border-radius: 10px !important;
+    border-radius: 2px !important;
   }
 
   .workbench-shell-grid--stock-analysis [data-testid="workbench-terminal-bar"],
   .workbench-shell-grid--desktop-aligned:has([data-testid="stock-analysis-page"]) [data-testid="workbench-terminal-bar"] {
     gap: 6px !important;
     padding: 9px 12px !important;
-    border-radius: 10px !important;
+    border-radius: 2px !important;
   }
 
   .workbench-shell-grid--stock-analysis [data-testid="workbench-market-ticker"],
@@ -8091,5 +8102,3421 @@
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px;
+  }
+}
+
+/* Stock-analysis first-screen consolidation */
+.stock-analysis-page__workspace {
+  gap: 16px !important;
+}
+
+.stock-analysis-page__deep-zone {
+  display: grid;
+  gap: 16px;
+}
+
+.stock-analysis-page__uses-home-shell.stock-analysis-page__first-screen {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 316px !important;
+  column-gap: 14px !important;
+  align-items: start;
+}
+
+.stock-analysis-page__uses-home-shell > .stock-analysis-page__first-screen-main {
+  display: grid !important;
+  grid-column: 1 / 2 !important;
+  grid-row: 1 !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+  min-width: 0;
+}
+
+.stock-analysis-page__uses-home-shell > [data-testid="stock-analysis-first-screen-rail"] {
+  grid-column: 2 / 3 !important;
+  grid-row: 1 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  min-width: 0;
+}
+
+.stock-analysis-page__uses-home-shell > .stock-analysis-page__first-screen-main > * {
+  order: initial !important;
+}
+
+.stock-analysis-page__review-summary-stack {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.stock-analysis-page__uses-home-shell [data-testid="stock-analysis-review-queue"] {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+  gap: 14px;
+}
+
+.stock-analysis-page__deep-review-workspace > * {
+  order: initial !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"],
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-first-screen-analytics"] {
+  grid-column: 1 / -1 !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-strategy-lens"],
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-first-screen-analytics"] {
+  grid-column: 1 / -1 !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"],
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-first-screen-analytics"] {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"],
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-first-screen-analytics"] {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace .stock-analysis-page__table-wrap,
+.stock-analysis-page__deep-review-workspace .stock-analysis-page__sector-heavyweight-list {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.stock-analysis-strategy-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 1130px) {
+  .stock-analysis-page__uses-home-shell.stock-analysis-page__first-screen {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .stock-analysis-page__uses-home-shell > [data-testid="stock-analysis-first-screen-rail"] {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* Trust rail responsive polish */
+.stock-analysis-page__decision-rail > article {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 1131px) {
+  .stock-analysis-page__decision-rail .stock-analysis-page__rail-check-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 1130px) {
+  .stock-analysis-page__uses-home-shell > [data-testid="stock-analysis-first-screen-rail"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1130px) {
+  .stock-analysis-page__decision-rail > article {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+}
+
+@media (max-width: 720px) {
+  .stock-analysis-page__decision-rail > article {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+}
+
+/* Investment-bank decision memo pass: conclusion first, evidence next. */
+.stock-analysis-page__decision-memo {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(0, 1.28fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--sa-dh-line-soft);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--sa-dh-line-soft);
+}
+
+.stock-analysis-page__decision-memo-copy,
+.stock-analysis-page__decision-memo-tile {
+  min-width: 0;
+  background: var(--sa-dh-card);
+}
+
+.stock-analysis-page__decision-memo-copy {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 9px 11px;
+  border-left: 2px solid var(--sa-dh-blue);
+}
+
+.stock-analysis-page__decision-memo-tile[data-tone="positive"] {
+  border-top: 2px solid var(--sa-dh-green);
+}
+
+.stock-analysis-page__decision-memo-tile[data-tone="watch"],
+.stock-analysis-page__decision-memo-tile[data-tone="warning"] {
+  border-top: 2px solid #8a99af;
+}
+
+.stock-analysis-page__decision-memo-tile[data-tone="negative"] {
+  border-top: 2px solid var(--sa-dh-red);
+}
+
+.stock-analysis-page__uses-home-shell .stock-analysis-page__dh-hero-row,
+.stock-analysis-page__uses-home-shell .stock-analysis-page__decision-memo,
+.stock-analysis-page__uses-home-shell .stock-analysis-page__supply-audit-summary {
+  display: none !important;
+}
+
+.stock-analysis-page__queue-report-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 16px;
+  min-width: 0;
+  border-bottom: 1px solid var(--ib-hairline);
+  padding: 14px 16px;
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__queue-report-kicker {
+  color: var(--ib-accent);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stock-analysis-page__queue-report-title {
+  display: block;
+  margin: 0;
+  color: var(--ib-ink);
+  font-family: var(--ib-serif);
+  font-size: 23px;
+  font-weight: 650;
+  line-height: 1.18;
+}
+
+.stock-analysis-page__queue-report-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(58px, 1fr));
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-paper);
+}
+
+.stock-analysis-page__review-table-wrap {
+  max-height: 334px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.stock-analysis-page__review-queue-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.stock-analysis-page__review-queue-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--ib-ink);
+  background: var(--ib-surface);
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stock-analysis-page__review-queue-table td {
+  height: 58px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  vertical-align: middle;
+}
+
+.stock-analysis-page__toolbar-status-row {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+}
+
+.stock-analysis-page__toolbar-status-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  color: var(--ib-ink);
+  font-size: 11px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__toolbar-status-dot::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ib-ink-muted);
+}
+
+.stock-analysis-page__toolbar-status-dot[data-tone="positive"]::before {
+  background: var(--ib-up);
+}
+
+.stock-analysis-page__toolbar-status-dot[data-tone="warning"]::before {
+  background: var(--ib-warning, #b54708);
+}
+
+.stock-analysis-page__home-rail-list {
+  display: grid;
+  margin: 0;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.stock-analysis-page__home-rail-data-note {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-paper);
+}
+
+.stock-analysis-page__home-rail-data-status {
+  color: var(--ib-up) !important;
+  font-weight: 780 !important;
+}
+
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-nav"] {
+  display: none !important;
+}
+
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] {
+  grid-template-columns: max-content minmax(0, 1fr) !important;
+  gap: 12px 24px;
+  min-height: 54px;
+  padding: 12px 16px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 2px;
+  background: var(--ib-surface);
+}
+
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] p,
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] .stock-analysis-page__generated-at {
+  display: none !important;
+}
+
+.stock-analysis-page__uses-home-shell [data-testid="stock-analysis-tailwind-cockpit"] {
+  padding: 0 !important;
+  border: 1px solid var(--ib-hairline) !important;
+  border-top: 2px solid var(--ib-accent) !important;
+  background: var(--ib-surface) !important;
+}
+
+.stock-analysis-page__first-screen-main > [data-testid="stock-analysis-kpi-section"] {
+  display: none !important;
+}
+
+.stock-analysis-page__dh-section-head h2::before,
+.stock-analysis-page__dh-section-head h3::before {
+  display: none !important;
+}
+
+.stock-analysis-page__dh-section-head h2 {
+  color: var(--ib-ink);
+}
+
+.stock-analysis-page__first-screen {
+  gap: 28px !important;
+}
+
+/* IB queue desk loop pass */
+.stock-analysis-page__review-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ib-ink-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__review-row-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ib-ink-muted);
+}
+
+.stock-analysis-page__review-row-status[data-tone="positive"]::before {
+  background: var(--ib-up);
+}
+
+.stock-analysis-page__review-row-status[data-tone="warning"]::before {
+  background: var(--ib-warning, #b54708);
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(4),
+.stock-analysis-page__review-queue-table td:nth-child(4) {
+  width: auto;
+  min-width: 0;
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(1),
+.stock-analysis-page__review-queue-table td:nth-child(1) {
+  width: 48px;
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(2),
+.stock-analysis-page__review-queue-table td:nth-child(2) {
+  width: 102px;
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(3),
+.stock-analysis-page__review-queue-table td:nth-child(3) {
+  width: 88px;
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(5),
+.stock-analysis-page__review-queue-table td:nth-child(5) {
+  width: 66px;
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(6),
+.stock-analysis-page__review-queue-table td:nth-child(6) {
+  width: 66px;
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(7),
+.stock-analysis-page__review-queue-table td:nth-child(7) {
+  width: 94px;
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(8),
+.stock-analysis-page__review-queue-table td:nth-child(8) {
+  width: 72px;
+}
+
+.stock-analysis-page__review-queue-table th:nth-child(9),
+.stock-analysis-page__review-queue-table td:nth-child(9) {
+  width: 52px;
+  padding-right: 6px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__review-queue-table td:nth-child(9) .ant-btn {
+  width: 32px;
+  min-width: 32px;
+  margin-left: auto;
+}
+
+.stock-analysis-page__review-queue-table td > strong,
+.stock-analysis-page__review-queue-table td > small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__sector-filter-bar {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--ib-hairline);
+  border-radius: 0;
+  background: var(--ib-paper);
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
+.stock-analysis-page__sector-filter-status {
+  margin-left: auto;
+  font-size: 10px;
+}
+
+.stock-analysis-page__decision-rail [data-testid="stock-analysis-risk-section"],
+.stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] {
+  max-height: 40px;
+  overflow: hidden;
+}
+
+.stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-summary"] .stock-analysis-page__rail-check-list,
+.stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-summary"] .stock-analysis-page__rail-metric-grid,
+.stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-summary"] .stock-analysis-page__rail-next-action {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] {
+    max-height: 148px;
+    min-height: 0 !important;
+    padding: 8px 10px !important;
+    overflow: hidden;
+  }
+
+  .stock-analysis-page__workbench-actions {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr) 30px 30px;
+    grid-template-rows: 30px 28px;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .stock-analysis-page__workbench-actions .stock-analysis-page__dh-date-picker.ant-picker {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+  }
+
+  .stock-analysis-page__queue-search {
+    grid-column: 2 / -1;
+    grid-row: 1;
+    height: 30px;
+    min-width: 0;
+  }
+
+  .stock-analysis-page__toolbar-status-row {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    width: auto;
+    height: 28px;
+  }
+
+  .stock-analysis-page__complete-evidence-toggle {
+    grid-column: 3;
+    grid-row: 2;
+    height: 28px;
+    font-size: 9px;
+  }
+
+  .stock-analysis-page__agent-entry--quiet.ant-btn {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .stock-analysis-page__workbench-actions [data-testid="stock-analysis-refresh"] {
+    grid-column: 4;
+    grid-row: 2;
+    width: 30px;
+    min-width: 30px;
+    padding-inline: 0;
+  }
+
+  .stock-analysis-page__review-table-wrap {
+    max-height: none;
+    overflow-x: hidden;
+  }
+
+  .stock-analysis-page__review-queue-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .stock-analysis-page__review-queue-table thead {
+    display: none;
+  }
+
+  .stock-analysis-page__review-queue-table tbody {
+    display: grid;
+    gap: 6px;
+  }
+
+  .stock-analysis-page__review-queue-table tbody tr {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 4px 8px;
+    padding: 7px 8px;
+    border: 1px solid var(--ib-hairline);
+    background: var(--ib-surface);
+  }
+
+  .stock-analysis-page__review-queue-table tbody tr:nth-child(n + 4) {
+    display: none;
+  }
+
+  .stock-analysis-page__review-queue-table th,
+  .stock-analysis-page__review-queue-table td {
+    display: block;
+    width: auto;
+    padding: 0;
+    border: 0;
+    height: auto;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(8) {
+    grid-column: 1 / -1;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(9) {
+    grid-column: 1 / -1;
+    width: 100% !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(9) .ant-btn {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+  }
+}
+
+/* IB queue desk loop pass 2 — toolbar, rail, table footer */
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 8px 12px !important;
+  align-items: center !important;
+  min-height: 44px !important;
+  padding: 8px 12px !important;
+}
+
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] > div:first-child > div:first-child > span,
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] > div:last-child > div:first-child {
+  display: none !important;
+}
+
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] > div:last-child {
+  gap: 0 !important;
+  padding-top: 0 !important;
+  border-top: 0 !important;
+}
+
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] > div:first-child > div:first-child {
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+.stock-analysis-page__stale-banner--compressed {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+}
+
+.stock-analysis-page__agent-entry--quiet.ant-btn > span:not(.ant-btn-icon):not(.anticon) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.stock-analysis-page__agent-entry--quiet.ant-btn {
+  width: 30px !important;
+  min-width: 30px !important;
+  padding-inline: 0 !important;
+}
+
+.stock-analysis-page__review-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--ib-hairline);
+  background: var(--ib-paper);
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.stock-analysis-page__review-table-pagination {
+  font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+@media (min-width: 721px) {
+  .stock-analysis-page__review-table-wrap {
+    max-height: none;
+    overflow: visible;
+    border-bottom: 0;
+  }
+
+  .stock-analysis-page__review-queue-table tbody tr:nth-child(n + 6) {
+    display: none;
+  }
+
+  .stock-analysis-page__review-workbench-strip {
+    display: none;
+  }
+
+  .stock-analysis-page__sector-filter-bar {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 10px 8px;
+    border: 0;
+    background: transparent;
+  }
+
+  .stock-analysis-page__sector-filter-bar button {
+    min-height: 20px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--ib-ink-muted);
+    font-size: 10px;
+    font-weight: 650;
+  }
+
+  .stock-analysis-page__sector-filter-bar button[aria-pressed="true"] {
+    border-color: var(--ib-hairline);
+    background: var(--ib-surface);
+    color: var(--ib-ink);
+  }
+
+  .stock-analysis-page__sector-filter-status {
+    flex-basis: 100%;
+    margin-left: 0 !important;
+    color: var(--ib-ink-muted);
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .stock-analysis-page__decision-rail > [data-testid="stock-analysis-evidence-ledger"] [data-testid="stock-analysis-home-rail-data-note"] {
+    display: none;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-summary"] > .stock-analysis-page__dh-section-head {
+    display: none;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-verdict"] {
+    margin-top: 0;
+    padding: 5px 7px;
+    border-radius: 4px;
+    max-height: 34px;
+    overflow: hidden;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-verdict"] .stock-analysis-page__rail-verdict-body strong {
+    display: none;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-verdict"] .stock-analysis-page__rail-collapse {
+    display: none !important;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-summary"] {
+    padding-top: 0;
+    padding-bottom: 6px;
+  }
+
+  .stock-analysis-page__home-rail-diagnostic-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-height: 28px;
+    padding: 6px 12px;
+    border: 0;
+    border-top: 1px solid var(--ib-hairline);
+    border-bottom: 1px solid var(--ib-hairline);
+    background: var(--ib-paper);
+    color: var(--ib-ink-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: left;
+  }
+
+  .stock-analysis-page__home-rail-diagnostic-entry:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--ib-accent) 48%, transparent);
+    outline-offset: 2px;
+  }
+
+  .stock-analysis-page__home-rail-diagnostic-entry strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ib-ink);
+    font-size: 10px;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-risk-section"],
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] {
+    max-height: 34px;
+    overflow: hidden;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-risk-section"] .stock-analysis-page__rail-risk-list,
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] .stock-analysis-page__boundary-compact-grid,
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] .stock-analysis-page__boundary-list {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] {
+    max-height: 160px;
+  }
+
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] .title {
+    font-size: 17px;
+    line-height: 1.15;
+  }
+
+  .stock-analysis-page__toolbar-status-row {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .stock-analysis-page__complete-evidence-toggle > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .stock-analysis-page__complete-evidence-toggle {
+    width: 28px;
+    min-width: 28px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .stock-analysis-page__workbench-actions {
+    grid-template-columns: 104px minmax(0, 1fr) 28px 28px;
+    grid-template-rows: 30px 28px;
+  }
+
+  .stock-analysis-page__review-table-footer {
+    min-height: 24px;
+    padding: 4px 8px;
+    font-size: 9px;
+  }
+
+  .stock-analysis-page__sector-filter-bar {
+    max-height: 28px;
+    padding: 2px 8px;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-summary"],
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-risk-section"],
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] {
+    max-height: 32px;
+    overflow: hidden;
+  }
+}
+
+/* Desktop overlap fix: home-shell queue must wrap the IB table before deep-zone panels. */
+@media (min-width: 721px) {
+  .stock-analysis-page__uses-home-shell [data-testid="stock-analysis-review-queue"] {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-rows: unset !important;
+    align-content: start !important;
+    gap: 0 !important;
+    min-height: auto !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .stock-analysis-page__uses-home-shell .stock-analysis-page__review-summary-stack {
+    display: grid !important;
+    gap: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  .stock-analysis-page__uses-home-shell .stock-analysis-page__review-table-wrap,
+  .stock-analysis-page__uses-home-shell .stock-analysis-page__review-table-footer {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .stock-analysis-page__uses-home-shell + .stock-analysis-page__workspace {
+    margin-top: 0;
+    isolation: isolate;
+  }
+
+  .stock-analysis-page__uses-home-shell + .stock-analysis-page__workspace .stock-analysis-page__deep-zone {
+    position: relative;
+    z-index: 0;
+  }
+}
+
+/* Queue and rail repair pass: keep review rows compact and never clip live controls. */
+@media (min-width: 721px) {
+  .stock-analysis-page__review-queue-table td {
+    height: auto;
+    padding: 7px 8px;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(1),
+  .stock-analysis-page__review-queue-table td:nth-child(1) {
+    width: 44px;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(2),
+  .stock-analysis-page__review-queue-table td:nth-child(2) {
+    width: 96px;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(3),
+  .stock-analysis-page__review-queue-table td:nth-child(3) {
+    width: 82px;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(4),
+  .stock-analysis-page__review-queue-table td:nth-child(4) {
+    width: 18%;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(5),
+  .stock-analysis-page__review-queue-table td:nth-child(5) {
+    width: 20%;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(6),
+  .stock-analysis-page__review-queue-table td:nth-child(6) {
+    width: 72px;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(7),
+  .stock-analysis-page__review-queue-table td:nth-child(7) {
+    width: 16%;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(8),
+  .stock-analysis-page__review-queue-table td:nth-child(8) {
+    width: 74px;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(9),
+  .stock-analysis-page__review-queue-table td:nth-child(9) {
+    width: 58px;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(4),
+  .stock-analysis-page__review-queue-table td:nth-child(5),
+  .stock-analysis-page__review-queue-table td:nth-child(7) {
+    vertical-align: top;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(5) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(6) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(6) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > small {
+    display: block;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > small {
+    margin-top: 2px;
+  }
+
+  .stock-analysis-page__review-evidence-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    max-width: 100%;
+    min-height: 22px;
+    margin-top: 4px;
+    border: 1px solid var(--ib-hairline);
+    border-radius: 999px;
+    padding: 0 8px;
+    background: var(--ib-paper);
+    color: var(--ib-ink-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .stock-analysis-page__review-evidence-toggle > span,
+  .stock-analysis-page__review-evidence-toggle > b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stock-analysis-page__review-evidence-toggle > b {
+    color: var(--ib-accent);
+    font-weight: 800;
+  }
+
+  .stock-analysis-page__review-evidence-toggle[aria-expanded="true"] {
+    border-color: color-mix(in srgb, var(--ib-accent) 28%, var(--ib-hairline));
+    background: color-mix(in srgb, var(--ib-accent) 8%, var(--ib-surface));
+    color: var(--ib-ink);
+  }
+
+  .stock-analysis-page__review-evidence-ledger {
+    display: grid;
+    gap: 6px;
+    margin-top: 6px;
+    border: 1px solid var(--ib-hairline);
+    border-radius: 8px;
+    padding: 7px 8px;
+    background: var(--ib-paper);
+    color: var(--ib-ink-secondary);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .stock-analysis-page__review-evidence-ledger > strong {
+    color: var(--ib-ink);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+  }
+
+  .stock-analysis-page__review-evidence-ledger > ul {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .stock-analysis-page__review-evidence-ledger li {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .stock-analysis-page__review-evidence-ledger li > span,
+  .stock-analysis-page__review-evidence-ledger li > small,
+  .stock-analysis-page__review-evidence-ledger > p {
+    min-width: 0;
+    margin: 0;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-risk-section"],
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-risk-section"] .stock-analysis-page__rail-risk-list,
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] .stock-analysis-page__boundary-compact-grid,
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] .stock-analysis-page__boundary-list {
+    display: grid;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] .stock-analysis-page__rail-action.ant-btn-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 720px) {
+  [data-testid="stock-analysis-review-queue"] {
+    display: grid !important;
+    grid-template-rows: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    gap: 8px !important;
+    padding: 10px !important;
+    overflow: visible !important;
+  }
+
+  .stock-analysis-page__review-table-wrap {
+    max-height: none;
+    overflow-x: hidden;
+    overflow-y: visible;
+  }
+
+  .stock-analysis-page__review-queue-table tbody {
+    gap: 8px;
+  }
+
+  .stock-analysis-page__review-queue-table tbody tr,
+  .stock-analysis-page__review-queue-table tbody tr:nth-child(n + 4) {
+    display: grid !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(5) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(6) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(6) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > small {
+    display: block;
+  }
+
+  .stock-analysis-page__review-evidence-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    min-height: 22px;
+    margin-top: 4px;
+    border: 1px solid var(--ib-hairline);
+    border-radius: 999px;
+    padding: 0 8px;
+    background: var(--ib-paper);
+    color: var(--ib-ink-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .stock-analysis-page__review-evidence-toggle > span,
+  .stock-analysis-page__review-evidence-toggle > b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stock-analysis-page__review-evidence-ledger {
+    display: grid;
+    gap: 5px;
+    margin-top: 6px;
+    border: 1px solid var(--ib-hairline);
+    border-radius: 8px;
+    padding: 7px 8px;
+    background: var(--ib-paper);
+  }
+
+  .stock-analysis-page__review-evidence-ledger > ul {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .stock-analysis-page__review-evidence-ledger li,
+  .stock-analysis-page__review-evidence-ledger > p {
+    min-width: 0;
+    margin: 0;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-closed-loop-summary"],
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-risk-section"],
+  .stock-analysis-page__decision-rail [data-testid="stock-analysis-boundary-rail"] {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* Final mobile visual QA: keep topbar and decision memo horizontal and readable. */
+@media (max-width: 720px) {
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] > div {
+    grid-column: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] > div:first-child {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] > div:first-child > div:first-child {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] .title {
+    writing-mode: horizontal-tb !important;
+    white-space: nowrap !important;
+    word-break: normal !important;
+  }
+
+  .stock-analysis-page__queue-report-head {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .stock-analysis-page__queue-report-copy,
+  .stock-analysis-page__queue-report-copy p,
+  .stock-analysis-page__queue-report-title {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .stock-analysis-page__queue-report-title {
+    font-size: 20px !important;
+    line-height: 1.28 !important;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
+  .stock-analysis-page__queue-report-copy p {
+    font-size: 13px;
+    line-height: 1.48;
+  }
+
+  .stock-analysis-page__queue-report-meta {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Stock-analysis information-density and semantic color pass */
+.stock-analysis-page__queue-report-head {
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+}
+
+.stock-analysis-page__queue-report-kicker {
+  color: var(--ib-accent);
+  letter-spacing: 0;
+}
+
+.stock-analysis-page__queue-report-title {
+  color: var(--ib-ink);
+}
+
+.stock-analysis-page__queue-report-copy p {
+  color: var(--ib-ink-secondary);
+}
+
+.stock-analysis-page__queue-report-meta {
+  border-color: var(--ib-hairline);
+  background: var(--ib-paper);
+}
+
+.stock-analysis-page__queue-report-meta dt {
+  color: var(--ib-ink-muted);
+}
+
+.stock-analysis-page__queue-report-meta dd {
+  color: var(--ib-ink);
+}
+
+.stock-analysis-page__market-context-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-hairline);
+  gap: 1px;
+}
+
+.stock-analysis-page__market-context-strip > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "icon label"
+    "value value"
+    "detail detail";
+  align-content: start;
+  gap: 3px 7px;
+  min-width: 0;
+  min-height: 76px;
+  padding: 10px 11px 9px;
+  border-right: 0;
+  border-top: 2px solid var(--ib-hairline);
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__market-context-strip > div:last-child {
+  border-right: 0;
+}
+
+.stock-analysis-page__market-context-strip .stock-analysis-page__status-icon {
+  grid-area: icon;
+  width: 18px;
+  height: 18px;
+  color: var(--ib-ink-muted);
+}
+
+.stock-analysis-page__market-context-strip span {
+  grid-area: label;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ib-ink-secondary);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__market-context-strip strong {
+  grid-area: value;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ib-ink);
+  font-size: 15px;
+  font-weight: 820;
+  line-height: 1.18;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__market-context-strip small {
+  grid-area: detail;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__market-context-strip > div[data-tone="positive"] {
+  border-top-color: var(--ib-up);
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__market-context-strip > div[data-tone="positive"] .stock-analysis-page__status-icon,
+.stock-analysis-page__market-context-strip > div[data-tone="positive"] strong {
+  color: var(--ib-up);
+}
+
+.stock-analysis-page__market-context-strip > div[data-tone="watch"] {
+  border-top-color: var(--ib-warn);
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__market-context-strip > div[data-tone="watch"] .stock-analysis-page__status-icon,
+.stock-analysis-page__market-context-strip > div[data-tone="watch"] strong {
+  color: var(--ib-warn);
+}
+
+.stock-analysis-page__market-context-strip > div[data-tone="negative"] {
+  border-top-color: var(--ib-down);
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__market-context-strip > div[data-tone="negative"] .stock-analysis-page__status-icon,
+.stock-analysis-page__market-context-strip > div[data-tone="negative"] strong {
+  color: var(--ib-down);
+}
+
+.stock-analysis-page__market-context-strip > div[data-tone="neutral"] {
+  border-top-color: var(--ib-accent);
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__market-context-strip > div[data-tone="neutral"] .stock-analysis-page__status-icon,
+.stock-analysis-page__market-context-strip > div[data-tone="neutral"] strong {
+  color: var(--ib-accent);
+}
+
+.stock-analysis-page__source-gate-strip {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-paper);
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.stock-analysis-page__source-gate-strip span {
+  color: var(--ib-ink-secondary);
+  font-weight: 850;
+}
+
+.stock-analysis-page__source-gate-strip strong {
+  color: var(--ib-accent);
+}
+
+.stock-analysis-page__source-gate-strip[data-tone="positive"] strong {
+  color: var(--ib-up);
+}
+
+.stock-analysis-page__source-gate-strip[data-tone="watch"] strong {
+  color: var(--ib-warn);
+}
+
+.stock-analysis-page__source-gate-strip[data-tone="negative"] strong {
+  color: var(--ib-down);
+}
+
+.stock-analysis-page__source-gate-strip[data-tone="watch"] {
+  background: var(--ib-paper);
+}
+
+.stock-analysis-page__source-gate-strip[data-tone="negative"] {
+  background: var(--ib-paper);
+}
+
+.stock-analysis-page__source-gate-strip small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .stock-analysis-page__market-context-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .stock-analysis-page__market-context-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stock-analysis-page__market-context-strip > div {
+    min-height: 70px;
+    padding: 9px 10px;
+  }
+
+  .stock-analysis-page__market-context-strip strong {
+    font-size: 14px;
+  }
+
+  .stock-analysis-page__source-gate-strip {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .stock-analysis-page__source-gate-strip small {
+    grid-column: 1 / -1;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}
+
+/* Queue text containment pass: dense table, no cross-column text bleed. */
+@media (min-width: 721px) {
+  .stock-analysis-page__review-queue-table th,
+  .stock-analysis-page__review-queue-table td {
+    overflow: hidden;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(2),
+  .stock-analysis-page__review-queue-table td:nth-child(2) {
+    width: 108px;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(4),
+  .stock-analysis-page__review-queue-table td:nth-child(4) {
+    width: 22%;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(5),
+  .stock-analysis-page__review-queue-table td:nth-child(5) {
+    width: 17%;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(7),
+  .stock-analysis-page__review-queue-table td:nth-child(7) {
+    width: 14%;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(2) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(2) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(3) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(3) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(4) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(4) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(5) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(5) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > small {
+    display: block;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(2) > strong {
+    color: var(--ib-ink);
+    font-size: 14px;
+    font-weight: 820;
+    line-height: 1.16;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(4) > strong {
+    color: var(--ib-ink);
+    font-size: 12px;
+    font-weight: 780;
+    line-height: 1.18;
+  }
+}
+
+/* Deep workbench availability repair: this module moved out of the first screen,
+   so the old first-screen compaction rule must not hide it here. */
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-first-screen-analytics"] {
+  display: grid !important;
+  max-height: none !important;
+  visibility: visible !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] > .ant-collapse {
+  display: block !important;
+  max-height: none !important;
+  visibility: visible !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .ant-collapse-header {
+  display: flex !important;
+  visibility: visible !important;
+}
+
+/* Visual alignment pass: bring stock analysis back to the homepage report-desk language. */
+.stock-analysis-page {
+  gap: 14px;
+}
+
+.stock-analysis-page__uses-home-shell.stock-analysis-page__first-screen {
+  column-gap: 18px !important;
+  row-gap: 18px !important;
+}
+
+.stock-analysis-page__uses-home-shell [data-testid="stock-analysis-tailwind-cockpit"],
+.stock-analysis-page__uses-home-shell [data-testid="stock-analysis-review-queue"],
+.stock-analysis-page__uses-home-shell [data-testid="stock-analysis-consensus-first-screen"],
+.stock-analysis-page__deep-review-workspace > *,
+[data-testid="stock-analysis-first-screen-rail"] > .stock-analysis-page__dh-card {
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+.stock-analysis-page__uses-home-shell [data-testid="stock-analysis-tailwind-cockpit"],
+.stock-analysis-page__uses-home-shell [data-testid="stock-analysis-review-queue"] {
+  border-top: 2px solid var(--ib-accent) !important;
+}
+
+.stock-analysis-page__queue-report-head {
+  align-items: center;
+  gap: 20px;
+  padding: 16px 14px 14px;
+}
+
+.stock-analysis-page__queue-report-kicker {
+  margin-bottom: 6px;
+  color: var(--ib-accent);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stock-analysis-page__queue-report-title {
+  max-width: 760px;
+  color: var(--ib-ink);
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.28;
+}
+
+.stock-analysis-page__queue-report-copy p {
+  margin-top: 10px;
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.stock-analysis-page__queue-report-meta {
+  min-width: 262px;
+  border-color: var(--ib-hairline);
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__queue-report-meta > div {
+  min-height: 50px;
+  padding: 9px 10px;
+}
+
+.stock-analysis-page__queue-report-meta dt {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.stock-analysis-page__queue-report-meta dd {
+  color: var(--ib-ink);
+  font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.stock-analysis-page__market-context-strip {
+  border-top: 0;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-hairline);
+}
+
+.stock-analysis-page__market-context-strip > div {
+  min-height: 60px;
+  padding: 8px 10px 7px;
+  border-top-width: 1px;
+}
+
+.stock-analysis-page__market-context-strip .stock-analysis-page__status-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--ib-ink-muted) !important;
+}
+
+.stock-analysis-page__market-context-strip span {
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.stock-analysis-page__market-context-strip strong {
+  color: var(--ib-ink) !important;
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.stock-analysis-page__market-context-strip small {
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+}
+
+.stock-analysis-page__source-gate-strip {
+  min-height: 28px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-paper);
+}
+
+[data-testid="stock-analysis-first-screen-rail"] {
+  gap: 8px !important;
+}
+
+[data-testid="stock-analysis-first-screen-rail"] > .stock-analysis-page__dh-card {
+  border: 1px solid var(--ib-hairline) !important;
+  background: var(--ib-surface) !important;
+}
+
+[data-testid="stock-analysis-first-screen-rail"] > .stock-analysis-page__dh-card:first-of-type {
+  border-top: 2px solid var(--ib-accent) !important;
+}
+
+[data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__dh-section-head {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+[data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__dh-section-head h2,
+[data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__dh-section-head h3 {
+  font-size: 14px;
+  line-height: 1.22;
+}
+
+.stock-analysis-page__home-rail-list-primary,
+.stock-analysis-page__rail-verdict,
+.stock-analysis-page__rail-next-action,
+.stock-analysis-page__boundary-compact-grid > div,
+.stock-analysis-page__rail-metric-grid > div,
+.stock-analysis-page__rail-risk-list > div {
+  border-radius: 2px !important;
+  background: var(--ib-surface) !important;
+  box-shadow: none !important;
+}
+
+.stock-analysis-page__review-queue-table thead th {
+  padding: 8px 8px;
+  border-bottom: 1px solid var(--ib-ink);
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.stock-analysis-page__review-queue-table td {
+  padding: 7px 8px;
+}
+
+.stock-analysis-page__review-queue-table td:nth-child(1) {
+  color: var(--ib-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.stock-analysis-page__review-queue-table td:nth-child(2) > strong,
+.stock-analysis-page__review-queue-table td:nth-child(3) > strong,
+.stock-analysis-page__review-queue-table td:nth-child(5) > strong,
+.stock-analysis-page__review-queue-table td:nth-child(6) > strong,
+.stock-analysis-page__review-queue-table td:nth-child(7) > strong {
+  color: var(--ib-ink);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.18;
+}
+
+.stock-analysis-page__review-queue-table td:nth-child(9),
+.stock-analysis-page__review-queue-table th:nth-child(9) {
+  width: 68px;
+  padding-right: 10px;
+}
+
+.stock-analysis-page__review-queue-table td:nth-child(9) .ant-btn {
+  width: 44px;
+  min-width: 44px;
+  height: 24px;
+  padding-inline: 6px;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+.stock-analysis-page__sector-filter-bar,
+.stock-analysis-page__review-table-footer {
+  background: var(--ib-paper);
+}
+
+@media (max-width: 720px) {
+  .stock-analysis-page__queue-report-head {
+    padding: 13px 12px;
+  }
+
+  .stock-analysis-page__queue-report-title {
+    font-size: 18px !important;
+    line-height: 1.34 !important;
+  }
+
+  .stock-analysis-page__queue-report-copy p {
+    font-size: 12px;
+  }
+
+  .stock-analysis-page__queue-report-meta {
+    min-width: 0;
+  }
+
+  .stock-analysis-page__queue-report-meta > div {
+    min-height: 46px;
+    padding: 8px 9px;
+  }
+
+  .stock-analysis-page__queue-report-meta dd {
+    font-size: 14px;
+  }
+
+  .stock-analysis-page__market-context-strip > div {
+    min-height: 58px;
+  }
+
+  .stock-analysis-page__market-context-strip strong {
+    font-size: 12px;
+  }
+}
+
+.stock-analysis-page__rail-verdict,
+.stock-analysis-page__rail-next-action,
+.stock-analysis-page__rail-risk-row,
+.stock-analysis-page__boundary-compact-grid > div {
+  border-color: var(--ib-hairline) !important;
+  background: var(--ib-surface) !important;
+}
+
+.stock-analysis-page__rail-verdict[data-tone="positive"],
+.stock-analysis-page__rail-risk-row[data-tone="positive"],
+.stock-analysis-page__boundary-compact-grid > div[data-tone="positive"] {
+  border-left: 2px solid var(--ib-up) !important;
+}
+
+.stock-analysis-page__rail-verdict[data-tone="warning"],
+.stock-analysis-page__rail-risk-row[data-tone="warning"],
+.stock-analysis-page__boundary-compact-grid > div[data-tone="warning"] {
+  border-left: 2px solid var(--ib-warn) !important;
+}
+
+.stock-analysis-page__rail-verdict[data-tone="negative"],
+.stock-analysis-page__rail-risk-row[data-tone="negative"],
+.stock-analysis-page__boundary-compact-grid > div[data-tone="negative"] {
+  border-left: 2px solid var(--ib-down) !important;
+}
+
+.stock-analysis-page__rail-verdict-icon,
+.stock-analysis-page__rail-stat-icon,
+.stock-analysis-page__rail-risk-strip svg,
+.stock-analysis-page__boundary-compact-grid svg {
+  color: var(--ib-ink-muted) !important;
+}
+
+.stock-analysis-page__rail-risk-strip,
+.stock-analysis-page__rail-metric-grid,
+.stock-analysis-page__boundary-compact-grid {
+  gap: 1px !important;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 2px;
+  background: var(--ib-hairline);
+  overflow: hidden;
+}
+
+.stock-analysis-page__rail-risk-strip > div,
+.stock-analysis-page__rail-metric-grid > div,
+.stock-analysis-page__boundary-compact-grid > div {
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+.stock-analysis-page__rail-risk-main strong,
+.stock-analysis-page__rail-risk-strip strong,
+.stock-analysis-page__boundary-compact-grid strong,
+.stock-analysis-page__rail-next-action strong {
+  color: var(--ib-ink) !important;
+}
+
+.stock-analysis-page__boundary-compact-grid > div[data-tone],
+.stock-analysis-page__rail-metric-grid > div[data-tone],
+.stock-analysis-page__rail-risk-strip > div[data-tone] {
+  border-left: 0 !important;
+}
+
+.stock-analysis-page__boundary-compact-grid > div > span::before,
+.stock-analysis-page__rail-metric-grid > div > span:first-child::before,
+.stock-analysis-page__rail-risk-strip > div::before {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 999px;
+  background: var(--ib-ink-muted);
+  content: "";
+  vertical-align: 1px;
+}
+
+.stock-analysis-page__boundary-compact-grid > div[data-tone="positive"] > span::before,
+.stock-analysis-page__rail-metric-grid > div[data-tone="positive"] > span:first-child::before,
+.stock-analysis-page__rail-risk-strip > div[data-tone="positive"]::before {
+  background: var(--ib-up);
+}
+
+.stock-analysis-page__boundary-compact-grid > div[data-tone="warning"] > span::before,
+.stock-analysis-page__rail-metric-grid > div[data-tone="warning"] > span:first-child::before,
+.stock-analysis-page__rail-risk-strip > div[data-tone="warning"]::before {
+  background: var(--ib-warn);
+}
+
+.stock-analysis-page__boundary-compact-grid > div[data-tone="negative"] > span::before,
+.stock-analysis-page__rail-metric-grid > div[data-tone="negative"] > span:first-child::before,
+.stock-analysis-page__rail-risk-strip > div[data-tone="negative"]::before {
+  background: var(--ib-down);
+}
+
+.stock-analysis-page__rail-warning {
+  border-color: var(--ib-hairline) !important;
+  border-left: 2px solid var(--ib-warn) !important;
+  border-radius: 2px !important;
+  background: var(--ib-surface) !important;
+}
+
+.stock-analysis-page__rail-warning-head > span:first-child {
+  border-color: var(--ib-hairline) !important;
+  background: var(--ib-paper) !important;
+  color: var(--ib-ink-muted) !important;
+}
+
+.stock-analysis-page__rail-warning-head strong {
+  color: var(--ib-ink) !important;
+}
+
+.stock-analysis-page__rail-warning-head p {
+  color: var(--ib-ink-secondary) !important;
+}
+
+.stock-analysis-page__boundary-compact-grid > div > span::before,
+.stock-analysis-page__rail-metric-grid > div > span:first-child::before,
+.stock-analysis-page__rail-risk-strip > div::before {
+  display: none !important;
+  content: none !important;
+}
+
+.stock-analysis-page__rail-warning {
+  border-left: 0 !important;
+}
+
+/* Evidence ledger polish: align right rail rows like the homepage judgment table. */
+.stock-analysis-page__decision-rail .stock-analysis-page__home-rail-list {
+  display: grid;
+  border-top: 0;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__decision-rail .stock-analysis-page__home-rail-list > div {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__decision-rail .stock-analysis-page__home-rail-list > div:last-child {
+  border-bottom: 0;
+}
+
+.stock-analysis-page__decision-rail .stock-analysis-page__home-rail-list dt {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.stock-analysis-page__decision-rail .stock-analysis-page__home-rail-list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ib-ink);
+  font-size: 12px;
+  font-weight: 690;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.stock-analysis-page__decision-rail .stock-analysis-page__home-rail-list-primary dd {
+  font-family: var(--ib-serif);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+@media (min-width: 721px) {
+  .stock-analysis-page__review-queue-table th:nth-child(8),
+  .stock-analysis-page__review-queue-table td:nth-child(8) {
+    width: 66px;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(9),
+  .stock-analysis-page__review-queue-table td:nth-child(9) {
+    width: 76px;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(9) .ant-btn {
+    width: 60px;
+    min-width: 60px;
+  }
+}
+
+/* Mobile queue polish: show the review queue as three audit cards, not a squeezed table. */
+@media (max-width: 720px) {
+  .stock-analysis-page__review-queue-table tbody {
+    gap: 8px !important;
+  }
+
+  .stock-analysis-page__review-queue-table tbody tr {
+    grid-template-columns: 34px minmax(0, 1fr) 50px !important;
+    grid-template-areas:
+      "rank stock action"
+      "industry industry action"
+      "signal signal signal"
+      "evidence evidence evidence"
+      "boundary boundary boundary"
+      "focus focus focus" !important;
+    align-items: start;
+    gap: 7px 8px !important;
+    padding: 10px 10px 9px !important;
+    border-radius: 2px !important;
+    border-top: 2px solid var(--ib-accent) !important;
+  }
+
+  .stock-analysis-page__review-queue-table tbody tr:nth-child(n + 4) {
+    display: none !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(1) {
+    grid-area: rank;
+    color: var(--ib-accent);
+    font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
+    font-size: 13px;
+    font-weight: 850;
+    line-height: 1.2;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(2) {
+    grid-area: stock;
+    justify-self: stretch;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(3) {
+    grid-area: industry;
+    margin-top: -2px;
+    justify-self: stretch;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(2) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(2) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(3) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(3) > small {
+    line-height: 1.24 !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(4) {
+    grid-area: signal;
+    padding-top: 8px !important;
+    border-top: 1px solid var(--ib-hairline) !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5) {
+    grid-area: evidence;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(6) {
+    grid-area: boundary;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(7) {
+    grid-area: focus;
+    align-self: stretch;
+    padding: 6px 7px !important;
+    border: 1px solid var(--ib-hairline) !important;
+    background: var(--ib-surface);
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(7)::before {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--ib-ink-muted);
+    font-size: 10px;
+    font-weight: 760;
+    line-height: 1.1;
+    content: "关注";
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(8) {
+    display: none !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(9) {
+    grid-area: action;
+    align-self: start;
+    width: auto !important;
+    padding: 0 !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5),
+  .stock-analysis-page__review-queue-table td:nth-child(6) {
+    justify-self: stretch;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 44px;
+    padding: 6px 7px !important;
+    border: 1px solid var(--ib-hairline) !important;
+    background: var(--ib-paper);
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(7) {
+    justify-self: stretch;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5)::before,
+  .stock-analysis-page__review-queue-table td:nth-child(6)::before {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--ib-ink-muted);
+    font-size: 10px;
+    font-weight: 760;
+    line-height: 1.1;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5)::before {
+    content: "证据";
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(6)::before {
+    content: "边界";
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(2) > strong {
+    font-size: 14px !important;
+    line-height: 1.18;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(4) > strong,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > strong {
+    font-size: 12px !important;
+    line-height: 1.25;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(4) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(5) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(6) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > small {
+    display: -webkit-box !important;
+    white-space: normal !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(9) .ant-btn {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 26px !important;
+    padding-inline: 4px !important;
+    border-radius: 2px !important;
+    font-size: 10px !important;
+  }
+
+  .stock-analysis-page__review-table-footer {
+    display: none !important;
+  }
+}
+
+/* Final mobile topbar pass: keep controls ordered and give search a full row. */
+@media (max-width: 720px) {
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] {
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  .stock-analysis-page__workbench-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 32px 32px 32px !important;
+    grid-template-rows: 32px 34px !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  .stock-analysis-page__workbench-actions .stock-analysis-page__dh-date-picker.ant-picker {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 32px !important;
+  }
+
+  .stock-analysis-page__complete-evidence-toggle {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
+    border: 1px solid var(--ib-hairline) !important;
+    border-radius: 2px !important;
+    background: var(--ib-surface) !important;
+  }
+
+  .stock-analysis-page__complete-evidence-toggle input {
+    width: 13px !important;
+    height: 13px !important;
+    margin: 0 !important;
+    accent-color: var(--ib-accent);
+  }
+
+  .stock-analysis-page__agent-entry--quiet.ant-btn {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+  }
+
+  .stock-analysis-page__workbench-actions [data-testid="stock-analysis-refresh"] {
+    grid-column: 4 !important;
+    grid-row: 1 !important;
+    width: 32px !important;
+    min-width: 32px !important;
+    height: 32px !important;
+    padding-inline: 0 !important;
+  }
+
+  .stock-analysis-page__queue-search {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 34px !important;
+    padding: 0 9px !important;
+    border: 1px solid var(--ib-hairline) !important;
+    border-radius: 2px !important;
+    background: var(--ib-surface) !important;
+    color: var(--ib-ink-muted) !important;
+  }
+
+  .stock-analysis-page__queue-search input {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    padding: 0 !important;
+    border: 0 !important;
+    outline: 0 !important;
+    background: transparent !important;
+    color: var(--ib-ink) !important;
+    font-size: 14px !important;
+  }
+}
+
+/* Layout reset loop: make the review queue a real workbench, not a left-column appendix. */
+.stock-analysis-page__uses-home-shell [data-testid="stock-analysis-page-purpose"] {
+  display: none !important;
+}
+
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] section:has([data-testid="market-workbench-nav"]) {
+  display: none !important;
+}
+
+@media (min-width: 1180px) {
+  .stock-analysis-page__uses-home-shell.stock-analysis-page__first-screen {
+    grid-template-columns: minmax(0, 1fr) 304px !important;
+    grid-template-areas:
+      "decision rail"
+      "queue queue" !important;
+    column-gap: 14px !important;
+    row-gap: 12px !important;
+  }
+
+  .stock-analysis-page__uses-home-shell > .stock-analysis-page__first-screen-main {
+    display: contents !important;
+  }
+
+  .stock-analysis-page__uses-home-shell [data-testid="stock-analysis-tailwind-cockpit"] {
+    grid-area: decision !important;
+  }
+
+  .stock-analysis-page__uses-home-shell > [data-testid="stock-analysis-first-screen-rail"] {
+    grid-area: rail !important;
+    align-self: start;
+    max-height: 245px !important;
+    overflow: hidden !important;
+  }
+
+  .stock-analysis-page__uses-home-shell .stock-analysis-page__review-summary-stack {
+    grid-area: queue !important;
+  }
+
+  .stock-analysis-page__uses-home-shell [data-testid="stock-analysis-review-queue"] {
+    border-top-width: 1px !important;
+  }
+
+  .stock-analysis-page__review-table-wrap {
+    max-height: none !important;
+  }
+
+  .stock-analysis-page__review-queue-table {
+    table-layout: fixed;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(1),
+  .stock-analysis-page__review-queue-table td:nth-child(1) {
+    width: 48px !important;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(2),
+  .stock-analysis-page__review-queue-table td:nth-child(2) {
+    width: 126px !important;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(3),
+  .stock-analysis-page__review-queue-table td:nth-child(3) {
+    width: 110px !important;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(4),
+  .stock-analysis-page__review-queue-table td:nth-child(4) {
+    width: 21% !important;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(5),
+  .stock-analysis-page__review-queue-table td:nth-child(5) {
+    width: 20% !important;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(6),
+  .stock-analysis-page__review-queue-table td:nth-child(6) {
+    width: 98px !important;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(7),
+  .stock-analysis-page__review-queue-table td:nth-child(7) {
+    width: 20% !important;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(8),
+  .stock-analysis-page__review-queue-table td:nth-child(8) {
+    width: 76px !important;
+  }
+
+  .stock-analysis-page__review-queue-table th:nth-child(9),
+  .stock-analysis-page__review-queue-table td:nth-child(9) {
+    width: 76px !important;
+  }
+
+  .stock-analysis-page__review-queue-table td {
+    height: 76px !important;
+    padding: 7px 10px !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(4) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(5) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > small {
+    display: -webkit-box !important;
+    white-space: normal !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .stock-analysis-page__review-evidence-toggle {
+    min-height: 19px !important;
+    margin-top: 3px !important;
+    padding: 0 7px !important;
+    font-size: 9px !important;
+  }
+
+  .stock-analysis-page__decision-rail .stock-analysis-page__home-rail-diagnostic-entry {
+    display: none !important;
+  }
+}
+
+.stock-analysis-page__market-context-strip > div {
+  min-height: 50px !important;
+  padding: 7px 9px 6px !important;
+}
+
+.stock-analysis-page__market-context-strip .stock-analysis-page__status-icon {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.stock-analysis-page__market-context-strip strong {
+  font-size: 12px !important;
+}
+
+.stock-analysis-page__market-context-strip small {
+  font-size: 9px !important;
+}
+
+@media (max-width: 720px) {
+  .stock-analysis-page__queue-report-copy p {
+    display: none !important;
+  }
+
+  .stock-analysis-page__queue-report-head {
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  .stock-analysis-page__queue-report-title {
+    font-size: 18px !important;
+    line-height: 1.28 !important;
+  }
+
+  .stock-analysis-page__queue-report-meta > div {
+    min-height: 42px !important;
+    padding: 7px 8px !important;
+  }
+
+  .stock-analysis-page__market-context-strip > div {
+    min-height: 46px !important;
+    padding: 6px 7px !important;
+  }
+
+  .stock-analysis-page__market-context-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .stock-analysis-page__market-context-strip span {
+    font-size: 9px !important;
+  }
+
+  .stock-analysis-page__market-context-strip strong {
+    font-size: 11px !important;
+  }
+
+  .stock-analysis-page__market-context-strip small {
+    font-size: 9px !important;
+  }
+
+  .stock-analysis-page__source-gate-strip {
+    grid-template-columns: auto auto minmax(0, 1fr) !important;
+    min-height: 24px !important;
+    padding: 4px 10px !important;
+  }
+
+  .stock-analysis-page__source-gate-strip small {
+    grid-column: auto !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .stock-analysis-page__review-queue-table tbody tr {
+    grid-template-columns: 34px minmax(0, 1fr) 72px 46px !important;
+    grid-template-areas:
+      "rank stock stock action"
+      "industry industry industry action"
+      "signal signal signal signal"
+      "evidence evidence boundary boundary"
+      "focus focus focus focus" !important;
+    gap: 6px 7px !important;
+    padding: 9px !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(4) {
+    padding-top: 6px !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5),
+  .stock-analysis-page__review-queue-table td:nth-child(6),
+  .stock-analysis-page__review-queue-table td:nth-child(7) {
+    min-height: 0 !important;
+    padding: 6px !important;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(5) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(6) > small,
+  .stock-analysis-page__review-queue-table td:nth-child(7) > small {
+    -webkit-line-clamp: 1;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(7) > small {
+    -webkit-line-clamp: 2;
+  }
+
+  .stock-analysis-page__review-queue-table td:nth-child(9) .ant-btn {
+    width: 42px !important;
+    min-width: 42px !important;
+  }
+}
+
+/* Deep workbench repair loop: remove module islands and keep sector analytics inspectable. */
+.stock-analysis-page__deep-zone {
+  gap: 14px !important;
+}
+
+.stock-analysis-page__deep-review-workspace {
+  display: grid !important;
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  grid-auto-flow: row dense;
+  align-items: start;
+  gap: 12px !important;
+  width: 100%;
+  min-width: 0;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-strategy-lens"] {
+  grid-column: 1 / -1 !important;
+  width: 100%;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"],
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] {
+  grid-column: span 6 !important;
+  width: 100%;
+  min-height: 156px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-theme-leaders-first-screen"],
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-heavyweights-first-screen"],
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-first-screen-analytics"] {
+  grid-column: span 4 !important;
+  width: 100%;
+  min-height: 150px !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] {
+  grid-column: 1 / -1 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 10px !important;
+  width: 100%;
+  min-height: 0 !important;
+  max-height: none !important;
+  padding: 14px !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"] {
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"] .stock-analysis-page__consensus-first-list,
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"] .stock-analysis-page__empty,
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"] [data-testid="stock-analysis-consensus-empty-scan"],
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__table-wrap,
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-heavyweights-first-screen"] .stock-analysis-page__sector-heavyweight-list {
+  display: block !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"] .stock-analysis-page__consensus-workbench-strip,
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-workbench-strip {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] > .stock-analysis-page__dh-section-head {
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 0 8px !important;
+  border-bottom: 1px solid var(--ib-hairline) !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__dh-section-desc {
+  display: block !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-workbench-strip {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 1px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--ib-hairline) !important;
+  border-radius: 2px !important;
+  background: var(--ib-hairline) !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-workbench-strip > div {
+  min-height: 48px !important;
+  padding: 7px 10px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--ib-surface) !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-tabs {
+  display: block !important;
+  min-height: 38px !important;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-tabs .ant-tabs-nav {
+  margin: 0 !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-tabs .ant-tabs-nav-wrap {
+  min-width: 0;
+  overflow: visible !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-tabs .ant-tabs-tab {
+  padding: 7px 0 !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-chart-wrap {
+  height: 240px !important;
+  min-height: 240px !important;
+  max-height: none !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__echart--sector-strength,
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__echart--sector-strength > div,
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__echart--sector-strength canvas {
+  height: 240px !important;
+}
+
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] > .mt-2,
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] > .ant-collapse,
+.stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-rank-grid {
+  display: grid !important;
+}
+
+@media (max-width: 1180px) {
+  .stock-analysis-page__deep-review-workspace {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-theme-leaders-first-screen"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-heavyweights-first-screen"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-first-screen-analytics"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .stock-analysis-page__deep-review-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-consensus-first-screen"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-theme-leaders-first-screen"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-heavyweights-first-screen"],
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-first-screen-analytics"] {
+    min-height: 0 !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-workbench-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-chart-wrap,
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__echart--sector-strength,
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__echart--sector-strength > div,
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__echart--sector-strength canvas {
+    height: 220px !important;
+    min-height: 220px !important;
+  }
+}
+
+/* Override older stock-selection named grid areas with a deterministic workbench layout. */
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace {
+  display: grid !important;
+  grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+  grid-template-areas: none !important;
+  grid-auto-flow: row !important;
+  align-items: start !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > * {
+  grid-row: auto !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-strategy-lens"],
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-strength-panel"] {
+  grid-column: 1 / -1 !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-strategy-lens"] {
+  order: 1 !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-consensus-first-screen"],
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-observation-preview"] {
+  grid-column: span 6 !important;
+  order: 2 !important;
+  min-height: 296px !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-strength-panel"] {
+  order: 3 !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"],
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"],
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-first-screen-analytics"] {
+  grid-column: span 4 !important;
+  order: 4 !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"],
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"] {
+  max-height: 156px !important;
+  overflow: hidden !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__table-wrap,
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__empty,
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"] [data-testid="stock-analysis-theme-leader-empty"],
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"] .stock-analysis-page__sector-heavyweight-list {
+  display: none !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"]::after,
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"]::after {
+  display: grid;
+  align-content: center;
+  min-height: 54px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-paper);
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"]::after {
+  content: "题材突破待补，保留为后置证据摘要";
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"]::after {
+  content: "权重股摘要待补，进入明细后复核";
+}
+
+@media (max-width: 1180px) {
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > * {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 720px) {
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+.stock-analysis-page__deep-zone .stock-analysis-strategy-card-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  align-items: stretch !important;
+}
+
+.stock-analysis-page__deep-zone .stock-analysis-strategy-card-grid > .stock-analysis-strategy-module-card {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 136px !important;
+}
+
+@media (max-width: 1180px) {
+  .stock-analysis-page__deep-zone .stock-analysis-strategy-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .stock-analysis-page__deep-zone .stock-analysis-strategy-card-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* Deep workbench final responsive repair: keep real evidence visible and remove narrow implicit grid tracks. */
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"],
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"] {
+  grid-column: span 6 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-first-screen-analytics"] {
+  grid-column: 1 / -1 !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__table-wrap,
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__empty,
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"] [data-testid="stock-analysis-theme-leader-empty"],
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"] .stock-analysis-page__sector-heavyweight-list {
+  display: block !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"]::after,
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"]::after {
+  content: none !important;
+  display: none !important;
+}
+
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace .stock-analysis-page__table-wrap,
+[data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace .stock-analysis-page__sector-heavyweight-list {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 1180px) {
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"],
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"],
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-first-screen-analytics"] {
+    grid-column: 1 / -1 !important;
+  }
+}
+
+@media (max-width: 720px) {
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace,
+  .stock-analysis-page__deep-review-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-columns: minmax(0, 1fr) !important;
+  }
+
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > *,
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-strategy-lens"],
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-consensus-first-screen"],
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-observation-preview"],
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-theme-leaders-first-screen"],
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-heavyweights-first-screen"],
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-first-screen-analytics"],
+  [data-testid="stock-analysis-stock-selection"].stock-analysis-page__deep-review-workspace > [data-testid="stock-analysis-sector-strength-panel"] {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+.stock-analysis-page__signal-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 8px;
+  color: var(--ib-ink-secondary);
+}
+
+.stock-analysis-page__signal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 2px;
+  background: var(--ib-paper);
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.stock-analysis-page__signal-pill svg {
+  width: 13px;
+  height: 13px;
+  color: var(--ib-accent);
+}
+
+.stock-analysis-page__refresh-feedback {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__refresh-feedback[data-tone="positive"] {
+  color: var(--ib-up);
+}
+
+.stock-analysis-page__refresh-feedback[data-tone="negative"] {
+  color: var(--ib-down);
+}
+
+[data-testid="stock-analysis-strategy-lens"].stock-analysis-page__strategy-lens {
+  grid-column: 1 / -1;
+  display: block;
+  padding: 10px;
+  overflow: visible;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 6px;
+  background: var(--ib-paper);
+}
+
+.stock-analysis-page__strategy-lens-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.stock-analysis-page__strategy-lens-eyebrow {
+  margin: 0 0 3px;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.stock-analysis-page__strategy-lens-header h2 {
+  margin: 0;
+  color: var(--ib-ink);
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.stock-analysis-page__strategy-lens-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.stock-analysis-page__strategy-lens-summary span {
+  min-height: 22px;
+  padding: 4px 7px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 4px;
+  background: var(--ib-surface);
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  padding-top: 10px;
+  overflow: visible;
+  background: transparent;
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  min-height: 218px;
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid var(--ib-hairline);
+  border-left: 3px solid var(--ib-hairline-strong);
+  border-radius: 6px;
+  background: var(--ib-paper);
+  color: var(--ib-ink);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card:hover,
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--ib-accent) 32%, transparent);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--ib-accent) 4%, var(--ib-paper));
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card[data-state="ready"] {
+  border-left-color: var(--ib-up);
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card[data-state="blocked"],
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card[data-state="paused"],
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card[data-state="pending"] {
+  border-left-color: var(--ib-warn);
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card[data-state="empty"] {
+  border-left-color: var(--ib-ink-muted);
+}
+
+.stock-analysis-page__strategy-lens-card-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-label {
+  display: block;
+  color: var(--ib-ink);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.stock-analysis-page__strategy-lens-subtitle {
+  display: block;
+  margin-top: 2px;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.stock-analysis-page__strategy-lens-status {
+  flex: 0 0 auto;
+  max-width: 78px;
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 4px;
+  background: var(--ib-surface);
+  color: var(--ib-ink-secondary);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__strategy-lens-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-value {
+  color: var(--ib-ink);
+  font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
+  font-size: 30px;
+  font-weight: 880;
+  line-height: 0.95;
+}
+
+.stock-analysis-page__strategy-lens-main span {
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-detail {
+  display: block;
+  min-height: 28px;
+  color: var(--ib-ink-secondary);
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.stock-analysis-page__strategy-lens-ledger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 5px;
+  background: var(--ib-hairline);
+}
+
+.stock-analysis-page__strategy-lens-ledger div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px 6px;
+  background: var(--ib-surface);
+}
+
+.stock-analysis-page__strategy-lens-ledger dt,
+.stock-analysis-page__strategy-lens-ledger dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__strategy-lens-ledger dt {
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.stock-analysis-page__strategy-lens-ledger dd {
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.stock-analysis-page__strategy-lens-version {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: auto;
+  min-height: 18px;
+  min-width: 0;
+  padding-top: 2px;
+  overflow: hidden;
+  border-top: 1px solid var(--ib-hairline);
+  color: var(--ib-ink-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.stock-analysis-page__strategy-lens-version strong,
+.stock-analysis-page__strategy-lens-version em {
+  min-width: 0;
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__strategy-lens-version strong {
+  flex: 0 0 auto;
+  color: var(--ib-ink-secondary);
+}
+
+.stock-analysis-page__strategy-lens-version em {
+  flex: 1 1 auto;
+}
+
+.stock-analysis-page__strategy-lens-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.stock-analysis-page__strategy-lens-evidence span {
+  max-width: 100%;
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 4px;
+  background: var(--ib-paper);
+  color: var(--ib-ink-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__strategy-lens-evidence strong {
+  color: var(--ib-ink-secondary);
+  font-weight: 800;
+}
+
+.stock-analysis-page__strategy-lens-candidates {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 5px;
+  background: var(--ib-hairline);
+  list-style: none;
+}
+
+.stock-analysis-page__strategy-lens-candidates li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 2px 6px;
+  min-width: 0;
+  padding: 6px 7px;
+  background: var(--ib-paper);
+}
+
+.stock-analysis-page__strategy-lens-rank {
+  grid-row: span 2;
+  color: var(--ib-accent);
+  font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.stock-analysis-page__strategy-lens-candidates strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ib-ink);
+  font-size: 11.5px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__strategy-lens-candidates li > span:not(.stock-analysis-page__strategy-lens-rank),
+.stock-analysis-page__strategy-lens-candidates em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ib-ink-secondary);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-analysis-page__strategy-lens-empty {
+  min-height: 54px;
+  margin: 0;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 5px;
+  background: var(--ib-surface);
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-meter {
+  height: 4px;
+  margin-top: auto;
+  background: var(--ib-hairline);
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card[data-state="ready"] .stock-analysis-page__strategy-lens-meter::-webkit-progress-value {
+  background: var(--ib-up);
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card[data-state="ready"] .stock-analysis-page__strategy-lens-meter::-moz-progress-bar {
+  background: var(--ib-up);
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card:not([data-state="ready"]) .stock-analysis-page__strategy-lens-meter::-webkit-progress-value {
+  background: var(--ib-warn);
+}
+
+[data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card:not([data-state="ready"]) .stock-analysis-page__strategy-lens-meter::-moz-progress-bar {
+  background: var(--ib-warn);
+}
+
+@media (max-width: 1180px) {
+  [data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+}
+
+@media (max-width: 720px) {
+  .stock-analysis-page__strategy-lens-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .stock-analysis-page__strategy-lens-summary {
+    justify-content: flex-start;
+  }
+
+  [data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-testid="stock-analysis-strategy-lens"] .stock-analysis-page__strategy-lens-card {
+    min-height: 0;
+  }
+}
+
+/* Mobile observation ledger no-scroll pass */
+@media (max-width: 720px) {
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__observation-preview-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+    overflow: visible !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__observation-preview-panel {
+    min-width: 0;
+    padding: 10px;
+    overflow: hidden;
+    border: 1px solid var(--ib-hairline);
+    border-radius: 5px;
+    background: var(--ib-paper);
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table-wrap {
+    display: block !important;
+    max-width: 100%;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    border: 0;
+    background: transparent;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: separate;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table thead {
+    display: none !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table tbody {
+    display: grid !important;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table tr {
+    display: grid !important;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 3px 8px;
+    align-items: center;
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid var(--ib-hairline);
+    border-radius: 5px;
+    background: var(--ib-surface);
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table tr:nth-child(n + 4) {
+    display: none !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td {
+    min-width: 0;
+    padding: 0 !important;
+    overflow: hidden;
+    border-bottom: 0 !important;
+    background: transparent !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:first-child {
+    display: grid;
+    grid-column: 1 / 2;
+    grid-row: 1 / span 2;
+    align-self: stretch;
+    place-items: center;
+    padding-right: 8px !important;
+    border-right: 1px solid var(--ib-hairline) !important;
+    color: var(--ib-accent);
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(2) {
+    grid-column: 2 / -1;
+    color: var(--ib-ink);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(2) small {
+    color: var(--ib-ink-muted);
+    font-size: 10.5px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(3),
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(4) {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    color: var(--ib-ink-secondary);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(3) {
+    grid-column: 2 / 3;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(4) {
+    grid-column: 3 / 4;
+    justify-self: end;
+    color: var(--ib-accent);
+    font-family: var(--sa-font-tabular), var(--moss-font-mono), monospace;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(3)::before {
+    content: "板块";
+    color: var(--ib-ink-muted);
+    font-size: 10px;
+    font-weight: 750;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__table td:nth-child(4)::before {
+    content: "评分";
+    color: var(--ib-ink-muted);
+    font-family: var(--sa-font-sans, system-ui), sans-serif;
+    font-size: 10px;
+    font-weight: 750;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__mean-reversion-row {
+    display: grid;
+    gap: 5px;
+    padding: 7px 0;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__mean-reversion-row:nth-child(n + 4) {
+    display: none !important;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__mean-reversion-row > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ib-ink);
+    font-size: 12px;
+    font-weight: 850;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__mean-reversion-metrics {
+    gap: 4px;
+  }
+
+  .stock-analysis-page__deep-review-workspace [data-testid="stock-analysis-observation-preview"] .stock-analysis-page__mean-reversion-metrics span {
+    max-width: 100%;
+    padding: 2px 5px;
+    overflow: hidden;
+    border: 1px solid var(--ib-hairline);
+    border-radius: 4px;
+    background: var(--ib-surface-muted);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

@@ -9,6 +9,7 @@ import {
   buildReviewQueueRankingOption,
   buildRiskSupplyChartRows,
   buildSectorChartRows,
+  buildSectorSeriesTrendOption,
   buildSectorStrengthOption,
   resolveSectorMetricValue,
   sectorViewLabel,
@@ -239,5 +240,29 @@ describe("stockAnalysisChartModel", () => {
     expect(sector.tooltip?.formatter?.([{ dataIndex: 0 }])).toBe(
       "1. 半导体<br/>平均涨跌幅: +2.35%<br/>成分 24",
     );
+  });
+
+  it("builds multi-day sector trend chart options from backend series rows", () => {
+    const option = buildSectorSeriesTrendOption([
+      {
+        sectorCode: "BK001",
+        sectorName: "半导体",
+        dates: ["2026-04-28", "2026-04-29"],
+        scores: [0.7, 0.82],
+      },
+      {
+        sectorCode: "BK002",
+        sectorName: "新能源",
+        dates: ["2026-04-28", "2026-04-29"],
+        scores: [0.5, 0.55],
+      },
+    ]);
+    const chart = inspectChartOption(option);
+
+    expect(chart.animation).toBe(false);
+    expect(chart.series).toHaveLength(2);
+    expect(chart.series[0].name).toBe("半导体");
+    expect(chart.series[0].data).toEqual([0.7, 0.82]);
+    expect(chart.series[1].data).toEqual([0.5, 0.55]);
   });
 });

@@ -19,15 +19,15 @@ export function BacktestBoundaryChips({
 
   return (
     <div
-      className="mb-2 flex flex-wrap items-center gap-1.5"
+      className="stock-analysis-page__boundary-chip-bar"
       role="status"
       aria-label={`${label}边界`}
       data-testid={testId}
     >
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-[11px] font-bold text-primary-700">
+      <span className="stock-analysis-page__boundary-chip stock-analysis-page__boundary-chip--accent">
         <LineChartOutlined aria-hidden="true" /> 代理口径
       </span>
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-warning-200 bg-warning-50 px-2 py-1 text-[11px] font-bold text-warning-700">
+      <span className="stock-analysis-page__boundary-chip stock-analysis-page__boundary-chip--warn">
         <DatabaseOutlined aria-hidden="true" /> 缺口 {missing.length}
       </span>
       {missing.slice(0, 3).map((input) => {
@@ -35,7 +35,7 @@ export function BacktestBoundaryChips({
         return (
           <span
             key={input}
-            className="inline-flex max-w-36 items-center truncate rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600"
+            className="stock-analysis-page__boundary-chip stock-analysis-page__boundary-chip--truncate"
             title={labelText}
           >
             {compactStockText(labelText, 10)}
@@ -43,9 +43,7 @@ export function BacktestBoundaryChips({
         );
       })}
       {missing.length > 3 ? (
-        <span className="inline-flex items-center rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-600">
-          +{missing.length - 3}
-        </span>
+        <span className="stock-analysis-page__boundary-chip">+{missing.length - 3}</span>
       ) : null}
     </div>
   );

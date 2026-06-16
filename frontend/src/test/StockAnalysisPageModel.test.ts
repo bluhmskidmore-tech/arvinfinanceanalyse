@@ -28,10 +28,13 @@ import {
   buildMarketStateCard,
   buildRiskExitRows,
   buildSectorRows,
+  buildSectorRowsFromSectorSeries,
   buildSectorFilterSummary,
   buildSectorViewModel,
+  buildSectorViewRows,
   buildStockAnalysisEventMonitorRows,
   buildStockAnalysisKpiStrip,
+  buildStrategyLensItems,
   buildThemeBreakoutCards,
   buildThemeLeaderPreviewItems,
   buildSectorHeavyweightPreview,
@@ -1974,6 +1977,219 @@ describe("stockAnalysisPageModel", () => {
     expect(blockedNotes.join(" ")).not.toContain("livermore_position_snapshot");
   });
 
+  it("builds a four-strategy ledger with available and blocked strategy states", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      supported_outputs: ["market_gate", "factor_screen_candidates", "hybrid_fusion"],
+      unsupported_outputs: [
+        {
+          key: "stock_candidates",
+          reason: "choice stock materialized input coverage is incomplete for 2026-05-29; request items: price, turn",
+        },
+        {
+          key: "mean_reversion_candidates",
+          reason: "choice stock materialized input coverage is incomplete for 2026-05-29; request items: drawdown",
+        },
+      ],
+      stock_candidates: undefined,
+      factor_screen_candidates: {
+        as_of_date: "2026-05-29",
+        factor_snapshot_as_of_date: "2026-05-29",
+        formula_version: "rv_factor_screen_candidates_v2",
+        market_state: "WARM",
+        observation_only: true,
+        input_stock_count: 1510,
+        candidate_count: 1,
+        coverage_note: "factor_snapshot available",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000001.SZ",
+            stock_name: "Alpha",
+            sector_code: "801001",
+            sector_name: "AI",
+            industry: "AI",
+            score: 0.973,
+            pe: 12.4,
+            pb: 1.8,
+            roe: 0.18,
+            gross_margin: 0.32,
+            three_month_return: 0.11,
+            twelve_month_return: 0.24,
+            dividend_yield: 0.02,
+          },
+        ],
+      },
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-05-29",
+        formula_version: "rv_hybrid_fusion_candidates_v3",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 1,
+        coverage_note: "Fusion observation-only candidate",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000001.SZ",
+            stock_name: "Alpha",
+            sector_code: "801001",
+            sector_name: "AI",
+            fusion_score: 0.91,
+            cycle_score: 0.8,
+            lifecourt_proxy_score: 0.7,
+            attention_score: 0.6,
+            price_confirm_score: 0.5,
+            crowding_penalty: 0.1,
+            confidence: "medium",
+            reason: "research observation",
+            evidence: {},
+          },
+        ],
+      },
+      mean_reversion_candidates: undefined,
+    };
+
+    const items = buildStrategyLensItems(payload, buildConsensusSummary(payload));
+
+    expect(items.map((item) => item.label)).toEqual(["融合策略", "趋势突破", "多因子", "超跌反弹"]);
+    expect(items.find((item) => item.key === "hybrid")?.state).toBe("ready");
+    expect(items.find((item) => item.key === "hybrid")?.candidates[0]?.metricLabel).toBe("融合分 0.910");
+    expect(items.find((item) => item.key === "factor")?.value).toBe("1");
+    expect(items.find((item) => item.key === "livermore")?.state).toBe("blocked");
+    expect(items.find((item) => item.key === "livermore")?.statusDetail).toContain("物化输入覆盖不完整");
+    expect(items.find((item) => item.key === "mean_reversion")?.state).toBe("blocked");
+  });
+
+  it("builds strategy ledger audit fields for blockers and review focus", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      stock_candidates: undefined,
+      factor_screen_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_factor_screen_candidates_v1",
+        market_state: "WARM",
+        input_stock_count: 643,
+        candidate_count: 1,
+        coverage_note: "因子数据覆盖 643/5201 只",
+        items: [
+          {
+            rank: 1,
+            stock_code: "600000.SH",
+            stock_name: "Factor Alpha",
+            sector_code: "801730",
+            sector_name: "电力设备",
+            industry: "电力设备",
+            score: 0.8123,
+            pe: 12.4,
+            pb: 1.6,
+            roe: 0.143,
+            gross_margin: 0.32,
+            three_month_return: 0.056,
+            twelve_month_return: 0.184,
+            dividend_yield: 0.021,
+          },
+        ],
+      },
+      unsupported_outputs: [
+        {
+          key: "stock_candidates",
+          reason: "choice_stock_candidate_history materialized input coverage incomplete",
+        },
+      ],
+    };
+
+    const items = buildStrategyLensItems(payload, buildConsensusSummary(payload));
+    const trend = items.find((item) => item.key === "livermore");
+    const factor = items.find((item) => item.key === "factor");
+
+    expect(trend).toMatchObject({
+      blockerLabel: expect.stringContaining("物化输入覆盖不完整"),
+      focusLabel: expect.stringContaining("补齐"),
+      actionLabel: "查看复核队列",
+    });
+    expect(factor).toMatchObject({
+      blockerLabel: "无阻断",
+      focusLabel: expect.stringContaining("Factor Alpha"),
+      actionLabel: "查看观察池",
+    });
+    expect(factor?.candidateCountLabel).toBe("1 只候选");
+    expect(factor?.candidates).toHaveLength(1);
+  });
+
+  it("uses backend candidate_count for strategy ledger counts instead of preview length", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      factor_screen_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_factor_screen_candidates_v1",
+        market_state: "WARM",
+        input_stock_count: 643,
+        candidate_count: 30,
+        coverage_note: "因子数据覆盖 643/5201 只",
+        items: [
+          {
+            rank: 1,
+            stock_code: "600000.SH",
+            stock_name: "Factor Alpha",
+            sector_code: "801730",
+            sector_name: "电力设备",
+            industry: "电力设备",
+            score: 0.8123,
+            pe: 12.4,
+            pb: 1.6,
+            roe: 0.143,
+            gross_margin: 0.32,
+            three_month_return: 0.056,
+            twelve_month_return: 0.184,
+            dividend_yield: 0.021,
+          },
+        ],
+      },
+    };
+
+    const factor = buildStrategyLensItems(payload, buildConsensusSummary(payload)).find(
+      (item) => item.key === "factor",
+    );
+
+    expect(factor).toMatchObject({
+      state: "ready",
+      value: "30",
+      candidateCountLabel: "30 只候选",
+    });
+    expect(factor?.candidates).toHaveLength(1);
+  });
+
+  it("keeps explicit backend blockers ahead of local mean-reversion gate pauses", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      market_gate: {
+        ...strategyPayload.market_gate,
+        state: "OFF",
+      },
+      mean_reversion_candidates: undefined,
+      unsupported_outputs: [
+        {
+          key: "mean_reversion_candidates",
+          reason: "choice_stock_candidate_history materialized input coverage incomplete",
+        },
+      ],
+    };
+
+    const meanReversion = buildStrategyLensItems(payload, buildConsensusSummary(payload)).find(
+      (item) => item.key === "mean_reversion",
+    );
+
+    expect(meanReversion).toMatchObject({
+      state: "blocked",
+      statusLabel: "被阻断",
+      blockerLabel: expect.stringContaining("物化输入覆盖不完整"),
+    });
+    expect(meanReversion?.statusDetail).toContain("物化输入覆盖不完整");
+    expect(meanReversion?.statusDetail).toContain("门控暂停");
+    expect(meanReversion?.detail).toContain("物化输入覆盖不完整");
+    expect(meanReversion?.detail).toContain("门控暂停");
+  });
+
   it("builds daily judgment strip with sector poles", () => {
     const strip = buildDailyJudgmentStrip(strategyPayload);
     expect(strip.headline).toContain("今日市场状态");
@@ -1989,6 +2205,46 @@ describe("stockAnalysisPageModel", () => {
     expect(byPct[0].sectorName).toBe("AI");
     const byTurn = buildSectorViewModel(strategyPayload, "turnover");
     expect(byTurn[0].sectorName).toBe("新能源车");
+  });
+
+  it("maps sector rank series API rows into the existing sector display model", () => {
+    const rows = buildSectorRowsFromSectorSeries([
+      {
+        trade_date: "2026-04-29",
+        sector_code: "801002",
+        sector_name: "新能源车",
+        score: 0.52,
+        rank: 2,
+        avg_pctchange: -1.2,
+        avg_turn: 5.6,
+        avg_amplitude: 2,
+        constituent_count: 24,
+        cum_pctchange_window: -6,
+      },
+      {
+        trade_date: "2026-04-29",
+        sector_code: "801001",
+        sector_name: "AI",
+        score: 0.91,
+        rank: 1,
+        avg_pctchange: 0.42,
+        avg_turn: 2.2,
+        avg_amplitude: 1.1,
+        constituent_count: 12,
+        cum_pctchange_window: 2.1,
+      },
+    ]);
+
+    expect(rows.map((row) => row.sectorName)).toEqual(["AI", "新能源车"]);
+    expect(rows[0]).toMatchObject({
+      rank: 1,
+      sectorCode: "801001",
+      score: "0.910",
+      pctChange: "0.42%",
+      constituentCount: 12,
+      isTop: true,
+    });
+    expect(buildSectorViewRows(rows, "turnover")[0].sectorName).toBe("新能源车");
   });
 
   it("flags top and bottom sector rows for charting", () => {
@@ -2886,6 +3142,22 @@ describe("stockAnalysisPageModel", () => {
     expect(optimization).not.toContain("priority review ranking");
     expect(coverage).toBe("因子快照无数据。");
     expect(coverage).not.toContain("factor_snapshot");
+  });
+
+  it("localizes choice stock coverage and limit-up quality backend warnings", () => {
+    const limitUp = localizeStockBackendText(
+      "Choice limit-up quality catalog is confirmed, but landed inputs are unavailable; the market gate is capped at the trend-only slice.",
+      "limit_up_quality",
+    );
+    const coverage = localizeStockBackendText(
+      "Choice stock materialized input coverage is incomplete for 2026-06-11; missing request items: sector membership:sw2021 industry membership, sector strength:daily return turnover amplitude.",
+      "choice_stock",
+    );
+
+    expect(limitUp).toBe("涨停质量目录已确认，但落地输入不可用；市场门控已限制为仅趋势切片。");
+    expect(coverage).toContain("Choice 股票物化输入覆盖不完整（2026-06-11）");
+    expect(coverage).toContain("缺数据项");
+    expect(coverage).not.toContain("missing request items");
   });
 
 });

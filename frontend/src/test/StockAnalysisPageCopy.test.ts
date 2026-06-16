@@ -161,12 +161,12 @@ describe("stockAnalysisPageCopy", () => {
     expect(kpiToneToDelta("negative")).toBe("down");
     expect(kpiToneToDelta("warning")).toBe("flat");
 
-    expect(filterChipClass(true)).toContain("border-primary-500");
-    expect(filterChipClass(false)).toContain("hover:bg-neutral-100");
-    expect(statusIconClass("warning")).toContain("text-warning-700");
-    expect(toneTextClass("negative")).toBe("text-danger-600");
-    expect(tonePillClass("positive")).toContain("bg-success-50");
-    expect(tonePillClass("unknown")).toContain("text-neutral-600");
+    expect(filterChipClass(true)).toContain("stock-analysis-page__filter-chip--active");
+    expect(filterChipClass(false)).toBe("stock-analysis-page__filter-chip");
+    expect(statusIconClass("warning")).toContain("stock-analysis-page__status-icon--warning");
+    expect(toneTextClass("negative")).toContain("stock-analysis-page__tone-text--negative");
+    expect(tonePillClass("positive")).toContain("stock-analysis-page__tone-pill--positive");
+    expect(tonePillClass("unknown")).toBe("stock-analysis-page__tone-pill");
   });
 
   it("localizes risk-exit rail status and blocker reasons without leaking technical source codes", () => {

@@ -5,27 +5,26 @@
   display: grid;
   grid-template-rows: auto auto 1fr;
   overflow: hidden;
-  background: var(--sa-dh-card, #ffffff);
-  border: 1px solid var(--sa-dh-line-soft, #eef2f7);
-  border-radius: 6px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  background: var(--sa-dh-card, var(--ib-surface));
+  border: 1px solid var(--sa-dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius, 2px);
+  box-shadow: none;
   transition:
-    box-shadow 180ms ease,
     border-color 180ms ease;
 }
 
 .card:hover {
-  border-color: rgba(24, 80, 161, 0.28);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  border-color: var(--ib-hairline);
+  box-shadow: none;
 }
 
 .top {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--sa-dh-ink-2, #2c3e5a);
+  color: var(--sa-dh-ink-2, var(--ib-ink-secondary));
   font-size: 10.5px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .icon {
@@ -34,10 +33,10 @@
   height: 18px;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgba(24, 80, 161, 0.16);
-  border-radius: 5px;
-  background: var(--sa-dh-blue-soft, #e8f1fb);
-  color: var(--sa-dh-blue, #1850a1);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-paper);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
 }
 
@@ -49,9 +48,9 @@
 
 .value {
   margin-top: 7px;
-  color: var(--sa-dh-ink, #0c1c33);
+  color: var(--sa-dh-ink, var(--ib-ink));
   font-size: 18px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1.05;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -64,7 +63,7 @@
 .delta {
   margin-top: 5px;
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -72,15 +71,15 @@
 }
 
 .deltaUp {
-  color: var(--sa-dh-red, #b94743);
+  color: var(--sa-dh-red, var(--ib-down));
 }
 
 .deltaDown {
-  color: var(--sa-dh-green, #1f7a55);
+  color: var(--sa-dh-green, var(--ib-up));
 }
 
 .deltaFlat {
-  color: var(--sa-dh-muted, #6b7d95);
+  color: var(--sa-dh-muted, var(--ib-ink-muted));
 }
 
 .spark {
@@ -96,8 +95,8 @@
   align-self: end;
   margin-top: 9px;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(24, 80, 161, 0.08);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-hairline);
 }
 
 .gaugeTrack > span {
@@ -110,15 +109,15 @@
 }
 
 .deltaUp + .gaugeTrack {
-  color: var(--sa-dh-red, #b94743);
+  color: var(--sa-dh-red, var(--ib-down));
 }
 
 .deltaDown + .gaugeTrack {
-  color: var(--sa-dh-green, #1f7a55);
+  color: var(--sa-dh-green, var(--ib-up));
 }
 
 .deltaFlat + .gaugeTrack {
-  color: var(--sa-dh-blue, #1850a1);
+  color: var(--ib-ink-muted);
 }
 
 .metricSlot {

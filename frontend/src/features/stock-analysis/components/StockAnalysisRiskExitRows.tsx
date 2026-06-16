@@ -83,9 +83,9 @@ export function StockAnalysisRiskExitRows({
                   key: `${row.stockCode}-risk-reason`,
                   label: "供数原因",
                   children: (
-                    <div className="text-xs text-neutral-600">
-                      <p className="m-0">{row.reason}</p>
-                      <p className="m-0 mt-1 text-neutral-500">退出观察价 {row.exitWatchPrice}</p>
+                    <div className="stock-analysis-page__collapse-detail">
+                      <p>{row.reason}</p>
+                      <p className="stock-analysis-page__collapse-detail--muted">退出观察价 {row.exitWatchPrice}</p>
                     </div>
                   ),
                 },
@@ -116,7 +116,7 @@ export function StockAnalysisRiskExitSection({
   return (
     <section className={SA_FIRST_CARD} data-testid="stock-analysis-risk-section">
       <div className={SA_SECTION_HEAD}>
-        <div className="min-w-0">
+        <div className="stock-analysis-page__min-w-0">
           <h2 className={SA_CARD_TITLE}>风险退出观察</h2>
           <p className={SA_SECTION_DESC}>
             {riskTriggeredCount} 触发 · {riskWatchCount} 观察
@@ -145,7 +145,7 @@ export function StockAnalysisRiskExitSection({
         </div>
       </div>
       {confluenceError ? (
-        <p className="text-xs font-semibold text-neutral-600">联动观察暂不可用。</p>
+        <p className="stock-analysis-page__rail-error-copy">联动观察暂不可用。</p>
       ) : null}
       {unsupportedOutput ? (
         <div className="stock-analysis-page__rail-warning">
@@ -155,7 +155,7 @@ export function StockAnalysisRiskExitSection({
             </span>
             <span>
               <strong>风险退出待补</strong>
-              <p className="m-0">{riskExitBlockedSummary(unsupportedOutput.reason)}</p>
+              <p>{riskExitBlockedSummary(unsupportedOutput.reason)}</p>
             </span>
           </div>
           {unsupportedOutput.reason ? (
@@ -169,7 +169,7 @@ export function StockAnalysisRiskExitSection({
                   key: "risk-exit-unsupported-reason",
                   label: "供数原因",
                   children: (
-                    <p className="m-0 text-xs">
+                    <p className="stock-analysis-page__collapse-detail stock-analysis-page__collapse-detail--compact">
                       {riskExitBlockedDetail(unsupportedOutput.reason, unsupportedOutput.key)}
                     </p>
                   ),

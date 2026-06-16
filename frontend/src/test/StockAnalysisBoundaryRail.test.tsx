@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { StockAnalysisBoundaryRail } from "../features/stock-analysis/components/StockAnalysisBoundaryRail";
 import type {
@@ -76,7 +76,7 @@ const strategyPayload = {
 } as LivermoreStrategyPayload;
 
 describe("StockAnalysisBoundaryRail", () => {
-  it("renders compact boundary status and opens the full diagnostic drawer", async () => {
+  it("renders compact boundary status and opens the full diagnostic drawer from the inline action by default", async () => {
     render(
       <StockAnalysisBoundaryRail
         boundaryItems={boundaryItems}
@@ -107,5 +107,44 @@ describe("StockAnalysisBoundaryRail", () => {
     expect(screen.getByText("可用输出")).toBeInTheDocument();
     expect(screen.getByText("阻断输出")).toBeInTheDocument();
     expect(screen.queryByText("warning / Warning")).not.toBeInTheDocument();
+  });
+
+  it("supports controlled drawer state and can hide the inline diagnostics action", async () => {
+    const onOpenDiagnostics = vi.fn();
+    const onCloseDiagnostics = vi.fn();
+    const { rerender } = render(
+      <StockAnalysisBoundaryRail
+        boundaryItems={boundaryItems}
+        boundarySummary={boundarySummary}
+        strategyPayload={strategyPayload}
+        diagnosticsDrawerOpen={false}
+        onOpenDiagnostics={onOpenDiagnostics}
+        onCloseDiagnostics={onCloseDiagnostics}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "查看完整诊断" }));
+    expect(onOpenDiagnostics).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("数据口径诊断")).not.toBeInTheDocument();
+
+    rerender(
+      <StockAnalysisBoundaryRail
+        boundaryItems={boundaryItems}
+        boundarySummary={boundarySummary}
+        strategyPayload={strategyPayload}
+        diagnosticsDrawerOpen
+        onOpenDiagnostics={onOpenDiagnostics}
+        onCloseDiagnostics={onCloseDiagnostics}
+        showInlineDiagnosticsAction={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "查看完整诊断" })).not.toBeInTheDocument();
+    expect(await screen.findByText("数据口径诊断")).toBeInTheDocument();
+
+    const closeButton = document.querySelector(".ant-drawer-close");
+    expect(closeButton).not.toBeNull();
+    fireEvent.click(closeButton as Element);
+    expect(onCloseDiagnostics).toHaveBeenCalledTimes(1);
   });
 });

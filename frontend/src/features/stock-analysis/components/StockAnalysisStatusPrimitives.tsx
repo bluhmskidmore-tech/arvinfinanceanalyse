@@ -42,20 +42,31 @@ export function CompactStatusTile({
   const valueLabel = typeof value === "string" || typeof value === "number" ? String(value) : null;
   const detailLabel = typeof detail === "string" || typeof detail === "number" ? String(detail) : null;
   const ariaLabel = [label, valueLabel, detailLabel].filter(Boolean).join(" ") || undefined;
+  const surfaceClass = className.includes("stock-analysis-page__compact-status-tile--accent")
+    ? " stock-analysis-page__compact-status-tile--accent"
+    : className.includes("stock-analysis-page__compact-status-tile--surface")
+      ? " stock-analysis-page__compact-status-tile--surface"
+      : "";
+  const extraClass = className
+    .replace("stock-analysis-page__compact-status-tile--accent", "")
+    .replace("stock-analysis-page__compact-status-tile--surface", "")
+    .trim();
 
   return (
     <div
-      className={`inline-flex min-h-12 items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2 ${className}`}
+      className={`stock-analysis-page__compact-status-tile${surfaceClass}${extraClass ? ` ${extraClass}` : ""}`}
       role="status"
       aria-label={ariaLabel}
       data-testid={testId}
       title={title}
     >
       <StatusIcon tone={tone}>{icon}</StatusIcon>
-      <span className="min-w-0">
-        <span className={`block text-[10px] font-semibold ${toneTextClass(tone)}`}>{label}</span>
-        <strong className="block truncate text-sm font-semibold text-neutral-900">{value}</strong>
-        {detail ? <span className="block text-xs font-medium leading-snug text-neutral-600">{detail}</span> : null}
+      <span className="stock-analysis-page__min-w-0">
+        <span className={`stock-analysis-page__compact-status-tile__label ${toneTextClass(tone)}`}>{label}</span>
+        <strong className="stock-analysis-page__compact-status-tile__value">{value}</strong>
+        {detail ? (
+          <span className="stock-analysis-page__compact-status-tile__detail">{detail}</span>
+        ) : null}
       </span>
     </div>
   );
