@@ -168,12 +168,13 @@ export function MetricManageModal({
 
   return (
     <Modal
+      rootClassName="kpi-modal-v2 kpi-modal-v2--manage"
       title={mode === "create" ? "新增指标" : "编辑指标"}
       open={open}
       onCancel={onClose}
       width={720}
       footer={
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="kpi-modal-v2__footer">
           <div>
             {mode === "edit" && !showDelete ? (
               <Button danger icon={<DeleteOutlined />} onClick={() => setShowDelete(true)}>
@@ -197,17 +198,17 @@ export function MetricManageModal({
         </div>
       }
     >
-      <Text type="secondary">
+      <Text type="secondary" className="kpi-modal-v2__subtitle">
         {owner.owner_name} · {owner.year} 年度
       </Text>
       {showDelete ? (
         <Alert
           type="error"
           showIcon
-          style={{ marginTop: 16 }}
+          className="kpi-modal-v2__alert"
           message={`确定删除「${metric?.metric_name}」？`}
           action={
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="kpi-modal-v2__inline-actions">
               <Button size="small" onClick={() => setShowDelete(false)}>
                 取消
               </Button>
@@ -218,89 +219,89 @@ export function MetricManageModal({
           }
         />
       ) : null}
-      <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
+      <div className="kpi-modal-v2__form">
+        <div className="kpi-modal-v2__form-grid kpi-modal-v2__form-grid--two">
+          <div className="kpi-modal-v2__field">
             <Text strong>
               指标代码 <Text type="danger">*</Text>
             </Text>
             <Input
-              style={{ marginTop: 6 }}
+              className="kpi-modal-v2__control"
               value={form.metric_code}
               disabled={mode === "edit"}
               onChange={(e) => setField("metric_code", e.target.value)}
             />
           </div>
-          <div>
+          <div className="kpi-modal-v2__field">
             <Text strong>
               指标名称 <Text type="danger">*</Text>
             </Text>
-            <Input style={{ marginTop: 6 }} value={form.metric_name} onChange={(e) => setField("metric_name", e.target.value)} />
+            <Input className="kpi-modal-v2__control" value={form.metric_name} onChange={(e) => setField("metric_name", e.target.value)} />
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
+        <div className="kpi-modal-v2__form-grid kpi-modal-v2__form-grid--two">
+          <div className="kpi-modal-v2__field">
             <Text strong>大类</Text>
             <Select
-              style={{ width: "100%", marginTop: 6 }}
+              className="kpi-modal-v2__control"
               value={form.major_category}
               options={MAJOR_CATEGORIES.map((c) => ({ label: c, value: c }))}
               onChange={(v) => setField("major_category", v)}
             />
           </div>
-          <div>
+          <div className="kpi-modal-v2__field">
             <Text strong>指标类别</Text>
             <Select
-              style={{ width: "100%", marginTop: 6 }}
+              className="kpi-modal-v2__control"
               value={form.indicator_category}
               options={INDICATOR_CATEGORIES.map((c) => ({ label: c, value: c }))}
               onChange={(v) => setField("indicator_category", v)}
             />
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-          <div>
+        <div className="kpi-modal-v2__form-grid kpi-modal-v2__form-grid--three">
+          <div className="kpi-modal-v2__field">
             <Text strong>目标值</Text>
-            <Input style={{ marginTop: 6 }} value={form.target_value} onChange={(e) => setField("target_value", e.target.value)} />
+            <Input className="kpi-modal-v2__control" value={form.target_value} onChange={(e) => setField("target_value", e.target.value)} />
           </div>
-          <div>
+          <div className="kpi-modal-v2__field">
             <Text strong>
               分值 <Text type="danger">*</Text>
             </Text>
-            <Input style={{ marginTop: 6 }} value={form.score_weight} onChange={(e) => setField("score_weight", e.target.value)} />
+            <Input className="kpi-modal-v2__control" value={form.score_weight} onChange={(e) => setField("score_weight", e.target.value)} />
           </div>
-          <div>
+          <div className="kpi-modal-v2__field">
             <Text strong>单位</Text>
             <Select
-              style={{ width: "100%", marginTop: 6 }}
+              className="kpi-modal-v2__control"
               value={form.unit}
               options={UNITS.map((u) => ({ label: u || "无", value: u }))}
               onChange={(v) => setField("unit", v)}
             />
           </div>
         </div>
-        <div>
+        <div className="kpi-modal-v2__field">
           <Text strong>目标原文</Text>
           <Input.TextArea
-            style={{ marginTop: 6 }}
+            className="kpi-modal-v2__control"
             rows={2}
             value={form.target_text}
             onChange={(e) => setField("target_text", e.target.value)}
           />
         </div>
-        <div>
+        <div className="kpi-modal-v2__field">
           <Text strong>评分标准</Text>
           <Input.TextArea
-            style={{ marginTop: 6 }}
+            className="kpi-modal-v2__control"
             rows={2}
             value={form.scoring_text}
             onChange={(e) => setField("scoring_text", e.target.value)}
           />
         </div>
-        <div>
+        <div className="kpi-modal-v2__field">
           <Text strong>备注/口径说明</Text>
           <Input.TextArea
-            style={{ marginTop: 6 }}
+            className="kpi-modal-v2__control"
             rows={2}
             value={form.remarks}
             onChange={(e) => setField("remarks", e.target.value)}
@@ -308,7 +309,7 @@ export function MetricManageModal({
         </div>
       </div>
       {error ? (
-        <Alert type="error" showIcon style={{ marginTop: 16 }} message={error} />
+        <Alert type="error" showIcon className="kpi-modal-v2__alert" message={error} />
       ) : null}
     </Modal>
   );
