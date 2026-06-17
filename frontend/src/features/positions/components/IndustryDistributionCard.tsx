@@ -3,21 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, Spin, Table, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
 
-const INDUSTRY_COLORS = [
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-  "#14b8a6",
-  "#f59e0b",
-  "#22c55e",
-  "#ef4444",
-  "#6366f1",
-  "#84cc16",
-  "#f97316",
-];
+const INDUSTRY_COLORS = mossChartCategoricalPalette;
 
 type Props = {
   startDate: string | null;
@@ -135,9 +125,9 @@ export default function IndustryDistributionCard({ startDate, endDate, subType }
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 999,
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
                         background: record.color,
                         flexShrink: 0,
                       }}
