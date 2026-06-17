@@ -4,26 +4,31 @@ import { Card, Spin, Table, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import type { RatingStatsResponse } from "../../../api/contracts";
+import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { ibTokens } from "../../../theme/designSystem";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
 
+const IB_CHART_PALETTE = mossChartCategoricalPalette;
+const IB_CHART_NEGATIVE = ibTokens.color.down;
+
 const RATING_COLORS: Record<string, string> = {
-  AAA: "#22c55e",
-  "AA+": "#84cc16",
-  AA: "#eab308",
-  "AA-": "#f97316",
-  "A+": "#ef4444",
-  A: "#dc2626",
-  "A-": "#b91c1c",
-  未评级: "#94a3b8",
+  AAA: IB_CHART_PALETTE[0],
+  "AA+": IB_CHART_PALETTE[1],
+  AA: IB_CHART_PALETTE[2],
+  "AA-": IB_CHART_PALETTE[3],
+  "A+": IB_CHART_PALETTE[4],
+  A: IB_CHART_PALETTE[5],
+  "A-": IB_CHART_PALETTE[5],
+  未评级: IB_CHART_NEGATIVE,
+  违约: IB_CHART_NEGATIVE,
 };
 
 function ratingColor(rating: string, index: number): string {
   if (RATING_COLORS[rating]) {
     return RATING_COLORS[rating];
   }
-  const palette = ["#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b"];
-  return palette[index % palette.length];
+  return IB_CHART_PALETTE[index % IB_CHART_PALETTE.length];
 }
 
 type Props = {
@@ -114,10 +119,11 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span
                       style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 999,
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
                         background: record.dot,
+                        flexShrink: 0,
                       }}
                     />
                     <span style={{ fontWeight: 500 }}>{text}</span>

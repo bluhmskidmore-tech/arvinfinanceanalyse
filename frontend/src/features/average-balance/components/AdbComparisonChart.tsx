@@ -48,20 +48,20 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
         name: "Spot（期末）",
         type: "bar",
         data: rows.map((row) => row.spot),
-        itemStyle: { color: "#3b82f6" },
+        itemStyle: { color: "#14366b" },
         barGap: "10%",
       },
       {
         name: "ADB（日均）",
         type: "bar",
         data: rows.map((row) => row.avg),
-        itemStyle: { color: "#f97316" },
+        itemStyle: { color: "#c9a85c" },
         label: {
           show: true,
           position: "top",
           formatter: ({ dataIndex }: { dataIndex: number }) =>
             formatSignedPct(rows[dataIndex]?.deviationPct),
-          color: "#475569",
+          color: "#8a8f98",
           fontSize: 11,
         },
       },

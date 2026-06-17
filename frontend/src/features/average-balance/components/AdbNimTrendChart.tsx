@@ -1,5 +1,7 @@
+import { createLineChartOption, mossChartPalette } from "../../../components/charts/chartTheme";
 import ReactECharts from "../../../lib/echarts";
 import type { AdbMonthlyDataItem } from "../../../api/contracts";
+import { ibTokens } from "../../../theme/designSystem";
 
 export type AdbNimTrendChartProps = {
   months: AdbMonthlyDataItem[];
@@ -16,8 +18,11 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
   const yieldValues = months.map((m) => m.asset_yield);
   const costValues = months.map((m) => m.liability_cost);
   const nimValues = months.map((m) => m.net_interest_margin);
+  const assetYieldColor = mossChartPalette[0];
+  const liabilityCostColor = ibTokens.color.down;
+  const nimColor = ibTokens.color.up;
 
-  return {
+  return createLineChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
@@ -46,7 +51,7 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
     yAxis: {
       type: "value",
       axisLabel: { formatter: (value: number) => `${value.toFixed(1)}%` },
-      splitLine: { lineStyle: { type: "dashed", color: "#e5e7eb" } },
+      splitLine: { lineStyle: { type: "dashed" } },
     },
     series: [
       {
@@ -55,8 +60,8 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
         data: yieldValues,
         symbol: "circle",
         symbolSize: 5,
-        lineStyle: { width: 2, color: "#2563eb" },
-        itemStyle: { color: "#2563eb" },
+        lineStyle: { width: 2, color: assetYieldColor },
+        itemStyle: { color: assetYieldColor },
       },
       {
         name: "负债成本率",
@@ -64,8 +69,8 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
         data: costValues,
         symbol: "circle",
         symbolSize: 5,
-        lineStyle: { width: 2, color: "#dc2626" },
-        itemStyle: { color: "#dc2626" },
+        lineStyle: { width: 2, color: liabilityCostColor },
+        itemStyle: { color: liabilityCostColor },
       },
       {
         name: "NIM利差",
@@ -73,21 +78,11 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
         data: nimValues,
         symbol: "diamond",
         symbolSize: 7,
-        lineStyle: { width: 2.5, color: "#16a34a", type: "dashed" },
-        itemStyle: { color: "#16a34a" },
-        areaStyle: {
-          color: {
-            type: "linear",
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: "rgba(22,163,74,0.12)" },
-              { offset: 1, color: "rgba(22,163,74,0.01)" },
-            ],
-          },
-        },
+        lineStyle: { width: 2.5, color: nimColor, type: "dashed" },
+        itemStyle: { color: nimColor },
       },
     ],
-  };
+  });
 }
 
 /**

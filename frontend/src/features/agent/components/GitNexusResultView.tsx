@@ -1,3 +1,4 @@
+import { designTokens, ibTokens } from "../../../theme/designSystem";
 import { shellTokens as t } from "../../../theme/tokens";
 
 type GitNexusResultCard = {
@@ -9,14 +10,14 @@ type GitNexusResultCard = {
 
 const GITNEXUS_PROCESS_CARD_TITLE = "GitNexus Processes Table";
 const GITNEXUS_GROUP_COLORS: Record<string, string> = {
-  api: "#2563eb",
-  services: "#0f766e",
-  repositories: "#9333ea",
-  governance: "#b45309",
-  core: "#be123c",
-  tasks: "#166534",
-  schemas: "#4f46e5",
-  unknown: "#64748b",
+  api: ibTokens.color.accent,
+  services: ibTokens.color.up,
+  repositories: designTokens.color.warm.slateBlue,
+  governance: ibTokens.color.gold,
+  core: ibTokens.color.down,
+  tasks: ibTokens.color.up,
+  schemas: designTokens.color.primary[700],
+  unknown: ibTokens.color.inkMuted,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -90,7 +91,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
         <div
           style={{
             padding: 18,
-            borderRadius: 18,
+            borderRadius: ibTokens.radius,
             border: `1px solid ${t.colorBorderSoft}`,
             background: t.colorBgCanvas,
             display: "grid",
@@ -119,7 +120,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                   key={`summary-${card.title}`}
                   style={{
                     padding: 12,
-                    borderRadius: 14,
+                    borderRadius: ibTokens.radius,
                     background: t.colorBgSurface,
                     display: "grid",
                     gap: 6,
@@ -179,7 +180,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
         <div
           style={{
             padding: 18,
-            borderRadius: 18,
+            borderRadius: ibTokens.radius,
             border: `1px solid ${t.colorBorderSoft}`,
             background: t.colorBgCanvas,
             display: "grid",
@@ -254,7 +255,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                   key={`tool-${index}`}
                   style={{
                     padding: 10,
-                    borderRadius: 12,
+                    borderRadius: ibTokens.radius,
                     background: t.colorBgSurface,
                     display: "grid",
                     gap: 4,
@@ -275,7 +276,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
         <div
           style={{
             padding: 18,
-            borderRadius: 18,
+            borderRadius: ibTokens.radius,
             border: `1px solid ${t.colorBorderSoft}`,
             background: t.colorBgCanvas,
             display: "grid",
@@ -303,7 +304,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                   key={`process-${index}`}
                   style={{
                     padding: 12,
-                    borderRadius: 12,
+                    borderRadius: ibTokens.radius,
                     background: t.colorBgSurface,
                     display: "grid",
                     gap: 4,
@@ -354,7 +355,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
         <div
           style={{
             padding: 18,
-            borderRadius: 18,
+            borderRadius: ibTokens.radius,
             border: `1px solid ${t.colorBorderSoft}`,
             background: t.colorBgCanvas,
             display: "grid",
@@ -397,7 +398,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                     style={{
                       minWidth: 220,
                       padding: 14,
-                      borderRadius: 16,
+                      borderRadius: ibTokens.radius,
                       background: t.colorBgSurface,
                       border: `1px solid ${t.colorBorderSoft}`,
                       boxShadow: `inset 4px 0 0 ${moduleGroup.color}`,
@@ -428,7 +429,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                         style={{
                           width: 30,
                           height: 30,
-                          borderRadius: 999,
+                          borderRadius: ibTokens.radius,
                           background: t.colorAccent,
                           color: t.colorBgCanvas,
                           display: "grid",
@@ -447,7 +448,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                       style={{
                         width: "fit-content",
                         padding: "4px 8px",
-                        borderRadius: 999,
+                        borderRadius: ibTokens.radius,
                         background: `${moduleGroup.color}14`,
                         color: moduleGroup.color,
                         fontSize: 11,
@@ -476,7 +477,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                       <div
                         style={{
                           padding: "4px 8px",
-                          borderRadius: 999,
+                          borderRadius: ibTokens.radius,
                           background: t.colorBgSurface,
                           border: `1px solid ${t.colorBorderSoft}`,
                           fontSize: 11,
