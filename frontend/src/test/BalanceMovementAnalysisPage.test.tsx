@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, vi } from "vitest";
@@ -16,6 +18,19 @@ beforeAll(async () => {
 }, 20_000);
 
 describe("BalanceMovementAnalysisPage", () => {
+  it("keeps source-level style debt bounded to dynamic visual values", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx"),
+      "utf8",
+    );
+    const styleCount = (source.match(/\bstyle\s*=\s*\{/g) ?? []).length;
+
+    expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(source).not.toMatch(/rgba\(/);
+    expect(source).not.toMatch(/\bboxShadow\s*:|box-shadow\s*:/);
+    expect(styleCount).toBeLessThanOrEqual(3);
+  });
+
   it("renders AC OCI TPL balance movement from the governed read model", async () => {
     renderWorkbenchApp(["/balance-movement-analysis"], {
       client: createApiClient({ mode: "mock" }),
@@ -308,7 +323,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getAllByText("+109.80").length).toBe(2);
   });
 
-  it("preserves backend-missing balance share percentages instead of recomputing them", async () => {
+  it("prefers backend share pct and falls back only when backend pct is missing", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const nullShareClient: typeof baseClient = {
       ...baseClient,
@@ -370,12 +385,12 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(structureShift).not.toHaveTextContent("+0.00pp");
 
     const structureChart = screen.getByTestId("balance-movement-analysis-structure-chart");
-    expect(structureChart).toHaveTextContent("占比数据缺失，结构图暂不可比");
-    expect(within(structureChart).queryByTestId("balance-movement-echarts-stub")).not.toBeInTheDocument();
+    expect(within(structureChart).getByTestId("balance-movement-echarts-stub")).toBeInTheDocument();
+    expect(structureChart).not.toHaveTextContent("占比数据缺失，结构图暂不可比");
 
     const shareEvolutionTable = screen.getByTestId("balance-movement-analysis-structure-share-table");
     expect(within(shareEvolutionTable).getAllByText("0.00%").length).toBeGreaterThan(0);
-    expect(within(shareEvolutionTable).getAllByText("—").length).toBeGreaterThan(0);
+    expect(within(shareEvolutionTable).getAllByText("31.49%").length).toBeGreaterThan(0);
     expect(shareEvolutionTable).not.toHaveTextContent("NaNpp");
   });
 
