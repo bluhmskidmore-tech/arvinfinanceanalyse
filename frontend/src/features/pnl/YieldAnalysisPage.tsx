@@ -8,7 +8,8 @@ import { useApiClient } from "../../api/client";
 import type { LiabilityYieldHistoryPoint, Numeric, PnlV1DetailRow } from "../../api/contracts";
 import { fmtPct, formatNumeric, formatPercent } from "../../utils/format";
 import { BaseChart } from "../../components/charts/BaseChart";
-import { designTokens } from "../../theme/designSystem";
+import { mossChartCategoricalPalette } from "../../components/charts/chartTheme";
+import { ibTokens } from "../../theme/designSystem";
 import { runPollingTask } from "../../app/jobs/polling";
 import { PnlFilterBar } from "./yieldAnalysis/PnlFilterBar";
 import { RankingBarsCard } from "./yieldAnalysis/RankingBarsCard";
@@ -76,12 +77,12 @@ function pnlTone(value: number) {
   return "neutral";
 }
 
-const chartAxisMuted = designTokens.color.neutral[500];
-const chartMarketCost = designTokens.color.primary[600];
-const chartSpread = designTokens.color.success[600];
-const chartAssetYield = designTokens.color.neutral[900];
-const chartLiabilityDash = designTokens.color.neutral[500];
-const chartScatter = designTokens.color.info[600];
+const chartAxisMuted = ibTokens.color.inkMuted;
+const chartMarketCost = ibTokens.color.accent;
+const chartSpread = ibTokens.color.gold;
+const chartAssetYield = ibTokens.color.ink;
+const chartLiabilityDash = ibTokens.color.inkSecondary;
+const chartScatter = mossChartCategoricalPalette[1];
 
 function historyChartOption(history: LiabilityYieldHistoryPoint[]): EChartsOption {
   const dates = history.map((h) => h.date);

@@ -1,12 +1,19 @@
 import { Card, Col, Row, Typography } from "antd";
 
 import type { Numeric } from "../../../api/contracts";
+import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { numericOrDash } from "../utils/money";
 
 const { Text } = Typography;
 
-const COLORS = ["#cf1322", "#1d39c4", "#08979c", "#389e0d", "#531dab"];
+const COLORS = [
+  mossChartCategoricalPalette[0],
+  mossChartCategoricalPalette[1],
+  mossChartCategoricalPalette[2],
+  mossChartCategoricalPalette[3],
+  mossChartCategoricalPalette[5],
+] as const;
 
 type NamedYi = { name: string; amountYi: Numeric | null };
 type BucketYi = { bucket: string; amountYi: Numeric | null };

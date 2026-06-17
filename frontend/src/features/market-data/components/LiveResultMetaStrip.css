@@ -1,28 +1,88 @@
 .live-result-meta-strip {
+  display: grid;
+  gap: 6px;
   min-width: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--ib-hairline);
+  border-left: 2px solid var(--ib-accent);
+  border-radius: var(--ib-radius, 2px);
+  background: color-mix(in srgb, var(--ib-paper) 92%, var(--ib-surface-muted));
 }
 
-.live-result-meta-strip .ant-alert-content,
-.live-result-meta-strip .ant-alert-description {
+.live-result-meta-strip__head {
   min-width: 0;
 }
 
-.live-result-meta-strip .ant-alert-message {
-  margin-bottom: 3px;
+.live-result-meta-strip__lead {
+  color: var(--ib-ink);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
 }
 
+.live-result-meta-strip__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .live-result-meta-strip__items {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px 10px;
+  gap: 4px;
   min-width: 0;
-  font-size: 12px;
+}
+
+.live-result-meta-strip__items--version {
+  display: grid;
+  gap: 2px;
+}
+
+.live-result-meta-strip__pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-paper);
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.live-result-meta-strip__pill[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--ib-up) 35%, var(--ib-hairline));
+  color: color-mix(in srgb, var(--ib-up) 82%, var(--ib-ink));
+}
+
+.live-result-meta-strip__pill[data-tone="warn"] {
+  border-color: color-mix(in srgb, var(--ib-gold) 40%, var(--ib-hairline));
+  color: color-mix(in srgb, var(--ib-gold) 85%, var(--ib-ink));
+}
+
+.live-result-meta-strip__pill[data-tone="error"] {
+  border-color: color-mix(in srgb, var(--ib-down) 35%, var(--ib-hairline));
+  color: color-mix(in srgb, var(--ib-down) 82%, var(--ib-ink));
+}
+
+.live-result-meta-strip__version-details {
+  min-width: 0;
+}
+
+.live-result-meta-strip__version-details > summary {
+  cursor: pointer;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 650;
   line-height: 1.35;
+  list-style-position: outside;
+}
+
+.live-result-meta-strip__version-details[open] > summary {
+  margin-bottom: 4px;
 }
 
 .live-result-meta-strip__item {
@@ -38,4 +98,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   word-break: normal;
+  color: var(--ib-ink-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
