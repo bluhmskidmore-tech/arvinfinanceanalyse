@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { stockAnalysisPageCssVars } from "../features/stock-analysis/lib/stockAnalysisTokens";
-import { designTokens } from "../theme/designSystem";
+import { designTokens, ibTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { workbenchTheme } from "../theme/theme";
 
@@ -21,6 +21,19 @@ const AG_GRID_INSTITUTIONAL_CSS_PATH = resolve(
   process.cwd(),
   "src/styles/agGridInstitutional.css",
 );
+
+function readCssWithLocalImports(filePath: string, seen = new Set<string>()): string {
+  if (seen.has(filePath)) {
+    throw new Error(`Circular CSS import detected for ${filePath}`);
+  }
+  seen.add(filePath);
+
+  return readFileSync(filePath, "utf8").replace(
+    /^@import "\.\/([^"]+)";\r?\n?/gm,
+    (_match, importPath: string) =>
+      readCssWithLocalImports(resolve(dirname(filePath), importPath), seen),
+  );
+}
 
 function stripCssComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -40,9 +53,39 @@ function parseMossCssVars(css: string): Map<string, string> {
   return map;
 }
 
+/** Extract --ib-* declarations; values trimmed, internal whitespace collapsed for comparison. */
+function parseIbCssVars(css: string): Map<string, string> {
+  const map = new Map<string, string>();
+  const cleaned = stripCssComments(css);
+  const re = /--(ib-[a-z0-9-]+)\s*:\s*([\s\S]*?);/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(cleaned)) !== null) {
+    const key = m[1];
+    const raw = m[2].replace(/\s+/g, " ").trim();
+    map.set(key, raw);
+  }
+  return map;
+}
+
 function normalizeHex(value: string): string {
   return value.trim().toLowerCase();
 }
+
+describe("ibTokens", () => {
+  const globalCss = readCssWithLocalImports(GLOBAL_CSS_PATH);
+  const ibVars = parseIbCssVars(globalCss);
+
+  it("exposes core IB light restyle variables aligned with ibTokens", () => {
+    expect(normalizeHex(ibVars.get("ib-paper") ?? "")).toBe(normalizeHex(ibTokens.color.paper));
+    expect(normalizeHex(ibVars.get("ib-ink") ?? "")).toBe(normalizeHex(ibTokens.color.ink));
+    expect(normalizeHex(ibVars.get("ib-accent") ?? "")).toBe(normalizeHex(ibTokens.color.accent));
+    expect(normalizeHex(ibVars.get("ib-hairline") ?? "")).toBe(normalizeHex(ibTokens.color.hairline));
+    expect(normalizeHex(ibVars.get("ib-gold") ?? "")).toBe(normalizeHex(ibTokens.color.gold));
+    expect(normalizeHex(ibVars.get("ib-rail-bg") ?? "")).toBe(normalizeHex(ibTokens.color.railBg));
+    expect(ibVars.get("ib-radius")).toBe(`${ibTokens.radius}px`);
+    expect(ibVars.get("ib-shadow")).toBe(ibTokens.shadow);
+  });
+});
 
 describe("shellTokens", () => {
   it("defines core semantic colors used by the shell", () => {
@@ -56,30 +99,30 @@ describe("shellTokens", () => {
 
   it("defines homepage-aligned cockpit rail tokens for WorkbenchShell aside", () => {
     expect(shellTokens.railBg).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(shellTokens.railBg).toBe(designTokens.color.institutional.railTop);
-    expect(shellTokens.railBorder).toMatch(/^rgba\(/i);
-    expect(shellTokens.railNavActiveBg).toBe("rgba(24, 80, 161, 0.24)");
-    expect(shellTokens.railBrandText).toBe(designTokens.color.cockpit.blue50);
+    expect(shellTokens.railBg).toBe("#10161f");
+    expect(shellTokens.railBorder).toMatch(/^#/i);
+    expect(shellTokens.railNavActiveBg).toBe("#1a2230");
+    expect(shellTokens.railBrandText).toBe("#f5f6f8");
   });
 
-  it("maps the shell to the homepage blue-gray design token palette via stable aliases", () => {
-    expect(shellTokens.colorBgApp).toBe(designTokens.color.institutional.canvas);
-    expect(shellTokens.colorBgSurface).toBe(designTokens.color.institutional.surfaceRaised);
-    expect(shellTokens.colorBgCanvas).toBe(designTokens.color.institutional.surface);
-    expect(shellTokens.colorTextPrimary).toBe(designTokens.color.neutral[900]);
-    expect(shellTokens.colorTextSecondary).toBe(designTokens.color.neutral[600]);
-    expect(shellTokens.colorTextMuted).toBe(designTokens.color.neutral[500]);
-    expect(shellTokens.colorAccent).toBe(designTokens.color.primary[600]);
-    expect(shellTokens.colorSuccess).toBe(designTokens.color.success[500]);
+  it("maps the shell to the IB light restyle palette via stable aliases", () => {
+    expect(shellTokens.colorBgApp).toBe("#f4f3f0");
+    expect(shellTokens.colorBgSurface).toBe("#ffffff");
+    expect(shellTokens.colorBgCanvas).toBe("#ffffff");
+    expect(shellTokens.colorTextPrimary).toBe("#16191d");
+    expect(shellTokens.colorTextSecondary).toBe("#5c6370");
+    expect(shellTokens.colorTextMuted).toBe("#8a8f98");
+    expect(shellTokens.colorAccent).toBe("#14366b");
+    expect(shellTokens.colorSuccess).toBe("#1f7a4d");
     expect(shellTokens.colorWarning).toBe(designTokens.color.warning[500]);
-    expect(shellTokens.colorDanger).toBe(designTokens.color.danger[500]);
+    expect(shellTokens.colorDanger).toBe("#b42318");
     expect(shellTokens.colorInfo).toBe(designTokens.color.info[500]);
-    expect(shellTokens.colorBgMuted).toBe(designTokens.color.institutional.surfaceMuted);
-    expect(shellTokens.appBackdrop).toContain(designTokens.color.institutional.canvas);
+    expect(shellTokens.colorBgMuted).toBe("#f7f6f3");
+    expect(shellTokens.appBackdrop).toBe("#f4f3f0");
   });
 
   it("defines placeholder readiness badge colors for shell badges", () => {
-    expect(shellTokens.readinessBadgePlaceholderBg).toMatch(/^#/);
+    expect(shellTokens.readinessBadgePlaceholderBg).toBe("transparent");
     expect(shellTokens.readinessBadgePlaceholderFg).toMatch(/^#/);
     expect(shellTokens.readinessBadgePlaceholderBorder).toMatch(/^#/);
   });
@@ -99,13 +142,13 @@ describe("workbenchTheme", () => {
     expect(token?.colorBgBase).toBe(shellTokens.colorBgApp);
     expect(token?.colorBgContainer).toBe(shellTokens.colorBgSurface);
     expect(token?.colorFillAlter).toBe(shellTokens.colorBgMuted);
-    expect(token?.borderRadius).toBe(shellTokens.radiusCard);
+    expect(token?.borderRadius).toBe(2);
   });
 
   it("defines Card and Layout overrides from shellTokens", () => {
     const { components } = workbenchTheme;
-    expect(components?.Card?.borderRadiusLG).toBe(shellTokens.radiusCard);
-    expect(components?.Card?.boxShadow).toBe(shellTokens.shadowCard);
+    expect(components?.Card?.borderRadiusLG).toBe(2);
+    expect(components?.Card?.boxShadow).toBe("none");
     expect(components?.Layout?.bodyBg).toBe(shellTokens.colorBgApp);
     expect(components?.Layout?.siderBg).toBe(shellTokens.railBg);
   });
@@ -119,17 +162,17 @@ describe("workbenchTheme", () => {
 });
 
 describe("stockAnalysisPageCssVars", () => {
-  it("keeps warning surfaces on the design-system warning palette", () => {
+  it("keeps warning surfaces on the investment-bank light palette", () => {
     const vars = stockAnalysisPageCssVars as Record<string, string | number | undefined>;
 
-    expect(vars["--sa-warning-fg"]).toBe(designTokens.color.warning[800]);
-    expect(vars["--sa-warning-soft-bg"]).toBe(designTokens.color.warning[50]);
-    expect(vars["--sa-warning-border"]).toBe(designTokens.color.warning[200]);
+    expect(vars["--sa-warning-fg"]).toBe(ibTokens.color.warn);
+    expect(vars["--sa-warning-soft-bg"]).toBe(ibTokens.color.paper);
+    expect(vars["--sa-warning-border"]).toBe(ibTokens.color.hairline);
   });
 });
 
 describe("globalCss design token bridge (:root)", () => {
-  const globalCss = readFileSync(GLOBAL_CSS_PATH, "utf8");
+  const globalCss = readCssWithLocalImports(GLOBAL_CSS_PATH);
   const workbenchInstitutionalConsoleCss = readFileSync(
     WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH,
     "utf8",
@@ -165,31 +208,19 @@ describe("globalCss design token bridge (:root)", () => {
       "var(--moss-institutional-surface-raised)",
     );
     expect(mossVars.get("moss-color-link")).toBe("var(--moss-color-info-500)");
-    expect(mossVars.get("moss-color-primary-rgb")).toBe("24, 80, 161");
+    expect(mossVars.get("moss-color-primary-rgb")).toBe("20, 54, 107");
   });
 
   it("exposes institutional console aliases for the investment-bank shell pass", () => {
-    expect(normalizeHex(mossVars.get("moss-institutional-bg") ?? "")).toBe(
-      normalizeHex(designTokens.color.institutional.canvas),
-    );
-    expect(normalizeHex(mossVars.get("moss-institutional-surface") ?? "")).toBe(
-      normalizeHex(designTokens.color.institutional.surface),
-    );
-    expect(normalizeHex(mossVars.get("moss-institutional-border") ?? "")).toBe(
-      normalizeHex(designTokens.color.institutional.border),
-    );
-    expect(normalizeHex(mossVars.get("moss-institutional-row-stripe") ?? "")).toBe(
-      normalizeHex(designTokens.color.institutional.rowStripe),
-    );
-    expect(normalizeHex(mossVars.get("moss-institutional-row-hover") ?? "")).toBe(
-      normalizeHex(designTokens.color.institutional.rowHover),
-    );
+    expect(mossVars.get("moss-institutional-bg")).toBe("var(--ib-paper)");
+    expect(mossVars.get("moss-institutional-surface")).toBe("var(--ib-surface)");
+    expect(mossVars.get("moss-institutional-border")).toBe("var(--ib-hairline)");
+    expect(mossVars.get("moss-institutional-row-stripe")).toBe("var(--ib-surface-muted)");
+    expect(mossVars.get("moss-institutional-row-hover")).toBe("var(--ib-surface-muted)");
     expect(mossVars.get("moss-institutional-focus-ring")).toBe(
-      designTokens.color.institutional.focusRing,
+      "rgba(20, 54, 107, 0.28)",
     );
-    expect(mossVars.get("moss-institutional-rail-bg")).toContain(
-      designTokens.color.institutional.railTop,
-    );
+    expect(mossVars.get("moss-institutional-rail-bg")).toBe("var(--ib-rail-bg)");
   });
 
   it("maps monospace stack to designTokens.fontFamily.tabular", () => {
@@ -218,14 +249,12 @@ describe("globalCss design token bridge (:root)", () => {
     );
   });
 
-  it("points shell rail css aliases to the homepage navy rail contract", () => {
-    expect(mossVars.get("moss-shell-rail-bg")).toBe("var(--moss-institutional-rail-top)");
-    expect(mossVars.get("moss-institutional-rail-bg")).toContain(
-      designTokens.color.institutional.railTop,
-    );
-    expect(mossVars.get("moss-shell-rail-text")).toBe("rgba(234, 242, 251, 0.82)");
-    expect(mossVars.get("moss-shell-rail-active-bg")).toBe("rgba(24, 80, 161, 0.24)");
-    expect(mossVars.get("moss-shell-rail-active-border")).toBe("rgba(96, 165, 250, 0.36)");
+  it("points shell rail css aliases to the IB light rail contract", () => {
+    expect(mossVars.get("moss-shell-rail-bg")).toBe("var(--ib-rail-bg)");
+    expect(mossVars.get("moss-institutional-rail-bg")).toBe("var(--ib-rail-bg)");
+    expect(mossVars.get("moss-shell-rail-text")).toBe("var(--ib-rail-text)");
+    expect(mossVars.get("moss-shell-rail-active-bg")).toBe("var(--ib-rail-active-bg)");
+    expect(mossVars.get("moss-shell-rail-active-border")).toBe("var(--ib-rail-active-bar)");
   });
 
   it("keeps Page V2 and cockpit shell class hooks in the eager global stylesheet", () => {

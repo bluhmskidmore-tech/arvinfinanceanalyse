@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ConfigProvider } from "antd";
 import { useState, type ReactNode } from "react";
 
 import { ApiClientProvider, type ApiClient } from "../api/clientContext";
+import { workbenchTheme } from "../theme/theme";
 
 type AppProvidersProps = {
   children: ReactNode;
@@ -23,10 +25,12 @@ export function AppProviders({ children, client }: AppProvidersProps) {
   );
 
   return (
-    <ApiClientProvider client={client}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    </ApiClientProvider>
+    <ConfigProvider theme={workbenchTheme}>
+      <ApiClientProvider client={client}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </ApiClientProvider>
+    </ConfigProvider>
   );
 }

@@ -4,3 +4,10 @@
   gap: 12px;
   align-items: flex-end;
 }
+
+.moss-filter-bar :where(.ant-form-item-label > label) {
+  color: var(--ib-ink-muted);
+  font-size: var(--ib-kicker-font-size);
+  font-weight: 600;
+  letter-spacing: var(--ib-kicker-letter-spacing);
+}

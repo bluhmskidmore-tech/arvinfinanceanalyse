@@ -1,4 +1,4 @@
-import { designTokens } from "../../theme/designSystem";
+import { designTokens, ibTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
 
 /** 与首页驾驶舱一致：白底、浅边线、低阴影，控制页面面板密度。 */
@@ -12,9 +12,9 @@ export const pageSurfacePanelStyle = {
 
 export const pageInsetCardStyle = {
   padding: 12,
-  borderRadius: designTokens.radius.sm,
-  border: "1px solid rgba(115, 132, 153, 0.22)",
-  background: shellTokens.colorBgSurface,
+  borderRadius: ibTokens.radius,
+  border: "1px solid var(--ib-hairline)",
+  background: "var(--ib-surface)",
   boxShadow: "none",
 } as const;
 

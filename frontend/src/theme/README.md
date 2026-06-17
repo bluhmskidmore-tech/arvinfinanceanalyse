@@ -45,9 +45,11 @@
 
 ## Ant Design 映射约定
 
-- 全局通过 `AppProviders` → `ConfigProvider theme={workbenchTheme}`。
-- **不要**在页面级再次包一层 `ConfigProvider` 改主色，除非该路由是隔离演示页。
-- Button / Input / Table / Card 的视觉以 `theme.ts` 为准；单独调某个按钮时先用 `type`/`danger`/`size`，再考虑 style。
+- 全局主题只在 `AppProviders` 根级挂载一次：`ConfigProvider theme={workbenchTheme}`。
+- `main.tsx` 中 `AppProviders` 包住 `App`，因此 `RouteRegistry`、`WorkbenchShell`、`DashboardHomePage` 以及所有 `themedRouteElement(...)` 页面都共享同一个 AntD theme。
+- `ThemedRouteBoundary` 只保留为透明的路由兼容边界，不再创建或嵌套 `ConfigProvider`。
+- **不要**在页面级再次包一层 `ConfigProvider` 改主色，除非该路由是隔离演示页，并且需要在文档中说明原因。
+- Button / Input / Table / Card 的视觉以 `theme.ts` 为准；单独调某个按钮时先用 `type` / `danger` / `size`，再考虑 style。
 
 ## 不要做
 
