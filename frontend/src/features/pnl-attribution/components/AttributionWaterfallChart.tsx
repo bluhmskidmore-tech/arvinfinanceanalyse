@@ -3,14 +3,14 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { VolumeRateAttributionPayload } from "../../../api/contracts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, ibTokens } from "../../../theme/designSystem";
 
 const cardStyle = {
   padding: designTokens.space[5],
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
+  borderRadius: ibTokens.radius,
+  border: `1px solid ${ibTokens.color.hairline}`,
+  background: ibTokens.color.surface,
+  boxShadow: ibTokens.shadow,
 } as const;
 
 function formatYi(value: number | null | undefined): string {
@@ -42,36 +42,28 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
 
     categories.push("上期损益");
     values.push((data.total_previous_pnl?.raw ?? 0) / 100_000_000);
-    colors.push(designTokens.color.neutral[500]);
+    colors.push(ibTokens.color.inkMuted);
 
     const vol = (data.total_volume_effect?.raw ?? 0) / 100_000_000;
     categories.push("规模效应");
     values.push(vol);
-    colors.push(
-      vol >= 0
-        ? designTokens.color.semantic.profit
-        : designTokens.color.semantic.loss,
-    );
+    colors.push(vol >= 0 ? ibTokens.color.down : ibTokens.color.up);
 
     const rate = (data.total_rate_effect?.raw ?? 0) / 100_000_000;
     categories.push("利率效应");
     values.push(rate);
-    colors.push(
-      rate >= 0
-        ? designTokens.color.primary[600]
-        : designTokens.color.warning[500],
-    );
+    colors.push(rate >= 0 ? ibTokens.color.down : ibTokens.color.up);
 
     const cross = (data.total_interaction_effect?.raw ?? 0) / 100_000_000;
     if (Math.abs(cross) > 0.001) {
       categories.push("交叉效应");
       values.push(cross);
-      colors.push(designTokens.color.neutral[500]);
+      colors.push(ibTokens.color.inkMuted);
     }
 
     categories.push("当期损益");
     values.push((data.total_current_pnl.raw ?? 0) / 100_000_000);
-    colors.push(designTokens.color.neutral[800]);
+    colors.push(ibTokens.color.accent);
 
     return {
       tooltip: {
@@ -89,18 +81,18 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
         type: "category",
         data: categories,
         axisLabel: {
-          fontSize: designTokens.fontSize[11],
-          color: designTokens.color.neutral[700],
+          fontSize: ibTokens.kicker.fontSize,
+          color: ibTokens.color.inkMuted,
         },
       },
       yAxis: {
         type: "value",
         axisLabel: {
           formatter: (v: number) => `${v.toFixed(1)}亿`,
-          color: designTokens.color.neutral[700],
+          color: ibTokens.color.inkMuted,
         },
         splitLine: {
-          lineStyle: { type: "dashed", color: designTokens.color.neutral[100] },
+          lineStyle: { type: "solid", color: ibTokens.color.hairline },
         },
       },
       series: [
