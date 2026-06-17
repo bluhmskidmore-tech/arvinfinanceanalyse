@@ -1,35 +1,36 @@
 .dhPage {
-  --dh-card: #ffffff;
-  --dh-card-soft: #f8fafc;
-  --dh-surface-muted: #f0f3f6;
-  --dh-line: #ccd5df;
-  --dh-line-soft: #e3e8ef;
-  --dh-line-strong: #9fb1c4;
-  --dh-ink: #17212f;
-  --dh-ink-2: #2d3b4f;
-  --dh-muted: #5c6675;
-  --dh-muted-2: #7b8797;
-  --dh-blue: #174e86;
-  --dh-blue-2: #2f80a8;
-  --dh-blue-deep: #0f2f4f;
-  --dh-blue-soft: #edf4fb;
-  --dh-navy: #071c33;
-  --dh-steel: #526274;
-  --dh-green: #197a5a;
-  --dh-green-soft: #eef7f2;
-  --dh-red: #b94743;
-  --dh-red-soft: #fbf1f0;
-  --dh-amber: #936214;
-  --dh-amber-soft: #fbf4e6;
-  --dh-gold: #b88a2d;
+  --dh-card: var(--ib-surface);
+  --dh-card-soft: var(--ib-surface-muted);
+  --dh-surface-muted: var(--ib-paper);
+  --dh-line: var(--ib-hairline);
+  --dh-line-soft: var(--ib-hairline);
+  --dh-line-strong: var(--ib-rule-strong);
+  --dh-ink: var(--ib-ink);
+  --dh-ink-2: var(--ib-ink-secondary);
+  --dh-muted: var(--ib-ink-secondary);
+  --dh-muted-2: var(--ib-ink-muted);
+  --dh-blue: var(--ib-accent);
+  --dh-blue-2: var(--ib-accent-hover);
+  --dh-blue-deep: var(--ib-accent);
+  --dh-blue-soft: var(--ib-accent-surface);
+  --dh-navy: var(--ib-rail-bg);
+  --dh-steel: var(--ib-ink-secondary);
+  --dh-green: var(--ib-up);
+  --dh-green-soft: transparent;
+  --dh-red: var(--ib-down);
+  --dh-red-soft: transparent;
+  --dh-amber: var(--ib-warn);
+  --dh-amber-soft: transparent;
+  --dh-gold: var(--ib-gold);
+  --dh-font-serif: var(--ib-serif);
   --dh-space-1: 8px;
   --dh-space-2: 12px;
   --dh-space-3: 16px;
   --dh-space-4: 24px;
   --dh-shadow-card: none;
   --dh-shadow-hover: none;
-  --dh-radius: 2px;
-  --dh-radius-lg: 2px;
+  --dh-radius: var(--ib-radius);
+  --dh-radius-lg: var(--ib-radius);
   --dh-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --dh-font-mono: ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace;
   color: var(--dh-ink);
@@ -109,9 +110,8 @@
 
 .dhTopbar {
   align-items: center;
-  background: #ffffff;
+  background: var(--ib-surface);
   border: 1px solid var(--dh-line);
-  border-left: 3px solid var(--dh-gold);
   border-radius: 2px;
   box-shadow: none;
   display: flex;
@@ -129,7 +129,7 @@
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--dh-space-2);
+  gap: 16px;
 }
 
 .dhTopbarLeft {
@@ -153,8 +153,9 @@
 
 .dhTitle {
   color: var(--dh-ink);
-  font-size: 18px;
-  font-weight: 850;
+  font-family: var(--dh-font-serif);
+  font-size: 20px;
+  font-weight: 600;
   letter-spacing: 0;
   line-height: 1.2;
   margin: 0;
@@ -168,8 +169,8 @@
 
 .dhDateSelect {
   align-items: center;
-  background: #fbfcfe;
-  border: 1px solid var(--dh-line);
+  background: var(--ib-surface);
+  border: 1px solid var(--ib-hairline);
   border-radius: 2px;
   display: inline-flex;
   gap: 6px;
@@ -180,7 +181,7 @@
 
 .dhDateSelect:focus-within {
   border-color: var(--dh-blue);
-  box-shadow: 0 0 0 3px rgba(24, 80, 161, 0.08);
+  box-shadow: none;
 }
 
 .dhDateSelectIcon,
@@ -204,21 +205,21 @@
 
 .dhSearch {
   align-items: center;
-  background: #fbfcfe;
-  border: 1px solid var(--dh-line);
+  background: var(--ib-surface);
+  border: 1px solid var(--ib-hairline);
   border-radius: 2px;
   display: inline-flex;
   gap: 6px;
   height: 30px;
   padding: 0 10px;
-  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease;
   width: min(340px, 34vw);
 }
 
 .dhSearch:focus-within {
   background: var(--dh-card);
   border-color: var(--dh-blue);
-  box-shadow: 0 0 0 3px rgba(24, 80, 161, 0.08);
+  box-shadow: none;
 }
 
 .dhSearch input {
@@ -233,7 +234,7 @@
 }
 
 .dhSearch input::placeholder {
-  color: var(--dh-muted-2);
+  color: var(--ib-ink-muted);
 }
 
 .dhStatusRow {
@@ -249,15 +250,15 @@
   border: 0;
   border-left: 1px solid var(--dh-line-soft);
   border-radius: 0;
-  color: var(--dh-ink-2);
+  color: var(--ib-ink-muted);
   display: inline-flex;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   gap: 6px;
-  height: 24px;
-  padding: 0 10px;
+  height: auto;
+  padding: 0 16px;
   text-decoration: none;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition: color 120ms ease;
   white-space: nowrap;
 }
 
@@ -294,8 +295,9 @@
 .dhDot {
   background: var(--dh-blue-2);
   border-radius: 50%;
-  height: 7px;
-  width: 7px;
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
 }
 
 .dhDotBlue {
@@ -312,42 +314,47 @@
 
 .dhPartialToggle {
   align-items: center;
-  color: var(--dh-ink-2);
+  color: var(--ib-ink-muted);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   gap: 6px;
   user-select: none;
 }
 
 .dhPartialToggle input {
-  accent-color: var(--dh-blue);
+  accent-color: var(--ib-accent);
+  border: 1px solid var(--ib-hairline);
+  border-radius: 2px;
+  height: 13px;
+  margin: 0;
+  width: 13px;
 }
 
 .dhRefreshBtn {
   align-items: center;
-  background: var(--dh-blue-deep);
-  border: 1px solid var(--dh-blue-deep);
+  background: var(--ib-surface);
+  border: 1px solid var(--dh-line);
   border-radius: 2px;
-  color: #fff;
+  color: var(--dh-ink);
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   gap: 6px;
   height: 30px;
   padding: 0 12px;
   box-shadow: none;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 
 .dhRefreshBtn:hover {
-  background: var(--dh-blue);
-  border-color: var(--dh-blue-deep);
+  background: var(--dh-blue-soft);
+  border-color: var(--dh-blue);
   box-shadow: none;
-  color: #fff;
+  color: var(--dh-blue);
 }
 
 .dhMiniLine {
@@ -356,9 +363,10 @@
 }
 
 .dhTerminalHero {
-  background: #ffffff;
+  background: var(--ib-surface);
   border: 1px solid var(--dh-line);
   border-radius: 2px;
+  border-top: 2px solid var(--dh-blue);
   box-shadow: none;
   display: grid;
   gap: 0;
@@ -373,75 +381,83 @@
 
 .dhReportHead {
   align-items: stretch;
-  background: #f9fafb;
-  border-bottom: 1px solid var(--dh-line);
+  background: var(--ib-surface);
+  border-bottom: 1px solid var(--ib-hairline);
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 14px 14px 12px;
 }
 
 .dhReportKicker {
-  color: var(--dh-muted);
+  color: var(--ib-ink-muted);
   display: block;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   line-height: 1.2;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
 }
 
 .dhReportHead h2 {
-  color: var(--dh-ink);
-  font-size: 17px;
-  font-weight: 850;
+  color: var(--ib-ink);
+  font-family: var(--ib-serif);
+  font-size: 22px;
+  font-weight: 600;
   letter-spacing: 0;
-  line-height: 1.35;
+  line-height: 1.5;
   margin: 0;
-  max-width: 780px;
+  max-width: 880px;
 }
 
 .dhReportLead {
-  color: var(--dh-muted);
-  font-size: 11px;
-  font-weight: 650;
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.45;
-  margin: 7px 0 0;
+  margin: 8px 0 0;
   max-width: 720px;
 }
 
 .dhReportMeta {
-  align-self: stretch;
-  border: 1px solid var(--dh-line-soft);
+  align-self: center;
+  border: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  grid-template-columns: repeat(2, minmax(72px, auto));
   margin: 0;
 }
 
 .dhReportMeta div {
-  background: #ffffff;
+  background: transparent;
   display: grid;
-  gap: 3px;
+  gap: 4px;
+  justify-items: end;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 2px 14px;
+  text-align: right;
 }
 
 .dhReportMeta div + div {
-  border-left: 1px solid var(--dh-line-soft);
+  border-left: 1px solid var(--ib-hairline);
 }
 
 .dhReportMeta dt {
-  color: var(--dh-muted);
-  font-size: 10px;
-  font-weight: 760;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
   line-height: 1.2;
+  text-transform: uppercase;
 }
 
 .dhReportMeta dd {
-  color: var(--dh-ink);
-  font-size: 11px;
-  font-weight: 850;
+  color: var(--ib-ink);
+  font-family: var(--dh-font-mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   line-height: 1.2;
   margin: 0;
 }
@@ -458,18 +474,20 @@
 }
 
 .dhMetricTable th {
-  background: #f7f9fb;
-  border-bottom: 1px solid var(--dh-line);
-  color: var(--dh-muted);
-  font-size: 10px;
-  font-weight: 800;
+  background: transparent;
+  border-bottom: 1px solid var(--ib-rule-strong);
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   line-height: 1.2;
-  padding: 8px 10px;
+  padding: 6px 10px;
   text-align: left;
+  text-transform: uppercase;
 }
 
 .dhMetricTable th:nth-child(1) {
-  width: 44px;
+  width: 32px;
 }
 
 .dhMetricTable th:nth-child(2) {
@@ -493,12 +511,23 @@
 }
 
 .dhMetricTable td {
-  border-bottom: 1px solid var(--dh-line-soft);
+  border-bottom: 1px solid var(--dh-line);
   color: var(--dh-ink-2);
   font-size: 12px;
-  line-height: 1.35;
-  padding: 9px 10px;
+  line-height: 1.3;
+  padding: 6px 10px;
   vertical-align: middle;
+}
+
+.dhMetricTable tbody tr:hover td {
+  background: var(--ib-surface-muted);
+}
+
+.dhMetricTable th:nth-child(3),
+.dhMetricTable th:nth-child(4),
+.dhMetricTable td:nth-child(3),
+.dhMetricTable td:nth-child(4) {
+  text-align: right;
 }
 
 .dhMetricTable tr:last-child td {
@@ -517,75 +546,129 @@
 }
 
 .dhMetricValueCell {
-  color: var(--dh-ink) !important;
-  font-size: 18px !important;
-  font-weight: 850;
+  color: var(--ib-ink) !important;
+  font-size: 14px !important;
+  font-weight: 600;
   letter-spacing: 0;
+  text-align: right;
   white-space: nowrap;
 }
 
 .dhMetricValueCell small {
-  color: var(--dh-muted);
+  color: var(--ib-ink-muted);
   font-size: 11px;
-  font-weight: 700;
-  margin-left: 3px;
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+.dhUnit {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 2px;
 }
 
 .dhMetricDeltaCell {
-  font-size: 11px !important;
-  font-weight: 800;
+  color: var(--ib-ink-secondary);
+  font-size: 12px !important;
+  font-weight: 500;
+  text-align: right;
   white-space: nowrap;
 }
 
+.dhMetricDeltaCell.dhUpRed {
+  color: var(--ib-down);
+  font-weight: 500;
+}
+
+.dhMetricDeltaCell.dhDownGreen {
+  color: var(--ib-up);
+  font-weight: 500;
+}
+
 .dhMetricSparkCell {
-  padding-bottom: 6px !important;
-  padding-top: 6px !important;
+  padding-bottom: 4px !important;
+  padding-top: 4px !important;
 }
 
 .dhMetricTableSpark {
-  height: 24px;
-  opacity: 0.64;
+  height: 22px;
+  opacity: 1;
   width: 100%;
 }
 
 .dhTerminalState {
   align-items: center;
-  border-radius: 5px;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 2px;
   display: inline-flex;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 6px;
   max-width: 100%;
   min-height: 18px;
   overflow: hidden;
-  padding: 0 7px;
+  padding: 0 6px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .dhTerminalStateReady {
-  background: var(--dh-green-soft);
-  color: var(--dh-green);
+  background: transparent;
+  border: 0;
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  min-height: auto;
+  padding: 0;
+}
+
+.dhTerminalStateReady::before {
+  background: var(--dh-green);
+  border-radius: 50%;
+  content: "";
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
+.dhVisuallyHidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .dhTerminalStateMuted {
-  background: var(--dh-surface-muted);
+  background: transparent;
+  border-color: var(--dh-muted-2);
   color: var(--dh-muted);
 }
 
 .dhTerminalStateStale {
-  background: var(--dh-amber-soft);
+  background: transparent;
+  border-color: var(--dh-amber);
   color: var(--dh-amber);
 }
 
 .dhTerminalStateWarn {
-  background: var(--dh-red-soft);
+  background: transparent;
+  border-color: var(--dh-red);
   color: var(--dh-red);
 }
 
 .dhTerminalRiskStrip {
-  background: #ffffff;
+  background: var(--ib-surface);
   border: 1px solid var(--dh-line);
   border-radius: 2px;
+  border-top: 1px solid var(--ib-rule-strong);
   box-shadow: none;
   margin-bottom: 14px;
   padding: 10px 12px 12px;
@@ -605,23 +688,19 @@
   color: var(--dh-ink);
   display: inline-flex;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   gap: 7px;
   margin: 0;
 }
 
 .dhTerminalPanelHead h3::before {
-  background: var(--dh-gold);
-  border-radius: 1px;
-  box-shadow: none;
-  content: "";
-  height: 15px;
-  width: 3px;
+  display: none;
 }
 
 .dhTerminalRiskGrid {
-  background: #ffffff;
-  border: 1px solid var(--dh-line-soft);
+  background: var(--ib-surface);
+  border: 0;
+  border-top: 1px solid var(--dh-line);
   display: grid;
   gap: 0;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -630,8 +709,8 @@
 
 .dhTerminalRiskCell {
   align-content: center;
-  background: #fbfcfe;
-  border-right: 1px solid var(--dh-line-soft);
+  background: var(--ib-surface);
+  border-right: 1px solid var(--dh-line);
   display: grid;
   gap: 5px;
   min-height: 58px;
@@ -643,24 +722,34 @@
 }
 
 .dhTerminalRiskCell span {
-  color: var(--dh-muted);
-  font-size: 10px;
-  font-weight: 760;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .dhTerminalRiskCell b {
-  color: var(--dh-ink);
-  font-size: 15px;
+  color: var(--ib-ink);
+  font-family: var(--dh-font-mono);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
   line-height: 1.1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.dhTerminalRiskCell b .dhUnit {
+  font-size: 12px;
+}
+
 .dhTerminalRiskCell em {
-  font-size: 10px;
+  color: var(--ib-ink-muted);
+  font-size: 12px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 400;
 }
 
 .dhRiskEmptyRow {
@@ -760,16 +849,17 @@
 }
 
 .dhReviewRail {
-  background: #ffffff;
+  background: var(--ib-surface);
   border: 1px solid var(--dh-line);
   border-radius: 2px;
+  border-top: 2px solid var(--ib-accent);
   box-shadow: none;
   overflow: hidden;
 }
 
 .dhReviewRailHead {
   align-items: center;
-  background: #f9fafb;
+  background: var(--ib-surface);
   border-bottom: 1px solid var(--dh-line);
   display: flex;
   justify-content: space-between;
@@ -779,14 +869,14 @@
 
 .dhReviewRailHead span {
   color: var(--dh-ink);
-  font-size: 14px;
-  font-weight: 850;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dhReviewRailHead b {
-  color: var(--dh-muted);
+  color: var(--dh-muted-2);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .dhReviewList {
@@ -798,7 +888,7 @@
   display: grid;
   gap: 9px;
   grid-template-columns: 52px minmax(0, 1fr);
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .dhReviewList > div:last-child {
@@ -806,30 +896,35 @@
 }
 
 .dhReviewList dt {
-  color: var(--dh-muted);
+  color: var(--ib-ink-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 400;
+  letter-spacing: 0.06em;
   line-height: 1.45;
+  text-transform: uppercase;
 }
 
 .dhReviewList dd {
-  color: var(--dh-ink-2);
+  color: var(--ib-ink-secondary);
   font-size: 12px;
-  font-weight: 560;
+  font-weight: 400;
   line-height: 1.58;
   margin: 0;
   min-width: 0;
 }
 
 .dhReviewListPrimary {
-  background: #fcfcfd;
+  background: var(--ib-surface);
   border-left: 0;
   grid-template-columns: 52px minmax(0, 1fr) !important;
 }
 
 .dhReviewListPrimary dd {
   color: var(--dh-ink);
-  font-weight: 720;
+  font-family: var(--dh-font-serif);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 .dhReviewPairList {
@@ -966,7 +1061,7 @@
 }
 
 .dhDataNote {
-  background: #ffffff;
+  background: var(--ib-surface);
   border: 1px solid var(--dh-line);
   box-shadow: none;
   margin-top: var(--dh-space-2);
@@ -997,20 +1092,30 @@
 .dhDataNoteWarning {
   align-items: center;
   display: flex;
-  font-weight: 600 !important;
-  gap: 0;
-  border-top: 1px solid var(--dh-line-soft);
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  gap: 6px;
+  border-top: 1px solid var(--dh-line);
   margin-top: 9px !important;
   padding-top: 9px;
 }
 
 .dhDataNoteOk {
-  color: var(--dh-green) !important;
+  color: var(--dh-ink-2) !important;
+}
+
+.dhDataNoteOk::before {
+  background: var(--dh-green);
+  border-radius: 50%;
+  content: "";
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
 }
 
 .dhDataNoteOk :global(.anticon),
 .dhDataNoteOk :global(.moss-light-icon) {
-  color: var(--dh-green);
+  display: none;
 }
 
 .dhDataNoteWarning {
