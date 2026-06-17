@@ -283,3 +283,46 @@ export const tabularNumsStyle = {
 };
 
 export type DesignTokens = typeof designTokens;
+
+/**
+ * Investment-bank light restyle tokens (2026-06-12).
+ * Paper canvas, flat navy rail, serif headlines — visual-only; no metric semantics.
+ */
+export const ibTokens = {
+  color: {
+    paper: "#f4f3f0",
+    surface: "#ffffff",
+    surfaceMuted: "#f7f6f3",
+    hairline: "#e2e0da",
+    ruleStrong: "#16191d",
+    ink: "#16191d",
+    inkSecondary: "#5c6370",
+    inkMuted: "#8a8f98",
+    accent: "#14366b",
+    accentHover: "#1d4685",
+    accentSurface: "#eef2f8",
+    up: "#1f7a4d",
+    down: "#b42318",
+    warn: "#b54708",
+    railBg: "#10161f",
+    railBorder: "#0a0f16",
+    railText: "#9aa3b0",
+    railTextActive: "#f5f6f8",
+    railActiveBar: "#c9a85c",
+    railActiveBg: "#1a2230",
+    railSectionLabel: "#6b7480",
+    gold: "#c9a85c",
+  },
+  fontFamily: {
+    serif:
+      'Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif',
+  },
+  kicker: {
+    fontSize: 11,
+    letterSpacing: "0.08em",
+  },
+  radius: 2,
+  shadow: "0 1px 2px rgba(16, 24, 29, 0.05)",
+} as const;
+
+export type IbTokens = typeof ibTokens;

@@ -28,6 +28,7 @@ tmp-governance/
 data/
 backend/data/
 data_input/
+docs/audits/.*.tmp
 *.duckdb
 *.db
 *.sqlite
@@ -44,6 +45,7 @@ data_input/
 
 ## Local visual verification artifacts
 .playwright-mcp/
+.codex-artifacts/
 .codex-audits/
 .codex/screenshots/
 artifacts/
@@ -57,6 +59,7 @@ artifacts/
 /frontend/test-results/
 /frontend/test-output/
 /frontend/vitest-*.json
+/frontend/.codex-*.png
 
 ## Node / frontend build state
 node_modules/
