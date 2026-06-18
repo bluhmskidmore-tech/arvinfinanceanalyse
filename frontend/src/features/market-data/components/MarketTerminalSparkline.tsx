@@ -1,5 +1,4 @@
-import { useId } from "react";
-
+import { ibTokens } from "../../../theme/designSystem";
 import { buildSparkPath } from "../../workbench/dashboard/sparklinePath";
 
 type MarketTerminalSparklineProps = {
@@ -9,9 +8,9 @@ type MarketTerminalSparklineProps = {
 };
 
 function sparkStroke(tone: MarketTerminalSparklineProps["tone"]) {
-  if (tone === "up") return "#ef4444";
-  if (tone === "down") return "#2d8a5e";
-  return "#1850a1";
+  if (tone === "up") return ibTokens.color.down;
+  if (tone === "down") return ibTokens.color.up;
+  return ibTokens.color.accent;
 }
 
 export function MarketTerminalSparkline({
@@ -19,9 +18,8 @@ export function MarketTerminalSparkline({
   tone = "flat",
   variant = "kpi",
 }: MarketTerminalSparklineProps) {
-  const gradientId = useId();
   const width = variant === "ticker" ? 64 : 88;
-  const height = variant === "ticker" ? 22 : 28;
+  const height = variant === "ticker" ? 17 : 21;
 
   if (values.length < 2) {
     return null;
@@ -42,13 +40,7 @@ export function MarketTerminalSparkline({
       preserveAspectRatio="none"
       aria-hidden="true"
     >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={stroke} stopOpacity="0.22" />
-          <stop offset="100%" stopColor={stroke} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
+      <path d={areaPath} fill={stroke} fillOpacity="0.06" stroke="none" />
       <path
         d={linePath}
         fill="none"

@@ -1,5 +1,5 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
-import { Collapse, Select } from "antd";
+import type { Dispatch, SetStateAction } from "react";
+import { Select } from "antd";
 
 import { FilterBar } from "../../../components/FilterBar";
 import {
@@ -36,6 +36,9 @@ type MarketDataHeroSectionProps = {
   terminalTickerItems: MarketTerminalTickerItem[];
   terminalTickerBasisLabel?: string;
   terminalTickerEmptyReason?: string;
+  readinessVerdict: string;
+  overviewReadinessLabel: string;
+  secondaryLabel: string;
   refreshStatus: string;
   refreshError: string;
   isRefreshing: boolean;
@@ -47,6 +50,8 @@ type MarketDataHeroSectionProps = {
   sourceFilter: "all" | "choice" | "internal";
   onSourceFilterChange: Dispatch<SetStateAction<"all" | "choice" | "internal">>;
   activeFilterSummary: string;
+  showTerminalKpiStrip?: boolean;
+  showPipelineKpiStrip?: boolean;
 };
 
 function MarketOverviewMetricCard({
@@ -112,37 +117,31 @@ function MarketTerminalKpiStrip({ metrics }: { metrics: MarketOverviewMetric[] }
   );
 }
 
-function MarketPipelineKpiCollapse({ metrics }: { metrics: MarketOverviewMetric[] }) {
-  const [activeKeys, setActiveKeys] = useState<string[]>([]);
-  const expanded = activeKeys.includes("pipeline-kpis");
+export function MarketPipelineKpiStrip({ metrics }: { metrics: MarketOverviewMetric[] }) {
+  if (metrics.length === 0) {
+    return null;
+  }
 
   return (
-    <Collapse
-      data-testid="market-data-pipeline-kpi-collapse"
-      className="market-data-pipeline-kpi-collapse"
-      bordered={false}
-      activeKey={activeKeys}
-      onChange={(keys) => {
-        const nextKeys = Array.isArray(keys) ? keys : [keys];
-        setActiveKeys(nextKeys);
-      }}
-      items={[
-        {
-          key: "pipeline-kpis",
-          label: `读面运维指标（${metrics.length}）`,
-          children: expanded ? (
-            <KpiBand
-              testId="market-data-pipeline-kpi-strip"
-              className="dashboard-overview-hero-strip market-data-overview-strip market-data-pipeline-kpi-strip"
-            >
-              {metrics.map((metric) => (
-                <MarketOverviewMetricCard key={metric.testId} metric={metric} />
-              ))}
-            </KpiBand>
-          ) : null,
-        },
-      ]}
-    />
+    <section
+      className="market-data-pipeline-kpi-section"
+      data-testid="market-data-pipeline-kpi-section"
+      aria-label="读面链路状态"
+    >
+      <div className="market-data-pipeline-kpi-section-head" data-testid="market-data-pipeline-kpi-collapse">
+        <span className="market-data-pipeline-kpi-section-kicker">读面链路</span>
+        <strong>数据管线状态（{metrics.length}）</strong>
+        <span className="market-data-pipeline-kpi-section-hint">目录回收、降级与缺失计数</span>
+      </div>
+      <KpiBand
+        testId="market-data-pipeline-kpi-strip"
+        className="dashboard-overview-hero-strip market-data-overview-strip market-data-pipeline-kpi-strip"
+      >
+        {metrics.map((metric) => (
+          <MarketOverviewMetricCard key={metric.testId} metric={metric} />
+        ))}
+      </KpiBand>
+    </section>
   );
 }
 
@@ -156,6 +155,9 @@ export function MarketDataHeroSection({
   terminalTickerItems,
   terminalTickerBasisLabel,
   terminalTickerEmptyReason,
+  readinessVerdict,
+  overviewReadinessLabel,
+  secondaryLabel,
   refreshStatus,
   refreshError,
   isRefreshing,
@@ -167,6 +169,8 @@ export function MarketDataHeroSection({
   sourceFilter,
   onSourceFilterChange,
   activeFilterSummary,
+  showTerminalKpiStrip = false,
+  showPipelineKpiStrip = true,
 }: MarketDataHeroSectionProps) {
   return (
     <PageDecisionHero
@@ -174,8 +178,8 @@ export function MarketDataHeroSection({
       title="市场数据"
       titleTestId="market-data-page-title"
       questionTestId="market-data-page-subtitle"
-      eyebrow="市场概览"
-      businessQuestion="先确认读面是否 ready、口径边界是否清晰，再下钻利率、资金与成交。"
+      eyebrow="深度终端"
+      businessQuestion="在此核对利率、资金、曲线与成交读数；结论回顾请回市场工作台。"
       reportDateSlot={<span data-testid="market-data-watch-date-slot">观察日期 {watchDate}</span>}
       className="market-data-page__decision-hero-shell"
       actions={
@@ -199,12 +203,17 @@ export function MarketDataHeroSection({
     >
       <div className="market-data-hero-inner">
         <DataStatusStrip testId="market-data-data-status-strip">
-          <div className="market-data-header-meta">
+          <div className="market-data-header-meta market-data-header-meta--compact">
+            <span data-testid="market-data-readiness-verdict">{readinessVerdict}</span>
+            <span aria-hidden="true">·</span>
+            <span data-testid="market-data-overview-readiness-label">{overviewReadinessLabel}</span>
+            <span aria-hidden="true">·</span>
+            <span data-testid="market-data-overview-secondary-label">{secondaryLabel}</span>
+            <span aria-hidden="true">·</span>
+            <span data-testid="market-data-hero-readiness-chip">读面结论：{readinessVerdict}</span>
+            <span aria-hidden="true">·</span>
             <span data-testid="market-data-formal-basis-chip">
               利率主表口径：{isFormalBasis ? "正式" : "分析/候选"}
-            </span>
-            <span className="market-data-header-meta__hint">
-              目录与稳定回收见下方「读面运维指标」
             </span>
           </div>
         </DataStatusStrip>
@@ -285,8 +294,8 @@ export function MarketDataHeroSection({
             emptyReason={terminalTickerEmptyReason}
           />
 
-          <MarketTerminalKpiStrip metrics={terminalKpiMetrics} />
-          <MarketPipelineKpiCollapse metrics={pipelineOverviewMetrics} />
+          {showTerminalKpiStrip ? <MarketTerminalKpiStrip metrics={terminalKpiMetrics} /> : null}
+          {showPipelineKpiStrip ? <MarketPipelineKpiStrip metrics={pipelineOverviewMetrics} /> : null}
         </div>
       </div>
     </PageDecisionHero>

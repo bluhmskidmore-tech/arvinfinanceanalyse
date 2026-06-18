@@ -1,31 +1,79 @@
-import { useMemo } from "react";
-import { Table, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { Spin } from "antd";
 
 import type { MacroBondLinkageTopCorrelation } from "../../../api/contracts";
 
 import { tabularNumsStyle } from "../../../theme/designSystem";
-import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
+import { correlationStrength, formatCorrelation } from "../lib/marketDataLinkageFormat";
+import { LinkageDirectionPill } from "./LinkageDirectionPill";
 
 export type SpreadTenorSlot = {
   tenor: string;
   point: MacroBondLinkageTopCorrelation | null;
 };
 
-type Row = {
-  key: string;
-  tenor: string;
-  seriesName: string;
-  corr1y: string;
-  leadLag: string;
-  direction: string;
+type LinkageSpreadTenorCardsProps = {
+  slots: SpreadTenorSlot[];
+  loading?: boolean;
+  testIdPrefix?: string;
+  emptySeriesLabel?: string;
 };
 
-function formatCorrelation(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) {
-    return "不可用";
+export function LinkageSpreadTenorCards({
+  slots,
+  loading = false,
+  testIdPrefix = "market-data-macro-spread-slot",
+  emptySeriesLabel = "—",
+}: LinkageSpreadTenorCardsProps) {
+  if (loading) {
+    return (
+      <div className="market-data-spread-tenor-loading">
+        <Spin size="small" />
+      </div>
+    );
   }
-  return value.toFixed(2);
+
+  return (
+    <div className="market-data-spread-tenor-grid">
+      {slots.map((slot) => {
+        const point = slot.point;
+        const corrStrength = correlationStrength(point?.correlation_1y);
+        return (
+          <article
+            key={slot.tenor}
+            data-testid={`${testIdPrefix}-${slot.tenor}`}
+            className="market-data-spread-tenor-card"
+            data-has-data={point ? "true" : "false"}
+          >
+            <header className="market-data-spread-tenor-card__head">
+              <span className="market-data-spread-tenor-card__tenor">{slot.tenor}</span>
+              <span className="market-data-spread-tenor-card__family">credit_spread</span>
+            </header>
+            <p className="market-data-spread-tenor-card__series" title={point?.series_name ?? undefined}>
+              {point?.series_name ?? emptySeriesLabel}
+            </p>
+            <dl className="market-data-spread-tenor-card__metrics">
+              <div>
+                <dt>corr 1Y</dt>
+                <dd style={tabularNumsStyle} data-strength={corrStrength}>
+                  {point ? formatCorrelation(point.correlation_1y) : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>lead/lag</dt>
+                <dd style={tabularNumsStyle}>{point ? `${point.lead_lag_days} 天` : "—"}</dd>
+              </div>
+              <div>
+                <dt>方向</dt>
+                <dd className="market-data-spread-tenor-card__direction">
+                  {point ? <LinkageDirectionPill direction={point.direction} /> : "—"}
+                </dd>
+              </div>
+            </dl>
+          </article>
+        );
+      })}
+    </div>
+  );
 }
 
 export function LinkageSpreadTenorTable({
@@ -35,52 +83,18 @@ export function LinkageSpreadTenorTable({
   slots: SpreadTenorSlot[];
   loading?: boolean;
 }) {
-  const dataSource: Row[] = useMemo(
-    () =>
-      slots.map((s) => ({
-        key: s.tenor,
-        tenor: s.tenor,
-        seriesName: s.point?.series_name ?? "—",
-        corr1y: s.point ? formatCorrelation(s.point.correlation_1y) : "—",
-        leadLag: s.point ? `${s.point.lead_lag_days} 天` : "—",
-        direction: s.point?.direction ?? "—",
-      })),
-    [slots],
-  );
-
-  const columns: ColumnsType<Row> = useMemo(
-    () => [
-      { title: "期限", dataIndex: "tenor", key: "tenor", width: 56 },
-      { title: "代表序列", dataIndex: "seriesName", key: "seriesName", ellipsis: true },
-      {
-        title: "corr 1Y",
-        dataIndex: "corr1y",
-        key: "corr1y",
-        align: "right",
-        width: 72,
-        render: (v: string) => <span style={tabularNumsStyle}>{v}</span>,
-      },
-      { title: "lead/lag", dataIndex: "leadLag", key: "leadLag", align: "right", width: 88 },
-      { title: "方向", dataIndex: "direction", key: "direction", width: 88 },
-    ],
-    [],
-  );
-
   return (
-    <section data-testid="market-data-linkage-spread-table" style={marketDataPanelStyle}>
-      <h2 style={marketDataBlockTitleStyle}>信用利差</h2>
-      <Typography.Paragraph type="secondary">
-        来自宏观-债市联动的 credit_spread 结构化维度；无数据时表格为空。
-      </Typography.Paragraph>
-      <Table<Row>
-        size="small"
-        pagination={false}
-        loading={loading}
-        columns={columns}
-        dataSource={dataSource}
-        rowKey="key"
-        locale={{ emptyText: "当前报告日下未返回利差相关性。" }}
-      />
+    <section data-testid="market-data-linkage-spread-table" className="market-data-spread-tenor-panel">
+      <div className="market-data-spread-tenor-head">
+        <div>
+          <h2 className="market-data-spread-tenor-title">信用利差</h2>
+          <p className="market-data-spread-tenor-lede">
+            按 3Y / 5Y / 10Y 期限槽位展示 credit_spread 联动；无数据时显示「—」。
+          </p>
+        </div>
+        <span className="market-data-spread-tenor-badge">结构化维度</span>
+      </div>
+      <LinkageSpreadTenorCards slots={slots} loading={loading} />
     </section>
   );
 }

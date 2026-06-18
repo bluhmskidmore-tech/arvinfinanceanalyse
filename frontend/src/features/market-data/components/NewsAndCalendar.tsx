@@ -6,12 +6,13 @@ import { useApiClient } from "../../../api/client";
 import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy";
 import type { ChoiceNewsEvent, ResearchCalendarEvent } from "../../../api/contracts";
 
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import {
-  marketDataBlockTitleStyle,
-  marketDataPanelStyle,
-  marketDataTableScrollWrapStyle,
-} from "./marketDataPanelStyle";
+import { tabularNumsStyle } from "../../../theme/designSystem";
+
+export type NewsAndCalendarCalendarState = {
+  rows: readonly ResearchCalendarEvent[];
+  isLoading: boolean;
+  isError: boolean;
+};
 
 function summarizeNewsLine(event: ChoiceNewsEvent) {
   if (event.payload_text?.trim()) {
@@ -51,15 +52,11 @@ function calendarSeverityLabel(severity: ResearchCalendarEvent["severity"]) {
   return "低";
 }
 
-const emptyHintStyle = {
-  margin: 0,
-  padding: `${designTokens.space[4]}px ${designTokens.space[1]}px`,
-  color: designTokens.color.neutral[600],
-  fontSize: designTokens.fontSize[13],
-  lineHeight: designTokens.lineHeight.normal,
-} as const;
-
-export function NewsAndCalendar() {
+export function NewsAndCalendar({
+  calendarState,
+}: {
+  calendarState?: NewsAndCalendarCalendarState;
+} = {}) {
   const client = useApiClient();
   const newsQuery = useQuery({
     queryKey: ["market-data", "headlines", "choice-events", client.mode],
@@ -73,6 +70,7 @@ export function NewsAndCalendar() {
     queryFn: () => client.getResearchCalendarEvents({}),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
+    enabled: !calendarState,
   });
 
   const headlineRows = useMemo(() => {
@@ -84,53 +82,51 @@ export function NewsAndCalendar() {
   }, [newsQuery.data?.result.events]);
 
   const calendarRows = useMemo(() => {
-    const rows = calendarQuery.data ?? [];
+    const rows = calendarState?.rows ?? calendarQuery.data ?? [];
     return [...rows].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
-  }, [calendarQuery.data]);
+  }, [calendarQuery.data, calendarState?.rows]);
+  const calendarIsLoading = calendarState?.isLoading ?? calendarQuery.isLoading;
+  const calendarIsError = calendarState?.isError ?? calendarQuery.isError;
 
   return (
-    <section data-testid="market-data-news-calendar" style={marketDataPanelStyle}>
-      <h2 style={marketDataBlockTitleStyle}>资讯与日历</h2>
+    <section
+      data-testid="market-data-news-calendar"
+      className="market-data-news-calendar-section market-data-lower-deck-panel"
+    >
+      <header className="market-data-news-calendar-head">
+        <div>
+          <span className="market-data-supplementary-kicker">终端读面</span>
+          <h2 className="market-data-supplementary-title">资讯与日历</h2>
+          <p className="market-data-supplementary-summary">
+            Choice 资讯头条与供给/招标研究日历；稳定链路，按观察日切片。
+          </p>
+        </div>
+      </header>
       <Tabs
+        className="market-data-news-calendar-tabs"
         size="small"
         items={[
           {
             key: "news",
             label: "资讯",
             children: (
-              <div style={{ minHeight: 200 }}>
+              <div className="market-data-news-calendar-pane">
                 {newsQuery.isLoading ? (
-                  <div style={{ padding: designTokens.space[6], textAlign: "center" }}>
+                  <div className="market-data-news-calendar-loading">
                     <Spin />
                   </div>
                 ) : newsQuery.isError ? (
-                  <p style={emptyHintStyle}>资讯加载失败，请稍后重试。</p>
+                  <p className="market-data-news-calendar-empty">资讯加载失败，请稍后重试。</p>
                 ) : headlineRows.length === 0 ? (
-                  <p style={emptyHintStyle}>当前无资讯事件，请确认数据源或稍后刷新。</p>
+                  <p className="market-data-news-calendar-empty">当前无资讯事件，请确认数据源或稍后刷新。</p>
                 ) : (
-                  <ul
-                    style={{
-                      margin: 0,
-                      padding: `0 0 0 ${designTokens.space[5]}px`,
-                      display: "grid",
-                      gap: designTokens.space[3],
-                      fontSize: designTokens.fontSize[13],
-                      color: designTokens.color.neutral[900],
-                      lineHeight: designTokens.lineHeight.normal,
-                    }}
-                  >
+                  <ul className="market-data-news-calendar-list">
                     {headlineRows.map((row, idx) => (
-                      <li key={`${row.time}-${idx}`}>
-                        <span
-                          style={{
-                            ...tabularNumsStyle,
-                            color: designTokens.color.neutral[600],
-                            marginRight: designTokens.space[2],
-                          }}
-                        >
+                      <li key={`${row.time}-${idx}`} className="market-data-news-calendar-item">
+                        <span className="market-data-news-calendar-item__time" style={tabularNumsStyle}>
                           {row.time}
                         </span>
-                        {row.title}
+                        <span className="market-data-news-calendar-item__title">{row.title}</span>
                       </li>
                     ))}
                   </ul>
@@ -142,42 +138,31 @@ export function NewsAndCalendar() {
             key: "calendar",
             label: "事件日历",
             children: (
-              <div style={marketDataTableScrollWrapStyle}>
-                {calendarQuery.isLoading ? (
+              <div className="market-data-news-calendar-pane market-data-news-calendar-pane--scroll">
+                {calendarIsLoading ? (
                   <div
                     data-testid="market-data-calendar-loading"
-                    style={{ padding: designTokens.space[6], textAlign: "center" }}
+                    className="market-data-news-calendar-loading"
                   >
                     <Spin />
                   </div>
-                ) : calendarQuery.isError ? (
-                  <p data-testid="market-data-calendar-error" style={emptyHintStyle}>
+                ) : calendarIsError ? (
+                  <p data-testid="market-data-calendar-error" className="market-data-news-calendar-empty">
                     供给与招标日历加载失败，请稍后重试。
                   </p>
                 ) : calendarRows.length === 0 ? (
-                  <p data-testid="market-data-calendar-empty" style={emptyHintStyle}>
+                  <p data-testid="market-data-calendar-empty" className="market-data-news-calendar-empty">
                     当前日历区间无供给/招标事件。
                   </p>
                 ) : (
-                  <ul
-                    data-testid="market-data-calendar-list"
-                    style={{
-                      margin: 0,
-                      padding: `0 0 0 ${designTokens.space[5]}px`,
-                      display: "grid",
-                      gap: designTokens.space[3],
-                      fontSize: designTokens.fontSize[13],
-                      color: designTokens.color.neutral[900],
-                      lineHeight: designTokens.lineHeight.normal,
-                    }}
-                  >
+                  <ul data-testid="market-data-calendar-list" className="market-data-news-calendar-list">
                     {calendarRows.map((ev) => (
-                      <li key={ev.id}>
-                        <div style={{ ...tabularNumsStyle, color: designTokens.color.neutral[600] }}>
+                      <li key={ev.id} className="market-data-news-calendar-item market-data-news-calendar-item--event">
+                        <div className="market-data-news-calendar-item__date" style={tabularNumsStyle}>
                           {ev.date}
                         </div>
-                        <div style={{ fontWeight: 600 }}>{ev.title}</div>
-                        <div style={{ color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[12] }}>
+                        <div className="market-data-news-calendar-item__title">{ev.title}</div>
+                        <div className="market-data-news-calendar-item__meta">
                           类型 {calendarKindLabel(ev.kind)}
                           {ev.issuer ? ` · 来源 ${ev.issuer}` : ""}
                           {ev.note && !ev.issuer ? ` · ${ev.note}` : ""}

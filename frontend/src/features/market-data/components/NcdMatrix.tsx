@@ -1,12 +1,23 @@
-import { useMemo } from "react";
-import { Button, Space, Table, Typography } from "antd";
+import { useMemo, useState } from "react";
+import { Button, Segmented, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { NcdFundingProxyPayload, ResultMeta } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
+import { isMarketDataNarrowViewport } from "../lib/useMarketDataNarrowViewport";
 import { LiveResultMetaStrip } from "./LiveResultMetaStrip";
+import { MarketDataNcdHeatmap } from "./MarketDataNcdHeatmap";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
-import "../pages/MarketDataPage.css";
+
+function readInitialNcdViewMode(): "both" | "table" | "heatmap" {
+  if (typeof window === "undefined") {
+    return "both";
+  }
+  if (isMarketDataNarrowViewport()) {
+    return "table";
+  }
+  return "both";
+}
 
 const TENORS = ["1M", "3M", "6M", "9M", "1Y"] as const;
 
@@ -29,6 +40,19 @@ function formatProxyCell(value: number | string | null | undefined) {
   return value;
 }
 
+function formatNcdWarning(value: string): string {
+  const fallbackMatch = value.match(
+    /^Using landed Choice Shibor with Tushare fallback for (.+); fallback date ([^;]+); quote medians unavailable\.$/,
+  );
+  if (fallbackMatch) {
+    return `使用已接入的 Choice Shibor，并以 Tushare 回退补 ${fallbackMatch[1]}；回退日期 ${fallbackMatch[2]}；报价中位数不可用。`;
+  }
+  if (value === "Proxy only; not actual NCD issuance matrix.") {
+    return "仅代理口径；不是真实存单发行矩阵。";
+  }
+  return value;
+}
+
 export function NcdMatrix({
   payload,
   resultMeta,
@@ -36,6 +60,7 @@ export function NcdMatrix({
   isError = false,
   showResultMeta = true,
   onRetry,
+  embedded = false,
 }: {
   payload?: NcdFundingProxyPayload;
   resultMeta?: ResultMeta;
@@ -43,16 +68,18 @@ export function NcdMatrix({
   isError?: boolean;
   showResultMeta?: boolean;
   onRetry?: () => void;
+  embedded?: boolean;
 }) {
+  const [viewMode, setViewMode] = useState<"both" | "table" | "heatmap">(readInitialNcdViewMode);
   const columns: ColumnsType<MatrixRow> = useMemo(
     () => [
-      { title: "口径/期限", dataIndex: "rating", key: "rating", fixed: "left", width: 132 },
+      { title: "口径/期限", dataIndex: "rating", key: "rating", fixed: "left", width: 108 },
       ...TENORS.map((t) => ({
         title: t,
         dataIndex: t,
         key: t,
         align: "right" as const,
-        width: 72,
+        width: 58,
         render: (value: number | string | null | undefined) => <NcdNumericCell value={value} />,
       })),
       {
@@ -60,7 +87,7 @@ export function NcdMatrix({
         dataIndex: "quoteCount",
         key: "quoteCount",
         align: "right" as const,
-        width: 84,
+        width: 64,
         render: (value: string | null | undefined) => <NcdNumericCell value={value} />,
       },
     ],
@@ -83,17 +110,30 @@ export function NcdMatrix({
   );
 
   return (
-    <section data-testid="market-data-ncd-matrix" style={marketDataPanelStyle}>
-      <h2 style={marketDataBlockTitleStyle}>同业存单</h2>
-      <Space direction="vertical" size={4}>
-        <Typography.Text type="secondary">
-          {payload?.proxy_label ?? "Tushare Shibor funding proxy"}
-        </Typography.Text>
-        <Typography.Text type="secondary">
-          当前展示的是资金利率 proxy，不是实际同业存单期限×评级矩阵。
-          {payload?.as_of_date ? ` 截至 ${payload.as_of_date}。` : ""}
-        </Typography.Text>
-      </Space>
+    <section
+      data-testid="market-data-ncd-matrix"
+      className={embedded ? "market-data-terminal-embedded" : "market-data-terminal-panel"}
+      style={embedded ? undefined : marketDataPanelStyle}
+    >
+      {!embedded ? <h2 style={marketDataBlockTitleStyle}>同业存单</h2> : null}
+      <div className="market-data-ncd-head">
+        <p className="market-data-ncd-proxy-note">
+          {payload?.proxy_label ?? "Shibor 资金 proxy"}
+          {payload?.is_actual_ncd_matrix === false ? " · proxy 非正式发行矩阵" : ""}
+          {payload?.as_of_date ? ` · 截至 ${payload.as_of_date}` : ""}
+        </p>
+        <Segmented
+          size="small"
+          value={viewMode}
+          onChange={(value) => setViewMode(value as "both" | "table" | "heatmap")}
+          options={[
+            { label: "并列", value: "both" },
+            { label: "表格", value: "table" },
+            { label: "热力", value: "heatmap" },
+          ]}
+          data-testid="market-data-ncd-view-toggle"
+        />
+      </div>
       {showResultMeta ? (
         <LiveResultMetaStrip
           lead="同业存单 proxy 读面"
@@ -110,7 +150,7 @@ export function NcdMatrix({
             lineHeight: designTokens.lineHeight.normal,
           }}
         >
-          {payload.warnings.join(" ")}
+          {payload.warnings.map(formatNcdWarning).join(" ")}
         </div>
       ) : null}
       {isError ? (
@@ -136,18 +176,31 @@ export function NcdMatrix({
           ) : null}
         </div>
       ) : null}
-      <Table<MatrixRow>
-        size="small"
-        loading={isLoading}
-        pagination={false}
-        columns={columns}
-        dataSource={dataSource}
-        rowKey="key"
-        scroll={{ x: true }}
-        locale={{
-          emptyText: "当前未返回存单 proxy 数据。",
-        }}
-      />
+      {viewMode === "both" || viewMode === "table" ? (
+        <Table<MatrixRow>
+          size="small"
+          loading={isLoading}
+          pagination={false}
+          columns={columns}
+          dataSource={dataSource}
+          rowKey="key"
+          scroll={{ x: true }}
+          locale={{
+            emptyText: "当前未返回存单 proxy 数据。",
+          }}
+        />
+      ) : null}
+      {viewMode === "both" || viewMode === "heatmap" ? (
+        <div className="market-data-rate-quote-chart-block">
+          {viewMode === "both" ? <h3 className="market-data-chart-block-title">矩阵热力</h3> : null}
+          <MarketDataNcdHeatmap
+            payload={payload}
+            isLoading={isLoading}
+            isError={isError}
+            onRetry={onRetry}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

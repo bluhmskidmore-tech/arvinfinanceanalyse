@@ -8,14 +8,19 @@ import type {
   FxFormalStatusPayload,
   MacroBondLinkagePayload,
   MacroBondLinkageTopCorrelation,
+  MarketDataCoverageSummaryPayload,
   MacroVendorPayload,
   MacroVendorSeries,
   ResultMeta,
 } from "../../../api/contracts";
 import {
+  buildBridgeKpiMetrics,
   buildFxFormalStatusCollapseLabel,
+  buildMarketDataBasisChipLabel,
   buildMarketDataPageModel,
   buildSpreadSlots,
+  formatMarketWorkbenchSourceSummary,
+  pickRailHighlightMetric,
 } from "./marketDataPageModel";
 
 function meta(partial: Partial<ResultMeta> = {}): ResultMeta {
@@ -167,6 +172,30 @@ describe("marketDataPageModel", () => {
         },
       ],
     };
+    const fxEventGroup: FxAnalyticalGroup = {
+      group_key: "fx_event_calendar",
+      title: "Analytical FX: event calendar",
+      description:
+        "Tushare economic-calendar events for major FX currencies are analytical-only event context.",
+      series: [],
+      events: [
+        {
+          group_key: "fx_event_calendar",
+          event_id: "eco-cny-trade",
+          event_date: "20260612",
+          event_time: "10:30",
+          currency: "CNY",
+          country: "China",
+          event: "China trade balance",
+          value: "105.43",
+          pre_value: "84.8",
+          fore_value: "92.1",
+          source_version: "sv_tushare_eco",
+          vendor_version: "vv_tushare_supplement_v1",
+          quality_flag: "ok",
+        },
+      ],
+    };
     const linkageEnvelope = envelope<MacroBondLinkagePayload>(
       {
         report_date: "2026-04-12",
@@ -222,7 +251,7 @@ describe("marketDataPageModel", () => {
       catalogEnvelope,
       latestEnvelope,
       fxAnalyticalEnvelope: envelope(
-        { read_target: "duckdb", groups: [fxGroup] },
+        { read_target: "duckdb", groups: [fxGroup, fxEventGroup] },
         {
           basis: "analytical",
           formal_use_allowed: false,
@@ -266,8 +295,8 @@ describe("marketDataPageModel", () => {
     ]);
     expect(model.stableLatestTradeDate).toBe("2026-04-10");
     expect(model.linkageReportDate).toBe("2026-04-12");
-    expect(model.fxAnalyticalGroups).toHaveLength(1);
-    expect(model.fxAnalyticalSeriesCount).toBe(1);
+    expect(model.fxAnalyticalGroups).toHaveLength(2);
+    expect(model.fxAnalyticalSeriesCount).toBe(2);
     expect(model.isFormalBasis).toBe(true);
     expect(model.statusBadges.readinessVerdict).toBe("读面就绪");
     expect(model.sourcePendingCount).toBe(3);
@@ -306,8 +335,8 @@ describe("marketDataPageModel", () => {
       ["market-data-stable-trade-date", "2026-04-10", "default"],
       ["market-data-missing-stable-count", "1", "warning"],
       ["market-data-fx-formal-materialized", "2 / 3", "default"],
-      ["market-data-fx-analytical-group-count", "1", undefined],
-      ["market-data-fx-analytical-series-count", "1", undefined],
+      ["market-data-fx-analytical-group-count", "2", undefined],
+      ["market-data-fx-analytical-series-count", "2", undefined],
       ["market-data-linkage-report-date", "2026-04-12", "default"],
     ]);
     const metricDetails = new Map(
@@ -338,7 +367,9 @@ describe("marketDataPageModel", () => {
       "Livermore: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
       "macro-bond linkage: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
     ]);
-    expect(model.statusBadges.readinessVerdict).toBe("读面就绪");
+    expect(model.statusBadges.readinessVerdict).toBe("等待数据");
+    expect(model.statusBadges.overviewReadinessLabel).toBe("口径待定");
+    expect(model.statusBadges.secondaryLabel).toBe("等待 API 返回");
     expect(model.stableLatestTradeDate).toBe("—");
     expect(model.linkageReportDate).toBe("");
     expect(model.sourcePendingCount).toBe(3);
@@ -353,6 +384,134 @@ describe("marketDataPageModel", () => {
       ["market-data-fx-analytical-group-count", "0", undefined],
       ["market-data-fx-analytical-series-count", "0", undefined],
       ["market-data-linkage-report-date", "—", "warning"],
+    ]);
+  });
+
+  it("counts bond futures as connected when the CFFEX rankings envelope is present", () => {
+    const model = buildMarketDataPageModel({
+      bondFuturesRankingsEnvelope: envelope(
+        {
+          read_target: "duckdb",
+          as_of_date: "2026-06-11",
+          requested_trade_date: null,
+          contract: "T.CFE",
+          rows: [
+            {
+              trade_date: "2026-06-11",
+              contract: "T.CFE",
+              product_code: "T",
+              exchange: "CFFEX",
+              member_name: "中信期货",
+              source_vendor: "tushare",
+              source_row_no: 1,
+              volume: 12345,
+              volume_change: 101,
+              long_holding: 23456,
+              long_change: 202,
+              short_holding: 21000,
+              short_change: -50,
+              source_version: "sv_test_cffex_rank",
+              vendor_version: "vv_test_tushare",
+              rule_version: "rv_cffex_member_rank_choice_tushare_v1",
+            },
+          ],
+          warnings: [],
+        },
+        {
+          basis: "analytical",
+          result_kind: "market_data.bond_futures_rankings",
+          formal_use_allowed: false,
+          source_version: "sv_test_cffex_rank",
+          vendor_version: "vv_test_tushare",
+          rule_version: "rv_cffex_member_rank_choice_tushare_v1",
+          cache_version: "cv_market_data_bond_futures_rankings_v1",
+          source_surface: "market_data",
+        },
+      ),
+    });
+
+    expect(model.sourcePendingCount).toBe(2);
+    const bondFutures = model.terminalModel.bondFutures;
+    expect(bondFutures.status).toBe("ready");
+    if (bondFutures.status === "source-pending") {
+      throw new Error("Expected bond futures rankings to be connected");
+    }
+    expect(bondFutures.rows[0].memberName).toBe("中信期货");
+  });
+
+  it("prefers the backend coverage summary for supply gaps when present", () => {
+    const coverageEnvelope = envelope<MarketDataCoverageSummaryPayload>(
+      {
+        read_target: "duckdb",
+        as_of_date: "2026-06-15",
+        generated_at: "2026-06-15T09:30:00Z",
+        headline: {
+          readiness_label: "mixed-source supply map",
+          formal_fragment_ready: true,
+          formal_use_allowed: false,
+          analytical_warning_count: 1,
+          source_pending_count: 2,
+          proxy_only_count: 1,
+        },
+        sections: [
+          {
+            key: "bond_futures",
+            label: "Bond futures",
+            status: "ready",
+            basis: "analytical",
+            formal_use_allowed: false,
+            quality_flag: "ok",
+            fallback_mode: "none",
+            vendor_status: "ok",
+            row_count: 10,
+            source_pending: false,
+            proxy_only: false,
+            message: "connected",
+          },
+          {
+            key: "cash_bond_trades",
+            label: "Cash trades",
+            status: "source_pending",
+            basis: "analytical",
+            formal_use_allowed: false,
+            quality_flag: "warning",
+            fallback_mode: "none",
+            vendor_status: "vendor_unavailable",
+            source_pending: true,
+            proxy_only: false,
+            message: "contract pending",
+          },
+          {
+            key: "credit_trades",
+            label: "Credit trades",
+            status: "source_pending",
+            basis: "analytical",
+            formal_use_allowed: false,
+            quality_flag: "warning",
+            fallback_mode: "none",
+            vendor_status: "vendor_unavailable",
+            source_pending: true,
+            proxy_only: false,
+            message: "contract pending",
+          },
+        ],
+        actions: [],
+      },
+      {
+        basis: "analytical",
+        formal_use_allowed: false,
+        result_kind: "market_data.coverage_summary",
+      },
+    );
+
+    const model = buildMarketDataPageModel({ coverageSummaryEnvelope: coverageEnvelope });
+
+    expect(model.coverageSummary?.headline.source_pending_count).toBe(2);
+    expect(model.sourcePendingCount).toBe(2);
+    expect(model.coverageSections.map((section) => section.key)).toEqual([
+      "bond_futures",
+      "cash_bond_trades",
+      "credit_trades",
     ]);
   });
 
@@ -430,6 +589,40 @@ describe("marketDataPageModel", () => {
     ).toContain("物化 2/3");
   });
 
+  it("prefers spread_tenor_correlations over top_correlations filtering", () => {
+    const spreadTenorCorrelations: MacroBondLinkageTopCorrelation[] = [
+      {
+        series_id: "DEDICATED_5Y",
+        series_name: "Dedicated spread 5Y",
+        target_family: "credit_spread",
+        target_tenor: "5Y",
+        correlation_3m: 0.5,
+        correlation_6m: 0.6,
+        correlation_1y: 0.7,
+        lead_lag_days: 1,
+        direction: "positive",
+      },
+    ];
+    const topCorrelations: MacroBondLinkageTopCorrelation[] = [
+      {
+        series_id: "RATE_ONLY",
+        series_name: "Rate only",
+        target_family: "treasury",
+        target_tenor: "10Y",
+        correlation_3m: 0.9,
+        correlation_6m: 0.9,
+        correlation_1y: 0.9,
+        lead_lag_days: 0,
+        direction: "positive",
+      },
+    ];
+
+    expect(
+      buildSpreadSlots(topCorrelations, "both", spreadTenorCorrelations).find((slot) => slot.tenor === "5Y")?.point
+        ?.series_id,
+    ).toBe("DEDICATED_5Y");
+  });
+
   it("filters spread slots by credit segment from linkage series names", () => {
     const correlations: MacroBondLinkageTopCorrelation[] = [
       {
@@ -462,5 +655,62 @@ describe("marketDataPageModel", () => {
     expect(buildSpreadSlots(correlations, "urban").find((slot) => slot.tenor === "5Y")?.point?.series_id).toBe(
       "URBAN_5Y",
     );
+  });
+});
+
+describe("bridge helpers", () => {
+  const metrics = [
+    {
+      testId: "market-data-terminal-kpi-cdb10y",
+      title: "10年国开",
+      value: "1.82%",
+      detail: "0bp",
+    },
+    {
+      testId: "market-data-terminal-kpi-cgb10y",
+      title: "10年国债",
+      value: "1.75%",
+      detail: "-1bp",
+    },
+    {
+      testId: "market-data-terminal-kpi-dr007",
+      title: "DR007",
+      value: "1.44%",
+      detail: "+3bp",
+    },
+  ];
+
+  it("prioritizes bridge metrics for trader-relevant keys", () => {
+    expect(buildBridgeKpiMetrics(metrics).map((item) => item.testId)).toEqual([
+      "market-data-terminal-kpi-cgb10y",
+      "market-data-terminal-kpi-dr007",
+      "market-data-terminal-kpi-cdb10y",
+    ]);
+    expect(pickRailHighlightMetric(metrics)?.testId).toBe("market-data-terminal-kpi-dr007");
+    expect(
+      buildMarketDataBasisChipLabel({
+        basisLabel: "formal",
+        formalUseAllowedLabel: "是",
+        formalUseBlocked: false,
+        watchDate: "2026-06-11",
+      }),
+    ).toBe("formal · 正式可用 是 · 观察日 2026-06-11");
+  });
+});
+
+describe("formatMarketWorkbenchSourceSummary", () => {
+  it("summarizes multiple vendor versions for the page header", () => {
+    const result = formatMarketWorkbenchSourceSummary(
+      ["vv_a", "vv_b", "vv_c"],
+      "source-pending",
+    );
+    expect(result.value).toBe("3 路供应商版本");
+    expect(result.hint).toBe("vv_a / vv_b / vv_c");
+  });
+
+  it("returns fallback when no vendor versions are present", () => {
+    expect(formatMarketWorkbenchSourceSummary([], "source-pending")).toEqual({
+      value: "source-pending",
+    });
   });
 });

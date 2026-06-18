@@ -1,0 +1,174 @@
+/* Shared institutional KPI surfaces. */
+
+.holdingsKpiRail {
+  overflow: hidden;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+}
+
+.holdingsKpiRailFlush {
+  border: 0;
+  border-radius: 0;
+}
+
+.holdingsKpiGrid {
+  display: grid;
+  gap: 1px;
+  background: var(--ib-hairline);
+}
+
+.holdingsKpiGrid[data-columns="5"] {
+  grid-template-columns: repeat(5, minmax(108px, 1fr));
+}
+
+.holdingsKpiGrid[data-columns="7"] {
+  grid-template-columns: repeat(7, minmax(108px, 1fr));
+}
+
+.holdingsKpiGrid[data-layout="auto"] {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.referenceKpiTile {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 8px;
+  background: var(--moss-color-neutral-50);
+}
+
+.referenceKpiTile[data-priority="primary"] {
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.referenceKpiTile[data-priority="secondary"] {
+  background: var(--ib-surface-muted);
+}
+
+.referenceKpiTile[data-state="gap"] {
+  border-left: 2px solid var(--ib-hairline);
+  background: var(--ib-surface);
+}
+
+.referenceKpiHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.referenceKpiLabel {
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.referenceKpiHeader span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.referenceKpiHeader span::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ib-up);
+  content: "";
+  flex-shrink: 0;
+}
+
+.referenceKpiTile[data-state="gap"] .referenceKpiHeader span::before {
+  background: var(--ib-ink-muted);
+}
+
+.referenceKpiTile[data-state="pending"] .referenceKpiHeader span::before {
+  background: var(--ib-warn);
+}
+
+.referenceKpiValue {
+  color: var(--moss-color-primary-900);
+  font-family: var(--moss-font-mono);
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.referenceKpiTile[data-priority="primary"] .referenceKpiValue {
+  font-size: 16px;
+}
+
+.referenceKpiTile[data-state="gap"] .referenceKpiValue {
+  color: var(--moss-color-neutral-500);
+}
+
+.referenceKpiValue[data-tone="positive"] {
+  color: var(--moss-color-danger-600);
+}
+
+.referenceKpiValue[data-tone="negative"] {
+  color: var(--moss-color-success-600);
+}
+
+.referenceKpiValue small {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.referenceKpiDetail {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.referenceKpiDetail[data-tone="positive"] {
+  color: var(--moss-color-danger-600);
+}
+
+.referenceKpiDetail[data-tone="negative"] {
+  color: var(--moss-color-success-600);
+}
+
+.referenceKpiSpark {
+  height: 14px;
+  margin-top: 2px;
+  opacity: 0.72;
+  width: 100%;
+}
+
+@media (max-width: 1280px) {
+  .holdingsKpiGrid[data-columns="5"],
+  .holdingsKpiGrid[data-columns="7"] {
+    grid-template-columns: repeat(3, minmax(108px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .holdingsKpiGrid[data-columns="5"],
+  .holdingsKpiGrid[data-columns="7"],
+  .holdingsKpiGrid[data-layout="auto"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

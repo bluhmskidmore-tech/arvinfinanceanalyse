@@ -1139,6 +1139,8 @@ export type MacroVendorSeries = {
   vendor_version: string;
   frequency: string;
   unit: string;
+  theme?: string | null;
+  tags?: string[];
   refresh_tier?: "stable" | "fallback" | "isolated" | null;
   fetch_mode?: "date_slice" | "latest" | null;
   fetch_granularity?: "batch" | "single" | null;
@@ -1180,6 +1182,89 @@ export type ChoiceMacroRecentPoint = {
 export type ChoiceMacroLatestPayload = {
   read_target: "duckdb";
   series: ChoiceMacroLatestPoint[];
+  derived_spreads?: Partial<Record<string, number | null>>;
+};
+
+export type MarketDataBondFuturesRankingRow = {
+  trade_date: string;
+  contract: string;
+  product_code: string;
+  exchange: string;
+  member_name: string;
+  source_vendor: string;
+  source_row_no: number | null;
+  volume: number | null;
+  volume_change: number | null;
+  long_holding: number | null;
+  long_change: number | null;
+  short_holding: number | null;
+  short_change: number | null;
+  source_version: string | null;
+  vendor_version: string | null;
+  rule_version: string | null;
+};
+
+export type MarketDataBondFuturesRankingsPayload = {
+  read_target: "duckdb";
+  as_of_date: string | null;
+  requested_trade_date: string | null;
+  contract: string;
+  rows: MarketDataBondFuturesRankingRow[];
+  warnings: string[];
+};
+
+export type MarketDataCoverageStatus =
+  | "ready"
+  | "empty"
+  | "warning"
+  | "stale"
+  | "error"
+  | "source_pending"
+  | "proxy_only"
+  | "deferred";
+
+export type MarketDataCoverageSection = {
+  key: string;
+  label: string;
+  status: MarketDataCoverageStatus;
+  basis: "formal" | "analytical";
+  formal_use_allowed: boolean;
+  quality_flag: ApiQuality;
+  fallback_mode: "none" | "latest_snapshot";
+  vendor_status: "ok" | "vendor_stale" | "vendor_unavailable";
+  row_count?: number | null;
+  series_count?: number | null;
+  group_count?: number | null;
+  latest_trade_date?: string | null;
+  as_of_date?: string | null;
+  source_pending: boolean;
+  proxy_only: boolean;
+  message: string;
+};
+
+export type MarketDataCoverageHeadline = {
+  readiness_label: string;
+  formal_fragment_ready: boolean;
+  formal_use_allowed: boolean;
+  analytical_warning_count: number;
+  source_pending_count: number;
+  proxy_only_count: number;
+};
+
+export type MarketDataCoverageAction = {
+  key: string;
+  label: string;
+  severity: "info" | "warning" | "error";
+  target_anchor: string | null;
+};
+
+export type MarketDataCoverageSummaryPayload = {
+  read_target: "duckdb";
+  as_of_date: string | null;
+  generated_at: string;
+  headline: MarketDataCoverageHeadline;
+  sections: MarketDataCoverageSection[];
+  actions: MarketDataCoverageAction[];
 };
 
 export type MacroBondLinkageEnvironmentFactor = Record<string, unknown>;
@@ -1244,13 +1329,14 @@ export type MacroBondLinkagePayload = {
   environment_score: Partial<MacroBondLinkageEnvironmentScore>;
   portfolio_impact: Partial<MacroBondLinkagePortfolioImpact>;
   top_correlations: MacroBondLinkageTopCorrelation[];
+  spread_tenor_correlations?: MacroBondLinkageTopCorrelation[];
   research_views?: MacroBondResearchView[];
   transmission_axes?: MacroBondTransmissionAxis[];
   warnings: string[];
   computed_at: string;
 };
 
-export type FxAnalyticalGroupKey = "middle_rate" | "fx_index" | "fx_swap_curve";
+export type FxAnalyticalGroupKey = "middle_rate" | "fx_index" | "fx_swap_curve" | "fx_event_calendar";
 
 export type FxFormalStatusRow = {
   base_currency: string;
@@ -1300,11 +1386,28 @@ export type FxAnalyticalSeriesPoint = {
   recent_points?: ChoiceMacroRecentPoint[];
 };
 
+export type FxAnalyticalEventRow = {
+  group_key: "fx_event_calendar";
+  event_id: string;
+  event_date: string;
+  event_time: string | null;
+  currency: string | null;
+  country: string | null;
+  event: string;
+  value: string | null;
+  pre_value: string | null;
+  fore_value: string | null;
+  source_version: string;
+  vendor_version: string;
+  quality_flag?: ApiQuality;
+};
+
 export type FxAnalyticalGroup = {
   group_key: FxAnalyticalGroupKey;
   title: string;
   description: string;
   series: FxAnalyticalSeriesPoint[];
+  events?: FxAnalyticalEventRow[];
 };
 
 export type FxAnalyticalPayload = {
@@ -1354,11 +1457,52 @@ export type NcdFundingProxyRow = {
   quote_count: number | null;
 };
 
+export type FormalNcdMatrixStatus = {
+  status: string;
+  required_shape: string;
+  current_proxy_basis: string;
+  choice_status: string;
+  tushare_status: string;
+  missing_requirements: string[];
+};
+
 export type NcdFundingProxyPayload = {
   as_of_date: string | null;
   proxy_label: string;
   is_actual_ncd_matrix: boolean;
+  formal_ncd_matrix_status?: FormalNcdMatrixStatus | null;
   rows: NcdFundingProxyRow[];
+  warnings: string[];
+};
+
+export type TushareMoneySupplyRow = {
+  month: string;
+  m0: number | null;
+  m0_yoy: number | null;
+  m0_mom: number | null;
+  m1: number | null;
+  m1_yoy: number | null;
+  m1_mom: number | null;
+  m2: number | null;
+  m2_yoy: number | null;
+  m2_mom: number | null;
+};
+
+export type TushareEcoCalEventRow = {
+  event_id: string;
+  event_date: string;
+  event_time: string | null;
+  currency: string | null;
+  country: string | null;
+  event: string;
+  value: string | null;
+  pre_value: string | null;
+  fore_value: string | null;
+};
+
+export type TushareSupplementPayload = {
+  money_supply_rows: TushareMoneySupplyRow[];
+  eco_cal_rows: TushareEcoCalEventRow[];
   warnings: string[];
 };
 

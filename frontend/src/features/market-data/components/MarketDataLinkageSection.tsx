@@ -9,11 +9,12 @@ import type {
 } from "../../../api/contracts";
 import { nonCancellingRefetchOptions } from "../../../app/externalDataRefreshPolicy";
 import { KpiCard } from "../../../components/KpiCard";
-import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { formatSignedNumber } from "../lib/marketDataFormat";
+import { formatCorrelation } from "../lib/marketDataLinkageFormat";
 import type { SpreadSlot } from "../pages/marketDataPageModel";
+import { LinkageDirectionPill } from "./LinkageDirectionPill";
 
 const TARGET_FAMILY_LABELS: Record<string, string> = {
   treasury: "国债收益率",
@@ -26,31 +27,69 @@ function familyLabel(targetFamily: string) {
   return TARGET_FAMILY_LABELS[targetFamily] ?? targetFamily;
 }
 
-function formatCorrelation(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) {
-    return "不可用";
-  }
-  return value.toFixed(2);
+function LinkageSpreadsAuditBridge({
+  spreadSlots,
+  onOpenSpreads,
+}: {
+  spreadSlots: SpreadSlot[];
+  onOpenSpreads: () => void;
+}) {
+  const filledCount = spreadSlots.filter((slot) => slot.point !== null).length;
+
+  return (
+    <section
+      data-testid="market-data-linkage-spreads-audit"
+      className="market-data-detail-panel market-data-detail-panel--accent market-data-linkage-spreads-audit"
+    >
+      <h2 className="market-data-linkage-panel-title">信用利差维度审计</h2>
+      <p className="market-data-linkage-panel-lede">
+        审计桥：仅统计 3Y / 5Y / 10Y 结构化 credit_spread 槽位覆盖；完整期限卡片与相关图在「信用利差」Tab。
+      </p>
+      <div
+        className="market-data-linkage-spreads-audit-summary"
+        data-testid="market-data-linkage-spreads-audit-count"
+      >
+        已覆盖 {filledCount} / {spreadSlots.length} 个期限槽位
+      </div>
+      <ul className="market-data-linkage-spreads-audit-slots">
+        {spreadSlots.map((slot) => (
+          <li
+            key={slot.tenor}
+            data-testid={`market-data-linkage-spreads-audit-slot-${slot.tenor}`}
+            data-has-data={slot.point ? "true" : "false"}
+            className="market-data-linkage-spreads-audit-slot"
+          >
+            <span className="market-data-linkage-spreads-audit-tenor">{slot.tenor}</span>
+            <span className="market-data-linkage-spreads-audit-status">
+              {slot.point ? slot.point.series_name : "无数据"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        className="market-data-linkage-spreads-audit-link"
+        data-testid="market-data-linkage-spreads-audit-open"
+        onClick={onOpenSpreads}
+      >
+        查看信用利差决策视图 →
+      </button>
+    </section>
+  );
 }
 
 function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
-  const dirClass =
-    point.direction === "positive"
-      ? "market-data-dir-pill--pos"
-      : point.direction === "negative"
-        ? "market-data-dir-pill--neg"
-        : "market-data-dir-pill--neu";
   return (
     <div
       key={`${point.series_id}:${point.target_family}:${point.target_tenor ?? "none"}`}
-      className="market-data-inset-card market-data-inset-card--surface"
+      className="market-data-inset-card market-data-inset-card--surface market-data-linkage-corr-card"
     >
       <div className="market-data-corr-card-header">
         <div>
           <div className="market-data-series-title">{point.series_name}</div>
           <div className="market-data-dim-label">{point.series_id}</div>
         </div>
-        <div className={`market-data-dir-pill ${dirClass}`}>{point.direction}</div>
+        <LinkageDirectionPill direction={point.direction} />
       </div>
 
       <div className="market-data-body-line">
@@ -88,6 +127,7 @@ type MarketDataLinkageSectionProps = {
   spreadSlots: SpreadSlot[];
   nonSpreadTopCorrelations: MacroBondLinkageTopCorrelation[];
   onExpandedChange: (expanded: boolean) => void;
+  onOpenSpreads: () => void;
 };
 
 export function MarketDataLinkageSection({
@@ -98,17 +138,13 @@ export function MarketDataLinkageSection({
   spreadSlots,
   nonSpreadTopCorrelations,
   onExpandedChange,
+  onOpenSpreads,
 }: MarketDataLinkageSectionProps) {
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
   const expanded = activeKeys.includes("macro-linkage");
 
   return (
     <section className="market-data-section-block">
-      <PageSectionLead
-        eyebrow="分析口径"
-        title="宏观-债市联动"
-        description="联动区保留为分析口径折叠块，继续显式标注分析口径和非正式口径，不向正式结果读面越界。默认折叠，展开后加载完整联动读面。"
-      />
       <Collapse
         data-testid="market-data-linkage-collapse"
         bordered={false}
@@ -284,39 +320,12 @@ export function MarketDataLinkageSection({
                     )}
                   </section>
 
-                  <section data-testid="market-data-linkage-spread-tenors" className="market-data-detail-panel">
-                    <h2 className="market-data-linkage-panel-title">信用利差显式维度</h2>
-                    <p className="market-data-linkage-panel-lede">
-                      仅按结构化字段渲染，不从标签或目标收益率反推期限。
-                    </p>
-                    <div className="market-data-spread-slot-grid">
-                      {spreadSlots.map(({ tenor, point }) => (
-                        <div
-                          key={tenor}
-                          data-testid={`market-data-linkage-spread-slot-${tenor}`}
-                          className="market-data-spread-slot"
-                        >
-                          <div className="market-data-slot-title">{`信用利差 ${tenor}`}</div>
-                          {point ? (
-                            <>
-                              <div className="market-data-muted-body">{point.series_name}</div>
-                              <div className="market-data-tabular">{`1年相关 ${formatCorrelation(point.correlation_1y)}`}</div>
-                              <div className="market-data-tabular">{`领先/滞后 ${point.lead_lag_days} 天`}</div>
-                            </>
-                          ) : (
-                            <div className="market-data-muted-body">
-                              不可用：当前载荷未返回该期限的结构化相关性，不在前端推断。
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
+                  <LinkageSpreadsAuditBridge spreadSlots={spreadSlots} onOpenSpreads={onOpenSpreads} />
 
                   <section data-testid="market-data-linkage-top-correlations" className="market-data-detail-panel">
                     <h2 className="market-data-linkage-panel-title">相关性前十</h2>
                     {nonSpreadTopCorrelations.length > 0 || spreadSlots.some((slot) => slot.point !== null) ? (
-                      <div className="market-data-stack-gap-3">
+                      <div className="market-data-linkage-corr-grid">
                         {(macroBondLinkage.top_correlations ?? []).map((point) => renderCorrelationCard(point))}
                       </div>
                     ) : (

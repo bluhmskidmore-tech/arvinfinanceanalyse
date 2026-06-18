@@ -2,10 +2,10 @@
   display: grid;
   gap: var(--moss-space-3);
   padding: var(--moss-space-3);
-  border: 1px solid #d8e1eb;
-  border-radius: var(--moss-radius-sm);
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.025);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  box-shadow: none;
   min-width: 0;
 }
 
@@ -42,14 +42,14 @@
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  padding: 3px var(--moss-space-2);
-  border: 1px solid #b7c8dd;
-  border-radius: var(--moss-radius-sm);
-  background: #edf5ff;
-  color: var(--moss-color-primary-600);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: transparent;
+  color: var(--ib-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
   white-space: nowrap;
 }
 
@@ -214,20 +214,20 @@
 
 .livermore-strategy-panel__watch-btn {
   min-height: 24px;
-  border: 1px solid #b7c8dd;
-  border-radius: var(--moss-radius-sm);
-  background: #ffffff;
-  color: var(--moss-color-primary-600);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-accent);
   padding: 2px 8px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .livermore-strategy-panel__watch-btn:hover:not(:disabled) {
-  background: #edf5ff;
-  border-color: #7eb5e3;
+  background: var(--ib-surface);
+  border-color: var(--ib-accent);
 }
 
 .livermore-strategy-panel__watch-btn:disabled {
@@ -263,10 +263,10 @@
 }
 
 .livermore-strategy-panel__retry {
-  border: 1px solid #b7c8dd;
-  border-radius: var(--moss-radius-sm);
-  background: #edf5ff;
-  color: var(--moss-color-primary-600);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-accent);
   padding: var(--moss-space-2) var(--moss-space-3);
   font-size: 12px;
   font-weight: 700;
@@ -281,21 +281,21 @@
 }
 
 .livermore-strategy-panel__refresh-btn {
-  border: 1px solid #7eb5e3;
-  border-radius: var(--moss-radius-sm);
-  background: linear-gradient(180deg, #e8f2fd 0%, #d1e6f9 100%);
-  color: var(--moss-color-primary-700, #1a56a0);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-accent);
   padding: 4px 12px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s;
+  transition: border-color 0.15s;
 }
 
 .livermore-strategy-panel__refresh-btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, #d1e6f9 0%, #bbd8f4 100%);
-  border-color: #5a9fd4;
+  background: var(--ib-surface);
+  border-color: var(--ib-accent);
 }
 
 .livermore-strategy-panel__refresh-btn:disabled {

@@ -29,22 +29,33 @@ function formatBp(value: number, options: ChoiceMacroFormatOptions): string {
   return `${formatNumber(value, digits)}${suffix}`;
 }
 
+export function formatChoiceMacroValueParts(
+  point: ChoiceMacroLatestPoint,
+  options: ChoiceMacroFormatOptions = {},
+): { value: string; unit: string } {
+  const unit = normalizeUnit(point);
+  if (unit === "%") {
+    return { value: `${formatNumber(point.value_numeric)}%`, unit: "" };
+  }
+  if (unit.toLowerCase() === "bp") {
+    return { value: formatBp(point.value_numeric, options), unit: "" };
+  }
+  if (!unit) {
+    return { value: formatNumber(point.value_numeric), unit: "" };
+  }
+  return { value: formatNumber(point.value_numeric), unit };
+}
+
 export function formatChoiceMacroValue(
   point: ChoiceMacroLatestPoint,
   options: ChoiceMacroFormatOptions = {},
 ): string {
-  const unit = normalizeUnit(point);
-  if (unit === "%") {
-    return `${formatNumber(point.value_numeric)}%`;
-  }
-  if (unit.toLowerCase() === "bp") {
-    return formatBp(point.value_numeric, options);
-  }
+  const { value, unit } = formatChoiceMacroValueParts(point, options);
   if (!unit) {
-    return formatNumber(point.value_numeric);
+    return value;
   }
   const joiner = options.spaceBeforeUnit === false ? "" : " ";
-  return `${formatNumber(point.value_numeric)}${joiner}${unit}`;
+  return `${value}${joiner}${unit}`;
 }
 
 export function formatChoiceMacroDelta(

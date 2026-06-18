@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Collapse } from "antd";
 
-import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import { LivermoreStrategyPanel } from "./LivermoreStrategyPanel";
 
@@ -39,11 +38,6 @@ export function MarketDataLivermoreSection({
 
   return (
     <section className="market-data-section-block" data-testid="market-data-livermore-section">
-      <PageSectionLead
-        eyebrow="A 股防守策略"
-        title="Livermore 趋势门控"
-        description="后端返回门控、就绪度与诊断结果；前端只做类型化展示，不补算业务规则。默认折叠，展开后加载完整面板。"
-      />
       <Collapse
         className="market-data-livermore-collapse"
         data-testid="market-data-livermore-collapse"

@@ -1,16 +1,16 @@
 import type { CSSProperties } from "react";
 
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, ibTokens } from "../../../theme/designSystem";
 
 const s = designTokens.space;
 const c = designTokens.color;
 
 export const marketDataPanelStyle = {
   padding: s[3],
-  borderRadius: designTokens.radius.sm,
-  background: "#ffffff",
-  border: `1px solid ${c.neutral[200]}`,
-  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.025)",
+  borderRadius: 2,
+  background: ibTokens.color.surface,
+  border: `1px solid ${ibTokens.color.hairline}`,
+  boxShadow: "none",
 } as const;
 
 export const marketDataBlockTitleStyle = {

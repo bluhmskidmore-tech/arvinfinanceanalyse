@@ -12,6 +12,8 @@ import {
   filterRateQuoteRows,
   filterTerminalTickerItems,
   matchesSourceFilter,
+  resolveLatestMarketDataTradeDate,
+  type MarketDataBondFuturesSection,
 } from "./marketDataTerminalModel";
 
 function meta(partial: Partial<ResultMeta> = {}): ResultMeta {
@@ -140,6 +142,117 @@ describe("buildMarketDataTerminalModel", () => {
     expect(model.bondFutures.rows).toEqual([]);
     expect(model.bondTrades.rows).toEqual([]);
     expect(model.creditTrades.rows).toEqual([]);
+  });
+
+  it("marks missing previous trading day delta instead of saying the rate was flat", () => {
+    const model = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({
+              series_id: "EMM00166458",
+              series_name: "中债国债到期收益率:1年",
+              latest_change: null,
+            }),
+          ],
+        },
+      },
+    });
+
+    expect(model.rateQuotes.rows[0]).toMatchObject({
+      seriesId: "EMM00166458",
+      deltaText: "缺前值",
+    });
+  });
+
+  it("resolves the latest available formal rates trade date", () => {
+    expect(
+      resolveLatestMarketDataTradeDate({
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [
+            point({ series_id: "EMM00166458", trade_date: "2026-06-11" }),
+            point({ series_id: "EMM00166462", trade_date: "2026-06-12" }),
+            point({ series_id: "EMM00166466", trade_date: "bad-date" }),
+          ],
+        },
+      }),
+    ).toBe("2026-06-12");
+  });
+
+  it("builds bond futures rankings from the CFFEX member-rank envelope", () => {
+    const model = buildMarketDataTerminalModel({
+      ratesEnvelope: {
+        result_meta: meta(),
+        result: {
+          read_target: "duckdb",
+          series: [],
+        },
+      },
+      bondFuturesRankingsEnvelope: {
+        result_meta: meta({
+          basis: "analytical",
+          result_kind: "market_data.bond_futures_rankings",
+          formal_use_allowed: false,
+          source_version: "sv_test_cffex_rank",
+          vendor_version: "vv_test_tushare",
+          rule_version: "rv_cffex_member_rank_choice_tushare_v1",
+          cache_version: "cv_market_data_bond_futures_rankings_v1",
+          source_surface: "market_data",
+          tables_used: ["fact_cffex_member_rank_daily", "vw_cffex_member_rank_daily"],
+          evidence_rows: 1,
+        }),
+        result: {
+          read_target: "duckdb",
+          as_of_date: "2026-06-11",
+          requested_trade_date: null,
+          contract: "T.CFE",
+          rows: [
+            {
+              trade_date: "2026-06-11",
+              contract: "T.CFE",
+              product_code: "T",
+              exchange: "CFFEX",
+              member_name: "中信期货",
+              source_vendor: "tushare",
+              source_row_no: 1,
+              volume: 12345,
+              volume_change: 101,
+              long_holding: 23456,
+              long_change: 202,
+              short_holding: 21000,
+              short_change: -50,
+              source_version: "sv_test_cffex_rank",
+              vendor_version: "vv_test_tushare",
+              rule_version: "rv_cffex_member_rank_choice_tushare_v1",
+            },
+          ],
+          warnings: [],
+        },
+      },
+    });
+
+    const bondFutures = model.bondFutures as MarketDataBondFuturesSection;
+    expect(bondFutures.status).toBe("ready");
+    expect(bondFutures.source).toMatchObject({
+      basis: "analytical",
+      sourceVersion: "sv_test_cffex_rank",
+      vendorVersion: "vv_test_tushare",
+    });
+    expect(bondFutures.rows).toEqual([
+      expect.objectContaining({
+        key: "T.CFE:中信期货:1",
+        tradeDate: "2026-06-11",
+        contract: "T.CFE",
+        memberName: "中信期货",
+        volumeText: "12,345",
+        longHoldingText: "23,456",
+        shortHoldingText: "21,000",
+      }),
+    ]);
   });
 
   it("builds terminal ticker items from formal/latest rows without recomputing values", () => {

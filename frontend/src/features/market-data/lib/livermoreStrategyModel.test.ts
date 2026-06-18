@@ -2,10 +2,37 @@ import { describe, expect, it } from "vitest";
 
 import type {
   ApiEnvelope,
+  LivermoreModuleState,
+  LivermoreOutputKey,
   LivermoreStrategyPayload,
   ResultMeta,
 } from "../../../api/contracts";
 import { buildLivermoreStrategyModel } from "./livermoreStrategyModel";
+
+const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
+  "market_gate",
+  "sector_rank",
+  "stock_candidates",
+  "mean_reversion_candidates",
+  "factor_screen_candidates",
+  "theme_breakout",
+  "hybrid_fusion",
+  "risk_exit",
+];
+
+function readyModuleStates(asOfDate = "2026-04-29"): LivermoreModuleState[] {
+  return LIVERMORE_OUTPUT_KEYS.map((key) => ({
+    key,
+    state: "ready",
+    render_mode: "primary",
+    source_date: asOfDate,
+    lag_days: 0,
+    threshold_days: null,
+    reasons: [],
+    evidence_scope: "primary",
+    excludes_from_primary: false,
+  }));
+}
 
 function makeMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -180,6 +207,7 @@ function makePayload(
       },
     ],
     ...overrides,
+    module_states: overrides.module_states ?? readyModuleStates(),
   };
 }
 

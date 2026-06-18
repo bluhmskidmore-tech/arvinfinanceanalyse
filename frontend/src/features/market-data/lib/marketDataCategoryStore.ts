@@ -61,7 +61,10 @@ export function buildMarketDataCategoryStore(input: {
   const visibleStableIds = new Set(stableSeries.map((point) => point.series_id));
   const missingStableSeries = stableCatalogSeries.filter((series) => !visibleStableIds.has(series.series_id));
   const vendorVersions = [...new Set(visibleLatestSeries.map((point) => point.vendor_version))];
-  const fxAnalyticalSeriesCount = input.fxAnalyticalGroups.reduce((total, group) => total + group.series.length, 0);
+  const fxAnalyticalSeriesCount = input.fxAnalyticalGroups.reduce(
+    (total, group) => total + group.series.length + (group.events?.length ?? 0),
+    0,
+  );
 
   return {
     visibleLatestSeries,

@@ -7,6 +7,8 @@ import type {
   ChoiceNewsEventsPayload,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
+  MarketDataBondFuturesRankingsPayload,
+  MarketDataCoverageSummaryPayload,
   LivermoreCandidateHistoryPortfolioBacktestPayload,
   LivermoreManualPositionInput,
   LivermoreCandidateHistoryPayload,
@@ -17,10 +19,13 @@ import type {
   LivermoreStrategyOptimizationPayload,
   LivermoreStrategyScorePayload,
   LivermoreStockDetailPayload,
+  LivermoreModuleState,
+  LivermoreOutputKey,
   LivermoreStrategyPayload,
   MacroBondLinkagePayload,
   MacroVendorPayload,
   NcdFundingProxyPayload,
+  TushareSupplementPayload,
   ResearchCalendarEvent,
   ResearchCalendarResultPayload,
   SourcePreviewColumn,
@@ -71,7 +76,17 @@ export type MarketDataClientMethods = {
   getMacroBondLinkageAnalysis: (options: {
     reportDate: string;
   }) => Promise<ApiEnvelope<MacroBondLinkagePayload>>;
+  getBondFuturesRankings: (options?: {
+    contract?: string;
+    tradeDate?: string;
+    limit?: number;
+  }) => Promise<ApiEnvelope<MarketDataBondFuturesRankingsPayload>>;
+  getMarketDataCoverageSummary: () => Promise<ApiEnvelope<MarketDataCoverageSummaryPayload>>;
   getNcdFundingProxy: () => Promise<ApiEnvelope<NcdFundingProxyPayload>>;
+  getTushareSupplement: (options?: {
+    moneySupplyLimit?: number;
+    ecoCalLimit?: number;
+  }) => Promise<ApiEnvelope<TushareSupplementPayload>>;
   getFxFormalStatus: () => Promise<ApiEnvelope<FxFormalStatusPayload>>;
   getFxAnalytical: () => Promise<ApiEnvelope<FxAnalyticalPayload>>;
   refreshChoiceMacro: (backfillDays?: number) => Promise<ChoiceMacroRefreshPayload>;
@@ -488,6 +503,18 @@ function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPa
     as_of_date: reportDate?.trim() || "2026-04-23",
     proxy_label: "Tushare Shibor funding proxy (not NCD issuance matrix)",
     is_actual_ncd_matrix: false,
+    formal_ncd_matrix_status: {
+      status: "blocked",
+      required_shape: "tenor_rating_matrix",
+      current_proxy_basis: "shibor_funding_proxy",
+      choice_status: "shibor_landed; formal_ncd_matrix_unconfirmed",
+      tushare_status: "shibor_landed; formal_ncd_matrix_unconfirmed",
+      missing_requirements: [
+        "governed NCD tenor-rating source contract",
+        "issuer/rating tenor matrix rows",
+        "unit/date semantics and golden sample approval",
+      ],
+    },
     rows: [
       {
         row_key: "shibor_fixing",
@@ -505,6 +532,31 @@ function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPa
       "Using landed external warehouse Shibor; quote medians unavailable.",
     ],
   };
+}
+
+const MOCK_LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
+  "market_gate",
+  "sector_rank",
+  "stock_candidates",
+  "mean_reversion_candidates",
+  "factor_screen_candidates",
+  "theme_breakout",
+  "hybrid_fusion",
+  "risk_exit",
+];
+
+function buildMockLivermoreModuleStates(asOfDate: string): LivermoreModuleState[] {
+  return MOCK_LIVERMORE_OUTPUT_KEYS.map((key) => ({
+    key,
+    state: "ready",
+    render_mode: "primary",
+    source_date: asOfDate,
+    lag_days: 0,
+    threshold_days: null,
+    reasons: [],
+    evidence_scope: "primary",
+    excludes_from_primary: false,
+  }));
 }
 
 function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategyPayload {
@@ -631,6 +683,7 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
         reason: "concept membership table pending",
       },
     ],
+    module_states: buildMockLivermoreModuleStates(resolvedDate),
     sector_rank: {
       as_of_date: resolvedDate,
       formula_version: "rv_livermore_sector_rank_provisional_v1",
@@ -838,6 +891,8 @@ const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
       vendor_version: "vv_choice_catalog_v1",
       frequency: "daily",
       unit: "%",
+      theme: "rates",
+      tags: ["rates", "liquidity"],
       refresh_tier: "stable",
       fetch_mode: "date_slice",
       fetch_granularity: "batch",
@@ -850,6 +905,8 @@ const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
       vendor_version: "vv_choice_catalog_v1",
       frequency: "daily",
       unit: "%",
+      theme: "rates",
+      tags: ["rates", "liquidity"],
       refresh_tier: "fallback",
       fetch_mode: "latest",
       fetch_granularity: "single",
@@ -862,6 +919,8 @@ const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
       vendor_version: "vv_choice_catalog_v1",
       frequency: "daily",
       unit: "%",
+      theme: "rates",
+      tags: ["rates", "chinabond"],
       refresh_tier: "stable",
       fetch_mode: "date_slice",
       fetch_granularity: "batch",
@@ -872,6 +931,11 @@ const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
 
 const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
   read_target: "duckdb",
+  derived_spreads: {
+    term_spread_10y_2y: 10.0,
+    term_spread_10y_1y: 15.0,
+    term_spread_10y_5y: null,
+  },
   series: [
     {
       series_id: "M001",
@@ -917,6 +981,21 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       policy_note: "main refresh date-slice lane",
       latest_change: 0.03,
       recent_points: buildMockChoiceMacroRecentPoints("2026-04-10", 20, 1.56, 0.04),
+    },
+    {
+      series_id: "EMM00588704",
+      series_name: "中债国债到期收益率:2年",
+      trade_date: "2026-04-10",
+      value_numeric: 1.61,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_20260410",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "2Y treasury lane for term-spread display",
+      latest_change: 0.02,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-04-10", 20, 1.61, 0.03),
     },
     {
       series_id: "EMM00166466",
@@ -1206,6 +1285,27 @@ function buildLivermoreQuery(options?: { asOfDate?: string }) {
     return "";
   }
   return `?as_of_date=${encodeURIComponent(asOfDate)}`;
+}
+
+function buildBondFuturesRankingsQuery(options?: {
+  contract?: string;
+  tradeDate?: string;
+  limit?: number;
+}) {
+  const params = new URLSearchParams();
+  const contract = options?.contract?.trim();
+  if (contract) {
+    params.set("contract", contract);
+  }
+  const tradeDate = options?.tradeDate?.trim();
+  if (tradeDate) {
+    params.set("trade_date", tradeDate);
+  }
+  if (options?.limit != null) {
+    params.set("limit", String(options.limit));
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
 }
 
 function buildStockDetailQuery(options: { stockCode: string; asOfDate?: string; lookback?: number }) {
@@ -1576,6 +1676,229 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getBondFuturesRankings() {
+      await delay();
+      return buildMockApiEnvelope(
+        "market_data.bond_futures_rankings",
+        {
+          read_target: "duckdb",
+          as_of_date: null,
+          requested_trade_date: null,
+          contract: "T.CFE",
+          rows: [],
+          warnings: ["Mock client does not include CFFEX member-rank rows."],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_cffex_member_rank_mock_empty",
+          vendor_version: "vv_none",
+          rule_version: "rv_cffex_member_rank_choice_tushare_v1",
+          cache_version: "cv_market_data_bond_futures_rankings_v1",
+          quality_flag: "warning",
+          vendor_status: "vendor_unavailable",
+          fallback_mode: "none",
+          source_surface: "market_data",
+        },
+      );
+    },
+    async getMarketDataCoverageSummary() {
+      await delay();
+      const stableSeries = MOCK_CHOICE_MACRO_LATEST_PAYLOAD.series.filter(
+        (series) => series.refresh_tier === "stable",
+      );
+      const fxAnalyticalSeriesCount = MOCK_FX_ANALYTICAL_PAYLOAD.groups.reduce(
+        (total, group) => total + group.series.length,
+        0,
+      );
+      return buildMockApiEnvelope(
+        "market_data.coverage_summary",
+        {
+          read_target: "duckdb",
+          as_of_date: "2026-04-10",
+          generated_at: "2026-04-10T09:30:00Z",
+          headline: {
+            readiness_label:
+              "mixed-source supply map: formal rates fragment plus analytical/proxy/source-pending sections",
+            formal_fragment_ready: true,
+            formal_use_allowed: false,
+            analytical_warning_count: 6,
+            source_pending_count: 3,
+            proxy_only_count: 1,
+          },
+          sections: [
+            {
+              key: "formal_rates",
+              label: "Formal rates fragment",
+              status: "ready",
+              basis: "formal",
+              formal_use_allowed: true,
+              quality_flag: "ok",
+              fallback_mode: "none",
+              vendor_status: "ok",
+              series_count: stableSeries.length,
+              latest_trade_date: "2026-04-10",
+              source_pending: false,
+              proxy_only: false,
+              message: "Stable rate series returned by the formal market-data rates fragment.",
+            },
+            {
+              key: "macro_latest",
+              label: "Macro latest observations",
+              status: "warning",
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              fallback_mode: "latest_snapshot",
+              vendor_status: "ok",
+              series_count: MOCK_CHOICE_MACRO_LATEST_PAYLOAD.series.length,
+              latest_trade_date: "2026-04-10",
+              source_pending: false,
+              proxy_only: false,
+              message: "Analytical Choice macro latest snapshot used for market observation.",
+            },
+            {
+              key: "fx_formal",
+              label: "FX formal status",
+              status: "warning",
+              basis: "formal",
+              formal_use_allowed: true,
+              quality_flag: "warning",
+              fallback_mode: "latest_snapshot",
+              vendor_status: "ok",
+              row_count: MOCK_FX_FORMAL_STATUS_PAYLOAD.materialized_count,
+              series_count: MOCK_FX_FORMAL_STATUS_PAYLOAD.candidate_count,
+              latest_trade_date: MOCK_FX_FORMAL_STATUS_PAYLOAD.latest_trade_date,
+              source_pending: false,
+              proxy_only: false,
+              message: "Formal FX candidate/materialization status.",
+            },
+            {
+              key: "fx_analytical",
+              label: "FX analytical groups",
+              status: "warning",
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              fallback_mode: "latest_snapshot",
+              vendor_status: "ok",
+              row_count: fxAnalyticalSeriesCount,
+              group_count: MOCK_FX_ANALYTICAL_PAYLOAD.groups.length,
+              source_pending: false,
+              proxy_only: false,
+              message: "Analytical FX groups for observation only.",
+            },
+            {
+              key: "ncd_proxy",
+              label: "NCD funding proxy",
+              status: "proxy_only",
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              fallback_mode: "none",
+              vendor_status: "ok",
+              row_count: 1,
+              as_of_date: "2026-04-23",
+              source_pending: false,
+              proxy_only: true,
+              message: "Shibor funding proxy only; not an actual NCD tenor-rating matrix.",
+            },
+            {
+              key: "bond_futures",
+              label: "Bond futures rankings",
+              status: "source_pending",
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              fallback_mode: "none",
+              vendor_status: "vendor_unavailable",
+              row_count: 0,
+              source_pending: true,
+              proxy_only: false,
+              message: "CFFEX member rankings are not materialized in mock mode.",
+            },
+            {
+              key: "cash_bond_trades",
+              label: "Cash bond trades",
+              status: "source_pending",
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              fallback_mode: "none",
+              vendor_status: "vendor_unavailable",
+              source_pending: true,
+              proxy_only: false,
+              message: "Outward cash-bond trade contract is still source-pending.",
+            },
+            {
+              key: "credit_trades",
+              label: "Credit trades",
+              status: "source_pending",
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              fallback_mode: "none",
+              vendor_status: "vendor_unavailable",
+              source_pending: true,
+              proxy_only: false,
+              message: "Outward credit-trade contract is still source-pending.",
+            },
+            {
+              key: "livermore",
+              label: "Livermore",
+              status: "deferred",
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              fallback_mode: "none",
+              vendor_status: "ok",
+              source_pending: false,
+              proxy_only: false,
+              message: "Analytical endpoint is loaded only after expansion.",
+            },
+            {
+              key: "macro_bond_linkage",
+              label: "Macro-bond linkage",
+              status: "deferred",
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              fallback_mode: "none",
+              vendor_status: "ok",
+              source_pending: false,
+              proxy_only: false,
+              message: "Analytical linkage endpoint is date-gated and loaded on demand.",
+            },
+          ],
+          actions: [
+            {
+              key: "ncd_proxy",
+              label: "Keep NCD displayed as proxy-only.",
+              severity: "warning",
+              target_anchor: "market-data-liquidity-deck",
+            },
+            {
+              key: "cash_bond_trades",
+              label: "Cash bond trade outward contract remains pending.",
+              severity: "warning",
+              target_anchor: "market-data-source-pending-deck",
+            },
+          ],
+        } satisfies MarketDataCoverageSummaryPayload,
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_market_data_coverage_summary_mock",
+          vendor_version: "vv_market_data_coverage_summary_mock",
+          rule_version: "rv_market_data_coverage_summary_v1",
+          cache_version: "cv_market_data_coverage_summary_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          source_surface: "market_data",
+        },
+      );
+    },
     async getNcdFundingProxy() {
       await delay();
       return buildMockApiEnvelope(
@@ -1591,6 +1914,54 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           quality_flag: "warning",
           vendor_status: "ok",
           fallback_mode: "none",
+        },
+      );
+    },
+    async getTushareSupplement() {
+      await delay();
+      return buildMockApiEnvelope(
+        "market_data.tushare_supplement",
+        {
+          money_supply_rows: [
+            {
+              month: "2026-04-01",
+              m0: 147477.38,
+              m0_yoy: 12.2,
+              m0_mom: 0.27,
+              m1: 1145833.73,
+              m1_yoy: 5.0,
+              m1_mom: -3.97,
+              m2: 3530425.21,
+              m2_yoy: 8.6,
+              m2_mom: -0.23,
+            },
+          ],
+          eco_cal_rows: [
+            {
+              event_id: "mock-eco-1",
+              event_date: "20260613",
+              event_time: "09:30",
+              currency: "CNY",
+              country: "China",
+              event: "Mock 中国CPI同比",
+              value: "1.2",
+              pre_value: "1.0",
+              fore_value: "1.1",
+            },
+          ],
+          warnings: [],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_tushare_supplement_mock",
+          vendor_version: "vv_tushare_supplement_v1",
+          rule_version: "rv_market_data_tushare_supplement_v1",
+          cache_version: "cv_market_data_tushare_supplement_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          source_surface: "market_data",
         },
       );
     },
@@ -2200,12 +2571,39 @@ export function createRealMarketDataClient({
         baseUrl,
         `/api/macro-bond-linkage/analysis?report_date=${encodeURIComponent(reportDate)}`,
       ),
+    getBondFuturesRankings: (options) =>
+      requestJson<MarketDataBondFuturesRankingsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/bond-futures/rankings${buildBondFuturesRankingsQuery(options)}`,
+      ),
+    getMarketDataCoverageSummary: () =>
+      requestJson<MarketDataCoverageSummaryPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/market-data/coverage-summary",
+      ),
     getNcdFundingProxy: () =>
       requestJson<NcdFundingProxyPayload>(
         fetchImpl,
         baseUrl,
         "/ui/market-data/ncd-funding-proxy",
       ),
+    getTushareSupplement: (options) => {
+      const params = new URLSearchParams();
+      if (options?.moneySupplyLimit != null) {
+        params.set("money_supply_limit", String(options.moneySupplyLimit));
+      }
+      if (options?.ecoCalLimit != null) {
+        params.set("eco_cal_limit", String(options.ecoCalLimit));
+      }
+      const query = params.toString();
+      return requestJson<TushareSupplementPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/tushare-supplement${query ? `?${query}` : ""}`,
+      );
+    },
     getFxFormalStatus: () =>
       requestJson<FxFormalStatusPayload>(
         fetchImpl,

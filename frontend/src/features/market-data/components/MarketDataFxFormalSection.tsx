@@ -2,11 +2,9 @@ import { useMemo, useState } from "react";
 import { Collapse, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import type { FxFormalStatusPayload, FxFormalStatusRow, ResultMeta } from "../../../api/contracts";
 import { tabularNumsStyle } from "../../../theme/designSystem";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { LiveResultMetaStrip } from "./LiveResultMetaStrip";
 import { buildFxFormalStatusCollapseLabel } from "../pages/marketDataPageModel";
 
 type MarketDataFxFormalSectionProps = {
@@ -26,7 +24,7 @@ function formatMidRate(value: number | null) {
 
 export function MarketDataFxFormalSection({
   payload,
-  meta,
+  meta: _meta,
   isLoading,
   isError,
   onRetry,
@@ -65,11 +63,6 @@ export function MarketDataFxFormalSection({
 
   return (
     <section className="market-data-section-block" data-testid="market-data-fx-formal-section">
-      <PageSectionLead
-        eyebrow="正式外汇"
-        title="中间价物化状态"
-        description="来自 GET /ui/market-data/fx/formal-status；仅展示后端返回的 formal 行，不与分析口径外汇观察混用。"
-      />
       <Collapse
         className="market-data-fx-formal-collapse"
         data-testid="market-data-fx-formal-collapse"
@@ -92,13 +85,6 @@ export function MarketDataFxFormalSection({
                   isEmpty={!isLoading && !isError && (payload?.rows.length ?? 0) === 0}
                   onRetry={() => void onRetry()}
                 >
-                  {!isLoading && !isError && meta ? (
-                    <LiveResultMetaStrip
-                      lead="本区块·正式外汇"
-                      meta={meta}
-                      testId="market-data-fx-formal-meta"
-                    />
-                  ) : null}
                   <div data-testid="market-data-fx-formal-table">
                     <Table<FxFormalStatusRow>
                       size="small"

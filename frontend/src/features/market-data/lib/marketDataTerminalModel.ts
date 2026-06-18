@@ -3,11 +3,16 @@ import type {
   ApiQuality,
   ChoiceMacroLatestPayload,
   ChoiceMacroLatestPoint,
+  MarketDataBondFuturesRankingsPayload,
+  MarketDataBondFuturesRankingRow,
   ResultMeta,
 } from "../../../api/contracts";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 
 export type MarketDataTerminalStatus = "ready" | "empty" | "source-pending";
+export type MarketDataConnectedStatus = Exclude<MarketDataTerminalStatus, "source-pending">;
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export type MarketDataTerminalSource = {
   basis: ResultMeta["basis"];
@@ -41,6 +46,23 @@ export type MarketDataMoneyMarketRow = MarketDataTerminalRowBase & {
   name: string;
 };
 
+export type MarketDataBondFuturesRow = {
+  key: string;
+  tradeDate: string;
+  contract: string;
+  productCode: string;
+  exchange: string;
+  memberName: string;
+  sourceRowNo: number | null;
+  volumeText: string;
+  volumeChangeText: string;
+  longHoldingText: string;
+  longChangeText: string;
+  shortHoldingText: string;
+  shortChangeText: string;
+  sourceVendor: string;
+};
+
 export type MarketDataRateQuoteSection = {
   status: MarketDataTerminalStatus;
   rows: MarketDataRateQuoteRow[];
@@ -55,6 +77,16 @@ export type MarketDataMoneyMarketSection = {
   emptyReason: string;
 };
 
+export type MarketDataBondFuturesSection = {
+  status: MarketDataConnectedStatus;
+  rows: MarketDataBondFuturesRow[];
+  source: MarketDataTerminalSource | null;
+  emptyReason: string;
+  asOfDate: string | null;
+  contract: string;
+  warnings: string[];
+};
+
 export type MarketDataSourcePendingSection = {
   status: "source-pending";
   rows: [];
@@ -65,10 +97,40 @@ export type MarketDataSourcePendingSection = {
 export type MarketDataTerminalModel = {
   rateQuotes: MarketDataRateQuoteSection;
   moneyMarket: MarketDataMoneyMarketSection;
-  bondFutures: MarketDataSourcePendingSection;
+  bondFutures: MarketDataBondFuturesSection | MarketDataSourcePendingSection;
   bondTrades: MarketDataSourcePendingSection;
   creditTrades: MarketDataSourcePendingSection;
 };
+
+const TERMINAL_BASIS_LABELS: Partial<Record<ResultMeta["basis"], string>> = {
+  formal: "正式",
+  analytical: "分析",
+  mock: "回放",
+};
+
+const TERMINAL_QUALITY_LABELS: Partial<Record<ApiQuality, string>> = {
+  ok: "正常",
+  warning: "需复核",
+  error: "异常",
+  stale: "陈旧",
+  missing: "缺失",
+};
+
+const TERMINAL_FALLBACK_LABELS: Partial<Record<ResultMeta["fallback_mode"], string>> = {
+  none: "无降级",
+  latest_snapshot: "最新快照",
+};
+
+/** 页内表格区简短口径行，不展示 source_version 等运维长串。 */
+export function formatTerminalSourceSummary(source: MarketDataTerminalSource | null | undefined) {
+  if (!source) {
+    return "来源待确认";
+  }
+  const basis = TERMINAL_BASIS_LABELS[source.basis] ?? source.basis;
+  const quality = TERMINAL_QUALITY_LABELS[source.qualityFlag] ?? source.qualityFlag;
+  const fallback = TERMINAL_FALLBACK_LABELS[source.fallbackMode] ?? source.fallbackMode;
+  return `口径 ${basis} · 质量 ${quality} · 降级 ${fallback}`;
+}
 
 export type MarketTerminalTickerItem = {
   key: string;
@@ -284,6 +346,7 @@ export function buildTerminalTickerItems(model: MarketDataTerminalModel): Market
 type BuildMarketDataTerminalModelOptions = {
   ratesEnvelope?: ApiEnvelope<ChoiceMacroLatestPayload>;
   latestEnvelope?: ApiEnvelope<ChoiceMacroLatestPayload>;
+  bondFuturesRankingsEnvelope?: ApiEnvelope<MarketDataBondFuturesRankingsPayload>;
 };
 
 type SourcePoint = {
@@ -303,15 +366,20 @@ type MoneySpec = {
 };
 
 const RATE_QUOTE_SPECS: RateSpec[] = [
-  { seriesIds: ["EMM00166458"], variety: "国债", tenor: "1Y" },
+  { seriesIds: ["EMM00166458", "M003"], variety: "国债", tenor: "1Y" },
+  { seriesIds: ["EMM00588704"], variety: "国债", tenor: "2Y" },
   { seriesIds: ["EMM00166460"], variety: "国债", tenor: "3Y" },
   { seriesIds: ["EMM00166462"], variety: "国债", tenor: "5Y" },
   { seriesIds: ["EMM00166464"], variety: "国债", tenor: "7Y" },
   { seriesIds: ["CA.CN_GOV_10Y", "E1000180", "EMM00166466"], variety: "国债", tenor: "10Y" },
+  { seriesIds: ["EMM00166468"], variety: "国债", tenor: "20Y" },
+  { seriesIds: ["EMM00166469"], variety: "国债", tenor: "30Y" },
   { seriesIds: ["EMM00166494"], variety: "国开", tenor: "1Y" },
+  { seriesIds: ["EMM00166495"], variety: "国开", tenor: "2Y" },
   { seriesIds: ["EMM00166496"], variety: "国开", tenor: "3Y" },
   { seriesIds: ["EMM00166498"], variety: "国开", tenor: "5Y" },
   { seriesIds: ["EMM00166502"], variety: "国开", tenor: "10Y" },
+  { seriesIds: ["EMM00166504"], variety: "国开", tenor: "20Y" },
 ];
 
 const MONEY_MARKET_SPECS: MoneySpec[] = [
@@ -372,6 +440,18 @@ export function buildTerminalSparklineValues(point: ChoiceMacroLatestPoint): num
   return values;
 }
 
+export function resolveLatestMarketDataTradeDate(
+  envelope: ApiEnvelope<ChoiceMacroLatestPayload> | undefined,
+): string | null {
+  const dates = envelope?.result.series
+    .map((point) => point.trade_date)
+    .filter((date): date is string => ISO_DATE_RE.test(date)) ?? [];
+  if (dates.length === 0) {
+    return null;
+  }
+  return dates.sort((left, right) => left.localeCompare(right))[dates.length - 1] ?? null;
+}
+
 function rowBase(sourcePoint: SourcePoint): MarketDataTerminalRowBase {
   const { point, meta } = sourcePoint;
   return {
@@ -379,7 +459,7 @@ function rowBase(sourcePoint: SourcePoint): MarketDataTerminalRowBase {
     seriesId: point.series_id,
     seriesName: point.series_name,
     rateText: formatChoiceMacroValue(point, { spaceBeforeUnit: false }),
-    deltaText: formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: "无变动" }),
+    deltaText: formatChoiceMacroDelta(point, { spaceBeforeUnit: false, emptyDisplay: "缺前值" }),
     tradeDate: point.trade_date,
     sourceVersion: meta.source_version,
     vendorVersion: point.vendor_version || meta.vendor_version,
@@ -389,7 +469,7 @@ function rowBase(sourcePoint: SourcePoint): MarketDataTerminalRowBase {
   };
 }
 
-function sectionStatus(rowCount: number): MarketDataTerminalStatus {
+function sectionStatus(rowCount: number): MarketDataConnectedStatus {
   return rowCount > 0 ? "ready" : "empty";
 }
 
@@ -397,9 +477,73 @@ function primarySource(envelope?: ApiEnvelope<ChoiceMacroLatestPayload>) {
   return envelope ? terminalSource(envelope.result_meta) : null;
 }
 
+function bondFuturesSource(envelope?: ApiEnvelope<MarketDataBondFuturesRankingsPayload>) {
+  return envelope ? terminalSource(envelope.result_meta) : null;
+}
+
+function formatRankNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "—";
+  }
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatRankChange(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "—";
+  }
+  if (value === 0) {
+    return "0";
+  }
+  return `${value > 0 ? "+" : ""}${formatRankNumber(value)}`;
+}
+
+function bondFuturesRow(row: MarketDataBondFuturesRankingRow): MarketDataBondFuturesRow {
+  return {
+    key: `${row.contract}:${row.member_name}:${row.source_row_no ?? row.member_name}`,
+    tradeDate: row.trade_date,
+    contract: row.contract,
+    productCode: row.product_code,
+    exchange: row.exchange,
+    memberName: row.member_name,
+    sourceRowNo: row.source_row_no,
+    volumeText: formatRankNumber(row.volume),
+    volumeChangeText: formatRankChange(row.volume_change),
+    longHoldingText: formatRankNumber(row.long_holding),
+    longChangeText: formatRankChange(row.long_change),
+    shortHoldingText: formatRankNumber(row.short_holding),
+    shortChangeText: formatRankChange(row.short_change),
+    sourceVendor: row.source_vendor,
+  };
+}
+
+function buildBondFuturesSection(
+  envelope?: ApiEnvelope<MarketDataBondFuturesRankingsPayload>,
+): MarketDataBondFuturesSection | MarketDataSourcePendingSection {
+  if (!envelope) {
+    return {
+      status: "source-pending",
+      rows: [],
+      source: null,
+      emptyReason: "国债期货实时行情源尚未纳入市场工作台合同，前端不展示静态示例合约。",
+    };
+  }
+  const rows = envelope.result.rows.map(bondFuturesRow);
+  return {
+    status: sectionStatus(rows.length),
+    rows,
+    source: bondFuturesSource(envelope),
+    emptyReason: "国债期货排行接口已接入，当前合约暂无席位排行行。",
+    asOfDate: envelope.result.as_of_date,
+    contract: envelope.result.contract,
+    warnings: envelope.result.warnings,
+  };
+}
+
 export function buildMarketDataTerminalModel({
   ratesEnvelope,
   latestEnvelope,
+  bondFuturesRankingsEnvelope,
 }: BuildMarketDataTerminalModelOptions): MarketDataTerminalModel {
   const bySeriesId = buildSourcePointMap([ratesEnvelope, latestEnvelope]);
   const rateRows = RATE_QUOTE_SPECS.flatMap((spec) => {
@@ -441,12 +585,7 @@ export function buildMarketDataTerminalModel({
       source: primarySource(ratesEnvelope) ?? primarySource(latestEnvelope),
       emptyReason: "未找到已确认的资金利率序列，前端不补示例成交量或区间。",
     },
-    bondFutures: {
-      status: "source-pending",
-      rows: [],
-      source: null,
-      emptyReason: "国债期货实时行情源尚未纳入市场工作台合同，前端不展示静态示例合约。",
-    },
+    bondFutures: buildBondFuturesSection(bondFuturesRankingsEnvelope),
     bondTrades: {
       status: "source-pending",
       rows: [],
