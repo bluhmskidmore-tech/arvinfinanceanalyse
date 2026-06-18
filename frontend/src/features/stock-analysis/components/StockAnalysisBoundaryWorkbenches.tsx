@@ -1,5 +1,6 @@
 import {
   DatabaseOutlined,
+  LineChartOutlined,
   SafetyCertificateOutlined,
   StockOutlined,
 } from "@ant-design/icons";
@@ -18,6 +19,27 @@ const LOADING_RAIL_LABELS = [
   "\u98ce\u9669",
   "\u8fb9\u754c",
   "\u590d\u6838",
+];
+
+const ERROR_SUPPLEMENT_ITEMS = [
+  {
+    key: "api",
+    label: "接口",
+    value: "策略复核主接口",
+    detail: "先确认后端供数与代理链路",
+  },
+  {
+    key: "boundary",
+    label: "页面边界",
+    value: "GAP-STOCK-ANALYSIS-PAGE",
+    detail: "观察性复核，不生成交易指令",
+  },
+  {
+    key: "next",
+    label: "下一步",
+    value: "恢复供数后复核",
+    detail: "检查 result_meta、缺口、规则版本与 trace",
+  },
 ];
 
 export function StockAnalysisLoadingWorkbench() {
@@ -104,6 +126,26 @@ export function StockAnalysisErrorWorkbench({ message }: { message: string }) {
           <small>{"\u590d\u6838"}</small>
           <strong>{"\u4e0d\u53ef\u7528"}</strong>
         </span>
+      </div>
+      <div
+        className="stock-analysis-page__error-supplement"
+        data-testid="stock-analysis-error-supplement"
+        aria-label="错误态补充信息"
+      >
+        {ERROR_SUPPLEMENT_ITEMS.map((item) => (
+          <div key={item.key}>
+            {item.key === "api" ? (
+              <DatabaseOutlined aria-hidden="true" />
+            ) : item.key === "boundary" ? (
+              <SafetyCertificateOutlined aria-hidden="true" />
+            ) : (
+              <LineChartOutlined aria-hidden="true" />
+            )}
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.detail}</small>
+          </div>
+        ))}
       </div>
     </section>
   );

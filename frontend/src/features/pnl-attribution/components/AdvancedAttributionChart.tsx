@@ -20,7 +20,7 @@ const BAR_RADIUS = [
   designTokens.radius.sm,
   0,
   0,
-] as const;
+];
 
 function valueDirection(value: number | null | undefined) {
   return (value ?? 0) >= 0 ? "positive" : "negative";

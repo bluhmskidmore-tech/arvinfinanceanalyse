@@ -26,7 +26,10 @@ function buildNimTrendOption(months: AdbMonthlyDataItem[]) {
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
-      formatter: (items: { seriesName: string; value: number | null; dataIndex: number }[]) => {
+      formatter: (params: unknown) => {
+        const items = Array.isArray(params)
+          ? (params as { seriesName: string; value: number | null; dataIndex: number }[])
+          : [];
         if (!items.length) return "";
         const idx = items[0].dataIndex;
         const month = months[idx];

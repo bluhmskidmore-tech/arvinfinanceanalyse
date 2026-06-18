@@ -26,8 +26,8 @@ import {
   buildCandidateReviewQueue,
   buildClosedLoopSummary,
   buildCycleMacroLayerSummary,
-  buildDailyJudgmentStrip,
   buildDataBoundarySummary,
+  buildDailyJudgmentStrip,
   buildDeepZoneAuditRows,
   buildDecisionSummary,
   buildMarketStateCard,
@@ -62,10 +62,11 @@ import {
   localizeImplementationStage,
   localizeMarketDataStatus,
   localizeThemeRadarBadge,
+  isStockModulePrimaryExcluded,
   mergeStockClosedLoopMeta,
   pickStockFreshnessMeta,
 } from "../lib/stockAnalysisPageModel";
-import type { StockSectorRow } from "../lib/stockAnalysisPageModel";
+import type { StockCandidateReviewQueueItem, StockSectorRow } from "../lib/stockAnalysisPageModel";
 import {
   buildSectorStrengthOption,
   sectorViewTabs,
@@ -79,6 +80,7 @@ import {
   rawStockErrorMessage as rawErrorMessage,
   stockPageErrorMessage as errorMessage,
   stockSupplyFallbackLabel,
+  stockSupplyBasisLabel,
   stockSupplyQualityLabel,
   stockSupplyVendorLabel,
   stockStatusLabel as statusLabel,
@@ -184,8 +186,13 @@ import {
 } from "../components/StockAnalysisBoundaryWorkbenches";
 import { StockAnalysisCycleRuleSummary } from "../components/StockAnalysisCycleRuleSummary";
 import { StockAnalysisDeepZoneHeader } from "../components/StockAnalysisDeepZoneHeader";
-import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvidenceLedgerRail";
+import { StockAnalysisCandidateLedgerTable } from "../components/StockAnalysisCandidateLedgerTable";
 import { StockAnalysisConsensusFirstScreen } from "../components/StockAnalysisConsensusFirstScreen";
+import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvidenceLedgerRail";
+import {
+  StockAnalysisReviewLedgerFirstScreen,
+  type StockAnalysisLedgerCell,
+} from "../components/StockAnalysisReviewLedgerFirstScreen";
 import { StockAnalysisStrategyLensSection } from "../components/StockAnalysisStrategyLensSection";
 import { StockAnalysisThemeBreakoutPanel } from "../components/StockAnalysisThemeBreakoutPanel";
 import { StockAnalysisObservationPreview } from "../components/StockAnalysisObservationPreview";
@@ -201,16 +208,69 @@ import "./StockAnalysisPage.css";
 
 const { Text } = Typography;
 
+function candidateEvidenceValue(card: StockCandidateReviewQueueItem, key: string, fallback = "待补"): string {
+  const value =
+    card.rawFields.find((field) => field.key === key)?.value ??
+    [...card.primaryEvidence, ...card.supportingEvidence].find((field) => field.key === key)?.value;
+  return value?.trim() ? value : fallback;
+}
+
+function confidenceTone(label: string): "positive" | "neutral" | "warning" {
+  const normalized = label.trim().toLowerCase();
+  if (normalized === "高" || normalized === "high") return "positive";
+  if (normalized === "低" || normalized === "low") return "warning";
+  return "neutral";
+}
+
+function readinessLabel(key: string): string {
+  const labels: Record<string, string> = {
+    market_gate: "市场门控",
+    sector_rank: "板块强弱",
+    stock_pivot: "个股候选",
+    risk_exit: "风险退出",
+  };
+  return labels[key] ?? key;
+}
+
+function readinessStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    ready: "就绪",
+    partial: "部分就绪",
+    missing: "缺失",
+    stale: "陈旧",
+    blocked: "阻断",
+    degraded: "降级",
+  };
+  return labels[status] ?? statusLabel(status);
+}
+
+function formatApiCount(value: number | null | undefined, fallback = "待确认"): string {
+  return typeof value === "number" ? value.toLocaleString("zh-CN") : fallback;
+}
+
+function supportedOutputLabel(key: string): string {
+  const labels: Record<string, string> = {
+    market_gate: "market_gate",
+    sector_rank: "sector_rank",
+    stock_candidates: "stock_candidates",
+    mean_reversion_candidates: "mean_reversion_candidates",
+    factor_screen_candidates: "factor_screen_candidates",
+    theme_breakout: "theme_breakout",
+    hybrid_fusion: "hybrid_fusion",
+    risk_exit: "risk_exit",
+  };
+  return labels[key] ?? "输出待确认";
+}
+
 export default function StockAnalysisPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
   const [asOfOverride, setAsOfOverride] = useState<string | null>(null);
   const [detailSelection, setDetailSelection] = useState<StockDetailSelection | null>(null);
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
-  const [boundaryDiagnosticsOpen, setBoundaryDiagnosticsOpen] = useState(false);
-  const [expandedReviewEvidenceCodes, setExpandedReviewEvidenceCodes] = useState<Set<string>>(() => new Set());
   const [queueSearchText, setQueueSearchText] = useState("");
   const [completeEvidenceOnly, setCompleteEvidenceOnly] = useState(false);
+  const [boundaryDiagnosticsOpen, setBoundaryDiagnosticsOpen] = useState(false);
   const {
     sectorFilterSectorCode,
     sectorView,
@@ -351,11 +411,17 @@ export default function StockAnalysisPage() {
   const meanReversionPayload = strategyPayload?.mean_reversion_candidates;
   const meanReversionMarketActive = gateState === "WARM";
   const factorScreenPayload = strategyPayload?.factor_screen_candidates;
-  const factorScreenCoverageNote = factorScreenPayload?.coverage_note
-    ? localizeStockBackendText(factorScreenPayload.coverage_note, "factor_screen_candidates")
-    : null;
+  const factorScreenPrimaryExcluded = isStockModulePrimaryExcluded(strategyPayload, "factor_screen_candidates");
+  const primaryFactorScreenCandidateCount = factorScreenPrimaryExcluded ? 0 : (factorScreenPayload?.candidate_count ?? 0);
+  const factorScreenCoverageNote =
+    !factorScreenPrimaryExcluded && factorScreenPayload?.coverage_note
+      ? localizeStockBackendText(factorScreenPayload.coverage_note, "factor_screen_candidates")
+      : null;
   const hybridFusionPayload = strategyPayload?.hybrid_fusion_candidates;
-  const reviewQueueUsesHybridFusion = (hybridFusionPayload?.items?.length ?? 0) > 0;
+  const hybridFusionSupported = strategyPayload?.supported_outputs.includes("hybrid_fusion") ?? false;
+  const hybridFusionObservationCandidateCount = hybridFusionPayload?.candidate_count ?? 0;
+  const factorScreenObservationCandidateCount = factorScreenPayload?.candidate_count ?? 0;
+  const reviewQueueUsesHybridFusion = hybridFusionSupported && (hybridFusionPayload?.items?.length ?? 0) > 0;
   const cycleRotationFramework = strategyPayload?.cycle_rotation_framework;
   const cycleMacroLayerSummary = useMemo(
     () => (strategyPayload ? buildCycleMacroLayerSummary(strategyPayload) : null),
@@ -390,18 +456,6 @@ export default function StockAnalysisPage() {
 
   function scrollToStockSection(targetId: string) {
     document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  function toggleReviewEvidence(stockCode: string) {
-    setExpandedReviewEvidenceCodes((current) => {
-      const next = new Set(current);
-      if (next.has(stockCode)) {
-        next.delete(stockCode);
-      } else {
-        next.add(stockCode);
-      }
-      return next;
-    });
   }
 
   const themeBreakoutCards = useMemo(
@@ -480,7 +534,7 @@ export default function StockAnalysisPage() {
   const queueTotalCount = reviewQueue.length;
   const queueFiltersActive =
     normalizedQueueSearch.length > 0 || completeEvidenceOnly || sectorFilterSectorCode !== null;
-  const queueTablePageSize = 5;
+  const queueTablePageSize = 10;
   const queueTablePageStart = queueVisibleCount > 0 ? 1 : 0;
   const queueTablePageEnd = Math.min(queueTablePageSize, queueVisibleCount);
 
@@ -491,7 +545,6 @@ export default function StockAnalysisPage() {
   const {
     riskTriggeredCount,
     riskWatchCount,
-    railRiskTone,
     railNextActionFullLabel,
     railNextActionLabel,
   } = buildStockAnalysisRailReviewState({
@@ -501,27 +554,16 @@ export default function StockAnalysisPage() {
   });
 
   const riskExitUnsupported = strategyPayload?.unsupported_outputs.find((output) => output.key === "risk_exit");
+  const railRiskTone =
+    riskTriggeredCount > 0
+      ? "negative"
+      : riskWatchCount > 0 || riskExitUnsupported
+        ? "warning"
+        : "positive";
   const themeBreakoutUnsupported = strategyPayload?.unsupported_outputs.find((output) => output.key === "theme_breakout");
   const themeBreakoutBlockerCopy = buildThemeBreakoutBlockerCopy(themeBreakoutUnsupported);
   const themeBreakoutBlockerText = themeBreakoutBlockerCopy.text;
   const themeBreakoutBlockerLabel = themeBreakoutBlockerCopy.label;
-
-  const boundarySummary = useMemo(
-    () =>
-      strategyPayload
-        ? buildDataBoundarySummary(strategyPayload, {
-            quality_flag: strategyQuery.data?.result_meta?.quality_flag,
-            vendor_status: strategyQuery.data?.result_meta?.vendor_status,
-            fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
-          })
-        : null,
-    [
-      strategyPayload,
-      strategyQuery.data?.result_meta?.quality_flag,
-      strategyQuery.data?.result_meta?.vendor_status,
-      strategyQuery.data?.result_meta?.fallback_mode,
-    ],
-  );
 
   const eventMonitorRows = useMemo(
     () => (strategyPayload ? buildStockAnalysisEventMonitorRows(strategyPayload, confluencePayload) : []),
@@ -571,6 +613,23 @@ export default function StockAnalysisPage() {
     () =>
       strategyPayload ? buildClosedLoopSummary(strategyPayload, confluencePayload, closedLoopMeta) : null,
     [strategyPayload, confluencePayload, closedLoopMeta],
+  );
+
+  const boundarySummary = useMemo(
+    () =>
+      strategyPayload
+        ? buildDataBoundarySummary(strategyPayload, {
+            quality_flag: strategyQuery.data?.result_meta?.quality_flag,
+            vendor_status: strategyQuery.data?.result_meta?.vendor_status,
+            fallback_mode: strategyQuery.data?.result_meta?.fallback_mode,
+          })
+        : null,
+    [
+      strategyPayload,
+      strategyQuery.data?.result_meta?.quality_flag,
+      strategyQuery.data?.result_meta?.vendor_status,
+      strategyQuery.data?.result_meta?.fallback_mode,
+    ],
   );
 
   const dailyJudgmentStrip = useMemo(
@@ -933,15 +992,15 @@ export default function StockAnalysisPage() {
       buildObservationPoolsPanelSummary({
         gateState,
         meanReversionCount: meanReversionPayload?.candidate_count ?? 0,
-        factorScreenCount: factorScreenPayload?.candidate_count ?? 0,
-        hybridFusionCount: hybridFusionPayload?.candidate_count ?? 0,
+        factorScreenCount: factorScreenObservationCandidateCount,
+        hybridFusionCount: hybridFusionObservationCandidateCount,
         meanReversionActive: meanReversionMarketActive,
       }),
     [
       gateState,
       meanReversionPayload?.candidate_count,
-      factorScreenPayload?.candidate_count,
-      hybridFusionPayload?.candidate_count,
+      factorScreenObservationCandidateCount,
+      hybridFusionObservationCandidateCount,
       meanReversionMarketActive,
     ],
   );
@@ -1048,9 +1107,100 @@ export default function StockAnalysisPage() {
         : sourceGateTone === "neutral"
           ? "数据读取中"
           : "来源已核验";
-  const sourceGateDetailLabel = `${sourceVersionSummary} · ${resultMeta?.basis ?? strategyPayload?.basis ?? "analytical"} · 质量 ${stockSupplyQualityLabel(
+  const strategyBasisLabel = stockSupplyBasisLabel(strategyPayload?.basis ?? resultMeta?.basis);
+  const sourceGateDetailLabel = `${sourceVersionSummary} · ${strategyBasisLabel} · 质量 ${stockSupplyQualityLabel(
     resultMeta?.quality_flag,
   )} · 通道 ${stockSupplyVendorLabel(resultMeta?.vendor_status)} · ${stockSupplyFallbackLabel(resultMeta?.fallback_mode)}`;
+  const apiEvidenceItems = [
+    {
+      key: "tables",
+      label: "后端表",
+      value: resultMeta?.tables_used?.length ? `${resultMeta.tables_used.length} 张` : "待返回",
+      detail: resultMeta?.tables_used?.slice(0, 4).join(" / ") ?? "tables_used 待返回",
+    },
+    {
+      key: "evidence",
+      label: "证据行",
+      value:
+        typeof resultMeta?.evidence_rows === "number"
+          ? resultMeta.evidence_rows.toLocaleString("zh-CN")
+          : "待返回",
+      detail: "result_meta.evidence_rows",
+    },
+    {
+      key: "rule",
+      label: "规则版本",
+      value: compactText(resultMeta?.rule_version ?? "规则待返回", 24),
+      detail: resultMeta?.rule_version ?? "rule_version 待返回",
+    },
+    {
+      key: "trace",
+      label: "Trace",
+      value: compactText(resultMeta?.trace_id ?? "trace 待返回", 18),
+      detail: resultMeta?.trace_id ?? "trace_id 待返回",
+    },
+  ];
+  const apiAccurateReadinessItems = (strategyPayload?.rule_readiness ?? []).slice(0, 4).map((item) => {
+    const asOfDetail = `数据日 ${backendSupplyOverview?.asOfLabel ?? strategyPayload?.as_of_date ?? "待确认"}`;
+    const stockCandidateCount = strategyPayload?.stock_candidates?.candidate_count;
+    const stockInputCount = strategyPayload?.stock_candidates?.input_stock_count ?? factorScreenPayload?.input_stock_count;
+    const inputsLabel =
+      item.missing_inputs.length > 0 ? item.missing_inputs.slice(0, 3).map(dataGapFamilyLabel).join(" / ") : "输入就绪";
+    let metric = "数据待确认";
+    let detail = asOfDetail;
+
+    if (item.key === "market_gate") {
+      metric = `${backendSupplyOverview?.gateLabel ?? decisionSummary?.gateLabel ?? "门控待确认"} · ${
+        backendSupplyOverview?.conditionLabel ?? marketState?.passedLabel ?? "条件待确认"
+      }`;
+      detail = `${decisionSummary?.exposureLabel ?? "暴露待确认"} · ${asOfDetail}`;
+    } else if (item.key === "sector_rank") {
+      metric = `${formatApiCount(strategyPayload?.sector_rank?.sector_count ?? sectorRowsFull.length)} 个板块`;
+      detail =
+        sectorLeaderRow != null
+          ? `首位 ${sectorLeaderRow.sectorName} · ${asOfDetail}`
+          : `样本 ${formatApiCount(strategyPayload?.sector_rank?.items.length ?? sectorRowsFull.length)} · ${asOfDetail}`;
+    } else if (item.key === "stock_pivot") {
+      metric = `融合 ${formatApiCount(hybridFusionPayload?.candidate_count)} / 多因子 ${formatApiCount(
+        factorScreenPayload?.candidate_count,
+      )} / 趋势 ${formatApiCount(stockCandidateCount)}`;
+      detail = `输入 ${formatApiCount(stockInputCount)} · ${asOfDetail}`;
+    } else if (item.key === "risk_exit") {
+      metric = riskExitUnsupported
+        ? "退出规则 blocked"
+        : `触发 ${formatApiCount(strategyPayload?.risk_exit?.signal_count ?? riskTriggeredCount, "0")} / 观察 ${formatApiCount(
+            strategyPayload?.risk_exit?.watch_items?.length ?? riskWatchCount,
+            "0",
+          )}`;
+      detail = `持仓 ${formatApiCount(strategyPayload?.risk_exit?.position_count)} · ${asOfDetail}`;
+    }
+
+    return {
+      key: item.key,
+      label: readinessLabel(item.key),
+      status: item.status,
+      metric,
+      detail,
+      summary: localizeStockBackendText(item.summary, item.key),
+      missingInputs: item.missing_inputs.map(dataGapFamilyLabel),
+      inputsLabel,
+    };
+  });
+  const apiSupportedOutputs = strategyPayload?.supported_outputs ?? [];
+  const supportedOutputsLabel =
+    apiSupportedOutputs.length > 0
+      ? apiSupportedOutputs.slice(0, 3).map(supportedOutputLabel).join(" / ")
+      : "待返回";
+  const primaryGapLabel =
+    strategyPayload?.data_gaps
+      ?.filter((gap) => gap.status !== "ready")
+      .map((gap) => dataGapFamilyLabel(gap.input_family))
+      .slice(0, 3)
+      .join(" / ") || "无新增缺口";
+  const backendTableCount = resultMeta?.tables_used?.length ?? 0;
+  const dataGapCount = strategyPayload?.data_gaps?.filter((gap) => gap.status !== "ready").length ?? 0;
+  const supportedOutputCount = apiSupportedOutputs.length;
+  const unsupportedOutputCount = strategyPayload?.unsupported_outputs?.length ?? 0;
   const queueLeadCandidate = queueVisibleCandidates[0] ?? null;
   const queueLeadEvidenceCount = queueLeadCandidate
     ? queueLeadCandidate.primaryEvidence.length + queueLeadCandidate.supportingEvidence.length
@@ -1075,14 +1225,176 @@ export default function StockAnalysisPage() {
       : "数据已更新";
   const gateDecisionTone = stockGateDecisionTone(currentMarketState, boundaryRailIssueCount > 0);
   const gateContextTone = stockGateContextTone(gateDecisionTone);
+  const apiLedgerMetrics = [
+    {
+      label: "候选",
+      value: `${queueVisibleCount}/${queueTotalCount}`,
+      detail: `${queueVisibleCount}只候选进入只读复核队列`,
+    },
+    { label: "暴露", value: decisionSummary?.exposureLabel ?? "待确认" },
+    {
+      label: "条件",
+      value: backendSupplyOverview?.conditionLabel ?? marketState?.passedLabel ?? "待确认",
+      detail: `${backendSupplyOverview?.readinessLabel ?? "就绪待确认"} · ${
+        backendSupplyOverview?.supportedLabel ?? `可用 ${supportedOutputCount}`
+      } · ${backendSupplyOverview?.unsupportedLabel ?? `阻断 ${unsupportedOutputCount}`}`,
+    },
+  ];
+  const apiLedgerConditionCells: StockAnalysisLedgerCell[] = [
+    {
+      key: "gate",
+      label: "门控",
+      value: backendSupplyOverview?.gateLabel ?? decisionSummary?.gateLabel ?? "待确认",
+      detail: dailyJudgmentStrip?.gateChip ?? "门控待确认",
+      tone: gateContextTone,
+    },
+    {
+      key: "conditions",
+      label: "已通过条件",
+      value: backendSupplyOverview?.conditionLabel ?? marketState?.passedLabel ?? "待确认",
+      detail: `可用条件 ${strategyPayload?.market_gate.available_conditions ?? "待确认"}`,
+      tone: gateDecisionTone,
+    },
+    {
+      key: "outputs",
+      label: "支持输出",
+      value: `${supportedOutputCount}`,
+      detail: supportedOutputsLabel,
+      tone: supportedOutputCount > 0 ? "positive" : "warning",
+    },
+    {
+      key: "inputs",
+      label: "缺口",
+      value: `${dataGapCount}`,
+      detail: primaryGapLabel,
+      tone: dataGapCount > 0 ? "warning" : "positive",
+    },
+    {
+      key: "risk",
+      label: "风险退出",
+      value: riskExitUnsupported ? "blocked" : riskTriggeredCount > 0 ? `触发 ${riskTriggeredCount}` : "未触发",
+      detail: riskExitUnsupported ? "positions 等缺失" : riskWatchCount > 0 ? `观察 ${riskWatchCount}` : "边界待确认",
+      tone: riskExitUnsupported || riskTriggeredCount > 0 ? "negative" : riskWatchCount > 0 ? "warning" : "positive",
+    },
+    {
+      key: "evidence",
+      label: "证据行",
+      value:
+        typeof resultMeta?.evidence_rows === "number"
+          ? resultMeta.evidence_rows.toLocaleString("zh-CN")
+          : "待返回",
+      detail: "result_meta.evidence_rows",
+      tone: "neutral",
+    },
+  ];
+  const apiLedgerSourceCells = [
+    {
+      key: "tables",
+      label: "后端表",
+      value: backendTableCount > 0 ? `${backendTableCount} 张` : "待返回",
+      detail: resultMeta?.tables_used?.slice(0, 4).join(" / ") ?? "tables_used 待返回",
+    },
+    {
+      key: "evidence",
+      label: "证据行",
+      value:
+        typeof resultMeta?.evidence_rows === "number"
+          ? resultMeta.evidence_rows.toLocaleString("zh-CN")
+          : "待返回",
+      detail: `质量 ${stockSupplyQualityLabel(resultMeta?.quality_flag)} / 通道 ${stockSupplyVendorLabel(
+        resultMeta?.vendor_status,
+      )} / ${stockSupplyFallbackLabel(resultMeta?.fallback_mode)}`,
+    },
+    {
+      key: "rule",
+      label: "规则版本",
+      value: compactText(resultMeta?.rule_version ?? "规则待返回", 24),
+      detail: resultMeta?.rule_version ?? "rule_version 待返回",
+    },
+    {
+      key: "trace",
+      label: "Trace",
+      value: compactText(resultMeta?.trace_id ?? "trace 待返回", 18),
+      detail: resultMeta?.trace_id ?? "trace_id 待返回",
+    },
+  ];
+  const apiLedgerRailRows = [
+    {
+      label: "结论",
+      value: `${stockWorkbenchStatus.label}，${queueGateStatusLabel}`,
+    },
+    {
+      label: "关键证据",
+      value: `证据 ${queueLeadEvidenceCount}，边界缺口 ${queueLeadBoundaryCount}`,
+    },
+    {
+      label: "可用输出",
+      value: supportedOutputsLabel,
+    },
+    {
+      label: "主要缺口",
+      value: primaryGapLabel,
+    },
+    {
+      label: "下一步",
+      value: queueNextActionLabel,
+      detail: riskExitUnsupported ? "风险退出 blocked" : queueNextActionFullLabel,
+    },
+  ];
+  const apiDecisionSupplementItems = [
+    {
+      label: "队列",
+      value: "今日复核队列",
+      detail: `${queueVisibleCount}/${queueTotalCount}`,
+    },
+    {
+      label: "首位",
+      value: queueLeadCandidate?.stockName ?? "待补",
+      detail: `${queueVisibleCount}/${queueTotalCount} · ${queueVisibleCount}只候选进入只读复核队列`,
+    },
+    {
+      label: "供数",
+      value: backendSupplyOverview?.readinessLabel ?? "就绪待确认",
+      detail: `${backendSupplyOverview?.supportedLabel ?? `可用 ${supportedOutputCount}`} · ${
+        backendSupplyOverview?.unsupportedLabel ?? `阻断 ${unsupportedOutputCount}`
+      }`,
+    },
+    {
+      label: "边界",
+      value: backendSupplyOverview?.dataGapLabel ?? `缺口 ${dataGapCount}`,
+      detail: primaryGapLabel,
+    },
+    {
+      label: "闭环",
+      value: "供数闭环",
+      detail: closedLoopSummary?.referenceRating.label ?? "待确认",
+    },
+  ];
+  const apiSupplyStatusRows = [
+    ...(backendSupplyOverview?.readinessRows ?? []).map((item) => ({
+      key: item.key,
+      label: cycleInputLabel(item.key) || item.title,
+      value: statusLabel(item.status),
+      tone: readinessTone(item.status),
+    })),
+    ...(backendSupplyOverview?.dataGapRows ?? [])
+      .filter((item) => dataGapFamilyLabel(item.input_family) !== "输入待确认")
+      .slice(0, 3)
+      .map((item) => ({
+        key: `gap:${item.input_family}`,
+        label: dataGapFamilyLabel(item.input_family),
+        value: statusLabel(item.status),
+        tone: gapTone(item.status),
+      })),
+  ];
   const queueReportHeadline = queueLeadCandidate
-    ? `${queueVisibleCount}只候选进入只读复核队列；首位 ${queueLeadCandidate.stockName}，${queueGateStatusLabel}。`
+    ? `${queueGateStatusLabel}下的 ${queueVisibleCount} 个观察候选；风险退出${riskExitUnsupported ? "仍为 blocked" : "未触发"}。`
     : queueFiltersActive && queueTotalCount > 0
       ? "筛选后暂无候选；请调整行业、搜索或证据条件。"
       : "复核队列暂无候选；等待证据闭环。";
   const queueReportLead = queueFiltersActive
     ? `当前显示 ${queueVisibleCount} / ${queueTotalCount} 个候选；排名、证据、边界和复核入口集中在同一张表内。`
-    : "排名、证据、边界和复核入口集中在同一张表内。";
+    : "候选来自 hybrid_fusion / factor_screen；当前页面只做复核与证据追踪，不表达交易建议。";
   const decisionMemoTiles = [
     {
       key: "gate",
@@ -1265,6 +1577,7 @@ export default function StockAnalysisPage() {
               <div
                 className={`${SA_SHELL_LAYOUT} stock-analysis-page__first-screen stock-analysis-page__uses-home-shell`}
                 data-testid="stock-analysis-first-screen-workbench"
+                data-design-target="product-design-option-1"
               >
                 <main
                   className={`${SA_SHELL_MAIN} stock-analysis-page__first-screen-main`}
@@ -1279,6 +1592,79 @@ export default function StockAnalysisPage() {
                     数据陈旧、供数异常或使用回退快照。下方结论仅供复核参考。
                   </div>
                 ) : null}
+                <StockAnalysisReviewLedgerFirstScreen
+                  asOfLabel={decisionSummary?.asOfLabel ?? "待确认"}
+                  requestedAsOfLabel={backendSupplyOverview?.requestedAsOfLabel}
+                  kicker="今日复核队列"
+                  headline={queueReportHeadline}
+                  lead={queueReportLead}
+                  metrics={apiLedgerMetrics}
+                  conditionCells={apiLedgerConditionCells}
+                  sourceCells={apiLedgerSourceCells}
+                  railRows={apiLedgerRailRows}
+                  pagePurposeText={
+                    pagePurpose
+                      ? `${pagePurpose.eyebrow} ${pagePurpose.title} ${pagePurpose.asOfLine} ${pagePurpose.dataStatusLine}`
+                      : undefined
+                  }
+                  supplementItems={apiDecisionSupplementItems}
+                  decisionMemoTiles={decisionMemoTiles}
+                  supplyStatusRows={apiSupplyStatusRows}
+                  sourceGateTone={sourceGateTone}
+                  sourceGateLabel={sourceGateStatusLabel}
+                  sourceGateDetail={sourceGateDetailLabel}
+                  sourceVersion={sourceVersion}
+                  railContent={
+                    <StockAnalysisEvidenceLedgerRail
+                      asOfLabel={decisionSummary?.asOfLabel ?? analyticsAsOf ?? "—"}
+                      statusLabel={stockWorkbenchStatus.label}
+                      gateStatusLabel={queueGateStatusLabel}
+                      evidenceCount={queueLeadEvidenceCount}
+                      boundaryCount={queueLeadBoundaryCount}
+                      availableOutputsLabel={supportedOutputsLabel}
+                      primaryGapLabel={primaryGapLabel}
+                      leadCandidateName={queueLeadCandidate?.stockName}
+                      boundaryIssueCount={boundaryRailIssueCount}
+                      sourceVersionSummary={sourceVersionSummary}
+                      basisLabel={strategyBasisLabel}
+                      qualityLabel={backendSupplyOverview?.qualityLabel ?? "正常"}
+                      updatedAtLabel={backendSupplyOverview?.asOfLabel ?? decisionSummary?.asOfLabel ?? analyticsAsOf ?? "—"}
+                      diagnosticsOpen={boundaryDiagnosticsOpen}
+                      onOpenDiagnostics={() => setBoundaryDiagnosticsOpen(true)}
+                      onCloseDiagnostics={() => setBoundaryDiagnosticsOpen(false)}
+                      closedLoopSummary={closedLoopSummary}
+                      railRiskTone={railRiskTone}
+                      riskTriggeredCount={riskTriggeredCount}
+                      riskWatchCount={riskWatchCount}
+                      reviewQueueCount={queueVisibleCount}
+                      nextActionLabel={queueNextActionLabel}
+                      nextActionFullLabel={queueNextActionFullLabel}
+                      riskRows={riskRows}
+                      confluenceError={confluenceQuery.isError}
+                      riskExitUnsupported={riskExitUnsupported}
+                      onOpenRiskDetail={(row) => {
+                        const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stockCode);
+                        setDetailSelection(buildRiskExitDetailSelection({ row, ranks }));
+                      }}
+                      boundaryItems={boundaryRailItems}
+                      boundarySummary={boundarySummary}
+                      strategyPayload={strategyPayload}
+                    />
+                  }
+                />
+                {false ? (() => {
+                  if (
+                    !pagePurpose ||
+                    !decisionSummary ||
+                    !backendSupplyOverview ||
+                    !dailyJudgmentStrip ||
+                    !marketState ||
+                    !closedLoopSummary
+                  ) {
+                    return null;
+                  }
+
+                  return (
                 <section
                   data-testid="stock-analysis-tailwind-cockpit"
                   className={SA_FIRST_HERO}
@@ -1290,12 +1676,12 @@ export default function StockAnalysisPage() {
                       data-testid="stock-analysis-page-purpose"
                     >
                       <div className="stock-analysis-page__dh-purpose-main">
-                        <span className="stock-analysis-page__dh-purpose-eyebrow">{pagePurpose.eyebrow}</span>
-                        <h2 className="stock-analysis-page__dh-purpose-title">{pagePurpose.title}</h2>
+                        <span className="stock-analysis-page__dh-purpose-eyebrow">{pagePurpose!.eyebrow}</span>
+                        <h2 className="stock-analysis-page__dh-purpose-title">{pagePurpose!.title}</h2>
                       </div>
                       <div className="stock-analysis-page__dh-purpose-status" aria-label="页面状态">
-                        <span>{pagePurpose.asOfLine}</span>
-                        <span>{pagePurpose.dataStatusLine}</span>
+                        <span>{pagePurpose!.asOfLine}</span>
+                        <span>{pagePurpose!.dataStatusLine}</span>
                       </div>
                     </div>
                   ) : null}
@@ -1356,6 +1742,19 @@ export default function StockAnalysisPage() {
                       <strong>{sourceGateStatusLabel}</strong>
                       <small>{sourceGateDetailLabel}</small>
                     </div>
+                    <div
+                      className="stock-analysis-page__api-evidence-strip"
+                      data-testid="stock-analysis-api-evidence-strip"
+                      aria-label="真实后端 API 证据"
+                    >
+                      {apiEvidenceItems.map((item) => (
+                        <div key={item.key} title={`${item.label}: ${item.detail}`}>
+                          <span>{item.label}</span>
+                          <strong>{item.value}</strong>
+                          <small>{item.detail}</small>
+                        </div>
+                      ))}
+                    </div>
                     <div className="stock-analysis-page__dh-hero-row">
                       <div className="stock-analysis-page__dh-hero-main">
                         <div className="stock-analysis-page__dh-hero-meta-row">
@@ -1363,12 +1762,12 @@ export default function StockAnalysisPage() {
                           <span className="stock-analysis-page__dh-hero-meta">
                             观察日{" "}
                             <strong className="stock-analysis-page__tabular">
-                              {decisionSummary.asOfLabel}
+                              {decisionSummary!.asOfLabel}
                             </strong>
                           </span>
                           {backendSupplyOverview ? (
                             <span className="stock-analysis-page__dh-hero-meta">
-                              数据日 {backendSupplyOverview.asOfLabel}
+                              数据日 {backendSupplyOverview!.asOfLabel}
                             </span>
                           ) : null}
                         </div>
@@ -1376,7 +1775,7 @@ export default function StockAnalysisPage() {
                           {backendSupplyOverview?.gateLabel ??
                             `门控 ${localizeMarketDataStatus(strategyPayload?.market_gate.state)}`}
                           {" · "}
-                          {decisionSummary.exposureLabel}
+                          {decisionSummary!.exposureLabel}
                         </h1>
                         <div
                           className="stock-analysis-page__dh-hero-actions"
@@ -1398,7 +1797,7 @@ export default function StockAnalysisPage() {
                                 <StockOutlined aria-hidden="true" /> 复核 {queueVisibleCount}
                               </span>
                               <span className="stock-analysis-page__dh-hero-chip">
-                                <DatabaseOutlined aria-hidden="true" /> 多因子 {factorScreenPayload?.candidate_count ?? 0}
+                                <DatabaseOutlined aria-hidden="true" /> 多因子 {primaryFactorScreenCandidateCount}
                               </span>
                               <span className="stock-analysis-page__dh-hero-chip">
                                 <ThunderboltOutlined aria-hidden="true" /> 共振 {consensusHitCount}
@@ -1408,12 +1807,12 @@ export default function StockAnalysisPage() {
                         </div>
                         <div className="stock-analysis-page__dh-hero-status-strip" aria-label="市场门控状态">
                           {[
-                            dailyJudgmentStrip.gateChip,
-                            dailyJudgmentStrip.exposureChip,
+                            dailyJudgmentStrip!.gateChip,
+                            dailyJudgmentStrip!.exposureChip,
                             strongestSectorChip,
                             weakestSectorChip,
-                            decisionSummary.dataFreshnessLabel,
-                            decisionSummary.boundaryLabel,
+                            decisionSummary!.dataFreshnessLabel,
+                            decisionSummary!.boundaryLabel,
                           ].map((label) => (
                             <span key={label}>{label}</span>
                           ))}
@@ -1423,12 +1822,12 @@ export default function StockAnalysisPage() {
                         <span>
                           <SafetyCertificateOutlined aria-hidden="true" />
                           <small>门控</small>
-                          <strong>{backendSupplyOverview?.conditionLabel ?? marketState.passedLabel}</strong>
+                          <strong>{backendSupplyOverview?.conditionLabel ?? marketState!.passedLabel}</strong>
                         </span>
                         <span>
                           <DatabaseOutlined aria-hidden="true" />
                           <small>边界</small>
-                          <strong>{backendSupplyOverview?.dataGapLabel ?? decisionSummary.boundaryLabel}</strong>
+                          <strong>{backendSupplyOverview?.dataGapLabel ?? decisionSummary!.boundaryLabel}</strong>
                         </span>
                         <span>
                           <LineChartOutlined aria-hidden="true" />
@@ -1474,13 +1873,13 @@ export default function StockAnalysisPage() {
                     <div className="stock-analysis-page__visually-hidden" aria-hidden="true">
                       {backendSupplyOverview
                         ? [
-                            backendSupplyOverview.gateLabel,
-                            backendSupplyOverview.exposureLabel,
-                            backendSupplyOverview.readinessLabel,
-                            backendSupplyOverview.dataGapLabel,
-                            backendSupplyOverview.supportedLabel,
-                            backendSupplyOverview.unsupportedLabel,
-                            backendSupplyOverview.qualityLabel,
+                            backendSupplyOverview!.gateLabel,
+                            backendSupplyOverview!.exposureLabel,
+                            backendSupplyOverview!.readinessLabel,
+                            backendSupplyOverview!.dataGapLabel,
+                            backendSupplyOverview!.supportedLabel,
+                            backendSupplyOverview!.unsupportedLabel,
+                            backendSupplyOverview!.qualityLabel,
                           ].join(" ")
                         : null}
                     </div>
@@ -1494,7 +1893,7 @@ export default function StockAnalysisPage() {
                         <span>供数闭环</span>
                         {closedLoopSummary ? (
                           <strong className="stock-analysis-page__dh-pill">
-                            {closedLoopSummary.referenceRating.label}
+                            {closedLoopSummary!.referenceRating.label}
                           </strong>
                         ) : null}
                       </div>
@@ -1510,7 +1909,7 @@ export default function StockAnalysisPage() {
                             </span>
                           </div>
                           <div className="stock-analysis-page__readiness-rows">
-                            {backendSupplyOverview.readinessRows.map((item) => (
+                            {backendSupplyOverview!.readinessRows.map((item) => (
                               <div
                                 className="stock-analysis-page__readiness-row"
                                 data-tone={readinessTone(item.status)}
@@ -1527,7 +1926,7 @@ export default function StockAnalysisPage() {
                                 </strong>
                               </div>
                             ))}
-                            {backendSupplyOverview.dataGapRows.slice(0, 3).map((item) => (
+                            {backendSupplyOverview!.dataGapRows.slice(0, 3).map((item) => (
                               <div
                                 className="stock-analysis-page__readiness-row"
                                 data-tone={gapTone(item.status)}
@@ -1550,22 +1949,22 @@ export default function StockAnalysisPage() {
                       <div className="stock-analysis-page__supply-meta-grid">
                         <div
                           className="stock-analysis-page__supply-meta-cell"
-                          title={`数据日期 ${backendSupplyOverview?.asOfLabel ?? decisionSummary.asOfLabel}`}
+                          title={`数据日期 ${backendSupplyOverview?.asOfLabel ?? decisionSummary!.asOfLabel}`}
                         >
                           <StatusIcon>{DECISION_GRID_ICONS[0]}</StatusIcon>
                           <span className="stock-analysis-page__supply-meta-label">数据日期</span>
                           <strong className="stock-analysis-page__tabular stock-analysis-page__supply-meta-value">
-                            {backendSupplyOverview?.asOfLabel ?? decisionSummary.asOfLabel}
+                            {backendSupplyOverview?.asOfLabel ?? decisionSummary!.asOfLabel}
                           </strong>
                         </div>
                         <div
                           className="stock-analysis-page__supply-meta-cell"
-                          title={`口径 ${backendSupplyOverview?.basisLabel ?? decisionSummary.basisLabel}`}
+                          title={`口径 ${backendSupplyOverview?.basisLabel ?? decisionSummary!.basisLabel}`}
                         >
                           <StatusIcon>{DECISION_GRID_ICONS[1]}</StatusIcon>
                           <span className="stock-analysis-page__supply-meta-label">口径</span>
                           <strong className="stock-analysis-page__supply-meta-value stock-analysis-page__supply-meta-value--break">
-                            {backendSupplyOverview?.basisLabel ?? decisionSummary.basisLabel}
+                            {backendSupplyOverview?.basisLabel ?? decisionSummary!.basisLabel}
                           </strong>
                         </div>
                         <div
@@ -1580,20 +1979,22 @@ export default function StockAnalysisPage() {
                         </div>
                         <div
                           className="stock-analysis-page__supply-meta-cell"
-                          title={`门控确认 ${backendSupplyOverview?.conditionLabel ?? marketState.passedLabel}`}
+                          title={`门控确认 ${backendSupplyOverview?.conditionLabel ?? marketState!.passedLabel}`}
                         >
                           <StatusIcon>{DECISION_GRID_ICONS[3]}</StatusIcon>
                           <span className="stock-analysis-page__supply-meta-label">门控确认</span>
                           <strong className="stock-analysis-page__supply-meta-value stock-analysis-page__supply-meta-value--break">
-                            {backendSupplyOverview?.conditionLabel ?? marketState.passedLabel}
+                            {backendSupplyOverview?.conditionLabel ?? marketState!.passedLabel}
                           </strong>
                         </div>
                       </div>
                     </div>
                   </div>
                 </section>
+                  );
+                })() : null}
 
-                {decisionKpiStrip.length > 0 ? (
+                {false && decisionKpiStrip.length > 0 ? (
                   <section data-testid="stock-analysis-kpi-section" aria-label="选股快照">
                     <p className="stock-analysis-page__visually-hidden">选股快照</p>
                     <div
@@ -1657,7 +2058,7 @@ export default function StockAnalysisPage() {
                       <CompactStatusTile
                         icon={<DatabaseOutlined />}
                         label="多因子"
-                        value={factorScreenPayload?.candidate_count ?? 0}
+                        value={primaryFactorScreenCandidateCount}
                         className="stock-analysis-page__compact-status-tile--surface"
                       />
                       <CompactStatusTile
@@ -1678,6 +2079,23 @@ export default function StockAnalysisPage() {
                   />
                 ) : (
                   <>
+                  <StockAnalysisCandidateLedgerTable
+                    candidates={queueVisibleCandidates}
+                    usesHybridFusion={reviewQueueUsesHybridFusion}
+                    selectedSectorCode={sectorFilterSectorCode}
+                    visibleCount={10}
+                    onReviewCandidate={(card) => {
+                      const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
+                      setDetailSelection(
+                        buildReviewQueueDetailSelection({
+                          card,
+                          ranks,
+                          reviewQueueUsesHybridFusion,
+                        }),
+                      );
+                    }}
+                  />
+                  {false ? (
                   <div className="stock-analysis-page__review-table-wrap">
                     <table
                       className="stock-analysis-page__table stock-analysis-page__review-queue-table"
@@ -1688,27 +2106,29 @@ export default function StockAnalysisPage() {
                           <th scope="col">排名</th>
                           <th scope="col">股票</th>
                           <th scope="col">行业</th>
-                          <th scope="col">信号路径</th>
-                          <th scope="col">证据</th>
-                          <th scope="col">边界</th>
-                          <th scope="col">复核关注</th>
-                          <th scope="col">状态</th>
-                          <th scope="col">操作</th>
+                          {reviewQueueUsesHybridFusion ? (
+                            <>
+                              <th scope="col">Fusion</th>
+                              <th scope="col">Cycle</th>
+                              <th scope="col">Lifecourt</th>
+                              <th scope="col">Confidence</th>
+                              <th scope="col">Action</th>
+                            </>
+                          ) : (
+                            <>
+                              <th scope="col">形态</th>
+                              <th scope="col">距观察</th>
+                              <th scope="col">证据</th>
+                              <th scope="col">边界</th>
+                              <th scope="col">失效</th>
+                            </>
+                          )}
+                          <th scope="col">复核</th>
                         </tr>
                       </thead>
                       <tbody>
                         {queueVisibleCandidates.map((card) => {
                           const evidenceCount = card.primaryEvidence.length + card.supportingEvidence.length;
-                          const hiddenEvidenceCount = Math.max(evidenceCount - 4, 0);
-                          const allEvidence = [...card.primaryEvidence, ...card.supportingEvidence];
-                          const visibleEvidence = allEvidence.slice(0, 4);
-                          const firstEvidence = visibleEvidence[0] ?? null;
-                          const visibleEvidenceSummary = visibleEvidence
-                            .map((item, index) =>
-                              index === 0 ? `${item.label} ${compactText(item.value, 18)}` : item.label,
-                            )
-                            .join(" / ");
-                          const evidenceExpanded = expandedReviewEvidenceCodes.has(card.stockCode);
                           const rowStatus =
                             card.boundaryEvidence.length > 0
                               ? { label: "边界待补", tone: "warning" as const }
@@ -1717,6 +2137,22 @@ export default function StockAnalysisPage() {
                                 : evidenceCount > 0
                                   ? { label: "证据不全", tone: "warning" as const }
                                   : { label: "待补", tone: "neutral" as const };
+                          const fusionScore = reviewQueueUsesHybridFusion
+                            ? candidateEvidenceValue(card, "fusion_score")
+                            : null;
+                          const cycleScore = reviewQueueUsesHybridFusion
+                            ? candidateEvidenceValue(card, "cycle_score")
+                            : null;
+                          const lifecourtScore = reviewQueueUsesHybridFusion
+                            ? candidateEvidenceValue(card, "lifecourt_proxy_score")
+                            : null;
+                          const confidenceLabel = reviewQueueUsesHybridFusion
+                            ? candidateEvidenceValue(card, "confidence")
+                            : null;
+                          const fusionAction = reviewQueueUsesHybridFusion
+                            ? candidateEvidenceValue(card, "fusion_action")
+                            : null;
+                          const primaryEvidencePreview = card.primaryEvidence[0] ?? card.supportingEvidence[0];
                           const openReviewDetail = () => {
                             const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
                             setDetailSelection(
@@ -1748,65 +2184,63 @@ export default function StockAnalysisPage() {
                                 <strong>{card.sectorName}</strong>
                                 <small className="stock-analysis-page__tabular">{card.sectorCode}</small>
                               </td>
-                              <td>
-                                <strong>{card.headline}</strong>
-                                <small title={card.patternNote}>{compactText(card.patternNote, 28)}</small>
-                              </td>
-                              <td>
-                                <strong>{evidenceCount} 证据</strong>
-                                <small title={firstEvidence ? `${firstEvidence.label}: ${firstEvidence.value}` : "证据待补"}>
-                                  {firstEvidence ? visibleEvidenceSummary : "证据待补"}
-                                </small>
-                                <button
-                                  type="button"
-                                  className="stock-analysis-page__review-evidence-toggle"
-                                  aria-expanded={evidenceExpanded}
-                                  onClick={() => toggleReviewEvidence(card.stockCode)}
-                                >
-                                  <span>证据明细</span>
-                                  {hiddenEvidenceCount > 0 ? <b>+{hiddenEvidenceCount} 证据</b> : null}
-                                </button>
-                                {evidenceExpanded ? (
-                                  <div className="stock-analysis-page__review-evidence-ledger">
-                                    <strong>进入依据</strong>
-                                    <ul>
-                                      {allEvidence.map((item) => (
-                                        <li key={item.key}>
-                                          <span>{item.label}</span>
-                                          <small>{item.value}</small>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                    <strong>边界待补</strong>
-                                    <ul>
-                                      {card.boundaryEvidence.map((item) => (
-                                        <li key={item}>{item}</li>
-                                      ))}
-                                    </ul>
-                                    <strong>失效条件</strong>
-                                    <p>{card.invalidationFocus}</p>
-                                  </div>
-                                ) : null}
-                              </td>
-                              <td>
-                                <strong>边界 {card.boundaryEvidence.length}</strong>
-                                <small>待补边界 {card.boundaryEvidence.length}</small>
-                              </td>
-                              <td>
-                                <strong>{card.reviewFocus}</strong>
-                                <small title={card.invalidationFocus}>
-                                  失效 {compactText(card.invalidationFocus, 24)}
-                                </small>
-                              </td>
-                              <td>
-                                <span
-                                  className="stock-analysis-page__review-row-status"
-                                  data-tone={rowStatus.tone}
-                                  title={rowStatus.label}
-                                >
-                                  {rowStatus.label}
-                                </span>
-                              </td>
+                              {reviewQueueUsesHybridFusion ? (
+                                <>
+                                  <td data-mobile-label="Fusion">
+                                    <strong className="stock-analysis-page__tabular">{fusionScore}</strong>
+                                    <small title={card.headline}>{compactText(card.headline, 28)}</small>
+                                  </td>
+                                  <td data-mobile-label="Cycle">
+                                    <strong className="stock-analysis-page__tabular">{cycleScore}</strong>
+                                    <small>{evidenceCount} 证据</small>
+                                  </td>
+                                  <td data-mobile-label="Lifecourt">
+                                    <strong className="stock-analysis-page__tabular">{lifecourtScore}</strong>
+                                    <small>边界 {card.boundaryEvidence.length}</small>
+                                  </td>
+                                  <td data-mobile-label="Confidence">
+                                    <span
+                                      className="stock-analysis-page__review-row-status"
+                                      data-tone={confidenceTone(confidenceLabel ?? "待补")}
+                                      title={confidenceLabel ?? "待补"}
+                                    >
+                                      {confidenceLabel ?? "待补"}
+                                    </span>
+                                  </td>
+                                  <td data-mobile-label="Action">
+                                    <strong>{fusionAction}</strong>
+                                    <small title={card.invalidationFocus}>{compactText(card.invalidationFocus, 24)}</small>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td data-mobile-label="形态">
+                                    <strong>{card.pattern}</strong>
+                                    <small title={card.patternNote}>{compactText(card.patternNote, 28)}</small>
+                                  </td>
+                                  <td data-mobile-label="距观察">
+                                    <strong className="stock-analysis-page__tabular">{card.distanceToBreakoutPct}</strong>
+                                    <small title={card.headline}>{compactText(card.headline, 28)}</small>
+                                  </td>
+                                  <td data-mobile-label="证据">
+                                    <strong>{evidenceCount} 证据</strong>
+                                    <small title={primaryEvidencePreview?.value}>
+                                      {primaryEvidencePreview
+                                        ? `${primaryEvidencePreview.label}：${compactText(primaryEvidencePreview.value, 24)}`
+                                        : "证据待补"}
+                                    </small>
+                                  </td>
+                                  <td data-mobile-label="边界">
+                                    <span className="stock-analysis-page__review-row-status" data-tone={rowStatus.tone}>
+                                      {card.boundaryEvidence.length > 0 ? `边界 ${card.boundaryEvidence.length}` : "边界清洁"}
+                                    </span>
+                                  </td>
+                                  <td data-mobile-label="失效">
+                                    <strong>失效</strong>
+                                    <small title={card.invalidationFocus}>{compactText(card.invalidationFocus, 24)}</small>
+                                  </td>
+                                </>
+                              )}
                               <td>
                                 <Button
                                   type="default"
@@ -1818,6 +2252,7 @@ export default function StockAnalysisPage() {
                                 >
                                   <span className="sr-only">复核 </span>K 线
                                 </Button>
+                                <small title={rowStatus.label}>{rowStatus.label}</small>
                               </td>
                             </tr>
                           );
@@ -1825,6 +2260,7 @@ export default function StockAnalysisPage() {
                       </tbody>
                     </table>
                   </div>
+                  ) : null}
                   <div
                     className="stock-analysis-page__review-table-footer"
                     data-testid="stock-analysis-review-queue-table-footer"
@@ -1924,45 +2360,68 @@ export default function StockAnalysisPage() {
                     <small>{sectorLinkFocus}</small>
                   </div>
                 ) : null}
+                {false && apiAccurateReadinessItems.length > 0 ? (
+                  <div
+                    className="stock-analysis-page__api-readiness-strip"
+                    data-testid="stock-analysis-api-readiness-strip"
+                    aria-label="API readiness boundary"
+                  >
+                    {apiAccurateReadinessItems.map((item) => (
+                      <div key={item.key} data-status={item.status}>
+                        <h3>
+                          <span>{item.label}</span>
+                          <b>{readinessStatusLabel(item.status)}</b>
+                        </h3>
+                        <p title={item.summary}>{compactText(item.summary, 94)}</p>
+                        <small>
+                          {item.missingInputs.length > 0 ? item.missingInputs.slice(0, 3).join(" / ") : "输入就绪"}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </section>
                 </div>
 
                 </main>
 
-                <StockAnalysisEvidenceLedgerRail
-                  asOfLabel={decisionSummary?.asOfLabel ?? analyticsAsOf ?? "—"}
-                  statusLabel={stockWorkbenchStatus.label}
-                  gateStatusLabel={queueGateStatusLabel}
-                  evidenceCount={queueLeadEvidenceCount}
-                  boundaryCount={queueLeadBoundaryCount}
-                  leadCandidateName={queueLeadCandidate?.stockName}
-                  boundaryIssueCount={boundaryRailIssueCount}
-                  sourceVersionSummary={sourceVersionSummary}
-                  basisLabel={strategyQuery.data?.result_meta?.basis ?? "analytical"}
-                  qualityLabel={backendSupplyOverview?.qualityLabel ?? "正常"}
-                  updatedAtLabel={backendSupplyOverview?.asOfLabel ?? decisionSummary?.asOfLabel ?? analyticsAsOf ?? "—"}
-                  diagnosticsOpen={boundaryDiagnosticsOpen}
-                  onOpenDiagnostics={() => setBoundaryDiagnosticsOpen(true)}
-                  onCloseDiagnostics={() => setBoundaryDiagnosticsOpen(false)}
-                  closedLoopSummary={closedLoopSummary}
-                  railRiskTone={railRiskTone}
-                  riskTriggeredCount={riskTriggeredCount}
-                  riskWatchCount={riskWatchCount}
-                  reviewQueueCount={queueVisibleCount}
-                  nextActionLabel={queueNextActionLabel}
-                  nextActionFullLabel={queueNextActionFullLabel}
-                  riskRows={riskRows}
-                  confluenceError={confluenceQuery.isError}
-                  riskExitUnsupported={riskExitUnsupported}
-                  onOpenRiskDetail={(row) => {
-                    const ranks = lookupStockStrategyRanks(strategyPayload ?? null, row.stockCode);
-                    setDetailSelection(buildRiskExitDetailSelection({ row, ranks }));
-                  }}
-                  boundaryItems={boundaryRailItems}
-                  boundarySummary={boundarySummary}
-                  strategyPayload={strategyPayload}
-                />
               </div>
+            ) : null}
+
+            {apiAccurateReadinessItems.length > 0 ? (
+              <section
+                className="stock-analysis-page__api-readiness-section"
+                aria-label="规则准备度与数据缺口"
+              >
+                <div className={SA_SECTION_HEAD}>
+                  <div className="stock-analysis-page__min-w-0">
+                    <p className={SA_SECTION_EYEBROW}>真实 API 边界</p>
+                    <h2 className={SA_CARD_TITLE}>规则准备度与数据缺口</h2>
+                  </div>
+                </div>
+                <div
+                  className="stock-analysis-page__api-readiness-strip"
+                  data-testid="stock-analysis-api-readiness-strip"
+                  aria-label="API readiness boundary"
+                >
+                  {apiAccurateReadinessItems.map((item) => (
+                    <div key={item.key} data-status={item.status}>
+                      <h3>
+                        <span>{item.label}</span>
+                        <b>{readinessStatusLabel(item.status)}</b>
+                      </h3>
+                      <strong className="stock-analysis-page__api-readiness-metric" title={item.metric}>
+                        {item.metric}
+                      </strong>
+                      <p title={item.summary}>{compactText(item.summary, 94)}</p>
+                      <small title={`${item.inputsLabel} · ${item.detail}`}>
+                        <span>{item.inputsLabel}</span>
+                        <em>{item.detail}</em>
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              </section>
             ) : null}
 
             <AnalysisGrid columns={2} className="stock-analysis-page__workspace">

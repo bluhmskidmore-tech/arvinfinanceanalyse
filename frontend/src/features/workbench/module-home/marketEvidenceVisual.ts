@@ -242,12 +242,13 @@ export function parseMacroSignalValue(value: string): { stance: string; score?: 
 }
 
 export function formatMacroSignalEvidence(evidence: readonly string[] | string): string {
-  const lines = Array.isArray(evidence)
-    ? evidence
-    : evidence
-        .split(" · ")
-        .map((part) => part.trim())
-        .filter(Boolean);
+  const lines =
+    typeof evidence === "string"
+      ? evidence
+          .split(" · ")
+          .map((part) => part.trim())
+          .filter(Boolean)
+      : evidence;
 
   return lines
     .map((line) => line.trim())

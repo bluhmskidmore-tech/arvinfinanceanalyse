@@ -20,6 +20,8 @@ type StockAnalysisEvidenceLedgerRailProps = {
   gateStatusLabel: string;
   evidenceCount: number;
   boundaryCount: number;
+  availableOutputsLabel: string;
+  primaryGapLabel: string;
   leadCandidateName?: string | null;
   boundaryIssueCount: number;
   sourceVersionSummary: string;
@@ -51,6 +53,8 @@ export function StockAnalysisEvidenceLedgerRail({
   gateStatusLabel,
   evidenceCount,
   boundaryCount,
+  availableOutputsLabel,
+  primaryGapLabel,
   leadCandidateName,
   boundaryIssueCount,
   sourceVersionSummary,
@@ -95,16 +99,24 @@ export function StockAnalysisEvidenceLedgerRail({
             <dd>{`${statusLabel}，${gateStatusLabel}`}</dd>
           </div>
           <div>
-            <dt>依据</dt>
+            <dt>关键证据</dt>
             <dd>{`证据 ${evidenceCount}，边界缺口 ${boundaryCount}`}</dd>
+          </div>
+          <div>
+            <dt>可用输出</dt>
+            <dd>{availableOutputsLabel}</dd>
+          </div>
+          <div>
+            <dt>主要缺口</dt>
+            <dd>{primaryGapLabel}</dd>
+          </div>
+          <div>
+            <dt>风险退出</dt>
+            <dd>{riskExitUnsupported ? "blocked" : riskTriggeredCount > 0 ? `触发 ${riskTriggeredCount}` : `触发 0，观察 ${riskWatchCount}`}</dd>
           </div>
           <div>
             <dt>下一步</dt>
             <dd>{leadCandidateName ? `先复核${leadCandidateName}` : "等待候选"}</dd>
-          </div>
-          <div>
-            <dt>待办</dt>
-            <dd>{`${boundaryIssueCount} 项边界`}</dd>
           </div>
         </dl>
         <div className="stock-analysis-page__home-rail-data-note" data-testid="stock-analysis-home-rail-data-note">

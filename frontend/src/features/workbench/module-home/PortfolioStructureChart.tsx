@@ -67,7 +67,7 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
 
   const option: EChartsOption = horizontal
     ? {
-        color: CHART_COLORS,
+        color: [...CHART_COLORS],
         animationDuration: 420,
         grid: { left: 92, right: 24, top: 34, bottom: 28 },
         tooltip,
@@ -101,7 +101,7 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
         ],
       }
     : {
-        color: CHART_COLORS,
+        color: [...CHART_COLORS],
         animationDuration: 420,
         grid: { left: 50, right: 22, top: 34, bottom: 42 },
         tooltip,

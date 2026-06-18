@@ -28,6 +28,9 @@ type NormalizedConfluenceReplayBlockedDate = Omit<ConfluenceReplayBlockedDate, "
 
 type NormalizedConfluenceReplayStatus = Omit<ConfluenceReplayStatus, "blocked_dates"> & {
   blocked_dates: NormalizedConfluenceReplayBlockedDate[];
+  maturity_status?: string;
+  matched_entry_count: number;
+  has_required_horizon_stats: boolean;
 };
 
 export type StockMarketConditionRow = {
@@ -482,6 +485,47 @@ function normalizeEvidence(evidence: string[] | string | null | undefined): stri
   return [];
 }
 
+type StockModuleState = {
+  key: LivermoreStrategyPayload["supported_outputs"][number];
+  render_mode?: string | null;
+  excludes_from_primary?: boolean | null;
+  reasons?: readonly string[] | null;
+};
+
+type LivermoreStrategyPayloadWithModuleStates = LivermoreStrategyPayload & {
+  module_states?: readonly StockModuleState[] | null;
+};
+
+function stockModuleStates(
+  payload: LivermoreStrategyPayload | null | undefined,
+): readonly StockModuleState[] {
+  return ((payload as LivermoreStrategyPayloadWithModuleStates | null | undefined)?.module_states ?? []);
+}
+
+export function isStockModulePrimaryExcluded(
+  payload: LivermoreStrategyPayload | null | undefined,
+  key: LivermoreStrategyPayload["supported_outputs"][number],
+): boolean {
+  if (!payload) {
+    return true;
+  }
+  const states = stockModuleStates(payload);
+  if (states.length === 0) {
+    return true;
+  }
+  const state = states.find((item) => item.key === key);
+  return !state || state.excludes_from_primary || state.render_mode !== "primary";
+}
+
+function stockModulePrimaryReason(
+  payload: LivermoreStrategyPayload,
+  key: LivermoreStrategyPayload["supported_outputs"][number],
+): string {
+  const state = stockModuleStates(payload).find((item) => item.key === key);
+  const firstReason = state?.reasons?.find((reason) => reason.trim().length > 0);
+  return firstReason ? localizeStockBackendText(firstReason, key) : "Evidence-only module; excluded from primary review.";
+}
+
 function sortedCandidateItems(payload: LivermoreStrategyPayload) {
   return [...(payload.stock_candidates?.items ?? [])].sort((left, right) => left.rank - right.rank);
 }
@@ -652,6 +696,7 @@ function buildHybridFusionEvidenceCards(
           value: formatNumber(item.price_confirm_score, 6),
         },
         { key: "crowding_penalty", label: "拥挤惩罚", value: formatNumber(item.crowding_penalty, 6) },
+        { key: "fusion_action", label: "融合裁决", value: fusionActionLabel(item.fusion_action) },
         { key: "confidence", label: "置信度", value: fusionConfidenceLabel(item.confidence) },
       ],
     };
@@ -970,6 +1015,18 @@ export function localizeStockBackendText(
   if (lower.includes("market gate is available") && lower.includes("pmi") && lower.includes("credit impulse")) {
     return "市场门控已有可用证据，PMI 与信用脉冲待补。";
   }
+  if (lower.includes("all broad-index and supplement gate inputs are landed")) {
+    return "宽基指数与补充门控输入已落地，可用于当前交易日。";
+  }
+  if (lower.includes("sector ranking is available from landed choice sector inputs")) {
+    return "板块排名已接入 Choice 板块输入。";
+  }
+  if (lower.includes("candidate screening is available for landed choice stock inputs")) {
+    return "候选筛选已接入 Choice 个股输入。";
+  }
+  if (lower.includes("risk and exit output is available from landed position snapshots and close history")) {
+    return "风险退出已接入持仓快照与收盘历史。";
+  }
   if (lower.includes("sector_rank is available")) {
     return "板块强弱已有可用证据。";
   }
@@ -1030,8 +1087,12 @@ export type StockReviewQueueEmptyState = {
 };
 
 export function buildReviewQueueEmptyState(payload: LivermoreStrategyPayload): StockReviewQueueEmptyState {
-  const factorCount = payload.factor_screen_candidates?.candidate_count ?? 0;
-  const hybridCount = payload.hybrid_fusion_candidates?.candidate_count ?? 0;
+  const factorCount = isStockModulePrimaryExcluded(payload, "factor_screen_candidates")
+    ? 0
+    : (payload.factor_screen_candidates?.candidate_count ?? 0);
+  const hybridCount = isStockModulePrimaryExcluded(payload, "hybrid_fusion")
+    ? 0
+    : (payload.hybrid_fusion_candidates?.candidate_count ?? 0);
   const nextParts: string[] = [];
   if (factorCount > 0) {
     nextParts.push(`可先看多因子池 ${factorCount} 只`);
@@ -1715,6 +1776,14 @@ export function buildStrategyLensItems(
     localizeStockBackendText(unsupportedReason(key), key);
   const shortReason = (key: StrategyOutputKey) => shortStrategyBlockerLabel(localizedReason(key));
   const outputState = (key: StrategyOutputKey, candidateCount: number, exists: boolean) => {
+    if (isStockModulePrimaryExcluded(payload, key)) {
+      return {
+        state: "blocked" as const,
+        tone: "warning" as const,
+        statusLabel: "证据区",
+        statusDetail: stockModulePrimaryReason(payload, key),
+      };
+    }
     const reason = unsupportedReason(key);
     if (candidateCount > 0) {
       return {
@@ -2435,10 +2504,7 @@ export function buildDecisionSummary(
   const isFallback = fallbackMode !== "none";
   const fallbackLabel = isFallback ? ` / ${localizeFallbackMode(fallbackMode)}` : "";
   const dataFreshnessOk = qualityFlag === "ok" && vendorStatus === "ok" && !isFallback;
-  const candidateCount =
-    payload.hybrid_fusion_candidates?.candidate_count ??
-    payload.stock_candidates?.candidate_count ??
-    queue.length;
+  const candidateCount = queue.length;
   const boundaryCount = countBoundaryItems(payload);
 
   return {
@@ -2809,8 +2875,11 @@ export function buildSectorTableSortComparator(
 export function buildCandidateEvidenceCards(
   payload: LivermoreStrategyPayload,
 ): StockCandidateEvidenceCard[] {
-  const hybridCards = buildHybridFusionEvidenceCards(payload);
+  const hybridCards = isStockModulePrimaryExcluded(payload, "hybrid_fusion")
+    ? []
+    : buildHybridFusionEvidenceCards(payload);
   if (hybridCards.length > 0) return hybridCards;
+  if (isStockModulePrimaryExcluded(payload, "stock_candidates")) return [];
 
   return sortedCandidateItems(payload).map((item) => {
     const pattern = deriveCandidatePattern(item);
@@ -3268,6 +3337,7 @@ function replayStatusWindow(value: unknown): NormalizedConfluenceReplayStatus | 
   }
   const candidate = value as {
     window_status?: unknown;
+    maturity_status?: unknown;
     has_decision_usable_completed_stats?: unknown;
     completed_dates?: unknown;
     pending_dates?: unknown;
@@ -3277,6 +3347,8 @@ function replayStatusWindow(value: unknown): NormalizedConfluenceReplayStatus | 
     pending_candidate_rows?: unknown;
     unsupported_candidate_rows?: unknown;
     proxy_only_candidate_rows?: unknown;
+    matched_entry_count?: unknown;
+    has_required_horizon_stats?: unknown;
     included_completed_stats_dates?: unknown;
     blocked_dates?: unknown;
     completed_zero_signal_dates?: unknown;
@@ -3286,6 +3358,7 @@ function replayStatusWindow(value: unknown): NormalizedConfluenceReplayStatus | 
   }
   return {
     window_status: candidate.window_status,
+    maturity_status: typeof candidate.maturity_status === "string" ? candidate.maturity_status : undefined,
     has_decision_usable_completed_stats: candidate.has_decision_usable_completed_stats === true,
     completed_dates: finiteCount(candidate.completed_dates),
     pending_dates: finiteCount(candidate.pending_dates),
@@ -3295,6 +3368,8 @@ function replayStatusWindow(value: unknown): NormalizedConfluenceReplayStatus | 
     pending_candidate_rows: finiteCount(candidate.pending_candidate_rows),
     unsupported_candidate_rows: finiteCount(candidate.unsupported_candidate_rows),
     proxy_only_candidate_rows: finiteCount(candidate.proxy_only_candidate_rows),
+    matched_entry_count: finiteCount(candidate.matched_entry_count),
+    has_required_horizon_stats: candidate.has_required_horizon_stats === true,
     included_completed_stats_dates: stringList(candidate.included_completed_stats_dates),
     blocked_dates: blockedReplayDates(candidate.blocked_dates),
     completed_zero_signal_dates: stringList(candidate.completed_zero_signal_dates),

@@ -12,6 +12,7 @@ import type {
   LivermoreCandidateHistoryPayload,
   LivermoreCandidateHistoryPortfolioBacktestPayload,
   LivermoreCycleProxyBacktestPayload,
+  LivermoreOutputKey,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyOptimizationPayload,
   LivermoreStrategyScorePayload,
@@ -19,6 +20,51 @@ import type {
 } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
+  "market_gate",
+  "sector_rank",
+  "stock_candidates",
+  "mean_reversion_candidates",
+  "factor_screen_candidates",
+  "theme_breakout",
+  "hybrid_fusion",
+  "risk_exit",
+];
+
+type TestLivermoreModuleState = {
+  key: LivermoreOutputKey;
+  state: "ready" | "degraded" | "partial" | "blocked" | "unsupported";
+  render_mode: "primary" | "evidence_only" | "hidden";
+  source_date: string | null;
+  lag_days: number | null;
+  threshold_days: number | null;
+  reasons: string[];
+  evidence_scope: "primary" | "detail" | "detail_only" | "none";
+  excludes_from_primary: boolean;
+};
+
+type TestLivermoreStrategyPayload = Omit<LivermoreStrategyPayload, "module_states"> & {
+  module_states: TestLivermoreModuleState[];
+};
+
+type TestLivermoreStrategyOverrides = Omit<Partial<LivermoreStrategyPayload>, "module_states"> & {
+  module_states?: TestLivermoreModuleState[];
+};
+
+function readyModuleStates(asOfDate = "2026-04-29"): TestLivermoreModuleState[] {
+  return LIVERMORE_OUTPUT_KEYS.map((key) => ({
+    key,
+    state: "ready",
+    render_mode: "primary",
+    source_date: asOfDate,
+    lag_days: 0,
+    threshold_days: null,
+    reasons: [],
+    evidence_scope: "primary",
+    excludes_from_primary: false,
+  }));
+}
 
 const STOCK_ANALYSIS_CSS_PATH = resolve(
   process.cwd(),
@@ -111,8 +157,8 @@ function parseLastAgentQueryRequest(fetchMock: ReturnType<typeof vi.fn>) {
 }
 
 function buildStrategyPayload(
-  overrides: Partial<LivermoreStrategyPayload> = {},
-): LivermoreStrategyPayload {
+  overrides: TestLivermoreStrategyOverrides = {},
+): TestLivermoreStrategyPayload {
   return {
     as_of_date: "2026-04-29",
     requested_as_of_date: null,
@@ -281,6 +327,7 @@ function buildStrategyPayload(
       ],
     },
     ...overrides,
+    module_states: overrides.module_states ?? readyModuleStates(overrides.as_of_date ?? "2026-04-29"),
   };
 }
 
@@ -1272,7 +1319,16 @@ describe("StockAnalysisPage", () => {
   });
 
   it("marks the backend-supply cockpit without changing the stock data path", async () => {
-    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        metaOverrides: {
+          tables_used: ["choice_stock_a", "choice_stock_b"],
+          evidence_rows: 12345,
+          rule_version: "rv_custom_stock_v1",
+          trace_id: "tr_api_01",
+        },
+      }),
+    });
 
     const page = await screen.findByTestId("stock-analysis-page");
     expect(page).toHaveAttribute("data-layout-rev", "2026-05-31e");
@@ -1289,6 +1345,15 @@ describe("StockAnalysisPage", () => {
     expect(cockpit).not.toHaveTextContent("后端供数");
     expect(cockpit).not.toHaveTextContent("门控 WARM");
     expect(cockpit).not.toHaveTextContent("Livermore");
+    const apiEvidence = await screen.findByTestId("stock-analysis-api-evidence-strip");
+    expect(apiEvidence).toHaveTextContent("后端表");
+    expect(apiEvidence).toHaveTextContent("证据行");
+    expect(apiEvidence).toHaveTextContent("规则版本");
+    expect(apiEvidence).toHaveTextContent("Trace");
+    expect(apiEvidence).toHaveTextContent("2 张");
+    expect(apiEvidence).toHaveTextContent("12,345");
+    expect(apiEvidence).toHaveTextContent("rv_custom_stock_v1");
+    expect(apiEvidence).toHaveTextContent("tr_api_01");
 
     const kpiSection = await screen.findByTestId("stock-analysis-kpi-section");
     expect(kpiSection).toHaveTextContent("市场状态");
@@ -1296,6 +1361,7 @@ describe("StockAnalysisPage", () => {
     expect(kpiSection).not.toHaveTextContent("WARM");
     expect(screen.getByTestId("stock-analysis-kpi-market-state")).toHaveAttribute("data-equity-kpi-card");
     expect(screen.getByTestId("stock-analysis-kpi-review-queue")).toHaveAttribute("data-equity-kpi-card");
+    expect(screen.queryByTestId("stock-analysis-functional-kpi-section")).not.toBeInTheDocument();
 
     const sectorPanel = await screen.findByTestId("stock-analysis-sector-strength-panel");
     const sectorStrip = within(sectorPanel).getByTestId("stock-analysis-sector-workbench-strip");
@@ -1325,7 +1391,7 @@ describe("StockAnalysisPage", () => {
     expect(strategyLens).toHaveTextContent("入口");
     expect(strategyLens).toHaveTextContent("查看观察池");
     expect(within(strategyLens).getByTestId("stock-analysis-strategy-lens-livermore")).toHaveTextContent("2");
-    expect(await screen.findByTestId("stock-analysis-review-queue-table")).toHaveTextContent("复核关注");
+    expect(await screen.findByTestId("stock-analysis-review-queue-table")).toHaveTextContent("距观察");
     expect(screen.queryByTestId("stock-analysis-review-queue-ranking-chart")).not.toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-risk-section")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-deep-zone")).toBeInTheDocument();
@@ -1470,7 +1536,7 @@ describe("StockAnalysisPage", () => {
     expectElementBefore(table, summaryStrip);
     expectElementBefore(table, sectorFilters);
     expect(headers).toEqual(
-      expect.arrayContaining(["排名", "股票", "行业", "信号路径", "证据", "边界", "复核关注", "操作"]),
+      expect.arrayContaining(["排名", "股票", "行业", "形态", "距观察", "证据", "边界", "失效", "复核"]),
     );
     expect(within(table).getByTestId("stock-candidate-000001.SZ")).toHaveTextContent("Alpha");
     expect(within(table).getByTestId("stock-candidate-review-chart-000001.SZ")).toHaveTextContent("K 线");
@@ -1494,12 +1560,18 @@ describe("StockAnalysisPage", () => {
     expect(within(topbar).getByTestId("stock-analysis-toolbar-loop-status")).toHaveTextContent("闭环");
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    expect(await screen.findByTestId("stock-analysis-first-screen-workbench")).toHaveAttribute(
+      "data-design-target",
+      "product-design-option-1",
+    );
     expect(decisionPanel).toHaveTextContent("今日复核队列");
     expect(decisionPanel).toHaveTextContent("只候选进入只读复核队列");
     expect(decisionPanel).toHaveTextContent("首位");
 
     const evidenceLedger = await screen.findByTestId("stock-analysis-evidence-ledger");
     expect(evidenceLedger).toHaveTextContent("判断依据");
+    expect(evidenceLedger).toHaveTextContent("关键证据");
+    expect(evidenceLedger).toHaveTextContent("风险退出");
     expect(evidenceLedger).toHaveTextContent("数据口径");
 
     const queue = await screen.findByTestId("stock-analysis-review-queue");
@@ -2051,7 +2123,8 @@ describe("StockAnalysisPage", () => {
 
     const queue = await screen.findByTestId("stock-analysis-review-queue");
     expect(queue).toHaveTextContent("复核队列");
-    expect(queue).toHaveTextContent("证据明细");
+    expect(queue).toHaveTextContent("候选 / 复核队列");
+    expect(queue).toHaveTextContent("距观察");
     expect(queue).not.toHaveTextContent("为什么先看");
     expect(queue).not.toHaveTextContent("反证与待补");
     expect(within(queue).getByTestId("stock-candidate-review-chart-000001.SZ")).toHaveTextContent("K 线");
@@ -2228,7 +2301,6 @@ describe("StockAnalysisPage", () => {
   });
 
   it("renders core sections and candidate evidence", async () => {
-    const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     expect(await screen.findByTestId("market-workbench-topbar")).toHaveTextContent("股票分析");
@@ -2245,26 +2317,14 @@ describe("StockAnalysisPage", () => {
 
     const candidate = screen.getByTestId("stock-candidate-000001.SZ");
     expect(candidate).toHaveTextContent("Alpha");
-    expect(candidate).toHaveTextContent("行业排名第 1");
     expect(candidate).toHaveTextContent("边界 3");
-    expect(candidate).toHaveTextContent("+7 证据");
-    expect(candidate).toHaveTextContent("证据明细");
+    expect(candidate).toHaveTextContent("11 证据");
+    expect(candidate).toHaveTextContent("复核 K 线");
     expect(candidate).not.toHaveTextContent("进入依据");
     expect(candidate).not.toHaveTextContent("10EMA 失效观察");
     expect(candidate).not.toHaveTextContent("基本面因子已纳入候选排序");
-
-    await user.click(within(candidate).getByText("证据明细"));
-
-    expect(candidate).toHaveTextContent("进入依据");
-    expect(candidate).toHaveTextContent("10EMA 失效观察");
-    expect(candidate).toHaveTextContent("基本面因子");
-    expect(candidate).toHaveTextContent("因子排名 #1");
-    expect(candidate).toHaveTextContent("因子分 0.4812");
-    expect(candidate).toHaveTextContent("基本面因子已纳入候选排序");
     expect(candidate).not.toHaveTextContent("基本面 overlay");
     expect(candidate).not.toHaveTextContent("overlay #");
-    expect(candidate).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡");
-    expect(candidate).toHaveTextContent("10EMA");
   });
 
   it("renders the cycle rotation framework as research-only evidence", async () => {
@@ -2749,7 +2809,6 @@ describe("StockAnalysisPage", () => {
   });
 
   it("renders hybrid fusion candidates as the primary review queue", async () => {
-    const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
         strategy: buildStrategyPayload({
@@ -2794,17 +2853,14 @@ describe("StockAnalysisPage", () => {
     const queue = await screen.findByTestId("stock-analysis-review-queue");
     expect(queue).toHaveTextContent("融合策略 / 复核队列");
     expect(queue).toHaveTextContent("Fusion Alpha");
-    expect(queue).toHaveTextContent("融合分");
-    expect(queue).toHaveTextContent("生命法庭线索");
-    expect(queue).toHaveTextContent("关注线索");
-    expect(queue).toHaveTextContent("+6 证据");
+    expect(queue).toHaveTextContent("Fusion");
+    expect(queue).toHaveTextContent("0.812345");
+    expect(queue).toHaveTextContent("0.700000");
+    expect(queue).toHaveTextContent("0.600000");
+    expect(queue).toHaveTextContent("待补");
     expect(queue).not.toHaveTextContent("代理信号");
     expect(queue).not.toHaveTextContent("生命法庭代理");
     expect(queue).not.toHaveTextContent("关注代理");
-
-    await user.click(within(queue).getByText("证据明细"));
-
-    expect(queue).toHaveTextContent("生命法庭层仍是观察线索");
     expect(queue).not.toHaveTextContent("代理信号");
     expect(queue).not.toHaveTextContent("买入");
   });
@@ -3144,7 +3200,14 @@ describe("StockAnalysisPage", () => {
           run_id: "choice_stock_refresh:failed",
           trigger_mode: "async",
         },
-        choice_stock_refresh: {},
+        choice_stock_refresh: {
+          permission: {
+            mode: "scoped_refresh",
+            allowed: true,
+            resource: "macro_toolkit.choice_stock",
+            actions: ["history", "factor_snapshot"],
+          },
+        },
       }),
     );
     vi.spyOn(client, "getChoiceStockRefreshStatus").mockResolvedValue(
@@ -3156,7 +3219,14 @@ describe("StockAnalysisPage", () => {
           error_message: "vendor snapshot unavailable",
           failure_category: "source_unavailable",
         },
-        choice_stock_refresh: {},
+        choice_stock_refresh: {
+          permission: {
+            mode: "scoped_refresh",
+            allowed: true,
+            resource: "macro_toolkit.choice_stock",
+            actions: ["history", "factor_snapshot"],
+          },
+        },
       }),
     );
 
@@ -3351,7 +3421,7 @@ describe("StockAnalysisPage", () => {
     expect(screen.queryAllByText(/breadth/)).toHaveLength(0);
     expect(screen.queryByText(/vendor_sync_delayed/)).not.toBeInTheDocument();
     expect(screen.queryByText(/external_vendor_factor_feed/)).not.toBeInTheDocument();
-    expect(screen.getByText("可用输出")).toBeInTheDocument();
+    expect(screen.getAllByText("可用输出").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("阻断输出")).toBeInTheDocument();
     expect(screen.getAllByText("输出待确认").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText(/external_vendor_alpha_output/)).not.toBeInTheDocument();

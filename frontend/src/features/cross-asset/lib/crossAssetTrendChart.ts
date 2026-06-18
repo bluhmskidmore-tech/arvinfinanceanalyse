@@ -126,7 +126,7 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
 
   const fs = designTokens.fontSize;
   return {
-    color: CHART_COLORS,
+    color: [...CHART_COLORS],
     animation: true,
     animationDuration: 600,
     animationEasing: "cubicOut",

@@ -25,12 +25,12 @@ type TerminalHomeWorkGridProps = {
 
 type EChartsOption = import("../../../lib/echarts").EChartsOption;
 
-const CHART_COLORS = mossChartCategoricalPalette;
+const CHART_COLORS = [...mossChartCategoricalPalette];
 const INCOME_TREND_COLORS = [
   mossChartCategoricalPalette[0],
   mossChartCategoricalPalette[3],
   mossChartCategoricalPalette[5],
-] as const;
+];
 const ReactECharts = lazy(() => import("../../../lib/echarts"));
 const CHART_REVEAL_KEYS = new Set(["ArrowDown", "PageDown", "End", " ", "Space"]);
 

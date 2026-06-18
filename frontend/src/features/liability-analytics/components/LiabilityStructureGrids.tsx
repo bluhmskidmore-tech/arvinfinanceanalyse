@@ -20,7 +20,7 @@ type BucketYi = { bucket: string; amountYi: Numeric | null };
 
 function pieOption(items: NamedYi[]): EChartsOption {
   return {
-    color: COLORS,
+    color: [...COLORS],
     tooltip: {
       trigger: "item",
       formatter: (params: unknown) => {

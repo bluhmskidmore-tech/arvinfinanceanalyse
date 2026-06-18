@@ -19,5 +19,10 @@ describe("StockAnalysisBoundaryWorkbenches", () => {
 
     expect(screen.getByTestId("stock-analysis-error-workbench")).toHaveAttribute("role", "alert");
     expect(screen.getByRole("alert")).toHaveTextContent("backend unavailable");
+    const supplement = screen.getByTestId("stock-analysis-error-supplement");
+    expect(supplement).toHaveTextContent("策略复核主接口");
+    expect(supplement).toHaveTextContent("GAP-STOCK-ANALYSIS-PAGE");
+    expect(supplement).toHaveTextContent("恢复供数后复核");
+    expect(supplement).not.toHaveTextContent("livermore");
   });
 });
