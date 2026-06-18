@@ -5,6 +5,11 @@ from collections.abc import Mapping
 
 DISCLAIMER = "Observation-only output. This service does not generate trading instructions."
 ENTRY_OBSERVATION_STATES = {"WARM", "HOT"}
+REPLAY_READY_COMPLETED_DATES = 20
+REPLAY_READY_MATCHED_ENTRIES = 100
+REPLAY_PARTIAL_COMPLETED_DATES = 5
+REPLAY_PARTIAL_MATCHED_ENTRIES = 30
+REPLAY_REQUIRED_HORIZONS = ("return_5d", "return_20d")
 MACRO_MULTIPLIERS = {
     "supportive": 1.0,
     "neutral": 0.5,
@@ -205,17 +210,32 @@ def _build_replay_status(summary: Mapping[str, object] | None) -> dict[str, obje
     )
     completed_dates = _safe_int(summary.get("replay_dates_completed"))
     completed_rows = _safe_int(summary.get("completed_rows"))
+    pending_dates = _safe_int(summary.get("replay_dates_pending"))
+    unsupported_dates = _safe_int(summary.get("replay_dates_unsupported"))
+    proxy_only_dates = _safe_int(summary.get("replay_dates_proxy_only"))
+    matched_entry_count, has_required_horizon_stats = _replay_matched_entry_count(summary)
+    maturity_status = _replay_maturity_status(
+        completed_dates=completed_dates,
+        pending_dates=pending_dates,
+        unsupported_dates=unsupported_dates,
+        proxy_only_dates=proxy_only_dates,
+        matched_entry_count=matched_entry_count,
+        has_required_horizon_stats=has_required_horizon_stats,
+    )
     return {
         "window_status": _optional_text(summary.get("status")) or "unsupported",
-        "has_decision_usable_completed_stats": bool(included_completed_stats_dates or completed_dates > 0),
+        "maturity_status": maturity_status,
+        "has_decision_usable_completed_stats": maturity_status == "ready",
         "completed_dates": completed_dates,
-        "pending_dates": _safe_int(summary.get("replay_dates_pending")),
-        "unsupported_dates": _safe_int(summary.get("replay_dates_unsupported")),
-        "proxy_only_dates": _safe_int(summary.get("replay_dates_proxy_only")),
+        "pending_dates": pending_dates,
+        "unsupported_dates": unsupported_dates,
+        "proxy_only_dates": proxy_only_dates,
         "completed_candidate_rows": completed_rows,
         "pending_candidate_rows": _safe_int(summary.get("pending_rows")),
         "unsupported_candidate_rows": _safe_int(summary.get("unsupported_rows")),
         "proxy_only_candidate_rows": _safe_int(summary.get("proxy_only_rows")),
+        "matched_entry_count": matched_entry_count,
+        "has_required_horizon_stats": has_required_horizon_stats,
         "included_completed_stats_dates": included_completed_stats_dates,
         "blocked_dates": _replay_blocked_dates(summary.get("date_reasons")),
         "completed_zero_signal_dates": _completed_zero_signal_dates(summary.get("date_reasons")),
@@ -225,6 +245,7 @@ def _build_replay_status(summary: Mapping[str, object] | None) -> dict[str, obje
 def _empty_replay_status() -> dict[str, object]:
     return {
         "window_status": "unsupported",
+        "maturity_status": "missing",
         "has_decision_usable_completed_stats": False,
         "completed_dates": 0,
         "pending_dates": 0,
@@ -234,10 +255,61 @@ def _empty_replay_status() -> dict[str, object]:
         "pending_candidate_rows": 0,
         "unsupported_candidate_rows": 0,
         "proxy_only_candidate_rows": 0,
+        "matched_entry_count": 0,
+        "has_required_horizon_stats": False,
         "included_completed_stats_dates": [],
         "blocked_dates": [],
         "completed_zero_signal_dates": [],
     }
+
+
+def _replay_maturity_status(
+    *,
+    completed_dates: int,
+    pending_dates: int,
+    unsupported_dates: int,
+    proxy_only_dates: int,
+    matched_entry_count: int,
+    has_required_horizon_stats: bool,
+) -> str:
+    if (
+        completed_dates >= REPLAY_READY_COMPLETED_DATES
+        and pending_dates == 0
+        and unsupported_dates == 0
+        and proxy_only_dates == 0
+        and matched_entry_count >= REPLAY_READY_MATCHED_ENTRIES
+        and has_required_horizon_stats
+    ):
+        return "ready"
+    if completed_dates >= REPLAY_PARTIAL_COMPLETED_DATES or matched_entry_count >= REPLAY_PARTIAL_MATCHED_ENTRIES:
+        return "partial"
+    if completed_dates > 0 or matched_entry_count > 0:
+        return "insufficient"
+    if pending_dates > 0:
+        return "pending"
+    if unsupported_dates > 0:
+        return "unsupported"
+    if proxy_only_dates > 0:
+        return "proxy_only"
+    return "missing"
+
+
+def _replay_matched_entry_count(summary: Mapping[str, object]) -> tuple[int, bool]:
+    stats = _mapping(summary.get("by_signal_kind_horizon_usable_stats")) or _mapping(
+        summary.get("by_signal_kind_horizon_stats")
+    )
+    if stats is None:
+        return 0, False
+    stock_candidate_stats = _mapping(stats.get("stock_candidate"))
+    if stock_candidate_stats is None:
+        return 0, False
+    horizon_counts: list[int] = []
+    for horizon in REPLAY_REQUIRED_HORIZONS:
+        horizon_stats = _mapping(stock_candidate_stats.get(horizon))
+        if horizon_stats is None:
+            return 0, False
+        horizon_counts.append(_safe_int(horizon_stats.get("available_count")))
+    return min(horizon_counts), True
 
 
 def _replay_blocked_dates(value: object) -> list[dict[str, object]]:

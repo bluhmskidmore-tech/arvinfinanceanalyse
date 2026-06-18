@@ -308,6 +308,7 @@ def test_build_livermore_signal_confluence_keeps_entries_visible_when_adversaria
     assert closed_loop_state["entry_gate"] == "open"
     assert closed_loop_state["replay_status"] == {
         "window_status": "unsupported",
+        "maturity_status": "missing",
         "has_decision_usable_completed_stats": False,
         "completed_dates": 0,
         "pending_dates": 0,
@@ -317,6 +318,8 @@ def test_build_livermore_signal_confluence_keeps_entries_visible_when_adversaria
         "pending_candidate_rows": 0,
         "unsupported_candidate_rows": 0,
         "proxy_only_candidate_rows": 0,
+        "matched_entry_count": 0,
+        "has_required_horizon_stats": False,
         "included_completed_stats_dates": [],
         "blocked_dates": [],
         "completed_zero_signal_dates": [],
@@ -566,7 +569,8 @@ def test_build_livermore_signal_confluence_projects_backtest_window_summary_into
     replay_status = cast(dict[str, Any], cast(dict[str, Any], result["closed_loop_state"])["replay_status"])
     assert replay_status == {
         "window_status": "partial",
-        "has_decision_usable_completed_stats": True,
+        "has_decision_usable_completed_stats": False,
+        "maturity_status": "insufficient",
         "completed_dates": 1,
         "pending_dates": 1,
         "unsupported_dates": 1,
@@ -575,6 +579,8 @@ def test_build_livermore_signal_confluence_projects_backtest_window_summary_into
         "pending_candidate_rows": 1,
         "unsupported_candidate_rows": 0,
         "proxy_only_candidate_rows": 1,
+        "matched_entry_count": 0,
+        "has_required_horizon_stats": False,
         "included_completed_stats_dates": ["2026-05-06"],
         "blocked_dates": [
                 {
@@ -620,4 +626,36 @@ def test_build_livermore_replay_status_accepts_private_included_completed_dates_
     )
 
     assert replay_status["included_completed_stats_dates"] == ["2026-05-06"]
+    assert replay_status["has_decision_usable_completed_stats"] is False
+    assert replay_status["maturity_status"] == "insufficient"
+
+
+def test_build_livermore_replay_status_marks_only_mature_complete_windows_decision_usable() -> None:
+    module = _service_module()
+
+    replay_status = module.build_livermore_replay_status(
+        {
+            "status": "valid",
+            "replay_dates_completed": 20,
+            "replay_dates_pending": 0,
+            "replay_dates_unsupported": 0,
+            "replay_dates_proxy_only": 0,
+            "completed_rows": 120,
+            "pending_rows": 0,
+            "unsupported_rows": 0,
+            "proxy_only_rows": 0,
+            "included_completed_stats_dates": [f"2026-05-{day:02d}" for day in range(1, 21)],
+            "by_signal_kind_horizon_usable_stats": {
+                "stock_candidate": {
+                    "return_5d": {"available_count": 120},
+                    "return_20d": {"available_count": 105},
+                }
+            },
+            "date_reasons": [],
+        }
+    )
+
+    assert replay_status["maturity_status"] == "ready"
+    assert replay_status["matched_entry_count"] == 105
+    assert replay_status["has_required_horizon_stats"] is True
     assert replay_status["has_decision_usable_completed_stats"] is True

@@ -2,6 +2,8 @@
 
 import type {
   ConfluenceReplayStatus,
+  LivermoreModuleState,
+  LivermoreOutputKey,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyOptimizationPayload,
   LivermoreStrategyScorePayload,
@@ -56,6 +58,31 @@ import {
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import type { StockCandidateReviewQueueItem } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import { buildConsensusSummary } from "../features/stock-analysis/lib/buildConsensusSummary";
+
+const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
+  "market_gate",
+  "sector_rank",
+  "stock_candidates",
+  "mean_reversion_candidates",
+  "factor_screen_candidates",
+  "theme_breakout",
+  "hybrid_fusion",
+  "risk_exit",
+];
+
+function readyModuleStates(keys: LivermoreOutputKey[] = LIVERMORE_OUTPUT_KEYS): LivermoreModuleState[] {
+  return keys.map((key) => ({
+    key,
+    state: "ready",
+    render_mode: "primary",
+    source_date: "2026-04-29",
+    lag_days: 0,
+    threshold_days: null,
+    reasons: [],
+    evidence_scope: "primary",
+    excludes_from_primary: false,
+  }));
+}
 
 const strategyPayload: LivermoreStrategyPayload = {
   as_of_date: "2026-04-29",
@@ -126,6 +153,7 @@ const strategyPayload: LivermoreStrategyPayload = {
   ],
   supported_outputs: ["market_gate", "sector_rank", "stock_candidates", "risk_exit"],
   unsupported_outputs: [],
+  module_states: readyModuleStates(),
   sector_rank: {
     as_of_date: "2026-04-29",
     formula_version: "rv_livermore_sector_rank_provisional_v1",
@@ -2060,6 +2088,204 @@ describe("stockAnalysisPageModel", () => {
     expect(items.find((item) => item.key === "mean_reversion")?.state).toBe("blocked");
   });
 
+  it("keeps evidence-only hybrid candidates out of the primary review queue", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      supported_outputs: ["market_gate", "factor_screen_candidates", "hybrid_fusion"],
+      unsupported_outputs: [],
+      stock_candidates: undefined,
+      mean_reversion_candidates: undefined,
+      factor_screen_candidates: {
+        as_of_date: "2026-05-29",
+        factor_snapshot_as_of_date: "2026-05-29",
+        formula_version: "rv_factor_screen_candidates_v2",
+        market_state: "WARM",
+        observation_only: true,
+        input_stock_count: 1510,
+        candidate_count: 1,
+        coverage_note: "factor-only stale snapshot",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000001.SZ",
+            stock_name: "Alpha",
+            sector_code: "801001",
+            sector_name: "AI",
+            industry: "AI",
+            score: 0.973,
+            pe: null,
+            pb: null,
+            roe: null,
+            gross_margin: null,
+            three_month_return: null,
+            twelve_month_return: null,
+            dividend_yield: null,
+          },
+        ],
+      },
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-06-12",
+        formula_version: "rv_hybrid_fusion_candidates_v3",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 1,
+        coverage_note: "factor-only hybrid",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000001.SZ",
+            stock_name: "Alpha",
+            sector_code: "801001",
+            sector_name: "AI",
+            fusion_score: 0.91,
+            cycle_score: 0,
+            lifecourt_proxy_score: 0,
+            attention_score: 0,
+            price_confirm_score: 0,
+            crowding_penalty: 0,
+            confidence: "low",
+            reason: "factor-only",
+            evidence: { source_kinds: ["factor_screen"] },
+          },
+        ],
+      },
+      module_states: [
+        {
+          key: "factor_screen_candidates",
+          state: "degraded",
+          render_mode: "evidence_only",
+          source_date: "2026-05-29",
+          lag_days: 10,
+          threshold_days: 3,
+          reasons: ["factor snapshot is stale"],
+          evidence_scope: "detail",
+          excludes_from_primary: true,
+        },
+        {
+          key: "hybrid_fusion",
+          state: "degraded",
+          render_mode: "evidence_only",
+          source_date: "2026-05-29",
+          lag_days: 10,
+          threshold_days: 3,
+          reasons: ["hybrid fusion is factor-only"],
+          evidence_scope: "detail",
+          excludes_from_primary: true,
+        },
+      ],
+    };
+
+    const queue = buildCandidateReviewQueue(payload);
+    const kpi = buildStockAnalysisKpiStrip(payload, null);
+    const items = buildStrategyLensItems(payload, buildConsensusSummary(payload));
+    const empty = buildReviewQueueEmptyState(payload);
+    const summary = buildDecisionSummary(payload, { quality_flag: "ok", vendor_status: "ok" });
+
+    expect(queue).toHaveLength(0);
+    expect(kpi.find((item) => item.key === "review-queue")).toMatchObject({
+      value: "0",
+      tone: "neutral",
+    });
+    expect(items.find((item) => item.key === "hybrid")?.state).not.toBe("ready");
+    expect(items.find((item) => item.key === "factor")?.state).not.toBe("ready");
+    expect(empty.detail).not.toContain("多因子池 1 只");
+    expect(empty.detail).not.toContain("融合策略池 1 只");
+    expect(empty.detail).toContain("深度分析");
+    expect(summary.nextReviewAction).not.toContain("Alpha");
+    expect(summary.nextReviewAction).toContain("深度分析");
+    expect(summary.nextReviewAction).not.toContain("买入");
+  });
+
+  it("shows evidence-only module state even when a returned module has zero candidates", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      factor_screen_candidates: {
+        as_of_date: "2026-05-29",
+        factor_snapshot_as_of_date: "2026-05-29",
+        formula_version: "rv_factor_screen_candidates_v2",
+        market_state: "WARM",
+        observation_only: true,
+        input_stock_count: 1510,
+        candidate_count: 0,
+        coverage_note: "factor snapshot is stale",
+        items: [],
+      },
+      module_states: [
+        {
+          key: "factor_screen_candidates",
+          state: "partial",
+          render_mode: "evidence_only",
+          source_date: "2026-05-29",
+          lag_days: 10,
+          threshold_days: 3,
+          reasons: ["factor snapshot is stale"],
+          evidence_scope: "detail",
+          excludes_from_primary: true,
+        },
+      ],
+    };
+
+    const factor = buildStrategyLensItems(payload, buildConsensusSummary(payload)).find((item) => item.key === "factor");
+
+    expect(factor).toMatchObject({
+      state: "blocked",
+      tone: "warning",
+    });
+    expect(factor?.statusLabel).not.toBe("0 候选");
+  });
+
+  it("fails closed when module states are missing or empty", () => {
+    const legacyPayload = {
+      ...strategyPayload,
+      module_states: undefined,
+    } as unknown as LivermoreStrategyPayload;
+    const emptyModuleStatePayload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      supported_outputs: ["market_gate", "sector_rank", "hybrid_fusion"],
+      stock_candidates: undefined,
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-06-12",
+        formula_version: "rv_hybrid_fusion_candidates_v3",
+        market_state: "HOT",
+        observation_only: true,
+        candidate_count: 1,
+        coverage_note: "Fusion observation-only candidate",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000002.SZ",
+            stock_name: "Beta",
+            sector_code: "801002",
+            sector_name: "新能源车",
+            fusion_score: 0.38,
+            cycle_score: 0.22,
+            lifecourt_proxy_score: 0.11,
+            attention_score: 0.04,
+            price_confirm_score: 0.02,
+            crowding_penalty: 0.01,
+            fusion_action: "monitor_only",
+            confidence: "low",
+            reason: "research observation",
+            evidence: { source_kinds: ["factor_screen"] },
+          },
+        ],
+      },
+      module_states: [],
+    };
+
+    const queue = buildCandidateReviewQueue(legacyPayload);
+    const summary = buildDecisionSummary(legacyPayload, { quality_flag: "ok", vendor_status: "ok" });
+    const consensus = buildConsensusSummary(legacyPayload);
+    const hybridQueue = buildCandidateReviewQueue(emptyModuleStatePayload);
+
+    expect(queue).toHaveLength(0);
+    expect(summary.candidateCountLabel).toBe("候选 0");
+    expect(summary.nextReviewAction).not.toContain("Alpha");
+    expect(consensus.strategyCounts.livermore).toBe(0);
+    expect(consensus.hasAnyStrategy).toBe(false);
+    expect(hybridQueue).toHaveLength(0);
+  });
+
   it("builds strategy ledger audit fields for blockers and review focus", () => {
     const payload: LivermoreStrategyPayload = {
       ...strategyPayload,
@@ -3158,6 +3384,30 @@ describe("stockAnalysisPageModel", () => {
     expect(coverage).toContain("Choice 股票物化输入覆盖不完整（2026-06-11）");
     expect(coverage).toContain("缺数据项");
     expect(coverage).not.toContain("missing request items");
+  });
+
+  it("localizes rule readiness backend summaries", () => {
+    expect(
+      localizeStockBackendText(
+        "All broad-index and supplement gate inputs are landed for the resolved trade date.",
+        "market_gate",
+      ),
+    ).toBe("宽基指数与补充门控输入已落地，可用于当前交易日。");
+    expect(
+      localizeStockBackendText("Sector ranking is available from landed Choice sector inputs.", "sector_rank"),
+    ).toBe("板块排名已接入 Choice 板块输入。");
+    expect(
+      localizeStockBackendText(
+        "candidate screening is available for landed Choice stock inputs.",
+        "stock_pivot",
+      ),
+    ).toBe("候选筛选已接入 Choice 个股输入。");
+    expect(
+      localizeStockBackendText(
+        "Risk and exit output is available from landed position snapshots and close history.",
+        "risk_exit",
+      ),
+    ).toBe("风险退出已接入持仓快照与收盘历史。");
   });
 
 });

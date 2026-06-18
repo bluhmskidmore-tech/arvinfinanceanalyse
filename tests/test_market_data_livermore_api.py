@@ -1473,6 +1473,40 @@ def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enr
     assert "choice_stock_universe" not in envelope["result_meta"]["tables_used"]
     assert "choice_stock_sector_membership" not in envelope["result_meta"]["tables_used"]
     assert result["supported_outputs"] == ["market_gate", "factor_screen_candidates", "hybrid_fusion"]
+    module_states = {row["key"]: row for row in result["module_states"]}
+    assert set(module_states) == {
+        "market_gate",
+        "sector_rank",
+        "stock_candidates",
+        "mean_reversion_candidates",
+        "factor_screen_candidates",
+        "theme_breakout",
+        "hybrid_fusion",
+        "risk_exit",
+    }
+    factor_state = module_states["factor_screen_candidates"]
+    assert factor_state["state"] == "blocked"
+    assert factor_state["render_mode"] == "evidence_only"
+    assert factor_state["source_date"] == "2026-04-30"
+    assert factor_state["threshold_days"] == 3
+    assert factor_state["lag_days"] > factor_state["threshold_days"]
+    assert factor_state["coverage_count"] == 7
+    assert factor_state["coverage_denominator"] is None
+    assert factor_state["coverage_ratio"] is None
+    assert factor_state["coverage_threshold"] == 0.8
+    assert factor_state["excludes_from_primary"] is True
+    assert any("active A-share universe denominator is unavailable" in reason for reason in factor_state["reasons"])
+    hybrid_state = module_states["hybrid_fusion"]
+    assert hybrid_state["state"] == "blocked"
+    assert hybrid_state["render_mode"] == "evidence_only"
+    assert hybrid_state["source_date"] == "2026-04-30"
+    assert hybrid_state["coverage_count"] == 7
+    assert hybrid_state["coverage_denominator"] is None
+    assert hybrid_state["coverage_ratio"] is None
+    assert hybrid_state["coverage_threshold"] == 0.8
+    assert hybrid_state["excludes_from_primary"] is True
+    assert any("factor" in reason.lower() for reason in hybrid_state["reasons"])
+    assert any("active A-share universe denominator is unavailable" in reason for reason in hybrid_state["reasons"])
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
     assert "factor_screen_candidates" not in unsupported_by_key
     assert "hybrid_fusion" not in unsupported_by_key
@@ -1582,6 +1616,13 @@ def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_pat
     assert "choice_stock_factor_snapshot" in tables_used
     assert "choice_stock_universe" in tables_used
     assert "choice_stock_sector_membership" in tables_used
+    module_states = {row["key"]: row for row in result["module_states"]}
+    factor_state = module_states["factor_screen_candidates"]
+    assert factor_state["coverage_count"] == 7
+    assert factor_state["coverage_denominator"] == 7
+    assert factor_state["coverage_ratio"] == 1.0
+    assert factor_state["coverage_threshold"] == 0.8
+    assert not any("coverage" in reason.lower() for reason in factor_state["reasons"])
 
 
 def test_livermore_sector_rank_loader_attaches_universe_stock_names(tmp_path) -> None:
@@ -2298,7 +2339,8 @@ TL,2026-04-30,short,0.35,2,crowding block,false
     assert closed_loop_state["entry_gate"] == "blocked"
     assert closed_loop_state["exit_gate"] == "missing"
     assert closed_loop_state["replay_status"]["window_status"] == "valid"
-    assert closed_loop_state["replay_status"]["has_decision_usable_completed_stats"] is True
+    assert closed_loop_state["replay_status"]["maturity_status"] == "insufficient"
+    assert closed_loop_state["replay_status"]["has_decision_usable_completed_stats"] is False
     assert closed_loop_state["replay_status"]["completed_dates"] == 1
     assert closed_loop_state["replay_status"]["completed_candidate_rows"] == 1
     assert closed_loop_state["lineage_status"] == "complete"

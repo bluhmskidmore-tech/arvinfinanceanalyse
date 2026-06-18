@@ -96,6 +96,19 @@ SECTOR_REQUIRED_ITEMS: tuple[tuple[str, str], ...] = (
     ("sector_membership", "sw2021_industry_membership"),
     ("sector_strength", "daily_return_turnover_amplitude"),
 )
+LIVERMORE_OUTPUT_KEYS: tuple[str, ...] = (
+    "market_gate",
+    "sector_rank",
+    "stock_candidates",
+    "mean_reversion_candidates",
+    "factor_screen_candidates",
+    "theme_breakout",
+    "hybrid_fusion",
+    "risk_exit",
+)
+STOCK_MODULE_FRESHNESS_THRESHOLD_DAYS = 3
+STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD = 0.8
+STOCK_MODULE_PARTIAL_COVERAGE_THRESHOLD = 0.5
 
 
 def livermore_strategy_envelope(
@@ -259,6 +272,12 @@ def _load_livermore_strategy_payload_uncached(
         stock_readiness=resolved_stock_readiness,
         stock_outputs=stock_outputs,
     )
+    module_states = _build_module_states(
+        page_as_of_date=resolved_as_of_date,
+        market_dates=[row.trade_date for row in history_rows],
+        unsupported_outputs=unsupported_outputs,
+        stock_outputs=stock_outputs,
+    )
     quality_flag = _quality_flag_for_market_gate(str(market_gate["state"]))
     payload: dict[str, object] = {
         "as_of_date": resolved_as_of_date,
@@ -271,6 +290,7 @@ def _load_livermore_strategy_payload_uncached(
         "diagnostics": diagnostics,
         "supported_outputs": supported_outputs,
         "unsupported_outputs": unsupported_outputs,
+        "module_states": module_states,
         "cycle_rotation_framework": _build_cycle_rotation_framework(
             market_gate=market_gate,
             stock_outputs=stock_outputs,
@@ -715,6 +735,8 @@ class _FactorScreenLoadResult:
     snapshot_as_of_date: str | None
     tables_used: list[str]
     unavailable_reason: str = ""
+    coverage_denominator: int | None = None
+    coverage_denominator_as_of_date: str | None = None
 
 
 def _choice_stock_dependency_summary(
@@ -884,6 +906,11 @@ def _load_choice_stock_outputs(
             **fs_result.payload,
             "factor_snapshot_as_of_date": factor_load.snapshot_as_of_date,
             "observation_only": True,
+            "coverage_count": len(factor_load.rows),
+            "coverage_denominator": factor_load.coverage_denominator,
+            "coverage_denominator_as_of_date": factor_load.coverage_denominator_as_of_date,
+            "coverage_ratio": _coverage_ratio(len(factor_load.rows), factor_load.coverage_denominator),
+            "coverage_threshold": STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD,
         }
         tables_used.extend(factor_load.tables_used)
         evidence_rows += len(factor_load.rows)
@@ -1561,6 +1588,16 @@ def _load_factor_screen_rows(
         )
         has_universe = has_universe and universe_snapshot_date is not None
         has_sector = has_sector and sector_snapshot_date is not None
+        coverage_denominator = (
+            _count_distinct_stock_codes(
+                conn,
+                table_name="choice_stock_universe",
+                date_column="as_of_date",
+                as_of_date=str(universe_snapshot_date),
+            )
+            if has_universe and universe_snapshot_date is not None
+            else None
+        )
         if has_universe:
             tables_used.append("choice_stock_universe")
         if has_sector:
@@ -1645,6 +1682,8 @@ def _load_factor_screen_rows(
             rows=mapped_rows,
             snapshot_as_of_date=str(snap_date),
             tables_used=tables_used,
+            coverage_denominator=coverage_denominator,
+            coverage_denominator_as_of_date=str(universe_snapshot_date) if universe_snapshot_date is not None else None,
         )
     except duckdb.Error:
         return _FactorScreenLoadResult(
@@ -1660,6 +1699,27 @@ def _load_factor_screen_rows(
 def _table_has_columns(conn: duckdb.DuckDBPyConnection, table_name: str, columns: list[str]) -> bool:
     available = _table_columns(conn, table_name)
     return set(columns).issubset(available)
+
+
+def _count_distinct_stock_codes(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    table_name: str,
+    date_column: str,
+    as_of_date: str,
+) -> int:
+    try:
+        row = conn.execute(
+            f"""
+            select count(distinct stock_code)
+            from {table_name}
+            where cast({date_column} as date) = cast(? as date)
+            """,
+            [as_of_date],
+        ).fetchone()
+    except duckdb.Error:
+        return 0
+    return int(row[0]) if row and row[0] is not None else 0
 
 
 def _table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
@@ -2344,6 +2404,314 @@ def _build_supported_outputs(
             {"key": "risk_exit", "reason": _risk_unavailable_reason(stock_outputs.risk_exit_block_reason)}
         )
     return supported, unsupported
+
+
+def _build_module_states(
+    *,
+    page_as_of_date: str | None,
+    market_dates: list[date],
+    unsupported_outputs: list[dict[str, str]],
+    stock_outputs: _ChoiceStockOutputs,
+) -> list[dict[str, object]]:
+    unsupported_by_key = {row["key"]: row["reason"] for row in unsupported_outputs}
+    states: list[dict[str, object]] = []
+    for key in LIVERMORE_OUTPUT_KEYS:
+        payload = _module_payload(key=key, stock_outputs=stock_outputs)
+        source_date = _module_source_date(
+            key=key,
+            payload=payload,
+            stock_outputs=stock_outputs,
+            page_as_of_date=page_as_of_date,
+        )
+        threshold_days = _module_threshold_days(key)
+        lag_days = _module_lag_days(page_as_of_date=page_as_of_date, source_date=source_date, market_dates=market_dates)
+        coverage_count, coverage_denominator, coverage_ratio = _module_coverage(
+            key=key,
+            payload=payload,
+            stock_outputs=stock_outputs,
+        )
+        unsupported_reason = unsupported_by_key.get(key)
+        reasons: list[str] = []
+        state = "ready"
+        render_mode = "primary"
+        evidence_scope = "primary"
+        excludes_from_primary = False
+
+        if unsupported_reason:
+            state = "blocked" if key == "risk_exit" else "unsupported"
+            render_mode = "evidence_only"
+            evidence_scope = "detail"
+            excludes_from_primary = True
+            reasons.append(unsupported_reason)
+        elif key == "factor_screen_candidates":
+            reasons.extend(
+                _factor_screen_degradation_reasons(
+                    payload=payload,
+                    lag_days=lag_days,
+                    threshold_days=threshold_days,
+                    coverage_count=coverage_count,
+                    coverage_denominator=coverage_denominator,
+                    coverage_ratio=coverage_ratio,
+                )
+            )
+        elif key == "hybrid_fusion":
+            reasons.extend(
+                _hybrid_fusion_degradation_reasons(
+                    payload=payload,
+                    lag_days=lag_days,
+                    threshold_days=threshold_days,
+                    coverage_count=coverage_count,
+                    coverage_denominator=coverage_denominator,
+                    coverage_ratio=coverage_ratio,
+                )
+            )
+
+        if reasons and not unsupported_reason:
+            coverage_state = _coverage_state(coverage_denominator=coverage_denominator, coverage_ratio=coverage_ratio)
+            state = coverage_state or "degraded"
+            render_mode = "evidence_only"
+            evidence_scope = "detail"
+            excludes_from_primary = True
+
+        states.append(
+            {
+                "key": key,
+                "state": state,
+                "render_mode": render_mode,
+                "source_date": source_date,
+                "lag_days": lag_days,
+                "threshold_days": threshold_days,
+                "coverage_count": coverage_count,
+                "coverage_denominator": coverage_denominator,
+                "coverage_ratio": coverage_ratio,
+                "coverage_threshold": (
+                    STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD
+                    if key in {"factor_screen_candidates", "hybrid_fusion"}
+                    else None
+                ),
+                "reasons": reasons,
+                "evidence_scope": evidence_scope,
+                "excludes_from_primary": excludes_from_primary,
+            }
+        )
+    return states
+
+
+def _module_payload(*, key: str, stock_outputs: _ChoiceStockOutputs) -> dict[str, object] | None:
+    if key == "sector_rank":
+        return stock_outputs.sector_rank_payload
+    if key == "stock_candidates":
+        return stock_outputs.stock_candidates_payload
+    if key == "mean_reversion_candidates":
+        return stock_outputs.mean_reversion_payload
+    if key == "factor_screen_candidates":
+        return stock_outputs.factor_screen_payload
+    if key == "theme_breakout":
+        return stock_outputs.theme_breakout_payload
+    if key == "hybrid_fusion":
+        return stock_outputs.hybrid_fusion_payload
+    if key == "risk_exit":
+        return stock_outputs.risk_exit_payload
+    return None
+
+
+def _module_source_date(
+    *,
+    key: str,
+    payload: dict[str, object] | None,
+    stock_outputs: _ChoiceStockOutputs,
+    page_as_of_date: str | None,
+) -> str | None:
+    if key == "market_gate":
+        return page_as_of_date
+    if key == "factor_screen_candidates":
+        return _payload_text(payload, "factor_snapshot_as_of_date") or _payload_text(payload, "as_of_date")
+    if key == "hybrid_fusion" and _hybrid_fusion_is_factor_only(payload):
+        return _module_source_date(
+            key="factor_screen_candidates",
+            payload=stock_outputs.factor_screen_payload,
+            stock_outputs=stock_outputs,
+            page_as_of_date=page_as_of_date,
+        )
+    return _payload_text(payload, "as_of_date")
+
+
+def _payload_text(payload: dict[str, object] | None, key: str) -> str | None:
+    value = payload.get(key) if isinstance(payload, dict) else None
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def _module_threshold_days(key: str) -> int | None:
+    if key in {"factor_screen_candidates", "hybrid_fusion", "risk_exit"}:
+        return STOCK_MODULE_FRESHNESS_THRESHOLD_DAYS
+    return None
+
+
+def _module_lag_days(*, page_as_of_date: str | None, source_date: str | None, market_dates: list[date]) -> int | None:
+    if not page_as_of_date or not source_date:
+        return None
+    try:
+        page_date = date.fromisoformat(page_as_of_date)
+        source = date.fromisoformat(source_date)
+    except ValueError:
+        return None
+    if page_date <= source:
+        return 0
+    trading_dates = {market_date for market_date in market_dates if source < market_date <= page_date}
+    if trading_dates:
+        return len(trading_dates)
+    return max(0, (page_date - source).days)
+
+
+def _coverage_ratio(count: int | None, denominator: int | None) -> float | None:
+    if count is None or denominator is None or denominator <= 0:
+        return None
+    return round(count / denominator, 6)
+
+
+def _module_coverage(
+    *,
+    key: str,
+    payload: dict[str, object] | None,
+    stock_outputs: _ChoiceStockOutputs,
+) -> tuple[int | None, int | None, float | None]:
+    source_payload = payload
+    if key == "hybrid_fusion" and _hybrid_fusion_is_factor_only(payload):
+        source_payload = stock_outputs.factor_screen_payload
+    if key not in {"factor_screen_candidates", "hybrid_fusion"} or not isinstance(source_payload, dict):
+        return None, None, None
+    coverage_count = _safe_int(source_payload.get("coverage_count"))
+    if coverage_count is None:
+        coverage_count = _safe_int(source_payload.get("input_stock_count"))
+    coverage_denominator = _safe_int(source_payload.get("coverage_denominator"))
+    coverage_ratio_raw = _safe_float(source_payload.get("coverage_ratio"))
+    coverage_ratio = coverage_ratio_raw if coverage_ratio_raw is not None else _coverage_ratio(coverage_count, coverage_denominator)
+    return coverage_count, coverage_denominator, coverage_ratio
+
+
+def _coverage_state(*, coverage_denominator: int | None, coverage_ratio: float | None) -> str | None:
+    if coverage_denominator is None or coverage_denominator <= 0 or coverage_ratio is None:
+        return "blocked"
+    if coverage_ratio < STOCK_MODULE_PARTIAL_COVERAGE_THRESHOLD:
+        return "blocked"
+    if coverage_ratio < STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD:
+        return "partial"
+    return None
+
+
+def _coverage_degradation_reason(
+    *,
+    label: str,
+    coverage_count: int | None,
+    coverage_denominator: int | None,
+    coverage_ratio: float | None,
+) -> str | None:
+    if coverage_denominator is None or coverage_denominator <= 0 or coverage_ratio is None:
+        count_text = "unknown" if coverage_count is None else str(coverage_count)
+        return (
+            f"{label} active A-share universe denominator is unavailable; "
+            f"coverage count is {count_text}, so primary eligibility cannot be certified."
+        )
+    if coverage_ratio < STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD:
+        percent = coverage_ratio * 100
+        threshold = STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD * 100
+        return (
+            f"{label} covers {coverage_count}/{coverage_denominator} active A-share stocks "
+            f"({percent:.1f}%); primary threshold is {threshold:.0f}%."
+        )
+    return None
+
+
+def _factor_screen_degradation_reasons(
+    *,
+    payload: dict[str, object] | None,
+    lag_days: int | None,
+    threshold_days: int | None,
+    coverage_count: int | None,
+    coverage_denominator: int | None,
+    coverage_ratio: float | None,
+) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    reasons: list[str] = []
+    if threshold_days is not None and lag_days is not None and lag_days > threshold_days:
+        reasons.append(
+            f"Factor screen source date lags the page as_of_date by {lag_days} days; threshold is {threshold_days} days."
+        )
+    coverage_reason = _coverage_degradation_reason(
+        label="Factor screen",
+        coverage_count=coverage_count,
+        coverage_denominator=coverage_denominator,
+        coverage_ratio=coverage_ratio,
+    )
+    if coverage_reason:
+        reasons.append(coverage_reason)
+    coverage_note = _payload_text(payload, "coverage_note")
+    if coverage_note:
+        reasons.append(coverage_note)
+    return reasons
+
+
+def _hybrid_fusion_degradation_reasons(
+    *,
+    payload: dict[str, object] | None,
+    lag_days: int | None,
+    threshold_days: int | None,
+    coverage_count: int | None,
+    coverage_denominator: int | None,
+    coverage_ratio: float | None,
+) -> list[str]:
+    if not isinstance(payload, dict) or _payload_item_count(payload) <= 0:
+        return []
+    items = [item for item in payload.get("items", []) if isinstance(item, dict)]
+    reasons: list[str] = []
+    if threshold_days is not None and lag_days is not None and lag_days > threshold_days:
+        reasons.append(
+            f"Hybrid fusion source date lags the page as_of_date by {lag_days} days; threshold is {threshold_days} days."
+        )
+    coverage_reason = _coverage_degradation_reason(
+        label="Hybrid fusion",
+        coverage_count=coverage_count,
+        coverage_denominator=coverage_denominator,
+        coverage_ratio=coverage_ratio,
+    )
+    if coverage_reason:
+        reasons.append(coverage_reason)
+    if _hybrid_fusion_is_factor_only(payload):
+        reasons.append("Hybrid fusion candidates are factor-only and lack independent trend, sector, or theme confirmation.")
+    if any(str(item.get("confidence") or "").strip().lower() in {"low", "very_low"} for item in items):
+        reasons.append("Hybrid fusion confidence is low for at least one candidate.")
+    if items and all(_safe_float(cast(dict[str, object], item.get("evidence") or {}).get("sector_score")) in (None, 0.0) for item in items):
+        reasons.append("Hybrid fusion has no sector confirmation score.")
+    if items and all((_safe_float(item.get("price_confirm_score")) or 0.0) <= 0.0 for item in items):
+        reasons.append("Hybrid fusion has no positive price-confirm evidence.")
+    if items and all(
+        ((_safe_float(item.get("attention_score")) or 0.0) <= 0.0)
+        and ((_safe_float(item.get("burst_score")) or 0.0) <= 0.0)
+        for item in items
+    ):
+        reasons.append("Hybrid fusion has no attention or burst evidence.")
+    return reasons
+
+
+def _hybrid_fusion_is_factor_only(payload: dict[str, object] | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        return False
+    source_kinds: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        evidence = item.get("evidence")
+        if not isinstance(evidence, dict):
+            continue
+        raw_kinds = evidence.get("source_kinds")
+        if isinstance(raw_kinds, list):
+            source_kinds.update(str(kind) for kind in raw_kinds if kind)
+    return source_kinds == {"factor_screen"}
 
 
 def _build_cycle_rotation_framework(

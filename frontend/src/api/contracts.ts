@@ -1439,6 +1439,22 @@ export type LivermoreUnsupportedOutput = {
   reason: string;
 };
 
+export type LivermoreModuleState = {
+  key: LivermoreOutputKey;
+  state: "ready" | "degraded" | "partial" | "blocked" | "unsupported";
+  render_mode: "primary" | "evidence_only" | "hidden";
+  source_date: string | null;
+  lag_days: number | null;
+  threshold_days: number | null;
+  coverage_count?: number | null;
+  coverage_denominator?: number | null;
+  coverage_ratio?: number | null;
+  coverage_threshold?: number | null;
+  reasons: string[];
+  evidence_scope: "primary" | "detail" | "detail_only" | "none";
+  excludes_from_primary: boolean;
+};
+
 export type LivermoreSectorRankLeaderConstituent = {
   rank: number;
   stock_code: string;
@@ -1694,6 +1710,11 @@ export type FactorScreenCandidatesPayload = {
   market_state: LivermoreMarketGateState;
   observation_only?: boolean;
   input_stock_count: number;
+  coverage_count?: number | null;
+  coverage_denominator?: number | null;
+  coverage_denominator_as_of_date?: string | null;
+  coverage_ratio?: number | null;
+  coverage_threshold?: number | null;
   candidate_count: number;
   coverage_note: string;
   items: FactorScreenCandidateItem[];
@@ -1878,6 +1899,7 @@ export type LivermoreStrategyPayload = {
   data_gaps: LivermoreDataGap[];
   supported_outputs: LivermoreOutputKey[];
   unsupported_outputs: LivermoreUnsupportedOutput[];
+  module_states: LivermoreModuleState[];
   cycle_rotation_framework?: LivermoreCycleRotationFramework;
   sector_rank?: LivermoreSectorRankPayload;
   stock_candidates?: LivermoreStockCandidatesPayload;
@@ -2280,6 +2302,7 @@ export type ConfluenceReplayBlockedDate = {
 
 export type ConfluenceReplayStatus = {
   window_status: BacktestWindowSummaryStatus;
+  maturity_status?: "ready" | "partial" | "insufficient" | "pending" | "unsupported" | "proxy_only" | "missing" | string;
   has_decision_usable_completed_stats: boolean;
   completed_dates: number;
   pending_dates: number;
@@ -2289,6 +2312,8 @@ export type ConfluenceReplayStatus = {
   pending_candidate_rows: number;
   unsupported_candidate_rows: number;
   proxy_only_candidate_rows: number;
+  matched_entry_count?: number;
+  has_required_horizon_stats?: boolean;
   included_completed_stats_dates: string[];
   blocked_dates: ConfluenceReplayBlockedDate[];
   completed_zero_signal_dates: string[];

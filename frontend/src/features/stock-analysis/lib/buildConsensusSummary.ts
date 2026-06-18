@@ -21,6 +21,13 @@ export type ConsensusCandidateItem = {
 
 export type ConsensusStrategyKind = "hybrid_fusion" | "livermore" | "mean_reversion" | "factor_screen";
 
+const STRATEGY_OUTPUT_KEYS: Record<ConsensusStrategyKind, LivermoreStrategyPayload["supported_outputs"][number]> = {
+  hybrid_fusion: "hybrid_fusion",
+  livermore: "stock_candidates",
+  mean_reversion: "mean_reversion_candidates",
+  factor_screen: "factor_screen_candidates",
+};
+
 export type ConsensusSummary = {
   /** 3 套策略共同推荐 */
   tripleCount: number;
@@ -45,6 +52,21 @@ const STRATEGY_LABELS: Record<ConsensusStrategyKind, string> = {
 
 export function consensusStrategyLabel(kind: ConsensusStrategyKind): string {
   return STRATEGY_LABELS[kind];
+}
+
+function isConsensusStrategyPrimaryExcluded(
+  payload: LivermoreStrategyPayload | null | undefined,
+  kind: ConsensusStrategyKind,
+): boolean {
+  if (!payload) {
+    return true;
+  }
+  const key = STRATEGY_OUTPUT_KEYS[kind];
+  if (!payload.module_states || payload.module_states.length === 0) {
+    return true;
+  }
+  const state = payload.module_states.find((item) => item.key === key);
+  return !state || state.excludes_from_primary || state.render_mode !== "primary";
 }
 
 /**
@@ -89,10 +111,18 @@ export function lookupStockStrategyRanks(
 export function buildConsensusSummary(
   payload: LivermoreStrategyPayload | null | undefined,
 ): ConsensusSummary {
-  const livermoreItems = payload?.stock_candidates?.items ?? [];
-  const meanReversionItems = payload?.mean_reversion_candidates?.items ?? [];
-  const factorScreenItems = payload?.factor_screen_candidates?.items ?? [];
-  const hybridFusionItems = payload?.hybrid_fusion_candidates?.items ?? [];
+  const livermoreItems = isConsensusStrategyPrimaryExcluded(payload, "livermore")
+    ? []
+    : (payload?.stock_candidates?.items ?? []);
+  const meanReversionItems = isConsensusStrategyPrimaryExcluded(payload, "mean_reversion")
+    ? []
+    : (payload?.mean_reversion_candidates?.items ?? []);
+  const factorScreenItems = isConsensusStrategyPrimaryExcluded(payload, "factor_screen")
+    ? []
+    : (payload?.factor_screen_candidates?.items ?? []);
+  const hybridFusionItems = isConsensusStrategyPrimaryExcluded(payload, "hybrid_fusion")
+    ? []
+    : (payload?.hybrid_fusion_candidates?.items ?? []);
 
   const strategyCounts: Record<ConsensusStrategyKind, number> = {
     hybrid_fusion: hybridFusionItems.length,
