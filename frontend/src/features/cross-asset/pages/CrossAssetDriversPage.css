@@ -632,11 +632,24 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
   color: var(--ca-muted);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.45;
+}
+
+.cross-asset-page-meta span {
+  display: inline-block;
+  max-width: min(100%, 34ch);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
 }
 
 .cross-asset-cockpit {

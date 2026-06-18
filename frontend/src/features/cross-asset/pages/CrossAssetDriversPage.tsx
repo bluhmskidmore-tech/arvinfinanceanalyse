@@ -10,6 +10,7 @@ import type {
   MacroBondLinkageEnvironmentScore,
   MacroBondLinkagePayload,
   MacroBondLinkageTopCorrelation,
+  ResultMeta,
 } from "../../../api/contracts";
 import { AsyncSection } from "../../../components/AsyncSection";
 import { DataStatusStrip, PageDecisionHero } from "../../../components/page/PagePrimitives";
@@ -160,6 +161,23 @@ function resultMetaQualityLabel(value: string | null | undefined): string {
   if (value === "error") return "错误";
   if (value === "stale") return "陈旧";
   return value ?? "待定";
+}
+
+function resultMetaValue(value: string | null | undefined): string {
+  return value || "待定";
+}
+
+function renderResultMetaLineage(sourceLabel: string, meta: ResultMeta | undefined) {
+  const fallbackLabel = meta?.fallback_date
+    ? `${resultMetaValue(meta?.fallback_mode)} · ${meta.fallback_date}`
+    : resultMetaValue(meta?.fallback_mode);
+  return (
+    <>
+      <span title={resultMetaValue(meta?.source_version)}>{sourceLabel}来源 {resultMetaValue(meta?.source_version)}</span>
+      <span title={resultMetaValue(meta?.vendor_version)}>{sourceLabel}供应商 {resultMetaValue(meta?.vendor_version)}</span>
+      <span title={fallbackLabel}>{sourceLabel}回退 {fallbackLabel}</span>
+    </>
+  );
 }
 
 type LivermoreReadinessKey = LivermoreStrategyPayload["rule_readiness"][number]["key"];
@@ -2113,6 +2131,8 @@ export default function CrossAssetDriversPage() {
             <span>联动 {resultMetaQualityLabel(linkageMeta?.quality_flag)}</span>
             <span>宏观更新 {latestMeta?.generated_at ?? "待定"}</span>
             <span>联动更新 {linkageMeta?.generated_at ?? "待定"}</span>
+            {renderResultMetaLineage("宏观", latestMeta)}
+            {renderResultMetaLineage("联动", linkageMeta)}
           </p>
         </div>
 
