@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
+import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import type {
   AssetStructureItem,
   BondTopHoldingItem,
@@ -26,7 +27,7 @@ import type {
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { BondAnalyticsDecisionRail } from "./BondAnalyticsDecisionRail";
 import type { ActionAttributionResponse } from "../types";
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, ibTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import {
@@ -37,14 +38,27 @@ import {
 import { formatBp, formatPct, formatWan, formatYi } from "../utils/formatters";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
 import ReactECharts from "../../../lib/echarts";
+import {
+  BOND_HOLDINGS_COCKPIT_CARD_TITLE,
+  BOND_HOLDINGS_COCKPIT_SCOPE_NOTE,
+  BOND_HOLDINGS_EMPTY_NOTE,
+  BOND_HOLDINGS_HOME_UNAVAILABLE_NOTE,
+  BOND_HOLDINGS_MODULE_LABEL,
+  BOND_HOLDINGS_RATING_GAP_NOTE,
+} from "../lib/bondHoldingsEvidenceCopy";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { panelStyle } from "./bondAnalyticsCockpitTokens";
+import {
+  InstitutionalKpiRail,
+  InstitutionalKpiTile,
+} from "../../workbench/shared/InstitutionalKpiTile";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 
 const dt = designTokens;
-const infoAccent = dt.color.info[500];
-const gradBar = `linear-gradient(90deg, ${dt.color.info[300]} 0%, ${infoAccent} 100%)`;
-const deskPanelShadow = "0 2px 6px rgba(22, 35, 46, 0.035)";
+const IB_ACCENT_BAR = "var(--ib-accent)";
+const DONUT_CHART_COLORS = mossChartCategoricalPalette.slice(0, 5);
+const DISTRIBUTION_CHART_COLORS = [...DONUT_CHART_COLORS, ibTokens.color.gold];
+const deskPanelShadow = "none";
 const dashboardCardStyle: CSSProperties = {
   ...panelStyle(displayTokens.surface.section),
   border: `1px solid ${dt.color.neutral[200]}`,
@@ -55,8 +69,8 @@ const cardBodyStyle = { padding: 14 } as const;
 
 const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
 const PORTFOLIO_HEADLINES_CREDIT_NOTE = "组合信用摘要暂未返回，债券只数、集中度和 DV01 稍后补齐。";
-const TOP_HOLDINGS_HOME_NOTE = "前十大持仓暂未返回，首页先保留组合规模与浮盈快照。";
-const TOP_HOLDINGS_RATING_NOTE = "持仓明细暂未返回，评级分布稍后补齐。";
+const TOP_HOLDINGS_HOME_NOTE = BOND_HOLDINGS_HOME_UNAVAILABLE_NOTE;
+const TOP_HOLDINGS_RATING_NOTE = BOND_HOLDINGS_RATING_GAP_NOTE;
 const BOND_ANALYTICS_CURRENCY_BASIS_TEXT =
   "金额指标按人民币/CNY口径展示，外币债券市值、摊余成本、应计利息等已折算为人民币。";
 const DV01_HOME_TOP_N = 1;
@@ -649,58 +663,17 @@ function HoldingsMobileReadout({
   return (
     <div data-testid="bond-analysis-holdings-mobile-readout" className={styles.mobileTableReadout}>
       <div className={styles.mobileReadoutHeader}>
-        <span>前十大持仓</span>
+        <span>{BOND_HOLDINGS_MODULE_LABEL}</span>
         <strong>{statusLabel}</strong>
       </div>
       <div className={styles.mobileReadoutGrid}>
         <MobileReadoutField label="最大持仓" value={leadName} detail={leadDetail} />
         <MobileReadoutField label="评级" value={formatTextEvidenceDisplay(leadHolding?.rating)} />
         <MobileReadoutField label="市值" value={formatMoneyEvidenceDisplay(leadHolding?.market_value)} />
-        <MobileReadoutField label="收益率" value={formatPctEvidenceDisplay(leadHolding?.ytm)} />
+        <MobileReadoutField label="YTM" value={formatPctEvidenceDisplay(leadHolding?.ytm)} />
         <MobileReadoutField label="久期" value={formatNumericEvidenceDisplay(leadHolding?.modified_duration)} />
         <MobileReadoutField label="权重" value={formatPctEvidenceDisplay(leadHolding?.weight)} />
       </div>
-    </div>
-  );
-}
-
-function ReferenceKpiTile({
-  label,
-  value,
-  detail,
-  status,
-  priority = "secondary",
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  status?: string;
-  priority?: "primary" | "secondary" | "gap";
-  tone?: "default" | "positive" | "negative";
-}) {
-  let state: "gap" | "pending" | "ready" | undefined;
-  if (status === "缺口") {
-    state = "gap";
-  } else if (status === "待读面") {
-    state = "pending";
-  } else if (status === "已读") {
-    state = "ready";
-  }
-
-  return (
-    <div className={styles.referenceKpiTile} data-priority={priority} data-state={state}>
-      <div className={styles.referenceKpiHeader}>
-        <div className={styles.referenceKpiLabel}>{label}</div>
-        {status ? <span>{status}</span> : null}
-      </div>
-      <div
-        className={styles.referenceKpiValue}
-        data-tone={tone}
-      >
-        {value}
-      </div>
-      <div className={styles.referenceKpiDetail}>{detail}</div>
     </div>
   );
 }
@@ -877,7 +850,7 @@ function buildCompactYieldCurveChartOption(curves: YieldCurveTermStructureCurveP
       type: "plain" as const,
       itemWidth: 10,
       itemHeight: 8,
-      textStyle: { fontSize: 10, color: dt.color.neutral[600] },
+      textStyle: { fontSize: 10, color: ibTokens.color.inkMuted },
     },
     grid: { left: 44, right: 12, top: 26, bottom: 22 },
     yAxis: yieldAxis ? [yieldAxis] : base.yAxis,
@@ -1243,7 +1216,7 @@ function ProgressStack({
               className={styles.referenceProgressBar}
               style={{
                 width: `${Math.max(8, (Math.abs(item.value) / maxValue) * 100)}%`,
-                background: item.color ?? gradBar,
+                background: item.color ?? IB_ACCENT_BAR,
               }}
             />
           </div>
@@ -1300,7 +1273,7 @@ function MaturityColumnChart({
           <div
             style={{
               height: `${Math.max(10, (Math.abs(item.value) / maxValue) * 118)}px`,
-              background: item.color ?? gradBar,
+              background: item.color ?? IB_ACCENT_BAR,
             }}
           />
           <small>{item.label}</small>
@@ -1320,7 +1293,7 @@ function buildDonutGradient(items: Array<{ value: number; color?: string }>) {
   const stops = items.map((item, index) => {
     const start = cursor;
     cursor += (Math.max(item.value, 0) / total) * 100;
-    const color = item.color ?? [dt.color.primary[600], dt.color.info[500], dt.color.success[500], dt.color.warning[500]][index % 4];
+    const color = item.color ?? DONUT_CHART_COLORS[index % DONUT_CHART_COLORS.length];
     return `${color} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
   });
 
@@ -1351,9 +1324,9 @@ function DistributionDonut({
   return (
     <div className={styles.referenceDonutPanel}>
       <div className={styles.referenceDonutLegend}>
-        {items.slice(0, 5).map((item) => (
+        {items.slice(0, 5).map((item, index) => (
           <div key={item.key} className={styles.referenceDonutLegendRow}>
-            <span style={{ background: item.color ?? dt.color.primary[500] }} />
+            <span style={{ background: item.color ?? DONUT_CHART_COLORS[index % DONUT_CHART_COLORS.length] }} />
             <strong>{item.label}</strong>
             <em>{item.caption}</em>
           </div>
@@ -1383,7 +1356,7 @@ function HoldingRows({
   }
 
   if (holdings.length === 0) {
-    return <div className={styles.tableEmpty}>暂无持仓明细</div>;
+    return <div className={styles.tableEmpty}>{BOND_HOLDINGS_EMPTY_NOTE}</div>;
   }
 
   return (
@@ -1648,19 +1621,19 @@ export function BondAnalyticsInstitutionalCockpit({
       })
       .sort((left, right) => right.rawMarketValue - left.rawMarketValue)
       .slice(0, 7)
-      .map(({ item, rawMarketValue }) => ({
+      .map(({ item, rawMarketValue }, index) => ({
         key: item.maturity_bucket,
         label: item.maturity_bucket,
         value: rawMarketValue,
         caption: formatYi(item.total_market_value),
-        color: dt.color.success[500],
+        color: DISTRIBUTION_CHART_COLORS[index % DISTRIBUTION_CHART_COLORS.length],
       }));
   }, [maturityQ.data]);
 
   const leadMaturity = maturityItems[0];
   const assetClassItems = (portfolioHl?.by_asset_class ?? []).slice(0, 4);
   const dashboardAssetItems = useMemo(() => {
-    const palette = [dt.color.primary[700], dt.color.info[500], dt.color.success[600], dt.color.warning[500], dt.color.neutral[400]];
+    const palette = DISTRIBUTION_CHART_COLORS;
     const dashboardItems = [...(assetStructureQ.data?.result.items ?? [])]
       .flatMap((item: AssetStructureItem, index) => {
         const rawMarketValue = bondNumericRawOrNull(item.total_market_value);
@@ -1698,7 +1671,7 @@ export function BondAnalyticsInstitutionalCockpit({
     });
   }, [assetClassItems, assetStructureQ.data]);
   const industryItems = useMemo(() => {
-    const palette = [dt.color.primary[700], dt.color.info[500], dt.color.success[600], dt.color.warning[500], dt.color.neutral[500]];
+    const palette = DISTRIBUTION_CHART_COLORS;
     return [...(industryQ.data?.result.items ?? [])]
       .flatMap((item, index) => {
         const rawMarketValue = bondNumericRawOrNull(item.total_market_value);
@@ -1791,7 +1764,7 @@ export function BondAnalyticsInstitutionalCockpit({
     value: item.faceValue,
     caption: `${item.count} 只`,
     detail: formatYi(item.faceValue),
-    color: [dt.color.primary[600], dt.color.info[500], dt.color.success[500], dt.color.warning[500], dt.color.neutral[500], dt.color.primary[300]][index % 6],
+    color: DISTRIBUTION_CHART_COLORS[index % DISTRIBUTION_CHART_COLORS.length],
   }));
   const durationRows = maturityItems.slice(0, 3).map((item) => ({
     ...item,
@@ -1873,61 +1846,61 @@ export function BondAnalyticsInstitutionalCockpit({
               </div>
             </div>
           </div>
-
-          <aside data-testid="bond-analysis-hero-aside" className={styles.heroAside}>
-            <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
-              <div className={styles.heroGovernanceLead}>
-                <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
-                <span className={styles.heroGovernanceHeading}>首屏读面拆解</span>
-                <span className={styles.heroGovernanceDetail}>只展示后端返回事实，不补造读面。</span>
-              </div>
-              <div className={styles.heroGovernanceMetrics}>
-                <span>久期 {durationDisplay}</span>
-                <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
-                <span>信用占比 {creditWeightDisplay}</span>
-              </div>
-              <div className={styles.heroGovernanceStatus}>
-                <span>
-                  报告日 {topbarReportStatus} · {topbarReportDate}
-                </span>
-                <span>
-                  首屏 KPI {topbarReadoutStatus} · {topbarReadoutDetail}
-                </span>
-              </div>
-              <div className={styles.heroVerdictRow}>
-                {deskVerdictFields.map((field) => (
-                  <div key={field.label} className={styles.heroVerdictField}>
-                    <span>{field.label}</span>
-                    <strong>{field.value}</strong>
-                    <small>{field.detail}</small>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {decisionRail && onOpenModuleDetail ? (
-              <BondAnalyticsDecisionRail
-                activeModuleContext={decisionRail.activeModuleContext}
-                activeReadinessItem={decisionRail.activeReadinessItem}
-                watchlistItems={decisionRail.watchlistItems}
-                onOpenModuleDetail={onOpenModuleDetail}
-              />
-            ) : null}
-          </aside>
         </section>
+
+        <aside data-testid="bond-analysis-hero-aside" className={styles.heroAside}>
+          <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
+            <div className={styles.heroGovernanceLead}>
+              <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
+              <span className={styles.heroGovernanceHeading}>首屏读面拆解</span>
+              <span className={styles.heroGovernanceDetail}>只展示后端返回事实，不补造读面。</span>
+            </div>
+            <div className={styles.heroGovernanceMetrics}>
+              <span>久期 {durationDisplay}</span>
+              <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
+              <span>信用占比 {creditWeightDisplay}</span>
+            </div>
+            <div className={styles.heroGovernanceStatus}>
+              <span>
+                报告日 {topbarReportStatus} · {topbarReportDate}
+              </span>
+              <span>
+                首屏 KPI {topbarReadoutStatus} · {topbarReadoutDetail}
+              </span>
+            </div>
+            <div className={styles.heroVerdictRow}>
+              {deskVerdictFields.map((field) => (
+                <div key={field.label} className={styles.heroVerdictField}>
+                  <span>{field.label}</span>
+                  <strong>{field.value}</strong>
+                  <small>{field.detail}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {decisionRail && onOpenModuleDetail ? (
+            <BondAnalyticsDecisionRail
+              activeModuleContext={decisionRail.activeModuleContext}
+              activeReadinessItem={decisionRail.activeReadinessItem}
+              watchlistItems={decisionRail.watchlistItems}
+              onOpenModuleDetail={onOpenModuleDetail}
+            />
+          ) : null}
+        </aside>
 
         <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
 
         <div className={styles.holdingsKpiRail}>
-          <div data-testid="bond-analysis-kpi-ribbon" className={styles.holdingsKpiGrid}>
-            <ReferenceKpiTile label="久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待读面"} status={Number.isFinite(dur) ? "已读" : "待读面"} priority="primary" />
-            <ReferenceKpiTile label="组合到期收益率" value={k ? formatPct(k.weighted_ytm) : "—"} detail={previousK ? `上期 ${formatPct(previousK.weighted_ytm)}` : "收益率待读面"} status={k ? "已读" : "待读面"} priority="primary" />
-            <ReferenceKpiTile label="信用利差" value={formatSpreadBpDisplay(spreadMedian)} detail="信用利差中位数" status={Number.isFinite(spreadMedianBp) ? "已读" : "待读面"} priority="primary" />
-            <ReferenceKpiTile label="DV01" value={dv01Display} detail="风险指标读面" status={hasDv01Readout ? "已读" : "待读面"} priority="primary" />
-            <ReferenceKpiTile label="Carry+Roll" value="—" detail="接口未返回 / 待读面" status="缺口" priority="gap" />
-            <ReferenceKpiTile label="月度收益" value={actionPnlDisplay} detail={actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待读面"} status={actionAttribution ? "已读" : "待读面"} tone={actionPnlTone} />
-            <ReferenceKpiTile label="总收益" value={unrealizedPnlDisplay} detail={`较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} status={k ? "已读" : "待读面"} tone={unrealizedPnlTone} />
-          </div>
+          <InstitutionalKpiRail testId="bond-analysis-kpi-ribbon" columns={7} flush>
+            <InstitutionalKpiTile label="久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待读面"} status={Number.isFinite(dur) ? "已读" : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="组合到期收益率" value={k ? formatPct(k.weighted_ytm) : "—"} detail={previousK ? `上期 ${formatPct(previousK.weighted_ytm)}` : "收益率待读面"} status={k ? "已读" : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="信用利差" value={formatSpreadBpDisplay(spreadMedian)} detail="信用利差中位数" status={Number.isFinite(spreadMedianBp) ? "已读" : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="DV01" value={dv01Display} detail="风险指标读面" status={hasDv01Readout ? "已读" : "待读面"} priority="primary" />
+            <InstitutionalKpiTile label="Carry+Roll" value="—" detail="接口未返回 / 待读面" status="缺口" priority="gap" />
+            <InstitutionalKpiTile label="月度收益" value={actionPnlDisplay} detail={actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待读面"} status={actionAttribution ? "已读" : "待读面"} tone={actionPnlTone} />
+            <InstitutionalKpiTile label="总收益" value={unrealizedPnlDisplay} detail={`较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} status={k ? "已读" : "待读面"} tone={unrealizedPnlTone} />
+          </InstitutionalKpiRail>
           <div
             data-testid="bond-analysis-currency-basis-banner"
             className={styles.currencyBasisBanner}
@@ -2050,7 +2023,7 @@ export function BondAnalyticsInstitutionalCockpit({
           <Card
             variant="borderless"
             size="small"
-            title={<SectionCardTitle eyebrow="持仓证据明细" title="前十大返回持仓" />}
+            title={<SectionCardTitle eyebrow="持仓证据明细" title={BOND_HOLDINGS_COCKPIT_CARD_TITLE} />}
             extra={
               <Button
                 size="small"
@@ -2073,9 +2046,9 @@ export function BondAnalyticsInstitutionalCockpit({
             />
             <div data-testid="bond-analysis-holdings-evidence-strip" className={styles.holdingsEvidenceStrip}>
               <div>
-                <span>返回持仓</span>
+                <span>{BOND_HOLDINGS_MODULE_LABEL}条数</span>
                 <strong>{topHoldingsUnavailable ? "待返回" : `${topHoldings.length} 条`}</strong>
-                <small>仅展示后端返回的前十大持仓。</small>
+                <small>{BOND_HOLDINGS_COCKPIT_SCOPE_NOTE}</small>
               </div>
               <div>
                 <span>评级缺口</span>
@@ -2085,7 +2058,7 @@ export function BondAnalyticsInstitutionalCockpit({
               <div>
                 <span>数值缺口</span>
                 <strong>{topHoldingsUnavailable ? "—" : `${holdingMetricGapCount} 项`}</strong>
-                <small>市值 / 收益率 / 久期 / 权重。</small>
+                <small>市值 / YTM / 久期 / 权重。</small>
               </div>
             </div>
             <div
@@ -2104,7 +2077,7 @@ export function BondAnalyticsInstitutionalCockpit({
                 <span>券种</span>
                 <span>评级</span>
                 <span>市值</span>
-                <span>收益率</span>
+                <span>YTM</span>
                 <span>久期</span>
                 <span>权重</span>
               </div>

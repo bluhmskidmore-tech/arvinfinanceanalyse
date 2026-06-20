@@ -8,7 +8,7 @@ import {
   TeamOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import { Button, Card, Col, Row, Select, Space, Typography, message } from "antd";
+import { Button, Select, Typography, message } from "antd";
 
 import type {
   KpiFetchAndRecalcResponse,
@@ -17,6 +17,12 @@ import type {
   KpiPeriodSummaryResponse,
 } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import {
+  DataStatusStrip,
+  PageDecisionHero,
+  PageFilterTray,
+  PageStateSurface,
+} from "../../../components/page/PagePrimitives";
 import { BatchPasteModal } from "../components/BatchPasteModal";
 import { MetricEditModal } from "../components/MetricEditModal";
 import { MetricManageModal } from "../components/MetricManageModal";
@@ -24,7 +30,7 @@ import { MetricTable } from "../components/MetricTable";
 import { OwnerList } from "../components/OwnerList";
 import "./KpiPerformancePage.css";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type PeriodType = "DAILY" | "MONTH" | "QUARTER" | "YEAR";
 
@@ -254,175 +260,186 @@ export default function KpiPerformancePage() {
     void loadMetrics();
   }, [loadMetrics]);
 
+  const currentPeriodLabel =
+    periodType === "DAILY"
+      ? `截止 ${formatDateCN(asOfDate)}`
+      : periodType === "MONTH"
+        ? `${year}年${periodValue}月`
+        : periodType === "QUARTER"
+          ? `${year}年Q${periodValue}`
+          : `${year}年度汇总`;
+
+  const currentOwnerLabel = selectedOwner
+    ? `${selectedOwner.owner_name} · ${selectedOwner.org_unit}`
+    : "未选择考核对象";
+
   return (
-    <div className="kpi-performance-page" data-testid="kpi-performance-page">
-      <div className="kpi-performance-page__header" data-testid="kpi-performance-header">
-        <Title level={3} className="kpi-performance-page__title">
-          绩效考核
-        </Title>
-        <Text type="secondary">
-          KPI 指标与完成情况 · 截止 {formatDateCN(asOfDate)}
-        </Text>
-      </div>
-
-      <Card className="kpi-performance-page__filters" data-testid="kpi-performance-filters">
-        <Row gutter={[16, 16]} align="middle" justify="space-between">
-          <Col flex="auto">
-            <Space wrap size="middle" data-testid="kpi-performance-filter-row">
-              <div className="kpi-performance-page__field">
-                <div className="kpi-performance-page__field-label">考核年度</div>
-                <Select
-                  aria-label="KPI assessment year"
-                  className="kpi-performance-page__select kpi-performance-page__select--year"
-                  value={year}
-                  options={yearOptions.map((y) => ({ label: `${y} 年`, value: y }))}
-                  onChange={(v) => setYear(v)}
-                />
-              </div>
-              <div className="kpi-performance-page__field">
-                <div className="kpi-performance-page__field-label">时间维度</div>
-                <Select
-                  aria-label="KPI period type"
-                  className="kpi-performance-page__select kpi-performance-page__select--period-type"
-                  value={periodType}
-                  options={[
-                    { label: "按日期", value: "DAILY" },
-                    { label: "月度", value: "MONTH" },
-                    { label: "季度", value: "QUARTER" },
-                    { label: "年度", value: "YEAR" },
-                  ]}
-                  onChange={(v) => {
-                    setPeriodType(v as PeriodType);
-                    if (v === "MONTH") {
-                      setPeriodValue(new Date().getMonth() + 1);
-                    } else if (v === "QUARTER") {
-                      setPeriodValue(Math.ceil((new Date().getMonth() + 1) / 3));
-                    }
-                  }}
-                />
-              </div>
-              {periodType === "MONTH" ? (
-                <div className="kpi-performance-page__field">
-                  <div className="kpi-performance-page__field-label">月份</div>
-                  <Select
-                    aria-label="KPI month"
-                    className="kpi-performance-page__select kpi-performance-page__select--month"
-                    value={periodValue}
-                    options={monthOptions}
-                    onChange={(v) => setPeriodValue(v)}
-                  />
-                </div>
-              ) : null}
-              {periodType === "QUARTER" ? (
-                <div className="kpi-performance-page__field">
-                  <div className="kpi-performance-page__field-label">季度</div>
-                  <Select
-                    aria-label="KPI quarter"
-                    className="kpi-performance-page__select kpi-performance-page__select--quarter"
-                    value={periodValue}
-                    options={quarterOptions}
-                    onChange={(v) => setPeriodValue(v)}
-                  />
-                </div>
-              ) : null}
-              {periodType === "DAILY" ? (
-                <div className="kpi-performance-page__field">
-                  <div className="kpi-performance-page__field-label">截止日期</div>
-                  <input
-                    aria-label="KPI as-of date"
-                    type="date"
-                    value={formatDate(asOfDate)}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v) setAsOfDate(new Date(`${v}T12:00:00`));
-                    }}
-                    className="kpi-performance-page__date-input"
-                  />
-                </div>
-              ) : null}
-            </Space>
-          </Col>
-          <Col>
-            <Space wrap data-testid="kpi-performance-action-row">
-              <Button icon={<PlusOutlined />} disabled={!selectedOwner} onClick={handleAddMetric}>
-                新增指标
-              </Button>
-              <Button icon={<UploadOutlined />} disabled={!selectedOwner} onClick={() => setBatchPasteOpen(true)}>
-                批量导入
-              </Button>
-              <Button
-                type="primary"
-                icon={<SyncOutlined />}
-                loading={fetchLoading}
-                disabled={!selectedOwner}
-                onClick={() => void handleFetchAndRecalc()}
-              >
-                抓取并重算
-              </Button>
-              <Button
-                icon={<CloudDownloadOutlined />}
-                loading={exportLoading}
-                onClick={() => void handleExportCSV()}
-              >
-                导出 CSV
-              </Button>
-            </Space>
-          </Col>
-        </Row>
-        {lastFetchResult ? (
-          <div className="kpi-performance-page__fetch-result">
-            <Space wrap>
-              <Text>共 {lastFetchResult.total_metrics} 个指标</Text>
-              <Text type="success">成功抓取 {lastFetchResult.fetched_count}</Text>
-              <Text type="secondary">成功计分 {lastFetchResult.scored_count}</Text>
-              {lastFetchResult.failed_count > 0 ? (
-                <Text type="danger">失败 {lastFetchResult.failed_count}</Text>
-              ) : null}
-              {lastFetchResult.skipped_count > 0 ? (
-                <Text type="secondary">跳过 {lastFetchResult.skipped_count}</Text>
-              ) : null}
-            </Space>
+    <div className="moss-page-v2-shell kpi-performance-page" data-testid="kpi-performance-page">
+      <PageDecisionHero
+        testId="kpi-performance-header"
+        className="kpi-performance-page__header"
+        eyebrow="绩效治理"
+        title="绩效考核"
+        businessQuestion={`KPI 指标与完成情况 · ${currentPeriodLabel}`}
+        reportDateSlot={<span>当前口径：{currentOwnerLabel}</span>}
+        actions={
+          <div className="kpi-performance-page__hero-actions" data-testid="kpi-performance-action-row">
+            <Button icon={<PlusOutlined />} disabled={!selectedOwner} onClick={handleAddMetric}>
+              新增指标
+            </Button>
+            <Button icon={<UploadOutlined />} disabled={!selectedOwner} onClick={() => setBatchPasteOpen(true)}>
+              批量导入
+            </Button>
+            <Button
+              type="primary"
+              icon={<SyncOutlined />}
+              loading={fetchLoading}
+              disabled={!selectedOwner}
+              onClick={() => void handleFetchAndRecalc()}
+            >
+              抓取并重算
+            </Button>
+            <Button
+              icon={<CloudDownloadOutlined />}
+              loading={exportLoading}
+              onClick={() => void handleExportCSV()}
+            >
+              导出 CSV
+            </Button>
           </div>
-        ) : null}
-      </Card>
+        }
+      >
+        <DataStatusStrip
+          testId="kpi-performance-data-status"
+          className="kpi-performance-page__status-strip"
+        >
+          <span>{year} 年度</span>
+          <span>{currentPeriodLabel}</span>
+          <span>{currentOwnerLabel}</span>
+        </DataStatusStrip>
+      </PageDecisionHero>
 
-      <Row
-        gutter={[20, 20]}
+      <PageFilterTray testId="kpi-performance-filters">
+        <div className="kpi-performance-page__filter-tray">
+          <div className="kpi-performance-page__filter-row" data-testid="kpi-performance-filter-row">
+            <div className="kpi-performance-page__field">
+              <div className="kpi-performance-page__field-label">考核年度</div>
+              <Select
+                aria-label="KPI assessment year"
+                className="kpi-performance-page__select kpi-performance-page__select--year"
+                value={year}
+                options={yearOptions.map((y) => ({ label: `${y} 年`, value: y }))}
+                onChange={(v) => setYear(v)}
+              />
+            </div>
+            <div className="kpi-performance-page__field">
+              <div className="kpi-performance-page__field-label">时间维度</div>
+              <Select
+                aria-label="KPI period type"
+                className="kpi-performance-page__select kpi-performance-page__select--period-type"
+                value={periodType}
+                options={[
+                  { label: "按日期", value: "DAILY" },
+                  { label: "月度", value: "MONTH" },
+                  { label: "季度", value: "QUARTER" },
+                  { label: "年度", value: "YEAR" },
+                ]}
+                onChange={(v) => {
+                  setPeriodType(v as PeriodType);
+                  if (v === "MONTH") {
+                    setPeriodValue(new Date().getMonth() + 1);
+                  } else if (v === "QUARTER") {
+                    setPeriodValue(Math.ceil((new Date().getMonth() + 1) / 3));
+                  }
+                }}
+              />
+            </div>
+            {periodType === "MONTH" ? (
+              <div className="kpi-performance-page__field">
+                <div className="kpi-performance-page__field-label">月份</div>
+                <Select
+                  aria-label="KPI month"
+                  className="kpi-performance-page__select kpi-performance-page__select--month"
+                  value={periodValue}
+                  options={monthOptions}
+                  onChange={(v) => setPeriodValue(v)}
+                />
+              </div>
+            ) : null}
+            {periodType === "QUARTER" ? (
+              <div className="kpi-performance-page__field">
+                <div className="kpi-performance-page__field-label">季度</div>
+                <Select
+                  aria-label="KPI quarter"
+                  className="kpi-performance-page__select kpi-performance-page__select--quarter"
+                  value={periodValue}
+                  options={quarterOptions}
+                  onChange={(v) => setPeriodValue(v)}
+                />
+              </div>
+            ) : null}
+            {periodType === "DAILY" ? (
+              <div className="kpi-performance-page__field">
+                <div className="kpi-performance-page__field-label">截止日期</div>
+                <input
+                  aria-label="KPI as-of date"
+                  type="date"
+                  value={formatDate(asOfDate)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v) setAsOfDate(new Date(`${v}T12:00:00`));
+                  }}
+                  className="kpi-performance-page__date-input"
+                />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </PageFilterTray>
+
+      {lastFetchResult ? (
+        <DataStatusStrip
+          testId="kpi-performance-fetch-result"
+          className="kpi-performance-page__fetch-result"
+        >
+          <span>共 {lastFetchResult.total_metrics} 个指标</span>
+          <span>成功抓取 {lastFetchResult.fetched_count}</span>
+          <span>成功计分 {lastFetchResult.scored_count}</span>
+          {lastFetchResult.failed_count > 0 ? <span>失败 {lastFetchResult.failed_count}</span> : null}
+          {lastFetchResult.skipped_count > 0 ? <span>跳过 {lastFetchResult.skipped_count}</span> : null}
+        </DataStatusStrip>
+      ) : null}
+
+      <div
         className="kpi-performance-page__main-grid"
         data-testid="kpi-performance-main-grid"
       >
-        <Col xs={24} lg={7}>
-          <OwnerList
-            owners={owners}
-            selectedOwnerId={selectedOwner?.owner_id ?? null}
-            onSelect={(o) => {
-              setSelectedOwner(o);
-              setLastFetchResult(null);
-            }}
-            loading={loadingOwners}
-          />
-        </Col>
-        <Col xs={24} lg={17}>
+        <OwnerList
+          owners={owners}
+          selectedOwnerId={selectedOwner?.owner_id ?? null}
+          onSelect={(o) => {
+            setSelectedOwner(o);
+            setLastFetchResult(null);
+          }}
+          loading={loadingOwners}
+        />
+        <div className="kpi-performance-page__detail-stack">
           {selectedOwner ? (
-            <Space direction="vertical" size={16} className="kpi-performance-page__detail-stack">
-              <Card>
+            <>
+              <section className="kpi-performance-page__detail-card">
                 <div
                   className="kpi-performance-page__detail-header"
                   data-testid="kpi-performance-detail-header"
                 >
-                  <div>
-                    <Title level={4} className="kpi-performance-page__owner-title">
+                  <div className="kpi-performance-page__detail-copy">
+                    <h2 className="kpi-performance-page__owner-title">
                       {selectedOwner.owner_name}
-                    </Title>
-                    <Text type="secondary">
-                      {selectedOwner.org_unit} · {year} 年度
-                      {periodType === "DAILY" ? ` · 截止 ${formatDateCN(asOfDate)}` : null}
-                      {periodType === "MONTH" ? ` · ${year}年${periodValue}月` : null}
-                      {periodType === "QUARTER" ? ` · ${year}年Q${periodValue}` : null}
-                      {periodType === "YEAR" ? ` · ${year}年度汇总` : null}
-                    </Text>
+                    </h2>
+                    <p className="kpi-performance-page__detail-subtitle">
+                      {selectedOwner.org_unit} · {currentPeriodLabel}
+                    </p>
                   </div>
-                  <Space wrap>
+                  <div className="kpi-performance-page__detail-actions">
                     {periodSummary ? (
                       <div className="kpi-performance-page__period-badge">
                         <CalendarOutlined className="kpi-performance-page__period-badge-icon" />
@@ -437,9 +454,9 @@ export default function KpiPerformancePage() {
                     <Button icon={<SettingOutlined />} onClick={handleAddMetric}>
                       管理指标
                     </Button>
-                  </Space>
+                  </div>
                 </div>
-              </Card>
+              </section>
               <MetricTable
                 metrics={metrics}
                 loading={loadingMetrics}
@@ -449,25 +466,22 @@ export default function KpiPerformancePage() {
                 valueAsOfDate={formatDate(asOfDate)}
                 onFullEdit={handleOpenEditModal}
               />
-            </Space>
+            </>
           ) : (
-            <Card className="kpi-performance-page__empty-card">
-              <div
-                className="kpi-performance-page__empty-state"
-                data-testid="kpi-performance-empty-state"
-              >
-                <div className="kpi-performance-page__empty-copy">
-                  <TeamOutlined className="kpi-performance-page__empty-icon" />
-                  <Title level={4} type="secondary">
-                    请选择考核对象
-                  </Title>
-                  <Text type="secondary">从左侧列表选择部室，查看绩效指标明细</Text>
-                </div>
-              </div>
-            </Card>
+            <PageStateSurface
+              variant="empty"
+              className="kpi-performance-page__empty-card kpi-performance-page__empty-state"
+              testId="kpi-performance-empty-state"
+            >
+              <TeamOutlined className="kpi-performance-page__empty-icon" />
+              <p className="kpi-performance-page__empty-title">请选择考核对象</p>
+              <p className="kpi-performance-page__empty-description">
+                从左侧列表选择部室，查看绩效指标明细
+              </p>
+            </PageStateSurface>
           )}
-        </Col>
-      </Row>
+        </div>
+      </div>
 
       <MetricEditModal
         open={editModalOpen}

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -18,6 +21,11 @@ import {
   resolveDualReportDates,
 } from "./pnlAttributionViewModel";
 
+const pnlAttributionViewSourcePath = resolve(
+  process.cwd(),
+  "src/features/pnl-attribution/components/PnlAttributionView.tsx",
+);
+
 function numeric(overrides: Partial<Numeric>): Numeric {
   return {
     raw: overrides.raw ?? null,
@@ -29,6 +37,22 @@ function numeric(overrides: Partial<Numeric>): Numeric {
 }
 
 describe("PnlAttributionView helpers", () => {
+  it("keeps the main view visual shell class-based and tokenized", () => {
+    const source = readFileSync(pnlAttributionViewSourcePath, "utf8");
+    const inlineStyleMarker = ["style", "="].join("");
+    const privateShadowPattern = new RegExp(
+      [
+        ["box", "Shadow"].join(""),
+        ["box", "-", "shadow"].join(""),
+        ["rgba", "\\("].join(""),
+      ].join("|"),
+    );
+
+    expect(source).not.toContain(inlineStyleMarker);
+    expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+    expect(source).not.toMatch(privateShadowPattern);
+  });
+
   it("reads raw numeric values without inventing zeros", () => {
     expect(numericRaw(undefined)).toBeUndefined();
     expect(numericRaw(null)).toBeUndefined();

@@ -13,6 +13,8 @@
     "guard:home-startup:live": "node scripts/sampleHomeStartupLive.mjs",
     "profile:home-snapshot:live": "node scripts/profileHomeSnapshotLive.mjs",
     "style:audit": "node ../scripts/audit_frontend_style_diff.mjs",
+    "style:audit:range": "node ../scripts/audit_frontend_style_range.mjs",
+    "style:audit:range:test": "node --test ../scripts/audit_frontend_style_range.test.mjs",
     "style:inventory": "node ../scripts/audit_frontend_style_inventory.mjs",
     "lint": "eslint .",
     "lint:openapi": "spectral lint ../.codex-tmp/openapi.json -r ../.spectral.yaml",

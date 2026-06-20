@@ -26,54 +26,12 @@ import { FilterBar } from "../../../components/FilterBar";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
+import {
+  nullableNumber,
+  resolveBucketSharePct,
+} from "../lib/balanceMovementShareModel";
+import { designTokens, ibTokens } from "../../../theme/designSystem";
 import "./BalanceMovementAnalysisPage.css";
-
-const pageHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  padding: 20,
-  borderRadius: 18,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.neutral[50],
-  marginBottom: 18,
-} as const;
-
-const chipTypography = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase" as const,
-} as const;
-
-const cardGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 12,
-  marginBottom: 18,
-} as const;
-
-const cardStyle = {
-  display: "grid",
-  gap: 6,
-  padding: 16,
-  borderRadius: 16,
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
-} as const;
-
-const tableCellStyle = {
-  padding: "12px 8px",
-  borderBottom: "1px solid #edf1f6",
-  textAlign: "right",
-} as const;
 
 const bucketLabels: Record<string, string> = {
   AC: "AC",
@@ -81,9 +39,9 @@ const bucketLabels: Record<string, string> = {
   TPL: "TPL",
 };
 const bucketColors: Record<BalanceMovementRow["basis_bucket"], string> = {
-  AC: "#10284a",
-  OCI: "#33689a",
-  TPL: "#d2a03f",
+  AC: ibTokens.color.accent,
+  OCI: designTokens.color.primary[700],
+  TPL: ibTokens.color.gold,
 };
 const balanceMovementBuckets: BalanceMovementRow["basis_bucket"][] = ["AC", "OCI", "TPL"];
 
@@ -240,6 +198,22 @@ function formatMatrixValue(
   return omitUnit ? formatted : `${formatted} 亿`;
 }
 
+function formatMatrixCellWithMissing(
+  value: string | number | null | undefined,
+  valueKind: BalanceMovementMatrixValueKind,
+  omitUnit: boolean,
+  hasMissingInputs?: boolean,
+) {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  const formatted = formatMatrixValue(value, valueKind, omitUnit);
+  if (hasMissingInputs && formatted !== "-") {
+    return `${formatted}*`;
+  }
+  return formatted;
+}
+
 function formatSignedPercentPoint(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
     return "-";
@@ -298,6 +272,11 @@ function formatSignedMatrixValue(
   return omitUnit ? formatted : `${formatted} 亿`;
 }
 
+type MatrixRowSumResult = {
+  value: number | null;
+  hasMissingInputs: boolean;
+};
+
 type BusinessMovementMatrixRow = {
   key: string;
   label: string;
@@ -308,6 +287,9 @@ type BusinessMovementMatrixRow = {
   emphasis?: boolean;
   valueKind: BalanceMovementMatrixValueKind;
   getValue: (month: BalanceBusinessMovementTrendMonth) => string | number | null | undefined;
+  getCellMeta?: (
+    month: BalanceBusinessMovementTrendMonth,
+  ) => { hasMissingInputs?: boolean } | undefined;
 };
 
 function buildAccountingBasisMatrixRows(
@@ -435,6 +417,9 @@ type ZqtzAssetDetailRow = {
   isSubItem: boolean;
   valueKind: BalanceMovementMatrixValueKind;
   getValue: (month: BalanceBusinessMovementTrendMonth) => string | number | null | undefined;
+  getCellMeta?: (
+    month: BalanceBusinessMovementTrendMonth,
+  ) => { hasMissingInputs?: boolean } | undefined;
 };
 
 function buildZqtzAssetDetailRows(
@@ -463,17 +448,42 @@ function buildZqtzAssetDetailRows(
     }));
 }
 
+function sumMatrixRowValues(
+  month: BalanceBusinessMovementTrendMonth,
+  rows: Array<{ getValue: ZqtzAssetDetailRow["getValue"]; isSubItem?: boolean }>,
+  options?: { excludeSubItems?: boolean },
+): MatrixRowSumResult {
+  let total = 0;
+  let finiteCount = 0;
+  let missingCount = 0;
+  for (const row of rows) {
+    if (options?.excludeSubItems && row.isSubItem) {
+      continue;
+    }
+    const raw = row.getValue(month);
+    if (raw === null || raw === undefined || raw === "") {
+      missingCount += 1;
+      continue;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+      missingCount += 1;
+      continue;
+    }
+    total += value;
+    finiteCount += 1;
+  }
+  return {
+    value: finiteCount > 0 ? total : null,
+    hasMissingInputs: missingCount > 0,
+  };
+}
+
 function sumPrimaryZqtzAssetDetailRows(
   month: BalanceBusinessMovementTrendMonth,
   rows: ZqtzAssetDetailRow[],
-) {
-  return rows.reduce((total, row) => {
-    if (row.isSubItem) {
-      return total;
-    }
-    const value = Number(row.getValue(month));
-    return Number.isFinite(value) ? total + value : total;
-  }, 0);
+): MatrixRowSumResult {
+  return sumMatrixRowValues(month, rows, { excludeSubItems: true });
 }
 
 function topBusinessLineMovesByMomAbs(
@@ -635,11 +645,8 @@ function buildBusinessCategoryMatrixRows(
 function sumBusinessMatrixRowValues(
   month: BalanceBusinessMovementTrendMonth,
   rows: Pick<BusinessMovementMatrixRow, "getValue">[],
-) {
-  return rows.reduce((total, row) => {
-    const value = Number(row.getValue(month));
-    return Number.isFinite(value) ? total + value : total;
-  }, 0);
+): MatrixRowSumResult {
+  return sumMatrixRowValues(month, rows);
 }
 
 function formatTrendAxisMonth(reportMonth: string) {
@@ -662,14 +669,6 @@ type BalanceStructureSharePoint = {
   totalValueYi?: number;
 };
 
-function nullableNumber(value: string | number | null | undefined): number | null {
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
 function toSharePoint(month: BalanceMovementTrendMonth): BalanceStructureSharePoint {
   const total = Number(month.current_balance_total);
   const point: BalanceStructureSharePoint = {
@@ -682,7 +681,11 @@ function toSharePoint(month: BalanceMovementTrendMonth): BalanceStructureSharePo
   for (const bucket of balanceMovementBuckets) {
     const row = trendBucket(month, bucket);
     const value = Number(row?.current_balance);
-    point[bucket] = nullableNumber(row?.current_balance_pct);
+    point[bucket] = resolveBucketSharePct(
+      row?.current_balance_pct,
+      row?.current_balance,
+      month.current_balance_total,
+    );
     if (bucket === "AC") point.acValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
     if (bucket === "OCI") point.ociValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
     if (bucket === "TPL") point.tplValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
@@ -808,8 +811,10 @@ function isPreviousCalendarMonth(currentReportDate: string, previousReportDate: 
   return previousYear * 12 + previousMonth === currentYear * 12 + currentMonth - 1;
 }
 
-function statusTone(status: BalanceMovementRow["reconciliation_status"]) {
-  return status === "matched" ? "#027a48" : "#b54708";
+function statusToneClass(status: BalanceMovementRow["reconciliation_status"]) {
+  return status === "matched"
+    ? "balance-movement-detail-table__status balance-movement-detail-table__status--matched"
+    : "balance-movement-detail-table__status balance-movement-detail-table__status--review";
 }
 
 type BalanceMovementDriver = {
@@ -1091,13 +1096,13 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
     xAxis: {
       type: "value",
       axisLabel: { formatter: (value: number) => `${value.toFixed(0)}亿` },
-      splitLine: { lineStyle: { color: "#edf1f6" } },
+      splitLine: { lineStyle: { color: ibTokens.color.hairline } },
     },
     yAxis: {
       type: "category",
       data: drivers.map((driver) => driver.bucket),
       axisTick: { show: false },
-      axisLabel: { color: "#26364a", fontWeight: 700 },
+      axisLabel: { color: ibTokens.color.inkSecondary, fontWeight: 700 },
     },
     series: [
       {
@@ -1113,7 +1118,7 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
         label: {
           show: true,
           position: "right",
-          color: "#26364a",
+          color: ibTokens.color.inkSecondary,
           fontWeight: 700,
           formatter: (params: { dataIndex: number }) => {
             const driver = drivers[params.dataIndex];
@@ -2218,7 +2223,16 @@ export default function BalanceMovementAnalysisPage() {
         getValue: (month) => {
           const accountingTotal = basisThreeBucketSum(accountingByReportDate, month);
           const interbankAssetTotal = sumBusinessMatrixRowValues(month, businessMatrixAssetRows);
-          return accountingTotal === undefined ? interbankAssetTotal : accountingTotal + interbankAssetTotal;
+          if (accountingTotal === undefined) {
+            return interbankAssetTotal.value;
+          }
+          return interbankAssetTotal.value === null
+            ? accountingTotal
+            : accountingTotal + interbankAssetTotal.value;
+        },
+        getCellMeta: (month) => {
+          const interbankAssetTotal = sumBusinessMatrixRowValues(month, businessMatrixAssetRows);
+          return interbankAssetTotal.hasMissingInputs ? { hasMissingInputs: true } : undefined;
         },
       },
       {
@@ -2228,7 +2242,11 @@ export default function BalanceMovementAnalysisPage() {
         sourceNote: "负债端同业业务行合计",
         sourceKind: "ledger",
         valueKind: "amount",
-        getValue: (month) => sumBusinessMatrixRowValues(month, businessMatrixLiabilityRows),
+        getValue: (month) => sumBusinessMatrixRowValues(month, businessMatrixLiabilityRows).value,
+        getCellMeta: (month) => {
+          const liabilityTotal = sumBusinessMatrixRowValues(month, businessMatrixLiabilityRows);
+          return liabilityTotal.hasMissingInputs ? { hasMissingInputs: true } : undefined;
+        },
       },
       {
         key: "net-total",
@@ -2240,9 +2258,24 @@ export default function BalanceMovementAnalysisPage() {
         getValue: (month) => {
           const accountingTotal = basisThreeBucketSum(accountingByReportDate, month);
           const interbankAssetTotal = sumBusinessMatrixRowValues(month, businessMatrixAssetRows);
+          const liabilityTotal = sumBusinessMatrixRowValues(month, businessMatrixLiabilityRows);
           const assetTotal =
-            accountingTotal === undefined ? interbankAssetTotal : accountingTotal + interbankAssetTotal;
-          return assetTotal + sumBusinessMatrixRowValues(month, businessMatrixLiabilityRows);
+            accountingTotal === undefined
+              ? interbankAssetTotal.value
+              : interbankAssetTotal.value === null
+                ? accountingTotal
+                : accountingTotal + interbankAssetTotal.value;
+          if (assetTotal === null || assetTotal === undefined) {
+            return liabilityTotal.value;
+          }
+          return liabilityTotal.value === null ? assetTotal : assetTotal + liabilityTotal.value;
+        },
+        getCellMeta: (month) => {
+          const interbankAssetTotal = sumBusinessMatrixRowValues(month, businessMatrixAssetRows);
+          const liabilityTotal = sumBusinessMatrixRowValues(month, businessMatrixLiabilityRows);
+          return interbankAssetTotal.hasMissingInputs || liabilityTotal.hasMissingInputs
+            ? { hasMissingInputs: true }
+            : undefined;
         },
       },
     ];
@@ -2412,7 +2445,11 @@ export default function BalanceMovementAnalysisPage() {
       sourceNote: "按本表非“其中”明细加总，避免重复计算下级项目。",
       isSubItem: false,
       valueKind: "amount",
-      getValue: (month) => sumPrimaryZqtzAssetDetailRows(month, zqtzAssetDetailRows),
+      getValue: (month) => sumPrimaryZqtzAssetDetailRows(month, zqtzAssetDetailRows).value,
+      getCellMeta: (month) => {
+        const summary = sumPrimaryZqtzAssetDetailRows(month, zqtzAssetDetailRows);
+        return summary.hasMissingInputs ? { hasMissingInputs: true } : undefined;
+      },
     };
   }, [zqtzAssetDetailRows]);
   const trendMoMDriverBucket = trendComparison?.drivers[0]?.bucket;
@@ -2678,53 +2715,33 @@ export default function BalanceMovementAnalysisPage() {
   }
 
   return (
-    <section data-testid="balance-movement-analysis-page">
-      <div style={pageHeaderStyle}>
+    <section data-testid="balance-movement-analysis-page" className="balance-movement-page">
+      <div className="balance-movement-page-header">
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <h1
-              data-testid="balance-movement-analysis-title"
-              style={{ margin: 0, fontSize: 28, fontWeight: 700 }}
-            >
+          <div className="balance-movement-page-header__title-row">
+            <h1 data-testid="balance-movement-analysis-title" className="balance-movement-page-header__title">
               余额变动分析
             </h1>
             <CalibrationBadge calibration={detailQuery.data?.result.calibration} />
           </div>
-          <p
-            data-testid="balance-movement-analysis-subtitle"
-            style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}
-          >
+          <p data-testid="balance-movement-analysis-subtitle" className="balance-movement-page-header__subtitle">
             AC / OCI / TPL 月末余额、月度变动与总账控制数对账。
           </p>
         </div>
-        <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
-          <span
-            style={{
-              ...chipTypography,
-              background: designTokens.color.primary[50],
-              color: designTokens.color.primary[600],
-            }}
-          >
+        <div className="balance-movement-page-header__chips">
+          <span className="balance-movement-page-chip" data-tone="accent">
+            <span aria-hidden className="balance-movement-page-chip__dot" />
             正式总账控制
           </span>
-          <span
-            style={{
-              ...chipTypography,
-              background:
-                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-              color:
-                client.mode === "real"
-                  ? displayTokens.apiMode.realForeground
-                  : displayTokens.apiMode.mockForeground,
-            }}
-          >
+          <span className="balance-movement-page-chip" data-tone={client.mode === "real" ? "ok" : "accent"}>
+            <span aria-hidden className="balance-movement-page-chip__dot" />
             {client.mode === "real" ? "正式接口" : "本地模拟"}
           </span>
         </div>
       </div>
 
-      <FilterBar style={{ marginBottom: 16 }}>
-        <label style={{ display: "grid", gap: 6 }}>
+      <FilterBar className="balance-movement-filter-bar">
+        <label className="balance-movement-filter-field">
           报告日期
           <select
             aria-label="余额变动分析-报告日期"
@@ -2738,7 +2755,7 @@ export default function BalanceMovementAnalysisPage() {
             ))}
           </select>
         </label>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="balance-movement-filter-field">
           控制币种
           <select
             aria-label="余额变动分析-控制币种"
@@ -2897,21 +2914,21 @@ export default function BalanceMovementAnalysisPage() {
       ) : null}
 
       {summary ? (
-        <div data-testid="balance-movement-analysis-summary" style={cardGridStyle}>
-          <div style={cardStyle}>
-            <span style={{ color: "#5c6b82", fontSize: 12 }}>期末余额</span>
+        <div data-testid="balance-movement-analysis-summary" className="balance-movement-summary-grid">
+          <div className="balance-movement-summary-card">
+            <span className="balance-movement-summary-card__label">期末余额</span>
             <strong>{formatBalanceAmountToYiFromYuan(summary.current_balance_total)} 亿</strong>
           </div>
-          <div style={cardStyle}>
-            <span style={{ color: "#5c6b82", fontSize: 12 }}>期初余额</span>
+          <div className="balance-movement-summary-card">
+            <span className="balance-movement-summary-card__label">期初余额</span>
             <strong>{formatBalanceAmountToYiFromYuan(summary.previous_balance_total)} 亿</strong>
           </div>
-          <div style={cardStyle}>
-            <span style={{ color: "#5c6b82", fontSize: 12 }}>余额变动</span>
+          <div className="balance-movement-summary-card">
+            <span className="balance-movement-summary-card__label">余额变动</span>
             <strong>{formatBalanceAmountToYiFromYuan(summary.balance_change_total)} 亿</strong>
           </div>
-          <div style={cardStyle}>
-            <span style={{ color: "#5c6b82", fontSize: 12 }}>ZQTZ诊断差异</span>
+          <div className="balance-movement-summary-card">
+            <span className="balance-movement-summary-card__label">ZQTZ诊断差异</span>
             <strong>{formatBalanceAmountToYiFromYuan(summary.reconciliation_diff_total)} 亿</strong>
           </div>
         </div>
@@ -3300,11 +3317,28 @@ export default function BalanceMovementAnalysisPage() {
                       <th scope="row" title={row.sourceNote}>
                         {row.label}
                       </th>
-                      {businessMatrixMonths.map((month) => (
-                        <td key={`${row.key}-${month.report_date}`}>
-                          {formatMatrixValue(row.getValue(month), "amount", true)}
-                        </td>
-                      ))}
+                      {businessMatrixMonths.map((month) => {
+                        const cellMeta = row.getCellMeta?.(month);
+                        return (
+                          <td
+                            key={`${row.key}-${month.report_date}`}
+                            title={
+                              cellMeta?.hasMissingInputs
+                                ? "部分分项缺失，合计未含缺失项"
+                                : undefined
+                            }
+                          >
+                            {cellMeta
+                              ? formatMatrixCellWithMissing(
+                                  row.getValue(month),
+                                  "amount",
+                                  true,
+                                  cellMeta.hasMissingInputs,
+                                )
+                              : formatMatrixValue(row.getValue(month), "amount", true)}
+                          </td>
+                        );
+                      })}
                       <td className={matrixDeltaTone(mom)}>{mom}</td>
                       <td className={matrixDeltaTone(ytd)}>{ytd}</td>
                     </tr>
@@ -3325,11 +3359,26 @@ export default function BalanceMovementAnalysisPage() {
                           <th scope="row" title={zqtzAssetDetailSummaryRow.sourceNote}>
                             {zqtzAssetDetailSummaryRow.label}
                           </th>
-                          {businessMatrixMonths.map((month) => (
-                            <td key={`${zqtzAssetDetailSummaryRow.key}-${month.report_date}`}>
-                              {formatMatrixValue(zqtzAssetDetailSummaryRow.getValue(month), "amount", true)}
-                            </td>
-                          ))}
+                          {businessMatrixMonths.map((month) => {
+                            const cellMeta = zqtzAssetDetailSummaryRow.getCellMeta?.(month);
+                            return (
+                              <td
+                                key={`${zqtzAssetDetailSummaryRow.key}-${month.report_date}`}
+                                title={
+                                  cellMeta?.hasMissingInputs
+                                    ? "部分分项缺失，合计未含缺失项"
+                                    : undefined
+                                }
+                              >
+                                {formatMatrixCellWithMissing(
+                                  zqtzAssetDetailSummaryRow.getValue(month),
+                                  "amount",
+                                  true,
+                                  cellMeta?.hasMissingInputs,
+                                )}
+                              </td>
+                            );
+                          })}
                           <td className={matrixDeltaTone(mom)}>{mom}</td>
                           <td className={matrixDeltaTone(ytd)}>{ytd}</td>
                         </tr>
@@ -3407,11 +3456,28 @@ export default function BalanceMovementAnalysisPage() {
                       <th scope="row" title={row.sourceNote}>
                         {row.label}
                       </th>
-                      {businessMatrixMonths.map((month) => (
-                        <td key={`${row.key}-${month.report_date}`}>
-                          {formatMatrixValue(row.getValue(month), row.valueKind, true)}
-                        </td>
-                      ))}
+                      {businessMatrixMonths.map((month) => {
+                        const cellMeta = row.getCellMeta?.(month);
+                        return (
+                          <td
+                            key={`${row.key}-${month.report_date}`}
+                            title={
+                              cellMeta?.hasMissingInputs
+                                ? "部分分项缺失，合计未含缺失项"
+                                : undefined
+                            }
+                          >
+                            {cellMeta
+                              ? formatMatrixCellWithMissing(
+                                  row.getValue(month),
+                                  row.valueKind,
+                                  true,
+                                  cellMeta.hasMissingInputs,
+                                )
+                              : formatMatrixValue(row.getValue(month), row.valueKind, true)}
+                          </td>
+                        );
+                      })}
                       <td className={matrixDeltaTone(mom)}>{mom}</td>
                       <td className={matrixDeltaTone(ytd)}>{ytd}</td>
                     </tr>
@@ -3445,11 +3511,28 @@ export default function BalanceMovementAnalysisPage() {
                       <th scope="row" title={row.sourceNote}>
                         {row.label}
                       </th>
-                      {businessMatrixMonths.map((month) => (
-                        <td key={`${row.key}-${month.report_date}`}>
-                          {formatMatrixValue(row.getValue(month), row.valueKind, true)}
-                        </td>
-                      ))}
+                      {businessMatrixMonths.map((month) => {
+                        const cellMeta = row.getCellMeta?.(month);
+                        return (
+                          <td
+                            key={`${row.key}-${month.report_date}`}
+                            title={
+                              cellMeta?.hasMissingInputs
+                                ? "部分分项缺失，合计未含缺失项"
+                                : undefined
+                            }
+                          >
+                            {cellMeta
+                              ? formatMatrixCellWithMissing(
+                                  row.getValue(month),
+                                  row.valueKind,
+                                  true,
+                                  cellMeta.hasMissingInputs,
+                                )
+                              : formatMatrixValue(row.getValue(month), row.valueKind, true)}
+                          </td>
+                        );
+                      })}
                       <td className={matrixDeltaTone(mom)}>{mom}</td>
                       <td className={matrixDeltaTone(ytd)}>{ytd}</td>
                     </tr>
@@ -3611,54 +3694,56 @@ export default function BalanceMovementAnalysisPage() {
           isEmpty={!detailQuery.isLoading && !detailQuery.isError && rows.length === 0}
           onRetry={() => void detailQuery.refetch()}
         >
-          <div style={{ overflowX: "auto" }}>
+          <div className="balance-movement-detail-table-wrap">
             <table
               data-testid="balance-movement-analysis-table"
-              style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
+              className="balance-movement-detail-table"
             >
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #d7dfea" }}>
-                <th style={{ padding: "12px 8px" }}>分类</th>
-                <th style={tableCellStyle}>期初余额(亿)</th>
-                <th style={tableCellStyle}>期初占比</th>
-                <th style={tableCellStyle}>期末余额(亿)</th>
-                <th style={tableCellStyle}>期末占比</th>
+              <tr>
+                <th className="balance-movement-detail-table__label-cell">分类</th>
+                <th className="balance-movement-detail-table__cell">期初余额(亿)</th>
+                <th className="balance-movement-detail-table__cell">期初占比</th>
+                <th className="balance-movement-detail-table__cell">期末余额(亿)</th>
+                <th className="balance-movement-detail-table__cell">期末占比</th>
                 <th className="balance-movement-detail-table__num">占比变动</th>
-                <th style={tableCellStyle}>变动(亿)</th>
-                <th style={tableCellStyle}>变动率</th>
-                <th style={tableCellStyle}>变动贡献</th>
-                <th style={tableCellStyle}>ZQTZ辅助(亿)</th>
-                <th style={tableCellStyle}>ZQTZ诊断差异(亿)</th>
-                <th style={tableCellStyle}>状态</th>
+                <th className="balance-movement-detail-table__cell">变动(亿)</th>
+                <th className="balance-movement-detail-table__cell">变动率</th>
+                <th className="balance-movement-detail-table__cell">变动贡献</th>
+                <th className="balance-movement-detail-table__cell">ZQTZ辅助(亿)</th>
+                <th className="balance-movement-detail-table__cell">ZQTZ诊断差异(亿)</th>
+                <th className="balance-movement-detail-table__cell">状态</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.basis_bucket}>
-                  <td style={{ ...tableCellStyle, textAlign: "left", fontWeight: 700 }}>
+                  <td className="balance-movement-detail-table__label-cell">
                     {bucketLabels[row.basis_bucket] ?? row.basis_bucket}
                   </td>
-                  <td style={tableCellStyle}>
+                  <td className="balance-movement-detail-table__cell">
                     {formatBalanceAmountToYiFromYuan(row.previous_balance)}
                   </td>
-                  <td style={tableCellStyle}>{formatPct(row.previous_balance_pct)}</td>
-                  <td style={tableCellStyle}>
+                  <td className="balance-movement-detail-table__cell">{formatPct(row.previous_balance_pct)}</td>
+                  <td className="balance-movement-detail-table__cell">
                     {formatBalanceAmountToYiFromYuan(row.current_balance)}
                   </td>
-                  <td style={tableCellStyle}>{formatPct(row.current_balance_pct)}</td>
+                  <td className="balance-movement-detail-table__cell">{formatPct(row.current_balance_pct)}</td>
                   <td className="balance-movement-detail-table__num">
                     {formatSignedPointNullable(shareDeltaPp(row))}
                   </td>
-                  <td style={tableCellStyle}>
+                  <td className="balance-movement-detail-table__cell">
                     {formatBalanceAmountToYiFromYuan(row.balance_change)}
                   </td>
-                  <td style={tableCellStyle}>{formatPct(row.change_pct)}</td>
-                  <td style={tableCellStyle}>{formatPct(row.contribution_pct)}</td>
-                  <td style={tableCellStyle}>{formatBalanceAmountToYiFromYuan(row.zqtz_amount)}</td>
-                  <td style={tableCellStyle}>
+                  <td className="balance-movement-detail-table__cell">{formatPct(row.change_pct)}</td>
+                  <td className="balance-movement-detail-table__cell">{formatPct(row.contribution_pct)}</td>
+                  <td className="balance-movement-detail-table__cell">
+                    {formatBalanceAmountToYiFromYuan(row.zqtz_amount)}
+                  </td>
+                  <td className="balance-movement-detail-table__cell">
                     {formatBalanceAmountToYiFromYuan(row.reconciliation_diff)}
                   </td>
-                  <td style={{ ...tableCellStyle, color: statusTone(row.reconciliation_status) }}>
+                  <td className={statusToneClass(row.reconciliation_status)}>
                     {row.reconciliation_status}
                   </td>
                 </tr>
@@ -3672,7 +3757,7 @@ export default function BalanceMovementAnalysisPage() {
       {detailQuery.data?.result.accounting_controls ? (
         <div
           data-testid="balance-movement-analysis-controls"
-          style={{ marginTop: 14, color: "#5c6b82", fontSize: 12 }}
+          className="balance-movement-accounting-controls"
         >
           控制科目：{detailQuery.data.result.accounting_controls.join(", ")}；排除：
           {detailQuery.data.result.excluded_controls.join(", ")}

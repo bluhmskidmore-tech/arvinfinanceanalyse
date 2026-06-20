@@ -1,0 +1,214 @@
+:root {
+  color-scheme: light;
+
+  /*
+   * CSS bridge aligned with designSystem.ts.
+   * Literal token values should mirror the TS source; semantic aliases below point back to primitives.
+   */
+  --moss-color-primary-50: #e8f1fb;
+  --moss-color-primary-100: #d0e3f6;
+  --moss-color-primary-200: #a8c9ec;
+  --moss-color-primary-300: #79a7de;
+  --moss-color-primary-400: #4d84cc;
+  --moss-color-primary-500: #2f68b8;
+  --moss-color-primary-600: #1850a1;
+  --moss-color-primary-700: #144287;
+  --moss-color-primary-800: #10356a;
+  --moss-color-primary-900: #0c2a54;
+
+  --moss-color-info-50: #eff6ff;
+  --moss-color-info-100: #dbeafe;
+  --moss-color-info-200: #bfdbfe;
+  --moss-color-info-300: #93c5fd;
+  --moss-color-info-400: #60a5fa;
+  --moss-color-info-500: #3b82f6;
+  --moss-color-info-600: #2563eb;
+  --moss-color-info-700: #1d4ed8;
+  --moss-color-info-800: #1e40af;
+  --moss-color-info-900: #1e3a8a;
+
+  --moss-color-success-50: #ecf8f2;
+  --moss-color-success-100: #d5efe0;
+  --moss-color-success-200: #aedfc8;
+  --moss-color-success-300: #7fc8a4;
+  --moss-color-success-400: #52ad84;
+  --moss-color-success-500: #2d8a5e;
+  --moss-color-success-600: #25714d;
+  --moss-color-success-700: #1d5c40;
+  --moss-color-success-800: #174833;
+  --moss-color-success-900: #123828;
+
+  --moss-color-warning-50: #fff9eb;
+  --moss-color-warning-100: #fef0d4;
+  --moss-color-warning-200: #fde0a8;
+  --moss-color-warning-300: #fbc874;
+  --moss-color-warning-400: #f8a93a;
+  --moss-color-warning-500: #d97706;
+  --moss-color-warning-600: #b35c05;
+  --moss-color-warning-700: #8f4708;
+  --moss-color-warning-800: #713a0c;
+  --moss-color-warning-900: #5c300e;
+
+  --moss-color-danger-50: #fef2f2;
+  --moss-color-danger-100: #fee2e2;
+  --moss-color-danger-200: #fecaca;
+  --moss-color-danger-300: #fca5a5;
+  --moss-color-danger-400: #f87171;
+  --moss-color-danger-500: #ef4444;
+  --moss-color-danger-600: #dc2626;
+  --moss-color-danger-700: #b91c1c;
+  --moss-color-danger-800: #991b1b;
+  --moss-color-danger-900: #7f1d1d;
+
+  --moss-color-neutral-50: #f5f7f9;
+  --moss-color-neutral-100: #eceff3;
+  --moss-color-neutral-200: #e2e6ec;
+  --moss-color-neutral-300: #d1d5db;
+  --moss-color-neutral-400: #9ca3af;
+  --moss-color-neutral-500: #8b95a1;
+  --moss-color-neutral-600: #6b7280;
+  --moss-color-neutral-700: #4b5563;
+  --moss-color-neutral-800: #374151;
+  --moss-color-neutral-900: #1f2937;
+
+  --moss-color-warm-porcelain: #f6f1e8;
+  --moss-color-warm-paper: #fffdf8;
+  --moss-color-warm-stone: #e4d8c8;
+  --moss-color-warm-taupe: #b8a38f;
+  --moss-color-warm-charcoal: #342b27;
+  --moss-color-warm-ink: #2f2824;
+  --moss-color-warm-terracotta: #b85c38;
+  --moss-color-warm-sage: #708c74;
+  --moss-color-warm-burgundy: #7c3e46;
+  --moss-color-warm-slate-blue: #667a96;
+  --moss-color-warm-rail: #f0e6d8;
+
+  /* IB light restyle — canonical palette (see ibTokens in designSystem.ts) */
+  --ib-paper: #f4f3f0;
+  --ib-surface: #ffffff;
+  --ib-surface-muted: #f7f6f3;
+  --ib-hairline: #e2e0da;
+  --ib-rule-strong: #16191d;
+  --ib-ink: #16191d;
+  --ib-ink-secondary: #5c6370;
+  --ib-ink-muted: #8a8f98;
+  --ib-accent: #14366b;
+  --ib-accent-hover: #1d4685;
+  --ib-accent-surface: #eef2f8;
+  --ib-up: #1f7a4d;
+  --ib-down: #b42318;
+  --ib-warn: #b54708;
+  --ib-rail-bg: #10161f;
+  --ib-rail-border: #0a0f16;
+  --ib-rail-text: #9aa3b0;
+  --ib-rail-text-active: #f5f6f8;
+  --ib-rail-active-bar: #c9a85c;
+  --ib-rail-active-bg: #1a2230;
+  --ib-rail-section-label: #6b7480;
+  --ib-gold: #c9a85c;
+  --ib-serif: Georgia, "Times New Roman", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  --ib-kicker-font-size: 11px;
+  --ib-kicker-letter-spacing: 0.08em;
+  --ib-radius: 2px;
+  --ib-shadow: 0 1px 2px rgba(16, 24, 29, 0.05);
+
+  --moss-institutional-bg: var(--ib-paper);
+  --moss-institutional-bg-deep: var(--ib-paper);
+  --moss-institutional-surface: var(--ib-surface);
+  --moss-institutional-surface-raised: var(--ib-surface);
+  --moss-institutional-surface-muted: var(--ib-surface-muted);
+  --moss-institutional-border: var(--ib-hairline);
+  --moss-institutional-border-strong: var(--ib-rule-strong);
+  --moss-institutional-divider: var(--ib-hairline);
+  --moss-institutional-row-stripe: var(--ib-surface-muted);
+  --moss-institutional-row-hover: var(--ib-surface-muted);
+  --moss-institutional-text: var(--ib-ink);
+  --moss-institutional-text-muted: var(--ib-ink-secondary);
+  --moss-institutional-rail-top: var(--ib-rail-bg);
+  --moss-institutional-rail-bottom: var(--ib-rail-bg);
+  --moss-institutional-rail-edge: var(--ib-rail-border);
+  --moss-institutional-accent-gold: var(--ib-gold);
+  --moss-institutional-accent-cyan: var(--ib-accent);
+  --moss-institutional-focus-ring: rgba(20, 54, 107, 0.28);
+
+  --moss-space-1: 4px;
+  --moss-space-2: 8px;
+  --moss-space-3: 12px;
+  --moss-space-4: 16px;
+  --moss-space-5: 20px;
+  --moss-space-6: 24px;
+  --moss-space-7: 32px;
+  --moss-space-8: 40px;
+  --moss-space-9: 48px;
+  --moss-space-10: 64px;
+
+  --moss-radius-sm: 2px;
+  --moss-radius-md: 12px;
+  --moss-radius-lg: 18px;
+  --moss-radius-xl: 24px;
+
+  --moss-shadow-card: 0 1px 2px rgba(16, 24, 29, 0.05);
+  --moss-shadow-panel: 0 1px 2px rgba(16, 24, 29, 0.05);
+  --moss-shadow-popover: 0 1px 2px rgba(16, 24, 29, 0.05);
+  --moss-shadow-modal: 0 1px 2px rgba(16, 24, 29, 0.05);
+  --moss-shadow-rail: none;
+
+  --moss-motion-duration-fast: 150ms;
+  --moss-motion-duration-base: 200ms;
+  --moss-motion-duration-slow: 280ms;
+  --moss-motion-ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --moss-motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --moss-motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  --moss-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --moss-font-mono: ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace;
+  --moss-font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
+
+  /* Semantic aliases */
+  --moss-color-surface-base: var(--moss-institutional-bg);
+  --moss-color-card-bg: var(--moss-institutional-surface-raised);
+  --moss-color-border-default: var(--moss-institutional-border);
+
+  color: var(--moss-color-neutral-900);
+  background: var(--moss-color-neutral-50);
+
+  --moss-color-text-primary: var(--moss-color-neutral-900);
+  --moss-color-text-secondary: var(--moss-color-neutral-600);
+  --moss-color-text-muted: var(--moss-color-neutral-500);
+  --moss-color-link: var(--moss-color-info-500);
+
+  --moss-color-primary-rgb: 20, 54, 107;
+  --moss-color-success-rgb: 31, 122, 77;
+  --moss-border-hover: color-mix(in srgb, var(--moss-color-neutral-300) 60%, var(--moss-color-info-300));
+  --moss-shell-rail-bg: var(--ib-rail-bg);
+  --moss-shell-rail-bg-stack: var(--ib-rail-bg);
+  --moss-institutional-rail-bg: var(--ib-rail-bg);
+  --moss-shell-rail-border: var(--ib-rail-border);
+  --moss-shell-rail-surface: transparent;
+  --moss-shell-rail-text: var(--ib-rail-text);
+  --moss-shell-rail-text-muted: var(--ib-rail-section-label);
+  --moss-shell-rail-active-bg: var(--ib-rail-active-bg);
+  --moss-shell-rail-active-border: var(--ib-rail-active-bar);
+  --moss-shell-rail-mark-glow: transparent;
+  --moss-shell-terminal-bg: var(--ib-surface);
+  --moss-shell-terminal-border: var(--ib-hairline);
+  --moss-shell-pulse-bg: var(--ib-surface);
+  --moss-shell-pulse-border: var(--ib-hairline);
+  --moss-shell-paper-bg: var(--ib-surface);
+  --moss-shell-paper-shade: transparent;
+  --moss-shadow-institutional-active: inset 2px 0 0 var(--moss-institutional-accent-gold);
+
+  font-family: var(--moss-font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern" 1, "liga" 1;
+  --moss-shell-gap: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}

@@ -12,6 +12,7 @@ import { Button, Card, Input, Spin, Tag } from "antd";
 
 import type { KpiDecimalString, KpiMetricWithValue } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { PageStateSurface } from "../../../components/page/PagePrimitives";
 
 import { TracePanel } from "./TracePanel";
 
@@ -35,6 +36,8 @@ type EditingState = {
   value: string;
 };
 
+type ScoreTone = "muted" | "positive" | "neutral" | "warning" | "negative";
+
 function formatDecimal(value: KpiDecimalString, decimals = 2): string {
   if (value === null || value === undefined || value === "") return "-";
   const num = parseFloat(value);
@@ -45,18 +48,18 @@ function formatDecimal(value: KpiDecimalString, decimals = 2): string {
   });
 }
 
-function getScoreColor(score: KpiDecimalString, weight: KpiDecimalString): string {
+function getScoreTone(score: KpiDecimalString, weight: KpiDecimalString): ScoreTone {
   if (score === null || score === undefined || weight === null || weight === undefined) {
-    return "#94a3b8";
+    return "muted";
   }
   const scoreNum = parseFloat(score);
   const weightNum = parseFloat(weight);
-  if (Number.isNaN(scoreNum) || Number.isNaN(weightNum) || weightNum === 0) return "#94a3b8";
+  if (Number.isNaN(scoreNum) || Number.isNaN(weightNum) || weightNum === 0) return "muted";
   const ratio = scoreNum / weightNum;
-  if (ratio >= 1) return "#16a34a";
-  if (ratio >= 0.8) return "#2563eb";
-  if (ratio >= 0.6) return "#ca8a04";
-  return "#dc2626";
+  if (ratio >= 1) return "positive";
+  if (ratio >= 0.8) return "neutral";
+  if (ratio >= 0.6) return "warning";
+  return "negative";
 }
 
 export function MetricTable({
@@ -118,7 +121,7 @@ export function MetricTable({
     field: EditableField,
     displayValue: string,
     suffix?: string,
-    scoreColor?: string,
+    scoreTone?: ScoreTone,
   ) => {
     const isEditing = editing?.metricId === metric.metric_id && editing?.field === field;
     if (isEditing) {
@@ -146,6 +149,7 @@ export function MetricTable({
       "kpi-metric-table__editable-cell",
       "kpi-metric-table__editable-cell--button",
       field === "score_value" ? "kpi-metric-table__editable-cell--score" : null,
+      scoreTone ? `kpi-metric-table__editable-cell--score-${scoreTone}` : null,
     ]
       .filter(Boolean)
       .join(" ");
@@ -154,7 +158,6 @@ export function MetricTable({
         role="button"
         tabIndex={0}
         className={cellClassName}
-        style={{ color: scoreColor }}
         onClick={(e) => {
           e.stopPropagation();
           setEditing({
@@ -184,32 +187,45 @@ export function MetricTable({
 
   if (loading) {
     return (
-      <Card>
-        <div className="kpi-metric-table__state">
-          <Spin />
-          <div className="kpi-metric-table__loading-text">加载指标…</div>
-        </div>
-      </Card>
+      <PageStateSurface
+        variant="loading"
+        testId="kpi-metric-table-panel"
+        className="kpi-metric-table-card kpi-metric-table-card--state kpi-metric-table__state"
+      >
+        <Spin />
+        <div className="kpi-metric-table__loading-text">加载指标…</div>
+      </PageStateSurface>
     );
   }
 
   if (metrics.length === 0) {
     return (
-      <Card>
-        <div className="kpi-metric-table__state kpi-metric-table__state--empty">
-          <p>暂无指标数据</p>
-          {onAddMetric ? (
+      <PageStateSurface
+        variant="empty"
+        testId="kpi-metric-table-panel"
+        className="kpi-metric-table-card kpi-metric-table-card--state kpi-metric-table__state kpi-metric-table__state--empty"
+        title="暂无指标数据"
+        description="当前考核对象暂无可展示指标"
+        actions={
+          onAddMetric ? (
             <Button type="primary" ghost icon={<PlusOutlined />} onClick={onAddMetric}>
               新增指标
             </Button>
-          ) : null}
-        </div>
-      </Card>
+          ) : null
+        }
+      />
     );
   }
 
   return (
-    <Card className="kpi-metric-table-card">
+    <section className="kpi-metric-table-card" data-testid="kpi-metric-table-panel">
+      <div className="kpi-metric-table-card__header">
+        <div>
+          <span className="kpi-metric-table-card__eyebrow">METRICS</span>
+          <h2 className="kpi-metric-table-card__title">指标明细</h2>
+        </div>
+        <span className="kpi-metric-table-card__count">{metrics.length} 项</span>
+      </div>
       <div className="kpi-metric-table__scroll">
         <table className="kpi-metric-table">
           <thead>
@@ -253,7 +269,7 @@ export function MetricTable({
                 </tr>
                 {categoryMetrics.map((metric, idx) => {
                   const isExpanded = expandedMetricId === metric.metric_id;
-                  const scoreColor = getScoreColor(metric.score_value ?? null, metric.score_weight);
+                  const scoreTone = getScoreTone(metric.score_value ?? null, metric.score_weight);
                   const isLast = idx === categoryMetrics.length - 1;
                   const rowClassName = [
                     "kpi-metric-table__row",
@@ -325,7 +341,7 @@ export function MetricTable({
                             "score_value",
                             formatDecimal(metric.score_value ?? null, 2),
                             undefined,
-                            scoreColor,
+                            scoreTone,
                           )}
                         </td>
                       </tr>
@@ -408,7 +424,7 @@ export function MetricTable({
           </tbody>
         </table>
       </div>
-    </Card>
+    </section>
   );
 }
 

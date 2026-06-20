@@ -3,19 +3,19 @@
   align-items: center;
   height: 16px;
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: 0.02em;
-  color: #92724a;
-  background: #fff5e1;
-  border: 1px solid #f0d9a5;
+  color: var(--dh-amber);
+  background: transparent;
+  border: 1px solid var(--dh-amber);
   white-space: nowrap;
 }
 
 .dhBadgePlaceholderInline {
   font-size: 9px;
-  color: #92724a;
+  color: var(--ib-warn);
   font-weight: 700;
 }
 
@@ -26,51 +26,52 @@
 
 .dhInlineHint {
   font-size: 10.5px;
-  color: #8492a8;
+  color: var(--ib-ink-muted);
   font-style: italic;
   padding: 4px 0;
 }
 
 .dhPage {
-  --dh-page-bg: #f4f7fb;
-  --dh-card: #ffffff;
-  --dh-card-soft: #f7f9fc;
-  --dh-surface-muted: #f0f4f8;
-  --dh-line: #e4e9f0;
-  --dh-line-soft: #eef2f7;
-  --dh-line-strong: #cdd5e1;
-  --dh-ink: #0c1c33;
-  --dh-ink-2: #2c3e5a;
-  --dh-muted: #6b7d95;
-  --dh-muted-2: #8a99af;
-  --dh-blue: #1850a1;
-  --dh-blue-2: #2f68b8;
-  --dh-blue-deep: #10356a;
-  --dh-blue-soft: #e8f1fb;
-  --dh-green: #1f7a55;
-  --dh-green-soft: #eef7f2;
-  --dh-red: #b94743;
-  --dh-red-soft: #fbf1f0;
-  --dh-amber: #b76e00;
-  --dh-amber-soft: #fbf6ea;
+  --dh-page-bg: var(--ib-paper);
+  --dh-card: var(--ib-surface);
+  --dh-card-soft: var(--ib-surface-muted);
+  --dh-surface-muted: var(--ib-paper);
+  --dh-line: var(--ib-hairline);
+  --dh-line-soft: var(--ib-hairline);
+  --dh-line-strong: var(--ib-rule-strong);
+  --dh-ink: var(--ib-ink);
+  --dh-ink-2: var(--ib-ink-secondary);
+  --dh-muted: var(--ib-ink-secondary);
+  --dh-muted-2: var(--ib-ink-muted);
+  --dh-blue: var(--ib-accent);
+  --dh-blue-2: var(--ib-accent-hover);
+  --dh-blue-deep: var(--ib-accent);
+  --dh-blue-soft: var(--ib-accent-surface);
+  --dh-green: var(--ib-up);
+  --dh-green-soft: transparent;
+  --dh-red: var(--ib-down);
+  --dh-red-soft: transparent;
+  --dh-amber: var(--ib-warn);
+  --dh-amber-soft: transparent;
   --dh-space-1: 8px;
   --dh-space-2: 12px;
   --dh-space-3: 16px;
   --dh-space-4: 24px;
-  --dh-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
-  --dh-shadow-hover: 0 2px 4px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.1);
-  --dh-shadow-hero: 0 2px 8px rgba(24, 80, 161, 0.08), 0 12px 28px rgba(15, 23, 42, 0.08);
-  --dh-radius: 10px;
-  --dh-radius-lg: 10px;
-  --dh-dist-blue: #35679b;
-  --dh-dist-cyan: #6f96c3;
-  --dh-dist-teal: #a8bfd8;
-  --dh-dist-green: #3f8a6a;
-  --dh-dist-red: #c76b66;
-  --dh-dist-neutral: #b6c1cf;
-  --dh-radar-fill: rgba(24, 80, 161, 0.12);
-  --dh-radar-stroke: var(--dh-blue);
-  --dh-radar-warn: #b76e00;
+  --dh-shadow-card: none;
+  --dh-shadow-hover: none;
+  --dh-shadow-hero: none;
+  --dh-radius: var(--ib-radius);
+  --dh-radius-lg: var(--ib-radius);
+  --dh-font-serif: var(--ib-serif);
+  --dh-dist-blue: var(--ib-accent);
+  --dh-dist-cyan: color-mix(in srgb, var(--ib-accent) 72%, white);
+  --dh-dist-teal: color-mix(in srgb, var(--ib-accent) 54%, white);
+  --dh-dist-green: var(--moss-color-primary-200);
+  --dh-dist-red: var(--moss-color-neutral-300);
+  --dh-dist-neutral: var(--ib-gold);
+  --dh-radar-fill: rgba(20, 54, 107, 0.1);
+  --dh-radar-stroke: var(--ib-accent);
+  --dh-radar-warn: var(--ib-warn);
   --dh-font-sans: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   --dh-font-mono: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
   font-family: var(--dh-font-sans);
@@ -108,15 +109,15 @@
 
 .dhCard {
   background: var(--dh-card);
-  border: 1px solid var(--dh-line-soft);
+  border: 1px solid var(--dh-line);
   border-radius: var(--dh-radius-lg);
-  box-shadow: var(--dh-shadow-card);
-  transition: box-shadow 180ms ease, border-color 180ms ease;
+  box-shadow: none;
+  transition: border-color 180ms ease;
 }
 
 .dhCard:hover {
-  border-color: rgba(24, 80, 161, 0.28);
-  box-shadow: var(--dh-shadow-hover);
+  border-color: var(--dh-line-strong);
+  box-shadow: none;
 }
 
 .dhCardSecondary {
@@ -151,10 +152,10 @@
 
 .dhSectionTitle > span:first-child::before {
   content: "";
-  width: 3px;
+  width: 2px;
   height: 14px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, var(--dh-blue), var(--dh-blue-deep));
+  border-radius: 0;
+  background: var(--dh-blue);
 }
 
 .dhSectionTitleSm {
@@ -216,15 +217,10 @@
   padding: var(--dh-space-2) var(--dh-space-3);
   margin-bottom: var(--dh-space-1);
   flex-wrap: wrap;
-  background: linear-gradient(
-    90deg,
-    var(--dh-blue-soft) 0%,
-    rgba(255, 255, 255, 0.92) 38%,
-    var(--dh-card) 72%
-  );
-  border: 1px solid rgba(24, 80, 161, 0.12);
-  border-radius: var(--dh-radius-lg);
-  box-shadow: var(--dh-shadow-card);
+  background: var(--ib-surface);
+  border: 1px solid var(--dh-line);
+  border-radius: 2px;
+  box-shadow: none;
 }
 
 .dhTopbarLeft {
@@ -274,10 +270,11 @@
 }
 
 .dhTitle {
-  font-size: 19px;
-  font-weight: 800;
-  color: var(--dh-blue-deep);
-  letter-spacing: -0.015em;
+  font-family: var(--dh-font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--dh-ink);
+  letter-spacing: 0;
   margin: 0;
   line-height: 1.2;
 }
@@ -295,14 +292,14 @@
   padding: 0 10px;
   height: 30px;
   border: 1px solid var(--dh-line);
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--dh-card);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color 120ms ease;
 }
 
 .dhDateSelect:focus-within {
   border-color: var(--dh-blue);
-  box-shadow: 0 0 0 3px rgba(24, 80, 161, 0.08);
+  box-shadow: none;
 }
 
 .dhDateSelectIcon {
@@ -331,15 +328,15 @@
   height: 30px;
   width: min(320px, 38vw);
   border: 1px solid var(--dh-line);
-  border-radius: 999px;
-  background: var(--dh-card-soft);
-  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  border-radius: 2px;
+  background: var(--dh-card);
+  transition: border-color 120ms ease, background 120ms ease;
 }
 
 .dhSearch:focus-within {
   border-color: var(--dh-blue);
   background: var(--dh-card);
-  box-shadow: 0 0 0 3px rgba(24, 80, 161, 0.08);
+  box-shadow: none;
 }
 
 .dhSearchIcon {
@@ -377,36 +374,37 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: auto;
   padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(228, 233, 240, 0.9);
-  font-size: 11px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--dh-line);
+  font-size: 12px;
   color: var(--dh-ink-2);
-  font-weight: 600;
+  font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition: color 120ms ease;
 }
 
 .dhStatusPill:hover {
-  background: var(--dh-blue-soft);
+  background: transparent;
   color: var(--dh-blue);
 }
 
 .dhStatusPillAlert {
-  background: var(--dh-red-soft);
+  background: transparent;
   color: var(--dh-red);
 }
 
 .dhStatusPillWarning {
-  background: var(--dh-amber-soft);
+  background: transparent;
   color: var(--dh-amber);
 }
 
 .dhStatusPillAlert:hover {
-  background: #ffe2e2;
+  background: var(--moss-color-danger-100);
   color: var(--dh-red);
 }
 
@@ -421,26 +419,27 @@
 }
 
 .dhDot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--dh-blue-2);
-  box-shadow: 0 0 0 3px rgba(47, 104, 184, 0.1);
+  box-shadow: none;
+  flex-shrink: 0;
 }
 
 .dhDotBlue {
   background: var(--dh-blue-2);
-  box-shadow: 0 0 0 3px rgba(47, 104, 184, 0.1);
+  box-shadow: none;
 }
 
 .dhDotOrange {
   background: var(--dh-amber);
-  box-shadow: 0 0 0 3px rgba(179, 92, 5, 0.1);
+  box-shadow: none;
 }
 
 .dhDotGreen {
   background: var(--dh-green);
-  box-shadow: 0 0 0 3px rgba(45, 138, 94, 0.1);
+  box-shadow: none;
 }
 
 .dhPartialToggle {
@@ -461,12 +460,12 @@
   height: 30px;
   padding: 0 12px;
   border: 1px solid var(--dh-line);
-  border-radius: 6px;
-  background: var(--dh-card);
+  border-radius: 2px;
+  background: var(--ib-surface);
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
-  color: var(--dh-ink-2);
+  color: var(--dh-ink);
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
@@ -492,11 +491,10 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(circle at 96% -10%, rgba(59, 130, 246, 0.14), transparent 52%),
-    linear-gradient(160deg, #ffffff 0%, #f4f8ff 100%);
-  border-color: rgba(24, 80, 161, 0.16);
-  box-shadow: var(--dh-shadow-hero);
+  background: var(--ib-surface);
+  border-color: var(--dh-line);
+  border-top: 2px solid var(--dh-blue);
+  box-shadow: none;
 }
 
 .dhAiHead {
@@ -512,7 +510,7 @@
   width: 26px;
   height: 22px;
   border-radius: 6px;
-  background: linear-gradient(180deg, var(--dh-blue-soft), #d4e6f9);
+  background: linear-gradient(180deg, var(--dh-blue-soft), var(--moss-color-primary-100));
   color: var(--dh-blue);
   font-size: 11px;
   font-weight: 700;
@@ -527,11 +525,12 @@
 }
 
 .dhJudgeCopy {
+  font-family: var(--dh-font-serif);
   font-size: 17px;
   line-height: 1.62;
   color: var(--dh-ink);
-  font-weight: 650;
-  letter-spacing: -0.005em;
+  font-weight: 500;
+  letter-spacing: 0;
   margin: 0 0 auto;
   padding-bottom: var(--dh-space-3);
 }
@@ -557,7 +556,7 @@
   min-width: 72px;
   max-width: 220px;
   height: 8px;
-  background: #e7edf5;
+  background: var(--moss-color-neutral-100);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -565,8 +564,8 @@
 .dhBarFill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--dh-blue), var(--dh-blue-2));
-  border-radius: 999px;
+  background: var(--dh-blue);
+  border-radius: 2px;
   transition: width 320ms cubic-bezier(0.2, 0.6, 0.2, 1);
 }
 
@@ -829,8 +828,8 @@
 
 .dhStatValue {
   font-size: 15px;
-  font-weight: 700;
-  color: var(--dh-blue-deep);
+  font-weight: 600;
+  color: var(--ib-ink);
   font-feature-settings: "tnum" 1, "ss01" 1;
 }
 
@@ -852,7 +851,7 @@
 
 .dhTrack {
   height: 7px;
-  background: #eef2f7;
+  background: var(--moss-color-neutral-50);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -1004,7 +1003,7 @@
   margin-top: var(--dh-space-2);
   font-size: 10.5px;
   line-height: 1.55;
-  color: #243952;
+  color: var(--ib-accent);
 }
 
 .dhRiskLayout {
@@ -1043,12 +1042,12 @@
   justify-content: space-between;
   height: 22px;
   font-size: 10.5px;
-  border-bottom: 1px solid #f0f3f7;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
 }
 
 .dhPriorityHi {
-  color: #c43d35;
-  background: #fff1f0;
+  color: var(--ib-down);
+  background: var(--moss-color-danger-50);
   font-size: 10px;
   padding: 0 6px;
   border-radius: 5px;
@@ -1057,12 +1056,12 @@
 
 .dhPriorityMid {
   color: #b76e00;
-  background: #fff7e6;
+  background: var(--moss-color-warning-50);
 }
 
 .dhPriorityLow {
   color: #197a5a;
-  background: #ecfdf5;
+  background: var(--moss-color-success-50);
 }
 
 .dhRadarWrap {
@@ -1150,9 +1149,9 @@
 .dhMacroBriefingPane {
   min-width: 0;
   padding: 14px;
-  border: 1px solid rgba(53, 103, 155, 0.14);
-  border-radius: 8px;
-  background: rgba(248, 251, 255, 0.72);
+  border: 1px solid var(--dh-line);
+  border-radius: 2px;
+  background: var(--ib-surface);
 }
 
 .dhMacroBriefingHeader {
@@ -1161,7 +1160,7 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-  color: var(--dh-text, #0b2b55);
+  color: var(--dh-text, var(--ib-accent));
   font-size: 13px;
   font-weight: 700;
 }
@@ -1177,6 +1176,61 @@
   gap: 8px;
 }
 
+.dhMacroReleaseFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--dh-line);
+}
+
+.dhMacroReleaseFilterBar button {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  min-height: auto;
+  padding: 4px 2px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--ib-ink-muted);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dhMacroReleaseFilterBar button:hover {
+  color: var(--dh-ink);
+  background: transparent;
+}
+
+.dhMacroReleaseFilterBar button:focus-visible {
+  outline: 2px solid rgba(20, 54, 107, 0.24);
+  outline-offset: 2px;
+}
+
+.dhMacroReleaseFilterBar button[data-active="true"] {
+  border-bottom-color: var(--ib-accent);
+  color: var(--ib-ink);
+  background: transparent;
+  box-shadow: none;
+}
+
+.dhMacroReleaseFilterBar span {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.dhMacroReleaseFilterBar small {
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 1;
+}
+
 .dhMacroReleaseItem,
 .dhMacroNewsItem {
   display: grid;
@@ -1186,10 +1240,18 @@
   min-width: 0;
   padding: 9px 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-left: 2px solid transparent;
+  border-radius: 2px;
   color: inherit;
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--ib-surface);
+}
+
+.dhMacroReleaseItem {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .dhMacroReleaseItem:hover {
@@ -1197,46 +1259,77 @@
   background: rgba(53, 103, 155, 0.08);
 }
 
+.dhMacroReleaseItem:focus-visible {
+  outline: 2px solid rgba(24, 80, 161, 0.34);
+  outline-offset: 2px;
+}
+
 .dhMacroReleaseItemHigh {
-  border-left-color: rgba(185, 71, 67, 0.72);
-  background: rgba(255, 255, 255, 0.88);
+  border-left-color: var(--ib-down);
+  background: var(--ib-surface);
 }
 
 .dhMacroReleaseItemMedium {
-  border-left-color: rgba(183, 110, 0, 0.58);
+  border-left-color: var(--ib-warn);
+  background: var(--ib-surface);
 }
 
-.dhMacroReleaseDate,
-.dhMacroNewsTopic {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 50px;
-  padding: 3px 7px;
-  border-radius: 8px;
-  background: rgba(53, 103, 155, 0.12);
-  color: var(--dh-blue, #1850a1);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
+.dhMacroReleaseItemSelected {
+  border-color: var(--dh-line);
+  border-left: 2px solid var(--ib-accent);
+  background: var(--ib-surface);
+  box-shadow: none;
 }
 
 .dhMacroReleaseDate {
   display: grid;
-  gap: 1px;
-  text-align: center;
+  gap: 2px;
+  align-content: start;
+  min-width: 42px;
+  padding: 0;
+  background: transparent;
+  text-align: left;
   line-height: 1.05;
 }
 
 .dhMacroReleaseDate b {
-  font-size: 11.5px;
-  font-weight: 850;
+  color: var(--ib-ink);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .dhMacroReleaseDate small {
-  color: var(--dh-muted);
-  font-size: 9px;
-  font-weight: 800;
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.dhMacroNewsTopic {
+  display: grid;
+  gap: 1px;
+  align-content: start;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.dhMacroNewsTopic b {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ib-ink-muted);
+}
+
+.dhMacroNewsTopic small {
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  font-weight: 400;
 }
 
 .dhMacroReleaseBody,
@@ -1250,7 +1343,7 @@
 .dhMacroNewsTitle {
   display: -webkit-box;
   overflow: hidden;
-  color: var(--dh-text, #0b2b55);
+  color: var(--dh-text, var(--ib-accent));
   font-size: 12.5px;
   font-weight: 650;
   line-height: 1.35;
@@ -1261,7 +1354,7 @@
 
 .dhMacroRegionTag {
   margin-right: 6px;
-  color: #3f8a6a;
+  color: var(--moss-color-success-500);
   font-size: 11px;
 }
 
@@ -1271,6 +1364,55 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dhMacroNewsMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ib-ink-muted);
+}
+
+.dhMacroNewsMetaPiece {
+  display: inline;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.dhMacroNewsMetaPiece + .dhMacroNewsMetaPiece::before {
+  content: " · ";
+}
+
+.dhMacroNewsMetaPiece[data-tone="focus"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid var(--dh-line);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ib-ink-secondary);
+}
+
+.dhMacroNewsMetaPiece[data-tone="focus"]::before {
+  background: var(--ib-up);
+  border-radius: 50%;
+  content: "";
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
 }
 
 .dhMacroReleaseMetaRow {
@@ -1284,26 +1426,36 @@
 .dhMacroImportanceTag {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 52px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 6px;
-  background: rgba(24, 80, 161, 0.08);
-  color: var(--dh-blue-deep);
-  font-size: 10px;
-  font-weight: 850;
+  gap: 5px;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
   white-space: nowrap;
 }
 
+.dhMacroImportanceTag::before {
+  background: currentColor;
+  border-radius: 50%;
+  content: "";
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
 .dhMacroReleaseItemHigh .dhMacroImportanceTag {
-  background: rgba(185, 71, 67, 0.1);
-  color: var(--dh-red);
+  background: transparent;
+  color: var(--ib-down);
 }
 
 .dhMacroReleaseItemMedium .dhMacroImportanceTag {
-  background: rgba(183, 110, 0, 0.1);
-  color: var(--dh-amber);
+  background: transparent;
+  color: var(--ib-warn);
 }
 
 .dhMacroBriefingMessage {
@@ -1313,35 +1465,607 @@
   line-height: 1.6;
 }
 
-.dhMacroTrustStrip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: -2px 0 8px;
+.dhMacroReleaseInsight {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(53, 103, 155, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
 }
 
-.dhMacroTrustStrip span {
-  display: inline-flex;
-  max-width: 100%;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(53, 103, 155, 0.08);
-  color: var(--dh-text-muted, rgba(0, 0, 0, 0.55));
+.dhMacroReleaseInsightHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dhMacroReleaseInsightHeader span {
+  color: var(--dh-blue-deep);
+  font-size: 12.5px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.dhMacroReleaseInsightHeader small {
+  color: var(--dh-muted);
   font-size: 10.5px;
-  line-height: 1.35;
+  font-weight: 750;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.dhMacroReleaseInsightGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.dhMacroReleaseInsightFeatured,
+.dhMacroReleaseInsightMetric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(53, 103, 155, 0.1);
+  border-radius: 7px;
+  background: rgba(248, 251, 255, 0.86);
+}
+
+.dhMacroReleaseInsightFeatured {
+  background: rgba(24, 80, 161, 0.07);
+}
+
+.dhMacroReleaseInsightFeatured span,
+.dhMacroReleaseInsightMetric span {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.15;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dhMacroNewsStale {
-  display: inline-flex;
-  width: fit-content;
-  margin: -2px 0 8px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(212, 136, 6, 0.12);
-  color: #9a5b00;
+.dhMacroReleaseInsightFeatured b,
+.dhMacroReleaseInsightMetric b {
+  overflow: hidden;
+  color: var(--dh-blue-deep);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.dhMacroReleaseInsightFeatured small,
+.dhMacroReleaseInsightMetric small {
+  overflow: hidden;
+  color: var(--dh-text-muted, rgba(0, 0, 0, 0.48));
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseActionHint {
+  margin: 0;
+  padding: 8px 10px 8px 12px;
+  border-radius: 2px;
+  border: 1px solid var(--dh-line);
+  border-left: 2px solid var(--ib-warn);
+  background: var(--ib-paper);
+  color: var(--ib-ink);
   font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.dhMacroReleaseWorkbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.dhMacroReleaseDetail {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(24, 80, 161, 0.13);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.dhMacroReleaseDetailHero {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(53, 103, 155, 0.09);
+}
+
+.dhMacroReleaseDetailHero > span {
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(24, 80, 161, 0.08);
+  color: var(--dh-blue-deep);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.3;
+}
+
+.dhMacroReleaseDetailHero > span[data-importance="high"] {
+  background: rgba(185, 71, 67, 0.1);
+  color: var(--dh-red);
+}
+
+.dhMacroReleaseDetailHero > span[data-importance="medium"] {
+  background: rgba(183, 110, 0, 0.1);
+  color: var(--dh-amber);
+}
+
+.dhMacroReleaseDetailHero b {
+  color: var(--dh-ink);
+  font-size: 12.5px;
+  font-weight: 850;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.dhMacroReleaseDetailHero small {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 10.5px;
   font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseDetailFacts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dhMacroReleaseDetailFacts span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 7px;
+  border-radius: 7px;
+  background: rgba(248, 251, 255, 0.92);
+}
+
+.dhMacroReleaseDetailFacts small {
+  color: var(--dh-muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.dhMacroReleaseDetailFacts b {
+  overflow: hidden;
+  color: var(--dh-blue-deep);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseSourceLink {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--dh-blue);
+  font-size: 10.5px;
+  font-weight: 850;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.dhMacroReleaseSourceLink:hover {
+  text-decoration: underline;
+}
+
+.dhMacroReleaseDetailActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dhMacroReleaseState {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-column: 1 / -1;
+  gap: 7px;
+  min-width: 0;
+}
+
+.dhMacroReleaseState span,
+.dhMacroReleaseQualityGrid span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(53, 103, 155, 0.1);
+  border-radius: 7px;
+  background: rgba(248, 251, 255, 0.84);
+}
+
+.dhMacroReleaseState small,
+.dhMacroReleaseQualityGrid small {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 9.5px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseState b,
+.dhMacroReleaseQualityGrid b {
+  color: var(--dh-blue-deep);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.dhMacroReleaseTimeline,
+.dhMacroReleaseQueue,
+.dhMacroReleaseChecklist,
+.dhMacroReleaseBoundary,
+.dhMacroReleaseFieldMaintenance,
+.dhMacroReleaseFocusList {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(53, 103, 155, 0.1);
+  border-radius: 7px;
+  background: rgba(248, 251, 255, 0.78);
+}
+
+.dhMacroReleaseTimeline {
+  grid-row: span 2;
+}
+
+.dhMacroReleaseFieldMaintenance {
+  grid-column: span 1;
+}
+
+.dhMacroReleaseFocusList {
+  grid-column: span 1;
+}
+
+.dhMacroReleaseSubhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dhMacroReleaseSubhead span {
+  overflow: hidden;
+  color: var(--dh-blue-deep);
+  font-size: 11.5px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseSubhead small {
+  flex-shrink: 0;
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.dhMacroReleaseTimelineList,
+.dhMacroReleaseQueueList {
+  display: grid;
+  gap: 6px;
+}
+
+.dhMacroReleaseTimelineItem,
+.dhMacroReleaseQueueItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+}
+
+.dhMacroReleaseTimelineItem > span {
+  display: grid;
+  justify-items: center;
+  min-width: 42px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  background: rgba(24, 80, 161, 0.09);
+  color: var(--dh-blue);
+  line-height: 1.05;
+}
+
+.dhMacroReleaseTimelineItem > span b {
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.dhMacroReleaseTimelineItem > span small {
+  color: var(--dh-muted);
+  font-size: 8.5px;
+  font-weight: 800;
+}
+
+.dhMacroReleaseTimelineItem p,
+.dhMacroReleaseQueueItem p,
+.dhMacroReleaseBoundary p {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.dhMacroReleaseTimelineItem strong,
+.dhMacroReleaseQueueItem strong {
+  overflow: hidden;
+  color: var(--dh-ink);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseTimelineItem p small,
+.dhMacroReleaseQueueItem p small {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseTimelineItem em {
+  min-width: 48px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(24, 80, 161, 0.08);
+  color: var(--dh-blue-deep);
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.35;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseTimelineItem em[data-importance="high"] {
+  background: rgba(185, 71, 67, 0.1);
+  color: var(--dh-red);
+}
+
+.dhMacroReleaseTimelineItem em[data-importance="medium"] {
+  background: rgba(183, 110, 0, 0.1);
+  color: var(--dh-amber);
+}
+
+.dhMacroReleaseQueueItem {
+  grid-template-columns: auto minmax(0, 1fr);
+  padding-left: 8px;
+  border-left: 2px solid rgba(185, 71, 67, 0.5);
+}
+
+.dhMacroReleaseQueueItem > span {
+  color: var(--dh-red);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseWorkbenchMessage {
+  margin: 0;
+  color: var(--dh-muted);
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.dhMacroReleaseQualityInline,
+.dhMacroReleaseFocusBoundary,
+.dhMacroReleaseQualityIssues p {
+  margin: 0;
+  color: var(--dh-muted);
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.dhMacroReleaseQualityGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dhMacroReleaseQualityIssues {
+  display: grid;
+  gap: 4px;
+}
+
+.dhMacroReleaseFocusRows {
+  display: grid;
+  gap: 6px;
+}
+
+.dhMacroReleaseFocusRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.dhMacroReleaseFocusRow > span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 42px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(24, 80, 161, 0.09);
+  color: var(--dh-blue);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.dhMacroReleaseFocusRow p {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.dhMacroReleaseFocusRow strong {
+  overflow: hidden;
+  color: var(--dh-ink);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseFocusRow small {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseFocusActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dhMacroReleaseFocusActions button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(24, 80, 161, 0.24);
+  border-radius: 6px;
+  color: var(--dh-blue-deep);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 850;
+  background: rgba(24, 80, 161, 0.08);
+  cursor: pointer;
+}
+
+.dhMacroReleaseFocusActions button:hover {
+  background: rgba(24, 80, 161, 0.13);
+}
+
+.dhMacroReleaseFocusActions button:focus-visible {
+  outline: 2px solid rgba(24, 80, 161, 0.34);
+  outline-offset: 2px;
+}
+
+.dhMacroReleaseFocusActions span {
+  color: var(--dh-green);
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.dhMacroReleaseFocusList textarea {
+  width: 100%;
+  min-height: 132px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid rgba(53, 103, 155, 0.14);
+  border-radius: 7px;
+  color: var(--dh-ink-2);
+  font-family: var(--dh-font-sans);
+  font-size: 10.5px;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.dhMacroReleaseChecklist ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.dhMacroReleaseChecklist li,
+.dhMacroReleaseBoundary p {
+  color: var(--dh-ink-2);
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dhMacroTrustStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ib-ink-muted);
+}
+
+.dhMacroTrustStrip span {
+  display: inline;
+  max-width: none;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: normal;
+}
+
+.dhMacroTrustStrip span + span::before {
+  content: " · ";
+}
+
+.dhMacroNewsStale {
+  display: inline;
+  width: auto;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ib-warn);
+  font-size: 11px;
+  font-weight: 400;
 }
 
 .dhPolicyFundingPane {
@@ -1360,36 +2084,37 @@
 .dhPolicyFundingChips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: -2px 0 8px;
+  gap: 0;
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ib-ink-muted);
 }
 
 .dhPolicyFundingChips span {
-  display: inline-flex;
-  max-width: 100%;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(53, 103, 155, 0.08);
-  color: var(--dh-muted);
-  font-size: 10.5px;
-  font-weight: 800;
-  line-height: 1.35;
-  white-space: nowrap;
+  display: inline;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
+  white-space: normal;
 }
 
-.dhPolicyFundingChips span[data-tone="info"] {
-  background: rgba(24, 80, 161, 0.1);
-  color: var(--dh-blue);
+.dhPolicyFundingChips span + span::before {
+  content: " · ";
 }
 
-.dhPolicyFundingChips span[data-tone="warning"] {
-  background: rgba(183, 110, 0, 0.12);
-  color: #9a5b00;
-}
-
+.dhPolicyFundingChips span[data-tone="info"],
+.dhPolicyFundingChips span[data-tone="warning"],
 .dhPolicyFundingChips span[data-tone="danger"] {
-  background: rgba(185, 71, 67, 0.12);
-  color: var(--dh-red);
+  background: transparent;
+  border: 0;
+  color: inherit;
 }
 
 .dhPolicyFundingHeadline {
@@ -1401,6 +2126,43 @@
   font-size: 13px;
   font-weight: 800;
   line-height: 1.45;
+}
+
+.dhPolicyFundingCoverage {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.35fr);
+  gap: 1px;
+  overflow: hidden;
+  margin: 0 0 10px;
+  border-radius: 8px;
+  background: rgba(228, 233, 240, 0.82);
+}
+
+.dhPolicyFundingCoverage span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 8px;
+  background: rgba(248, 251, 255, 0.96);
+}
+
+.dhPolicyFundingCoverage small {
+  overflow: hidden;
+  color: var(--dh-muted);
+  font-size: 9.5px;
+  font-weight: 850;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhPolicyFundingCoverage b {
+  overflow: hidden;
+  color: var(--dh-blue-deep);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .dhPolicyFundingDiagnostics {
@@ -1451,7 +2213,7 @@
 
 .dhPolicyFundingDiagnosticNarratives[data-tone="warning"] p {
   border-left-color: rgba(183, 110, 0, 0.62);
-  color: #8d5604;
+  color: var(--moss-color-warning-700);
 }
 
 .dhPolicyFundingDiagnosticNarratives[data-tone="danger"] p {
@@ -1462,10 +2224,10 @@
 .dhPolicyFundingDiagnosticMetrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  overflow: hidden;
-  border-radius: 7px;
-  background: rgba(228, 233, 240, 0.82);
-  gap: 1px;
+  gap: 6px;
+  overflow: visible;
+  border-radius: 0;
+  background: transparent;
 }
 
 .dhPolicyFundingDiagnosticMetrics span {
@@ -1473,14 +2235,16 @@
   display: grid;
   gap: 2px;
   padding: 6px 7px;
-  background: rgba(248, 251, 255, 0.96);
+  background: var(--ib-surface);
+  border: 1px solid var(--dh-line);
+  border-radius: 2px;
 }
 
 .dhPolicyFundingDiagnosticMetrics small {
   overflow: hidden;
-  color: var(--dh-muted);
-  font-size: 9.5px;
-  font-weight: 850;
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  font-weight: 400;
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1488,9 +2252,9 @@
 
 .dhPolicyFundingDiagnosticMetrics b {
   overflow: hidden;
-  color: var(--dh-blue-deep);
+  color: var(--ib-ink);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1523,24 +2287,42 @@
   align-items: center;
   gap: 5px;
   max-width: 100%;
-  padding: 3px 7px;
-  border-radius: 7px;
-  background: rgba(53, 103, 155, 0.08);
-  color: var(--dh-muted);
-  font-size: 10px;
-  font-weight: 800;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
   line-height: 1.3;
   white-space: nowrap;
 }
 
 .dhPolicyFundingDiagnosticReasons span[data-tone="warning"] {
-  background: rgba(183, 110, 0, 0.1);
-  color: #9a5b00;
+  background: transparent;
+  color: var(--ib-warn);
+}
+
+.dhPolicyFundingDiagnosticReasons span[data-tone="warning"]::before {
+  background: var(--ib-warn);
 }
 
 .dhPolicyFundingDiagnosticReasons span[data-tone="danger"] {
-  background: rgba(185, 71, 67, 0.1);
-  color: var(--dh-red);
+  background: transparent;
+  color: var(--ib-down);
+}
+
+.dhPolicyFundingDiagnosticReasons span[data-tone="danger"]::before {
+  background: var(--ib-down);
+}
+
+.dhPolicyFundingDiagnosticReasons span::before {
+  background: var(--ib-ink-muted);
+  border-radius: 50%;
+  content: "";
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
 }
 
 .dhPolicyFundingDiagnosticReasons b {
@@ -1589,21 +2371,57 @@
   font-weight: 800;
 }
 
+.dhPolicyFundingGroupEvidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ib-ink-muted);
+}
+
+.dhPolicyFundingGroupEvidence span {
+  display: inline;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
+  white-space: normal;
+}
+
+.dhPolicyFundingGroupEvidence span + span::before {
+  content: " · ";
+}
+
 .dhMacroSupplyStrip {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ib-ink-muted);
 }
 
 .dhMacroSupplyStrip span {
-  display: inline-flex;
-  max-width: 100%;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: rgba(53, 103, 155, 0.1);
-  color: var(--dh-text-muted, rgba(0, 0, 0, 0.55));
-  font-size: 11px;
-  line-height: 1.3;
+  display: inline;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.dhMacroSupplyStrip span + span::before {
+  content: " · ";
 }
 
 .dhBondNewsSection {
@@ -1645,19 +2463,19 @@
 .dhBondNewsGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .dhBondNewsGroup {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  min-height: 132px;
-  padding: 10px;
-  border: 1px solid rgba(53, 103, 155, 0.08);
-  border-radius: 10px;
-  background: rgba(248, 251, 255, 0.86);
+  min-height: 120px;
+  padding: 8px 9px;
+  border: 1px solid var(--dh-line);
+  border-radius: 2px;
+  background: var(--ib-surface);
 }
 
 .dhBondNewsGroupHeader {
@@ -1766,22 +2584,25 @@
 
 .dhMarketContextTemp {
   display: inline-flex;
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: rgba(53, 103, 155, 0.1);
+  padding: 3px 7px;
+  border-radius: 2px;
+  border: 1px solid var(--dh-line);
+  background: transparent;
   color: var(--dh-blue-deep);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .dhMarketContextTemp[data-tone="hot"] {
-  background: rgba(185, 71, 67, 0.1);
-  color: #9f332e;
+  background: transparent;
+  border-color: var(--dh-red);
+  color: var(--dh-red);
 }
 
 .dhMarketContextTemp[data-tone="cool"] {
-  background: rgba(31, 122, 85, 0.1);
-  color: #1f7a55;
+  background: transparent;
+  border-color: var(--dh-green);
+  color: var(--dh-green);
 }
 
 .dhMarketContextGrid {
@@ -1797,15 +2618,17 @@
   min-width: 0;
   min-height: 88px;
   padding: 10px 11px;
-  border-radius: 10px;
-  border: 1px solid rgba(53, 103, 155, 0.08);
-  background: rgba(248, 251, 255, 0.86);
+  border-radius: 2px;
+  border: 1px solid var(--dh-line);
+  background: var(--ib-surface);
 }
 
 .dhMarketContextBlock span {
-  color: var(--dh-muted);
-  font-size: 10.5px;
-  font-weight: 800;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .dhMarketContextTempRow {
@@ -1817,9 +2640,9 @@
 
 .dhMarketContextBlock b {
   overflow: hidden;
-  color: var(--dh-blue-deep);
+  color: var(--ib-ink);
   font-size: 13.5px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1827,15 +2650,15 @@
 
 .dhMarketContextTempRow b {
   font-size: 20px;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.02em;
 }
 
 .dhMarketContextMeter {
   position: relative;
   height: 7px;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(53, 103, 155, 0.1);
+  border-radius: 2px;
+  background: var(--ib-hairline);
 }
 
 .dhMarketContextMeter i {
@@ -1843,21 +2666,21 @@
   width: var(--dh-market-temp-score, 50%);
   height: 100%;
   border-radius: inherit;
-  background: var(--dh-dist-blue, #35679b);
+  background: var(--ib-accent);
 }
 
 .dhMarketContextMeter[data-tone="hot"] i {
-  background: #b94743;
+  background: var(--ib-down);
 }
 
 .dhMarketContextMeter[data-tone="cool"] i {
-  background: #1f7a55;
+  background: var(--ib-up);
 }
 
 .dhMarketContextBlock small {
-  color: var(--dh-ink-2);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 400;
   line-height: 1.45;
 }
 
@@ -1871,12 +2694,13 @@
   display: inline-flex;
   max-width: 100%;
   padding: 2px 6px;
-  border-radius: 999px;
-  background: rgba(53, 103, 155, 0.08);
-  color: var(--dh-ink-2);
-  font-size: 10.5px;
+  border-radius: 2px;
+  border: 1px solid var(--dh-line);
+  background: transparent;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
   font-style: normal;
-  font-weight: 750;
+  font-weight: 400;
   line-height: 1.35;
 }
 
@@ -1891,9 +2715,9 @@
 .dhMarketContextSummary li {
   position: relative;
   padding-left: 10px;
-  color: var(--dh-ink-2);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 400;
   line-height: 1.4;
 }
 
@@ -1903,8 +2727,8 @@
   left: 0;
   width: 4px;
   height: 4px;
-  border-radius: 999px;
-  background: var(--dh-blue, #1850a1);
+  border-radius: 50%;
+  background: var(--ib-ink-muted);
   content: "";
 }
 
@@ -1919,6 +2743,53 @@
 }
 
 @media (max-width: 560px) {
+  .dhMacroReleaseFilterBar {
+    gap: 10px;
+  }
+
+  .dhMacroReleaseInsightGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .dhMacroReleaseWorkbench {
+    grid-template-columns: 1fr;
+  }
+
+  .dhMacroReleaseDetailFacts,
+  .dhMacroReleaseDetailActions,
+  .dhMacroReleaseState,
+  .dhMacroReleaseQualityGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .dhMacroReleaseFieldMaintenance,
+  .dhMacroReleaseFocusList {
+    grid-column: auto;
+  }
+
+  .dhMacroReleaseTimeline {
+    grid-row: auto;
+  }
+
+  .dhMacroReleaseTimelineItem {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dhMacroReleaseTimelineItem em {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .dhMacroReleaseInsightHeader {
+    align-items: start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .dhMacroReleaseInsightHeader small {
+    text-align: left;
+  }
+
   .dhMacroReleaseMetaRow {
     grid-template-columns: 1fr;
     gap: 4px;
@@ -2200,33 +3071,53 @@
   align-items: center;
   min-height: 18px;
   max-width: 100%;
-  padding: 0 7px;
-  border-radius: 5px;
-  font-size: 10px;
-  font-weight: 800;
+  padding: 0 6px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .dhTerminalStateReady {
-  color: var(--dh-green);
-  background: var(--dh-green-soft);
+  color: var(--ib-ink-secondary);
+  background: transparent;
+  border: 0;
+  font-size: 11px;
+  font-weight: 400;
+  min-height: auto;
+  padding: 0;
+}
+
+.dhTerminalStateReady::before {
+  background: var(--dh-green);
+  border-radius: 50%;
+  content: "";
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
 }
 
 .dhTerminalStateMuted {
   color: var(--dh-muted);
-  background: var(--dh-surface-muted);
+  background: transparent;
+  border-color: var(--dh-muted-2);
 }
 
 .dhTerminalStateStale {
   color: var(--dh-amber);
-  background: var(--dh-amber-soft);
+  background: transparent;
+  border-color: var(--dh-amber);
 }
 
 .dhTerminalStateWarn {
   color: var(--dh-red);
-  background: var(--dh-red-soft);
+  background: transparent;
+  border-color: var(--dh-red);
 }
 
 .dhTerminalRiskStrip {
@@ -2245,21 +3136,21 @@
 
 .dhTerminalPanelHead h3 {
   margin: 0;
-  color: var(--dh-blue-deep);
+  color: var(--ib-ink);
   display: inline-flex;
   align-items: center;
   gap: 7px;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .dhTerminalPanelHead h3::before {
   content: "";
-  width: 3px;
-  height: 15px;
-  border-radius: 999px;
-  background: var(--dh-blue);
-  box-shadow: 0 0 0 3px var(--dh-blue-soft);
+  width: 2px;
+  height: 14px;
+  border-radius: 0;
+  background: var(--ib-accent);
+  box-shadow: none;
 }
 
 .dhPanelHeaderActions {
@@ -2277,12 +3168,12 @@
   justify-content: center;
   min-height: 24px;
   padding: 4px 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(24, 80, 161, 0.18);
-  background: rgba(24, 80, 161, 0.06);
+  border-radius: 2px;
+  border: 1px solid var(--dh-line);
+  background: var(--ib-surface);
   color: var(--dh-blue);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1;
   text-decoration: none;
   white-space: nowrap;
@@ -2290,8 +3181,8 @@
 }
 
 .dhPanelDrillLink:hover {
-  border-color: rgba(24, 80, 161, 0.32);
-  background: rgba(24, 80, 161, 0.1);
+  border-color: var(--dh-blue);
+  background: var(--dh-blue-soft);
   color: var(--dh-blue-2);
 }
 
@@ -2928,7 +3819,7 @@
 }
 
 .dhTerminalIncomeSummary b {
-  color: var(--dh-blue-deep);
+  color: var(--ib-ink);
   font-size: 11.5px;
   line-height: 1.1;
   overflow: hidden;
@@ -2970,17 +3861,17 @@
 .dhTerminalIncomeLegend span::before {
   width: 14px;
   height: 3px;
-  border-radius: 999px;
-  background: var(--dh-blue-deep);
+  border-radius: 0;
+  background: var(--ib-accent);
   content: "";
 }
 
 .dhTerminalIncomeLegend span[data-series="benchmark"]::before {
-  background: #7b8798;
+  background: var(--moss-color-primary-200);
 }
 
 .dhTerminalIncomeLegend span[data-series="excess"]::before {
-  background: #c84b4b;
+  background: var(--ib-gold);
 }
 
 .dhTerminalIncomeTrend {
@@ -3102,20 +3993,20 @@
 .dhTerminalStateSurface[data-state="loading"] {
   color: var(--dh-blue-deep);
   border-color: rgba(24, 80, 161, 0.24);
-  background: #f6faff;
+  background: var(--moss-color-info-50);
 }
 
 .dhTerminalStateSurface[data-state="partial"],
 .dhTerminalStateSurface[data-state="stale"] {
   color: var(--dh-amber);
-  border-color: #efd8a8;
+  border-color: var(--moss-color-warning-200);
   background: var(--dh-amber-soft);
 }
 
 .dhTerminalStateSurface[data-state="error"],
 .dhTerminalStateSurface[data-state="backend-gap"] {
   color: var(--dh-red);
-  border-color: #efcbc9;
+  border-color: var(--moss-color-danger-200);
   background: var(--dh-red-soft);
 }
 
@@ -3197,28 +4088,34 @@
 .dhTerminalQuick span {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  color: var(--dh-blue);
-  background: var(--dh-blue-soft);
-  font-size: 19px;
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  border: 1px solid var(--dh-line);
+  color: var(--ib-ink);
+  background: transparent;
+  font-size: 16px;
 }
 
 .dhTerminalQuick b {
   min-width: 0;
   font-size: 13px;
   color: var(--dh-ink);
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .dhTerminalQuick em {
-  color: var(--dh-muted);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
   font-style: normal;
-  font-weight: 750;
+  font-weight: 500;
+  border: 1px solid var(--dh-line);
+  border-radius: 2px;
+  padding: 2px 8px;
+  background: var(--ib-surface);
 }
 
 /* Decision rail */
@@ -3478,13 +4375,13 @@
   display: inline-flex;
   align-items: center;
   height: 18px;
-  padding: 0 8px;
-  border-radius: 7px;
+  padding: 0 6px;
+  border-radius: 2px;
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
   color: var(--dh-green);
-  background: var(--dh-green-soft);
-  border: 1px solid #cdeee2;
+  background: transparent;
+  border: 1px solid var(--dh-green);
 }
 
 .dhEmpty {

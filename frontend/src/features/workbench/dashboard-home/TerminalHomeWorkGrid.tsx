@@ -1,7 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 
+import {
+  mossChartAxisLabel,
+  mossChartAxisLine,
+  mossChartCategoricalPalette,
+  mossChartSplitLine,
+} from "../../../components/charts/chartTheme";
 import { LightIcon } from "../../../components/LightIcon";
+import { ibTokens } from "../../../theme/designSystem";
 import type {
   DashboardHomeBodyView,
   HomeDataStateKind,
@@ -18,7 +25,12 @@ type TerminalHomeWorkGridProps = {
 
 type EChartsOption = import("../../../lib/echarts").EChartsOption;
 
-const CHART_COLORS = ["#35679b", "#6f96c3", "#a8bfd8", "#3f8a6a", "#c76b66", "#b6c1cf"];
+const CHART_COLORS = mossChartCategoricalPalette;
+const INCOME_TREND_COLORS = [
+  mossChartCategoricalPalette[0],
+  mossChartCategoricalPalette[3],
+  mossChartCategoricalPalette[5],
+] as const;
 const ReactECharts = lazy(() => import("../../../lib/echarts"));
 const CHART_REVEAL_KEYS = new Set(["ArrowDown", "PageDown", "End", " ", "Space"]);
 
@@ -214,7 +226,7 @@ function buildPieOption(slices: readonly HomeDistributionSlice[]): EChartsOption
         label: { show: false },
         labelLine: { show: false },
         itemStyle: {
-          borderColor: "#fff",
+          borderColor: ibTokens.color.surface,
           borderWidth: 2,
         },
         emphasis: {
@@ -231,14 +243,14 @@ function buildPieOption(slices: readonly HomeDistributionSlice[]): EChartsOption
 
 function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption {
   return {
-    color: ["#35679b"],
+    color: CHART_COLORS,
     grid: { top: 8, right: 10, bottom: 8, left: 28 },
     xAxis: {
       type: "category",
       data: slices.map((slice) => slice.label),
       axisLabel: { show: false },
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: "#cdd5e1" } },
+      axisLine: mossChartAxisLine,
     },
     yAxis: {
       type: "value",
@@ -246,7 +258,7 @@ function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption
         fontSize: 10,
         formatter: (value: number) => `${Number(value).toFixed(0)}%`,
       },
-      splitLine: { lineStyle: { color: "#eef2f7" } },
+      splitLine: mossChartSplitLine,
     },
     tooltip: { trigger: "axis" },
     series: [
@@ -255,7 +267,7 @@ function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption
         data: slices.map((slice) => Number(slice.pctRaw.toFixed(2))),
         barWidth: 14,
         barMaxWidth: 16,
-        itemStyle: { borderRadius: [3, 3, 0, 0] },
+        itemStyle: { borderRadius: [2, 2, 0, 0] },
       },
     ],
   };
@@ -263,13 +275,13 @@ function buildBarOption(slices: readonly HomeDistributionSlice[]): EChartsOption
 
 function buildIncomeTrendOption(points: DashboardHomeBodyView["incomeTrend"]): EChartsOption {
   return {
-    color: ["#1850a1", "#7b8798", "#c84b4b"],
+    color: INCOME_TREND_COLORS,
     legend: {
       top: 0,
       right: 0,
       itemWidth: 10,
       itemHeight: 6,
-      textStyle: { fontSize: 10, color: "#667085" },
+      textStyle: { ...mossChartAxisLabel, fontSize: 10 },
       data: ["组合", "CDB基准", "超额"],
     },
     grid: { top: 24, right: 8, bottom: 20, left: 34 },
@@ -279,17 +291,17 @@ function buildIncomeTrendOption(points: DashboardHomeBodyView["incomeTrend"]): E
       data: points.map((point) => point.date.slice(5)),
       boundaryGap: false,
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: "#cdd5e1" } },
-      axisLabel: { fontSize: 10, color: "#6b7d95" },
+      axisLine: mossChartAxisLine,
+      axisLabel: { ...mossChartAxisLabel, fontSize: 10 },
     },
     yAxis: {
       type: "value",
       axisLabel: {
         fontSize: 10,
-        color: "#6b7d95",
+        color: mossChartAxisLabel.color,
         formatter: (value: number) => `${(Number(value) / 100_000_000).toFixed(1)}亿`,
       },
-      splitLine: { lineStyle: { color: "#eef2f7" } },
+      splitLine: mossChartSplitLine,
     },
     series: [
       {

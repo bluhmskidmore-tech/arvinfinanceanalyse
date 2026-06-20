@@ -1,5 +1,7 @@
 import ReactECharts from "../../../lib/echarts";
 import type { AdbTrendItem } from "../../../api/contracts";
+import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
+import { ibTokens } from "../../../theme/designSystem";
 
 const YI = 100_000_000;
 
@@ -49,7 +51,7 @@ function buildTrendOption(trend: AdbTrendItem[]) {
     yAxis: {
       type: "value",
       axisLabel: { formatter: (value: number) => `${value.toFixed(0)}亿` },
-      splitLine: { lineStyle: { type: "dashed", color: "#e5e7eb" } },
+      splitLine: { lineStyle: { color: ibTokens.color.hairline } },
     },
     series: [
       {
@@ -57,24 +59,14 @@ function buildTrendOption(trend: AdbTrendItem[]) {
         type: "line",
         data: dailyValues,
         symbol: "none",
-        lineStyle: { width: 1.5, color: "#93c5fd" },
-        areaStyle: {
-          color: {
-            type: "linear",
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: "rgba(59,130,246,0.15)" },
-              { offset: 1, color: "rgba(59,130,246,0.02)" },
-            ],
-          },
-        },
+        lineStyle: { width: 1.5, color: mossChartCategoricalPalette[3] },
       },
       {
         name: "30日移动均线",
         type: "line",
         data: ma30Values,
         symbol: "none",
-        lineStyle: { width: 2, color: "#2563eb", type: "solid" },
+        lineStyle: { width: 2, color: ibTokens.color.accent, type: "solid" },
       },
     ],
   };

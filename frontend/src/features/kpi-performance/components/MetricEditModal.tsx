@@ -63,10 +63,11 @@ export function MetricEditModal({
 
   return (
     <Modal
+      rootClassName="kpi-modal-v2 kpi-modal-v2--edit"
       title={
-        <div>
-          <div>编辑指标完成情况</div>
-          <Text type="secondary" style={{ fontSize: 13, fontWeight: 400 }}>
+        <div className="kpi-modal-v2__title">
+          <div className="kpi-modal-v2__title-main">编辑指标完成情况</div>
+          <Text type="secondary" className="kpi-modal-v2__title-subtitle">
             {metric.metric_name}
           </Text>
         </div>
@@ -83,58 +84,50 @@ export function MetricEditModal({
       ]}
       width={560}
     >
-      <div
-        style={{
-          background: "#f8fafc",
-          padding: 12,
-          borderRadius: 8,
-          marginBottom: 16,
-          fontSize: 13,
-        }}
-      >
-        <div>
+      <div className="kpi-modal-v2__summary">
+        <div className="kpi-modal-v2__summary-row">
           <Text type="secondary">指标代码 </Text>
           <Text code>{metric.metric_code}</Text>
         </div>
-        <div style={{ marginTop: 6 }}>
+        <div className="kpi-modal-v2__summary-row">
           <Text type="secondary">单位 </Text>
           {metric.unit || "-"}
         </div>
-        <div style={{ marginTop: 6 }}>
+        <div className="kpi-modal-v2__summary-row">
           <Text type="secondary">数据来源 </Text>
           {metric.data_source_type}
         </div>
-        <div style={{ marginTop: 6 }}>
+        <div className="kpi-modal-v2__summary-row">
           <Text type="secondary">分值 </Text>
           <Text strong>{metric.score_weight}</Text>
         </div>
         {metric.scoring_text ? (
-          <div style={{ marginTop: 10, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
+          <div className="kpi-modal-v2__summary-section">
             <Text type="secondary">评分标准</Text>
-            <div style={{ marginTop: 4 }}>{metric.scoring_text}</div>
+            <div className="kpi-modal-v2__summary-section-body">{metric.scoring_text}</div>
           </div>
         ) : null}
       </div>
-      <div style={{ display: "grid", gap: 14 }}>
-        <div>
+      <div className="kpi-modal-v2__form">
+        <div className="kpi-modal-v2__field">
           <Text strong>目标值{metric.unit ? `（${metric.unit}）` : ""}</Text>
-          <Input style={{ marginTop: 6 }} value={targetValue} onChange={(e) => setTargetValue(e.target.value)} />
+          <Input className="kpi-modal-v2__control" value={targetValue} onChange={(e) => setTargetValue(e.target.value)} />
         </div>
-        <div>
+        <div className="kpi-modal-v2__field">
           <Text strong>实际值{metric.unit ? `（${metric.unit}）` : ""}</Text>
-          <Input style={{ marginTop: 6 }} value={actualValue} onChange={(e) => setActualValue(e.target.value)} />
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Input className="kpi-modal-v2__control" value={actualValue} onChange={(e) => setActualValue(e.target.value)} />
+          <Text type="secondary" className="kpi-modal-v2__help-text">
             AUTO 来源可留空，由系统抓取
           </Text>
         </div>
-        <div>
+        <div className="kpi-modal-v2__field">
           <Text strong>序时进度（%）</Text>
-          <Input style={{ marginTop: 6 }} value={progressPct} onChange={(e) => setProgressPct(e.target.value)} />
+          <Input className="kpi-modal-v2__control" value={progressPct} onChange={(e) => setProgressPct(e.target.value)} />
         </div>
-        <div>
+        <div className="kpi-modal-v2__field">
           <Text strong>完成情况说明</Text>
           <Input.TextArea
-            style={{ marginTop: 6 }}
+            className="kpi-modal-v2__control"
             rows={3}
             value={actualText}
             onChange={(e) => setActualText(e.target.value)}
@@ -142,7 +135,7 @@ export function MetricEditModal({
         </div>
       </div>
       {error ? (
-        <Alert type="error" showIcon style={{ marginTop: 16 }} message={error} />
+        <Alert type="error" showIcon className="kpi-modal-v2__alert" message={error} />
       ) : null}
     </Modal>
   );
