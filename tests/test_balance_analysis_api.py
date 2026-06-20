@@ -1,12 +1,14 @@
 from __future__ import annotations
-import json
+
 import csv
+import json
+import logging
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 
 import duckdb
-
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -16,6 +18,7 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_balance_analysis_materialize_flow import (
     _patch_skip_fx_refresh,
@@ -23,12 +26,22 @@ from tests.test_balance_analysis_materialize_flow import (
 )
 
 
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
+
+
 def _configure_and_materialize(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
+    _seed_balance_read_scope(tmp_path, monkeypatch)
     _seed_snapshot_and_fx_tables(str(duckdb_path))
     task_mod = load_module(
         "backend.app.tasks.balance_analysis_materialize",
@@ -43,6 +56,23 @@ def _configure_and_materialize(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, task_mod
 
 
+def _seed_balance_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "auth-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+
+
 def _seed_balance_decision_scope(tmp_path, monkeypatch, *, user_id: str, role: str | None = None) -> None:
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
@@ -53,10 +83,40 @@ def _seed_balance_decision_scope(tmp_path, monkeypatch, *, user_id: str, role: s
     )
     repo = repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
     repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+    repo.grant_scope(
         user_id=user_id,
         role=role,
         resource="balance_analysis.decision_status",
         action="write",
+    )
+
+
+def _seed_balance_refresh_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "auth-refresh-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo = repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+    repo.grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="balance_analysis",
+        action="refresh",
     )
 
 
@@ -238,6 +298,101 @@ def _remove_completed_balance_analysis_build_runs(governance_dir: Path) -> None:
     )
 
 
+def test_balance_analysis_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
+    route_mod = load_module(
+        "backend.app.api.routes.balance_analysis",
+        "backend/app/api/routes/balance_analysis.py",
+    )
+    for name in (
+        "balance_analysis_dates_envelope",
+        "balance_analysis_detail_envelope",
+        "balance_analysis_overview_envelope",
+        "balance_analysis_summary_envelope",
+        "balance_analysis_basis_breakdown_envelope",
+        "advanced_attribution_bundle_envelope",
+        "balance_analysis_workbook_envelope",
+        "balance_analysis_decision_items_envelope",
+    ):
+        monkeypatch.setattr(
+            route_mod,
+            name,
+            lambda **_kwargs: {"result_meta": {"result_kind": "balance-analysis.stub"}, "result": {}},
+        )
+    monkeypatch.setattr(
+        route_mod,
+        "export_balance_analysis_summary_csv",
+        lambda **_kwargs: ("summary.csv", "stub"),
+    )
+    monkeypatch.setattr(
+        route_mod,
+        "export_balance_analysis_workbook_xlsx",
+        lambda **_kwargs: ("workbook.xlsx", b"stub"),
+    )
+
+    class FakeBalanceAnalysisService:
+        @staticmethod
+        def balance_analysis_refresh_status(_settings, *, run_id: str):
+            return {"status": "queued", "run_id": run_id}
+
+    monkeypatch.setattr(route_mod.importlib, "import_module", lambda _name: FakeBalanceAnalysisService)
+    sqlite_path = tmp_path / "balance-analysis-read-denied.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    cases = [
+        ("/ui/balance-analysis/dates", {}),
+        ("/ui/balance-analysis", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/overview", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/summary", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/summary-by-basis", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/advanced-attribution", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/workbook", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/decision-items", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/summary/export", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/workbook/export", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/refresh-status", {"run_id": "balance-run"}),
+    ]
+
+    for path, params in cases:
+        response = client.get(
+            path,
+            params=params,
+            headers={"X-User-Id": "balance-read-user", "X-User-Role": "viewer"},
+        )
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope(tmp_path, monkeypatch):
+    route_mod = load_module(
+        "backend.app.api.routes.balance_analysis",
+        "backend/app/api/routes/balance_analysis.py",
+    )
+    monkeypatch.setattr(
+        route_mod,
+        "balance_analysis_dates_envelope",
+        lambda **_kwargs: {"result_meta": {"result_kind": "balance-analysis.dates"}, "result": {}},
+    )
+    sqlite_path = tmp_path / "balance-analysis-dev-fallback.db"
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.get("/ui/balance-analysis/dates")
+
+    assert response.status_code == 200
+    assert response.json()["result_meta"]["result_kind"] == "balance-analysis.dates"
+
+
 def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
 
@@ -304,6 +459,74 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
         "liability_total_amortized_cost_amount": "72.00000000",
         "asset_total_accrued_interest_amount": "36.00000000",
         "liability_total_accrued_interest_amount": "14.40000000",
+        "metric_definitions": [
+            {
+                "key": "asset_total_market_value_amount",
+                "label": "资产市值合计",
+                "source_field": "market_value_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸市值金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "asset_total_amortized_cost_amount",
+                "label": "资产摊余成本合计",
+                "source_field": "amortized_cost_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "asset_total_accrued_interest_amount",
+                "label": "资产应计利息合计",
+                "source_field": "accrued_interest_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_market_value_amount",
+                "label": "负债市值合计",
+                "source_field": "market_value_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸市值金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_amortized_cost_amount",
+                "label": "负债摊余成本合计",
+                "source_field": "amortized_cost_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_accrued_interest_amount",
+                "label": "负债应计利息合计",
+                "source_field": "accrued_interest_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+            },
+        ],
     }
 
     workbook_response = client.get(
@@ -316,7 +539,6 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     )
     assert workbook_response.status_code == 200
     workbook_payload = workbook_response.json()
-    table_map = {table["key"]: table for table in workbook_payload["result"]["tables"]}
     operational_map = {
         section["key"]: section for section in workbook_payload["result"]["operational_sections"]
     }
@@ -425,13 +647,13 @@ def test_balance_analysis_decision_items_api_returns_generated_items_with_pendin
     assert payload["result"]["position_scope"] == "all"
     assert payload["result"]["currency_basis"] == "CNY"
     assert payload["result"]["columns"] == [
-        {"key": "title", "label": "Title"},
-        {"key": "action_label", "label": "Action"},
-        {"key": "severity", "label": "Severity"},
-        {"key": "reason", "label": "Reason"},
-        {"key": "source_section", "label": "Source Section"},
-        {"key": "rule_id", "label": "Rule Id"},
-        {"key": "rule_version", "label": "Rule Version"},
+        {"key": "title", "label": "标题"},
+        {"key": "action_label", "label": "动作"},
+        {"key": "severity", "label": "等级"},
+        {"key": "reason", "label": "原因"},
+        {"key": "source_section", "label": "来源区块"},
+        {"key": "rule_id", "label": "规则编号"},
+        {"key": "rule_version", "label": "规则版本"},
     ]
     assert payload["result"]["rows"][0]["decision_key"]
     assert payload["result"]["rows"][0]["latest_status"] == {
@@ -447,6 +669,7 @@ def test_balance_analysis_decision_items_api_returns_generated_items_with_pendin
 
 def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_write(tmp_path, monkeypatch):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_balance_decision_scope(tmp_path, monkeypatch, user_id="decision-owner")
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(
@@ -462,6 +685,55 @@ def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_writ
         "user_id": "decision-owner",
         "role": "reviewer",
         "identity_source": "header",
+        "can_write_decision_status": True,
+    }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_current_user_reports_decision_write_scope_denied(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/current-user",
+        headers={
+            "X-User-Id": "decision-viewer",
+            "X-User-Role": "admin",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user_id": "decision-viewer",
+        "role": "admin",
+        "identity_source": "header",
+        "can_write_decision_status": False,
+    }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_current_user_reports_unknown_when_scope_store_unavailable(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", "postgresql://invalid:invalid@127.0.0.1:1/moss")
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/current-user",
+        headers={
+            "X-User-Id": "decision-owner",
+            "X-User-Role": "reviewer",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user_id": "decision-owner",
+        "role": "reviewer",
+        "identity_source": "header",
+        "can_write_decision_status": None,
     }
 
     get_settings.cache_clear()
@@ -562,6 +834,16 @@ def test_balance_analysis_decision_status_update_returns_403_without_scope(tmp_p
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
 
     client = TestClient(
         load_module("backend.app.main", "backend/app/main.py").app,
@@ -600,10 +882,6 @@ def test_balance_analysis_decision_status_update_returns_503_when_scope_store_is
     monkeypatch,
 ):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
-    monkeypatch.setenv("MOSS_POSTGRES_DSN", "postgresql://invalid:invalid@127.0.0.1:1/moss")
-    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
-    get_settings.cache_clear()
-
     client = TestClient(
         load_module("backend.app.main", "backend/app/main.py").app,
         raise_server_exceptions=False,
@@ -617,6 +895,10 @@ def test_balance_analysis_decision_status_update_returns_503_when_scope_store_is
         },
     )
     decision_key = list_response.json()["result"]["rows"][0]["decision_key"]
+
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", "postgresql://invalid:invalid@127.0.0.1:1/moss")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    get_settings.cache_clear()
 
     response = client.post(
         "/ui/balance-analysis/decision-items/status",
@@ -650,6 +932,7 @@ def test_balance_analysis_current_user_api_falls_back_to_env_identity(tmp_path, 
         "user_id": "env-balance-user",
         "role": "ops",
         "identity_source": "env",
+        "can_write_decision_status": False,
     }
 
     get_settings.cache_clear()
@@ -943,6 +1226,32 @@ def test_balance_analysis_overview_returns_422_for_invalid_filters(tmp_path, mon
     get_settings.cache_clear()
 
 
+def test_balance_analysis_overview_logs_api_perf(tmp_path, monkeypatch, caplog):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get(
+            "/ui/balance-analysis/overview",
+            params={
+                "report_date": "2025-12-31",
+                "position_scope": "all",
+                "currency_basis": "CNY",
+            },
+        )
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/balance-analysis/overview")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "balance-analysis.overview"
+    assert getattr(record, "trace_id")
+    assert getattr(record, "duckdb_statement_count") is None
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_summary_api_returns_paginated_rows(tmp_path, monkeypatch):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
 
@@ -1192,6 +1501,7 @@ def test_balance_analysis_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1257,6 +1567,115 @@ def test_balance_analysis_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_balance_analysis_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
+    get_settings.cache_clear()
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    queued_messages: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service_mod.materialize_balance_analysis_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    headers = {"Idempotency-Key": "balance-analysis-refresh-2025-12-31"}
+
+    first_response = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers=headers,
+    )
+    second_response = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers=headers,
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+    assert second_payload["run_id"] == first_payload["run_id"]
+    assert second_payload["idempotency_key"] == "balance-analysis-refresh-2025-12-31"
+    assert second_payload["idempotency_replay"] is True
+    assert len(queued_messages) == 1
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("job_name") == "balance_analysis_materialize"
+        and record.get("run_id") == first_payload["run_id"]
+    ]
+    assert len(records) == 1
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_refresh_requires_explicit_refresh_grant(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "auth-refresh-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+
+    route_mod = load_module(
+        "backend.app.api.routes.balance_analysis",
+        "backend/app/api/routes/balance_analysis.py",
+    )
+    calls: list[str] = []
+
+    def fake_refresh(_settings, *, report_date: str, **_kwargs):
+        calls.append(report_date)
+        return {"status": "queued", "run_id": "balance-refresh-test", "report_date": report_date}
+
+    monkeypatch.setattr(route_mod, "refresh_balance_analysis", fake_refresh)
+
+    from fastapi import FastAPI
+
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    denied = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers={"X-User-Id": "balance-refresh-user"},
+    )
+    assert denied.status_code == 403
+    assert calls == []
+
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="balance-refresh-user",
+        role=None,
+        resource="balance_analysis",
+        action="refresh",
+    )
+
+    allowed = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers={"X-User-Id": "balance-refresh-user"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["run_id"] == "balance-refresh-test"
+    assert calls == ["2025-12-31"]
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_refresh_returns_409_when_same_report_date_is_already_in_progress(
     tmp_path,
     monkeypatch,
@@ -1265,6 +1684,7 @@ def test_balance_analysis_refresh_returns_409_when_same_report_date_is_already_i
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1319,6 +1739,7 @@ def test_balance_analysis_refresh_returns_503_when_queue_dispatch_fails_without_
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1367,6 +1788,7 @@ def test_balance_analysis_refresh_reconciles_stale_inflight_run_and_requeues(
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1424,6 +1846,7 @@ def test_balance_analysis_refresh_status_returns_503_when_status_backend_fails(
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     service_mod = load_module(

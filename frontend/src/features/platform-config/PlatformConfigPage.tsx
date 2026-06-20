@@ -12,7 +12,7 @@ import type {
 } from "../../api/contracts";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 
 const summaryGridStyle = {
   display: "grid",
@@ -81,6 +81,25 @@ const sectionDescriptionStyle = {
   color: t.colorTextSecondary,
   fontSize: 13,
   lineHeight: 1.7,
+} as const;
+
+const diagnosticBoundaryStyle = {
+  display: "grid",
+  gap: 8,
+  marginTop: 16,
+  marginBottom: 4,
+  padding: "14px 16px",
+  borderRadius: 12,
+  border: `1px solid ${t.colorBorder}`,
+  background: t.colorBgSurface,
+  color: t.colorTextSecondary,
+  fontSize: 12,
+  lineHeight: 1.6,
+} as const;
+
+const diagnosticBoundaryCodeStyle = {
+  color: t.colorTextPrimary,
+  fontWeight: 700,
 } as const;
 
 function resolveCheck(data: HealthResponse, key: string): HealthCheckStatus {
@@ -320,6 +339,15 @@ export default function PlatformConfigPage() {
           <KpiCard title="人工复核行" value={String(manualReviewRows)} detail="来源摘要中的人工复核计数汇总" valueVariant="text" />
         </div>
       </div>
+
+      <section data-testid="platform-config-diagnostic-boundary" style={diagnosticBoundaryStyle}>
+        <strong style={diagnosticBoundaryCodeStyle}>PAGE-CONTRACT-PENDING:/platform-config</strong>
+        <span>
+          MTR-PLT-001, MTR-PLT-002, and MTR-PLT-003 are candidate diagnostics only from
+          GET /ui/preview/source-foundation; health, status, and environment text cards are excluded and
+          not data-quality approval.
+        </span>
+      </section>
 
       <div style={{ display: "grid", gap: 24 }}>
         <SectionLead

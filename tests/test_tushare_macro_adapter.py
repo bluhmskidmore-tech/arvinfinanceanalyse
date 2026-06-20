@@ -13,7 +13,6 @@ import builtins
 
 from tests.helpers import load_module
 
-
 _ADAPTER_MODULE_NAME = "backend.app.repositories.tushare_adapter"
 _ADAPTER_RELATIVE_PATH = "backend/app/repositories/tushare_adapter.py"
 _SCHEMA_MODULE_NAME = "backend.app.schemas.vendor"

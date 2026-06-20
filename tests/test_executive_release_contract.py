@@ -13,7 +13,6 @@ from tests.test_golden_samples_capture_ready import (
     _setup_exec_summary,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

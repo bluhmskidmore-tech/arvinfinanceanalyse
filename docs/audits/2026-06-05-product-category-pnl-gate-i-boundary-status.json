@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "artifact": "product-category-pnl-gate-i-boundary-status",
+  "created_date": "2026-06-05",
+  "page": {
+    "page_id": "PAGE-PROD-CAT-001",
+    "page_contract_alias": "PAGE-PROD-CAT-PNL-001",
+    "page_slug": "product-category-pnl",
+    "page_name": "Product-category PnL",
+    "route": "/product-category-pnl",
+    "primary_api": "/ui/pnl/product-category"
+  },
+  "gate_i_verdict": {
+    "frontend_surface": "frontend-ready",
+    "business_contract_status": "evidence-pending",
+    "business_contract_certified": false,
+    "approval_status": "formal_or_governed",
+    "formal_use_allowed": true,
+    "closure_approved": false,
+    "reason": "The page has strong formal/governed evidence, direct-record readiness, catalog/date samples, and a product-category golden sample boundary, but final certification is held because audit review remains manual, business-owner approval is still required by the audit queue, readiness now machine-exposes that the sample approval artifact is captured-awaiting-approval, and the liability fallback branch requires model-boundary review rather than synthetic production-browser proof."
+  },
+  "readiness_evidence": {
+    "command": "python scripts/codex_page_readiness.py --page-slug product-category-pnl",
+    "overall_status": "static-pass",
+    "approval_status": "formal_or_governed",
+    "formal_use_allowed": true,
+    "blocking_gates": [],
+    "golden_sample_approval_artifact_status": "captured-awaiting-approval",
+    "golden_sample_approval_artifact_owner": "TBD",
+    "golden_sample_approval_artifact_approver": "TBD",
+    "golden_sample_approval_artifact_approved_at": "TBD",
+    "golden_sample_approval_artifact_mismatch": true,
+    "static_gates": {
+      "trace_bundle_present": "pass",
+      "evidence_readiness_explicit": "pass",
+      "lineage_mapping_present": "pass",
+      "catalog_date_review_routed": "pass",
+      "catalog_date_evidence_sampled": "pass",
+      "direct_governance_record_ready": "pass",
+      "golden_sample_boundary": "pass_approved",
+      "formal_promotion_boundary": "pass"
+    },
+    "boundary_note": "Static-pass means product-category contract/readiness evidence is routed. Page closure still requires the manual review checks returned in audit_review and browser-visible state review when UI behavior changed."
+  },
+  "catalog_date_evidence": {
+    "status": "sampled",
+    "table_count": 2,
+    "present_table_count": 2,
+    "date_sampled_table_count": 2,
+    "tables": [
+      {
+        "table_name": "product_category_pnl_formal_read_model",
+        "status": "present",
+        "date_column": "report_date"
+      },
+      {
+        "table_name": "product_category_pnl_canonical_fact",
+        "status": "present",
+        "date_column": "report_date"
+      }
+    ],
+    "manual_review_required": true
+  },
+  "governance_record_evidence": {
+    "validation_status": "direct_records_ready_for_audit_review",
+    "ready_record_count": 1,
+    "incomplete_record_count": 0,
+    "direct_record_count": 1,
+    "expanded_anchor_record_count": 20,
+    "closure_approved": false,
+    "manual_review_required": true,
+    "required_checks": [
+      "page_contract_review",
+      "catalog_date_sampling",
+      "lineage_freshness_review",
+      "ui_api_payload_review",
+      "live_smoke_evidence_review",
+      "business_owner_approval"
+    ],
+    "evidence_scope": {
+      "approves_metric_or_page": false,
+      "captures_business_owner_approval": false,
+      "proves_current_visible_ui": false
+    }
+  },
+  "golden_sample_boundary": {
+    "sample_id": "GS-PROD-CAT-PNL-A",
+    "readiness_boundary_status": "approved",
+    "approval_artifact_status": "captured-awaiting-approval",
+    "approval_artifact_owner": "TBD",
+    "approval_artifact_approver": "TBD",
+    "approval_artifact_approved_at": "TBD",
+    "approval_artifact_mismatch": true,
+    "sample_type": "capture-ready",
+    "sample_scope": "GET /ui/pnl/product-category for report_date=2026-02-28 and view=monthly, plus a companion scenario probe at scenario_rate_pct=2.5",
+    "covered_metric_ids": [
+      "MTR-PCP-001",
+      "MTR-PCP-002",
+      "MTR-PCP-003",
+      "MTR-PCP-004",
+      "MTR-PCP-005",
+      "MTR-PCP-006",
+      "MTR-PCP-007",
+      "MTR-PCP-008",
+      "MTR-PCP-009",
+      "MTR-PCP-010",
+      "MTR-PCP-011",
+      "MTR-PCP-012"
+    ],
+    "does_not_cover": [
+      "additional product-category detail fields beyond MTR-PCP-001 through MTR-PCP-012",
+      "a second full scenario golden matrix sample",
+      "manual adjustment lifecycle policy closure",
+      "refresh timeout copy policy",
+      "business-owner approval"
+    ],
+    "first_certification_packet": {
+      "packet_path": "docs/pnl/product-category-pnl-first-certification-packet.md",
+      "handoff_status": "owner_actions_required",
+      "metric_trace_row_count": 12,
+      "evidence_scope": {
+        "approves_metric_or_page": false,
+        "writes_governance_records": false,
+        "proves_page_execution": false,
+        "captures_business_owner_approval": false
+      }
+    },
+    "artifact_mismatch_note": "Readiness now reports golden_sample_approval_artifact_mismatch=true: golden_sample_boundary=approved, while tests/golden_samples/GS-PROD-CAT-PNL-A/approval.md still says captured-awaiting-approval with Owner/Approver/Approved at as TBD. Treat this as a manual audit item before final certification language."
+  },
+  "page_contract_boundary": {
+    "primary_contract": "docs/pnl/product-category-page-truth-contract.md",
+    "page_contract": "docs/page_contracts.md",
+    "metric_dictionary": "docs/metric_dictionary.md",
+    "closure_checklist": "docs/pnl/product-category-closure-checklist.md",
+    "remaining_blockers": "docs/pnl/product-category-remaining-blockers.md",
+    "first_certification_packet": "docs/pnl/product-category-pnl-first-certification-packet.md",
+    "id_alias_note": "Readiness uses PAGE-PROD-CAT-001; docs/page_contracts.md names PAGE-PROD-CAT-PNL-001 and states it refers to the same governed surface. Keep both visible until the namespace distinction is fully normalized."
+  },
+  "frontend_surface_boundary": {
+    "scorecard_total": "27/28",
+    "level": "Flagship-ready",
+    "known_residual": "The fallback liability detail readout exists as a defensive branch, but current model-derived rows make the raw fallback-table path naturally unreachable when liability detail rows exist; review the model-boundary evidence instead of presenting synthetic branch data as production proof.",
+    "browser_evidence": {
+      "normal_liability_matrix_evidence": "frontend/.codex-tmp/product-category-pnl-gate-g-liability/browser-verification.json",
+      "desktop_1440": {
+        "status": 200,
+        "document_overflow_x": false,
+        "readouts_hidden": true,
+        "raw_matrices_present": true
+      },
+      "tablet_768": {
+        "status": 200,
+        "document_overflow_x": false,
+        "readouts_hidden": true,
+        "raw_matrices_present": true
+      },
+      "mobile_390": {
+        "status": 200,
+        "document_overflow_x": false,
+        "readouts_visible": true,
+        "readouts_before_matrices": true
+      }
+    }
+  },
+  "closure_blockers": [
+    {
+      "blocker": "manual_audit_review",
+      "status": "required",
+      "evidence": "readiness audit_review.status=ready_for_audit_review and closure_approved=false with six manual checks"
+    },
+    {
+      "blocker": "business_owner_approval",
+      "status": "required",
+      "evidence": "readiness audit review still includes business_owner_approval; scripts/check_product_category_pnl_business_owner_approval.py reports business_owner_approval_captured=false with 13 action items"
+    },
+    {
+      "blocker": "golden_sample_approval_artifact_mismatch",
+      "status": "requires_review",
+      "evidence": "codex_page_readiness now reports golden_sample_approval_artifact_mismatch=true; GS-PROD-CAT-PNL-A approval.md says captured-awaiting-approval with owner, approver, and approved_at as TBD"
+    },
+    {
+      "blocker": "fallback_liability_branch_model_boundary_review",
+      "status": "review_required",
+      "evidence": "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts documents that model-derived liability detail rows also produce detailMatrix rows, so the fallback table path should not be browser-proven with synthetic data."
+    },
+    {
+      "blocker": "closure_checklist_units",
+      "status": "partial",
+      "evidence": "docs/pnl/product-category-closure-checklist.md lists all 10 units as PARTIAL"
+    }
+  ],
+  "truth_chain": [
+    "paired ledger reconciliation workbook + daily average workbook",
+    "backend/app/services/product_category_source_service.py",
+    "backend/app/core_finance/product_category_pnl.py",
+    "product_category_pnl_formal_read_model",
+    "backend/app/services/product_category_pnl_service.py",
+    "/ui/pnl/product-category",
+    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx"
+  ],
+  "guardrails": [
+    "Do not certify /product-category-pnl from readiness static-pass alone.",
+    "Do not add product-category MTR rows beyond MTR-PCP-001 through MTR-PCP-012 without a new approved matrix, dictionary row, sample assertion, and test bundle.",
+    "Do not reinterpret product-category rows through holdings-side categories, research buckets, or zqtz holdings-side logic.",
+    "Do not recompute governed totals in the frontend; display backend totals.",
+    "Do not hide result_meta, stale/fallback/no-data, no-standalone-as_of_date, or scenario-vs-formal boundaries.",
+    "Do not treat the companion scenario probe as a second full formal golden matrix sample."
+  ],
+  "next_actions": [
+    "Review and reconcile the machine-reported GS-PROD-CAT-PNL-A approval mismatch: readiness boundary approved, approval.md captured-awaiting-approval with TBD owner/approver/approved_at.",
+    "Use docs/pnl/product-category-pnl-first-certification-packet.md as the owner review packet for MTR-PCP-001 through MTR-PCP-012 source-to-screen trace and action-item review.",
+    "Review the liability fallback-table model-boundary evidence and keep synthetic branch payloads out of production browser proof.",
+    "Complete manual audit checks for page contract, catalog/date sampling, lineage freshness, UI/API payload, live-smoke evidence, and business-owner approval.",
+    "Keep the scorecard at evidence-pending until closure_approved=true is supported by evidence."
+  ]
+}

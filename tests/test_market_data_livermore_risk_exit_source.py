@@ -25,6 +25,7 @@ def test_market_data_risk_exit_reads_only_active_stock_position_facts(tmp_path) 
               stock_code varchar,
               trade_date varchar,
               close_value double,
+              volume double,
               source_version varchar,
               vendor_version varchar
             )
@@ -77,20 +78,21 @@ def test_market_data_risk_exit_reads_only_active_stock_position_facts(tmp_path) 
             """,
             position_rows,
         )
-        start_date = date.fromisoformat(as_of_date) - timedelta(days=11)
+        start_date = date.fromisoformat(as_of_date) - timedelta(days=30)
         daily_rows = [
             (
                 stock_code,
                 (start_date + timedelta(days=offset)).isoformat(),
                 10.0 + offset,
+                1_000_000.0 + offset * 1000.0,
                 "sv_daily",
                 "vv_daily",
             )
             for stock_code in ("000001.SZ", "000002.SZ")
-            for offset in range(12)
+            for offset in range(31)
         ]
         conn.executemany(
-            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?)",
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?)",
             daily_rows,
         )
     finally:

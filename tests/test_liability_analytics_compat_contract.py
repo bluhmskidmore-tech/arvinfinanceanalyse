@@ -44,16 +44,16 @@ def test_normalize_interbank_rate_decimal_always_treats_input_as_percent() -> No
 
 
 def test_normalize_interbank_rate_decimal_consumes_rate_units_pct_to_decimal(monkeypatch) -> None:
-    calls: list[float] = []
+    calls: list[object] = []
 
-    def fake_pct_to_decimal(value: float) -> float:
+    def fake_pct_to_decimal(value: object) -> Decimal:
         calls.append(value)
-        return 0.1234
+        return Decimal("0.1234")
 
     monkeypatch.setattr(compat, "pct_to_decimal", fake_pct_to_decimal)
 
     assert compat.normalize_interbank_rate_decimal("2.5") == Decimal("0.1234")
-    assert calls == [2.5]
+    assert calls == ["2.5"]
 
 
 def test_weighted_rate_ignores_zero_amount_and_missing_rate() -> None:
@@ -231,6 +231,7 @@ def test_compute_liability_yield_metrics_falls_back_to_interest_rate_for_bond_as
                 "coupon_rate": None,
                 "ytm_value": None,
                 "interest_rate": "2.5",
+                "maturity_date": "2027-02-26",
             }
         ],
         tyw_rows=[],
@@ -255,6 +256,7 @@ def test_compute_liability_yield_metrics_uses_amortized_cost_for_htm_asset_weigh
                 "amortized_cost_native": "100",
                 "coupon_rate": "4.0",
                 "ytm_value": None,
+                "maturity_date": "2027-02-26",
             }
         ],
         tyw_rows=[
@@ -268,6 +270,38 @@ def test_compute_liability_yield_metrics_uses_amortized_cost_for_htm_asset_weigh
 
     assert payload["kpi"] == {
         "asset_yield": 0.02,
+        "liability_cost": None,
+        "market_liability_cost": None,
+        "nim": None,
+    }
+
+
+def test_compute_liability_yield_metrics_excludes_assets_without_maturity() -> None:
+    payload = compute_liability_yield_metrics(
+        "2026-02-26",
+        zqtz_rows=[
+            {
+                "is_issuance_like": False,
+                "asset_class": "持有至到期类资产",
+                "market_value_native": "100",
+                "coupon_rate": "5.0",
+                "ytm_value": None,
+                "maturity_date": "2027-02-26",
+            },
+            {
+                "is_issuance_like": False,
+                "asset_class": "持有至到期类资产",
+                "market_value_native": "900",
+                "coupon_rate": "4.0",
+                "ytm_value": None,
+                "maturity_date": None,
+            },
+        ],
+        tyw_rows=[],
+    )
+
+    assert payload["kpi"] == {
+        "asset_yield": 0.05,
         "liability_cost": None,
         "market_liability_cost": None,
         "nim": None,

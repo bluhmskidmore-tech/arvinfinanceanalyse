@@ -116,11 +116,12 @@ export default function IndustryDistributionCard({ startDate, endDate, subType }
       ) : data && data.items.length > 0 ? (
         <>
           {chartOption ? (
-            <ReactECharts option={chartOption} style={{ height: 260 }} notMerge lazyUpdate />
+            <ReactECharts option={chartOption} style={{ height: 220 }} notMerge lazyUpdate />
           ) : null}
           <Table
             size="small"
             pagination={false}
+            scroll={{ x: "max-content" }}
             dataSource={data.items.slice(0, 5).map((row, idx) => ({
               key: row.industry,
               ...row,
@@ -146,7 +147,7 @@ export default function IndustryDistributionCard({ startDate, endDate, subType }
                 ),
               },
               {
-                title: "日均(亿)",
+                title: "日均",
                 dataIndex: "avg_daily_balance",
                 align: "right",
                 render: (v: string) => formatAmountYi(v),

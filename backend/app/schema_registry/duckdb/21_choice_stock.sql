@@ -90,3 +90,36 @@ create table if not exists choice_stock_limit_quality (
   rule_version varchar,
   run_id varchar
 )
+-- MOSS:STMT
+create table if not exists choice_stock_concept_membership (
+  as_of_date varchar,
+  stock_code varchar,
+  concept_code varchar,
+  concept_name varchar,
+  concept_source varchar,
+  field_key varchar,
+  source_version varchar,
+  vendor_version varchar,
+  rule_version varchar,
+  run_id varchar
+)
+-- MOSS:STMT
+create table if not exists choice_stock_intraday_movement_event (
+  as_of_date varchar,
+  event_time varchar,
+  stock_code varchar,
+  stock_name varchar,
+  concept_code varchar,
+  concept_name varchar,
+  event_type varchar,
+  event_title varchar,
+  pctchange double,
+  turn double,
+  source_url varchar,
+  field_key varchar,
+  raw_json varchar,
+  source_version varchar,
+  vendor_version varchar,
+  rule_version varchar,
+  run_id varchar
+)

@@ -184,6 +184,16 @@ PnL Bridge 结构：
 - `issuer_concentration`
 - `liquidity_gap`
 
+DV01 口径：
+- 全局正式 DV01 使用面值口径：`face_value * modified_duration / 10000`。信用债 `spread_dv01` 与明细 `dv01` 同口径，按信用债明细行的面值与利差久期计算。
+- 正式事实表优先使用 CNY 面值字段；仅在旧的内存计算路径缺少面值字段时允许临时回退 `market_value`，不得把该回退解释为正式口径。
+
+Duration denominator rules:
+- `total_market_value` remains the full bond analytics market value.
+- `portfolio_modified_duration` is weighted only by rows with a real `maturity_date`, positive `modified_duration`, and non-zero `market_value`.
+- Fund-like or other no-maturity rows must not receive a synthetic maturity date. They are excluded from the duration denominator and disclosed through `duration_excluded_market_value` / `duration_excluded_count` in the risk tensor API.
+- `rate_risk_market_value`, `rate_risk_dv01`, and `rate_risk_modified_duration` expose the denominator used for the rate-risk duration view; `rate_risk_modified_duration` must reconcile to `portfolio_modified_duration`.
+
 流动性缺口规则：
 - `liquidity_gap_30d` / `liquidity_gap_90d` 必须按未来 30 / 90 天现金流口径计算，不得再按 `maturity_date` 对 `market_value` 做简单过滤。
 - 到期本金现金流：`maturity_date` 落入窗口时计入 `face_value`。
@@ -251,6 +261,13 @@ PnL Bridge 结构：
 - 当前仓库已落地 governed formal compute / materialize、service / API 与首个 workbench consumer；已落地面以 `backend/app/core_finance/balance_analysis.py`、`backend/app/tasks/balance_analysis_materialize.py`、`backend/app/services/balance_analysis_service.py`、`backend/app/api/routes/balance_analysis.py` 与 `frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx` 为准。
 - 本节不宣称超出上述已落地面的更多分析能力；后续扩展仍必须遵守 `backend/app/core_finance/` 唯一正式计算入口原则。
 
+### 12.6 Liability Yield / NIM CNY Weighting
+
+- `/api/analysis/yield_metrics` and executive NIM keep the existing formula: `nim = asset_yield - market_liability_cost`.
+- ZQTZ yield rows must prefer `fact_formal_zqtz_balance_daily` with `currency_basis='CNY'` and `position_scope in ('asset', 'liability')` so foreign-currency bond assets are weighted on the same CNY basis as formal balance analytics.
+- If formal CNY rows are unavailable for a requested date, the service may fall back to `zqtz_bond_daily_snapshot` for backward compatibility.
+- Direct `invest_type_std` from formal balance rows must be used for H/A/T weighting decisions; portfolio names such as `FIOA` must not drive H/A/T inference.
+
 ## 13. Livermore 股票输入（观测层）
 
 本节只约束 Choice/Tushare 落地到 DuckDB 的股票**观测**字段如何读，不扩展正式损益口径；字段清单与探针证据以 `config/choice_stock_catalog.json` 与 `docs/choice_stock_catalog.md` 为准。
@@ -264,3 +281,26 @@ PnL Bridge 结构：
 - 不允许 Scenario 结果写入 Formal 事实表
 - 不允许静默降级为 0 且不打标记
 - 不允许未经测试修改 H/A/T、FX、516、发行类排除规则
+
+## PR-2 Formal PnL FVTPL 517 Guard
+
+- For `FVTPL`, `516` is the formal fair-value PnL component.
+- `517` is excluded from formal `total_pnl` by default to avoid double-counting prior `516`.
+- `FVTPL 517` may enter formal `total_pnl` only when `realized_flag=true` and `event_semantics` explicitly proves non-overlap with prior `516`, currently `realized_incremental` or `realized_no_prior_516`.
+
+## Bond Analysis Fixed-Income Convention Guardrails
+
+These guardrails document the current recommended owner-review convention set
+for `PAGE-BOND-ANALYSIS-001`. They do not replace business-owner sign-off.
+
+- `market_value_basis=clean`.
+- `dirty_market_value = market_value + accrued_interest`.
+- `accrued_interest_usage=dirty_price`.
+- `carry and action attribution do not directly consume accrued_interest`.
+- `day_count=ACT/365_approximation`.
+- `yield_compounding=nominal_annual_with_coupon_frequency`.
+- `duration_convexity_scope=vanilla_fixed_rate_only`.
+- `DV01 = CNY face_value * modified_duration / 10000`.
+- `dv01_unit=CNY_per_1bp`.
+- `dv01_base=CNY_face_value`.
+- `market_value/dirty_value DV01 is not the current formal DV01 convention`.

@@ -6,7 +6,9 @@ from pathlib import Path
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.choice_stock_adapter import (
     CHOICE_STOCK_REQUIRED_INPUT_FAMILIES,
+    choice_stock_optional_input_status,
     load_choice_stock_readiness,
+    load_choice_stock_request_plan,
 )
 
 
@@ -149,6 +151,128 @@ def test_confirmed_choice_stock_catalog_is_ready(tmp_path: Path) -> None:
     assert readiness.unconfirmed_fields == []
 
 
+def test_optional_theme_inputs_are_planned_without_becoming_required_gates(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    required_fields = [
+        {
+            "input_family": family,
+            "field_key": f"{family}_field",
+            "vendor_indicator": f"{family}_indicator",
+            "call": "csd" if family == "stock_ohlcv" else "css",
+            "confirmed": True,
+            "confirmation_source": "unit test",
+            "confirmed_at": "2026-05-11",
+        }
+        for family in CHOICE_STOCK_REQUIRED_INPUT_FAMILIES
+    ]
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "catalog_version": "test_optional_theme_inputs",
+                "vendor_name": "choice",
+                "generated_from": "unit_test",
+                "fields": [
+                    *required_fields,
+                    {
+                        "input_family": "concept_membership",
+                        "field_key": "choice_concept_membership",
+                        "vendor_indicator": "CONCEPTCODE,CONCEPTNAME",
+                        "call": "css",
+                        "required": False,
+                        "confirmed": True,
+                        "confirmation_source": "unit test optional concept probe",
+                        "confirmed_at": "2026-05-11",
+                    },
+                    {
+                        "input_family": "intraday_movement",
+                        "field_key": "choice_intraday_movement",
+                        "vendor_indicator": "StockInfo",
+                        "call": "ctr",
+                        "required": False,
+                        "request_options": {
+                            "StartDate": "__AS_OF_DATE__",
+                            "EndDate": "__AS_OF_DATE__",
+                            "Ispandas": 0,
+                        },
+                        "confirmed": True,
+                        "confirmation_source": "unit test optional movement probe",
+                        "confirmed_at": "2026-05-11",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    readiness = load_choice_stock_readiness(catalog_path)
+    plan = load_choice_stock_request_plan(catalog_path, as_of_date="2026-05-11")
+
+    assert readiness.ready is True
+    assert readiness.missing_input_families == []
+    planned = {f"{item.input_family}:{item.field_key}" for item in plan.requests}
+    assert "concept_membership:choice_concept_membership" in planned
+    assert "intraday_movement:choice_intraday_movement" in planned
+    movement_request = next(item for item in plan.requests if item.input_family == "intraday_movement")
+    assert movement_request.request_arguments == ["StockInfo", ""]
+    assert movement_request.request_options_text == "StartDate=2026-05-11,EndDate=2026-05-11,Ispandas=0"
+
+
+def test_optional_theme_inputs_can_stay_non_blocking_while_reporting_catalog_unconfirmed(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "catalog_version": "test_optional_theme_inputs_unconfirmed",
+                "vendor_name": "choice",
+                "generated_from": "unit_test",
+                "fields": [
+                    *[
+                        {
+                            "input_family": family,
+                            "field_key": f"{family}_field",
+                            "vendor_indicator": f"{family}_indicator",
+                            "call": "csd" if family == "stock_ohlcv" else "css",
+                            "confirmed": True,
+                            "confirmation_source": "unit test",
+                            "confirmed_at": "2026-05-11",
+                        }
+                        for family in CHOICE_STOCK_REQUIRED_INPUT_FAMILIES
+                    ],
+                    {
+                        "input_family": "concept_membership",
+                        "field_key": "choice_concept_membership",
+                        "vendor_indicator": "",
+                        "call": "css",
+                        "required": False,
+                        "confirmed": False,
+                        "confirmation_source": "",
+                        "confirmed_at": "",
+                    },
+                    {
+                        "input_family": "intraday_movement",
+                        "field_key": "choice_intraday_movement",
+                        "vendor_indicator": "",
+                        "call": "ctr",
+                        "required": False,
+                        "confirmed": False,
+                        "confirmation_source": "",
+                        "confirmed_at": "",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    readiness = load_choice_stock_readiness(catalog_path)
+
+    assert readiness.ready is True
+    assert readiness.status == "ready"
+    assert readiness.missing_input_families == []
+    assert choice_stock_optional_input_status(readiness, "concept_membership") == "catalog_unconfirmed"
+    assert choice_stock_optional_input_status(readiness, "intraday_movement") == "catalog_unconfirmed"
+
+
 def test_choice_stock_catalog_md_entry_shape_documents_sector_call() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     doc = (repo_root / "docs" / "choice_stock_catalog.md").read_text(encoding="utf-8")
@@ -180,6 +304,16 @@ def test_checked_in_choice_stock_catalog_json_documents_sector_strength_units_an
     policy_l = policy.lower()
     assert "limit_ratio" in policy_l
     assert "tushare" in policy_l
+
+    concept_entry = fields["choice_concept_membership"]
+    assert concept_entry["confirmed"] is False
+
+    movement_entry = fields["choice_intraday_movement"]
+    assert movement_entry["call"] == "ctr"
+    assert movement_entry["vendor_indicator"] == "StockInfo"
+    assert movement_entry["request_options"]["StartDate"] == "__AS_OF_DATE__"
+    assert movement_entry["request_options"]["EndDate"] == "__AS_OF_DATE__"
+    assert movement_entry["confirmed"] is True
 
 
 def test_invalid_choice_stock_catalog_is_incomplete(tmp_path: Path) -> None:

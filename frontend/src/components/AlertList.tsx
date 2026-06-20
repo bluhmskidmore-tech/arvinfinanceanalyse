@@ -1,4 +1,4 @@
-import { shellTokens } from "../theme/tokens";
+import "./AlertList.css";
 
 export type AlertItem = {
   level: "danger" | "warning" | "caution" | "info";
@@ -11,52 +11,22 @@ export type AlertListProps = {
   items: AlertItem[];
 };
 
-const DOT_COLORS: Record<AlertItem["level"], string> = {
-  danger: "#f5222d",
-  warning: "#fa8c16",
-  caution: "#faad14",
-  info: shellTokens.colorAccent,
-};
-
 export function AlertList({ items }: AlertListProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="alert-list">
       {items.map((it, idx) => (
-        <div
-          key={`${it.title}-${idx}`}
-          style={{ display: "flex", gap: 10, alignItems: "flex-start" }}
-        >
+        <div key={`${it.title}-${idx}`} className="alert-list__item">
           <span
             aria-hidden
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              marginTop: 6,
-              flexShrink: 0,
-              background: DOT_COLORS[it.level],
-            }}
+            className={`alert-list__dot alert-list__dot--${it.level}`}
           />
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#162033", lineHeight: 1.5 }}>
-              {it.title}
-            </div>
+          <div className="alert-list__content">
+            <div className="alert-list__title">{it.title}</div>
             {it.detail ? (
-              <div style={{ fontSize: 13, color: "#5c6b82", marginTop: 2, lineHeight: 1.55 }}>
-                {it.detail}
-              </div>
+              <div className="alert-list__detail">{it.detail}</div>
             ) : null}
             {it.time ? (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#8090a8",
-                  marginTop: 4,
-                  fontVariantNumeric: "tabular-nums",
-                }}
-              >
-                {it.time}
-              </div>
+              <div className="alert-list__time">{it.time}</div>
             ) : null}
           </div>
         </div>

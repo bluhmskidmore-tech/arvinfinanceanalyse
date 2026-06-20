@@ -99,9 +99,11 @@ export function HeadlineKpis({
                 }}
               >
                 {display}
-                <span style={{ fontSize: dt.fontSize[13], fontWeight: 500, marginLeft: 4, color: c.neutral[500] }}>
-                  {def.unit}
-                </span>
+                {display === "—" ? null : (
+                  <span style={{ fontSize: dt.fontSize[13], fontWeight: 500, marginLeft: 4, color: c.neutral[500] }}>
+                    {def.unit}
+                  </span>
+                )}
               </div>
               <div
                 style={{

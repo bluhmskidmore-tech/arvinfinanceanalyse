@@ -4,78 +4,196 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_analytics_service import (
     BondAnalyticsRefreshConflictError,
     BondAnalyticsRefreshServiceError,
     bond_analytics_dates_envelope,
     bond_analytics_refresh_status,
-    refresh_bond_analytics,
     get_accounting_class_audit,
     get_action_attribution,
     get_benchmark_excess,
     get_credit_spread_migration,
+    get_dv01_action_plan,
+    get_dv01_limit_config_status,
+    get_dv01_movement,
+    get_dv01_reconciliation,
+    get_dv01_risk,
     get_krd_curve_risk,
     get_portfolio_headlines,
+    get_position_changes,
     get_return_decomposition,
     get_top_holdings,
+    refresh_bond_analytics,
 )
 from backend.app.services.yield_curve_term_structure_service import (
     get_yield_curve_term_structure,
     parse_curve_types_param,
 )
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 router = APIRouter(prefix="/api/bond-analytics", tags=["bond-analytics"])
 
 
+def _ensure_bond_analytics_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="bond_analytics",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/dates")
-def dates():
+def dates(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+):
+    _ensure_bond_analytics_read_allowed(auth)
     return bond_analytics_dates_envelope()
 
 
 @router.get("/return-decomposition")
 def return_decomposition(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     period_type: str = Query("MoM", description="MoM / YTD / TTM"),
     asset_class: str = Query("all", description="all / rate / credit"),
     accounting_class: str = Query("all", description="all / AC / OCI / TPL"),
 ):
+    _ensure_bond_analytics_read_allowed(auth)
     return get_return_decomposition(report_date, period_type, asset_class, accounting_class)
 
 
 @router.get("/benchmark-excess")
 def benchmark_excess(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     period_type: str = Query("MoM", description="MoM / YTD / TTM"),
     benchmark_id: str = Query("CDB_INDEX", description="TREASURY_INDEX / CDB_INDEX / AAA_CREDIT_INDEX"),
 ):
+    _ensure_bond_analytics_read_allowed(auth)
     return get_benchmark_excess(report_date, period_type, benchmark_id)
 
 
 @router.get("/krd-curve-risk")
 def krd_curve_risk(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     scenario_set: str = Query("standard", description="standard / custom"),
 ):
+    _ensure_bond_analytics_read_allowed(auth)
     return get_krd_curve_risk(report_date, scenario_set)
+
+
+@router.get("/dv01-risk")
+def dv01_risk(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
+    top_n: int = Query(20, ge=1, le=100, description="Number of top bonds and issuers"),
+    shock_bps: str = Query("1,10,25,50", description="Comma-separated absolute bp shocks"),
+):
+    _ensure_bond_analytics_read_allowed(auth)
+    try:
+        return get_dv01_risk(
+            report_date,
+            accounting_class=accounting_class,
+            top_n=top_n,
+            shock_bps=shock_bps,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/dv01-reconciliation")
+def dv01_reconciliation(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
+):
+    _ensure_bond_analytics_read_allowed(auth)
+    try:
+        return get_dv01_reconciliation(report_date, accounting_class=accounting_class)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/dv01-movement")
+def dv01_movement(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
+    top_n: int = Query(20, ge=1, le=100, description="Number of anomaly and methodology rows"),
+):
+    _ensure_bond_analytics_read_allowed(auth)
+    try:
+        return get_dv01_movement(report_date, accounting_class=accounting_class, top_n=top_n)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/dv01-action-plan")
+def dv01_action_plan(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
+    top_n: int = Query(20, ge=1, le=100, description="Number of action rows"),
+    limit_dv01: str | None = Query(None, description="Page warning limit amount per 1bp"),
+    warning_dv01: str | None = Query(None, description="Page warning threshold amount per 1bp"),
+    hedge_instrument_dv01: str | None = Query(None, description="Hedge amount per unit per 1bp"),
+    hedge_target_dv01: str | None = Query(None, description="Target amount after hedge/reduction per 1bp"),
+):
+    _ensure_bond_analytics_read_allowed(auth)
+    try:
+        return get_dv01_action_plan(
+            report_date,
+            accounting_class=accounting_class,
+            top_n=top_n,
+            limit_dv01=limit_dv01,
+            warning_dv01=warning_dv01,
+            hedge_instrument_dv01=hedge_instrument_dv01,
+            hedge_target_dv01=hedge_target_dv01,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/dv01-limit-config-status")
+def dv01_limit_config_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+):
+    _ensure_bond_analytics_read_allowed(auth)
+    return get_dv01_limit_config_status(report_date)
 
 
 @router.get("/credit-spread-migration")
 def credit_spread_migration(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     spread_scenarios: str = Query("10,25,50", description="Comma-separated bp values"),
 ):
-    return get_credit_spread_migration(report_date, spread_scenarios)
+    _ensure_bond_analytics_read_allowed(auth)
+    return timed_api_call(
+        "/api/bond-analytics/credit-spread-migration",
+        lambda: get_credit_spread_migration(report_date, spread_scenarios),
+    )
 
 
 @router.get("/yield-curve-term-structure")
 def yield_curve_term_structure(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     curve_types: str = Query("treasury,cdb", description="Comma-separated: treasury, cdb, aaa_credit"),
 ):
+    _ensure_bond_analytics_read_allowed(auth)
     try:
         types_tuple = parse_curve_types_param(curve_types)
     except ValueError as exc:
@@ -85,42 +203,74 @@ def yield_curve_term_structure(
 
 @router.get("/portfolio-headlines")
 def portfolio_headlines(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
 ):
-    return get_portfolio_headlines(report_date)
+    _ensure_bond_analytics_read_allowed(auth)
+    return timed_api_call(
+        "/api/bond-analytics/portfolio-headlines",
+        lambda: get_portfolio_headlines(report_date),
+    )
 
 
 @router.get("/top-holdings")
 def top_holdings(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     top_n: int = Query(20, ge=1, le=500, description="Number of largest positions by MV"),
 ):
+    _ensure_bond_analytics_read_allowed(auth)
     return get_top_holdings(report_date, top_n=top_n)
+
+
+@router.get("/position-changes")
+def position_changes(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    top_n: int = Query(5, ge=1, le=100, description="Number of largest position changes by absolute MV delta"),
+):
+    _ensure_bond_analytics_read_allowed(auth)
+    return get_position_changes(report_date, top_n=top_n)
 
 
 @router.get("/action-attribution")
 def action_attribution(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     period_type: str = Query("MoM", description="MoM / YTD"),
 ):
+    _ensure_bond_analytics_read_allowed(auth)
     return get_action_attribution(report_date, period_type)
 
 
 @router.get("/accounting-class-audit")
 def accounting_class_audit(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
 ):
+    _ensure_bond_analytics_read_allowed(auth)
     return get_accounting_class_audit(report_date)
 
 
 @router.post("/refresh")
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     report_date: str = Query(...),
 ):
     settings = get_settings()
     try:
-        return refresh_bond_analytics(settings, report_date=report_date)
+        ensure_user_allowed(auth=auth, settings=settings, resource="bond_analytics", action="refresh")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        return refresh_bond_analytics(
+            settings,
+            report_date=report_date,
+            idempotency_key=idempotency_key,
+        )
     except BondAnalyticsRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BondAnalyticsRefreshServiceError as exc:
@@ -130,7 +280,11 @@ def refresh(
 
 
 @router.get("/refresh-status")
-def refresh_status(run_id: str = Query(...)):
+def refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(...),
+):
+    _ensure_bond_analytics_read_allowed(auth)
     settings = get_settings()
     try:
         return bond_analytics_refresh_status(settings, run_id=run_id)

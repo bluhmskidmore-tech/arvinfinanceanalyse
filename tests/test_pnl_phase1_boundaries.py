@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """
 PnL domain scaffolding vs Phase 1 boundary.
 
 `/ui/pnl/attribution` and core `pnl` modules are thin slices / start-pack code present in the repo.
 Their existence does **not** imply repo-wide Phase 2 formal finance cutover (see `docs/IMPLEMENTATION_PLAN.md`).
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 

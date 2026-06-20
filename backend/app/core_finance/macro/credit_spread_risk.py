@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from datetime import date
 from decimal import Decimal
-from typing import Any, Iterable, Mapping
+from typing import Any
 
+from app.core_finance.macro.helpers import coerce_date as _coerce_date
+from app.core_finance.macro.helpers import get_value as _get_value
 from app.core_finance.safe_decimal import safe_decimal
-from app.core_finance.macro.helpers import get_value as _get_value, coerce_date as _coerce_date
 
 _PREFERRED_TENORS = ("3Y", "5Y", "1Y")
 

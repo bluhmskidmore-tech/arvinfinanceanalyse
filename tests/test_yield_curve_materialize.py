@@ -254,10 +254,6 @@ def test_materialize_aaa_credit_live_choice_before_akshare(tmp_path, monkeypatch
 
 def test_materialize_yield_curve_dual_failure_writes_no_rows(tmp_path, monkeypatch):
     task_mod = _load_yield_curve_task_module()
-    schema_mod = load_module(
-        "backend.app.schemas.yield_curve",
-        "backend/app/schemas/yield_curve.py",
-    )
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -760,3 +756,437 @@ def test_yield_curve_module_declares_chinabond_gkh_input_source():
 
     assert "chinabond_gkh_yield_curve" in task_mod.YIELD_CURVE_MODULE.input_sources
     assert "choice_macro_snapshot" in task_mod.YIELD_CURVE_MODULE.input_sources
+
+
+def test_backfill_yield_curve_month_end_uses_task_layer_and_preserves_resolved_trade_date(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute("create table zqtz_bond_daily_snapshot (report_date varchar)")
+        conn.execute("insert into zqtz_bond_daily_snapshot values ('2026-05-31')")
+    finally:
+        conn.close()
+
+    requested_dates: list[str] = []
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        requested_dates.append(f"{curve_type}:{trade_date}")
+        if trade_date == "2026-05-31":
+            raise RuntimeError("market closed")
+        if trade_date == "2026-05-30":
+            raise RuntimeError("market closed")
+        return schema_mod.YieldCurveSnapshot(
+            curve_type=curve_type,
+            trade_date=trade_date,
+            points=[
+                schema_mod.YieldCurvePoint("6M", Decimal("1.00")),
+                schema_mod.YieldCurvePoint("1Y", Decimal("1.10")),
+                schema_mod.YieldCurvePoint("3Y", Decimal("1.30")),
+                schema_mod.YieldCurvePoint("5Y", Decimal("1.50")),
+                schema_mod.YieldCurvePoint("10Y", Decimal("1.80")),
+                schema_mod.YieldCurvePoint("30Y", Decimal("2.40")),
+            ],
+            vendor_name="test_vendor",
+            vendor_version=f"vv_{curve_type}",
+            source_version=f"sv_{curve_type}",
+        )
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    payload = task_mod.backfill_yield_curve_month_ends(
+        duckdb_path=str(duckdb_path),
+        start_date="2026-05-01",
+        end_date="2026-05-31",
+        curve_types=("treasury",),
+        max_backtrack_days=3,
+    )
+
+    assert payload == {
+        "status": "completed",
+        "duckdb_path": str(duckdb_path),
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-31",
+        "month_end_dates": ["2026-05-31"],
+        "curve_types": ["treasury"],
+        "total_tasks": 1,
+        "written": 1,
+        "skipped": 0,
+        "failed": 0,
+        "failures": [],
+        "resolved_trade_dates": ["2026-05-29"],
+        "resolved_snapshots": [
+            {"anchor_date": "2026-05-31", "curve_type": "treasury", "trade_date": "2026-05-29"}
+        ],
+    }
+    assert requested_dates == [
+        "treasury:2026-05-31",
+        "treasury:2026-05-30",
+        "treasury:2026-05-29",
+    ]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select distinct trade_date, curve_type, source_version, rule_version
+            from fact_formal_yield_curve_daily
+            order by trade_date, curve_type
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [("2026-05-29", "treasury", "sv_treasury", task_mod.RULE_VERSION)]
+
+    requested_dates.clear()
+    rerun_payload = task_mod.backfill_yield_curve_month_ends(
+        duckdb_path=str(duckdb_path),
+        start_date="2026-05-01",
+        end_date="2026-05-31",
+        curve_types=("treasury",),
+        max_backtrack_days=3,
+    )
+
+    assert rerun_payload["written"] == 0
+    assert rerun_payload["skipped"] == 1
+    assert requested_dates == [
+        "treasury:2026-05-31",
+        "treasury:2026-05-30",
+        "treasury:2026-05-29",
+    ]
+
+
+def test_backfill_yield_curve_month_end_does_not_skip_stale_existing_snapshot(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute("create table zqtz_bond_daily_snapshot (report_date varchar)")
+        conn.execute("insert into zqtz_bond_daily_snapshot values ('2026-05-31')")
+    finally:
+        conn.close()
+
+    stale_snapshot = schema_mod.YieldCurveSnapshot(
+        curve_type="treasury",
+        trade_date="2026-05-15",
+        points=[
+            schema_mod.YieldCurvePoint("6M", Decimal("0.90")),
+            schema_mod.YieldCurvePoint("1Y", Decimal("1.00")),
+        ],
+        vendor_name="old_vendor",
+        vendor_version="vv_old",
+        source_version="sv_old",
+    )
+    repo = task_mod.YieldCurveRepository(str(duckdb_path))
+    with task_mod.repository_task_write_scope(task_mod.__name__):
+        repo.replace_curve_snapshots(
+            trade_date=stale_snapshot.trade_date,
+            snapshots=[stale_snapshot],
+            rule_version=task_mod.RULE_VERSION,
+        )
+
+    requested_dates: list[str] = []
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        requested_dates.append(f"{curve_type}:{trade_date}")
+        if trade_date != "2026-05-29":
+            raise RuntimeError("market closed")
+        return schema_mod.YieldCurveSnapshot(
+            curve_type=curve_type,
+            trade_date=trade_date,
+            points=[
+                schema_mod.YieldCurvePoint("6M", Decimal("1.00")),
+                schema_mod.YieldCurvePoint("1Y", Decimal("1.10")),
+            ],
+            vendor_name="fresh_vendor",
+            vendor_version="vv_fresh",
+            source_version="sv_fresh",
+        )
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    payload = task_mod.backfill_yield_curve_month_ends(
+        duckdb_path=str(duckdb_path),
+        start_date="2026-05-01",
+        end_date="2026-05-31",
+        curve_types=("treasury",),
+        max_backtrack_days=20,
+    )
+
+    assert payload["written"] == 1
+    assert payload["skipped"] == 0
+    assert requested_dates == [
+        "treasury:2026-05-31",
+        "treasury:2026-05-30",
+        "treasury:2026-05-29",
+    ]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select distinct trade_date, curve_type, source_version
+            from fact_formal_yield_curve_daily
+            order by trade_date, curve_type
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("2026-05-15", "treasury", "sv_old"),
+        ("2026-05-29", "treasury", "sv_fresh"),
+    ]
+
+
+def test_ensure_yield_curve_inputs_rejects_stale_existing_snapshot_outside_backtrack(
+    tmp_path,
+    monkeypatch,
+):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    stale_snapshot = schema_mod.YieldCurveSnapshot(
+        curve_type="treasury",
+        trade_date="2026-05-01",
+        points=[
+            schema_mod.YieldCurvePoint("6M", Decimal("0.90")),
+            schema_mod.YieldCurvePoint("1Y", Decimal("1.00")),
+        ],
+        vendor_name="old_vendor",
+        vendor_version="vv_old",
+        source_version="sv_old",
+    )
+    repo = task_mod.YieldCurveRepository(str(duckdb_path))
+    with task_mod.repository_task_write_scope(task_mod.__name__):
+        repo.replace_curve_snapshots(
+            trade_date=stale_snapshot.trade_date,
+            snapshots=[stale_snapshot],
+            rule_version=task_mod.RULE_VERSION,
+        )
+
+    requested_dates: list[str] = []
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        requested_dates.append(f"{curve_type}:{trade_date}")
+        raise RuntimeError("vendor down")
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    with pytest.raises(RuntimeError, match="vendor down"):
+        task_mod.ensure_yield_curve_inputs_on_or_before(
+            anchor_dates=("2026-05-31",),
+            duckdb_path=str(duckdb_path),
+            curve_types=("treasury",),
+            max_backtrack_days=3,
+        )
+
+    assert requested_dates == [
+        "treasury:2026-05-31",
+        "treasury:2026-05-30",
+        "treasury:2026-05-29",
+        "treasury:2026-05-28",
+    ]
+
+
+def test_execute_yield_curve_month_end_backfill_summarizes_resolved_dates_outside_input_range(
+    tmp_path,
+    monkeypatch,
+):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute("create table zqtz_bond_daily_snapshot (report_date varchar)")
+        conn.execute("insert into zqtz_bond_daily_snapshot values ('2026-05-31')")
+    finally:
+        conn.close()
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        if trade_date != "2026-04-30":
+            raise RuntimeError("market closed")
+        return schema_mod.YieldCurveSnapshot(
+            curve_type=curve_type,
+            trade_date=trade_date,
+            points=[
+                schema_mod.YieldCurvePoint("6M", Decimal("1.00")),
+                schema_mod.YieldCurvePoint("1Y", Decimal("1.10")),
+            ],
+            vendor_name="fallback_vendor",
+            vendor_version="vv_fallback",
+            source_version="sv_fallback",
+        )
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    result = task_mod._execute_yield_curve_month_end_backfill(
+        duckdb_path=str(duckdb_path),
+        start_date="2026-05-31",
+        end_date="2026-05-31",
+        curve_types=("treasury",),
+        max_backtrack_days=31,
+    )
+
+    assert result.source_version == "sv_fallback"
+    assert result.vendor_version == "vv_fallback"
+    assert result.payload["resolved_trade_dates"] == ["2026-04-30"]
+
+
+def test_execute_yield_curve_month_end_backfill_summarizes_exact_resolved_curve_pairs(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute("create table zqtz_bond_daily_snapshot (report_date varchar)")
+        conn.execute("insert into zqtz_bond_daily_snapshot values ('2026-05-31')")
+    finally:
+        conn.close()
+
+    stale_cdb = schema_mod.YieldCurveSnapshot(
+        curve_type="cdb",
+        trade_date="2026-05-29",
+        points=[
+            schema_mod.YieldCurvePoint("6M", Decimal("1.20")),
+            schema_mod.YieldCurvePoint("1Y", Decimal("1.30")),
+        ],
+        vendor_name="stale_cdb_vendor",
+        vendor_version="vv_cdb_stale",
+        source_version="sv_cdb_stale",
+    )
+    repo = task_mod.YieldCurveRepository(str(duckdb_path))
+    with task_mod.repository_task_write_scope(task_mod.__name__):
+        repo.replace_curve_snapshots(
+            trade_date=stale_cdb.trade_date,
+            snapshots=[stale_cdb],
+            rule_version=task_mod.RULE_VERSION,
+        )
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        if curve_type == "treasury" and trade_date == "2026-05-29":
+            return schema_mod.YieldCurveSnapshot(
+                curve_type=curve_type,
+                trade_date=trade_date,
+                points=[
+                    schema_mod.YieldCurvePoint("6M", Decimal("1.00")),
+                    schema_mod.YieldCurvePoint("1Y", Decimal("1.10")),
+                ],
+                vendor_name="treasury_vendor",
+                vendor_version="vv_treasury_resolved",
+                source_version="sv_treasury_resolved",
+            )
+        if curve_type == "cdb" and trade_date == "2026-05-28":
+            return schema_mod.YieldCurveSnapshot(
+                curve_type=curve_type,
+                trade_date=trade_date,
+                points=[
+                    schema_mod.YieldCurvePoint("6M", Decimal("1.40")),
+                    schema_mod.YieldCurvePoint("1Y", Decimal("1.50")),
+                ],
+                vendor_name="cdb_vendor",
+                vendor_version="vv_cdb_resolved",
+                source_version="sv_cdb_resolved",
+            )
+        raise RuntimeError("market closed")
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    result = task_mod._execute_yield_curve_month_end_backfill(
+        duckdb_path=str(duckdb_path),
+        start_date="2026-05-31",
+        end_date="2026-05-31",
+        curve_types=("treasury", "cdb"),
+        max_backtrack_days=3,
+    )
+
+    assert result.source_version == "sv_cdb_resolved__sv_treasury_resolved"
+    assert result.vendor_version == "vv_cdb_resolved__vv_treasury_resolved"
+    assert result.payload["resolved_snapshots"] == [
+        {"anchor_date": "2026-05-31", "curve_type": "cdb", "trade_date": "2026-05-28"},
+        {"anchor_date": "2026-05-31", "curve_type": "treasury", "trade_date": "2026-05-29"},
+    ]
+
+
+def test_materialize_yield_curve_month_end_backfill_records_governance(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute("create table zqtz_bond_daily_snapshot (report_date varchar)")
+        conn.execute("insert into zqtz_bond_daily_snapshot values ('2026-05-31')")
+    finally:
+        conn.close()
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        if trade_date != "2026-05-29":
+            raise RuntimeError("market closed")
+        return schema_mod.YieldCurveSnapshot(
+            curve_type=curve_type,
+            trade_date=trade_date,
+            points=[
+                schema_mod.YieldCurvePoint("6M", Decimal("1.00")),
+                schema_mod.YieldCurvePoint("1Y", Decimal("1.10")),
+                schema_mod.YieldCurvePoint("3Y", Decimal("1.30")),
+                schema_mod.YieldCurvePoint("5Y", Decimal("1.50")),
+                schema_mod.YieldCurvePoint("10Y", Decimal("1.80")),
+                schema_mod.YieldCurvePoint("30Y", Decimal("2.40")),
+            ],
+            vendor_name="test_vendor",
+            vendor_version=f"vv_{curve_type}",
+            source_version=f"sv_{curve_type}",
+        )
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    payload = task_mod.materialize_yield_curve_month_end_backfill.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        start_date="2026-05-01",
+        end_date="2026-05-31",
+        curve_types=["treasury"],
+        max_backtrack_days=2,
+        run_id="yield-backfill-test",
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["report_date"] == "2026-05-31"
+    assert payload["written"] == 1
+    assert payload["month_end_dates"] == ["2026-05-31"]
+
+    build_runs = _read_jsonl(governance_dir / "cache_build_run.jsonl")
+    manifests = _read_jsonl(governance_dir / "cache_manifest.jsonl")
+    assert [record["status"] for record in build_runs] == ["queued", "running", "completed"]
+    assert build_runs[-1]["run_id"] == "yield-backfill-test"
+    assert build_runs[-1]["report_date"] == "2026-05-31"
+    assert manifests[0]["run_id"] == "yield-backfill-test"
+    assert manifests[0]["report_date"] == "2026-05-31"

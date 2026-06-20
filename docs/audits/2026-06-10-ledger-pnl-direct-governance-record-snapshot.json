@@ -1,0 +1,129 @@
+{
+  "report_kind": "ledger_pnl_direct_governance_record_snapshot",
+  "generated_at": "2026-06-10T21:25:00+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "refresh_command": "python scripts\\refresh_ledger_pnl_direct_governance_record_snapshot.py",
+  "page": {
+    "page_slug": "ledger-pnl",
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "frontend_route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary"
+  },
+  "status": {
+    "overall": "dry_run_candidate_only",
+    "fail_closed": true,
+    "writes_governance_records": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false,
+    "closure_blocked_by_missing_written_record": true
+  },
+  "dry_run_result": {
+    "command": "python scripts\\emit_ledger_pnl_governance_record.py",
+    "mode": "dry-run",
+    "target_stream": "cache_manifest",
+    "target_path": "F:\\MOSS-V3\\data\\governance\\cache_manifest.jsonl",
+    "record_write_status": "not_requested",
+    "existing_record_line": null,
+    "validation_status": "ready_for_audit_review",
+    "missing_required_fields": [],
+    "failed_required_field_groups": [],
+    "formal_use_allowed": false,
+    "residual_gap": "Required checklist fields are present, but this does not prove page execution completeness and still needs audit review against page contract, lineage, date/catalog, and current UI/API payloads."
+  },
+  "record_key": {
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "primary_api": "/api/ledger-pnl/summary",
+    "report_date": "2026-05-31",
+    "cache_key": "ledger_pnl.summary:2026-05-31:ALL"
+  },
+  "candidate_record": {
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "page_slug": "ledger-pnl",
+    "frontend_route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary",
+    "report_date": "2026-05-31",
+    "basis": "ledger",
+    "source_surface": "ledger_pnl.summary",
+    "tables_used": [
+      "qdb_general_ledger_workbook"
+    ],
+    "source_version": "sv_product_category_3353b116b9a6",
+    "rule_version": "rv_ledger_pnl_v1",
+    "cache_version": "cv_ledger_pnl_v1",
+    "cache_key": "ledger_pnl.summary:2026-05-31:ALL",
+    "result_kind": "ledger_pnl.summary",
+    "created_at": "2026-06-10T21:25:00+08:00",
+    "formal_use_allowed": false
+  },
+  "written_record_search": {
+    "command": "Select-String -Path 'F:\\MOSS-V3\\data\\governance\\cache_manifest.jsonl' -Pattern 'PAGE-LEDGER-PNL-001','/api/ledger-pnl/summary','ledger_pnl.summary:2026-05-31:ALL'",
+    "matches": {
+      "PAGE-LEDGER-PNL-001": 0,
+      "/api/ledger-pnl/summary": 0,
+      "ledger_pnl.summary:2026-05-31:ALL": 0
+    },
+    "interpretation": "No matching written direct page/API governance record was found in cache_manifest.jsonl."
+  },
+  "page_readiness_result": {
+    "command": "python scripts\\codex_page_readiness.py --page-slug ledger-pnl",
+    "overall_status": "static-pass",
+    "formal_use_allowed": false,
+    "closure_approved": false,
+    "business_owner_approval_captured": false,
+    "approval_status": "pending",
+    "approval_action_item_count": 11,
+    "catalog_date_evidence": {
+      "status": "incomplete",
+      "table_count": 3,
+      "present_table_count": 2,
+      "date_sampled_table_count": 1,
+      "sampled_table_names": [
+        "qdb_general_ledger_workbook",
+        "ledger_import_batch",
+        "ledger_raw_row"
+      ],
+      "blocking_detail": "qdb_general_ledger_workbook is not present in the current catalog sample; ledger_raw_row has no date column."
+    },
+    "governance_record_validation": {
+      "status": "missing_direct_records",
+      "ready_record_count": 0,
+      "incomplete_record_count": 0,
+      "direct_record_count": 0,
+      "expanded_anchor_record_count": 0
+    },
+    "audit_review": {
+      "status": "blocked_by_record_gaps",
+      "closure_approved": false,
+      "direct_page_api_record_fields": "blocked"
+    },
+    "residual_gaps": [
+      "full data-catalog/date review required before page-level closure.",
+      "direct page-keyed governance records are still required before treating this as proof of a specific page/API execution.",
+      "Candidate metric dictionary-level approval remains pending.",
+      "Existing golden sample is supporting or page DTO evidence only, not dictionary-level approval."
+    ]
+  },
+  "post_write_validation": {
+    "ready": false,
+    "checks": {
+      "written_record_located": false,
+      "governance_direct_records_ready": false,
+      "audit_review_not_blocked_by_record_gaps": false,
+      "formal_use_still_false_until_owner_approval": true,
+      "closure_not_approved_without_owner_approval": true,
+      "business_owner_approval_not_captured": true
+    },
+    "blocking_reasons": [
+      "written_record_located",
+      "governance_direct_records_ready",
+      "audit_review_not_blocked_by_record_gaps"
+    ],
+    "boundary": "A located record is not enough for Ledger PnL closure. Downstream governance validation, page readiness, audit review, owner approval, and live evidence must still be reviewed before formal use or closure."
+  },
+  "closure_blocked_by_missing_written_record": true,
+  "closure_gate": "Only an approved governance workflow may write or locate the direct page/API record. After that, post_write_validation.ready must be true, governance validation must no longer be blocked by direct-record gaps, Ledger PnL page readiness, owner approval strict checks, and live page/API evidence review must be rerun. Keep formal_use_allowed=false and closure_approved=false until owner approval and all page-specific gates are captured.",
+  "boundary": "This snapshot is refreshed by a read-only preflight. It proves only whether a field-complete dry-run candidate exists and whether matching direct-record anchors are visible in the configured governance stream. It does not write governance records, approve metrics/pages, certify routes, prove live page/API execution, or capture business-owner approval."
+}

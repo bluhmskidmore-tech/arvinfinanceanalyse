@@ -1,0 +1,142 @@
+# Bond Analysis Owner Evidence Packet
+
+Page ID: `PAGE-BOND-ANALYSIS-001`
+Page slug: `bond-analysis`
+Primary API: `/api/bond-analytics/action-attribution`
+Business contract status: `evidence-pending`
+Business contract certified: `false`
+Formal use allowed: `formal_use_allowed=false`
+Closure approved: `closure_approved=false`
+Business owner approval captured: `false`
+Handoff status: `owner_actions_required`
+
+This packet does not approve page closure, write governance records, prove page execution, capture business-owner approval, promote fixed-income metrics to formal use, or certify Bond Analysis as formal fixed-income truth.
+
+## Current Certification Blockers
+
+- `golden_sample_boundary=action_attribution_capture_ready_pending_approval`
+- `golden_sample_approval_artifact_status=captured-awaiting-approval`
+- `approval_action_item_count=12`
+- `business_owner_approval_captured=false`
+
+## Boundary
+
+Golden sample boundary: `action_attribution_capture_ready_pending_approval`
+Dedicated golden sample: `GS-BOND-ANALYSIS-ACTION-ATTR-A`
+Route-specific evidence scope: `bond_analysis_action_attribution_dto_only`
+Borrowed dashboard evidence allowed: `false`
+Dashboard evidence reuse status: `blocked_for_bond_analysis_certification`
+
+PAGE-BOND-001, /bond-dashboard, GS-BOND-HEADLINE-A, and MTR-BOND-001 through MTR-BOND-004 are non-reusable for /bond-analysis certification.
+
+Out of scope:
+
+- PAGE-BOND-001
+- /bond-dashboard
+- GS-BOND-HEADLINE-A
+- MTR-BOND-001 through MTR-BOND-004
+- formal fixed-income metric truth
+- trading instructions or action recommendations
+- business-owner approval
+
+## Governance Dry-Run
+
+Governance record write status: `not_requested`
+Governance validation status: `direct_records_ready_for_audit_review`
+Governance post-write validation target: `direct_records_ready_for_audit_review`
+
+Commands:
+
+- Dry run: `python scripts/emit_bond_analysis_governance_record.py`
+- Write: `python scripts/emit_bond_analysis_governance_record.py --write`
+- Validate: `python scripts/codex_page_readiness.py --page-slug bond-analysis`
+
+## Configured Table Anchors
+
+- `fact_formal_bond_analytics_daily`
+
+## Latest Verification Evidence
+
+- Static readiness: `static-pass`
+- Direct governance record: `ready_for_audit_review`
+- UI/API payload evidence: `GS-BOND-ANALYSIS-ACTION-ATTR-A response.json`
+- Live smoke evidence: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
+- Live smoke command: `scripts/codex-page-smoke.ps1 -PageSlug bond-analysis`
+- Readiness command: `python scripts/codex_page_readiness.py --page-slug bond-analysis`
+- Full page verification command: `scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run`
+- Full page verification result: `passed: candidate governance tests, bond analytics backend tests, frontend tests, browser a11y smoke, typecheck, debt audit, and production build`
+- Golden sample capture-ready command: `python -m pytest tests/test_golden_samples_capture_ready.py -q`
+- Golden sample capture-ready result: `passed: 28 tests`
+- Owner boundary command: `python -m pytest tests/test_bond_analysis_business_owner_approval_status.py tests/test_golden_samples_capture_ready.py -q`
+- Owner boundary result: `passed: 36 tests; owner approval remains fail-closed`
+- Boundary: Direct governance record and static readiness are ready for audit review. UI/API payload and live smoke evidence remain reviewer-confirmation inputs only; owner approval remains pending.
+
+## Manual Review Evidence References
+
+- UI/API payload review: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/response.json`
+- Live smoke evidence review: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
+- Live smoke command reference: `scripts/codex-page-smoke.ps1 -PageSlug bond-analysis`
+
+## Evidence Anchors
+
+- gate_i_lane: `docs/audits/2026-06-06-bond-analysis-gate-i-lane.md`
+- signoff_packet: `docs/pnl/bond-analysis-sign-off-packet.md`
+- governance_audit_packet: `docs/pnl/bond-analysis-governance-audit-packet.md`
+- approval_template: `docs/pnl/bond-analysis-business-owner-approval-template.md`
+- fixed_income_convention_decision_draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
+- owner_signoff_runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`
+- live_smoke_evidence: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
+- golden_sample: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A`
+- readiness_command: `python scripts/codex_page_readiness.py --page-slug bond-analysis`
+
+## Fixed-Income Convention Review
+
+Delegated read-only review has been completed for the remaining fixed-income convention blockers. The current recommended owner choices are captured in `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`.
+
+Owner confirmation is still required for:
+
+- `market_value_basis=clean`
+- `dirty_market_value_formula=market_value + accrued_interest`
+- `accrued_interest_usage=dirty_price`; current carry and action attribution do not directly consume accrued interest as an independent attribution driver
+- `day_count=ACT/365_approximation`
+- `yield_compounding=nominal_annual_with_coupon_frequency`
+- `duration_convexity_scope=vanilla_fixed_rate_only`
+- `dv01_unit=CNY_per_1bp`
+- `dv01_base=CNY_face_value`
+- `mcp_evidence_status=fallback_local_evidence_until_mcp_recheck`
+
+## MCP Evidence Gap
+
+Deferred MCP app tools for moss-metric-contracts, moss-lineage-evidence, moss-data-catalog, and gitnexus were not exposed in this Codex App session; local scripts/mcp evidence is used as the current fallback.
+
+## Reviewer Checklist
+
+- Confirm GS-BOND-ANALYSIS-ACTION-ATTR-A remains scoped to GET /api/bond-analytics/action-attribution DTO evidence.
+- Review fixed-income units and signs for action-attribution PnL, duration, DV01, KRD, yield/YTM, bp movement, credit-spread, holdings, and accounting-class fields.
+- Review catalog/date evidence for fact_formal_bond_analytics_daily before signature.
+- Run or review the direct page/API governance record generator before signature; current packet does not write it.
+- Complete and sign docs/pnl/bond-analysis-business-owner-approval-template.md before any closure claim.
+
+## Business Owner Approval Action Items
+
+- Business owner name: `Business owner legal or operating name` (`missing`)
+- Business owner role: `Business owner accountability role` (`missing`)
+- Approval decision: `approve` (`missing`)
+- Approval date: `YYYY-MM-DD` (`missing`)
+- Business owner signature: `Business owner signature` (`missing`)
+- Governance record reviewed: `yes` (`pending`)
+- Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed: `yes` (`pending`)
+- Fixed-income convention decision draft reviewed: `yes` (`pending`)
+- Fixed-income units/sign/date rules reviewed: `yes` (`pending`)
+- UI/API payload evidence reviewed: `yes` (`pending`)
+- Live smoke evidence reviewed: `yes` (`pending`)
+- Verification commands rerun before approval: `yes` (`pending`)
+
+## Evidence Scope
+
+- `approves_metric_or_page=false`
+- `writes_governance_records=false`
+- `proves_page_execution=false`
+- `captures_business_owner_approval=false`
+- `certification_effect=none`
+- `validates_required_fields=true`

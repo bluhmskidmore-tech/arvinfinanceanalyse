@@ -1,0 +1,90 @@
+.routeStatus {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-height: min(460px, 70vh);
+  padding: 28px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+}
+
+.routeStatusHeader {
+  display: grid;
+  gap: 8px;
+  max-width: 720px;
+}
+
+.routeStatusCode {
+  width: fit-content;
+  padding: 4px 8px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.routeStatusTitle {
+  margin: 0;
+  color: #0f172a;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.routeStatusBody {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.routeStatusMeta {
+  display: grid;
+  gap: 6px;
+  max-width: 720px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.9);
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.routeStatusActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.routeStatusAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.routeStatusActionSecondary {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+@media (max-width: 720px) {
+  .routeStatus {
+    min-height: 320px;
+    padding: 20px;
+  }
+
+  .routeStatusTitle {
+    font-size: 20px;
+  }
+}

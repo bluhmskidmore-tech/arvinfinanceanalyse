@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import uuid
 from pathlib import Path
 
@@ -72,6 +73,131 @@ def test_resolve_formal_manifest_lineage_returns_latest_matching_record(tmp_path
     assert latest["source_version"] == "sv_new"
     assert latest["vendor_version"] == "vv_choice"
     assert latest["rule_version"] == "rv_new"
+
+
+def test_formal_materialize_runtime_holds_global_duckdb_writer_lock(tmp_path, monkeypatch):
+    runtime_mod = load_module(
+        "backend.app.tasks.formal_compute_runtime",
+        "backend/app/tasks/formal_compute_runtime.py",
+    )
+    materialize_mod = load_module(
+        "backend.app.tasks.materialize",
+        "backend/app/tasks/materialize.py",
+    )
+    registry_mod = sys.modules["backend.app.core_finance.module_registry"]
+    contracts_mod = sys.modules["backend.app.core_finance.module_contracts"]
+    schema_mod = sys.modules["backend.app.schemas.formal_compute_runtime"]
+    locks_mod = load_module(
+        "backend.app.governance.locks",
+        "backend/app/governance/locks.py",
+    )
+
+    registry_mod.clear_formal_modules()
+    descriptor = registry_mod.ensure_formal_module(
+        contracts_mod.FormalComputeModuleDescriptor(
+            module_name="mock_standard",
+            basis="formal",
+            input_sources=("source_table",),
+            fact_tables=("fact_formal_mock_standard",),
+            rule_version="rv_mock_standard_v1",
+            result_kind_family="mock-standard",
+        )
+    )
+    duckdb_path = tmp_path / "shared.duckdb"
+    writer_lock = materialize_mod.resolve_materialize_lock(duckdb_path)
+    observed = {"contention_checked": False}
+
+    def execute_materialization():
+        with pytest.raises(TimeoutError):
+            with locks_mod.acquire_lock(
+                writer_lock,
+                base_dir=duckdb_path.parent,
+                timeout_seconds=0.01,
+            ):
+                pass
+        observed["contention_checked"] = True
+        return schema_mod.FormalComputeMaterializeResult(
+            source_version="sv_mock",
+            vendor_version="vv_none",
+            payload={"row_count": 1},
+        )
+
+    result = runtime_mod.run_formal_materialize(
+        descriptor=descriptor,
+        job_name="mock_standard_materialize",
+        report_date="2026-03-31",
+        governance_dir=str(tmp_path / "governance"),
+        lock_base_dir=str(duckdb_path.parent),
+        duckdb_path=str(duckdb_path),
+        execute_materialization=execute_materialization,
+    )
+
+    assert result["status"] == "completed"
+    assert result["lock"] == descriptor.lock_key
+    assert observed["contention_checked"] is True
+
+
+def test_formal_materialize_runtime_records_failed_terminal_when_completed_write_fails(
+    tmp_path,
+    monkeypatch,
+):
+    runtime_mod = load_module(
+        "backend.app.tasks.formal_compute_runtime",
+        "backend/app/tasks/formal_compute_runtime.py",
+    )
+    governance_mod = sys.modules["backend.app.repositories.governance_repo"]
+    registry_mod = sys.modules["backend.app.core_finance.module_registry"]
+    contracts_mod = sys.modules["backend.app.core_finance.module_contracts"]
+    schema_mod = sys.modules["backend.app.schemas.formal_compute_runtime"]
+
+    registry_mod.clear_formal_modules()
+    descriptor = registry_mod.ensure_formal_module(
+        contracts_mod.FormalComputeModuleDescriptor(
+            module_name="mock_standard",
+            basis="formal",
+            input_sources=("source_table",),
+            fact_tables=("fact_formal_mock_standard",),
+            rule_version="rv_mock_standard_v1",
+            result_kind_family="mock-standard",
+        )
+    )
+
+    original_append_many_atomic = governance_mod.GovernanceRepository.append_many_atomic
+
+    def fail_completed_terminal_write(self, entries):
+        if any(stream == governance_mod.CACHE_MANIFEST_STREAM for stream, _payload in entries):
+            raise RuntimeError("completed terminal write failed")
+        return original_append_many_atomic(self, entries)
+
+    monkeypatch.setattr(
+        governance_mod.GovernanceRepository,
+        "append_many_atomic",
+        fail_completed_terminal_write,
+    )
+
+    with pytest.raises(RuntimeError, match="completed terminal write failed"):
+        runtime_mod.run_formal_materialize(
+            descriptor=descriptor,
+            job_name="mock_standard_materialize",
+            report_date="2026-03-31",
+            governance_dir=str(tmp_path / "governance"),
+            lock_base_dir=str(tmp_path),
+            duckdb_path=str(tmp_path / "shared.duckdb"),
+            execute_materialization=lambda: schema_mod.FormalComputeMaterializeResult(
+                source_version="sv_mock",
+                vendor_version="vv_none",
+                payload={"row_count": 1},
+            ),
+        )
+
+    build_runs = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["status"] for row in build_runs] == ["queued", "running", "failed"]
+    assert build_runs[-1]["failure_category"] == "governance_terminal_write_failure"
+    assert build_runs[-1]["source_version"] == "sv_mock"
+    assert build_runs[-1]["error_message"] == "completed terminal write failed"
 
 
 def test_resolve_formal_manifest_lineage_fails_closed_when_required_fields_missing(tmp_path):
@@ -364,7 +490,7 @@ def test_resolve_formal_facts_lineage_prefers_build_then_rows_then_manifest(tmp_
             "status": "completed",
             "cache_key": "bond_analytics:materialize:formal",
             "cache_version": "cv_build",
-            "source_version": "",
+            "source_version": "sv_build",
             "vendor_version": "vv_build",
             "rule_version": "rv_build",
             "report_date": "2026-03-31",
@@ -394,7 +520,7 @@ def test_resolve_formal_facts_lineage_prefers_build_then_rows_then_manifest(tmp_
     )
 
     assert lineage == {
-        "source_version": "sv_row_a__sv_row_b",
+        "source_version": "sv_build",
         "rule_version": "rv_build",
         "cache_version": "cv_build",
         "vendor_version": "vv_build",
@@ -424,7 +550,7 @@ def test_resolve_formal_facts_lineage_returns_defaults_when_no_rows_or_build_exi
     }
 
 
-def test_resolve_formal_facts_lineage_keeps_manifest_fallback_when_rows_exist_without_source_versions(tmp_path):
+def test_resolve_formal_facts_lineage_fails_closed_when_rows_exist_without_completed_terminal(tmp_path):
     lineage_mod = _load_lineage_module()
     _append_jsonl(
         tmp_path / "cache_manifest.jsonl",
@@ -437,24 +563,18 @@ def test_resolve_formal_facts_lineage_keeps_manifest_fallback_when_rows_exist_wi
         },
     )
 
-    lineage = lineage_mod.resolve_formal_facts_lineage(
-        governance_dir=str(tmp_path),
-        cache_key="bond_analytics:materialize:formal",
-        job_name="bond_analytics_materialize",
-        report_date="2026-03-31",
-        has_rows=True,
-        row_source_versions=["", ""],
-        default_source_version="sv_empty",
-        default_rule_version="rv_default",
-        default_cache_version="cv_default",
-    )
-
-    assert lineage == {
-        "source_version": "sv_empty",
-        "rule_version": "rv_manifest",
-        "cache_version": "cv_manifest",
-        "vendor_version": "vv_manifest",
-    }
+    with pytest.raises(RuntimeError, match="completed formal build terminal unavailable"):
+        lineage_mod.resolve_formal_facts_lineage(
+            governance_dir=str(tmp_path),
+            cache_key="bond_analytics:materialize:formal",
+            job_name="bond_analytics_materialize",
+            report_date="2026-03-31",
+            has_rows=True,
+            row_source_versions=["sv_orphan_fact"],
+            default_source_version="sv_empty",
+            default_rule_version="rv_default",
+            default_cache_version="cv_default",
+        )
 
 
 def test_resolve_formal_dates_lineage_uses_manifest_then_fallback_then_defaults(tmp_path):

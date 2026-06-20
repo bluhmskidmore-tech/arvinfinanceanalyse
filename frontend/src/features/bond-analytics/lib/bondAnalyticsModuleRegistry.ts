@@ -2,6 +2,7 @@ export type BondAnalyticsModuleKey =
   | "return-decomposition"
   | "benchmark-excess"
   | "krd-curve-risk"
+  | "dv01-risk"
   | "credit-spread"
   | "portfolio-headlines"
   | "top-holdings"
@@ -39,6 +40,12 @@ export const BOND_ANALYTICS_CURRENT_MODULES: BondAnalyticsModuleDefinition[] = [
     label: "曲线风险",
     description: "查看久期、DV01、KRD 和情景冲击。",
     detailHint: "从明细区继续看 KRD 分布和曲线情景。",
+  },
+  {
+    key: "dv01-risk",
+    label: "DV01 风险",
+    description: "查看当前 DV01、利率冲击影响、期限桶、债券和发行人集中风险。",
+    detailHint: "从明细区继续看期限桶 DV01、Top 债券和 Top 发行人。",
   },
   {
     key: "credit-spread",

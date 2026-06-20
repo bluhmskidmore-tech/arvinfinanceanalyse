@@ -21,7 +21,6 @@ from typing import Any
 
 from .bond_duration import infer_accounting_class
 from .bond_four_effects import compute_bond_four_effects
-from .field_normalization import ACCOUNTING_BASIS_AC
 from .campisi import (
     _coupon_freq,
     _years_to_maturity,
@@ -30,6 +29,7 @@ from .campisi import (
     infer_credit_rating_from_asset_class,
     interpolate_treasury_yield_pct,
 )
+from .field_normalization import ACCOUNTING_BASIS_AC
 from .safe_decimal import safe_decimal
 
 

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import fields
+from decimal import Decimal
 
 from backend.app.core_finance import (
     FiPnlRecord,
     FormalPnlFiFactRow,
     NonStdJournalEntry,
     NonStdPnlBridgeRow,
+    PnlByBusinessYieldAndFtp,
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
+    compute_nonstd_signed_ledger_amount,
+    compute_pnl_by_business_yield_and_ftp,
     normalize_fi_pnl_records,
     normalize_nonstd_journal_entries,
 )
@@ -19,6 +23,7 @@ def test_pnl_core_finance_exports_phase2_contract_types():
     assert NonStdJournalEntry.__name__ == "NonStdJournalEntry"
     assert FormalPnlFiFactRow.__name__ == "FormalPnlFiFactRow"
     assert NonStdPnlBridgeRow.__name__ == "NonStdPnlBridgeRow"
+    assert PnlByBusinessYieldAndFtp.__name__ == "PnlByBusinessYieldAndFtp"
     assert callable(normalize_fi_pnl_records)
     assert callable(normalize_nonstd_journal_entries)
 
@@ -102,3 +107,33 @@ def test_pnl_core_finance_contract_shapes_match_governed_field_names():
 def test_pnl_phase2_entrypoints_exist_for_phase2_execution():
     assert callable(build_nonstd_pnl_bridge_rows)
     assert callable(build_formal_pnl_fi_fact_rows)
+    assert callable(compute_nonstd_signed_ledger_amount)
+
+
+def test_pnl_by_business_yield_and_ftp_contract_uses_act365_pct_points():
+    result = compute_pnl_by_business_yield_and_ftp(
+        total_pnl=Decimal("130000"),
+        avg_balance=Decimal("100000000"),
+        calendar_days=31,
+        ftp_rate_pct=Decimal("1.600000"),
+    )
+
+    assert result.annualized_yield_pct == Decimal("1.530645")
+    assert result.ftp_rate_pct == Decimal("1.600000")
+    assert result.ftp_cost == Decimal("135890.41")
+    assert result.ftp_net_pnl == Decimal("-5890.41")
+    assert result.ftp_net_annualized_yield_pct == Decimal("-0.069355")
+
+
+def test_pnl_by_business_yield_and_ftp_returns_null_metrics_without_denominator():
+    result = compute_pnl_by_business_yield_and_ftp(
+        total_pnl=Decimal("130000"),
+        avg_balance=Decimal("0"),
+        calendar_days=31,
+        ftp_rate_pct=Decimal("1.600000"),
+    )
+
+    assert result.annualized_yield_pct is None
+    assert result.ftp_cost is None
+    assert result.ftp_net_pnl is None
+    assert result.ftp_net_annualized_yield_pct is None

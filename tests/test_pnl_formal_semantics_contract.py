@@ -90,12 +90,20 @@ def test_517_requires_realized_flag_and_formal_event_semantics_even_for_fvtpl():
                 event_semantics="mark_to_market",
                 realized_flag=True,
             ),
+            _fi_record(
+                instrument_code="TPL-REALIZED-FORMAL-BUT-OVERLAP-NOT-PROVEN",
+                invest_type_std="T",
+                accounting_basis="FVTPL",
+                event_semantics="realized_formal",
+                realized_flag=True,
+            ),
         ]
     )
 
     assert [(row.instrument_code, row.capital_gain_517, row.total_pnl) for row in rows] == [
         ("TPL-NOT-REALIZED", Decimal("0"), Decimal("15.00")),
         ("TPL-NOT-FORMAL-EVENT", Decimal("0"), Decimal("15.00")),
+        ("TPL-REALIZED-FORMAL-BUT-OVERLAP-NOT-PROVEN", Decimal("0"), Decimal("15.00")),
     ]
 
 
@@ -120,4 +128,30 @@ def test_manual_adjustment_requires_governed_approval_not_free_text():
     assert [(row.instrument_code, row.manual_adjustment, row.total_pnl) for row in rows] == [
         ("FREE-TEXT-APPROVED", Decimal("0"), Decimal("15.00")),
         ("GOVERNANCE-APPROVED", Decimal("3.00"), Decimal("18.00")),
+    ]
+
+
+def test_fvtpl_517_enters_formal_only_when_event_semantics_prove_no_overlap_with_516():
+    rows = build_formal_pnl_fi_fact_rows(
+        [
+            _fi_record(
+                instrument_code="TPL-INCREMENTAL",
+                invest_type_std="T",
+                accounting_basis="FVTPL",
+                event_semantics="realized_incremental",
+                realized_flag=True,
+            ),
+            _fi_record(
+                instrument_code="TPL-NO-PRIOR-516",
+                invest_type_std="T",
+                accounting_basis="FVTPL",
+                event_semantics="realized_no_prior_516",
+                realized_flag=True,
+            ),
+        ]
+    )
+
+    assert [(row.instrument_code, row.capital_gain_517, row.total_pnl) for row in rows] == [
+        ("TPL-INCREMENTAL", Decimal("4.00"), Decimal("19.00")),
+        ("TPL-NO-PRIOR-516", Decimal("4.00"), Decimal("19.00")),
     ]

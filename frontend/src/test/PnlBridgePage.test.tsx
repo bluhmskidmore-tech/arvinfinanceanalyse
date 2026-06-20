@@ -142,12 +142,12 @@ describe("PnlBridgePage", () => {
     });
 
     const dateSelect = await screen.findByLabelText("pnl-bridge-report-date");
-    expect(screen.getByTestId("pnl-bridge-page-title")).toHaveTextContent("正式损益解释");
-    expect(screen.getByTestId("pnl-bridge-page-subtitle")).toHaveTextContent("查看实际损益与解释损益的差异");
-    expect(screen.getByTestId("pnl-bridge-page-role-badge")).toHaveTextContent("正式解释");
-    expect(screen.getByTestId("pnl-bridge-formal-only-note")).toHaveTextContent("正式口径");
-    expect(screen.getByRole("heading", { name: "正式桥接汇总" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "桥接明细与归因瀑布" })).toBeInTheDocument();
+    expect(screen.getByTestId("pnl-bridge-page-title")).toHaveTextContent("正式损益闭合校验");
+    expect(screen.getByTestId("pnl-bridge-page-subtitle")).toHaveTextContent("校验实际损益是否能被票息");
+    expect(screen.getByTestId("pnl-bridge-page-role-badge")).toHaveTextContent("闭合校验");
+    expect(screen.getByTestId("pnl-bridge-formal-only-note")).toHaveTextContent("只校验正式口径");
+    expect(screen.getByRole("heading", { name: "损益闭合校验汇总" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "闭合明细与归因瀑布" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(dateSelect).toHaveValue("2025-12-31");
@@ -158,15 +158,15 @@ describe("PnlBridgePage", () => {
     expect(summary).toHaveTextContent("15.40");
 
     const conclusion = await screen.findByTestId("pnl-bridge-conclusion");
-    expect(conclusion).toHaveTextContent("当前结论");
-    expect(conclusion).toHaveTextContent("解释损益基本贴近实际损益");
+    expect(conclusion).toHaveTextContent("闭合校验结果");
+    expect(conclusion).toHaveTextContent("校验预警");
     expect(conclusion).toHaveTextContent("残差需要跟踪");
 
     const warnings = await screen.findByTestId("pnl-bridge-warnings");
     expect(warnings).toHaveTextContent("Residual spike on instrument IC-1");
 
     expect(screen.getByTestId("pnl-bridge-waterfall-card")).toBeInTheDocument();
-    expect(screen.getByText("损益桥接效应拆解")).toBeInTheDocument();
+    expect(screen.getByText("解释因子拆解（用于校验闭合）")).toBeInTheDocument();
 
     const detail = await screen.findByTestId("pnl-bridge-detail-table");
     expect(detail).toHaveTextContent("IC-1");

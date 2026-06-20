@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime, timedelta, timezone
+import os
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 
 import duckdb
@@ -11,6 +12,11 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM, GovernanceRepository
+from backend.app.repositories.tushare_adapter import (
+    TUSHARE_TOKEN_ENV,
+    import_tushare_pro,
+    resolve_tushare_token_with_settings_fallback,
+)
 from backend.app.schemas.choice_news import ChoiceNewsTopicsAsset
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
@@ -20,6 +26,23 @@ MAX_CNQ_TOPIC_CODES = 4
 CHOICE_NEWS_EVENT_STREAM = "choice_news_event"
 CHOICE_NEWS_PULL_MODE_END_COUNT = 2
 CHOICE_NEWS_VENDOR_TZ = timezone(timedelta(hours=8))
+TUSHARE_NEWS_SRC_ENV = "MOSS_TUSHARE_NEWS_SRC"
+CHOICE_NEWS_CACHE_VERSION = "cv_choice_news_v1"
+CHOICE_NEWS_FUTURE_DATE_REPAIR_RULE_VERSION = "rv_choice_news_future_date_repair_v1"
+CHOICE_NEWS_EVENT_REQUIRED_COLUMNS = (
+    "event_key",
+    "received_at",
+    "group_id",
+    "content_type",
+    "serial_id",
+    "request_id",
+    "error_code",
+    "error_msg",
+    "topic_code",
+    "item_index",
+    "payload_text",
+    "payload_json",
+)
 
 
 def _subscribe_choice_sectornews(
@@ -134,6 +157,24 @@ def ensure_choice_news_event_schema(conn: duckdb.DuckDBPyConnection) -> None:
     apply_pending_migrations_on_connection(conn)
 
 
+def _require_choice_news_event_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    rows = conn.execute(
+        """
+        select lower(column_name)
+        from information_schema.columns
+        where table_schema = 'main' and table_name = 'choice_news_event'
+        """
+    ).fetchall()
+    columns = {str(row[0]) for row in rows}
+    missing = [column for column in CHOICE_NEWS_EVENT_REQUIRED_COLUMNS if column not in columns]
+    if not columns:
+        raise RuntimeError("choice_news_event table is missing; run the normal migration/materialize path first.")
+    if missing:
+        raise RuntimeError(
+            "choice_news_event table is missing required columns: " + ", ".join(missing)
+        )
+
+
 def _materialize_choice_news_events(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
@@ -221,6 +262,45 @@ def _materialize_choice_news_events(
     }
 
 
+def _ingest_tushare_news_to_choice_news(
+    duckdb_path: str | None = None,
+    limit: int = 20,
+    news_limit: int = 100,
+    news_src: str | None = None,
+    news_lookback_hours: int = 48,
+    cctv_lookback_days: int = 3,
+    major_lookback_hours: int = 48,
+    research_lookback_days: int = 3,
+) -> dict[str, object]:
+    settings = get_settings()
+    token = resolve_tushare_token_with_settings_fallback(settings)
+    if not token:
+        raise RuntimeError(
+            f"{TUSHARE_TOKEN_ENV} is not set; add it to config/.env or export it before calling Tushare pro API."
+        )
+
+    ts = import_tushare_pro()
+    pro = ts.pro_api(token)
+    configured_src = str(getattr(settings, "tushare_news_src", "") or "").strip()
+    src_resolved = (
+        str(news_src or "").strip() or os.getenv(TUSHARE_NEWS_SRC_ENV, "").strip() or configured_src or "sina"
+    )
+
+    from backend.app.tasks import tushare_news_ingest as tushare_news_ingest_task
+
+    return tushare_news_ingest_task.materialize_tushare_news_to_choice_news(
+        duckdb_path=str(duckdb_path or settings.duckdb_path),
+        pro=pro,
+        news_src=src_resolved,
+        limit=limit,
+        news_limit=news_limit,
+        news_lookback_hours=news_lookback_hours,
+        cctv_lookback_days=cctv_lookback_days,
+        major_lookback_hours=major_lookback_hours,
+        research_lookback_days=research_lookback_days,
+    )
+
+
 subscribe_choice_sectornews = register_actor_once(
     "subscribe_choice_sectornews",
     _subscribe_choice_sectornews,
@@ -232,6 +312,10 @@ materialize_choice_news_events = register_actor_once(
 pull_choice_sectornews_snapshot = register_actor_once(
     "pull_choice_sectornews_snapshot",
     _pull_choice_sectornews_snapshot,
+)
+ingest_tushare_news_to_choice_news = register_actor_once(
+    "ingest_tushare_news_to_choice_news",
+    _ingest_tushare_news_to_choice_news,
 )
 
 
@@ -366,8 +450,9 @@ def _persist_choice_news_cfn_result(
             repo.append(
                 CHOICE_NEWS_EVENT_STREAM,
                 {
-                    "received_at": _normalize_choice_news_received_at(
-                        row.get("DATETIME") or row.get("EITIME")
+                    "received_at": _resolve_choice_news_received_at(
+                        row.get("DATETIME"),
+                        row.get("EITIME"),
                     ),
                     "event_key": _build_choice_news_event_key(
                         {
@@ -420,6 +505,150 @@ def _normalize_choice_news_received_at(value: object) -> str:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=CHOICE_NEWS_VENDOR_TZ)
     return parsed.isoformat()
+
+
+def _parse_choice_news_vendor_datetime(value: object) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    candidate = raw.replace(" ", "T")
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=CHOICE_NEWS_VENDOR_TZ)
+    return parsed
+
+
+def _choice_news_as_of_date(as_of_date: str | None = None) -> date:
+    if as_of_date:
+        return date.fromisoformat(str(as_of_date)[:10])
+    return datetime.now(CHOICE_NEWS_VENDOR_TZ).date()
+
+
+def _resolve_choice_news_received_at(
+    datetime_value: object,
+    eitime_value: object,
+    *,
+    as_of_date: str | None = None,
+) -> str:
+    primary = _parse_choice_news_vendor_datetime(datetime_value)
+    fallback = _parse_choice_news_vendor_datetime(eitime_value)
+    as_of = _choice_news_as_of_date(as_of_date)
+    if primary is not None:
+        if primary.date() > as_of and fallback is not None and fallback.date() <= as_of:
+            return fallback.isoformat()
+        return primary.isoformat()
+    if fallback is not None:
+        return fallback.isoformat()
+    return _normalize_choice_news_received_at(datetime_value or eitime_value)
+
+
+def repair_existing_choice_news_future_dates(
+    *,
+    duckdb_path: str | None = None,
+    as_of_date: str | None = None,
+    run_id: str | None = None,
+    governance_dir: str | None = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    duckdb_file = Path(duckdb_path or settings.duckdb_path)
+    if not duckdb_file.exists():
+        raise FileNotFoundError(f"DuckDB file not found: {duckdb_file}")
+    resolved_as_of = _choice_news_as_of_date(as_of_date).isoformat()
+    updated_event_keys: list[str] = []
+    unresolved_event_keys: list[str] = []
+
+    conn = duckdb.connect(str(duckdb_file), read_only=False)
+    try:
+        _require_choice_news_event_schema(conn)
+        rows = conn.execute(
+            """
+            select event_key, received_at, payload_json
+            from choice_news_event
+            where try_cast(substr(cast(received_at as varchar), 1, 10) as date) > ?::date
+            order by received_at, event_key
+            """,
+            [resolved_as_of],
+        ).fetchall()
+        for event_key, received_at, payload_json in rows:
+            try:
+                payload = json.loads(str(payload_json or ""))
+            except json.JSONDecodeError:
+                unresolved_event_keys.append(str(event_key))
+                continue
+            if not isinstance(payload, dict):
+                unresolved_event_keys.append(str(event_key))
+                continue
+            replacement = _resolve_choice_news_received_at(
+                payload.get("DATETIME"),
+                payload.get("EITIME"),
+                as_of_date=resolved_as_of,
+            )
+            replacement_dt = _parse_choice_news_vendor_datetime(replacement)
+            if replacement_dt is None or replacement_dt.date() > _choice_news_as_of_date(resolved_as_of):
+                unresolved_event_keys.append(str(event_key))
+                continue
+            if replacement == str(received_at):
+                continue
+            conn.execute(
+                "update choice_news_event set received_at = ? where event_key = ?",
+                [replacement, event_key],
+            )
+            updated_event_keys.append(str(event_key))
+    finally:
+        conn.close()
+
+    resolved_run_id = run_id or f"choice-news-future-date-repair:{datetime.now(UTC).isoformat()}"
+    if governance_dir is not None:
+        repo = GovernanceRepository(base_dir=Path(governance_dir))
+        source_version = f"sv_choice_news_future_date_repair_{len(updated_event_keys)}_{len(unresolved_event_keys)}"
+        repo.append_many_atomic(
+            [
+                (
+                    CACHE_MANIFEST_STREAM,
+                    CacheManifestRecord(
+                        cache_key="choice_news.latest",
+                        cache_version=CHOICE_NEWS_CACHE_VERSION,
+                        source_version=source_version,
+                        vendor_version="vv_choice",
+                        rule_version=CHOICE_NEWS_FUTURE_DATE_REPAIR_RULE_VERSION,
+                        basis="analytical",
+                        module_name="choice_news",
+                        result_kind_family="news.choice.latest",
+                        run_id=resolved_run_id,
+                        input_sources=["choice_news_event"],
+                        fact_tables=["choice_news_event"],
+                    ).model_dump(),
+                ),
+                (
+                    CACHE_BUILD_RUN_STREAM,
+                    CacheBuildRunRecord(
+                        run_id=resolved_run_id,
+                        job_name="choice_news_future_date_repair",
+                        status="completed",
+                        cache_key="choice_news.latest",
+                        cache_version=CHOICE_NEWS_CACHE_VERSION,
+                        lock="lock:duckdb:choice-news-future-date-repair",
+                        source_version=source_version,
+                        vendor_version="vv_choice",
+                        rule_version=CHOICE_NEWS_FUTURE_DATE_REPAIR_RULE_VERSION,
+                    ).model_dump(),
+                ),
+            ]
+        )
+
+    return {
+        "status": "completed",
+        "duckdb_path": str(duckdb_file),
+        "as_of_date": resolved_as_of,
+        "run_id": resolved_run_id,
+        "updated_count": len(updated_event_keys),
+        "unresolved_count": len(unresolved_event_keys),
+        "updated_event_keys": updated_event_keys,
+        "unresolved_event_keys": unresolved_event_keys,
+    }
 
 
 def _build_choice_news_event_key(event: dict[str, object]) -> str:

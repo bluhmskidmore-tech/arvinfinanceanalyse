@@ -1,7 +1,7 @@
 ﻿import json
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -611,10 +611,6 @@ def test_materialize_uses_same_lock_for_same_duckdb_across_governance_dirs(tmp_p
     task_module = sys.modules.get("backend.app.tasks.materialize")
     if task_module is None:
         task_module = load_module("backend.app.tasks.materialize", "backend/app/tasks/materialize.py")
-    locks_module = load_module(
-        "backend.app.governance.locks",
-        "backend/app/governance/locks.py",
-    )
 
     original_acquire_lock = task_module.acquire_lock
 
@@ -661,6 +657,22 @@ def test_materialize_uses_distinct_locks_for_different_duckdb_files_in_same_dire
     second_lock = task_module.resolve_materialize_lock(second_duckdb_path)
 
     assert first_lock.key != second_lock.key
+
+
+def test_snapshot_and_preview_materialize_share_same_duckdb_writer_lock(tmp_path):
+    preview_task = sys.modules.get("backend.app.tasks.materialize")
+    if preview_task is None:
+        preview_task = load_module("backend.app.tasks.materialize", "backend/app/tasks/materialize.py")
+    snapshot_task = sys.modules.get("backend.app.tasks.snapshot_materialize")
+    if snapshot_task is None:
+        snapshot_task = load_module(
+            "backend.app.tasks.snapshot_materialize",
+            "backend/app/tasks/snapshot_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "shared.duckdb"
+
+    assert preview_task.resolve_materialize_lock(duckdb_path).key == snapshot_task.resolve_snapshot_lock(duckdb_path).key
 
 
 def test_materialize_lock_normalizes_case_for_same_duckdb_path(tmp_path):

@@ -9,12 +9,12 @@ Covers:
 - Four effects sum to total return (within 1bp tolerance)
 - Edge cases: zero coupon bond, negative yield, zero duration
 """
-import pytest
 from datetime import date
 from decimal import Decimal
 
-from backend.app.core_finance.bond_four_effects import compute_bond_four_effects
+import pytest
 
+from backend.app.core_finance.bond_four_effects import compute_bond_four_effects
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -412,8 +412,8 @@ class TestEdgeCases:
         result = compute_bond_four_effects(
             bond, 30, Decimal("0.002"), Decimal("0.001"), date(2026, 1, 1)
         )
-        md = float(result["mod_duration"])
-        assert 0.15 < md < 0.35
+        assert result["mod_duration"] == Decimal("0")
+        assert "mod_dur_fallback_zero" in result["diagnostics"]
         assert "total_return" in result
 
     def test_zero_market_value_start(self):
@@ -484,6 +484,8 @@ class TestEdgeCases:
             "total_return",
             "total_price_change",
             "mod_duration",
+            "has_accrued_interest",
+            "diagnostics",
         }
         assert expected_keys.issubset(result.keys())
 

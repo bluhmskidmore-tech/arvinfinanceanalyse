@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
@@ -18,6 +20,8 @@ from .bond_duration import (
     modified_duration_from_macaulay,
 )
 from .safe_decimal import safe_decimal
+
+logger = logging.getLogger(__name__)
 
 KRD_TENORS = ("1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "15Y", "20Y", "30Y")
 
@@ -133,12 +137,14 @@ def _coerce_date(value: Any) -> date | None:
     if hasattr(value, "to_pydatetime"):
         try:
             return value.to_pydatetime().date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
+            logger.exception("_coerce_date: to_pydatetime() failed for %r", type(value).__name__)
             return None
     if hasattr(value, "date"):
         try:
             return value.date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
+            logger.exception("_coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None
 
@@ -150,7 +156,8 @@ def _optional_decimal(value: Any) -> Decimal | None:
         return None
     try:
         return value if isinstance(value, Decimal) else Decimal(str(value))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError):
+        logger.exception("_optional_decimal: failed to convert %r", type(value).__name__)
         return None
 
 
@@ -209,6 +216,22 @@ def _get_market_value(position: Any) -> Decimal:
     )
 
 
+def _get_face_value(position: Any, *, fallback_market_value: Decimal) -> Decimal:
+    face_value = safe_decimal(
+        _get_value(
+            position,
+            "face_value_cny",
+            "face_value",
+            "face_value_amount",
+            "face_value_end",
+            "face_value_start",
+            "face_value_native",
+            default=Decimal("0"),
+        )
+    )
+    return face_value if face_value > Decimal("0") else fallback_market_value
+
+
 def _get_coupon_frequency(position: Any) -> int:
     explicit = _get_value(position, "coupon_frequency")
     if explicit is not None:
@@ -260,6 +283,7 @@ def build_krd_position_metrics(
         market_value = _get_market_value(position)
         if market_value <= Decimal("0"):
             continue
+        face_value = _get_face_value(position, fallback_market_value=market_value)
 
         bond_code = str(_get_value(position, "bond_code", default=""))
         coupon_rate = safe_decimal(_get_value(position, "coupon_rate"))
@@ -306,10 +330,11 @@ def build_krd_position_metrics(
             {
                 "bond_code": bond_code,
                 "market_value": market_value,
+                "face_value": face_value,
                 "duration": duration,
                 "modified_duration": modified_duration,
                 "convexity": convexity,
-                "dv01": market_value * modified_duration / Decimal("10000"),
+                "dv01": face_value * modified_duration / Decimal("10000"),
                 "weight": weight,
                 "tenor_bucket": _get_tenor_from_position(
                     position,

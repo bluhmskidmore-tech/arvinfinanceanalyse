@@ -1,0 +1,2280 @@
+{
+  "packet_kind": "portfolio_home_owner_action_packet",
+  "page_id": "PAGE-PORTFOLIO-HOME-001",
+  "page_slug": "portfolio",
+  "report_date": "2026-05-31",
+  "duckdb_path": "F:\\MOSS-V3\\data\\moss.duckdb",
+  "template_path": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-business-owner-approval-template.md",
+  "current_score": "99.86 / 100",
+  "remaining_gap": "0.14",
+  "score_status": "blocked",
+  "full_score_ready": false,
+  "handoff_status": "owner_actions_required",
+  "evidence_scope": {
+    "approves_metric_or_page": false,
+    "writes_governance_records": false,
+    "proves_page_execution": false,
+    "captures_business_owner_approval": false,
+    "certification_effect": "none"
+  },
+  "score_blockers": [
+    "risk_tensor_quality_warning",
+    "krd_contract_decision_required",
+    "bond_maturity_date_remediation_required",
+    "tyw_liability_maturity_date_remediation_required",
+    "duration_exclusion_warning_mismatch",
+    "risk_tensor_warning_mismatch",
+    "business_owner_approval",
+    "owner_decision_intake_blocked"
+  ],
+  "dependency_consistency_status": "consistent",
+  "dependency_consistency_blockers": [],
+  "csv_check_summary": {
+    "krd_summary_row_count": 3,
+    "krd_detail_row_count": 500,
+    "krd_owner_decision_fields_blank": true,
+    "bond_missing_maturity_row_count": 114,
+    "tyw_liability_missing_maturity_row_count": 1455,
+    "maturity_owner_fields_blank": true
+  },
+  "generated_owner_fields_boundaries": {
+    "krd_contract_decision_manifest": true,
+    "maturity_remediation_manifest": true
+  },
+  "evidence_dependencies": [
+    {
+      "name": "signoff_packet",
+      "path": "docs/portfolio/portfolio-home-full-closure-sign-off-packet.md",
+      "available": true
+    },
+    {
+      "name": "audit_packet",
+      "path": "docs/audits/2026-06-05-portfolio-readiness-gate-audit.md",
+      "available": true
+    },
+    {
+      "name": "evidence_snapshot",
+      "command": "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched",
+      "available": true
+    },
+    {
+      "name": "owner_action_packet",
+      "command": "python scripts/portfolio_home_owner_action_packet.py --limit 3",
+      "available": true
+    },
+    {
+      "name": "closure_artifact_presence_check",
+      "command": "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current",
+      "available": true
+    },
+    {
+      "name": "evidence_packet_guard",
+      "command": "python scripts/portfolio_home_evidence_packet_guard.py --require-clean",
+      "available": true
+    },
+    {
+      "name": "krd_contract_decision_manifest",
+      "path": "docs/portfolio/krd-contract-decision/2026-05-31/manifest.json",
+      "available": true
+    },
+    {
+      "name": "krd_contract_decision_owner_summary",
+      "path": "docs/portfolio/krd-contract-decision/2026-05-31/owner_summary.md",
+      "available": true
+    },
+    {
+      "name": "maturity_remediation_manifest",
+      "path": "docs/portfolio/maturity-remediation/2026-05-31/manifest.json",
+      "available": true
+    },
+    {
+      "name": "maturity_remediation_owner_summary",
+      "path": "docs/portfolio/maturity-remediation/2026-05-31/owner_summary.md",
+      "available": true
+    },
+    {
+      "name": "dependency_consistency_strict_gate",
+      "command": "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent",
+      "available": true
+    },
+    {
+      "name": "owner_decision_intake_strict_gate",
+      "command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+      "available": true
+    },
+    {
+      "name": "scorecard_strict_gate",
+      "command": "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+      "available": true
+    },
+    {
+      "name": "business_owner_approval_strict_gate",
+      "command": "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
+      "available": true
+    }
+  ],
+  "closure_artifact_presence_summary": {
+    "status": "current",
+    "current": true,
+    "blockers": [],
+    "artifact_current_summary": {
+      "krd": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      },
+      "maturity": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      },
+      "business_owner_approval_template": {
+        "status": "present",
+        "current": true,
+        "current_blockers": []
+      },
+      "exact_bucket_schema_evidence": {
+        "status": "not_required",
+        "current": true,
+        "current_blockers": []
+      },
+      "nearest_bucket_approval_evidence": {
+        "status": "not_required",
+        "current": true,
+        "current_blockers": []
+      },
+      "maturity_scoped_exclusion_evidence": {
+        "status": "not_required",
+        "current": true,
+        "current_blockers": []
+      }
+    }
+  },
+  "risk_warning_clean_status": {
+    "status": "blocked",
+    "valid": false,
+    "decision_status": "blocked",
+    "decision_blockers": [
+      "risk_tensor_quality_warning",
+      "risk_tensor_warning_mismatch"
+    ],
+    "evidence_scope": {
+      "checks_warning_consistency": true,
+      "checks_risk_tensor_clean_state": true,
+      "captures_risk_owner_decision": false,
+      "remediates_source_data": false,
+      "approves_metric_or_page": false,
+      "writes_governance_records": false,
+      "captures_business_owner_approval": false,
+      "proves_full_score_closure": false,
+      "certification_effect": "none"
+    },
+    "warning_resolution_matrix": [
+      {
+        "warning_key": "krd_bucket_remap",
+        "owner": "risk_owner",
+        "current_status": "blocked",
+        "current_evidence": {
+          "parsed": [
+            "20Y",
+            "2Y",
+            "6M"
+          ],
+          "recomputed": [
+            "20Y",
+            "2Y",
+            "6M"
+          ]
+        },
+        "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+        "exit_criteria": "Risk owner approves nearest-bucket KRD mapping or supplies exact-bucket schema evidence; KRD review queue exits 0.",
+        "evidence_scope": {
+          "captures_owner_decision": false,
+          "remediates_source_data": false,
+          "approves_metric_or_page": false,
+          "certification_effect": "none"
+        }
+      },
+      {
+        "warning_key": "duration_denominator_exclusion",
+        "owner": "data_owner",
+        "current_status": "blocked",
+        "current_evidence": {
+          "parsed": {
+            "row_count": 120,
+            "market_value_sum": "38318400505.50000008",
+            "missing_maturity_rows": 114,
+            "nonpositive_duration_rows": 6
+          },
+          "recomputed": {
+            "row_count": 120,
+            "market_value_sum": "39109594105.50000008",
+            "missing_maturity_rows": 114,
+            "nonpositive_duration_rows": 6
+          }
+        },
+        "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+        "exit_criteria": "Data owner remediates missing maturity dates or captures signed scoped exclusion; maturity remediation queue exits 0.",
+        "evidence_scope": {
+          "captures_owner_decision": false,
+          "remediates_source_data": false,
+          "approves_metric_or_page": false,
+          "certification_effect": "none"
+        }
+      },
+      {
+        "warning_key": "bond_liquidity_gap_missing_maturity",
+        "owner": "data_owner",
+        "current_status": "blocked",
+        "current_evidence": {
+          "parsed": {
+            "missing_maturity_rows": 114
+          },
+          "recomputed": {
+            "missing_maturity_rows": 114
+          }
+        },
+        "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+        "exit_criteria": "Bond missing maturity rows are remediated or signed scoped exclusion evidence is captured; maturity remediation queue exits 0.",
+        "evidence_scope": {
+          "captures_owner_decision": false,
+          "remediates_source_data": false,
+          "approves_metric_or_page": false,
+          "certification_effect": "none"
+        }
+      },
+      {
+        "warning_key": "tyw_liability_gap_missing_maturity",
+        "owner": "data_owner",
+        "current_status": "blocked",
+        "current_evidence": {
+          "parsed": {
+            "missing_maturity_rows": 1455
+          },
+          "recomputed": {
+            "missing_maturity_rows": 1455
+          }
+        },
+        "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+        "exit_criteria": "TYW liability missing maturity rows are remediated or signed scoped exclusion evidence is captured; maturity remediation queue exits 0.",
+        "evidence_scope": {
+          "captures_owner_decision": false,
+          "remediates_source_data": false,
+          "approves_metric_or_page": false,
+          "certification_effect": "none"
+        }
+      }
+    ],
+    "duration_exclusion_delta_detail": {
+      "status": "mismatch",
+      "delta_basis": "recomputed_minus_parsed",
+      "owner_reconciliation_hint": "Recompute or rematerialize risk tensor warnings so parsed warning numbers match fact_formal_bond_analytics_daily evidence.",
+      "mismatch_fields": [
+        "market_value_sum"
+      ],
+      "delta": {
+        "row_count": 0,
+        "market_value_sum": "791193600.00000000",
+        "missing_maturity_rows": 0,
+        "nonpositive_duration_rows": 0
+      },
+      "parsed_warning_text": "120 rows carry market_value=38318400505.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+      "expected_warning_text_from_recomputed": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+      "recomputed_breakdown_by_reason": [
+        {
+          "exclusion_reason": "missing_maturity",
+          "row_count": 114,
+          "market_value_sum": "37622164239.83000008",
+          "dv01_sum": "0.00000000"
+        },
+        {
+          "exclusion_reason": "nonpositive_duration",
+          "row_count": 6,
+          "market_value_sum": "1487429865.67000000",
+          "dv01_sum": "0.00000000"
+        }
+      ],
+      "top_recomputed_rows_by_market_value": [
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0106070101",
+          "instrument_name": "010607",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "ffa8fb22-4d9a-4352-91fa-03eba25c98d5",
+          "market_value": "2103574090.74000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0207360101",
+          "instrument_name": "020736",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "c08602d6-94d4-4503-8f56-8b5cb39d8b4d",
+          "market_value": "1555799222.10000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0212890101",
+          "instrument_name": "021289",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "e02c9982-9e8f-49a3-8d9a-8b66927d737c",
+          "market_value": "1217040000.00000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0140760101",
+          "instrument_name": "014076",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "82c2529c-a5e7-4cca-95a2-7b9edfeff57e",
+          "market_value": "1026098973.90000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0214490101",
+          "instrument_name": "021449",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "8d088e0b-67ae-4fa5-91c0-237e2bd24647",
+          "market_value": "1023768578.80000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0224070201",
+          "instrument_name": "022407",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "53754425-7e33-476f-87d7-2e5c168ef00e",
+          "market_value": "1010728176.60000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0200600401",
+          "instrument_name": "020060",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "19bdb33a-0bf1-4bdf-8db8-c0dd37a3e65e",
+          "market_value": "1005401316.90000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0080280101",
+          "instrument_name": "008028",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "4aabbd8f-1ef0-47b2-aaf9-3478046921b2",
+          "market_value": "952243257.52000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0074960201",
+          "instrument_name": "007496",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "e25129e8-b268-44d5-97d1-01d04fcbb2a5",
+          "market_value": "695851116.86000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        },
+        {
+          "exclusion_reason": "missing_maturity",
+          "instrument_code": "SA0105010101",
+          "instrument_name": "010501",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "source_version": "sv_837e9f35fdda",
+          "trace_id": "a900350b-a16f-42e8-9a20-ecbea469af29",
+          "market_value": "650220357.61000000",
+          "maturity_date": null,
+          "modified_duration": "0.00000000",
+          "dv01": "0.00000000"
+        }
+      ]
+    },
+    "risk_tensor_rematerialization_preview": {
+      "status": "would_remain_blocked",
+      "preview_basis": "current_formal_facts_read_only",
+      "writes_database": false,
+      "approves_metric_or_page": false,
+      "certification_effect": "none",
+      "current_consistency_blockers": [
+        "duration_exclusion_warning_mismatch"
+      ],
+      "would_clear_consistency_blockers": [
+        "duration_exclusion_warning_mismatch"
+      ],
+      "preview_consistency_status": "consistent",
+      "preview_consistency_blockers": [],
+      "preview_quality_flag": "warning",
+      "preview_decision_status": "blocked",
+      "preview_decision_blockers": [
+        "risk_tensor_quality_warning"
+      ],
+      "preview_warnings": [
+        "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
+        "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "Excluded 114 rows without maturity_date from liquidity gap calculation.",
+        "Excluded 1455 liability rows without maturity_date from liquidity gap calculation."
+      ]
+    }
+  },
+  "business_owner_approval_boundary": {
+    "template_approval_captured": false,
+    "formal_authorization_allowed": false,
+    "governance_write_allowed": false,
+    "page_execution_proven": false,
+    "full_score_closure_ready": false,
+    "activation_ready": false,
+    "status": "pending_owner_input",
+    "blockers": [
+      "business_owner_approval_not_captured",
+      "scorecard_full_score_not_ready",
+      "scorecard_score_status_not_ready",
+      "owner_decision_intake_not_ready",
+      "risk_warning_not_clean"
+    ]
+  },
+  "owner_decision_intake_summary": {
+    "intake_status": "pending_owner_decisions",
+    "intake_ready": false,
+    "dependency_consistency_status": "consistent",
+    "dependency_csv_summary_alignment": {
+      "status": "consistent",
+      "blockers": []
+    },
+    "csv_check_summary": {
+      "krd_summary_row_count": 3,
+      "krd_detail_row_count": 500,
+      "krd_owner_decision_fields_blank": true,
+      "bond_missing_maturity_row_count": 114,
+      "tyw_liability_missing_maturity_row_count": 1455,
+      "maturity_owner_fields_blank": true
+    },
+    "generated_owner_fields_boundaries": {
+      "krd_contract_decision_manifest": true,
+      "maturity_remediation_manifest": true
+    },
+    "owner_input_boundary": {
+      "generated_export_owner_fields_must_be_blank": true,
+      "filled_owner_fields_are_owner_input_only": true,
+      "generated_export_system_fields_must_be_current": true,
+      "allowed_pre_intake_dependency_blockers": [
+        "krd_contract_decision_manifest_owner_decision_fields_not_blank",
+        "maturity_remediation_manifest_owner_fields_not_blank"
+      ],
+      "pre_intake_dependency_blockers": [],
+      "active_dependency_blockers": [],
+      "active_export_current_blockers": []
+    },
+    "export_current_summary": {
+      "krd": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      },
+      "maturity": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      }
+    },
+    "owner_decision_statuses": {
+      "risk_owner": "pending",
+      "data_owner": "pending",
+      "business_owner": "pending"
+    },
+    "owner_decision_blockers": [
+      "krd_owner_decision_missing",
+      "maturity_owner_decision_missing",
+      "business_owner_approval_missing"
+    ],
+    "decision_alignment": {
+      "status": "consistent",
+      "blockers": [],
+      "business_template_decisions": {
+        "krd_contract_decision": "<approve_nearest_bucket | require_exact_bucket_schema | reject>",
+        "maturity_data_decision": "<remediate_source | approve_scoped_exclusion | reject>"
+      },
+      "owner_csv_decisions": {
+        "krd": [],
+        "maturity": []
+      }
+    },
+    "decision_counts": {
+      "krd": {},
+      "maturity": {}
+    },
+    "decision_gap_counts": {
+      "krd": {
+        "missing_decision_rows": 503,
+        "summary_missing_decision_rows": 3,
+        "detail_missing_decision_rows": 500
+      },
+      "maturity": {
+        "missing_decision_rows": 1569,
+        "bond_missing_decision_rows": 114,
+        "tyw_liability_missing_decision_rows": 1455
+      }
+    },
+    "note_gap_counts": {
+      "krd": {},
+      "maturity": {}
+    },
+    "exact_bucket_schema_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
+      "valid": true,
+      "blockers": []
+    },
+    "nearest_bucket_approval_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
+      "valid": true,
+      "blockers": []
+    },
+    "maturity_scoped_exclusion_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
+      "valid": true,
+      "blockers": []
+    }
+  },
+  "scorecard_owner_decision_intake_gate_summary": {
+    "status": "pending",
+    "intake_status": "pending_owner_decisions",
+    "intake_ready": false,
+    "dependency_consistency_status": "consistent",
+    "dependency_csv_summary_alignment": {
+      "status": "consistent",
+      "blockers": []
+    },
+    "owner_input_boundary": {
+      "generated_export_owner_fields_must_be_blank": true,
+      "filled_owner_fields_are_owner_input_only": true,
+      "generated_export_system_fields_must_be_current": true,
+      "allowed_pre_intake_dependency_blockers": [
+        "krd_contract_decision_manifest_owner_decision_fields_not_blank",
+        "maturity_remediation_manifest_owner_fields_not_blank"
+      ],
+      "pre_intake_dependency_blockers": [],
+      "active_dependency_blockers": [],
+      "active_export_current_blockers": []
+    },
+    "export_current_summary": {
+      "krd": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      },
+      "maturity": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      }
+    },
+    "owner_decision_statuses": {
+      "risk_owner": "pending",
+      "data_owner": "pending",
+      "business_owner": "pending"
+    },
+    "blockers": [
+      "krd_owner_decision_missing",
+      "maturity_owner_decision_missing",
+      "business_owner_approval_missing"
+    ],
+    "decision_counts": {
+      "krd": {},
+      "maturity": {}
+    },
+    "decision_gap_counts": {
+      "krd": {
+        "missing_decision_rows": 503,
+        "summary_missing_decision_rows": 3,
+        "detail_missing_decision_rows": 500
+      },
+      "maturity": {
+        "missing_decision_rows": 1569,
+        "bond_missing_decision_rows": 114,
+        "tyw_liability_missing_decision_rows": 1455
+      }
+    },
+    "note_gap_counts": {
+      "krd": {},
+      "maturity": {}
+    },
+    "exact_bucket_schema_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
+      "valid": true,
+      "blockers": []
+    },
+    "nearest_bucket_approval_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
+      "valid": true,
+      "blockers": []
+    },
+    "maturity_scoped_exclusion_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
+      "valid": true,
+      "blockers": []
+    }
+  },
+  "owner_decision_intake_alignment": {
+    "status": "consistent",
+    "blockers": [],
+    "compared_fields": [
+      "intake_status",
+      "intake_ready",
+      "dependency_consistency_status",
+      "dependency_csv_summary_alignment",
+      "owner_input_boundary",
+      "export_current_summary",
+      "owner_decision_statuses",
+      "decision_counts",
+      "decision_gap_counts",
+      "note_gap_counts",
+      "exact_bucket_schema_evidence",
+      "nearest_bucket_approval_evidence",
+      "maturity_scoped_exclusion_evidence"
+    ]
+  },
+  "rerun_evidence_status": {
+    "status": "valid",
+    "artifact": "docs/portfolio/portfolio-home-evidence-snapshot.json",
+    "valid": true,
+    "blockers": []
+  },
+  "owner_decision_intake_command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+  "strict_gate_expectations": {
+    "current_state": "blocked",
+    "activation_state": "pending_owner_input",
+    "summary": "Current strict gates: expected to fail until owner decisions, maturity remediation/exclusion, and business approval are captured.",
+    "full_score_rule": "After owner updates: each strict gate below must exit 0 before `/portfolio` can claim full closure.",
+    "commands": [
+      {
+        "name": "owner_decision_intake_check_strict",
+        "command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+        "current_expected_exit": "exit_nonzero",
+        "expected_when_blocked": "exit_nonzero",
+        "expected_when_full_score": "exit_0"
+      },
+      {
+        "name": "business_owner_approval_packet_strict",
+        "command": "python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready",
+        "current_expected_exit": "exit_nonzero",
+        "expected_when_blocked": "exit_nonzero",
+        "expected_when_full_score": "exit_0"
+      },
+      {
+        "name": "scorecard_strict",
+        "command": "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+        "current_expected_exit": "exit_nonzero",
+        "expected_when_blocked": "exit_nonzero",
+        "expected_when_full_score": "exit_0"
+      }
+    ]
+  },
+  "assignment_coverage": {
+    "status": "clean",
+    "score_blockers": [
+      "risk_tensor_quality_warning",
+      "krd_contract_decision_required",
+      "bond_maturity_date_remediation_required",
+      "tyw_liability_maturity_date_remediation_required",
+      "duration_exclusion_warning_mismatch",
+      "risk_tensor_warning_mismatch",
+      "business_owner_approval",
+      "owner_decision_intake_blocked"
+    ],
+    "assigned_blockers": [
+      "risk_tensor_quality_warning",
+      "krd_contract_decision_required",
+      "bond_maturity_date_remediation_required",
+      "tyw_liability_maturity_date_remediation_required",
+      "duration_exclusion_warning_mismatch",
+      "risk_tensor_warning_mismatch",
+      "business_owner_approval",
+      "owner_decision_intake_blocked"
+    ],
+    "unassigned_blockers": [],
+    "duplicate_assigned_blockers": [],
+    "unexpected_assigned_blockers": []
+  },
+  "score_blocker_action_coverage": {
+    "status": "clean",
+    "blockers": [],
+    "unassigned_blockers": [],
+    "covered_blockers": [
+      "risk_tensor_quality_warning",
+      "krd_contract_decision_required",
+      "bond_maturity_date_remediation_required",
+      "tyw_liability_maturity_date_remediation_required",
+      "duration_exclusion_warning_mismatch",
+      "risk_tensor_warning_mismatch",
+      "business_owner_approval",
+      "owner_decision_intake_blocked"
+    ]
+  },
+  "blocker_closure_matrix_coverage": {
+    "status": "clean",
+    "expected_blockers": [
+      "risk_tensor_quality_warning",
+      "krd_contract_decision_required",
+      "bond_maturity_date_remediation_required",
+      "tyw_liability_maturity_date_remediation_required",
+      "duration_exclusion_warning_mismatch",
+      "risk_tensor_warning_mismatch",
+      "business_owner_approval",
+      "owner_decision_intake_blocked"
+    ],
+    "covered_blockers": [
+      "risk_tensor_quality_warning",
+      "krd_contract_decision_required",
+      "bond_maturity_date_remediation_required",
+      "tyw_liability_maturity_date_remediation_required",
+      "duration_exclusion_warning_mismatch",
+      "risk_tensor_warning_mismatch",
+      "business_owner_approval",
+      "owner_decision_intake_blocked"
+    ],
+    "missing_blockers": [],
+    "unexpected_blockers": [],
+    "duplicate_blockers": []
+  },
+  "blocker_closure_matrix": [
+    {
+      "blocker": "risk_tensor_quality_warning",
+      "owner": "risk_owner",
+      "current_blocker_present": true,
+      "status": "blocked",
+      "next_action": "Review the warning-consistency evidence, then rematerialize a clean risk tensor or keep the page candidate-only.",
+      "decision_artifacts": [],
+      "required_fields": [],
+      "recheck_commands": [
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+        "python scripts/portfolio_home_full_closure_evidence.py --require-clean"
+      ],
+      "exit_criteria": "Risk warning clean gate exits 0 and full-closure evidence no longer reports risk_tensor_quality_warning.",
+      "removes_blocker_when": "Risk tensor quality is clean for report_date 2026-05-31 and strict full-closure evidence no longer reports this blocker.",
+      "evidence_sources": [
+        {
+          "name": "risk_warning_consistency",
+          "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+          "fields": [
+            "parsed_warnings",
+            "recomputed_warnings",
+            "duration_exclusion_delta_detail",
+            "warning_resolution_matrix",
+            "decision_blockers"
+          ],
+          "boundary": "Evidence-only warning consistency check; does not approve the metric, clean the risk tensor, or close the page."
+        }
+      ]
+    },
+    {
+      "blocker": "krd_contract_decision_required",
+      "owner": "risk_owner",
+      "current_blocker_present": true,
+      "status": "blocked",
+      "next_action": "Approve nearest-bucket mappings for 2Y, 6M, and 20Y, or require an exact-bucket KRD schema/API update.",
+      "decision_artifacts": [
+        "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv",
+        "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv",
+        "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
+        "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json"
+      ],
+      "required_fields": [
+        "risk_owner_decision",
+        "decision_notes",
+        "risk_owner_name",
+        "risk_owner_approval_date",
+        "risk_owner_approved",
+        "business_owner_name",
+        "business_owner_acknowledgement_date",
+        "business_owner_acknowledged",
+        "metric_contract_decision_recorded",
+        "verification_rerun_matched",
+        "metric_contract_owner_name",
+        "metric_contract_update_date",
+        "metric_contract_updated",
+        "api_schema_owner_name",
+        "api_schema_update_date",
+        "api_schema_updated",
+        "risk_tensor_owner_name",
+        "risk_tensor_rematerialization_date",
+        "risk_tensor_rematerialized",
+        "verifier_name",
+        "verification_rerun_date"
+      ],
+      "recheck_commands": [
+        "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready"
+      ],
+      "exit_criteria": "KRD review queue exits 0 under the approved contract and the metric contract records the decision.",
+      "removes_blocker_when": "Risk-owner KRD decision is captured with notes for every scoped row, conditional nearest-bucket or exact-bucket evidence is valid when selected, and the KRD strict gate exits 0."
+    },
+    {
+      "blocker": "bond_maturity_date_remediation_required",
+      "owner": "data_owner",
+      "current_blocker_present": true,
+      "status": "blocked",
+      "next_action": "Remediate missing bond maturity_date values or capture a signed scoped exclusion before rematerialization.",
+      "decision_artifacts": [
+        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
+        "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json"
+      ],
+      "required_fields": [
+        "proposed_maturity_date",
+        "owner_decision",
+        "owner_comment",
+        "data_owner_name",
+        "data_owner_approval_date",
+        "data_owner_approved",
+        "risk_owner_name",
+        "risk_owner_countersign_date",
+        "risk_owner_countersigned",
+        "business_owner_name",
+        "business_owner_acknowledgement_date",
+        "business_owner_acknowledged",
+        "verification_rerun_matched"
+      ],
+      "recheck_commands": [
+        "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready"
+      ],
+      "exit_criteria": "Bond maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
+      "removes_blocker_when": "Bond missing-maturity rows are remediated at source or covered by a signed scoped exclusion evidence file, and the maturity strict gate exits 0."
+    },
+    {
+      "blocker": "tyw_liability_maturity_date_remediation_required",
+      "owner": "data_owner",
+      "current_blocker_present": true,
+      "status": "blocked",
+      "next_action": "Remediate missing TYW liability maturity_date values or capture a signed scoped exclusion before rematerialization.",
+      "decision_artifacts": [
+        "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
+        "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json"
+      ],
+      "required_fields": [
+        "proposed_maturity_date",
+        "owner_decision",
+        "owner_comment",
+        "data_owner_name",
+        "data_owner_approval_date",
+        "data_owner_approved",
+        "risk_owner_name",
+        "risk_owner_countersign_date",
+        "risk_owner_countersigned",
+        "business_owner_name",
+        "business_owner_acknowledgement_date",
+        "business_owner_acknowledged",
+        "verification_rerun_matched"
+      ],
+      "recheck_commands": [
+        "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready"
+      ],
+      "exit_criteria": "TYW liability maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
+      "removes_blocker_when": "TYW liability missing-maturity rows are remediated at source or covered by a signed scoped exclusion evidence file, and the maturity strict gate exits 0."
+    },
+    {
+      "blocker": "duration_exclusion_warning_mismatch",
+      "owner": "data_owner",
+      "current_blocker_present": true,
+      "status": "blocked",
+      "next_action": "Reconcile the recomputed duration-exclusion warning evidence with the risk tensor warning text before any full-score claim.",
+      "decision_artifacts": [],
+      "required_fields": [],
+      "recheck_commands": [
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+        "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty"
+      ],
+      "exit_criteria": "Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence.",
+      "removes_blocker_when": "Parsed and recomputed duration-exclusion warning evidence match, and risk warning consistency exits 0.",
+      "evidence_sources": [
+        {
+          "name": "risk_warning_consistency",
+          "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+          "fields": [
+            "parsed_warnings",
+            "recomputed_warnings",
+            "duration_exclusion_delta_detail",
+            "warning_resolution_matrix",
+            "decision_blockers"
+          ],
+          "boundary": "Evidence-only warning consistency check; does not approve the metric, clean the risk tensor, or close the page."
+        }
+      ]
+    },
+    {
+      "blocker": "risk_tensor_warning_mismatch",
+      "owner": "risk_owner",
+      "current_blocker_present": true,
+      "status": "blocked",
+      "next_action": "Reconcile risk tensor warning evidence and rematerialize the risk tensor or keep /portfolio candidate-only.",
+      "decision_artifacts": [],
+      "required_fields": [],
+      "recheck_commands": [
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+        "python scripts/portfolio_home_full_closure_evidence.py --require-clean"
+      ],
+      "exit_criteria": "Risk warning clean gate exits 0 with no risk tensor warning mismatch.",
+      "removes_blocker_when": "Risk tensor warning evidence is reconciled, cleanly rematerialized, and risk warning clean gate exits 0.",
+      "evidence_sources": [
+        {
+          "name": "risk_warning_consistency",
+          "command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+          "fields": [
+            "parsed_warnings",
+            "recomputed_warnings",
+            "duration_exclusion_delta_detail",
+            "warning_resolution_matrix",
+            "decision_blockers"
+          ],
+          "boundary": "Evidence-only warning consistency check; does not approve the metric, clean the risk tensor, or close the page."
+        }
+      ]
+    },
+    {
+      "blocker": "business_owner_approval",
+      "owner": "business_owner",
+      "current_blocker_present": true,
+      "status": "blocked",
+      "next_action": "Complete and sign the portfolio-home business owner approval template with risk-owner countersignature.",
+      "decision_artifacts": [
+        "docs/portfolio/portfolio-home-business-owner-approval-template.md"
+      ],
+      "required_fields": [
+        "approval_status",
+        "business_owner_name",
+        "risk_owner_name",
+        "approval_decision",
+        "approval_date",
+        "business_owner_signature",
+        "risk_owner_signature",
+        "krd_contract_decision",
+        "maturity_data_decision",
+        "risk_tensor_warning_decision",
+        "evidence_scope"
+      ],
+      "recheck_commands": [
+        "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
+        "python scripts/portfolio_home_business_owner_approval_packet.py --limit 3 --require-ready",
+        "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score"
+      ],
+      "exit_criteria": "Approval checker exits 0 and evidence_scope.approves_metric_or_page is true.",
+      "removes_blocker_when": "Business-owner approval is signed, risk-owner countersignature is present, evidence scope approves the page, and the full scorecard strict gate exits 0."
+    },
+    {
+      "blocker": "owner_decision_intake_blocked",
+      "owner": "business_owner",
+      "current_blocker_present": true,
+      "status": "blocked",
+      "next_action": "Reconcile risk-owner CSV decisions, nearest-bucket or exact-bucket evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval before full-score activation.",
+      "decision_artifacts": [
+        "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv",
+        "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv",
+        "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
+        "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
+        "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
+        "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
+        "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
+        "docs/portfolio/portfolio-home-business-owner-approval-template.md"
+      ],
+      "required_fields": [
+        "risk_owner_decision",
+        "decision_notes",
+        "risk_owner_name",
+        "risk_owner_approval_date",
+        "risk_owner_approved",
+        "business_owner_name",
+        "business_owner_acknowledgement_date",
+        "business_owner_acknowledged",
+        "metric_contract_decision_recorded",
+        "verification_rerun_matched",
+        "metric_contract_owner_name",
+        "metric_contract_update_date",
+        "metric_contract_updated",
+        "api_schema_owner_name",
+        "api_schema_update_date",
+        "api_schema_updated",
+        "risk_tensor_owner_name",
+        "risk_tensor_rematerialization_date",
+        "risk_tensor_rematerialized",
+        "verifier_name",
+        "verification_rerun_date",
+        "proposed_maturity_date",
+        "owner_decision",
+        "owner_comment",
+        "data_owner_name",
+        "data_owner_approval_date",
+        "data_owner_approved",
+        "risk_owner_countersign_date",
+        "risk_owner_countersigned",
+        "approval_status",
+        "approval_decision",
+        "approval_date",
+        "business_owner_signature",
+        "risk_owner_signature",
+        "krd_contract_decision",
+        "maturity_data_decision",
+        "risk_tensor_warning_decision",
+        "evidence_scope"
+      ],
+      "recheck_commands": [
+        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready"
+      ],
+      "exit_criteria": "Owner decision intake strict gate exits 0 and reports intake_ready=true.",
+      "removes_blocker_when": "Risk-owner CSV decisions, nearest-bucket or exact-bucket evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval are reconciled, and the owner decision intake strict gate exits 0."
+    }
+  ],
+  "owner_packets": {
+    "risk_owner": {
+      "status": "blocked",
+      "blockers": [
+        "risk_tensor_quality_warning",
+        "risk_tensor_warning_mismatch",
+        "krd_contract_decision_required"
+      ],
+      "actions": [
+        {
+          "blocker": "risk_tensor_quality_warning",
+          "owner": "risk_owner",
+          "next_action": "Review the warning-consistency evidence, then rematerialize a clean risk tensor or keep the page candidate-only.",
+          "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+          "exit_criteria": "Risk warning clean gate exits 0 and full-closure evidence no longer reports risk_tensor_quality_warning."
+        },
+        {
+          "blocker": "risk_tensor_warning_mismatch",
+          "owner": "risk_owner",
+          "next_action": "Reconcile risk tensor warning evidence and rematerialize the risk tensor or keep /portfolio candidate-only.",
+          "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+          "exit_criteria": "Risk warning clean gate exits 0 with no risk tensor warning mismatch."
+        },
+        {
+          "blocker": "krd_contract_decision_required",
+          "owner": "risk_owner",
+          "next_action": "Approve nearest-bucket mappings for 2Y, 6M, and 20Y, or require an exact-bucket KRD schema/API update.",
+          "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+          "exit_criteria": "KRD review queue exits 0 under the approved contract and the metric contract records the decision."
+        }
+      ],
+      "risk_tensor_quality_flag": "warning",
+      "risk_tensor_lineage": {
+        "source_version": "sv_risk_tensor__sv_837e9f35fdda__sv_67bf20398f44",
+        "upstream_source_version": "sv_837e9f35fdda",
+        "liability_source_version": "sv_67bf20398f44",
+        "rule_version": "rv_risk_tensor_formal_materialize_v2",
+        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
+        "trace_id": "trace_risk_tensor_20260531"
+      },
+      "risk_warning_decision_status": "blocked",
+      "risk_warning_evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+      "warning_resolution_matrix": [
+        {
+          "warning_key": "krd_bucket_remap",
+          "owner": "risk_owner",
+          "current_status": "blocked",
+          "current_evidence": {
+            "parsed": [
+              "20Y",
+              "2Y",
+              "6M"
+            ],
+            "recomputed": [
+              "20Y",
+              "2Y",
+              "6M"
+            ]
+          },
+          "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+          "exit_criteria": "Risk owner approves nearest-bucket KRD mapping or supplies exact-bucket schema evidence; KRD review queue exits 0.",
+          "evidence_scope": {
+            "captures_owner_decision": false,
+            "remediates_source_data": false,
+            "approves_metric_or_page": false,
+            "certification_effect": "none"
+          }
+        },
+        {
+          "warning_key": "duration_denominator_exclusion",
+          "owner": "data_owner",
+          "current_status": "blocked",
+          "current_evidence": {
+            "parsed": {
+              "row_count": 120,
+              "market_value_sum": "38318400505.50000008",
+              "missing_maturity_rows": 114,
+              "nonpositive_duration_rows": 6
+            },
+            "recomputed": {
+              "row_count": 120,
+              "market_value_sum": "39109594105.50000008",
+              "missing_maturity_rows": 114,
+              "nonpositive_duration_rows": 6
+            }
+          },
+          "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+          "exit_criteria": "Data owner remediates missing maturity dates or captures signed scoped exclusion; maturity remediation queue exits 0.",
+          "evidence_scope": {
+            "captures_owner_decision": false,
+            "remediates_source_data": false,
+            "approves_metric_or_page": false,
+            "certification_effect": "none"
+          }
+        },
+        {
+          "warning_key": "bond_liquidity_gap_missing_maturity",
+          "owner": "data_owner",
+          "current_status": "blocked",
+          "current_evidence": {
+            "parsed": {
+              "missing_maturity_rows": 114
+            },
+            "recomputed": {
+              "missing_maturity_rows": 114
+            }
+          },
+          "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+          "exit_criteria": "Bond missing maturity rows are remediated or signed scoped exclusion evidence is captured; maturity remediation queue exits 0.",
+          "evidence_scope": {
+            "captures_owner_decision": false,
+            "remediates_source_data": false,
+            "approves_metric_or_page": false,
+            "certification_effect": "none"
+          }
+        },
+        {
+          "warning_key": "tyw_liability_gap_missing_maturity",
+          "owner": "data_owner",
+          "current_status": "blocked",
+          "current_evidence": {
+            "parsed": {
+              "missing_maturity_rows": 1455
+            },
+            "recomputed": {
+              "missing_maturity_rows": 1455
+            }
+          },
+          "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+          "exit_criteria": "TYW liability missing maturity rows are remediated or signed scoped exclusion evidence is captured; maturity remediation queue exits 0.",
+          "evidence_scope": {
+            "captures_owner_decision": false,
+            "remediates_source_data": false,
+            "approves_metric_or_page": false,
+            "certification_effect": "none"
+          }
+        }
+      ],
+      "duration_exclusion_delta_detail": {
+        "status": "mismatch",
+        "delta_basis": "recomputed_minus_parsed",
+        "owner_reconciliation_hint": "Recompute or rematerialize risk tensor warnings so parsed warning numbers match fact_formal_bond_analytics_daily evidence.",
+        "mismatch_fields": [
+          "market_value_sum"
+        ],
+        "delta": {
+          "row_count": 0,
+          "market_value_sum": "791193600.00000000",
+          "missing_maturity_rows": 0,
+          "nonpositive_duration_rows": 0
+        },
+        "parsed_warning_text": "120 rows carry market_value=38318400505.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "expected_warning_text_from_recomputed": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "recomputed_breakdown_by_reason": [
+          {
+            "exclusion_reason": "missing_maturity",
+            "row_count": 114,
+            "market_value_sum": "37622164239.83000008",
+            "dv01_sum": "0.00000000"
+          },
+          {
+            "exclusion_reason": "nonpositive_duration",
+            "row_count": 6,
+            "market_value_sum": "1487429865.67000000",
+            "dv01_sum": "0.00000000"
+          }
+        ],
+        "top_recomputed_rows_by_market_value": [
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0106070101",
+            "instrument_name": "010607",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "ffa8fb22-4d9a-4352-91fa-03eba25c98d5",
+            "market_value": "2103574090.74000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0207360101",
+            "instrument_name": "020736",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "c08602d6-94d4-4503-8f56-8b5cb39d8b4d",
+            "market_value": "1555799222.10000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0212890101",
+            "instrument_name": "021289",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "e02c9982-9e8f-49a3-8d9a-8b66927d737c",
+            "market_value": "1217040000.00000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0140760101",
+            "instrument_name": "014076",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "82c2529c-a5e7-4cca-95a2-7b9edfeff57e",
+            "market_value": "1026098973.90000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0214490101",
+            "instrument_name": "021449",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "8d088e0b-67ae-4fa5-91c0-237e2bd24647",
+            "market_value": "1023768578.80000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0224070201",
+            "instrument_name": "022407",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "53754425-7e33-476f-87d7-2e5c168ef00e",
+            "market_value": "1010728176.60000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0200600401",
+            "instrument_name": "020060",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "19bdb33a-0bf1-4bdf-8db8-c0dd37a3e65e",
+            "market_value": "1005401316.90000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0080280101",
+            "instrument_name": "008028",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "4aabbd8f-1ef0-47b2-aaf9-3478046921b2",
+            "market_value": "952243257.52000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0074960201",
+            "instrument_name": "007496",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "e25129e8-b268-44d5-97d1-01d04fcbb2a5",
+            "market_value": "695851116.86000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0105010101",
+            "instrument_name": "010501",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "a900350b-a16f-42e8-9a20-ecbea469af29",
+            "market_value": "650220357.61000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          }
+        ]
+      },
+      "risk_tensor_rematerialization_preview": {
+        "status": "would_remain_blocked",
+        "preview_basis": "current_formal_facts_read_only",
+        "writes_database": false,
+        "approves_metric_or_page": false,
+        "certification_effect": "none",
+        "current_consistency_blockers": [
+          "duration_exclusion_warning_mismatch"
+        ],
+        "would_clear_consistency_blockers": [
+          "duration_exclusion_warning_mismatch"
+        ],
+        "preview_consistency_status": "consistent",
+        "preview_consistency_blockers": [],
+        "preview_quality_flag": "warning",
+        "preview_decision_status": "blocked",
+        "preview_decision_blockers": [
+          "risk_tensor_quality_warning"
+        ],
+        "preview_warnings": [
+          "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
+          "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+          "Excluded 114 rows without maturity_date from liquidity gap calculation.",
+          "Excluded 1455 liability rows without maturity_date from liquidity gap calculation."
+        ]
+      },
+      "dependency_consistency_status": "consistent",
+      "dependency_consistency_blockers": [],
+      "csv_check_summary": {
+        "krd_summary_row_count": 3,
+        "krd_detail_row_count": 500,
+        "krd_owner_decision_fields_blank": true,
+        "bond_missing_maturity_row_count": 114,
+        "tyw_liability_missing_maturity_row_count": 1455,
+        "maturity_owner_fields_blank": true
+      },
+      "generated_owner_fields_boundaries": {
+        "krd_contract_decision_manifest": true,
+        "maturity_remediation_manifest": true
+      },
+      "owner_decision_intake_alignment_status": "consistent",
+      "owner_decision_intake_alignment_blockers": [],
+      "decision_gap_counts": {
+        "missing_decision_rows": 503,
+        "summary_missing_decision_rows": 3,
+        "detail_missing_decision_rows": 500
+      },
+      "note_gap_counts": {},
+      "exact_bucket_schema_evidence": {
+        "status": "not_required",
+        "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
+        "valid": true,
+        "blockers": []
+      },
+      "nearest_bucket_approval_evidence": {
+        "status": "not_required",
+        "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
+        "valid": true,
+        "blockers": []
+      },
+      "decision_intake_artifacts": [
+        {
+          "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_summary.csv",
+          "required_fields": [
+            "risk_owner_decision",
+            "decision_notes"
+          ],
+          "allowed_decisions": [
+            "approve_nearest_bucket",
+            "require_exact_bucket_schema",
+            "reject"
+          ],
+          "note_required_for": [
+            "approve_nearest_bucket",
+            "require_exact_bucket_schema",
+            "reject"
+          ]
+        },
+        {
+          "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/krd_remap_detail.csv",
+          "required_fields": [
+            "risk_owner_decision",
+            "decision_notes"
+          ],
+          "allowed_decisions": [
+            "approve_nearest_bucket",
+            "require_exact_bucket_schema",
+            "reject"
+          ],
+          "note_required_for": [
+            "approve_nearest_bucket",
+            "require_exact_bucket_schema",
+            "reject"
+          ]
+        },
+        {
+          "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
+          "required_fields": [
+            "risk_owner_name",
+            "risk_owner_approval_date",
+            "risk_owner_approved",
+            "business_owner_name",
+            "business_owner_acknowledgement_date",
+            "business_owner_acknowledged",
+            "metric_contract_decision_recorded",
+            "verification_rerun_matched"
+          ],
+          "allowed_decisions": [
+            "approve_nearest_bucket"
+          ],
+          "note_required_for": []
+        },
+        {
+          "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
+          "required_fields": [
+            "metric_contract_owner_name",
+            "metric_contract_update_date",
+            "metric_contract_updated",
+            "api_schema_owner_name",
+            "api_schema_update_date",
+            "api_schema_updated",
+            "risk_tensor_owner_name",
+            "risk_tensor_rematerialization_date",
+            "risk_tensor_rematerialized",
+            "verifier_name",
+            "verification_rerun_date",
+            "verification_rerun_matched"
+          ],
+          "allowed_decisions": [
+            "require_exact_bucket_schema"
+          ],
+          "note_required_for": []
+        }
+      ],
+      "krd_contract_status": "decision_required",
+      "krd_decision_options": [
+        "approve_nearest_bucket",
+        "require_exact_bucket_schema",
+        "reject"
+      ],
+      "krd_remap_summary": [
+        {
+          "tenor_bucket": "20Y",
+          "all_rows": 39,
+          "nonzero_dv01_rows": 39,
+          "all_market_value": "22035562498.29000004",
+          "nonzero_dv01_market_value": "22035562498.29000004",
+          "dv01_sum": "23598290.06912522",
+          "mapped_to": "krd_30y",
+          "mapping_status": "mapped"
+        },
+        {
+          "tenor_bucket": "2Y",
+          "all_rows": 301,
+          "nonzero_dv01_rows": 301,
+          "all_market_value": "49917052613.80456000",
+          "nonzero_dv01_market_value": "49917052613.80456000",
+          "dv01_sum": "9195343.60983627",
+          "mapped_to": "krd_3y",
+          "mapping_status": "mapped"
+        },
+        {
+          "tenor_bucket": "6M",
+          "all_rows": 282,
+          "nonzero_dv01_rows": 160,
+          "all_market_value": "64091621413.82739210",
+          "nonzero_dv01_market_value": "24982027308.32739202",
+          "dv01_sum": "571392.61874547",
+          "mapped_to": "krd_1y",
+          "mapping_status": "mapped"
+        }
+      ],
+      "krd_sample_rows": [
+        {
+          "report_date": "2026-05-31",
+          "instrument_code": "200004",
+          "instrument_name": "20附息国债04",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "market_value": "6240774210.00000000",
+          "maturity_date": "2050-03-16",
+          "tenor_bucket": "20Y",
+          "dv01": "8246445.66600614",
+          "source_version": "sv_837e9f35fdda",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "3f678076-1d7c-49ec-847e-f280b25cef75",
+          "mapped_to": "krd_30y",
+          "mapping_status": "mapped"
+        },
+        {
+          "report_date": "2026-05-31",
+          "instrument_code": "2005399",
+          "instrument_name": "20山东债27",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "market_value": "2188949600.00000000",
+          "maturity_date": "2040-05-19",
+          "tenor_bucket": "20Y",
+          "dv01": "2009635.95767714",
+          "source_version": "sv_837e9f35fdda",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "06f6f3a3-d3c0-4c36-84bf-e2ac06a24fa9",
+          "mapped_to": "krd_30y",
+          "mapping_status": "mapped"
+        },
+        {
+          "report_date": "2026-05-31",
+          "instrument_code": "2005298",
+          "instrument_name": "20山东债23",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "market_value": "1397863942.00000000",
+          "maturity_date": "2040-04-13",
+          "tenor_bucket": "20Y",
+          "dv01": "1332277.08948445",
+          "source_version": "sv_837e9f35fdda",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "8fbdf8fd-8ebf-42ec-822e-65081c85e781",
+          "mapped_to": "krd_30y",
+          "mapping_status": "mapped"
+        }
+      ]
+    },
+    "data_owner": {
+      "status": "blocked",
+      "blockers": [
+        "bond_maturity_date_remediation_required",
+        "tyw_liability_maturity_date_remediation_required",
+        "duration_exclusion_warning_mismatch"
+      ],
+      "actions": [
+        {
+          "blocker": "bond_maturity_date_remediation_required",
+          "owner": "data_owner",
+          "next_action": "Remediate missing bond maturity_date values or capture a signed scoped exclusion before rematerialization.",
+          "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+          "exit_criteria": "Bond maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary."
+        },
+        {
+          "blocker": "tyw_liability_maturity_date_remediation_required",
+          "owner": "data_owner",
+          "next_action": "Remediate missing TYW liability maturity_date values or capture a signed scoped exclusion before rematerialization.",
+          "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+          "exit_criteria": "TYW liability maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary."
+        },
+        {
+          "blocker": "duration_exclusion_warning_mismatch",
+          "owner": "data_owner",
+          "next_action": "Reconcile the recomputed duration-exclusion warning evidence with the risk tensor warning text before any full-score claim.",
+          "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+          "exit_criteria": "Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence."
+        }
+      ],
+      "maturity_remediation_status": "blocked",
+      "risk_tensor_lineage": {
+        "source_version": "sv_risk_tensor__sv_837e9f35fdda__sv_67bf20398f44",
+        "upstream_source_version": "sv_837e9f35fdda",
+        "liability_source_version": "sv_67bf20398f44",
+        "rule_version": "rv_risk_tensor_formal_materialize_v2",
+        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
+        "trace_id": "trace_risk_tensor_20260531"
+      },
+      "duration_exclusion_delta_detail": {
+        "status": "mismatch",
+        "delta_basis": "recomputed_minus_parsed",
+        "owner_reconciliation_hint": "Recompute or rematerialize risk tensor warnings so parsed warning numbers match fact_formal_bond_analytics_daily evidence.",
+        "mismatch_fields": [
+          "market_value_sum"
+        ],
+        "delta": {
+          "row_count": 0,
+          "market_value_sum": "791193600.00000000",
+          "missing_maturity_rows": 0,
+          "nonpositive_duration_rows": 0
+        },
+        "parsed_warning_text": "120 rows carry market_value=38318400505.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "expected_warning_text_from_recomputed": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "recomputed_breakdown_by_reason": [
+          {
+            "exclusion_reason": "missing_maturity",
+            "row_count": 114,
+            "market_value_sum": "37622164239.83000008",
+            "dv01_sum": "0.00000000"
+          },
+          {
+            "exclusion_reason": "nonpositive_duration",
+            "row_count": 6,
+            "market_value_sum": "1487429865.67000000",
+            "dv01_sum": "0.00000000"
+          }
+        ],
+        "top_recomputed_rows_by_market_value": [
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0106070101",
+            "instrument_name": "010607",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "ffa8fb22-4d9a-4352-91fa-03eba25c98d5",
+            "market_value": "2103574090.74000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0207360101",
+            "instrument_name": "020736",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "c08602d6-94d4-4503-8f56-8b5cb39d8b4d",
+            "market_value": "1555799222.10000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0212890101",
+            "instrument_name": "021289",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "e02c9982-9e8f-49a3-8d9a-8b66927d737c",
+            "market_value": "1217040000.00000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0140760101",
+            "instrument_name": "014076",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "82c2529c-a5e7-4cca-95a2-7b9edfeff57e",
+            "market_value": "1026098973.90000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0214490101",
+            "instrument_name": "021449",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "8d088e0b-67ae-4fa5-91c0-237e2bd24647",
+            "market_value": "1023768578.80000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0224070201",
+            "instrument_name": "022407",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "53754425-7e33-476f-87d7-2e5c168ef00e",
+            "market_value": "1010728176.60000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0200600401",
+            "instrument_name": "020060",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "19bdb33a-0bf1-4bdf-8db8-c0dd37a3e65e",
+            "market_value": "1005401316.90000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0080280101",
+            "instrument_name": "008028",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "4aabbd8f-1ef0-47b2-aaf9-3478046921b2",
+            "market_value": "952243257.52000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0074960201",
+            "instrument_name": "007496",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "e25129e8-b268-44d5-97d1-01d04fcbb2a5",
+            "market_value": "695851116.86000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          },
+          {
+            "exclusion_reason": "missing_maturity",
+            "instrument_code": "SA0105010101",
+            "instrument_name": "010501",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "source_version": "sv_837e9f35fdda",
+            "trace_id": "a900350b-a16f-42e8-9a20-ecbea469af29",
+            "market_value": "650220357.61000000",
+            "maturity_date": null,
+            "modified_duration": "0.00000000",
+            "dv01": "0.00000000"
+          }
+        ]
+      },
+      "risk_tensor_rematerialization_preview": {
+        "status": "would_remain_blocked",
+        "preview_basis": "current_formal_facts_read_only",
+        "writes_database": false,
+        "approves_metric_or_page": false,
+        "certification_effect": "none",
+        "current_consistency_blockers": [
+          "duration_exclusion_warning_mismatch"
+        ],
+        "would_clear_consistency_blockers": [
+          "duration_exclusion_warning_mismatch"
+        ],
+        "preview_consistency_status": "consistent",
+        "preview_consistency_blockers": [],
+        "preview_quality_flag": "warning",
+        "preview_decision_status": "blocked",
+        "preview_decision_blockers": [
+          "risk_tensor_quality_warning"
+        ],
+        "preview_warnings": [
+          "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
+          "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+          "Excluded 114 rows without maturity_date from liquidity gap calculation.",
+          "Excluded 1455 liability rows without maturity_date from liquidity gap calculation."
+        ]
+      },
+      "dependency_consistency_status": "consistent",
+      "dependency_consistency_blockers": [],
+      "csv_check_summary": {
+        "krd_summary_row_count": 3,
+        "krd_detail_row_count": 500,
+        "krd_owner_decision_fields_blank": true,
+        "bond_missing_maturity_row_count": 114,
+        "tyw_liability_missing_maturity_row_count": 1455,
+        "maturity_owner_fields_blank": true
+      },
+      "generated_owner_fields_boundaries": {
+        "krd_contract_decision_manifest": true,
+        "maturity_remediation_manifest": true
+      },
+      "owner_decision_intake_alignment_status": "consistent",
+      "owner_decision_intake_alignment_blockers": [],
+      "decision_gap_counts": {
+        "missing_decision_rows": 1569,
+        "bond_missing_decision_rows": 114,
+        "tyw_liability_missing_decision_rows": 1455
+      },
+      "comment_gap_counts": {},
+      "scoped_exclusion_evidence": {
+        "status": "not_required",
+        "artifact": "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
+        "valid": true,
+        "blockers": []
+      },
+      "decision_intake_artifacts": [
+        {
+          "artifact": "docs/portfolio/maturity-remediation/2026-05-31/bond_missing_maturity.csv",
+          "required_fields": [
+            "proposed_maturity_date",
+            "owner_decision",
+            "owner_comment"
+          ],
+          "allowed_decisions": [
+            "remediate_source",
+            "approve_scoped_exclusion",
+            "reject"
+          ],
+          "note_required_for": [
+            "remediate_source",
+            "approve_scoped_exclusion",
+            "reject"
+          ]
+        },
+        {
+          "artifact": "docs/portfolio/maturity-remediation/2026-05-31/tyw_liability_missing_maturity.csv",
+          "required_fields": [
+            "proposed_maturity_date",
+            "owner_decision",
+            "owner_comment"
+          ],
+          "allowed_decisions": [
+            "remediate_source",
+            "approve_scoped_exclusion",
+            "reject"
+          ],
+          "note_required_for": [
+            "remediate_source",
+            "approve_scoped_exclusion",
+            "reject"
+          ]
+        },
+        {
+          "artifact": "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
+          "required_fields": [
+            "data_owner_name",
+            "data_owner_approval_date",
+            "data_owner_approved",
+            "risk_owner_name",
+            "risk_owner_countersign_date",
+            "risk_owner_countersigned",
+            "business_owner_name",
+            "business_owner_acknowledgement_date",
+            "business_owner_acknowledged",
+            "verification_rerun_matched"
+          ],
+          "allowed_decisions": [
+            "approve_scoped_exclusion"
+          ],
+          "note_required_for": []
+        }
+      ],
+      "remediation_scope": {
+        "bond_queue": "fact_formal_bond_analytics_daily rows where maturity_date is null",
+        "tyw_liability_queue": "fact_formal_tyw_balance_daily liability CNY rows where maturity_date is null"
+      },
+      "bond_missing_maturity_summary": {
+        "row_count": 1710,
+        "missing_maturity_rows": 114,
+        "missing_maturity_market_value": "37622164239.83000008"
+      },
+      "tyw_liability_missing_maturity_summary": {
+        "row_count": 3071,
+        "missing_maturity_rows": 1455,
+        "missing_maturity_principal": "43822652393.01000002"
+      },
+      "bond_missing_maturity_rows": [
+        {
+          "report_date": "2026-05-31",
+          "instrument_code": "SA0106070101",
+          "instrument_name": "010607",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "market_value": "2103574090.74000000",
+          "dv01": "0E-8",
+          "tenor_bucket": "6M",
+          "source_version": "sv_837e9f35fdda",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "ffa8fb22-4d9a-4352-91fa-03eba25c98d5"
+        },
+        {
+          "report_date": "2026-05-31",
+          "instrument_code": "SA0207360101",
+          "instrument_name": "020736",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "market_value": "1555799222.10000000",
+          "dv01": "0E-8",
+          "tenor_bucket": "6M",
+          "source_version": "sv_837e9f35fdda",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "c08602d6-94d4-4503-8f56-8b5cb39d8b4d"
+        },
+        {
+          "report_date": "2026-05-31",
+          "instrument_code": "SA0212890101",
+          "instrument_name": "021289",
+          "portfolio_name": "FIOA",
+          "cost_center": "5010",
+          "market_value": "1217040000.00000000",
+          "dv01": "0E-8",
+          "tenor_bucket": "6M",
+          "source_version": "sv_837e9f35fdda",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "e02c9982-9e8f-49a3-8d9a-8b66927d737c"
+        }
+      ],
+      "tyw_liability_missing_maturity_rows": [
+        {
+          "report_date": "2026-05-31",
+          "position_id": "802010201929379",
+          "product_type": "同业存放",
+          "position_side": "liability",
+          "counterparty_name": "中信信托有限责任公司",
+          "position_scope": "liability",
+          "currency_basis": "CNY",
+          "principal_amount": "5936179478.40000000",
+          "funding_cost_rate": "1.40000000",
+          "source_version": "sv_67bf20398f44",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "5201ad34-40fe-4656-8e52-f323176bc3af"
+        },
+        {
+          "report_date": "2026-05-31",
+          "position_id": "802010201895068",
+          "product_type": "同业存放",
+          "position_side": "liability",
+          "counterparty_name": "兴业银行股份有限公司青岛分行",
+          "position_scope": "liability",
+          "currency_basis": "CNY",
+          "principal_amount": "2500000000.00000000",
+          "funding_cost_rate": "1.45000000",
+          "source_version": "sv_67bf20398f44",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "3c207177-865e-43bb-b65d-e1deeded4c69"
+        },
+        {
+          "report_date": "2026-05-31",
+          "position_id": "802010201960657",
+          "product_type": "同业存放",
+          "position_side": "liability",
+          "counterparty_name": "上银理财有限责任公司",
+          "position_scope": "liability",
+          "currency_basis": "CNY",
+          "principal_amount": "1455500000.00000000",
+          "funding_cost_rate": "1.21000000",
+          "source_version": "sv_67bf20398f44",
+          "rule_version": "rv_snapshot_zqtz_tyw_v1",
+          "ingest_batch_id": "ib_51590b6e9113",
+          "trace_id": "cb897a2b-57b1-4c9d-b76f-b7cd4851e104"
+        }
+      ]
+    },
+    "business_owner": {
+      "status": "blocked",
+      "blockers": [
+        "business_owner_approval",
+        "owner_decision_intake_blocked"
+      ],
+      "actions": [
+        {
+          "blocker": "business_owner_approval",
+          "owner": "business_owner",
+          "next_action": "Complete and sign the portfolio-home business owner approval template with risk-owner countersignature.",
+          "evidence_command": "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
+          "exit_criteria": "Approval checker exits 0 and evidence_scope.approves_metric_or_page is true."
+        },
+        {
+          "blocker": "owner_decision_intake_blocked",
+          "owner": "business_owner",
+          "next_action": "Reconcile risk-owner CSV decisions, nearest-bucket or exact-bucket evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval before full-score activation.",
+          "evidence_command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+          "exit_criteria": "Owner decision intake strict gate exits 0 and reports intake_ready=true."
+        }
+      ],
+      "approval_status": "pending",
+      "dependency_consistency_status": "consistent",
+      "dependency_consistency_blockers": [],
+      "csv_check_summary": {
+        "krd_summary_row_count": 3,
+        "krd_detail_row_count": 500,
+        "krd_owner_decision_fields_blank": true,
+        "bond_missing_maturity_row_count": 114,
+        "tyw_liability_missing_maturity_row_count": 1455,
+        "maturity_owner_fields_blank": true
+      },
+      "generated_owner_fields_boundaries": {
+        "krd_contract_decision_manifest": true,
+        "maturity_remediation_manifest": true
+      },
+      "owner_decision_intake_alignment_status": "consistent",
+      "owner_decision_intake_alignment_blockers": [],
+      "decision_intake_artifacts": [
+        {
+          "artifact": "docs/portfolio/portfolio-home-business-owner-approval-template.md",
+          "required_fields": [
+            "approval_status",
+            "business_owner_name",
+            "risk_owner_name",
+            "approval_decision",
+            "approval_date",
+            "business_owner_signature",
+            "risk_owner_signature",
+            "krd_contract_decision",
+            "maturity_data_decision",
+            "risk_tensor_warning_decision",
+            "evidence_scope"
+          ],
+          "allowed_decisions": [
+            "approve"
+          ],
+          "note_required_for": [
+            "approve_nearest_bucket",
+            "approve_scoped_exclusion",
+            "reject",
+            "request_changes"
+          ]
+        }
+      ],
+      "formal_use_allowed": false,
+      "closure_approved": false,
+      "approval_field_status": {
+        "business_owner_name": "missing",
+        "business_owner_role": "missing",
+        "risk_owner_name": "missing",
+        "risk_owner_role": "missing",
+        "approval_decision": "missing",
+        "approval_date": "missing",
+        "business_owner_signature": "missing",
+        "risk_owner_signature": "missing",
+        "reviewed_signoff_packet": "valid",
+        "reviewed_audit_packet": "valid",
+        "krd_contract_decision": "missing",
+        "maturity_data_decision": "missing",
+        "risk_tensor_warning_decision": "missing",
+        "governance_record_review": "pending",
+        "portfolio_sample_review": "pending",
+        "risk_warning_sample_review": "pending",
+        "live_proof_review": "pending",
+        "duckdb_maturity_gap_review": "pending",
+        "krd_remap_evidence_review": "pending",
+        "verification_commands_rerun": "pending",
+        "candidate_boundary_acceptance": "pending",
+        "decision_notes": "not_required",
+        "formal_use_allowed": "valid",
+        "closure_approved": "valid",
+        "evidence_scope_approves_metric_or_page": "valid",
+        "evidence_scope_writes_governance_records": "valid",
+        "evidence_scope_proves_capture_ready_page_execution": "valid",
+        "evidence_scope_captures_business_owner_approval": "valid",
+        "evidence_scope_certification_effect": "valid"
+      },
+      "approval_action_item_count": 19,
+      "approval_action_items": [
+        {
+          "blocker": "business_owner_name",
+          "template_field": "Business owner name",
+          "required_value": "Business owner legal or operating name",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "business_owner_role",
+          "template_field": "Business owner role",
+          "required_value": "Business owner accountability role",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "risk_owner_name",
+          "template_field": "Risk owner name",
+          "required_value": "Risk owner legal or operating name",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "risk_owner_role",
+          "template_field": "Risk owner role",
+          "required_value": "Risk owner accountability role",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "approval_decision",
+          "template_field": "Approval decision",
+          "required_value": "approve",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "approval_date",
+          "template_field": "Approval date",
+          "required_value": "YYYY-MM-DD",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "business_owner_signature",
+          "template_field": "Business owner signature",
+          "required_value": "Business owner signature",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "risk_owner_signature",
+          "template_field": "Risk owner signature",
+          "required_value": "Risk owner signature",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "krd_contract_decision",
+          "template_field": "KRD contract decision",
+          "required_value": "approve_nearest_bucket, require_exact_bucket_schema, or reject",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "maturity_data_decision",
+          "template_field": "Maturity data decision",
+          "required_value": "remediate_source, approve_scoped_exclusion, or reject",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "risk_tensor_warning_decision",
+          "template_field": "Risk tensor warning decision",
+          "required_value": "keep_warning or approve_after_clean_rerun",
+          "current_status": "missing"
+        },
+        {
+          "blocker": "governance_record_review",
+          "template_field": "- Governance record reviewed",
+          "required_value": "yes",
+          "current_status": "pending"
+        },
+        {
+          "blocker": "portfolio_sample_review",
+          "template_field": "- Supporting sample `GS-PORTFOLIO-HOME-A` reviewed",
+          "required_value": "yes",
+          "current_status": "pending"
+        },
+        {
+          "blocker": "risk_warning_sample_review",
+          "template_field": "- Risk warning sample `GS-RISK-WARN-B` reviewed",
+          "required_value": "yes",
+          "current_status": "pending"
+        },
+        {
+          "blocker": "live_proof_review",
+          "template_field": "- Live proof reviewed",
+          "required_value": "yes",
+          "current_status": "pending"
+        },
+        {
+          "blocker": "duckdb_maturity_gap_review",
+          "template_field": "- DuckDB maturity-gap evidence reviewed",
+          "required_value": "yes",
+          "current_status": "pending"
+        },
+        {
+          "blocker": "krd_remap_evidence_review",
+          "template_field": "- KRD remap evidence reviewed",
+          "required_value": "yes",
+          "current_status": "pending"
+        },
+        {
+          "blocker": "verification_commands_rerun",
+          "template_field": "- Verification commands rerun before approval",
+          "required_value": "yes",
+          "current_status": "pending"
+        },
+        {
+          "blocker": "candidate_boundary_acceptance",
+          "template_field": "- Candidate-only boundary accepted",
+          "required_value": "yes",
+          "current_status": "pending"
+        }
+      ],
+      "evidence_scope": {
+        "approves_metric_or_page": false,
+        "writes_governance_records": false,
+        "proves_capture_ready_page_execution": false,
+        "captures_business_owner_approval": false,
+        "certification_effect": "none"
+      },
+      "business_owner_approval_boundary": {
+        "template_approval_captured": false,
+        "formal_authorization_allowed": false,
+        "governance_write_allowed": false,
+        "page_execution_proven": false,
+        "full_score_closure_ready": false,
+        "activation_ready": false,
+        "status": "pending_owner_input",
+        "blockers": [
+          "business_owner_approval_not_captured",
+          "scorecard_full_score_not_ready",
+          "scorecard_score_status_not_ready",
+          "owner_decision_intake_not_ready",
+          "risk_warning_not_clean"
+        ]
+      },
+      "activation_guard": {
+        "no_automatic_approval": true,
+        "partial_activation_invalid": true,
+        "partial_owner_evidence_activation_invalid": true,
+        "strict_scorecard_required": true,
+        "dependency_consistency_required": true,
+        "owner_decision_intake_required": true,
+        "owner_decision_intake_alignment_required": true,
+        "score_blocker_action_coverage_required": true,
+        "rerun_evidence_required": true,
+        "risk_warning_clean_required": true,
+        "closure_artifact_presence_required": true,
+        "activation_ready": false,
+        "required_commands": [
+          "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+          "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
+          "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched",
+          "python scripts/portfolio_home_owner_action_packet.py --limit 3 --require-clean",
+          "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+          "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent",
+          "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+          "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current",
+          "python scripts/portfolio_home_evidence_packet_guard.py --require-clean",
+          "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched --output docs/portfolio/portfolio-home-evidence-snapshot.json"
+        ]
+      }
+    }
+  }
+}

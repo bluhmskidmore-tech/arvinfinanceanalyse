@@ -20,26 +20,20 @@ describe("BondAnalyticsMarketContextStrip", () => {
 
     render(
       <BondAnalyticsMarketContextStrip
-        reportDate="2026-03-31"
-        periodType="MoM"
         leadModuleLabel="动作归因"
-        leadPromotionLabel="可进入头条"
+        leadPromotionLabel="可进入下钻"
         truthStrip={truthStrip}
       />,
     );
 
     expect(screen.getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
-    expect(screen.getByText("债券分析驾驶舱")).toBeInTheDocument();
-    expect(screen.getByText("债券分析")).toBeInTheDocument();
-    expect(screen.getByText("受治理首页")).toBeInTheDocument();
+    expect(screen.getByText("真值与证据")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "债券分析" })).not.toBeInTheDocument();
 
-    expect(screen.getByText("报告日")).toBeInTheDocument();
-    expect(screen.getByText("2026-03-31")).toBeInTheDocument();
-    expect(screen.getByText("期间")).toBeInTheDocument();
-    expect(screen.getByText("月度环比")).toBeInTheDocument();
-    expect(screen.getByText("下钻主线")).toBeInTheDocument();
-    expect(screen.getByText("动作归因")).toBeInTheDocument();
-    expect(screen.getByText("可进入头条")).toBeInTheDocument();
+    const leadModule = screen.getByTestId("bond-analysis-lead-module");
+    expect(within(leadModule).getByText("下钻主线")).toBeInTheDocument();
+    expect(within(leadModule).getByText("动作归因")).toBeInTheDocument();
+    expect(within(leadModule).getByText("可进入下钻")).toBeInTheDocument();
 
     const strip = screen.getByTestId("bond-analysis-truth-strip");
     expect(within(strip).getByText("口径")).toBeInTheDocument();

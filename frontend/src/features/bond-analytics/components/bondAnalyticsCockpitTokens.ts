@@ -144,7 +144,7 @@ export function promotionLabel(destination: BondAnalyticsPromotionDestination) {
 export function readinessStatusLabel(statusLabel: string) {
   const labels: Record<string, string> = {
     loading: "加载中",
-    "request-error": "请求失败",
+    "request-error": "暂不可用",
     pending: "待加载",
     eligible: "可提升",
     "placeholder-blocked": "占位阻止",

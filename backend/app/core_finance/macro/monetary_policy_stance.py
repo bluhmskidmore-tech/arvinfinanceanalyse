@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from math import sqrt
-from typing import Any, Iterable
+from typing import Any
 
 from .helpers import (
     available_dates,
@@ -11,6 +12,7 @@ from .helpers import (
     clamp,
     first_available_rate,
     get_curve_rate,
+    latest_available_rate_on_or_before,
 )
 
 _TWENTY_ONE = 21
@@ -112,15 +114,19 @@ def compute_monetary_policy_stance(
 
     current_date = dates[0]
     warnings: list[str] = []
-    current_curves = curves_by_date[current_date]
+    _ = curves_by_date[current_date]
 
-    policy_curve_id, policy_tenor, policy_rate = first_available_rate(
+    policy_curve_id, policy_tenor, policy_rate, policy_rate_date = latest_available_rate_on_or_before(
         curves_by_date,
         current_date,
         [("CN_RRP", "7D"), ("CN_REPO", "7D"), ("CN_GC", "7D")],
     )
     if policy_rate is None:
         warnings.append("POLICY_RATE_7D_MISSING")
+    elif policy_rate_date is not None and policy_rate_date < current_date:
+        stale_days = (current_date - policy_rate_date).days
+        if stale_days > 90:
+            warnings.append("POLICY_RATE_7D_STALE")
 
     _, _, dr007 = first_available_rate(curves_by_date, current_date, [("CN_DR", "7D")])
     if dr007 is None:
@@ -298,6 +304,7 @@ def compute_monetary_policy_stance(
         "key_metrics": {
             "policy_rate_curve_id": policy_curve_id,
             "policy_rate_tenor": policy_tenor,
+            "policy_rate_as_of_date": policy_rate_date.isoformat() if policy_rate_date is not None else None,
             "policy_rate_7d": _round(policy_rate) if policy_rate is not None else None,
             "dr007": _round(dr007) if dr007 is not None else None,
             "mlf_1y": _round(mlf_rate) if mlf_rate is not None else None,

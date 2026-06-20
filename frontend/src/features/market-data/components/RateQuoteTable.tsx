@@ -3,82 +3,77 @@ import { Table, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import type {
+  MarketCurveFilter,
+  MarketDataRateQuoteRow,
+  MarketDataRateQuoteSection,
+  MarketSourceFilter,
+} from "../lib/marketDataTerminalModel";
+import { filterRateQuoteRows } from "../lib/marketDataTerminalModel";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
-type CurveKind = "treasury" | "cdb";
-
-type RateQuoteRow = {
-  key: string;
-  variety: string;
-  tenor: string;
-  ratePct: string;
-  deltaBp: number;
-  volume: number;
-  range: string;
-};
-
-const TREASURY_ROWS: RateQuoteRow[] = [
-  { key: "t1", variety: "国债", tenor: "1Y", ratePct: "1.78%", deltaBp: -2.0, volume: 1245, range: "1.76-1.80" },
-  { key: "t2", variety: "国债", tenor: "3Y", ratePct: "1.95%", deltaBp: -1.8, volume: 2163, range: "1.93-1.99" },
-  { key: "t3", variety: "国债", tenor: "5Y", ratePct: "2.15%", deltaBp: -1.5, volume: 3512, range: "2.13-2.18" },
-  { key: "t4", variety: "国债", tenor: "7Y", ratePct: "2.08%", deltaBp: -1.3, volume: 2890, range: "2.06-2.11" },
-  { key: "t5", variety: "国债", tenor: "10Y", ratePct: "1.94%", deltaBp: -1.2, volume: 4856, range: "1.92-1.96" },
-];
-
-const CDB_ROWS: RateQuoteRow[] = [
-  { key: "c1", variety: "国开", tenor: "1Y", ratePct: "1.85%", deltaBp: -1.5, volume: 842, range: "1.83-1.87" },
-  { key: "c2", variety: "国开", tenor: "3Y", ratePct: "2.02%", deltaBp: -1.4, volume: 1532, range: "2.00-2.05" },
-  { key: "c3", variety: "国开", tenor: "5Y", ratePct: "2.18%", deltaBp: -1.2, volume: 2988, range: "2.16-2.21" },
-  { key: "c4", variety: "国开", tenor: "7Y", ratePct: "2.12%", deltaBp: -1.0, volume: 1766, range: "2.10-2.15" },
-  { key: "c5", variety: "国开", tenor: "10Y", ratePct: "2.05%", deltaBp: -0.9, volume: 4102, range: "2.03-2.08" },
-];
-
-function deltaBpColor(bp: number) {
-  if (bp < 0) {
+function deltaTextColor(value: string) {
+  if (value.startsWith("-")) {
     return designTokens.color.semantic.up;
   }
-  if (bp > 0) {
+  if (value.startsWith("+")) {
     return designTokens.color.semantic.loss;
   }
   return designTokens.color.neutral[800];
 }
 
-export function RateQuoteTable() {
-  const [curve, setCurve] = useState<CurveKind>("treasury");
-  const dataSource = curve === "treasury" ? TREASURY_ROWS : CDB_ROWS;
+function sourceSummary(model: MarketDataRateQuoteSection) {
+  if (!model.source) {
+    return "来源待确认";
+  }
+  return `口径 ${model.source.basis} · 质量 ${model.source.qualityFlag} · 降级 ${model.source.fallbackMode} · ${model.source.sourceVersion}`;
+}
 
-  const columns: ColumnsType<RateQuoteRow> = useMemo(
+export function RateQuoteTable({
+  model,
+  curveFilter = "both",
+  sourceFilter = "all",
+  catalogVendorNames,
+}: {
+  model: MarketDataRateQuoteSection;
+  curveFilter?: MarketCurveFilter;
+  sourceFilter?: MarketSourceFilter;
+  catalogVendorNames?: ReadonlyMap<string, string>;
+}) {
+  const [localCurve, setLocalCurve] = useState<"treasury" | "cdb">("treasury");
+  const showCurveTabs = curveFilter === "both";
+  const activeCurve: "treasury" | "cdb" =
+    curveFilter === "both" ? localCurve : curveFilter === "cdb" ? "cdb" : "treasury";
+  const dataSource = filterRateQuoteRows(model.rows, activeCurve, sourceFilter, catalogVendorNames);
+
+  const columns: ColumnsType<MarketDataRateQuoteRow> = useMemo(
     () => [
-      { title: "品种", dataIndex: "variety", key: "variety", width: 72 },
+      { title: "品种", dataIndex: "variety", key: "variety", width: 64 },
       { title: "期限", dataIndex: "tenor", key: "tenor", width: 56 },
+      { title: "指标", dataIndex: "seriesName", key: "seriesName", ellipsis: true },
       {
-        title: "利率%",
-        dataIndex: "ratePct",
-        key: "ratePct",
+        title: "利率",
+        dataIndex: "rateText",
+        key: "rateText",
         align: "right",
-        width: 88,
+        width: 76,
         render: (v: string) => <span style={tabularNumsStyle}>{v}</span>,
       },
       {
-        title: "涨跌bp",
-        dataIndex: "deltaBp",
-        key: "deltaBp",
+        title: "变动",
+        dataIndex: "deltaText",
+        key: "deltaText",
         align: "right",
-        width: 88,
-        render: (v: number) => (
-          <span style={{ color: deltaBpColor(v), ...tabularNumsStyle }}>
-            {v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}
+        width: 80,
+        render: (v: string) => (
+          <span style={{ color: deltaTextColor(v), ...tabularNumsStyle }}>
+            {v}
           </span>
         ),
       },
-      {
-        title: "成交量",
-        dataIndex: "volume",
-        key: "volume",
-        align: "right",
-        render: (v: number) => <span style={tabularNumsStyle}>{v.toLocaleString()}</span>,
-      },
-      { title: "区间", dataIndex: "range", key: "range", ellipsis: true },
+      { title: "交易日", dataIndex: "tradeDate", key: "tradeDate", width: 104 },
+      { title: "来源", dataIndex: "sourceVersion", key: "sourceVersion", ellipsis: true },
+      { title: "序列", dataIndex: "seriesId", key: "seriesId", ellipsis: true },
     ],
     [],
   );
@@ -86,23 +81,40 @@ export function RateQuoteTable() {
   return (
     <section data-testid="market-data-rate-quote-table" style={marketDataPanelStyle}>
       <h2 style={marketDataBlockTitleStyle}>利率行情</h2>
-      <Tabs
-        size="small"
-        activeKey={curve}
-        onChange={(k) => setCurve(k as CurveKind)}
-        items={[
-          { key: "treasury", label: "国债" },
-          { key: "cdb", label: "国开" },
-        ]}
-      />
-      <Table<RateQuoteRow>
-        size="small"
-        pagination={false}
-        columns={columns}
-        dataSource={dataSource}
-        rowKey="key"
-        scroll={{ x: true }}
-      />
+      <p className="market-data-terminal-source">{sourceSummary(model)}</p>
+      {showCurveTabs ? (
+        <Tabs
+          size="small"
+          activeKey={activeCurve}
+          onChange={(key) => setLocalCurve(key as "treasury" | "cdb")}
+          items={[
+            { key: "treasury", label: "国债" },
+            { key: "cdb", label: "国开" },
+          ]}
+        />
+      ) : (
+        <div className="market-data-terminal-curve-lock" data-testid="market-data-rate-curve-lock">
+          {curveFilter === "treasury" ? "国债曲线" : "国开曲线"}
+        </div>
+      )}
+      {model.status === "ready" && dataSource.length > 0 ? (
+        <Table<MarketDataRateQuoteRow>
+          size="small"
+          pagination={false}
+          columns={columns}
+          dataSource={dataSource}
+          rowKey="key"
+          scroll={{ x: true }}
+        />
+      ) : model.status === "ready" ? (
+        <div data-testid="market-data-rate-quotes-filter-empty" className="market-data-terminal-empty">
+          当前曲线/来源筛选下无利率序列。
+        </div>
+      ) : (
+        <div data-testid="market-data-rate-quotes-empty" className="market-data-terminal-empty">
+          {model.emptyReason}
+        </div>
+      )}
     </section>
   );
 }

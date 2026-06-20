@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
@@ -39,12 +40,14 @@ function renderModal(client: ReturnType<typeof createApiClient>) {
       }
     >
       <ApiClientProvider client={client}>
-        <CustomerDetailModal
-          open
-          customerName="客户A"
-          reportDate="2026-03-31"
-          onClose={vi.fn()}
-        />
+        <MemoryRouter>
+          <CustomerDetailModal
+            open
+            customerName="客户A"
+            reportDate="2026-03-31"
+            onClose={vi.fn()}
+          />
+        </MemoryRouter>
       </ApiClientProvider>
     </QueryClientProvider>,
   );
@@ -93,7 +96,11 @@ describe("CustomerDetailModal", () => {
 
     renderModal(client);
 
-    expect(await screen.findByText("BOND-1")).toBeInTheDocument();
+    const link = await screen.findByTestId("customer-detail-trading-desk-link-BOND-1");
+    expect(link).toHaveAttribute(
+      "href",
+      "/bond-trading-desk?bond_code=BOND-1&report_date=2026-03-31",
+    );
     expect(screen.getByText("2.00 亿元")).toBeInTheDocument();
     expect(screen.getByText("1.00 亿元")).toBeInTheDocument();
   });

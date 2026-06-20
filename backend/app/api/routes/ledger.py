@@ -62,10 +62,16 @@ async def import_ledger(
 
 
 @router.get("/ledger/imports")
-def list_ledger_imports(request: Request):
+def list_ledger_imports(
+    request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+):
     settings = get_settings()
     try:
         _reject_unknown_query_params(request, set())
+        auth_error = _ledger_read_auth_error(auth, settings)
+        if auth_error is not None:
+            return auth_error
         return _svc().LedgerImportService(str(settings.duckdb_path)).list_imports()
     except ValueError as exc:
         return _error_response(
@@ -84,10 +90,16 @@ def list_ledger_imports(request: Request):
 
 
 @router.get("/ledger/dates")
-def list_ledger_dates(request: Request):
+def list_ledger_dates(
+    request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+):
     settings = get_settings()
     try:
         _reject_unknown_query_params(request, set())
+        auth_error = _ledger_read_auth_error(auth, settings)
+        if auth_error is not None:
+            return auth_error
         return _analytics_svc().LedgerAnalyticsService(str(settings.duckdb_path)).dates()
     except ValueError as exc:
         return _error_response(
@@ -108,12 +120,16 @@ def list_ledger_dates(request: Request):
 @router.get("/ledger/dashboard")
 def ledger_dashboard(
     request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     as_of_date: str | None = Query(None),
 ):
     settings = get_settings()
     try:
         _reject_unknown_query_params(request, {"as_of_date"})
         requested = _analytics_svc().normalize_requested_date(as_of_date=as_of_date)
+        auth_error = _ledger_read_auth_error(auth, settings)
+        if auth_error is not None:
+            return auth_error
         return _analytics_svc().LedgerAnalyticsService(str(settings.duckdb_path)).dashboard(
             requested_as_of_date=requested,
         )
@@ -136,6 +152,7 @@ def ledger_dashboard(
 @router.get("/ledger/positions")
 def ledger_positions(
     request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     as_of_date: str | None = Query(None),
     direction: str | None = Query(None),
     bond_code: str | None = Query(None),
@@ -172,6 +189,9 @@ def ledger_positions(
             asset_class_std=asset_class_std,
             cost_center=cost_center,
         )
+        auth_error = _ledger_read_auth_error(auth, settings)
+        if auth_error is not None:
+            return auth_error
         return analytics.LedgerAnalyticsService(str(settings.duckdb_path)).positions(
             requested_as_of_date=requested,
             filters=filters,
@@ -197,6 +217,7 @@ def ledger_positions(
 @router.get("/ledger/export/positions")
 def export_ledger_positions(
     request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     as_of_date: str | None = Query(None),
     direction: str | None = Query(None),
     bond_code: str | None = Query(None),
@@ -233,6 +254,9 @@ def export_ledger_positions(
             asset_class_std=asset_class_std,
             cost_center=cost_center,
         )
+        auth_error = _ledger_read_auth_error(auth, settings)
+        if auth_error is not None:
+            return auth_error
         filename, content, metadata_headers = analytics.LedgerAnalyticsService(
             str(settings.duckdb_path),
         ).export_positions(
@@ -261,6 +285,26 @@ def export_ledger_positions(
             message=str(exc),
             retryable=True,
         )
+
+
+def _ledger_read_auth_error(auth: AuthContext, settings) -> JSONResponse | None:
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="ledger.data", action="read")
+    except PermissionError as exc:
+        return _error_response(
+            status_code=403,
+            code="LEDGER_READ_FORBIDDEN",
+            message=str(exc),
+            retryable=False,
+        )
+    except RuntimeError as exc:
+        return _error_response(
+            status_code=503,
+            code="LEDGER_AUTH_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
+        )
+    return None
 
 
 def _reject_unknown_query_params(request: Request, allowed: set[str]) -> None:

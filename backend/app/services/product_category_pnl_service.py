@@ -1,14 +1,12 @@
 from __future__ import annotations
 
+import logging
 from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from backend.app.core_finance.product_category_pnl_attribution import (
-    build_incomplete_product_category_attribution_payload,
-    build_product_category_attribution_payload,
-)
+from backend.app.core_finance import product_category_pnl_attribution as product_category_attribution
 from backend.app.core_finance.reconciliation_checks import completeness_check
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
@@ -31,6 +29,7 @@ from backend.app.schemas.product_category_pnl import (
     ProductCategoryManualAdjustmentListPayload,
     ProductCategoryManualAdjustmentPayload,
     ProductCategoryManualAdjustmentUpdateRequest,
+    ProductCategoryInterestSpreadPayload,
     ProductCategoryPnlPayload,
     ProductCategoryPnlRow,
     ProductCategorySortDirection,
@@ -48,7 +47,10 @@ from backend.app.tasks.product_category_pnl import (
     PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
     PRODUCT_CATEGORY_PNL_LOCK,
     materialize_product_category_pnl,
+    product_category_pnl_payload_from_canonical_ytd_anchor,
 )
+
+logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_product_category_pnl_v1"
 CACHE_VERSION = "cv_product_category_pnl_v1"
@@ -77,7 +79,12 @@ class ProductCategoryReadModelUnavailableError(RuntimeError):
     pass
 
 
-def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
+def queue_product_category_pnl_refresh(
+    settings: Settings,
+    *,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     source_dir = _resolve_product_category_refresh_source_dir(settings)
     try:
         with acquire_lock(
@@ -85,6 +92,14 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
             base_dir=settings.governance_path,
             timeout_seconds=0.1,
         ):
+            if normalized_idempotency_key is not None:
+                existing_idempotent_run = _latest_refresh_for_idempotency_key(
+                    settings,
+                    idempotency_key=normalized_idempotency_key,
+                )
+                if existing_idempotent_run is not None:
+                    return _idempotent_refresh_response(existing_idempotent_run)
+
             existing = _latest_inflight_refresh(settings)
             if existing is not None:
                 raise ProductCategoryRefreshConflictError(
@@ -92,7 +107,7 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                 )
 
             run_id = _build_run_id()
-            queued_at = datetime.now(timezone.utc).isoformat()
+            queued_at = datetime.now(UTC).isoformat()
             governance_repo = GovernanceRepository(base_dir=settings.governance_path)
             governance_repo.append(
                 CACHE_BUILD_RUN_STREAM,
@@ -107,6 +122,7 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                         vendor_version="vv_none",
                     ).model_dump(),
                     "queued_at": queued_at,
+                    "idempotency_key": normalized_idempotency_key,
                 },
             )
 
@@ -118,6 +134,10 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                     run_id=run_id,
                 )
             except Exception:
+                logger.warning(
+                    "Async dispatch for product-category refresh failed, falling back to sync",
+                    exc_info=True,
+                )
                 try:
                     payload = materialize_product_category_pnl.fn(
                         duckdb_path=str(settings.duckdb_path),
@@ -138,6 +158,8 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                     **payload,
                     "job_name": PRODUCT_CATEGORY_JOB_NAME,
                     "trigger_mode": "sync-fallback",
+                    "idempotency_key": normalized_idempotency_key,
+                    "idempotency_replay": False,
                 }
 
             return {
@@ -146,6 +168,8 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                 "job_name": PRODUCT_CATEGORY_JOB_NAME,
                 "trigger_mode": "async",
                 "cache_key": PRODUCT_CATEGORY_CACHE_KEY,
+                "idempotency_key": normalized_idempotency_key,
+                "idempotency_replay": False,
             }
     except TimeoutError as exc:
         raise ProductCategoryRefreshConflictError(
@@ -172,7 +196,7 @@ def create_product_category_manual_adjustment(
     settings: Settings,
     payload: ProductCategoryManualAdjustmentCreateRequest,
 ) -> dict[str, object]:
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
     adjustment_id = f"pca-{uuid4()}"
     record = ProductCategoryManualAdjustmentPayload(
         adjustment_id=adjustment_id,
@@ -344,7 +368,7 @@ def revoke_product_category_manual_adjustment(
         {
             **current,
             "event_type": "revoked",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "approval_status": "rejected",
         }
     )
@@ -369,7 +393,7 @@ def update_product_category_manual_adjustment(
             **current,
             **payload.model_dump(),
             "event_type": "edited",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
     )
     GovernanceRepository(base_dir=settings.governance_path).append(
@@ -393,7 +417,7 @@ def restore_product_category_manual_adjustment(
         {
             **current,
             "event_type": "restored",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "approval_status": "approved",
         }
     )
@@ -404,8 +428,12 @@ def restore_product_category_manual_adjustment(
     return restored.model_dump(mode="json")
 
 
-def refresh_product_category_pnl(settings: Settings) -> dict[str, object]:
-    return queue_product_category_pnl_refresh(settings)
+def refresh_product_category_pnl(
+    settings: Settings,
+    *,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    return queue_product_category_pnl_refresh(settings, idempotency_key=idempotency_key)
 
 
 def run_product_category_refresh_sync(settings: Settings, run_id: str | None = None) -> dict[str, object]:
@@ -496,7 +524,7 @@ def product_category_attribution_envelope(
 
     if not prior_raw_rows:
         payload = ProductCategoryAttributionPayload.model_validate(
-            build_incomplete_product_category_attribution_payload(
+            product_category_attribution.build_incomplete_product_category_attribution_payload(
                 current_report_date=report_date,
                 prior_report_date=prior_report_date,
                 compare=compare,
@@ -523,7 +551,7 @@ def product_category_attribution_envelope(
         )
 
     payload = ProductCategoryAttributionPayload.model_validate(
-        build_product_category_attribution_payload(
+        product_category_attribution.build_product_category_attribution_payload(
             current_rows=_typed_product_category_rows(current_raw_rows),
             prior_rows=_typed_product_category_rows(prior_raw_rows),
             current_report_date=report_date,
@@ -608,6 +636,12 @@ def product_category_pnl_envelope(
         asset_total=asset_total,
         liability_total=liability_total,
         grand_total=grand_total,
+        interest_spread=ProductCategoryInterestSpreadPayload.model_validate(
+            analysis_envelope.result.summary.get("interest_spread", {})
+        ),
+        interest_earning_spread=ProductCategoryInterestSpreadPayload.model_validate(
+            analysis_envelope.result.summary.get("interest_earning_spread", {})
+        ),
     )
     result_meta = (
         analysis_envelope.result_meta.model_copy(update={"quality_flag": "warning"})
@@ -617,6 +651,35 @@ def product_category_pnl_envelope(
     return build_formal_result_envelope(
         result_meta=result_meta,
         result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def resolve_product_category_ytd_payload_for_home_snapshot(
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    ftp_rate_pct: float,
+) -> ProductCategoryPnlPayload | None:
+    """Prefer persisted read-model ytd; fall back to canonical-facts recompute for home headline."""
+    try:
+        envelope = product_category_pnl_envelope(duckdb_path, report_date, "ytd")
+    except (
+        ProductCategoryReadModelNotFoundError,
+        ProductCategoryReadModelUnavailableError,
+        OSError,
+    ):
+        return product_category_pnl_payload_from_canonical_ytd_anchor(
+            duckdb_path, governance_dir, report_date, ftp_rate_pct
+        )
+
+    result_dict = envelope.get("result")
+    if isinstance(result_dict, dict):
+        try:
+            return ProductCategoryPnlPayload.model_validate(result_dict)
+        except Exception:
+            pass
+    return product_category_pnl_payload_from_canonical_ytd_anchor(
+        duckdb_path, governance_dir, report_date, ftp_rate_pct
     )
 
 
@@ -700,7 +763,7 @@ def _previous_year_same_month_end(report_date: str) -> str:
 
 
 def _build_run_id() -> str:
-    return f"{PRODUCT_CATEGORY_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    return f"{PRODUCT_CATEGORY_JOB_NAME}:{datetime.now(UTC).isoformat()}"
 
 
 def _refresh_trigger_lock() -> LockDefinition:
@@ -717,6 +780,51 @@ def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
         if str(record.get("job_name")) == PRODUCT_CATEGORY_JOB_NAME
         and str(record.get("cache_key")) == PRODUCT_CATEGORY_CACHE_KEY
     ]
+
+
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _latest_refresh_for_idempotency_key(
+    settings: Settings,
+    *,
+    idempotency_key: str,
+) -> dict[str, object] | None:
+    for record in reversed(_load_refresh_run_records(settings)):
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        if str(record.get("status")) in IN_FLIGHT_STATUSES and _is_stale_inflight_record(record):
+            _mark_stale_inflight_run(
+                settings=settings,
+                run_id=str(record.get("run_id")),
+                error_message="Marked stale product-category idempotent refresh run as failed.",
+            )
+            refreshed_records = _load_refresh_run_records(settings)
+            return next(
+                (
+                    refreshed
+                    for refreshed in reversed(refreshed_records)
+                    if str(refreshed.get("run_id")) == str(record.get("run_id"))
+                ),
+                record,
+            )
+        return record
+    return None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    status = str(record.get("status") or "queued")
+    return {
+        **record,
+        "status": status,
+        "run_id": str(record.get("run_id") or ""),
+        "job_name": PRODUCT_CATEGORY_JOB_NAME,
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
+        "cache_key": PRODUCT_CATEGORY_CACHE_KEY,
+        "idempotency_replay": True,
+    }
 
 
 def _latest_inflight_refresh(settings: Settings) -> dict[str, object] | None:
@@ -745,7 +853,7 @@ def _is_stale_inflight_record(record: dict[str, object]) -> bool:
         if not raw_value:
             continue
         timestamp = _parse_timestamp(raw_value)
-        return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
+        return datetime.now(UTC) - timestamp > STALE_IN_FLIGHT_AFTER
     return False
 
 
@@ -753,8 +861,8 @@ def _parse_timestamp(raw_value: str) -> datetime:
     normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _record_dispatch_failure(
@@ -795,7 +903,7 @@ def _mark_stale_inflight_run(
             "source_version": "sv_product_category_stale",
             "vendor_version": "vv_none",
             "error_message": error_message,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
         },
     )
 
@@ -893,7 +1001,7 @@ def _sort_adjustment_payloads(
     if field == "created_at":
         return sorted(
             items,
-            key=lambda item: _parse_created_at(item.created_at) or datetime.min.replace(tzinfo=timezone.utc),
+            key=lambda item: _parse_created_at(item.created_at) or datetime.min.replace(tzinfo=UTC),
             reverse=reverse,
         )
     return sorted(
@@ -909,8 +1017,8 @@ def _parse_created_at(value: str) -> datetime | None:
     normalized = value.replace("Z", "+00:00") if value.endswith("Z") else value
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _build_adjustment_csv(

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.governance.settings import get_settings
@@ -14,12 +13,13 @@ from backend.app.repositories.akshare_adapter import (
     VendorAdapter,
     _prepare_curve_points,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
-from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
 from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeFailure,
     FormalComputeMaterializeResult,
 )
+from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
@@ -42,12 +42,14 @@ RULE_VERSION = YIELD_CURVE_MODULE.rule_version
 CACHE_VERSION = YIELD_CURVE_MODULE.cache_version
 
 SUPPORTED_CURVE_TYPES = ("treasury", "cdb", "aaa_credit")
+# Extended types available on demand (Choice-only): spot rate curves and Shibor.
+ALL_CURVE_TYPES = SUPPORTED_CURVE_TYPES + ("treasury_spot", "cdb_spot", "shibor")
 MAX_BACKTRACK_DAYS = 40
 
 
 def _normalize_curve_types(curve_types: tuple[str, ...]) -> tuple[str, ...]:
     normalized = tuple(str(curve_type).strip().lower() for curve_type in curve_types)
-    unsupported = sorted({curve_type for curve_type in normalized if curve_type not in SUPPORTED_CURVE_TYPES})
+    unsupported = sorted({curve_type for curve_type in normalized if curve_type not in ALL_CURVE_TYPES})
     if unsupported:
         joined = ", ".join(unsupported)
         raise FormalComputeMaterializeFailure(
@@ -98,11 +100,12 @@ def _execute_yield_curve_materialization(
                 message=f"Failed to materialize {curve_type} curve for trade_date={trade_date}: {exc}",
             ) from exc
 
-    repo.replace_curve_snapshots(
-        trade_date=trade_date,
-        snapshots=snapshots,
-        rule_version=RULE_VERSION,
-    )
+    with repository_task_write_scope(__name__):
+        repo.replace_curve_snapshots(
+            trade_date=trade_date,
+            snapshots=snapshots,
+            rule_version=RULE_VERSION,
+        )
 
     source_version = "__".join(sorted({snapshot.source_version for snapshot in snapshots})) or "sv_yield_curve_empty"
     vendor_version = "__".join(sorted({snapshot.vendor_version for snapshot in snapshots})) or "vv_none"
@@ -144,16 +147,262 @@ def ensure_yield_curve_inputs_on_or_before(
                 )
             except Exception:
                 # Broad catch is intentional: if vendor fetch fails but we already have
-                # a fallback curve on or before this date, silently continue. Otherwise,
-                # re-raise to signal missing data.
-                if repo.fetch_latest_trade_date_on_or_before(curve_type, anchor_date) is not None:
+                # a fallback curve inside the allowed backtrack window, silently
+                # continue. Otherwise, re-raise to signal missing data.
+                existing = _existing_curve_snapshot_on_or_before(
+                    repo=repo,
+                    anchor_date=anchor_date,
+                    curve_type=curve_type,
+                    max_backtrack_days=max_backtrack_days,
+                )
+                if existing is not None:
                     continue
                 raise
-            repo.replace_curve_snapshots(
-                trade_date=snapshot.trade_date,
-                snapshots=[snapshot],
-                rule_version=RULE_VERSION,
+            with repository_task_write_scope(__name__):
+                repo.replace_curve_snapshots(
+                    trade_date=snapshot.trade_date,
+                    snapshots=[snapshot],
+                    rule_version=RULE_VERSION,
+                )
+
+
+def list_yield_curve_month_end_anchors(
+    *,
+    duckdb_path: str,
+    start_date: str,
+    end_date: str,
+) -> list[str]:
+    """Return last available balance report date per month for governed curve backfills."""
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+    if end < start:
+        raise ValueError("end_date must be on or after start_date.")
+
+    conn = duckdb.connect(duckdb_path, read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select 1
+            from information_schema.tables
+            where table_name = 'zqtz_bond_daily_snapshot'
+            limit 1
+            """
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("DuckDB is missing table zqtz_bond_daily_snapshot.")
+
+        rows = conn.execute(
+            """
+            with scoped_dates as (
+              select cast(report_date as date) as report_date
+              from zqtz_bond_daily_snapshot
+              where cast(report_date as date) between ? and ?
             )
+            select max(report_date) as month_end
+            from scoped_dates
+            group by extract(year from report_date), extract(month from report_date)
+            order by month_end
+            """,
+            [start.isoformat(), end.isoformat()],
+        ).fetchall()
+        return [month_end.isoformat() for (month_end,) in rows if month_end is not None]
+    finally:
+        conn.close()
+
+
+def backfill_yield_curve_month_ends(
+    *,
+    duckdb_path: str,
+    start_date: str,
+    end_date: str,
+    curve_types: tuple[str, ...] = SUPPORTED_CURVE_TYPES,
+    max_backtrack_days: int = MAX_BACKTRACK_DAYS,
+) -> dict[str, object]:
+    """Backfill governed curve snapshots for month-end anchors without relabeling fallback dates."""
+    if max_backtrack_days < 0:
+        raise ValueError("max_backtrack_days must be non-negative.")
+    normalized_curve_types = _normalize_curve_types(curve_types)
+    month_end_dates = list_yield_curve_month_end_anchors(
+        duckdb_path=duckdb_path,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    adapter = VendorAdapter()
+    repo = YieldCurveRepository(duckdb_path)
+    written = 0
+    skipped = 0
+    failures: list[dict[str, str]] = []
+    resolved_snapshots: set[tuple[str, str, str]] = set()
+
+    for anchor_date in month_end_dates:
+        for curve_type in normalized_curve_types:
+            try:
+                snapshot = _fetch_curve_snapshot_on_or_before(
+                    adapter=adapter,
+                    curve_type=curve_type,
+                    anchor_date=anchor_date,
+                    max_backtrack_days=max_backtrack_days,
+                )
+                existing = repo.fetch_curve_snapshot(snapshot.trade_date, snapshot.curve_type)
+                if existing is not None:
+                    resolved_snapshots.add((anchor_date, snapshot.curve_type, snapshot.trade_date))
+                    skipped += 1
+                    continue
+                with repository_task_write_scope(__name__):
+                    repo.replace_curve_snapshots(
+                        trade_date=snapshot.trade_date,
+                        snapshots=[snapshot],
+                        rule_version=RULE_VERSION,
+                    )
+                resolved_snapshots.add((anchor_date, snapshot.curve_type, snapshot.trade_date))
+                written += 1
+            except Exception as exc:
+                existing = _existing_curve_snapshot_on_or_before(
+                    repo=repo,
+                    anchor_date=anchor_date,
+                    curve_type=curve_type,
+                    max_backtrack_days=max_backtrack_days,
+                )
+                if existing is not None:
+                    resolved_snapshots.add((anchor_date, curve_type, str(existing["trade_date"])))
+                    skipped += 1
+                    continue
+                failures.append(
+                    {
+                        "anchor_date": anchor_date,
+                        "curve_type": curve_type,
+                        "message": str(exc),
+                    }
+                )
+
+    resolved_snapshot_rows = sorted(resolved_snapshots)
+    return {
+        "status": "failed" if failures else "completed",
+        "duckdb_path": duckdb_path,
+        "start_date": date.fromisoformat(start_date).isoformat(),
+        "end_date": date.fromisoformat(end_date).isoformat(),
+        "month_end_dates": month_end_dates,
+        "curve_types": list(normalized_curve_types),
+        "total_tasks": len(month_end_dates) * len(normalized_curve_types),
+        "written": written,
+        "skipped": skipped,
+        "failed": len(failures),
+        "failures": failures,
+        "resolved_trade_dates": sorted({trade_date for _anchor_date, _curve_type, trade_date in resolved_snapshot_rows}),
+        "resolved_snapshots": [
+            {
+                "anchor_date": anchor_date,
+                "curve_type": curve_type,
+                "trade_date": trade_date,
+            }
+            for anchor_date, curve_type, trade_date in resolved_snapshot_rows
+        ],
+    }
+
+
+def _existing_curve_snapshot_on_or_before(
+    *,
+    repo: YieldCurveRepository,
+    anchor_date: str,
+    curve_type: str,
+    max_backtrack_days: int,
+) -> dict[str, object] | None:
+    anchor = date.fromisoformat(anchor_date)
+    for offset in range(max_backtrack_days + 1):
+        candidate_date = (anchor - timedelta(days=offset)).isoformat()
+        snapshot = repo.fetch_curve_snapshot(candidate_date, curve_type)
+        if snapshot is not None:
+            return snapshot
+    return None
+
+
+def _execute_yield_curve_month_end_backfill(
+    *,
+    duckdb_path: str,
+    start_date: str,
+    end_date: str,
+    curve_types: tuple[str, ...],
+    max_backtrack_days: int,
+) -> FormalComputeMaterializeResult:
+    payload = backfill_yield_curve_month_ends(
+        duckdb_path=duckdb_path,
+        start_date=start_date,
+        end_date=end_date,
+        curve_types=curve_types,
+        max_backtrack_days=max_backtrack_days,
+    )
+    if payload["failed"]:
+        first_failure = list(payload["failures"])[0]
+        raise FormalComputeMaterializeFailure(
+            source_version=f"sv_yield_curve_backfill_failed_{end_date.replace('-', '')}",
+            vendor_version="vv_none",
+            message=f"Yield curve month-end backfill failed: {first_failure}",
+        )
+
+    resolved_snapshots = list(payload.get("resolved_snapshots") or [])
+    rows = []
+    if resolved_snapshots:
+        values_sql = ", ".join("(?, ?)" for _item in resolved_snapshots)
+        values: list[str] = []
+        for item in resolved_snapshots:
+            values.extend([str(item["trade_date"]), str(item["curve_type"])])
+        conn = duckdb.connect(duckdb_path, read_only=True)
+        try:
+            rows = conn.execute(
+                f"""
+                with resolved(trade_date, curve_type) as (
+                    values {values_sql}
+                )
+                select distinct source_version, vendor_version
+                from fact_formal_yield_curve_daily
+                inner join resolved using (trade_date, curve_type)
+                """,
+                values,
+            ).fetchall()
+        finally:
+            conn.close()
+    source_version = "__".join(sorted({str(row[0]) for row in rows if row[0]})) or "sv_yield_curve_backfill_noop"
+    vendor_version = "__".join(sorted({str(row[1]) for row in rows if row[1]})) or "vv_none"
+    return FormalComputeMaterializeResult(
+        source_version=source_version,
+        vendor_version=vendor_version,
+        payload=payload,
+    )
+
+
+def _materialize_yield_curve_month_end_backfill(
+    *,
+    start_date: str,
+    end_date: str,
+    curve_types: list[str] | None = None,
+    max_backtrack_days: int = MAX_BACKTRACK_DAYS,
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    duckdb_file = Path(duckdb_path or settings.duckdb_path)
+    duckdb_file.parent.mkdir(parents=True, exist_ok=True)
+    governance_path = Path(governance_dir or settings.governance_path)
+    normalized_curve_types = tuple(curve_types or SUPPORTED_CURVE_TYPES)
+    report_date = date.fromisoformat(end_date).isoformat()
+
+    return run_formal_materialize(
+        descriptor=YIELD_CURVE_MODULE,
+        job_name="yield_curve_month_end_backfill",
+        report_date=report_date,
+        governance_dir=str(governance_path),
+        lock_base_dir=str(duckdb_file.parent),
+        duckdb_path=str(duckdb_file),
+        run_id=run_id,
+        execute_materialization=lambda: _execute_yield_curve_month_end_backfill(
+            duckdb_path=str(duckdb_file),
+            start_date=date.fromisoformat(start_date).isoformat(),
+            end_date=report_date,
+            curve_types=normalized_curve_types,
+            max_backtrack_days=max_backtrack_days,
+        ),
+    )
 
 
 def _fetch_curve_snapshot_on_or_before(
@@ -198,6 +447,7 @@ def _materialize_yield_curve(
         report_date=trade_date,
         governance_dir=str(governance_path),
         lock_base_dir=str(duckdb_file.parent),
+        duckdb_path=str(duckdb_file),
         run_id=run_id,
         execute_materialization=lambda: _execute_yield_curve_materialization(
             trade_date=trade_date,
@@ -210,6 +460,11 @@ def _materialize_yield_curve(
 materialize_yield_curve = register_actor_once(
     "materialize_yield_curve",
     _materialize_yield_curve,
+)
+
+materialize_yield_curve_month_end_backfill = register_actor_once(
+    "materialize_yield_curve_month_end_backfill",
+    _materialize_yield_curve_month_end_backfill,
 )
 
 

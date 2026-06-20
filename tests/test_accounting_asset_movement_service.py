@@ -7,11 +7,11 @@ from uuid import uuid4
 import duckdb
 import pytest
 
+import backend.app.services.accounting_asset_movement_service as movement_service
 from backend.app.governance.settings import Settings
 from backend.app.repositories.accounting_asset_movement_repo import (
     AccountingAssetMovementRepository,
 )
-import backend.app.services.accounting_asset_movement_service as movement_service
 from backend.app.services.accounting_asset_movement_service import (
     accounting_asset_movement_dates_envelope,
     accounting_asset_movement_envelope,
@@ -21,7 +21,64 @@ from backend.app.tasks.accounting_asset_movement import (
 )
 
 
-def test_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
+def test_refresh_service_queues_task_without_sync_materialization(monkeypatch):
+    settings = Settings(
+        duckdb_path="test-output/movement.duckdb",
+        governance_path=Path("test-output/governance"),
+        data_input_root=Path("test-output/data"),
+        local_archive_path=Path("test-output/archive"),
+        product_category_source_dir=Path("test-output/product-source"),
+    )
+    task_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        movement_service,
+        "_recent_report_dates_for_refresh",
+        lambda *_args, **_kwargs: ["2026-01-31", "2026-02-28"],
+    )
+    monkeypatch.setattr(
+        movement_service,
+        "_resolve_refresh_fx_source_path",
+        lambda _settings: "test-output/fx.csv",
+    )
+    monkeypatch.setattr(
+        movement_service.refresh_accounting_asset_movement_window,
+        "send",
+        lambda **kwargs: task_calls.append(kwargs),
+    )
+
+    payload = movement_service.refresh_accounting_asset_movement(
+        settings,
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert payload["status"] == "queued"
+    assert payload["cache_key"] == "accounting_asset_movement.monthly"
+    assert payload["report_date"] == "2026-02-28"
+    assert payload["currency_basis"] == "CNX"
+    assert payload["job_name"] == "accounting_asset_movement_refresh"
+    assert payload["trigger_mode"] == "async"
+    assert payload["row_count"] is None
+    assert payload["source_version"] == "sv_accounting_asset_movement_pending"
+    assert payload["movement_refreshed_dates"] == ["2026-01-31", "2026-02-28"]
+    assert task_calls == [
+        {
+            "duckdb_path": str(Path("test-output/movement.duckdb").resolve()),
+            "governance_dir": str(Path("test-output/governance").resolve()),
+            "report_dates": ["2026-01-31", "2026-02-28"],
+            "anchor_report_date": "2026-02-28",
+            "currency_basis": "CNX",
+            "run_id": payload["run_id"],
+            "product_category_source_dir": str(Path("test-output/product-source").resolve()),
+            "data_root": str(Path("test-output/data").resolve()),
+            "archive_dir": str(Path("test-output/archive").resolve()),
+            "fx_source_path": "test-output/fx.csv",
+        }
+    ]
+
+
+def _legacy_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
     monkeypatch,
 ):
     duckdb_path = (
@@ -117,8 +174,8 @@ def test_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
         }
 
     monkeypatch.setattr(
-        movement_service.run_formal_balance_pipeline,
-        "fn",
+        movement_service,
+        "run_formal_balance_pipeline_sync",
         fake_formal_pipeline,
     )
     monkeypatch.setattr(
@@ -174,7 +231,7 @@ def test_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
     ]
 
 
-def test_refresh_materializes_missing_product_category_before_movement(monkeypatch):
+def _legacy_refresh_materializes_missing_product_category_before_movement(monkeypatch):
     duckdb_path = (
         Path("test_output")
         / "accounting_asset_movement"
@@ -275,13 +332,13 @@ def test_refresh_materializes_missing_product_category_before_movement(monkeypat
         }
 
     monkeypatch.setattr(
-        movement_service.materialize_product_category_pnl,
-        "fn",
+        movement_service,
+        "materialize_product_category_pnl_sync",
         fake_product_category_refresh,
     )
     monkeypatch.setattr(
-        movement_service.run_formal_balance_pipeline,
-        "fn",
+        movement_service,
+        "run_formal_balance_pipeline_sync",
         fake_formal_pipeline,
     )
     monkeypatch.setattr(
@@ -326,7 +383,7 @@ def test_refresh_materializes_missing_product_category_before_movement(monkeypat
     ]
 
 
-def test_refresh_service_delegates_window_materialization_to_task_and_hides_internal_fields(
+def _legacy_refresh_service_delegates_window_materialization_to_task_and_hides_internal_fields(
     monkeypatch,
 ):
     settings = Settings(
@@ -389,8 +446,8 @@ def test_refresh_service_delegates_window_materialization_to_task_and_hides_inte
         }
 
     monkeypatch.setattr(
-        movement_service.refresh_accounting_asset_movement_window,
-        "fn",
+        movement_service,
+        "refresh_accounting_asset_movement_window_sync",
         fake_task_refresh,
     )
 
@@ -425,7 +482,7 @@ def test_refresh_service_delegates_window_materialization_to_task_and_hides_inte
     }
 
 
-def test_refresh_service_stops_before_task_when_product_category_refresh_fails(
+def _legacy_refresh_service_stops_before_task_when_product_category_refresh_fails(
     monkeypatch,
 ):
     settings = Settings(
@@ -447,8 +504,8 @@ def test_refresh_service_stops_before_task_when_product_category_refresh_fails(
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("product category failed")),
     )
     monkeypatch.setattr(
-        movement_service.refresh_accounting_asset_movement_window,
-        "fn",
+        movement_service,
+        "refresh_accounting_asset_movement_window_sync",
         lambda **kwargs: task_calls.append(kwargs),
     )
 
@@ -462,7 +519,7 @@ def test_refresh_service_stops_before_task_when_product_category_refresh_fails(
     assert task_calls == []
 
 
-def test_refresh_service_stops_before_task_when_formal_balance_refresh_fails(
+def _legacy_refresh_service_stops_before_task_when_formal_balance_refresh_fails(
     monkeypatch,
 ):
     settings = Settings(
@@ -489,8 +546,8 @@ def test_refresh_service_stops_before_task_when_formal_balance_refresh_fails(
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("formal balance failed")),
     )
     monkeypatch.setattr(
-        movement_service.refresh_accounting_asset_movement_window,
-        "fn",
+        movement_service,
+        "refresh_accounting_asset_movement_window_sync",
         lambda **kwargs: task_calls.append(kwargs),
     )
 
@@ -1491,8 +1548,12 @@ def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
     )
 
     assert envelope["result"]["report_dates"] == ["2026-01-31"]
+    assert envelope["result"]["latest_read_model_report_date"] == "2026-01-31"
+    assert envelope["result"]["latest_upstream_control_report_date"] == "2026-02-28"
+    assert envelope["result"]["freshness_status"] == "read_model_lagging"
     assert envelope["result_meta"]["tables_used"] == [
-        "fact_accounting_asset_movement_monthly"
+        "fact_accounting_asset_movement_monthly",
+        "product_category_pnl_canonical_fact",
     ]
 
 

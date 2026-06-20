@@ -1,0 +1,17 @@
+# Observation-only hybrid fusion thresholds (cycle rotation + lifecourt overlay).
+# Python defaults in hybrid_fusion_config.py apply when keys are missing.
+
+thresholds:
+  life_long_top_q: 0.85
+  life_long_pconf_top_q: 0.70
+  life_long_crowd_max_q: 0.80
+  stance_strong_q: 0.85
+  stance_neutral_q: 0.50
+  fusion_cycle_weight: 0.65
+  fusion_life_weight: 0.35
+  cycle_macro_weight: 0.30
+  cycle_industry_weight: 0.35
+  cycle_market_flow_weight: 0.20
+  cycle_valuation_weight: 0.15
+  legacy_cycle_sector_weight: 0.70
+  legacy_cycle_factor_weight: 0.30

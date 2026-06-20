@@ -2,6 +2,7 @@
 create table if not exists fact_formal_risk_tensor_daily (
     report_date                   varchar,
     portfolio_dv01                decimal(24, 8),
+    regulatory_dv01               decimal(24, 8),
     krd_1y                        decimal(24, 8),
     krd_3y                        decimal(24, 8),
     krd_5y                        decimal(24, 8),
@@ -44,3 +45,5 @@ alter table fact_formal_risk_tensor_daily add column if not exists liability_cas
 alter table fact_formal_risk_tensor_daily add column if not exists liability_source_version varchar
 -- MOSS:STMT
 alter table fact_formal_risk_tensor_daily add column if not exists liability_rule_version varchar
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists regulatory_dv01 decimal(24, 8)

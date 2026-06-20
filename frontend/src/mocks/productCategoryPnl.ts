@@ -2,6 +2,7 @@ import type {
   ApiEnvelope,
   ProductCategoryAttributionPayload,
   ProductCategoryAttributionRow,
+  ProductCategoryInterestSpreadPayload,
   ProductCategoryPnlPayload,
   ProductCategoryPnlRow,
 } from "../api/contracts";
@@ -32,6 +33,10 @@ function withYuanValues(row: ProductCategoryPnlRow): ProductCategoryPnlRow {
     foreign_net: toYuan(row.foreign_net),
     business_net_income: toYuan(row.business_net_income),
   };
+}
+
+function percentMetric(raw: string) {
+  return { raw, display: `${Number(raw).toFixed(2)}%`, unit: "percent" as const };
 }
 
 export function buildProductCategoryMockYuanPayload(input: {
@@ -284,7 +289,7 @@ export function buildMockProductCategoryPnlEnvelope(
     },
     {
       category_id: "derivatives",
-      category_name: "衍生品",
+      category_name: "汇兑损益及衍生",
       side: "asset",
       level: 0,
       view: options.view,
@@ -529,6 +534,22 @@ export function buildMockProductCategoryPnlEnvelope(
     liabilityTotal,
     grandTotal,
   });
+  const interestSpread: ProductCategoryInterestSpreadPayload = {
+    all_currency_asset_yield_pct: percentMetric("2.68"),
+    all_currency_liability_yield_pct: percentMetric("1.63"),
+    all_currency_spread_pct: percentMetric("1.05"),
+    cny_asset_yield_pct: percentMetric("2.64"),
+    cny_liability_yield_pct: percentMetric("1.62"),
+    cny_spread_pct: percentMetric("1.02"),
+  };
+  const interestEarningSpread: ProductCategoryInterestSpreadPayload = {
+    all_currency_asset_yield_pct: percentMetric("2.40"),
+    all_currency_liability_yield_pct: percentMetric("1.63"),
+    all_currency_spread_pct: percentMetric("0.77"),
+    cny_asset_yield_pct: percentMetric("2.35"),
+    cny_liability_yield_pct: percentMetric("1.62"),
+    cny_spread_pct: percentMetric("0.73"),
+  };
 
   return buildMockApiEnvelope(
     "product_category_pnl.detail",
@@ -541,6 +562,8 @@ export function buildMockProductCategoryPnlEnvelope(
       asset_total: yuanPayload.assetTotal,
       liability_total: yuanPayload.liabilityTotal,
       grand_total: yuanPayload.grandTotal,
+      interest_spread: interestSpread,
+      interest_earning_spread: interestEarningSpread,
     },
     {
       basis: scenarioRate ? "scenario" : "formal",
@@ -612,6 +635,37 @@ export function buildMockProductCategoryAttributionEnvelope(
     prior: priorPoint,
     effects,
   };
+  const interestEarningAssetsRow: ProductCategoryAttributionRow = {
+    ...row,
+    category_id: "interest_earning_assets",
+    category_name: "生息资产",
+    current: {
+      ...currentPoint,
+      scale: toYuan("392.00"),
+      yield_pct: "2.80",
+      cash: toYuan("1.12"),
+      ftp: toYuan("0.75"),
+      business_net_income: toYuan("0.37"),
+    },
+    prior: {
+      ...priorPoint,
+      scale: toYuan("384.00"),
+      yield_pct: "2.92",
+      cash: toYuan("1.20"),
+      ftp: toYuan("0.72"),
+      business_net_income: toYuan("0.48"),
+    },
+    effects: {
+      ...effects,
+      scale_effect: toYuan("0.08"),
+      rate_effect: toYuan("-0.16"),
+      ftp_effect: toYuan("-0.62"),
+      unexplained_effect: toYuan("-0.38"),
+      explained_effect: toYuan("-1.08"),
+      delta_business_net_income: toYuan("-1.08"),
+      closure_error: toYuan("0.00"),
+    },
+  };
   const assetTotal: ProductCategoryAttributionRow = {
     ...row,
     category_id: "asset_total",
@@ -651,7 +705,7 @@ export function buildMockProductCategoryAttributionEnvelope(
     prior_report_date: priorReportDate,
     state: "complete",
     reason: null,
-    rows: [row],
+    rows: [row, interestEarningAssetsRow],
     totals: {
       asset_total: assetTotal,
       liability_total: liabilityTotal,

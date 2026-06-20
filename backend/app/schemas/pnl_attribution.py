@@ -10,9 +10,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, model_validator
-
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from pydantic import BaseModel, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -147,7 +146,7 @@ class TPLMarketDataPoint(BaseModel):
         "tpl_total_pnl": ("yuan", True),
         "tpl_scale": ("yuan", False),
         "treasury_10y": ("pct", True),
-        "treasury_10y_change": ("pct", True),
+        "treasury_10y_change": ("bp", True),
         "dr007": ("pct", True),
     }
 
@@ -172,7 +171,7 @@ class TPLMarketCorrelationPayload(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "correlation_coefficient": ("ratio", True),
         "total_tpl_fv_change": ("yuan", True),
-        "avg_treasury_10y_change": ("pct", True),
+        "avg_treasury_10y_change": ("bp", True),
         "treasury_10y_total_change_bp": ("bp", True),
     }
 
@@ -200,6 +199,7 @@ class PnlCompositionItem(BaseModel):
     fair_value_pct: Numeric
     capital_gain_pct: Numeric
     other_pct: Numeric
+    unexplained_residual: Numeric | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_pnl": ("yuan", True),
@@ -211,6 +211,7 @@ class PnlCompositionItem(BaseModel):
         "fair_value_pct": ("pct", True),
         "capital_gain_pct": ("pct", True),
         "other_pct": ("pct", True),
+        "unexplained_residual": ("yuan", True),
     }
 
     @model_validator(mode="before")
@@ -254,6 +255,7 @@ class PnlCompositionPayload(BaseModel):
     fair_value_pct: Numeric
     capital_gain_pct: Numeric
     other_pct: Numeric
+    unexplained_residual: Numeric | None = None
     items: list[PnlCompositionItem]
     trend_data: list[PnlCompositionTrendItem]
 
@@ -267,6 +269,7 @@ class PnlCompositionPayload(BaseModel):
         "fair_value_pct": ("pct", True),
         "capital_gain_pct": ("pct", True),
         "other_pct": ("pct", True),
+        "unexplained_residual": ("yuan", True),
     }
 
     @model_validator(mode="before")
@@ -324,7 +327,7 @@ class CarryRollDownItem(BaseModel):
         "carry": ("pct", True),
         "carry_pnl": ("yuan", True),
         "duration": ("ratio", False),
-        "curve_slope": ("ratio", True),
+        "curve_slope": ("bp", True),
         "rolldown": ("pct", True),
         "rolldown_pnl": ("yuan", True),
         "static_return": ("pct", True),
@@ -390,9 +393,9 @@ class SpreadAttributionItem(BaseModel):
         "market_value": ("yuan", False),
         "duration": ("ratio", False),
         "weight": ("ratio", False),
-        "yield_change": ("pct", True),
-        "treasury_change": ("pct", True),
-        "spread_change": ("pct", True),
+        "yield_change": ("bp", True),
+        "treasury_change": ("bp", True),
+        "spread_change": ("bp", True),
         "treasury_effect": ("yuan", True),
         "spread_effect": ("yuan", True),
         "total_price_effect": ("yuan", True),
@@ -425,7 +428,7 @@ class SpreadAttributionPayload(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "treasury_10y_start": ("pct", True),
         "treasury_10y_end": ("pct", True),
-        "treasury_10y_change": ("pct", True),
+        "treasury_10y_change": ("bp", True),
         "total_market_value": ("yuan", False),
         "portfolio_duration": ("ratio", False),
         "total_treasury_effect": ("yuan", True),

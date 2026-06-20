@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 import re
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
+from backend.app.core_finance.product_category_pnl import (
+    CanonicalFactRow,
+    calculate_read_model,
+    calculate_product_category_interest_spread_metrics,
+)
+from backend.app.core_finance.config.product_category_mapping import (
+    build_default_product_category_config,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_APP = ROOT / "backend" / "app"
@@ -117,3 +127,99 @@ def test_product_category_adapter_documents_overlay_without_second_storage_path(
     text = ANALYSIS_ADAPTERS_FILE.read_text(encoding="utf-8")
     assert "apply_scenario_to_rows" in text
     assert "Single storage path" in text or "formal read model" in text
+
+
+def test_product_category_weighted_yield_is_decimal_core_finance_output():
+    report_date = date(2026, 1, 31)
+    facts = [
+        CanonicalFactRow(
+            report_date=report_date,
+            account_code="120",
+            currency="CNX",
+            account_name="asset scale",
+            beginning_balance=Decimal("0"),
+            ending_balance=Decimal("100000000"),
+            monthly_pnl=Decimal("0"),
+            daily_avg_balance=Decimal("100000000"),
+            annual_avg_balance=Decimal("100000000"),
+            days_in_period=31,
+        ),
+        CanonicalFactRow(
+            report_date=report_date,
+            account_code="50204000001",
+            currency="CNX",
+            account_name="asset pnl",
+            beginning_balance=Decimal("0"),
+            ending_balance=Decimal("0"),
+            monthly_pnl=Decimal("849315.0684931506849315068493"),
+            daily_avg_balance=Decimal("0"),
+            annual_avg_balance=Decimal("0"),
+            days_in_period=31,
+        ),
+    ]
+
+    result = calculate_read_model(
+        {report_date: facts},
+        report_date,
+        "monthly",
+        build_default_product_category_config(),
+    )
+    lending = next(
+        row for row in result["rows"] if row["category_id"] == "interbank_lending_assets"
+    )
+
+    assert lending["weighted_yield"] == Decimal("10.00000000000000000000000000")
+
+
+def test_product_category_interest_spread_metrics_are_decimal_core_finance_output():
+    metrics = calculate_product_category_interest_spread_metrics(
+        report_date="2026-02-28",
+        view="monthly",
+        asset_row={
+            "weighted_yield": Decimal("2.55"),
+            "cnx_cash": Decimal("10"),
+            "cnx_scale": Decimal("100"),
+            "cny_cash": Decimal("0.23"),
+            "cny_scale": Decimal("100"),
+        },
+        liability_row={
+            "weighted_yield": Decimal("1.70"),
+            "cnx_cash": Decimal("8"),
+            "cnx_scale": Decimal("80"),
+            "cny_cash": Decimal("0.11"),
+            "cny_scale": Decimal("80"),
+        },
+    )
+
+    assert metrics.all_currency_spread_pct is not None
+    assert metrics.all_currency_spread_pct.raw == Decimal("0.85")
+    assert metrics.all_currency_spread_pct.unit == "percent"
+    assert metrics.all_currency_spread_pct.display == "0.85%"
+    assert metrics.cny_spread_pct is not None
+    assert metrics.cny_spread_pct.raw == Decimal("1.20580357")
+    assert metrics.cny_spread_pct.unit == "percent"
+    assert metrics.cny_spread_pct.display == "1.21%"
+
+
+def test_product_category_interest_spread_metrics_preserve_null_when_inputs_missing():
+    metrics = calculate_product_category_interest_spread_metrics(
+        report_date="2026-02-28",
+        view="monthly",
+        asset_row={
+            "weighted_yield": None,
+            "cnx_cash": Decimal("10"),
+            "cnx_scale": Decimal("100"),
+            "cny_cash": Decimal("0"),
+            "cny_scale": Decimal("0"),
+        },
+        liability_row={
+            "weighted_yield": Decimal("1.70"),
+            "cnx_cash": Decimal("8"),
+            "cnx_scale": Decimal("80"),
+            "cny_cash": Decimal("0.11"),
+            "cny_scale": Decimal("80"),
+        },
+    )
+
+    assert metrics.all_currency_spread_pct is None
+    assert metrics.cny_spread_pct is None

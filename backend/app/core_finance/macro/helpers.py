@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import logging
 import math
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, MutableMapping
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Iterable, Mapping, MutableMapping
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from app.core_finance.safe_decimal import safe_decimal
+
+logger = logging.getLogger(__name__)
 
 
 def get_value(record: Any, *keys: str, default: Any = None) -> Any:
@@ -33,7 +37,8 @@ def coerce_date(value: Any) -> date | None:
     if hasattr(value, "date"):
         try:
             return value.date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
+            logger.exception("coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None
 
@@ -82,6 +87,18 @@ def first_available_rate(
         if rate is not None:
             return curve_id, tenor, rate
     return None, None, None
+
+
+def latest_available_rate_on_or_before(
+    curves_by_date: Mapping[date, Mapping[str, Mapping[str, Decimal]]],
+    target_date: date,
+    candidates: Iterable[tuple[str, str]],
+) -> tuple[str | None, str | None, Decimal | None, date | None]:
+    for sample_date in sorted((sample for sample in curves_by_date if sample <= target_date), reverse=True):
+        curve_id, tenor, rate = first_available_rate(curves_by_date, sample_date, candidates)
+        if rate is not None:
+            return curve_id, tenor, rate, sample_date
+    return None, None, None, None
 
 
 def clamp(value: Decimal, minimum: Decimal, maximum: Decimal) -> Decimal:
@@ -174,7 +191,8 @@ def to_decimal_safe(v: Any) -> Decimal:
         return v
     try:
         return Decimal(str(v))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError):
+        logger.exception("to_decimal_safe: failed to convert %r", type(v).__name__)
         return Decimal("0")
 
 
@@ -197,7 +215,7 @@ def pearson_corr(x: list[float], y: list[float], min_samples: int = 5) -> float 
     n = len(x)
     sum_x = sum(x)
     sum_y = sum(y)
-    sum_xy = sum(xi * yi for xi, yi in zip(x, y))
+    sum_xy = sum(xi * yi for xi, yi in zip(x, y, strict=False))
     sum_xx = sum(xi * xi for xi in x)
     sum_yy = sum(yi * yi for yi in y)
     num = n * sum_xy - sum_x * sum_y

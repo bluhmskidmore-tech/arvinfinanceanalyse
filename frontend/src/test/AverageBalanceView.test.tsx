@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import AverageBalanceView from "../features/average-balance/components/AverageBalanceView";
+import { shiftIsoDateByYears } from "../features/average-balance/components/averageBalanceDateUtils";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="average-balance-echarts-stub" />,
@@ -37,17 +38,75 @@ function renderView(clientOverrides?: Record<string, unknown>) {
         },
       };
     },
-    async getAdbComparison() {
+    async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+      if (startDate.startsWith("2025")) {
+        return {
+          report_date: "2025-04-14",
+          start_date: startDate,
+          end_date: endDate,
+          calendar_days_inclusive: 104,
+          adb_denominator_basis: "formal_calendar" as const,
+          num_days: 104,
+          coverage_days: 104,
+          simulated: true,
+          total_spot_assets: 520000000,
+          total_avg_assets: 450000000,
+          total_spot_liabilities: 220000000,
+          total_avg_liabilities: 180000000,
+          total_avg_interbank_assets: 200000000,
+          total_avg_interbank_liabilities: 88000000,
+          asset_yield: 2.4,
+          liability_cost: 1.68,
+          net_interest_margin: 0.72,
+          assets_breakdown: [
+            {
+              category: "债券投资",
+              spot_balance: 280000000,
+              avg_balance: 250000000,
+              proportion: 50,
+              weighted_rate: 2.7,
+            },
+            {
+              category: "同业资产",
+              spot_balance: 240000000,
+              avg_balance: 230000000,
+              proportion: 50,
+              weighted_rate: 2.2,
+            },
+          ],
+          liabilities_breakdown: [
+            {
+              category: "同业负债",
+              spot_balance: 130000000,
+              avg_balance: 100000000,
+              proportion: 55,
+              weighted_rate: 1.9,
+            },
+            {
+              category: "发行债券",
+              spot_balance: 90000000,
+              avg_balance: 88000000,
+              proportion: 45,
+              weighted_rate: 1.55,
+            },
+          ],
+        };
+      }
       return {
         report_date: "2026-04-14",
         start_date: "2026-01-01",
         end_date: "2026-04-14",
+        calendar_days_inclusive: 104,
+        adb_denominator_basis: "formal_calendar" as const,
         num_days: 104,
+        coverage_days: 104,
         simulated: true,
         total_spot_assets: 550000000,
         total_avg_assets: 500000000,
         total_spot_liabilities: 230000000,
         total_avg_liabilities: 200000000,
+        total_avg_interbank_assets: 240000000,
+        total_avg_interbank_liabilities: 110000000,
         asset_yield: 2.55,
         liability_cost: 1.75,
         net_interest_margin: 0.8,
@@ -85,31 +144,73 @@ function renderView(clientOverrides?: Record<string, unknown>) {
         ],
         accounting_basis_daily_avg: {
           report_date: "2026-04-14",
-          currency_basis: "CNX",
+          currency_basis: "CNY",
           daily_avg_total: 500000000,
-          accounting_controls: ["142%", "143%", "1440101%", "141%"],
-          excluded_controls: ["144020%"],
           rows: [
             {
               basis_bucket: "AC",
-              daily_avg_balance: 220000000,
-              daily_avg_pct: 44,
-              source_account_patterns: ["142%", "143%"],
+              daily_avg_balance: 200000000,
+              daily_avg_pct: 40,
+              source_account_patterns: [],
             },
             {
-              basis_bucket: "OCI",
-              daily_avg_balance: 150000000,
-              daily_avg_pct: 30,
-              source_account_patterns: ["1440101%"],
+              basis_bucket: "FVOCI",
+              daily_avg_balance: 200000000,
+              daily_avg_pct: 40,
+              source_account_patterns: [],
             },
             {
-              basis_bucket: "TPL",
-              daily_avg_balance: 130000000,
-              daily_avg_pct: 26,
-              source_account_patterns: ["141%"],
+              basis_bucket: "FVTPL",
+              daily_avg_balance: 100000000,
+              daily_avg_pct: 20,
+              source_account_patterns: [],
             },
           ],
+          accounting_controls: ["示例控制项"],
+          excluded_controls: [],
         },
+        accounting_basis_daily_avg_trend: [
+          {
+            report_date: "2026-03-31",
+            report_month: "2026-03",
+            currency_basis: "CNY",
+            daily_avg_total: 480000000,
+            rows: [
+              { basis_bucket: "AC", daily_avg_balance: 190000000, daily_avg_pct: 39.6, source_account_patterns: [] },
+              { basis_bucket: "FVOCI", daily_avg_balance: 190000000, daily_avg_pct: 39.6, source_account_patterns: [] },
+              { basis_bucket: "FVTPL", daily_avg_balance: 100000000, daily_avg_pct: 20.8, source_account_patterns: [] },
+            ],
+            accounting_controls: [],
+            excluded_controls: [],
+          },
+          {
+            report_date: "2026-04-14",
+            report_month: "2026-04",
+            currency_basis: "CNY",
+            daily_avg_total: 500000000,
+            rows: [
+              { basis_bucket: "AC", daily_avg_balance: 200000000, daily_avg_pct: 40, source_account_patterns: [] },
+              { basis_bucket: "FVOCI", daily_avg_balance: 200000000, daily_avg_pct: 40, source_account_patterns: [] },
+              { basis_bucket: "FVTPL", daily_avg_balance: 100000000, daily_avg_pct: 20, source_account_patterns: [] },
+            ],
+            accounting_controls: [],
+            excluded_controls: [],
+          },
+        ],
+      };
+    },
+    async getAdbCoverage() {
+      return {
+        start_date: "2026-01-01",
+        end_date: "2026-04-14",
+        calendar_days: 104,
+        snapshot_tables: {},
+        formal_tables: {},
+        snapshot_date_count: 0,
+        formal_date_count: 0,
+        missing_dates: [],
+        missing_count: 0,
+        coverage_pct: 0,
       };
     },
     async getAdbMonthly() {
@@ -120,64 +221,6 @@ function renderView(clientOverrides?: Record<string, unknown>) {
         ytd_asset_yield: 2.41,
         ytd_liability_cost: 1.62,
         ytd_nim: 0.79,
-        accounting_basis_daily_avg_trend: [
-          {
-            report_date: "2026-02-28",
-            report_month: "2026-02",
-            currency_basis: "CNX",
-            daily_avg_total: 481800000,
-            accounting_controls: ["142%", "143%", "1440101%", "141%"],
-            excluded_controls: ["144020%"],
-            rows: [
-              {
-                basis_bucket: "AC",
-                daily_avg_balance: 190000000,
-                daily_avg_pct: 39.44,
-                source_account_patterns: ["142%", "143%"],
-              },
-              {
-                basis_bucket: "OCI",
-                daily_avg_balance: 160000000,
-                daily_avg_pct: 33.21,
-                source_account_patterns: ["1440101%"],
-              },
-              {
-                basis_bucket: "TPL",
-                daily_avg_balance: 131800000,
-                daily_avg_pct: 27.36,
-                source_account_patterns: ["141%"],
-              },
-            ],
-          },
-          {
-            report_date: "2026-03-31",
-            report_month: "2026-03",
-            currency_basis: "CNX",
-            daily_avg_total: 500000000,
-            accounting_controls: ["142%", "143%", "1440101%", "141%"],
-            excluded_controls: ["144020%"],
-            rows: [
-              {
-                basis_bucket: "AC",
-                daily_avg_balance: 220000000,
-                daily_avg_pct: 44,
-                source_account_patterns: ["142%", "143%"],
-              },
-              {
-                basis_bucket: "OCI",
-                daily_avg_balance: 150000000,
-                daily_avg_pct: 30,
-                source_account_patterns: ["1440101%"],
-              },
-              {
-                basis_bucket: "TPL",
-                daily_avg_balance: 130000000,
-                daily_avg_pct: 26,
-                source_account_patterns: ["141%"],
-              },
-            ],
-          },
-        ],
         months: [
           {
             month: "2026-03",
@@ -188,9 +231,9 @@ function renderView(clientOverrides?: Record<string, unknown>) {
             asset_yield: 2.45,
             liability_cost: 1.66,
             net_interest_margin: 0.79,
-            mom_change_assets: 18.2,
+            mom_change_assets: 18_000_000,
             mom_change_pct_assets: 3.78,
-            mom_change_liabilities: -7.5,
+            mom_change_liabilities: -7_500_000,
             mom_change_pct_liabilities: -3.45,
             breakdown_assets: [
               {
@@ -273,6 +316,67 @@ function renderView(clientOverrides?: Record<string, unknown>) {
 }
 
 describe("AverageBalanceView", () => {
+  it("defers trend and prior-year requests until the current comparison is ready", async () => {
+    let resolveCurrentComparison: (value: unknown) => void = () => {};
+    const currentComparisonPromise = new Promise((resolve) => {
+      resolveCurrentComparison = resolve;
+    });
+    const comparisonPayload = {
+      report_date: "2026-04-14",
+      start_date: "2026-01-01",
+      end_date: "2026-04-14",
+      calendar_days_inclusive: 104,
+      adb_denominator_basis: "formal_calendar" as const,
+      num_days: 104,
+      coverage_days: 104,
+      simulated: false,
+      total_spot_assets: 550000000,
+      total_avg_assets: 500000000,
+      total_spot_liabilities: 230000000,
+      total_avg_liabilities: 200000000,
+      total_avg_interbank_assets: 240000000,
+      total_avg_interbank_liabilities: 110000000,
+      asset_yield: 2.55,
+      liability_cost: 1.75,
+      net_interest_margin: 0.8,
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+    };
+    const getAdbComparison = vi.fn((startDate: string, endDate: string) => {
+      if (startDate.startsWith("2025")) {
+        return Promise.resolve({
+          ...comparisonPayload,
+          report_date: "2025-04-14",
+          start_date: startDate,
+          end_date: endDate,
+        });
+      }
+      return currentComparisonPromise;
+    });
+    const getAdb = vi.fn(async () => ({
+      summary: {
+        total_avg_assets: 500000000,
+        total_avg_liabilities: 200000000,
+        end_spot_assets: 550000000,
+        end_spot_liabilities: 230000000,
+      },
+      trend: [],
+      breakdown: [],
+    }));
+
+    renderView({ getAdbComparison, getAdb });
+
+    await waitFor(() => expect(getAdbComparison).toHaveBeenCalledTimes(1));
+    expect(getAdbComparison.mock.calls[0][0]).toBe("2026-01-01");
+    expect(getAdb).not.toHaveBeenCalled();
+
+    resolveCurrentComparison(comparisonPayload);
+
+    await waitFor(() => expect(getAdb).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getAdbComparison).toHaveBeenCalledTimes(2));
+    expect(getAdbComparison.mock.calls[1][0]).toBe("2025-01-01");
+  });
+
   it("renders the daily analysis tab with preset ranges, KPI cards, warning copy, and breakdown tables", async () => {
     renderView();
 
@@ -293,7 +397,10 @@ describe("AverageBalanceView", () => {
     expect(screen.getByRole("button", { name: "年初至今" })).toBeInTheDocument();
     expect(screen.getByLabelText("adb-start-date")).toBeInTheDocument();
     expect(screen.getByLabelText("adb-end-date")).toBeInTheDocument();
-    expect(await screen.findByText("有效天数：104 天")).toBeInTheDocument();
+    expect(await screen.findByText("区间天数：104 天")).toBeInTheDocument();
+    expect(screen.getByTestId("adb-denominator-summary")).toHaveTextContent("分母=");
+    expect(screen.getByTestId("adb-accounting-basis-section")).toHaveTextContent("FVOCI");
+    expect(screen.getByTestId("adb-accounting-basis-trend-chart")).toBeInTheDocument();
     expect(
       screen.getByText("当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑"),
     ).toBeInTheDocument();
@@ -304,29 +411,212 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("期末时点总负债")).toBeInTheDocument();
     expect(screen.getByText("日均总负债")).toBeInTheDocument();
     expect(screen.getByText("偏离度（负债）")).toBeInTheDocument();
-    expect(screen.getByText("资产收益率（年化）")).toBeInTheDocument();
-    expect(screen.getByText("负债付息率（年化）")).toBeInTheDocument();
-    expect(screen.getByText("NIM（年化）")).toBeInTheDocument();
-    const accountingBasis = screen.getByTestId("adb-accounting-basis-daily-avg");
-    expect(accountingBasis).toHaveTextContent("AC");
-    expect(accountingBasis).toHaveTextContent("OCI");
-    expect(accountingBasis).toHaveTextContent("TPL");
-    expect(accountingBasis).toHaveTextContent("44.00");
-    expect(accountingBasis).toHaveTextContent("144020%");
-    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
+    expect(screen.getByText("同业日均资产")).toBeInTheDocument();
+    expect(screen.getByText("同业日均负债")).toBeInTheDocument();
+    expect(screen.getAllByText("TYW 正式余额·区间日均").length).toBe(2);
+    expect(screen.getByText("资产加权平均YTM")).toBeInTheDocument();
+    expect(screen.getByText("负债加权平均票息")).toBeInTheDocument();
+    expect(screen.getByText("利差（YTM−票息）")).toBeInTheDocument();
+    const yoyCard = await screen.findByTestId("adb-daily-yoy-summary");
+    expect(yoyCard).toHaveTextContent("去年同期对齐");
+    expect(yoyCard).toHaveTextContent("不可加总");
+    expect(yoyCard).toHaveTextContent("债券与同业");
+    expect(yoyCard).toHaveTextContent("2025-01-01");
+    expect(yoyCard).toHaveTextContent("2025-04-14");
+    expect(yoyCard).toHaveTextContent("区间日均总资产");
+    expect(yoyCard).toHaveTextContent("+11.11%");
+    expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("资产端分类");
+    expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("负债端分类");
+    expect(screen.getByTestId("adb-top-n-select")).toBeInTheDocument();
+    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(3);
 
-    expect(screen.getByText("期末时点与日均偏离对比")).toBeInTheDocument();
+    expect(screen.getByText(/期末时点与日均偏离对比 · 资产/)).toBeInTheDocument();
+    expect(screen.getByText(/期末时点与日均偏离对比 · 负债/)).toBeInTheDocument();
     expect(screen.getByText("资产端分类明细")).toBeInTheDocument();
     expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
     expect(screen.getAllByText("期末时点（亿元）").length).toBeGreaterThan(0);
     expect(screen.getAllByText("日均(亿元)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("收益率(%)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("付息率(%)").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
     expect(screen.getByRole("link", { name: "打开正式资产负债分析" })).toHaveAttribute(
       "href",
       "/balance-analysis?report_date=2026-04-14&position_scope=all&currency_basis=CNY",
     );
+  });
+
+  it("marks unmatched prior-year categories as missing instead of real zero", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return {
+            ...current,
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+            assets_breakdown: [],
+            liabilities_breakdown: [],
+          };
+        }
+        return {
+          ...current,
+          assets_breakdown: [
+            {
+              category: "new-asset-book",
+              spot_balance: 120_000_000,
+              avg_balance: 100_000_000,
+              proportion: 100,
+              weighted_rate: 2.1,
+            },
+          ],
+          liabilities_breakdown: [],
+        };
+      },
+    });
+
+    const yoyCategory = await screen.findByTestId("adb-daily-yoy-category");
+    await waitFor(() => expect(yoyCategory).toHaveTextContent("new-asset-book"));
+    expect(yoyCategory).toHaveTextContent("缺去年同期");
+    expect(yoyCategory).not.toHaveTextContent("Infinity");
+  });
+
+  it("preserves missing comparison average balance as unavailable instead of zero", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return {
+            ...current,
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+            assets_breakdown: [
+              {
+                category: "missing-adb",
+                spot_balance: 100_000_000,
+                avg_balance: 50_000_000,
+                proportion: 50,
+                weighted_rate: null,
+              },
+            ],
+            liabilities_breakdown: [],
+          };
+        }
+        return {
+          ...current,
+          assets_breakdown: [
+            {
+              category: "missing-adb",
+              spot_balance: 100_000_000,
+              avg_balance: null,
+              proportion: 50,
+              weighted_rate: null,
+            },
+            {
+              category: "true-zero-adb",
+              spot_balance: 0,
+              avg_balance: 0,
+              proportion: 0,
+              weighted_rate: null,
+            },
+          ],
+          liabilities_breakdown: [],
+        };
+      },
+    });
+
+    await waitFor(() => expect(screen.getAllByText("missing-adb").length).toBeGreaterThan(0));
+    const missingDetailRow = screen
+      .getAllByText("missing-adb")
+      .map((node) => node.closest("tr"))
+      .find((row): row is HTMLTableRowElement => Boolean(row?.textContent?.includes("50.00")));
+    expect(missingDetailRow?.querySelectorAll("td")[2]).toHaveTextContent("—");
+    expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("missing-adb");
+    expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("—");
+    expect(screen.getByTestId("adb-daily-yoy-category")).not.toHaveTextContent("-0.50");
+    expect(screen.getByText("true-zero-adb").closest("tr")).toHaveTextContent("0.00");
+  });
+
+  it("renders missing accounting-basis daily average balances as unavailable instead of zero", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return {
+            ...current,
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+          };
+        }
+        return {
+          ...current,
+          accounting_basis_daily_avg: {
+            report_date: "2026-04-14",
+            currency_basis: "CNY",
+            daily_avg_total: null,
+            rows: [
+              {
+                basis_bucket: "missing-basis-adb",
+                daily_avg_balance: null,
+                daily_avg_pct: null,
+                source_account_patterns: [],
+              },
+              {
+                basis_bucket: "true-zero-basis-adb",
+                daily_avg_balance: 0,
+                daily_avg_pct: 0,
+                source_account_patterns: [],
+              },
+            ],
+            accounting_controls: [],
+            excluded_controls: [],
+          },
+          accounting_basis_daily_avg_trend: [
+            {
+              report_date: "2026-03-31",
+              report_month: "2026-03",
+              currency_basis: "CNY",
+              daily_avg_total: null,
+              rows: [
+                {
+                  basis_bucket: "missing-basis-adb",
+                  daily_avg_balance: null,
+                  daily_avg_pct: null,
+                  source_account_patterns: [],
+                },
+              ],
+              accounting_controls: [],
+              excluded_controls: [],
+            },
+            {
+              report_date: "2026-04-14",
+              report_month: "2026-04",
+              currency_basis: "CNY",
+              daily_avg_total: 0,
+              rows: [
+                {
+                  basis_bucket: "missing-basis-adb",
+                  daily_avg_balance: null,
+                  daily_avg_pct: null,
+                  source_account_patterns: [],
+                },
+              ],
+              accounting_controls: [],
+              excluded_controls: [],
+            },
+          ],
+        };
+      },
+    });
+
+    const section = await screen.findByTestId("adb-accounting-basis-section");
+    await waitFor(() => expect(section).toHaveTextContent("missing-basis-adb"));
+    const missingRow = screen.getByText("missing-basis-adb").closest("tr");
+    const zeroRow = screen.getByText("true-zero-basis-adb").closest("tr");
+    expect(missingRow).toHaveTextContent("—");
+    expect(missingRow).not.toHaveTextContent("0.00");
+    expect(zeroRow).toHaveTextContent("0.00");
   });
 
   it("renders the monthly statistics tab with YTD summary, expandable table, and deep analysis panels", async () => {
@@ -338,9 +628,9 @@ describe("AverageBalanceView", () => {
     expect(await screen.findByRole("heading", { name: "月度日均统计" })).toBeInTheDocument();
     expect(await screen.findByText("年初至今日均资产")).toBeInTheDocument();
     expect(screen.getByText("年初至今日均负债")).toBeInTheDocument();
-    expect(screen.getByText("年初至今资产收益率")).toBeInTheDocument();
-    expect(screen.getByText("年初至今负债付息率")).toBeInTheDocument();
-    expect(screen.getByText("年初至今净息差")).toBeInTheDocument();
+    expect(screen.getByText("年初至今加权YTM")).toBeInTheDocument();
+    expect(screen.getByText("年初至今加权票息")).toBeInTheDocument();
+    expect(screen.getByText("年初至今利差")).toBeInTheDocument();
 
     expect(screen.getByText("月度汇总表")).toBeInTheDocument();
     expect(screen.getAllByText("2026年3月").length).toBeGreaterThan(0);
@@ -349,9 +639,7 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
     expect(screen.getByText("月份")).toBeInTheDocument();
     expect(screen.getByText("天数")).toBeInTheDocument();
-    expect(screen.getByTestId("adb-accounting-basis-monthly-trend")).toHaveTextContent(
-      "AC / OCI / TPL",
-    );
+    expect(screen.getByText(/额\s*\+\s*0\.18\s*亿元/)).toBeInTheDocument();
     const matrix = screen.getByTestId("adb-monthly-analysis-matrix");
     expect(matrix).toHaveTextContent("分类");
     expect(matrix).toHaveTextContent("项目");
@@ -363,10 +651,77 @@ describe("AverageBalanceView", () => {
     expect(matrix).toHaveTextContent("负债：同业负债");
     expect(matrix).toHaveTextContent("日均资产");
     expect(matrix).toHaveTextContent("日均负债");
-    expect(matrix).toHaveTextContent("资产收益率");
-    expect(matrix).toHaveTextContent("NIM");
+    expect(matrix).toHaveTextContent("加权YTM");
+    expect(matrix).toHaveTextContent("利差");
     expect(screen.getAllByTestId("adb-monthly-breakdown-table")).toHaveLength(2);
     expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(3);
+  });
+
+  it("renders missing monthly average balances as unavailable instead of zero", async () => {
+    const user = userEvent.setup();
+    renderView({
+      async getAdbMonthly() {
+        return {
+          year: 2026,
+          ytd_avg_assets: null,
+          ytd_avg_liabilities: null,
+          ytd_asset_yield: null,
+          ytd_liability_cost: null,
+          ytd_nim: null,
+          months: [
+            {
+              month: "2026-03",
+              month_label: "Null Month",
+              num_days: 31,
+              avg_assets: null,
+              avg_liabilities: null,
+              asset_yield: null,
+              liability_cost: null,
+              net_interest_margin: null,
+              mom_change_assets: null,
+              mom_change_pct_assets: null,
+              mom_change_liabilities: null,
+              mom_change_pct_liabilities: null,
+              breakdown_assets: [
+                {
+                  category: "missing-monthly-adb",
+                  avg_balance: null,
+                  proportion: null,
+                  weighted_rate: null,
+                },
+                {
+                  category: "true-zero-monthly-adb",
+                  avg_balance: 0,
+                  proportion: 0,
+                  weighted_rate: null,
+                },
+              ],
+              breakdown_liabilities: [],
+            },
+          ],
+        };
+      },
+    });
+
+    await user.click(await screen.findByRole("tab", { name: "月度统计" }));
+
+    const ytdAssetCard = (await screen.findByText("年初至今日均资产")).closest(".ant-card");
+    const ytdLiabilityCard = screen.getByText("年初至今日均负债").closest(".ant-card");
+    expect(ytdAssetCard).toHaveTextContent("—");
+    expect(ytdLiabilityCard).toHaveTextContent("—");
+
+    await waitFor(() => expect(screen.getAllByText("Null Month").length).toBeGreaterThan(0));
+    const monthlyRow = screen
+      .getAllByText("Null Month")
+      .map((node) => node.closest("tr"))
+      .find((row): row is HTMLTableRowElement => Boolean(row?.textContent?.includes("31")));
+    expect(monthlyRow).toHaveTextContent("—");
+    expect(monthlyRow).not.toHaveTextContent("0.00");
+
+    const missingBreakdownRow = screen.getByText("missing-monthly-adb").closest("tr");
+    const zeroBreakdownRow = screen.getByText("true-zero-monthly-adb").closest("tr");
+    expect(missingBreakdownRow).toHaveTextContent("—");
+    expect(zeroBreakdownRow).toHaveTextContent("0.00");
   });
 
   it("shows an explicit error state when report dates fail and no daily query can start", async () => {
@@ -391,6 +746,78 @@ describe("AverageBalanceView", () => {
     expect(screen.queryByText("期末时点总资产")).not.toBeInTheDocument();
   });
 
+  it("loads coverage diagnostics when formal coverage is materially below the calendar window", async () => {
+    const user = userEvent.setup();
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        if (startDate.startsWith("2025")) {
+          return {
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+            calendar_days_inclusive: 104,
+            adb_denominator_basis: "formal_calendar" as const,
+            num_days: 104,
+            coverage_days: 104,
+            simulated: true,
+            total_spot_assets: 520000000,
+            total_avg_assets: 450000000,
+            total_spot_liabilities: 220000000,
+            total_avg_liabilities: 180000000,
+            total_avg_interbank_assets: 200000000,
+            total_avg_interbank_liabilities: 88000000,
+            asset_yield: 2.4,
+            liability_cost: 1.68,
+            net_interest_margin: 0.72,
+            assets_breakdown: [],
+            liabilities_breakdown: [],
+          };
+        }
+        return {
+          report_date: "2026-04-14",
+          start_date: "2026-01-01",
+          end_date: "2026-04-14",
+          calendar_days_inclusive: 100,
+          adb_denominator_basis: "formal_calendar" as const,
+          num_days: 100,
+          coverage_days: 30,
+          sample_filled: true,
+          sample_fill_method: "observed_days_scaled_to_calendar",
+          simulated: false,
+          total_spot_assets: 550000000,
+          total_avg_assets: 500000000,
+          total_spot_liabilities: 230000000,
+          total_avg_liabilities: 200000000,
+          total_avg_interbank_assets: 240000000,
+          total_avg_interbank_liabilities: 110000000,
+          asset_yield: 2.55,
+          liability_cost: 1.75,
+          net_interest_margin: 0.8,
+          assets_breakdown: [],
+          liabilities_breakdown: [],
+        };
+      },
+      async getAdbCoverage() {
+        return {
+          start_date: "2026-01-01",
+          end_date: "2026-04-14",
+          calendar_days: 100,
+          snapshot_tables: {},
+          formal_tables: {},
+          snapshot_date_count: 80,
+          formal_date_count: 30,
+          missing_dates: ["2026-02-01", "2026-02-02"],
+          missing_count: 50,
+          coverage_pct: 37.5,
+        };
+      },
+    });
+
+    expect(await screen.findByTestId("adb-coverage-diagnostics")).toBeInTheDocument();
+    await user.click(screen.getByText("快照 vs formal 覆盖诊断（只读）"));
+    expect(await screen.findByTestId("adb-coverage-missing-list")).toHaveTextContent("2026-02-01");
+  });
+
   it("surfaces backend result metadata for daily ADB reads", async () => {
     renderView({
       async getAdbComparison() {
@@ -398,12 +825,17 @@ describe("AverageBalanceView", () => {
           report_date: "2026-04-14",
           start_date: "2026-01-01",
           end_date: "2026-04-14",
+          calendar_days_inclusive: 104,
+          adb_denominator_basis: "formal_calendar" as const,
           num_days: 104,
+          coverage_days: 104,
           simulated: false,
           total_spot_assets: 550000000,
           total_avg_assets: 500000000,
           total_spot_liabilities: 230000000,
           total_avg_liabilities: 200000000,
+          total_avg_interbank_assets: 0,
+          total_avg_interbank_liabilities: 0,
           asset_yield: 2.55,
           liability_cost: 1.75,
           net_interest_margin: 0.8,
@@ -422,6 +854,17 @@ describe("AverageBalanceView", () => {
             vendor_status: "ok" as const,
             fallback_mode: "latest_snapshot" as const,
             scenario_flag: false,
+            requested_report_date: "2026-01-01",
+            resolved_report_date: "2026-04-14",
+            as_of_date: "2026-04-14",
+            date_basis: "adb_comparison_report_date",
+            tables_used: ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+            filters_applied: {
+              start_date: "2026-01-01",
+              end_date: "2026-04-14",
+              top_n: 20,
+            },
+            evidence_rows: 104,
             generated_at: "2026-04-14T08:00:00+08:00",
           },
         };
@@ -432,5 +875,22 @@ describe("AverageBalanceView", () => {
     expect(meta).toHaveTextContent("adb.comparison");
     expect(meta).toHaveTextContent("来源=sv_live_adb");
     expect(meta).toHaveTextContent("降级=最新快照降级");
+    expect(meta).toHaveTextContent("候选指标");
+    expect(meta).toHaveTextContent("PAGE-CONTRACT-PENDING:/average-balance");
+    expect(meta).toHaveTextContent("正式可用: 否");
+    expect(meta).toHaveTextContent("口径 analytical");
+    expect(meta).toHaveTextContent("质量=预警");
+    expect(meta).toHaveTextContent("日期基准 adb_comparison_report_date");
+    expect(meta).toHaveTextContent("fact_formal_zqtz_balance_daily");
+    expect(meta).toHaveTextContent("fact_formal_tyw_balance_daily");
+    expect(meta).toHaveTextContent("证据行 104");
+  });
+});
+
+describe("shiftIsoDateByYears", () => {
+  it("shifts calendar years and clamps invalid leap dates", () => {
+    expect(shiftIsoDateByYears("2025-04-14", -1)).toBe("2024-04-14");
+    expect(shiftIsoDateByYears("2024-02-29", -1)).toBe("2023-02-28");
+    expect(shiftIsoDateByYears("2023-04-12", 1)).toBe("2024-04-12");
   });
 });

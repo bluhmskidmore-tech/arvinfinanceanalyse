@@ -8,7 +8,12 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
-from tests.liability_v1_harness import MANIFEST_PATH, compatibility_diffs, load_json_file, sample_cases_from_manifest
+from tests.liability_v1_harness import (
+    MANIFEST_PATH,
+    compatibility_diffs,
+    load_json_file,
+    sample_cases_from_manifest,
+)
 
 DISPOSITION_CATEGORIES = {
     "implementation-defect",

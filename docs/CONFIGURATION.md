@@ -71,6 +71,7 @@
 | `MOSS_FTP_RATE_PCT` | FTP 利率配置 |
 | `MOSS_FORMAL_PNL_ENABLED` | formal PnL 开关 |
 | `MOSS_FORMAL_PNL_SCOPE_JSON` | formal PnL scope |
+| `MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS` | 为 `true`（默认）时 `/api/pnl/by-business-ytd` 优先用 `fact_formal_pnl_fi` + `fact_nonstd_pnl_bridge` 累计；为 `false` 时用刷新包 + V1 兼容变换 |
 
 ## 路径解析规则
 

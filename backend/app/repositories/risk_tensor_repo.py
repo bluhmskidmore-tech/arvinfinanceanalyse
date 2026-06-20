@@ -4,10 +4,13 @@ import json
 from dataclasses import dataclass
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
+from backend.app.repositories.duckdb_migrations import (
+    apply_pending_migrations_on_connection,
+    ensure_risk_tensor_legacy_columns,
+)
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALYTICS_CACHE_KEY
 
 FACT_TABLE = "fact_formal_risk_tensor_daily"
@@ -93,6 +96,7 @@ class RiskTensorRepository:
         cache_version: str,
         trace_id: str,
     ) -> None:
+        require_repository_task_write_scope("replace_risk_tensor_row")
         conn = duckdb.connect(self.path, read_only=False)
         try:
             conn.execute("begin transaction")
@@ -106,6 +110,7 @@ class RiskTensorRepository:
                 insert into {FACT_TABLE} (
                     report_date,
                     portfolio_dv01,
+                    regulatory_dv01,
                     krd_1y,
                     krd_3y,
                     krd_5y,
@@ -136,12 +141,13 @@ class RiskTensorRepository:
                     cache_version,
                     trace_id
                 ) values (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 [
                     report_date,
                     tensor.portfolio_dv01,
+                    tensor.regulatory_dv01,
                     tensor.krd_1y,
                     tensor.krd_3y,
                     tensor.krd_5y,
@@ -224,10 +230,16 @@ class RiskTensorRepository:
                 "''",
                 coalesce=True,
             )
+            regulatory_dv01 = _column_or_default(
+                table_columns,
+                "regulatory_dv01",
+                "cast(null as decimal(24, 8))",
+            )
             row = conn.execute(
                 f"""
                 select report_date,
                        portfolio_dv01,
+                       {regulatory_dv01},
                        krd_1y,
                        krd_3y,
                        krd_5y,
@@ -268,6 +280,7 @@ class RiskTensorRepository:
             columns = [
                 "report_date",
                 "portfolio_dv01",
+                "regulatory_dv01",
                 "krd_1y",
                 "krd_3y",
                 "krd_5y",
@@ -308,6 +321,7 @@ class RiskTensorRepository:
 def ensure_risk_tensor_table(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
+    ensure_risk_tensor_legacy_columns(conn)
 
 
 def load_latest_bond_analytics_lineage(

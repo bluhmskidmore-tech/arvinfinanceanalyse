@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import duckdb
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -9,10 +10,29 @@ from backend.app.repositories.external_data_catalog_repo import (
     ensure_external_data_catalog_schema,
 )
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.external_data_query_service import fetch_series_data_page
 from tests.helpers import load_module
 
 SERIES_ID = "research.calendar.supply_auction"
+RESEARCH_CALENDAR_READ_HEADERS = {"X-User-Id": "research-calendar-read-user", "X-User-Role": "viewer"}
+
+
+def _grant_research_calendar_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "research-calendar-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="research_calendar",
+        action="read",
+    )
 
 
 def _register_catalog_entry(conn: duckdb.DuckDBPyConnection) -> ExternalDataCatalogEntry:
@@ -94,10 +114,37 @@ def _seed_supply_auction_surface(tmp_path) -> str:
     return str(db_path)
 
 
+def test_supply_auction_calendar_route_requires_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    duckdb_path = _seed_supply_auction_surface(tmp_path)
+    sqlite_path = tmp_path / "research-calendar-read-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", duckdb_path)
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+
+    route_module = load_module(
+        "backend.app.api.routes.research_calendar",
+        "backend/app/api/routes/research_calendar.py",
+    )
+    test_app = FastAPI()
+    test_app.include_router(route_module.router)
+    client = TestClient(test_app)
+
+    response = client.get(
+        "/ui/calendar/supply-auctions",
+        params={"start_date": "2026-04-23", "end_date": "2026-04-30"},
+        headers=RESEARCH_CALENDAR_READ_HEADERS,
+    )
+
+    assert response.status_code == 403
+    get_settings.cache_clear()
+
+
 def test_supply_auction_calendar_route_returns_analytical_envelope(tmp_path, monkeypatch) -> None:
     duckdb_path = _seed_supply_auction_surface(tmp_path)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", duckdb_path)
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    _grant_research_calendar_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)

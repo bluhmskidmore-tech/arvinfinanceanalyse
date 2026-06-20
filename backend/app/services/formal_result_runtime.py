@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from typing import Literal
 
 from backend.app.schemas.result_meta import (
@@ -9,7 +10,7 @@ from backend.app.schemas.result_meta import (
     infer_source_surface_for_result_kind,
 )
 
-ResultBasis = Literal["formal", "scenario", "analytical"]
+ResultBasis = Literal["formal", "scenario", "analytical", "ledger"]
 QualityFlag = Literal["ok", "warning", "error", "stale"]
 VendorStatus = Literal["ok", "vendor_stale", "vendor_unavailable"]
 FallbackMode = Literal["none", "latest_snapshot"]
@@ -18,12 +19,14 @@ _BASIS_FIXED_FLAGS: dict[ResultBasis, tuple[bool, bool]] = {
     "formal": (True, False),
     "scenario": (False, True),
     "analytical": (False, False),
+    "ledger": (False, False),
 }
 
 _BASIS_DEFAULT_QUALITY: dict[ResultBasis, QualityFlag] = {
     "formal": "ok",
     "scenario": "warning",
     "analytical": "warning",
+    "ledger": "warning",
 }
 
 LineageFieldMessageBuilder = Callable[[str], str]
@@ -35,6 +38,7 @@ def _build_result_meta(
     trace_id: str,
     result_kind: str,
     cache_version: str,
+    cache_key: str | None = None,
     source_version: str,
     rule_version: str,
     quality_flag: QualityFlag | None,
@@ -46,27 +50,44 @@ def _build_result_meta(
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
     source_surface: SourceSurface | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
+    generated_at: datetime | str | None = None,
 ) -> ResultMeta:
     formal_use_allowed, scenario_flag = _BASIS_FIXED_FLAGS[basis]
     effective_surface = source_surface or infer_source_surface_for_result_kind(result_kind)
+    meta_kwargs = {
+        "trace_id": trace_id,
+        "basis": basis,
+        "result_kind": result_kind,
+        "formal_use_allowed": formal_use_allowed,
+        "source_version": source_version,
+        "vendor_version": vendor_version,
+        "rule_version": rule_version,
+        "cache_version": cache_version,
+        "cache_key": cache_key,
+        "quality_flag": quality_flag or _BASIS_DEFAULT_QUALITY[basis],
+        "vendor_status": vendor_status,
+        "fallback_mode": fallback_mode,
+        "requested_report_date": requested_report_date,
+        "resolved_report_date": resolved_report_date,
+        "scenario_flag": scenario_flag,
+        "as_of_date": as_of_date,
+        "date_basis": date_basis,
+        "fallback_date": fallback_date,
+        "filters_applied": dict(filters_applied or {}),
+        "tables_used": list(tables_used or []),
+        "evidence_rows": evidence_rows,
+        "next_drill": list(next_drill or []),
+        "source_surface": effective_surface,
+    }
+    if generated_at is not None:
+        meta_kwargs["generated_at"] = generated_at
     return ResultMeta(
-        trace_id=trace_id,
-        basis=basis,
-        result_kind=result_kind,
-        formal_use_allowed=formal_use_allowed,
-        source_version=source_version,
-        vendor_version=vendor_version,
-        rule_version=rule_version,
-        cache_version=cache_version,
-        quality_flag=quality_flag or _BASIS_DEFAULT_QUALITY[basis],
-        vendor_status=vendor_status,
-        fallback_mode=fallback_mode,
-        scenario_flag=scenario_flag,
-        filters_applied=dict(filters_applied or {}),
-        tables_used=list(tables_used or []),
-        evidence_rows=evidence_rows,
-        next_drill=list(next_drill or []),
-        source_surface=effective_surface,
+        **meta_kwargs,
     )
 
 
@@ -75,6 +96,7 @@ def build_analytical_result_meta(
     trace_id: str,
     result_kind: str,
     cache_version: str,
+    cache_key: str | None = None,
     source_version: str,
     rule_version: str,
     quality_flag: QualityFlag | None = None,
@@ -86,12 +108,19 @@ def build_analytical_result_meta(
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
     source_surface: SourceSurface | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
+    generated_at: datetime | str | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="analytical",
         trace_id=trace_id,
         result_kind=result_kind,
         cache_version=cache_version,
+        cache_key=cache_key,
         source_version=source_version,
         rule_version=rule_version,
         quality_flag=quality_flag,
@@ -103,6 +132,62 @@ def build_analytical_result_meta(
         evidence_rows=evidence_rows,
         next_drill=next_drill,
         source_surface=source_surface,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        date_basis=date_basis,
+        fallback_date=fallback_date,
+        generated_at=generated_at,
+    )
+
+
+def build_ledger_result_meta(
+    *,
+    trace_id: str,
+    result_kind: str,
+    cache_version: str,
+    cache_key: str | None = None,
+    source_version: str,
+    rule_version: str,
+    quality_flag: QualityFlag | None = None,
+    vendor_version: str = "vv_none",
+    vendor_status: VendorStatus = "ok",
+    fallback_mode: FallbackMode = "none",
+    filters_applied: Mapping[str, object] | None = None,
+    tables_used: list[str] | None = None,
+    evidence_rows: int | None = None,
+    next_drill: list[str | dict[str, object]] | None = None,
+    source_surface: SourceSurface | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
+    generated_at: datetime | str | None = None,
+) -> ResultMeta:
+    return _build_result_meta(
+        basis="ledger",
+        trace_id=trace_id,
+        result_kind=result_kind,
+        cache_version=cache_version,
+        cache_key=cache_key,
+        source_version=source_version,
+        rule_version=rule_version,
+        quality_flag=quality_flag,
+        vendor_version=vendor_version,
+        vendor_status=vendor_status,
+        fallback_mode=fallback_mode,
+        filters_applied=filters_applied,
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        next_drill=next_drill,
+        source_surface=source_surface,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        date_basis=date_basis,
+        fallback_date=fallback_date,
+        generated_at=generated_at,
     )
 
 
@@ -111,6 +196,7 @@ def build_scenario_result_meta(
     trace_id: str,
     result_kind: str,
     cache_version: str,
+    cache_key: str | None = None,
     source_version: str,
     rule_version: str,
     quality_flag: QualityFlag | None = None,
@@ -122,12 +208,19 @@ def build_scenario_result_meta(
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
     source_surface: SourceSurface | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
+    generated_at: datetime | str | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="scenario",
         trace_id=trace_id,
         result_kind=result_kind,
         cache_version=cache_version,
+        cache_key=cache_key,
         source_version=source_version,
         rule_version=rule_version,
         quality_flag=quality_flag,
@@ -139,6 +232,12 @@ def build_scenario_result_meta(
         evidence_rows=evidence_rows,
         next_drill=next_drill,
         source_surface=source_surface,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        date_basis=date_basis,
+        fallback_date=fallback_date,
+        generated_at=generated_at,
     )
 
 
@@ -147,6 +246,7 @@ def build_formal_result_meta(
     trace_id: str,
     result_kind: str,
     cache_version: str,
+    cache_key: str | None = None,
     source_version: str,
     rule_version: str,
     quality_flag: QualityFlag | None = None,
@@ -158,12 +258,19 @@ def build_formal_result_meta(
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
     source_surface: SourceSurface | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
+    generated_at: datetime | str | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="formal",
         trace_id=trace_id,
         result_kind=result_kind,
         cache_version=cache_version,
+        cache_key=cache_key,
         source_version=source_version,
         rule_version=rule_version,
         quality_flag=quality_flag,
@@ -175,6 +282,12 @@ def build_formal_result_meta(
         evidence_rows=evidence_rows,
         next_drill=next_drill,
         source_surface=source_surface,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        date_basis=date_basis,
+        fallback_date=fallback_date,
+        generated_at=generated_at,
     )
 
 
@@ -194,6 +307,12 @@ def build_formal_result_meta_from_lineage(
     fallback_mode: FallbackMode = "none",
     missing_field_message: LineageFieldMessageBuilder | None = None,
     source_surface: SourceSurface | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
+    generated_at: datetime | str | None = None,
 ) -> ResultMeta:
     return build_formal_result_meta(
         trace_id=trace_id,
@@ -235,6 +354,12 @@ def build_formal_result_meta_from_lineage(
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
         source_surface=source_surface,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        date_basis=date_basis,
+        fallback_date=fallback_date,
+        generated_at=generated_at,
     )
 
 
@@ -266,6 +391,11 @@ def build_formal_result_envelope_from_lineage(
     fallback_mode: FallbackMode = "none",
     missing_field_message: LineageFieldMessageBuilder | None = None,
     source_surface: SourceSurface | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
 ) -> dict[str, object]:
     return build_formal_result_envelope(
         result_meta=build_formal_result_meta_from_lineage(
@@ -283,6 +413,11 @@ def build_formal_result_envelope_from_lineage(
             fallback_mode=fallback_mode,
             missing_field_message=missing_field_message,
             source_surface=source_surface,
+            requested_report_date=requested_report_date,
+            resolved_report_date=resolved_report_date,
+            as_of_date=as_of_date,
+            date_basis=date_basis,
+            fallback_date=fallback_date,
         ),
         result_payload=result_payload,
     )
@@ -323,6 +458,7 @@ def build_result_envelope(
     trace_id: str,
     result_kind: str,
     cache_version: str,
+    cache_key: str | None = None,
     source_version: str,
     rule_version: str,
     result_payload: dict[str, object],
@@ -335,12 +471,19 @@ def build_result_envelope(
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
     source_surface: SourceSurface | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    as_of_date: str | None = None,
+    date_basis: str | None = None,
+    fallback_date: str | None = None,
+    generated_at: datetime | str | None = None,
 ) -> dict[str, object]:
     meta = _build_result_meta(
         basis=basis,
         trace_id=trace_id,
         result_kind=result_kind,
         cache_version=cache_version,
+        cache_key=cache_key,
         source_version=source_version,
         rule_version=rule_version,
         quality_flag=quality_flag,
@@ -352,6 +495,12 @@ def build_result_envelope(
         evidence_rows=evidence_rows,
         next_drill=next_drill,
         source_surface=source_surface,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        date_basis=date_basis,
+        fallback_date=fallback_date,
+        generated_at=generated_at,
     )
     return build_formal_result_envelope(
         result_meta=meta,

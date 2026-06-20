@@ -7,7 +7,6 @@ from pathlib import Path
 
 from tests.helpers import load_module
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -18,6 +17,7 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
     )
 
     assert module.RELEASE_SUITE_NAME == "governed-phase2-backend-release-suite"
+    assert module.GOVERNANCE_MCP_SUITE_NAME == "governance-mcp-contract-suite"
     assert module.RELEASE_SUITE_TESTS == [
         "tests/test_settings_contract.py",
         "tests/test_health_endpoints.py",
@@ -35,7 +35,10 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
         "tests/test_golden_samples_capture_ready.py",
         "tests/test_executive_release_contract.py",
         "tests/test_golden_sample_release_matrix.py",
+        "tests/test_live_route_page_contract_completeness.py",
+        "tests/test_no_finance_logic_in_frontend.py",
     ]
+    assert module.GOVERNANCE_MCP_SUITE_TESTS == ["tests/test_project_mcp_servers.py"]
     assert module.EXECUTIVE_RELEASE_SAMPLE_IDS == [
         "GS-EXEC-OVERVIEW-A",
         "GS-EXEC-PNL-ATTR-A",
@@ -56,6 +59,10 @@ def test_backend_release_suite_dry_run_emits_expected_plan(capsys):
     assert report["suite_name"] == "governed-phase2-backend-release-suite"
     assert report["governance_dir"] == "data/governance"
     assert report["pytest_args"] == ["-m", "pytest", "-q", *module.RELEASE_SUITE_TESTS]
+    assert report["governance_mcp_suite"] == {
+        "suite_name": "governance-mcp-contract-suite",
+        "pytest_args": ["-m", "pytest", "-q", *module.GOVERNANCE_MCP_SUITE_TESTS],
+    }
     assert report["executive_release_sample_ids"] == module.EXECUTIVE_RELEASE_SAMPLE_IDS
     assert report["env"]["MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS"] == "1"
     assert report["env"]["MOSS_SKIP_POSTGRES_MIGRATIONS"] == "1"

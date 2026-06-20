@@ -1,27 +1,34 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from dataclasses import asdict
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.config.product_category_mapping import build_product_category_config_for_report_date
 from backend.app.core_finance.product_category_pnl import (
+    CanonicalFactRow,
     ManualAdjustment,
     apply_manual_adjustments,
     calculate_read_model,
+    calculate_product_category_interest_spread_metrics,
 )
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
+from backend.app.schemas.product_category_pnl import (
+    ProductCategoryInterestSpreadPayload,
+    ProductCategoryPnlPayload,
+    ProductCategoryPnlRow,
+)
 from backend.app.services.product_category_source_service import (
     RULE_VERSION,
     build_canonical_facts,
@@ -30,12 +37,12 @@ from backend.app.services.product_category_source_service import (
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
 
-
 PRODUCT_CATEGORY_PNL_LOCK = LockDefinition(
     key="lock:duckdb:product-category-pnl",
     ttl_seconds=900,
 )
 PRODUCT_CATEGORY_ADJUSTMENT_STREAM = "product_category_pnl_adjustments"
+PRODUCT_CATEGORY_AVAILABLE_VIEWS = ["monthly", "qtd", "ytd", "year_to_report_month_end"]
 
 
 def _materialize_product_category_pnl(
@@ -53,7 +60,12 @@ def _materialize_product_category_pnl(
     run = BuildRunRecord(job_name="product_category_pnl", status="running")
     run_id = run_id or f"{run.job_name}:{run.created_at}"
 
-    with acquire_lock(PRODUCT_CATEGORY_PNL_LOCK, base_dir=governance_path):
+    writer_lock = resolve_duckdb_writer_lock(
+        duckdb_file,
+        ttl_seconds=PRODUCT_CATEGORY_PNL_LOCK.ttl_seconds,
+    )
+
+    with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
         repo.append(
             CACHE_BUILD_RUN_STREAM,
             {
@@ -147,7 +159,7 @@ def _materialize_product_category_pnl(
                 {
                     **failed_run.model_dump(),
                     "error_message": str(exc),
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "finished_at": datetime.now(UTC).isoformat(),
                 },
             )
             raise
@@ -192,6 +204,134 @@ materialize_product_category_pnl = register_actor_once(
     "materialize_product_category_pnl",
     _materialize_product_category_pnl,
 )
+
+
+def materialize_product_category_pnl_sync(
+    duckdb_path: str | None = None,
+    source_dir: str | None = None,
+    governance_dir: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, object]:
+    return _materialize_product_category_pnl(
+        duckdb_path=duckdb_path,
+        source_dir=source_dir,
+        governance_dir=governance_dir,
+        run_id=run_id,
+    )
+
+
+def product_category_pnl_payload_from_canonical_ytd_anchor(
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    ftp_rate_pct: float,
+) -> ProductCategoryPnlPayload | None:
+    """Rebuild YTD rows from canonical facts when persisted YTD rows are missing."""
+    try:
+        anchor = date.fromisoformat(report_date)
+    except ValueError:
+        return None
+
+    gov_path = Path(governance_dir)
+    fallback_rate = Decimal(str(ftp_rate_pct))
+
+    try:
+        conn = duckdb.connect(duckdb_path, read_only=True)
+    except (OSError, duckdb.Error):
+        return None
+
+    try:
+        dates_rows = conn.execute(
+            """
+            select distinct report_date
+            from product_category_pnl_canonical_fact
+            where report_date <= ? and substr(report_date, 1, 4) = ?
+            order by report_date
+            """,
+            [report_date, str(anchor.year)],
+        ).fetchall()
+
+        date_strings = [str(row[0]) for row in dates_rows]
+        if report_date not in date_strings:
+            return None
+
+        facts_by: dict[date, list[CanonicalFactRow]] = {}
+        for ds in date_strings:
+            d_obj = date.fromisoformat(ds)
+            rows = conn.execute(
+                """
+                select report_date, account_code, currency, account_name,
+                       beginning_balance, ending_balance, monthly_pnl,
+                       daily_avg_balance, annual_avg_balance, days_in_period
+                from product_category_pnl_canonical_fact
+                where report_date = ?
+                order by account_code, currency
+                """,
+                [ds],
+            ).fetchall()
+            raw: list[CanonicalFactRow] = []
+            for tup in rows:
+                raw.append(
+                    CanonicalFactRow(
+                        report_date=date.fromisoformat(str(tup[0])),
+                        account_code=str(tup[1]),
+                        currency=str(tup[2]),
+                        account_name=str(tup[3]),
+                        beginning_balance=Decimal(str(tup[4])),
+                        ending_balance=Decimal(str(tup[5])),
+                        monthly_pnl=Decimal(str(tup[6])),
+                        daily_avg_balance=Decimal(str(tup[7])),
+                        annual_avg_balance=Decimal(str(tup[8])),
+                        days_in_period=int(tup[9]),
+                    )
+                )
+            facts_by[d_obj] = apply_manual_adjustments(
+                raw,
+                _load_manual_adjustments(gov_path, d_obj),
+            )
+    except duckdb.Error:
+        return None
+    finally:
+        conn.close()
+
+    if anchor not in facts_by:
+        return None
+
+    try:
+        config = build_product_category_config_for_report_date(anchor, fallback_rate)
+        calc_out = calculate_read_model(facts_by, anchor, "ytd", config)
+    except (KeyError, ValueError, TypeError, ArithmeticError):
+        return None
+
+    typed_rows = [ProductCategoryPnlRow.model_validate(row) for row in calc_out["rows"]]
+    interest_earning_assets = next(row for row in typed_rows if row.category_id == "interest_earning_assets")
+    asset_total = ProductCategoryPnlRow.model_validate(calc_out["asset_total"])
+    liability_total = ProductCategoryPnlRow.model_validate(calc_out["liability_total"])
+    grand_total = ProductCategoryPnlRow.model_validate(calc_out["grand_total"])
+    interest_spread = calculate_product_category_interest_spread_metrics(
+        report_date=report_date,
+        view="ytd",
+        asset_row=asset_total.model_dump(mode="python"),
+        liability_row=liability_total.model_dump(mode="python"),
+    )
+    interest_earning_spread = calculate_product_category_interest_spread_metrics(
+        report_date=report_date,
+        view="ytd",
+        asset_row=interest_earning_assets.model_dump(mode="python"),
+        liability_row=liability_total.model_dump(mode="python"),
+    )
+    return ProductCategoryPnlPayload(
+        report_date=report_date,
+        view="ytd",
+        available_views=list(PRODUCT_CATEGORY_AVAILABLE_VIEWS),
+        scenario_rate_pct=None,
+        rows=typed_rows,
+        asset_total=asset_total,
+        liability_total=liability_total,
+        grand_total=grand_total,
+        interest_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_spread)),
+        interest_earning_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_earning_spread)),
+    )
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:

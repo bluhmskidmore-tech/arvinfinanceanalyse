@@ -1,0 +1,20 @@
+.summary-block__title {
+  margin-bottom: 8px;
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.summary-block__content {
+  margin: 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.summary-block__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}

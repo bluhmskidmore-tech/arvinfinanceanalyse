@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-NumericUnit = Literal["yuan", "pct", "bp", "ratio", "count", "dv01", "yi"]
+NumericUnit = Literal["yuan", "pct", "bp", "ratio", "years", "count", "dv01", "yi"]
 
 
 class Numeric(BaseModel):
@@ -103,7 +103,7 @@ def numeric_from_raw(
 
 
 def _normalize_numeric_raw(raw: float, unit: NumericUnit) -> float:
-    if unit == "pct" and abs(raw) >= 1.0:
+    if unit == "pct" and abs(raw) > 1.0:
         return raw / 100.0
     return raw
 

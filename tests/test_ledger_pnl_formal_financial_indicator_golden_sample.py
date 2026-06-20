@@ -1,0 +1,424 @@
+from __future__ import annotations
+
+import json
+from decimal import Decimal
+from typing import Any
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from tests.helpers import ROOT, load_module
+from tests.test_qdb_gl_monthly_analysis_core import (
+    _real_month_source,
+    _real_qdb_gl_source_dir,
+)
+
+SAMPLE_PATH = (
+    ROOT
+    / "tests"
+    / "fixtures"
+    / "formal_financial_indicators"
+    / "ledger_pnl_202603_financial_indicator_golden.json"
+)
+LEDGER_PNL_READ_HEADERS = {"X-User-Id": "ledger-pnl-read-user", "X-User-Role": "viewer"}
+
+
+def _load_sample() -> dict[str, Any]:
+    return json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
+
+
+def _metrics_by_key(sample: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(metric["metric_key"]): metric for metric in sample["metrics"]}
+
+
+def _grant_ledger_pnl_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "ledger-pnl-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="ledger_pnl",
+        action="read",
+    )
+
+
+def _ledger_pnl_client_with_read_scope(tmp_path, monkeypatch) -> TestClient:
+    _grant_ledger_pnl_read_scope(tmp_path, monkeypatch)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client.headers.update(LEDGER_PNL_READ_HEADERS)
+    return client
+
+
+def test_ledger_pnl_202603_golden_sample_freezes_excel_values_units_and_source_statuses():
+    sample = _load_sample()
+
+    assert sample["sample_id"] == "GS-LEDGER-PNL-FIN-IND-202603-B"
+    assert sample["sample_status"] == "contract_fixture"
+    assert sample["report_month"] == "202603"
+    assert sample["source_workbook"].endswith("2026年财务指标表-3月最终(1).xlsx")
+
+    metrics = _metrics_by_key(sample)
+    assert metrics["group.operating_revenue"] == {
+        "metric_key": "group.operating_revenue",
+        "metric_name": "集团营业收入",
+        "scope": "group_consolidated",
+        "excel_value": "43.4194731314",
+        "unit": "亿元",
+        "excel_ref": "财务指标-汇总!K5 -> 财务指标-计算表!K5",
+        "formula": "=4341947313.14/100000000",
+        "source_status": "formal_pending",
+        "system_metric": None,
+        "system_value": None,
+    }
+    assert metrics["group.cost_income_ratio"]["excel_value"] == "22.4174363027"
+    assert metrics["group.cost_income_ratio"]["unit"] == "%"
+    assert metrics["group.cost_income_ratio"]["formula"] == "财务指标-汇总!K31 = K10 / K5"
+    assert metrics["parent.loan_balance"]["source_status"] == "candidate_qdb_aligned"
+    assert metrics["parent.loan_balance"]["system_metric"] == "qdb.loan_spot"
+    assert metrics["parent.loan_balance"]["system_value"] == "4189.47"
+    assert metrics["parent.deposit_balance"]["source_status"] == "needs_reconciliation"
+    assert metrics["parent.deposit_balance"]["system_value"] == "5115.96"
+    assert metrics["parent.deposit_balance"]["reconciliation_gap"] == "4.6780974646"
+
+    formal_pending = [
+        metric
+        for metric in metrics.values()
+        if metric["source_status"] == "formal_pending"
+    ]
+    assert formal_pending
+    assert all(metric["system_value"] is None for metric in formal_pending)
+
+
+def test_formal_financial_indicator_registry_exposes_202603_contract_without_promoting_values():
+    sample = _load_sample()
+    registry = load_module(
+        "backend.app.core_finance.formal_financial_indicators",
+        "backend/app/core_finance/formal_financial_indicators.py",
+    )
+
+    contract = registry.build_formal_financial_indicator_contract(report_month="202603")
+
+    assert contract["sample_id"] == sample["sample_id"]
+    assert contract["report_month"] == "202603"
+    assert contract["source_version"] == "sv_formal_financial_indicators_excel_202603_contract"
+    assert contract["rule_version"] == "rv_formal_financial_indicators_source_status_v1"
+    assert contract["formal_use_allowed"] is False
+    assert contract["release_gate"] == {
+        "status": "registered_pending_release",
+        "blocking_reason": "202603 正式财务指标样本契约已登记，但正式生产来源尚未接入，不能放行 formal_use_allowed。",
+        "required_evidence": [
+            "governed production source connected for formal financial indicators",
+            "all contract values sourced from the frozen Excel sample",
+            "Ledger PnL formal financial indicator golden sample test passes",
+        ],
+        "readback_action": "登记来源接入证据并重新读取契约，确认 formal_use_allowed=false 保持到放行前",
+    }
+
+    contract_metrics = _metrics_by_key(contract)
+    sample_metrics = _metrics_by_key(sample)
+    assert contract_metrics.keys() == sample_metrics.keys()
+
+    pending = [
+        metric
+        for metric in contract_metrics.values()
+        if metric["source_status"] == "formal_pending"
+    ]
+    assert pending
+    assert all(metric["value"] is None for metric in pending)
+    assert all(metric["system_value"] is None for metric in pending)
+    assert all(metric["formal_use_allowed"] is False for metric in contract_metrics.values())
+    assert contract_metrics["parent.loan_balance"]["source_status"] == "candidate_qdb_aligned"
+    assert contract_metrics["parent.loan_balance"]["value"] is None
+    assert contract_metrics["parent.loan_balance"]["consolidation_scope"] == "parent_company"
+    assert contract_metrics["parent.loan_balance"]["cell_ref"] == "财务指标-汇总!K39 -> 财务指标-计算表!K76"
+    assert contract_metrics["parent.loan_balance"]["golden_sample_ref"].endswith("#parent.loan_balance")
+
+
+def test_formal_financial_indicator_registry_returns_empty_contract_for_unregistered_month():
+    registry = load_module(
+        "backend.app.core_finance.formal_financial_indicators",
+        "backend/app/core_finance/formal_financial_indicators.py",
+    )
+
+    contract = registry.build_formal_financial_indicator_contract(report_month="202605")
+
+    assert contract["sample_status"] == "missing_contract"
+    assert contract["report_month"] == "202605"
+    assert contract["source_version"] == "sv_formal_financial_indicators_contract_unavailable"
+    assert contract["formal_use_allowed"] is False
+    assert contract["metrics"] == []
+    assert contract["remediation"] == {
+        "required": True,
+        "action_label": "补齐 202605 正式财务指标 Excel 冻结样本",
+        "action_detail": "先取得并冻结 202605 正式财务指标 Excel 样本，再登记 source contract 并重新核对 QDB 候选值。",
+        "required_artifact": "202605 正式财务指标 Excel 冻结样本",
+        "artifact_status": "missing",
+        "blocking_reason": "未找到 202605 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
+        "acceptance_criteria": [
+            "样本必须来自 202605 正式财务指标 Excel 冻结版本",
+            "样本必须包含财务指标-汇总表及单元格引用",
+            "样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推",
+            "登记后必须重新运行 Ledger PnL 正式财务指标金样本测试",
+        ],
+        "registration_package": {
+            "fixture_target": (
+                "tests/fixtures/formal_financial_indicators/"
+                "ledger_pnl_202605_financial_indicator_golden.json"
+            ),
+            "registry_target": "backend/app/core_finance/formal_financial_indicators.py::_METRICS_202605",
+            "contract_builder": "build_formal_financial_indicator_contract(report_month='202605')",
+            "release_gate": "formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
+        },
+        "registration_package_guard": {
+            "status": "ready",
+            "required_fields": [
+                "fixture_target",
+                "registry_target",
+                "contract_builder",
+                "release_gate",
+            ],
+            "missing_fields": [],
+            "blocking_rule": "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
+        },
+        "readback_acceptance": {
+            "label": "登记后回读验收",
+            "readback_query": "report_month=202605 必须返回已登记契约",
+            "target_state": "sample_status=contract_fixture，metrics 不得为空",
+            "release_state": "若正式生产来源尚未接入，release_gate.status 必须为 registered_pending_release",
+            "formal_use_guard": "formal_use_allowed 必须保持 false，直到正式来源接入且放行证据齐备",
+            "source_guard": "契约值必须来自冻结 Excel 样本；QDB 候选值只能保留在 system_value/reconciliation_gap",
+            "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
+        },
+        "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
+        "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
+    }
+
+
+def test_formal_financial_indicator_registration_package_guard_blocks_missing_fields():
+    registry = load_module(
+        "backend.app.core_finance.formal_financial_indicators",
+        "backend/app/core_finance/formal_financial_indicators.py",
+    )
+
+    guard = registry._registration_package_guard({
+        "fixture_target": "tests/fixtures/formal_financial_indicators/ledger_pnl_202605_financial_indicator_golden.json",
+        "registry_target": "backend/app/core_finance/formal_financial_indicators.py::_METRICS_202605",
+        "contract_builder": "build_formal_financial_indicator_contract(report_month='202605')",
+        "release_gate": "",
+    })
+
+    assert guard == {
+        "status": "blocked",
+        "required_fields": [
+            "fixture_target",
+            "registry_target",
+            "contract_builder",
+            "release_gate",
+        ],
+        "missing_fields": ["release_gate"],
+        "blocking_rule": "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
+    }
+
+
+def test_ledger_pnl_service_wraps_financial_indicator_contract_as_non_formal_envelope():
+    service = load_module(
+        "backend.app.services.ledger_pnl_service",
+        "backend/app/services/ledger_pnl_service.py",
+    )
+
+    envelope = service.ledger_pnl_formal_financial_indicator_contract_envelope(
+        report_month="202603",
+    )
+
+    assert envelope["result_meta"]["basis"] == "ledger"
+    assert envelope["result_meta"]["formal_use_allowed"] is False
+    assert envelope["result_meta"]["source_version"] == "sv_formal_financial_indicators_excel_202603_contract"
+    assert envelope["result"]["sample_id"] == "GS-LEDGER-PNL-FIN-IND-202603-B"
+    assert envelope["result"]["release_gate"]["status"] == "registered_pending_release"
+    metrics = _metrics_by_key(envelope["result"])
+    assert metrics["group.operating_revenue"]["value"] is None
+    assert metrics["group.operating_revenue"]["missing_reason"].startswith("正式财务指标来源未接入")
+    assert metrics["parent.deposit_balance"]["source_status"] == "needs_reconciliation"
+    assert metrics["parent.deposit_balance"]["value"] is None
+
+
+def test_ledger_pnl_service_wraps_unregistered_month_as_empty_warning_envelope():
+    service = load_module(
+        "backend.app.services.ledger_pnl_service",
+        "backend/app/services/ledger_pnl_service.py",
+    )
+
+    envelope = service.ledger_pnl_formal_financial_indicator_contract_envelope(
+        report_month="202605",
+    )
+
+    assert envelope["result_meta"]["basis"] == "ledger"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["formal_use_allowed"] is False
+    assert envelope["result_meta"]["source_version"] == "sv_formal_financial_indicators_contract_unavailable"
+    assert envelope["result_meta"]["evidence_rows"] == 0
+    assert envelope["result"]["report_month"] == "202605"
+    assert envelope["result"]["metrics"] == []
+    assert envelope["result"]["remediation"]["registration_target"] == (
+        "backend/app/core_finance/formal_financial_indicators.py"
+    )
+
+
+def test_ledger_pnl_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.ledger_pnl",
+        "backend/app/api/routes/ledger_pnl.py",
+    )
+
+    class FakeLedgerPnlService:
+        @staticmethod
+        def ledger_pnl_dates_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "ledger_pnl.dates"}, "result": {"dates": []}}
+
+        @staticmethod
+        def ledger_pnl_data_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "ledger_pnl.data"}, "result": {"items": []}}
+
+        @staticmethod
+        def ledger_pnl_summary_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "ledger_pnl.summary"}, "result": {}}
+
+        @staticmethod
+        def ledger_pnl_formal_financial_indicator_contract_envelope(**_kwargs):
+            return {
+                "result_meta": {"result_kind": "ledger_pnl.formal_financial_indicator_source_contract"},
+                "result": {"metrics": []},
+            }
+
+    monkeypatch.setattr(route_module, "_svc", lambda: FakeLedgerPnlService)
+    sqlite_path = tmp_path / "ledger-pnl-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    cases = [
+        ("/api/ledger-pnl/dates", {}),
+        ("/api/ledger-pnl/data", {"date": "2026-03-31"}),
+        ("/api/ledger-pnl/summary", {"date": "2026-03-31"}),
+        ("/api/ledger-pnl/formal-financial-indicators", {"report_month": "202603"}),
+    ]
+
+    for path, params in cases:
+        response = client.get(path, params=params, headers=LEDGER_PNL_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_ledger_pnl_api_exposes_formal_financial_indicator_source_contract(tmp_path, monkeypatch):
+    client = _ledger_pnl_client_with_read_scope(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/api/ledger-pnl/formal-financial-indicators",
+        params={"report_month": "202603"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "ledger"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["result_kind"] == "ledger_pnl.formal_financial_indicator_source_contract"
+    assert payload["result"]["report_month"] == "202603"
+
+    metrics = _metrics_by_key(payload["result"])
+    assert metrics["group.operating_revenue"]["value"] is None
+    assert metrics["group.operating_revenue"]["source_status"] == "formal_pending"
+    assert metrics["parent.loan_balance"]["source_status"] == "candidate_qdb_aligned"
+    assert metrics["parent.loan_balance"]["value"] is None
+
+
+def test_ledger_pnl_api_exposes_empty_contract_for_unregistered_month(tmp_path, monkeypatch):
+    client = _ledger_pnl_client_with_read_scope(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/api/ledger-pnl/formal-financial-indicators",
+        params={"report_month": "202605"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "ledger"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["evidence_rows"] == 0
+    assert payload["result"]["sample_status"] == "missing_contract"
+    assert payload["result"]["report_month"] == "202605"
+    assert payload["result"]["metrics"] == []
+    assert payload["result"]["remediation"]["required"] is True
+    assert payload["result"]["remediation"]["action_label"] == "补齐 202605 正式财务指标 Excel 冻结样本"
+    assert payload["result"]["remediation"]["acceptance_criteria"][2] == (
+        "样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推"
+    )
+    assert payload["result"]["remediation"]["registration_package"]["fixture_target"] == (
+        "tests/fixtures/formal_financial_indicators/ledger_pnl_202605_financial_indicator_golden.json"
+    )
+    assert payload["result"]["remediation"]["registration_package_guard"] == {
+        "status": "ready",
+        "required_fields": [
+            "fixture_target",
+            "registry_target",
+            "contract_builder",
+            "release_gate",
+        ],
+        "missing_fields": [],
+        "blocking_rule": "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
+    }
+
+
+def test_real_202603_qdb_algorithm_matches_golden_probe_without_promoting_formal_metrics():
+    sample = _load_sample()
+    service = load_module(
+        "backend.app.services.qdb_gl_monthly_analysis_service",
+        "backend/app/services/qdb_gl_monthly_analysis_service.py",
+    )
+    source_dir = _real_qdb_gl_source_dir()
+
+    envelope = service.qdb_gl_monthly_analysis_workbook_envelope(
+        source_dir=str(source_dir),
+        report_month="202603",
+    )
+
+    assert envelope["result_meta"]["basis"] == "analytical"
+    assert envelope["result_meta"]["formal_use_allowed"] is False
+
+    status_sheet = next(
+        sheet
+        for sheet in envelope["result"]["sheets"]
+        if sheet["key"] == "financial_indicator_status"
+    )
+    rows_by_name = {row["指标"]: row for row in status_sheet["rows"]}
+    for probe in sample["qdb_probe"]:
+        row = rows_by_name[probe["status_row_name"]]
+        assert Decimal(str(row["当前值"])) == Decimal(probe["system_value"])
+        assert row["单位"] == probe["unit"]
+        assert row["口径状态"] == "QDB源可复算"
+
+    for metric in sample["formal_pending_status_probe"]:
+        row = rows_by_name[metric["status_row_name"]]
+        assert row["当前值"] is None
+        assert row["口径状态"] == "正式口径待接入"
+        assert str(row["口径来源"]).startswith("formal_pending:")
+
+
+def test_real_202603_qdb_source_files_are_the_same_report_month_bound_by_sample():
+    sample = _load_sample()
+    source_dir = _real_qdb_gl_source_dir()
+
+    avg_path = _real_month_source(source_dir, "日均", sample["report_month"])
+    ledger_path = _real_month_source(source_dir, "总账对账", sample["report_month"])
+
+    assert avg_path.name == sample["qdb_source_files"]["daily_average"]
+    assert ledger_path.name == sample["qdb_source_files"]["general_ledger"]

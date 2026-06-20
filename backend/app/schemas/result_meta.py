@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
-
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SourceSurface = Literal[
     "executive_analytical",
@@ -14,6 +13,8 @@ SourceSurface = Literal[
     "risk_tensor",
     "cashflow",
     "pnl_bridge",
+    "market_data",
+    "choice_news",
 ]
 
 _GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
@@ -26,6 +27,8 @@ _GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
     ("risk.tensor", "risk_tensor"),
     ("cashflow_projection.", "cashflow"),
     ("pnl.bridge", "pnl_bridge"),
+    ("market_data.", "market_data"),
+    ("news.choice.", "choice_news"),
 ]
 
 _GOVERNED_RESULT_KIND_PREFIXES = tuple(
@@ -42,18 +45,26 @@ def infer_source_surface_for_result_kind(result_kind: str) -> SourceSurface | No
 
 class ResultMeta(BaseModel):
     trace_id: str = Field(..., description="Trace identifier for governance and audit.")
-    basis: Literal["formal", "scenario", "analytical"] = "formal"
+    basis: Literal["formal", "scenario", "analytical", "ledger"] = "formal"
     result_kind: str = "analysis_view"
     formal_use_allowed: bool = True
+    amount_currency_basis: str | None = None
+    amount_currency_basis_note: str | None = None
     source_version: str
     vendor_version: str = "vv_none"
     rule_version: str
     cache_version: str
+    cache_key: str | None = None
     quality_flag: Literal["ok", "warning", "error", "stale"] = "ok"
     vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = "ok"
     fallback_mode: Literal["none", "latest_snapshot"] = "none"
+    requested_report_date: str | None = None
+    resolved_report_date: str | None = None
     scenario_flag: bool = False
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    as_of_date: str | None = None
+    date_basis: str | None = None
+    fallback_date: str | None = None
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     filters_applied: dict[str, Any] = Field(default_factory=dict)
     tables_used: list[str] = Field(default_factory=list)
     evidence_rows: int | None = None
@@ -68,3 +79,13 @@ class ResultMeta(BaseModel):
                     f"source_surface is required for governed result_kind={self.result_kind!r}."
                 )
         return self
+
+
+class ResultEnvelope(BaseModel):
+    """Top-level JSON envelope for governed API read responses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: dict[str, Any]
+    result: dict[str, Any] | list[Any]
+    calibration: dict[str, Any] | None = None

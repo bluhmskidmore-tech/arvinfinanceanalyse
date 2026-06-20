@@ -11,7 +11,6 @@ import type {
 } from "../types";
 import { BondAnalyticsFilterActionStrip } from "./BondAnalyticsFilterActionStrip";
 import { BondAnalyticsInstitutionalCockpit } from "./BondAnalyticsInstitutionalCockpit";
-import { BondAnalyticsMacroMarketBar } from "./BondAnalyticsMacroMarketBar";
 import { BondAnalyticsMarketContextStrip } from "./BondAnalyticsMarketContextStrip";
 import { BondAnalyticsOverviewMidCharts } from "./BondAnalyticsOverviewMidCharts";
 import RiskTrendChart from "./RiskTrendChart";
@@ -44,11 +43,11 @@ export interface BondAnalyticsOverviewPanelsProps {
 }
 
 export function BondAnalyticsOverviewPanels({
-  dateOptions,
+  dateOptions: _dateOptions,
   reportDate,
-  onReportDateChange,
+  onReportDateChange: _onReportDateChange,
   periodType,
-  onPeriodTypeChange,
+  onPeriodTypeChange: _onPeriodTypeChange,
   assetClass,
   onAssetClassChange,
   accountingClass,
@@ -66,44 +65,32 @@ export function BondAnalyticsOverviewPanels({
   lastAnalyticsRefreshRunId = null,
   calendarItems = [],
 }: BondAnalyticsOverviewPanelsProps) {
+  const activeReadinessItem =
+    overviewModel.readinessItems.find((item) => item.key === overviewModel.activeModuleContext.key) ??
+    overviewModel.readinessItems[0];
+  const decisionWatchlistItems = overviewModel.readinessItems.filter(
+    (item) => item.key !== activeReadinessItem.key,
+  );
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: dt.space[3] }}>
-      <div style={{ display: "grid", gap: dt.space[3] }} data-testid="bond-analysis-top-cockpit">
-        <BondAnalyticsMacroMarketBar />
-
-        <BondAnalyticsMarketContextStrip
-          reportDate={reportDate}
-          periodType={periodType}
-          leadModuleLabel={overviewModel.activeModuleContext.label}
-          leadPromotionLabel="Drill available"
-          truthStrip={overviewModel.truthStrip}
-        />
-
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "grid", gap: 8 }} data-testid="bond-analysis-top-cockpit">
         <BondAnalyticsInstitutionalCockpit
           reportDate={reportDate}
           actionAttribution={actionAttributionResult}
           topAnomalies={overviewModel.topAnomalies}
+          decisionRail={{
+            activeModuleContext: overviewModel.activeModuleContext,
+            activeReadinessItem,
+            watchlistItems: decisionWatchlistItems,
+          }}
           onOpenModuleDetail={onOpenModuleDetail}
         />
 
-        <BondAnalyticsFilterActionStrip
-          dateOptions={dateOptions}
-          reportDate={reportDate}
-          onReportDateChange={onReportDateChange}
-          periodType={periodType}
-          onPeriodTypeChange={onPeriodTypeChange}
-          assetClass={assetClass}
-          onAssetClassChange={onAssetClassChange}
-          accountingClass={accountingClass}
-          onAccountingClassChange={onAccountingClassChange}
-          scenarioSet={scenarioSet}
-          onScenarioSetChange={onScenarioSetChange}
-          spreadScenarios={spreadScenarios}
-          onSpreadScenariosChange={onSpreadScenariosChange}
-          onRefreshAnalytics={onRefreshAnalytics}
-          isAnalyticsRefreshing={isAnalyticsRefreshing}
-          analyticsRefreshError={analyticsRefreshError}
-          lastAnalyticsRefreshRunId={lastAnalyticsRefreshRunId}
+        <BondAnalyticsMarketContextStrip
+          leadModuleLabel={overviewModel.activeModuleContext.label}
+          leadPromotionLabel="可进入下钻"
+          truthStrip={overviewModel.truthStrip}
         />
 
         <BondAnalyticsOverviewMidCharts
@@ -124,6 +111,21 @@ export function BondAnalyticsOverviewPanels({
           <RiskTrendChart />
           <BondEventCalendar items={calendarItems} />
         </div>
+
+        <BondAnalyticsFilterActionStrip
+          assetClass={assetClass}
+          onAssetClassChange={onAssetClassChange}
+          accountingClass={accountingClass}
+          onAccountingClassChange={onAccountingClassChange}
+          scenarioSet={scenarioSet}
+          onScenarioSetChange={onScenarioSetChange}
+          spreadScenarios={spreadScenarios}
+          onSpreadScenariosChange={onSpreadScenariosChange}
+          onRefreshAnalytics={onRefreshAnalytics}
+          isAnalyticsRefreshing={isAnalyticsRefreshing}
+          analyticsRefreshError={analyticsRefreshError}
+          lastAnalyticsRefreshRunId={lastAnalyticsRefreshRunId}
+        />
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -34,6 +34,25 @@ class ProductCategoryPnlRow(BaseModel):
     scenario_rate_pct: Decimal | None = None
 
 
+class ProductCategoryMetricValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    raw: Decimal
+    display: str
+    unit: Literal["percent"] = "percent"
+
+
+class ProductCategoryInterestSpreadPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    all_currency_asset_yield_pct: ProductCategoryMetricValue | None = None
+    all_currency_liability_yield_pct: ProductCategoryMetricValue | None = None
+    all_currency_spread_pct: ProductCategoryMetricValue | None = None
+    cny_asset_yield_pct: ProductCategoryMetricValue | None = None
+    cny_liability_yield_pct: ProductCategoryMetricValue | None = None
+    cny_spread_pct: ProductCategoryMetricValue | None = None
+
+
 class ProductCategoryPnlPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -45,6 +64,12 @@ class ProductCategoryPnlPayload(BaseModel):
     asset_total: ProductCategoryPnlRow
     liability_total: ProductCategoryPnlRow
     grand_total: ProductCategoryPnlRow
+    interest_spread: ProductCategoryInterestSpreadPayload = Field(
+        default_factory=ProductCategoryInterestSpreadPayload
+    )
+    interest_earning_spread: ProductCategoryInterestSpreadPayload = Field(
+        default_factory=ProductCategoryInterestSpreadPayload
+    )
 
 
 class ProductCategoryAttributionPoint(BaseModel):
@@ -134,7 +159,7 @@ class ProductCategoryManualAdjustmentCreateRequest(BaseModel):
         return _validate_report_date(value)
 
     @model_validator(mode="after")
-    def validate_amount_presence(self) -> "ProductCategoryManualAdjustmentCreateRequest":
+    def validate_amount_presence(self) -> ProductCategoryManualAdjustmentCreateRequest:
         if all(
             value is None
             for value in (
@@ -218,7 +243,7 @@ class ProductCategoryManualAdjustmentQuery(BaseModel):
             return None
         if value.tzinfo is None or value.utcoffset() != timedelta(0):
             raise ValueError("created_at filters must be ISO 8601 UTC timestamps")
-        return value.astimezone(timezone.utc)
+        return value.astimezone(UTC)
 
 
 class ProductCategoryManualAdjustmentListPayload(BaseModel):

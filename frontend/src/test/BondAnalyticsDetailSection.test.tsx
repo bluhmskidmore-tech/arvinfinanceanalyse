@@ -14,6 +14,9 @@ vi.mock("../features/bond-analytics/components/BenchmarkExcessView", () => ({
 vi.mock("../features/bond-analytics/components/KRDCurveRiskView", () => ({
   KRDCurveRiskView: () => <div data-testid="mock-detail-krd-curve-risk" />,
 }));
+vi.mock("../features/bond-analytics/components/DV01RiskView", () => ({
+  DV01RiskView: () => <div data-testid="mock-detail-dv01-risk" />,
+}));
 vi.mock("../features/bond-analytics/components/CreditSpreadView", () => ({
   CreditSpreadView: () => <div data-testid="mock-detail-credit-spread" />,
 }));
@@ -46,6 +49,7 @@ const TAB_MODULE_CASES: Array<{
   { activeTab: "return-decomposition", mockTestId: "mock-detail-return-decomposition" },
   { activeTab: "benchmark-excess", mockTestId: "mock-detail-benchmark-excess" },
   { activeTab: "krd-curve-risk", mockTestId: "mock-detail-krd-curve-risk" },
+  { activeTab: "dv01-risk", mockTestId: "mock-detail-dv01-risk" },
   { activeTab: "credit-spread", mockTestId: "mock-detail-credit-spread" },
   { activeTab: "portfolio-headlines", mockTestId: "mock-detail-portfolio-headlines" },
   { activeTab: "top-holdings", mockTestId: "mock-detail-top-holdings" },

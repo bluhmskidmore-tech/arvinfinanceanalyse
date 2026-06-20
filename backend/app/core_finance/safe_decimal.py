@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import logging
 import math
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Any, Optional
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def safe_decimal(
     value: Any,
     default: Decimal = Decimal("0"),
-    precision: Optional[str] = None,
+    precision: str | None = None,
 ) -> Decimal:
     if value is None:
         return default

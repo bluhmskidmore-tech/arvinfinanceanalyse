@@ -9,10 +9,9 @@ import sys
 import time
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
-
 from backend.app.governance.settings import DEFAULT_POSTGRES_DSN, resolve_postgres_dsn
 from backend.app.storage_migration_flags import skip_auto_storage_migrations
+from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 

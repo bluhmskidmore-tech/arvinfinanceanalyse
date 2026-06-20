@@ -4,12 +4,12 @@ import importlib
 from typing import Annotated
 
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.schemas.product_category_pnl import (
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentQuery,
     ProductCategoryManualAdjustmentUpdateRequest,
 )
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.product_category_pnl_service import (
     AVAILABLE_VIEWS,
     ProductCategoryReadModelNotFoundError,
@@ -27,22 +27,27 @@ from backend.app.services.product_category_pnl_service import (
     revoke_product_category_manual_adjustment,
     update_product_category_manual_adjustment,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import Response
 
 router = APIRouter(prefix="/ui/pnl/product-category")
 
 
 @router.get("/dates")
-def dates() -> dict[str, object]:
+def dates(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_product_category_pnl_read_allowed(auth, settings)
     try:
-        return product_category_dates_envelope(get_settings().duckdb_path)
+        return product_category_dates_envelope(settings.duckdb_path)
     except ProductCategoryReadModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("")
 def detail(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     view: str = Query("monthly"),
     scenario_rate_pct: float | None = Query(None),
@@ -52,9 +57,11 @@ def detail(
             status_code=422,
             detail=f"Unsupported product-category view={view!r}; expected one of {AVAILABLE_VIEWS}",
         )
+    settings = get_settings()
+    _ensure_product_category_pnl_read_allowed(auth, settings)
     try:
         return product_category_pnl_envelope(
-            get_settings().duckdb_path,
+            settings.duckdb_path,
             report_date=report_date,
             view=view,
             scenario_rate_pct=scenario_rate_pct,
@@ -67,6 +74,7 @@ def detail(
 
 @router.get("/attribution")
 def attribution(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     compare: str = Query("mom"),
 ) -> dict[str, object]:
@@ -75,9 +83,11 @@ def attribution(
             status_code=422,
             detail=f"Unsupported product-category attribution compare={compare!r}; expected 'mom' or 'yoy'",
         )
+    settings = get_settings()
+    _ensure_product_category_pnl_read_allowed(auth, settings)
     try:
         return product_category_attribution_envelope(
-            get_settings().duckdb_path,
+            settings.duckdb_path,
             report_date=report_date,
             compare=compare,
         )
@@ -90,9 +100,22 @@ def attribution(
 @router.post("/refresh")
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, object]:
+    settings = get_settings()
     try:
-        return refresh_product_category_pnl(get_settings())
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="product_category_pnl",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        return refresh_product_category_pnl(settings, idempotency_key=idempotency_key)
     except ProductCategoryRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ProductCategoryRefreshServiceError as exc:
@@ -100,13 +123,18 @@ def refresh(
 
 
 @router.get("/refresh-status")
-def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
+def refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(...),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_product_category_pnl_read_allowed(auth, settings)
     product_category_service = importlib.import_module(
         "backend.app.services.product_category_pnl_service"
     )
 
     try:
-        return product_category_service.product_category_refresh_status(get_settings(), run_id=run_id)
+        return product_category_service.product_category_refresh_status(settings, run_id=run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -128,10 +156,13 @@ def create_manual_adjustment(
 
 @router.get("/manual-adjustments")
 def list_manual_adjustments(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     query: Annotated[ProductCategoryManualAdjustmentQuery, Depends()],
 ) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_product_category_pnl_read_allowed(auth, settings)
     return list_product_category_manual_adjustments(
-        get_settings(),
+        settings,
         report_date=query.report_date,
         adjustment_id=query.adjustment_id,
         adjustment_id_exact=query.adjustment_id_exact,
@@ -153,10 +184,13 @@ def list_manual_adjustments(
 
 @router.get("/manual-adjustments/export")
 def export_manual_adjustments(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     query: Annotated[ProductCategoryManualAdjustmentQuery, Depends()],
 ) -> Response:
+    settings = get_settings()
+    _ensure_product_category_pnl_read_allowed(auth, settings)
     filename, content = export_product_category_manual_adjustments_csv(
-        get_settings(),
+        settings,
         report_date=query.report_date,
         adjustment_id=query.adjustment_id,
         adjustment_id_exact=query.adjustment_id_exact,
@@ -191,6 +225,20 @@ def revoke_manual_adjustment(
         return revoke_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _ensure_product_category_pnl_read_allowed(auth: AuthContext, settings) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="product_category_pnl",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/manual-adjustments/{adjustment_id}/edit")

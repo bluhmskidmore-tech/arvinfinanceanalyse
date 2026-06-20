@@ -1,16 +1,42 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import CashflowProjectionPage from "../features/cashflow-projection/pages/CashflowProjectionPage";
 import { formatRawAsNumeric } from "../utils/format";
 
+const CASHFLOW_PAGE_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/cashflow-projection/pages/CashflowProjectionPage.module.css",
+);
+const CASHFLOW_PAGE_TSX_PATH = resolve(
+  process.cwd(),
+  "src/features/cashflow-projection/pages/CashflowProjectionPage.tsx",
+);
+
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="cashflow-echarts-stub" />,
 }));
 
 describe("CashflowProjectionPage", () => {
+  it("keeps page-local decorative colors on the homepage blue-gray token family", () => {
+    const source = [
+      readFileSync(CASHFLOW_PAGE_CSS_PATH, "utf8"),
+      readFileSync(CASHFLOW_PAGE_TSX_PATH, "utf8"),
+    ].join("\n");
+
+    expect(source).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
+    expect(source).not.toMatch(/rgba\((255, 253, 248|240, 230, 216|52, 43, 39)/);
+    expect(source).not.toMatch(/#(fffdf8|f0e6d8|e4d8c8|b8a38f|342b27|6f6258|8f7e70|b85c38|708c74|7c3e46|667a96)/i);
+    expect(source).toContain("var(--moss-color-primary-600");
+    expect(source).toContain("var(--moss-color-success-600");
+    expect(source).toContain("var(--moss-color-danger-600");
+    expect(source).toContain("var(--moss-color-info-600");
+  });
+
   it("mounts KPI cards when projection loads", async () => {
     const client = createApiClient({ mode: "mock" });
     const queryClient = new QueryClient({
@@ -80,6 +106,9 @@ describe("CashflowProjectionPage", () => {
     );
 
     expect(await screen.findByTestId("cashflow-echarts-stub")).toBeInTheDocument();
+    expect(await screen.findByTestId("cashflow-risk-readout")).toHaveTextContent("累计净流风险读数");
+    expect(screen.getByTestId("cashflow-risk-readout")).toHaveTextContent("未见累计净现金流为负月份");
+    expect(screen.getByTestId("cashflow-risk-readout")).toHaveTextContent("期末累计净流");
   });
 
   it("requests projection for the first available balance-analysis report date", async () => {
@@ -127,6 +156,43 @@ describe("CashflowProjectionPage", () => {
     expect(screen.getByTestId("cashflow-conclusion")).toHaveTextContent("资产久期长于负债");
   });
 
+  it("displays the 1bp sensitivity KPI in yi-yuan even when the API display is raw yuan", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          rate_sensitivity_1bp: {
+            raw: 125_000_000,
+            unit: "yuan",
+            display: "+125,000,000.00",
+            precision: 2,
+            sign_aware: true,
+          },
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const page = await screen.findByTestId("cashflow-projection-page");
+    expect(await screen.findByTestId("cashflow-kpi-dv01")).toHaveTextContent("+1.25");
+    expect(page).not.toHaveTextContent("+125,000,000.00");
+  });
+
   it("uses DataSection fallback banner when result_meta marks latest_snapshot fallback", async () => {
     const client = createApiClient({ mode: "mock" });
     const orig = client.getCashflowProjection.bind(client);
@@ -155,5 +221,33 @@ describe("CashflowProjectionPage", () => {
     );
 
     expect(await screen.findByTestId("data-section-fallback-banner")).toHaveTextContent("已回退至最近可用日");
+  });
+
+  it("surfaces candidate metric contract status and source evidence", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const contractPanel = await screen.findByTestId("cashflow-contract-status");
+
+    expect(contractPanel).toHaveTextContent("候选指标");
+    expect(contractPanel).toHaveTextContent("PAGE-CONTRACT-PENDING:/cashflow-projection");
+    expect(contractPanel).toHaveTextContent("正式可用: 否");
+    expect(contractPanel).toHaveTextContent("口径 analytical");
+    expect(contractPanel).toHaveTextContent("质量 warning");
+    expect(contractPanel).toHaveTextContent("cashflow_projection.overview");
+    expect(contractPanel).toHaveTextContent("cashflow_projection_report_date");
+    expect(contractPanel).toHaveTextContent("fact_formal_zqtz_balance_daily");
+    expect(contractPanel).toHaveTextContent("fact_formal_tyw_balance_daily");
+    expect(contractPanel).toHaveTextContent("证据行 0");
   });
 });

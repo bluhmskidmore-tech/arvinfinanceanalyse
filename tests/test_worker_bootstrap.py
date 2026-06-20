@@ -8,7 +8,6 @@ from dramatiq.brokers.stub import StubBroker
 
 from tests.helpers import load_module
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -39,8 +38,11 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.product_category_pnl",
         "backend.app.tasks.snapshot_materialize",
         "backend.app.tasks.fx_mid_materialize",
+        "backend.app.tasks.commodity_daily_ingest",
+        "backend.app.tasks.crisis_score_inputs_refresh",
         "backend.app.tasks.choice_macro",
         "backend.app.tasks.choice_news",
+        "backend.app.tasks.stock_factor_refresh",
         "backend.app.tasks.research_calendar_upstream_fetch",
     )
 
@@ -51,6 +53,13 @@ def test_worker_bootstrap_loads_canonical_modules_on_import():
     assert "import_module" in text
     assert "CANONICAL_TASK_MODULES" in text
     assert "get_broker()" in text
+
+
+def test_choice_news_task_module_declares_tushare_news_background_actor():
+    task_path = ROOT / "backend" / "app" / "tasks" / "choice_news.py"
+    text = task_path.read_text(encoding="utf-8")
+    assert 'register_actor_once(\n    "ingest_tushare_news_to_choice_news"' in text
+    assert "ingest_tushare_news_to_choice_news = register_actor_once" in text
 
 
 def test_broker_uses_redis_broker_in_production_even_under_pytest(monkeypatch):

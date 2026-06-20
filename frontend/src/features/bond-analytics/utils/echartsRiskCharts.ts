@@ -46,7 +46,7 @@ export function buildKrdDv01BarOption(buckets: KRDBucket[]): EChartsOption | nul
   if (!buckets.length) return null;
   const dv01Values = buckets.map((b) => {
     const n = bondNumericRaw(b.dv01);
-    return Number.isFinite(n) ? n : 0;
+    return n ?? 0;
   });
   const min = Math.min(...dv01Values);
   const max = Math.max(...dv01Values);
@@ -100,7 +100,7 @@ export function buildAssetClassMarketValuePieOption(rows: AssetClassRiskSummary[
   if (!rows.length) return null;
   const data = rows.map((row) => ({
     name: row.asset_class,
-    value: bondNumericRaw(row.market_value) || 0,
+    value: bondNumericRaw(row.market_value) ?? undefined,
     marketValueRaw: row.market_value,
     weight: row.weight,
     itemStyle: {

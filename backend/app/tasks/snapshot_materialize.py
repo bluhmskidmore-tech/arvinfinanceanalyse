@@ -8,8 +8,7 @@ from datetime import date
 from pathlib import Path
 
 import duckdb
-
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     SNAPSHOT_BUILD_RUN_STREAM,
@@ -19,11 +18,12 @@ from backend.app.repositories.governance_repo import (
 from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.snapshot_repo import (
     ensure_snapshot_tables,
-    merge_zqtz_rows_by_grain,
     merge_tyw_rows_by_grain,
+    merge_zqtz_rows_by_grain,
     replace_tyw_snapshot_rows,
     replace_zqtz_snapshot_rows,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.snapshot_row_parse import (
     parse_tyw_snapshot_rows_from_bytes,
     parse_zqtz_snapshot_rows_from_bytes,
@@ -47,12 +47,7 @@ SNAPSHOT_KEY = "snapshot.zqtz_tyw.standardized"
 
 
 def resolve_snapshot_lock(duckdb_file: Path) -> LockDefinition:
-    canonical_path = os.path.normcase(str(duckdb_file.resolve()))
-    digest = hashlib.sha256(canonical_path.encode("utf-8")).hexdigest()[:12]
-    return LockDefinition(
-        key=f"lock:duckdb:snapshot-materialize:{digest}",
-        ttl_seconds=900,
-    )
+    return resolve_duckdb_writer_lock(duckdb_file)
 
 
 def _locf_tyw_snapshot_rows(
@@ -303,13 +298,14 @@ def _materialize_standard_snapshots(
                         )
                         ordered_rows.extend(parsed)
                     merged_z = merge_zqtz_rows_by_grain(ordered_rows)
-                    zqtz_total = replace_zqtz_snapshot_rows(
-                        conn,
-                        merged_z,
-                        ingest_batch_ids=z_batches,
-                        report_dates=z_report_dates,
-                        replace_all_for_report_dates=bool(report_date),
-                    )
+                    with repository_task_write_scope(__name__):
+                        zqtz_total = replace_zqtz_snapshot_rows(
+                            conn,
+                            merged_z,
+                            ingest_batch_ids=z_batches,
+                            report_dates=z_report_dates,
+                            replace_all_for_report_dates=bool(report_date),
+                        )
                     if zqtz_total <= 0:
                         raise ValueError(
                             "Fail closed: zqtz manifest rows matched this materialization run but standardized "
@@ -366,13 +362,14 @@ def _materialize_standard_snapshots(
                         )
                         ordered_tyw.extend(parsed)
                     merged_t = merge_tyw_rows_by_grain(ordered_tyw)
-                    tyw_total = replace_tyw_snapshot_rows(
-                        conn,
-                        merged_t,
-                        ingest_batch_ids=t_batches,
-                        report_dates=t_report_dates,
-                        replace_all_for_report_dates=bool(report_date),
-                    )
+                    with repository_task_write_scope(__name__):
+                        tyw_total = replace_tyw_snapshot_rows(
+                            conn,
+                            merged_t,
+                            ingest_batch_ids=t_batches,
+                            report_dates=t_report_dates,
+                            replace_all_for_report_dates=bool(report_date),
+                        )
                     if tyw_total <= 0:
                         raise ValueError(
                             "Fail closed: tyw manifest rows matched this materialization run but standardized "

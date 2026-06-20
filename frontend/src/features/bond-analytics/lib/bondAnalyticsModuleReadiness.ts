@@ -58,9 +58,10 @@ export function classifyWarningSignals(warnings: string[]) {
 function hasRealActionAttributionContent(
   actionAttribution: ActionAttributionResponse,
 ): boolean {
+  const actionPnl = bondNumericRaw(actionAttribution.total_pnl_from_actions);
   return (
     actionAttribution.total_actions > 0 ||
-    bondNumericRaw(actionAttribution.total_pnl_from_actions) !== 0 ||
+    (actionPnl !== null && actionPnl !== 0) ||
     actionAttribution.by_action_type.length > 0 ||
     actionAttribution.action_details.length > 0
   );
@@ -159,7 +160,7 @@ export function deriveActionAttributionReadiness(
     return {
       tier: "status",
       statusLabel: "request-error",
-      statusReason: input.actionAttributionError,
+      statusReason: "动作归因不可用，保持驾驶舱快照。",
       warnings: [],
     };
   }

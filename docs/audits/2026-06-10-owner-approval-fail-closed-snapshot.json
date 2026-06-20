@@ -1,0 +1,103 @@
+{
+  "report_kind": "owner_approval_fail_closed_snapshot",
+  "generated_at": "2026-06-10T19:26:44+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "status": {
+    "fail_closed": true,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false
+  },
+  "summary": {
+    "page_count": 7,
+    "pending_count": 7,
+    "captured_count": 0,
+    "closure_approved_count": 0,
+    "approval_action_item_sum": 84,
+    "strict_require_captured_rejected_count": 7
+  },
+  "commands": {
+    "normal_mode": "python scripts\\check_<page>_business_owner_approval.py",
+    "strict_mode": "python scripts\\check_<page>_business_owner_approval.py --require-captured",
+    "test_suite": "python -m pytest tests/test_product_category_pnl_business_owner_approval_status.py tests/test_balance_analysis_business_owner_approval_status.py tests/test_average_balance_business_owner_approval_status.py tests/test_ledger_pnl_business_owner_approval_status.py tests/test_pnl_attribution_business_owner_approval_status.py tests/test_bond_analysis_business_owner_approval_status.py tests/test_stock_analysis_business_owner_approval_status.py -q"
+  },
+  "test_result": {
+    "owner_approval_test_files": 7,
+    "result": "93 passed"
+  },
+  "pages": [
+    {
+      "page_slug": "product-category-pnl",
+      "page_id": "PAGE-PROD-CAT-001",
+      "approval_status": "pending",
+      "business_owner_approval_captured": false,
+      "formal_use_allowed": true,
+      "closure_approved": false,
+      "approval_action_item_count": 15,
+      "strict_require_captured_exit_code": 1
+    },
+    {
+      "page_slug": "balance-analysis",
+      "page_id": "PAGE-BALANCE-001",
+      "approval_status": "pending",
+      "business_owner_approval_captured": false,
+      "formal_use_allowed": true,
+      "closure_approved": false,
+      "approval_action_item_count": 11,
+      "strict_require_captured_exit_code": 1
+    },
+    {
+      "page_slug": "average-balance",
+      "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+      "approval_status": "pending",
+      "business_owner_approval_captured": false,
+      "formal_use_allowed": false,
+      "closure_approved": false,
+      "approval_action_item_count": 13,
+      "strict_require_captured_exit_code": 1
+    },
+    {
+      "page_slug": "ledger-pnl",
+      "page_id": "PAGE-LEDGER-PNL-001",
+      "approval_status": "pending",
+      "business_owner_approval_captured": false,
+      "formal_use_allowed": false,
+      "closure_approved": false,
+      "approval_action_item_count": 11,
+      "strict_require_captured_exit_code": 1
+    },
+    {
+      "page_slug": "pnl-attribution",
+      "page_id": "PAGE-PNL-ATTR-WB-001",
+      "approval_status": "pending",
+      "business_owner_approval_captured": false,
+      "formal_use_allowed": false,
+      "closure_approved": false,
+      "approval_action_item_count": 11,
+      "strict_require_captured_exit_code": 1
+    },
+    {
+      "page_slug": "bond-analysis",
+      "page_id": "PAGE-BOND-ANALYSIS-001",
+      "approval_status": "pending",
+      "business_owner_approval_captured": false,
+      "formal_use_allowed": false,
+      "closure_approved": false,
+      "approval_action_item_count": 12,
+      "strict_require_captured_exit_code": 1
+    },
+    {
+      "page_slug": "stock-analysis",
+      "page_id": "GAP-STOCK-ANALYSIS-PAGE",
+      "approval_status": "pending",
+      "business_owner_approval_captured": false,
+      "formal_use_allowed": false,
+      "closure_approved": false,
+      "approval_action_item_count": 11,
+      "strict_require_captured_exit_code": 1
+    }
+  ],
+  "boundary": "This snapshot proves only that current owner-approval gates remain fail-closed. It does not approve, sign, certify, write governance records, or capture business-owner approval."
+}

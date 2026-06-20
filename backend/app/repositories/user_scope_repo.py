@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-
-from sqlalchemy import or_, select, create_engine
-from sqlalchemy.orm import sessionmaker
+from datetime import UTC, datetime
 
 from backend.app.models.base import Base
 from backend.app.models.governance import UserRoleScope
 from backend.app.schemas.auth_context import UserScopeGrant
+from sqlalchemy import create_engine, or_, select
+from sqlalchemy.orm import sessionmaker
 
 
 @dataclass
@@ -16,7 +15,11 @@ class UserScopeRepository:
     dsn: str
 
     def __post_init__(self) -> None:
-        self.engine = create_engine(self.dsn, future=True)
+        self.dsn = _normalize_sqlalchemy_dsn(self.dsn)
+        connect_args: dict[str, object] = {}
+        if self.dsn.startswith("postgresql+psycopg://"):
+            connect_args["connect_timeout"] = 1
+        self.engine = create_engine(self.dsn, future=True, connect_args=connect_args)
         self._session_factory = sessionmaker(self.engine, future=True)
         if self.engine.dialect.name == "sqlite":
             Base.metadata.create_all(self.engine, tables=[UserRoleScope.__table__])
@@ -32,7 +35,7 @@ class UserScopeRepository:
         scope_value: str | None = None,
         is_active: bool = True,
     ) -> dict[str, object]:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with self._session_factory() as session:
             row = UserRoleScope(
                 user_id=user_id.strip(),
@@ -90,22 +93,20 @@ class UserScopeRepository:
                 )
             else:
                 stmt = stmt.where(or_(UserRoleScope.role.is_(None), UserRoleScope.role == ""))
-            if normalized_scope_key:
+            global_scope = (
+                or_(UserRoleScope.scope_key.is_(None), UserRoleScope.scope_key == ""),
+                or_(UserRoleScope.scope_value.is_(None), UserRoleScope.scope_value == ""),
+            )
+            if normalized_scope_key or normalized_scope_value:
                 stmt = stmt.where(
                     or_(
-                        UserRoleScope.scope_key.is_(None),
-                        UserRoleScope.scope_key == "",
-                        UserRoleScope.scope_key == normalized_scope_key,
+                        global_scope[0] & global_scope[1],
+                        (UserRoleScope.scope_key == normalized_scope_key)
+                        & (UserRoleScope.scope_value == normalized_scope_value),
                     )
                 )
-            if normalized_scope_value:
-                stmt = stmt.where(
-                    or_(
-                        UserRoleScope.scope_value.is_(None),
-                        UserRoleScope.scope_value == "",
-                        UserRoleScope.scope_value == normalized_scope_value,
-                    )
-                )
+            else:
+                stmt = stmt.where(global_scope[0]).where(global_scope[1])
             return session.execute(stmt).scalars().first() is not None
 
     def list_scopes_for_user(self, *, user_id: str) -> list[UserScopeGrant]:
@@ -144,3 +145,12 @@ class UserScopeRepository:
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
         }
+
+
+def _normalize_sqlalchemy_dsn(dsn: str) -> str:
+    normalized = str(dsn or "").strip()
+    if normalized.startswith("postgresql+psycopg://"):
+        return normalized
+    if normalized.startswith("postgresql://"):
+        return "postgresql+psycopg://" + normalized[len("postgresql://") :]
+    return normalized

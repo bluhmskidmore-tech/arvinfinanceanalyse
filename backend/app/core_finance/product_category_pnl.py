@@ -4,9 +4,9 @@ from calendar import monthrange
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
+from typing import Mapping
 
 from backend.app.core_finance.field_normalization import is_approved_status
-
 
 ZERO = Decimal("0")
 DAYS_IN_YEAR = Decimal("365")
@@ -16,6 +16,8 @@ ASSET_SCALE_EXCLUSIONS = {
     "\u4e2d\u95f4\u4e1a\u52a1\u6536\u5165",
 }
 ASSET_PNL_EXCLUSIONS = {"\u751f\u606f\u8d44\u4ea7"}
+PRODUCT_CATEGORY_RATE_RAW_QUANT = Decimal("0.00000001")
+PRODUCT_CATEGORY_RATE_DISPLAY_QUANT = Decimal("0.01")
 
 
 @dataclass(slots=True)
@@ -47,8 +49,58 @@ class ManualAdjustment:
     annual_avg_balance: Decimal | None = None
 
 
+@dataclass(slots=True)
+class ProductCategoryMetricValue:
+    raw: Decimal
+    display: str
+    unit: str = "percent"
+
+
+@dataclass(slots=True)
+class ProductCategoryInterestSpreadMetrics:
+    all_currency_asset_yield_pct: ProductCategoryMetricValue | None
+    all_currency_liability_yield_pct: ProductCategoryMetricValue | None
+    all_currency_spread_pct: ProductCategoryMetricValue | None
+    cny_asset_yield_pct: ProductCategoryMetricValue | None
+    cny_liability_yield_pct: ProductCategoryMetricValue | None
+    cny_spread_pct: ProductCategoryMetricValue | None
+
+
 def derive_monthly_pnl(period_debit: Decimal, period_credit: Decimal) -> Decimal:
     return period_credit - period_debit
+
+
+def calculate_product_category_interest_spread_metrics(
+    *,
+    report_date: date | str,
+    view: str,
+    asset_row: Mapping[str, object],
+    liability_row: Mapping[str, object],
+) -> ProductCategoryInterestSpreadMetrics:
+    days_for_view = _days_for_view(_parse_report_date(report_date), view)
+
+    all_currency_asset_yield = _decimal_or_none(asset_row.get("weighted_yield"))
+    all_currency_liability_yield = _decimal_or_none(liability_row.get("weighted_yield"))
+    cny_asset_yield = _calculate_weighted_yield_from_row(asset_row, "cny_cash", "cny_scale", days_for_view)
+    cny_liability_yield = _calculate_weighted_yield_from_row(
+        liability_row,
+        "cny_cash",
+        "cny_scale",
+        days_for_view,
+    )
+
+    return ProductCategoryInterestSpreadMetrics(
+        all_currency_asset_yield_pct=_build_product_category_metric_value(all_currency_asset_yield),
+        all_currency_liability_yield_pct=_build_product_category_metric_value(all_currency_liability_yield),
+        all_currency_spread_pct=_build_product_category_metric_value(
+            _subtract_when_present(all_currency_asset_yield, all_currency_liability_yield)
+        ),
+        cny_asset_yield_pct=_build_product_category_metric_value(cny_asset_yield),
+        cny_liability_yield_pct=_build_product_category_metric_value(cny_liability_yield),
+        cny_spread_pct=_build_product_category_metric_value(
+            _subtract_when_present(cny_asset_yield, cny_liability_yield)
+        ),
+    )
 
 
 def apply_manual_adjustments(
@@ -514,6 +566,45 @@ def _calculate_weighted_yield(
     if scale_cnx == ZERO or days_for_view <= 0:
         return None
     return pnl_ending / Decimal(days_for_view) * DAYS_IN_YEAR / scale_cnx * Decimal("100")
+
+
+def _calculate_weighted_yield_from_row(
+    row: Mapping[str, object],
+    cash_key: str,
+    scale_key: str,
+    days_for_view: int,
+) -> Decimal | None:
+    cash = _decimal_or_none(row.get(cash_key))
+    scale = _decimal_or_none(row.get(scale_key))
+    if cash is None or scale is None:
+        return None
+    return _calculate_weighted_yield(cash, scale, days_for_view)
+
+
+def _subtract_when_present(left: Decimal | None, right: Decimal | None) -> Decimal | None:
+    if left is None or right is None:
+        return None
+    return left - right
+
+
+def _build_product_category_metric_value(value: Decimal | None) -> ProductCategoryMetricValue | None:
+    if value is None:
+        return None
+    raw = value.quantize(PRODUCT_CATEGORY_RATE_RAW_QUANT)
+    display = f"{raw.quantize(PRODUCT_CATEGORY_RATE_DISPLAY_QUANT)}%"
+    return ProductCategoryMetricValue(raw=raw, display=display)
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(value))
+
+
+def _parse_report_date(value: date | str) -> date:
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(value)
 
 
 def _build_total_row(

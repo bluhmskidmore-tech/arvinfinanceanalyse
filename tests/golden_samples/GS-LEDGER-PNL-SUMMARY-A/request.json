@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/ledger-pnl/summary",
+  "params": {
+    "date": "2026-04-30"
+  },
+  "basis": "ledger"
+}

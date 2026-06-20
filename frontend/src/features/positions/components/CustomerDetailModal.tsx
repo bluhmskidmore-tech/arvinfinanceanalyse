@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Modal, Spin, Table, Tabs, Typography } from "antd";
+import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
 
@@ -159,7 +161,22 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
                 scroll={{ y: 320 }}
                 dataSource={details.items.map((row) => ({ key: row.bond_code, ...row }))}
                 columns={[
-                  { title: "债券代码", dataIndex: "bond_code", fixed: "left" },
+                  {
+                    title: "债券代码",
+                    dataIndex: "bond_code",
+                    fixed: "left",
+                    render: (bondCode: string) =>
+                      bondCode && reportDate ? (
+                        <Link
+                          to={buildBondTradingDeskPath(bondCode, reportDate)}
+                          data-testid={`customer-detail-trading-desk-link-${bondCode}`}
+                        >
+                          {bondCode}
+                        </Link>
+                      ) : (
+                        bondCode || "—"
+                      ),
+                  },
                   { title: "券种", dataIndex: "sub_type", render: (v: string | null) => v || "—" },
                   {
                     title: "评级",

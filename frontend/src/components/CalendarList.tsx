@@ -1,7 +1,5 @@
 import { StatusPill, type StatusPillStatus } from "./StatusPill";
-import { designTokens } from "../theme/designSystem";
-
-const cal = designTokens;
+import "./CalendarList.css";
 
 export type CalendarItem = {
   date: string;
@@ -36,68 +34,28 @@ const levelLabel: Record<CalendarItem["level"], string> = {
 
 export function CalendarList({ items }: CalendarListProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div className="calendar-list">
       {items.map((it, idx) => (
-        <div
-          key={`${it.date}-${it.event}-${idx}`}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "88px minmax(0, 1fr) 96px auto minmax(0, 1fr)",
-            gap: "8px 12px",
-            alignItems: "start",
-            fontSize: 13,
-            color: "#162033",
-            lineHeight: 1.45,
-          }}
-        >
-          <span style={{ fontVariantNumeric: "tabular-nums", paddingTop: 2 }}>{it.date}</span>
-          <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-            <span style={{ wordBreak: "break-word", fontWeight: 700, fontSize: cal.fontSize[13], color: cal.color.neutral[900] }}>
-              {it.event}
-            </span>
+        <div key={`${it.date}-${it.event}-${idx}`} className="calendar-list__item">
+          <span className="calendar-list__date">{it.date}</span>
+          <div className="calendar-list__event-cell">
+            <span className="calendar-list__event-title">{it.event}</span>
             {it.issuerLabel?.trim() ? (
-              <span
-                style={{
-                  display: "inline-block",
-                  alignSelf: "start",
-                  maxWidth: "100%",
-                  padding: `2px ${cal.space[2]}px`,
-                  borderRadius: 6,
-                  fontSize: cal.fontSize[11],
-                  fontWeight: 600,
-                  color: cal.color.neutral[600],
-                  background: cal.color.neutral[50],
-                  border: `1px solid ${cal.color.neutral[200]}`,
-                  wordBreak: "break-word",
-                }}
-              >
-                {it.issuerLabel.trim()}
-              </span>
+              <span className="calendar-list__issuer">{it.issuerLabel.trim()}</span>
             ) : null}
           </div>
-          <span style={{ fontVariantNumeric: "tabular-nums", color: "#5c6b82", paddingTop: 2 }}>
-            {it.amount ?? "—"}
-          </span>
-          <div style={{ paddingTop: 2 }}>
+          <span className="calendar-list__amount">{it.amount ?? "—"}</span>
+          <div className="calendar-list__level">
             <StatusPill status={levelToStatus[it.level]} label={levelLabel[it.level]} />
           </div>
-          <div
-            style={{
-              display: "grid",
-              gap: 4,
-              color: "#5c6b82",
-              wordBreak: "break-word",
-              fontSize: 12,
-              minWidth: 0,
-            }}
-          >
+          <div className="calendar-list__detail">
             {it.note ? <span>{it.note}</span> : null}
             {it.sourceUrl ? (
               <a
                 href={it.sourceUrl}
                 target="_blank"
                 rel="noreferrer noopener"
-                style={{ color: cal.color.primary[600], fontWeight: 600, fontSize: 12, textDecoration: "none" }}
+                className="calendar-list__source-link"
               >
                 {it.sourceLabel?.trim() ? `${it.sourceLabel.trim()} · 打开原文` : "查看原文"}
               </a>

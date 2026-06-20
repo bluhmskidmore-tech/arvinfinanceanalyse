@@ -1,0 +1,221 @@
+.stateCard {
+  display: grid;
+  gap: var(--moss-space-3);
+  padding: var(--moss-space-6);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-lg);
+  background: #ffffff;
+  box-shadow: var(--moss-shadow-card);
+}
+
+.stateTitle {
+  color: var(--moss-color-neutral-900);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.stateBody {
+  color: var(--moss-color-neutral-700);
+  line-height: 1.7;
+}
+
+.fallbackWorkbench {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 8px;
+  background: #f6f8fb;
+}
+
+.fallbackNotice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.fallbackMarketStrip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.fallbackTickerCell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-right: 1px solid var(--moss-color-neutral-100);
+}
+
+.fallbackTickerCell:last-child {
+  border-right: 0;
+}
+
+.fallbackTickerCell span {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.fallbackTickerCell strong {
+  color: var(--moss-color-primary-900);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fallbackTickerCell small {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+}
+
+.fallbackJudgment {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 4px solid var(--moss-color-primary-700);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.fallbackSectionTitle {
+  color: var(--moss-color-primary-900);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.fallbackJudgment p {
+  margin: 0;
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.fallbackGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fallbackPanel {
+  display: grid;
+  gap: 8px;
+  min-height: 116px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.fallbackPanel span {
+  color: var(--moss-color-primary-900);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.fallbackPanel strong {
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.toolbarSelect {
+  min-width: 120px;
+  height: 28px;
+  border: 1px solid var(--moss-color-neutral-300);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--moss-color-primary-900);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 var(--moss-space-2);
+}
+
+.toolbarSelectWide {
+  min-width: 136px;
+}
+
+.refreshButton {
+  min-width: 48px;
+  color: #ffffff;
+  background: #0b4e9e;
+  border-color: #0b4e9e;
+}
+
+.detailFallback {
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}
+
+.detailDrilldown {
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
+}
+
+.detailDrilldownSummary {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 14px;
+  border-radius: 0;
+  background: var(--moss-color-card-bg);
+}
+
+.detailDrilldownDescription {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.detailDrilldown[open] {
+  background: var(--moss-color-card-bg);
+}
+
+.detailDrilldown[open] > :not(summary) {
+  margin-inline: 12px;
+}
+
+@media (max-width: 900px) {
+  .fallbackMarketStrip,
+  .fallbackGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+}
+
+@media (max-width: 640px) {
+  .fallbackNotice {
+    display: grid;
+  }
+
+  .fallbackMarketStrip,
+  .fallbackGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fallbackTickerCell {
+    border-right: 0;
+    border-bottom: 1px solid var(--moss-color-neutral-100);
+  }
+
+  .fallbackTickerCell:last-child {
+    border-bottom: 0;
+  }
+
+}

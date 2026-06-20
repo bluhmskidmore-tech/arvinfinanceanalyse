@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import type { ProductCategoryPnlRow } from "../../../api/contracts";
 import { SectionCard } from "../../../components/SectionCard";
 import {
+  formatProductCategoryForeignDisplayValue,
   formatProductCategoryValue,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryYieldValue,
+  toneForProductCategoryForeignDisplayValue,
   toneForProductCategoryValue,
 } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 
@@ -207,10 +209,10 @@ export function BusinessContributionTable({
                       padding: "10px 12px",
                       fontVariantNumeric: "tabular-nums",
                       textAlign: "right",
-                      color: toneForProductCategoryValue(row.foreign_net),
+                      color: toneForProductCategoryForeignDisplayValue(row, row.foreign_net),
                     }}
                   >
-                    {formatProductCategoryRowDisplayValue(row, row.foreign_net)}
+                    {formatProductCategoryForeignDisplayValue(row, row.foreign_net)}
                   </td>
                   <td
                     style={{

@@ -7,6 +7,25 @@ import pytest
 
 from tests.helpers import ROOT, load_module
 
+EXPECTED_DEV_USER_SCOPE_GRANTS = {
+    ("*", None, "choice_news.data", "read"),
+    ("anonymous", "viewer", "accounting_asset_movement", "read"),
+    ("anonymous", "viewer", "balance_analysis", "read"),
+    ("anonymous", "viewer", "bond_analytics", "read"),
+    ("anonymous", "viewer", "bond_dashboard", "read"),
+    ("anonymous", "viewer", "cashflow_projection", "read"),
+    ("anonymous", "viewer", "dashboard", "read"),
+    ("anonymous", "viewer", "executive", "read"),
+    ("anonymous", "viewer", "ledger_pnl", "read"),
+    ("anonymous", "viewer", "macro_bond_linkage", "read"),
+    ("anonymous", "viewer", "macro_toolkit", "read"),
+    ("anonymous", "viewer", "macro_vendor", "read"),
+    ("anonymous", "viewer", "market_data_ncd_proxy", "read"),
+    ("anonymous", "viewer", "pnl_attribution", "read"),
+    ("anonymous", "viewer", "product_category_pnl", "read"),
+    ("anonymous", "viewer", "research_calendar", "read"),
+}
+
 
 def test_dev_postgres_cluster_builds_expected_local_layout():
     module = load_module(
@@ -24,6 +43,20 @@ def test_dev_postgres_cluster_builds_expected_local_layout():
     assert config.host == "127.0.0.1"
     assert config.database == "moss"
     assert config.user == "moss"
+
+
+def test_dev_postgres_cluster_seeds_home_page_read_scopes():
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    seeded_scopes = {
+        (grant["user_id"], grant["role"], grant["resource"], grant["action"])
+        for grant in module.DEV_USER_SCOPE_GRANTS
+    }
+
+    assert seeded_scopes == EXPECTED_DEV_USER_SCOPE_GRANTS
 
 
 def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
@@ -49,6 +82,35 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
     assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")
     assert env["MOSS_LOCAL_ARCHIVE_PATH"] == str(repo_root / "data" / "archive")
     assert env["MOSS_DATA_INPUT_ROOT"] == str(repo_root / "data_input")
+
+
+def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(tmp_path):
+    """Regression: avoid stale runtime-clean/moss.duckdb shadowing a fuller data/moss.duckdb."""
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    repo_duckdb = repo_root / "data" / "moss.duckdb"
+    repo_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(repo_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
+
+    runtime_root = repo_root / "tmp-governance" / "runtime-clean"
+    runtime_duckdb = runtime_root / "moss.duckdb"
+    runtime_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(runtime_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-01-02')")
+
+    config = module.build_cluster_config(repo_root)
+    env = module.build_env_mapping(config)
+
+    assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
+    assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")
+    assert env["MOSS_LOCAL_ARCHIVE_PATH"] == str(repo_root / "data" / "archive")
 
 
 def test_prepare_runtime_clean_paths_does_not_overwrite_existing_smoke_files(tmp_path):
@@ -283,6 +345,16 @@ def test_reset_schema_refuses_non_dev_endpoint():
         module.command_reset_schema(wrong_port)
 
 
+def test_dev_postgres_cluster_quotes_sql_identifiers_and_literals():
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    assert module._sql_identifier('moss"user') == '"moss""user"'
+    assert module._sql_literal("moss'password") == "'moss''password'"
+
+
 def test_run_checked_retry_retries_transient_psql_exit_code(monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -378,7 +450,7 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
     assert seen == ["moss"]
 
 
-def test_command_up_starts_postgres_without_pg_ctl_wait(tmp_path, monkeypatch):
+def test_command_up_starts_postgres_with_synchronous_nowait_pg_ctl(tmp_path, monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -402,18 +474,18 @@ def test_command_up_starts_postgres_without_pg_ctl_wait(tmp_path, monkeypatch):
         runtime_data_input_path=repo_root / "tmp-governance" / "runtime-clean" / "data_input",
     )
     port_checks = {"count": 0}
-    popen_commands: list[list[str]] = []
+    run_calls: list[tuple[list[str], dict[str, object]]] = []
 
     def fake_is_port_open(_host, _port):
         port_checks["count"] += 1
         return port_checks["count"] > 1
 
+    def fake_run(args, **kwargs):
+        run_calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="server started")
+
     monkeypatch.setattr(module, "_is_port_open", fake_is_port_open)
-    monkeypatch.setattr(
-        module.subprocess,
-        "Popen",
-        lambda args, **kwargs: popen_commands.append(args) or object(),
-    )
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
     monkeypatch.setattr(module, "_wait_for_postgres_ready", lambda *args, **kwargs: None)
     monkeypatch.setattr(module, "_ensure_role_and_database", lambda _config: None)
     monkeypatch.setattr(module, "_apply_alembic_migrations_and_grants", lambda _config: None)
@@ -422,10 +494,13 @@ def test_command_up_starts_postgres_without_pg_ctl_wait(tmp_path, monkeypatch):
 
     payload = module.command_up(config)
 
-    pg_ctl_start = popen_commands[0]
+    pg_ctl_start, run_kwargs = run_calls[0]
     assert "-W" in pg_ctl_start
     assert "-w" not in pg_ctl_start
     assert "start" in pg_ctl_start
+    assert run_kwargs["check"] is True
+    assert run_kwargs["stdout"] is subprocess.PIPE
+    assert run_kwargs["stderr"] is subprocess.STDOUT
     assert payload["running"] is True
     assert payload["action"] == "up"
 
@@ -494,7 +569,41 @@ def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeou
     module._apply_alembic_migrations_and_grants(config)
 
     assert recorded_waits == [{"database": config.database, "attempts": 5, "retry_delay_seconds": 1.0}]
-    assert recorded_grants, "expected post-alembic GRANT statement to run after retry succeeds"
+    assert recorded_grants, "expected post-alembic GRANT statements to run after retry succeeds"
+    assert any("choice_news.data" in " ".join(args) for args in recorded_grants)
+
+
+def test_seed_dev_user_scopes_grants_local_read_surfaces_once(tmp_path, monkeypatch):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    config = module.DevPostgresClusterConfig(
+        repo_root=tmp_path / "repo",
+        bin_dir=tmp_path / "pgbin",
+        cluster_root=tmp_path / "tmp-governance" / "pgdev",
+        data_dir=tmp_path / "tmp-governance" / "pgdev" / "data",
+        log_file=tmp_path / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=tmp_path / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=tmp_path / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=tmp_path / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=tmp_path / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=tmp_path / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(module, "_run_checked", lambda args, *, capture_output=False: calls.append(args) or "")
+
+    module._seed_dev_user_scopes(config)
+
+    assert len(calls) == 1
+    command = " ".join(calls[0])
+    assert "INSERT INTO user_role_scope" in command
+    for user_id, role, resource, action in EXPECTED_DEV_USER_SCOPE_GRANTS:
+        role_sql = "NULL" if role is None else f"'{role}'"
+        assert f"'{user_id}', {role_sql}, '{resource}', '{action}'" in command
+    assert "WHERE NOT EXISTS" in command
+    assert command.count("INSERT INTO user_role_scope") == len(module.DEV_USER_SCOPE_GRANTS)
 
 
 def test_resolve_python_executable_prefers_path_python(monkeypatch):

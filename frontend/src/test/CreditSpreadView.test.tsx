@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** Avoid jsdom canvas/ECharts teardown errors; do not assert chart pixels. */
@@ -166,6 +167,17 @@ function createCreditSpreadDetailResult(
   };
 }
 
+function renderWithProviders(client: ReturnType<typeof createApiClient>, ui: React.ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ApiClientProvider client={client}>{ui}</ApiClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
 describe("CreditSpreadView", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -193,11 +205,7 @@ describe("CreditSpreadView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <CreditSpreadView reportDate="2026-03-31" />
-      </ApiClientProvider>,
-    );
+    renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
 
     expect(await screen.findByTestId("credit-spread-shell-lead")).toHaveTextContent(
       "信用利差概览",
@@ -220,6 +228,10 @@ describe("CreditSpreadView", () => {
     expect(screen.getByText("信用债市值")).toBeInTheDocument();
     expect(screen.getByText("50.00 亿")).toBeInTheDocument();
     expect(screen.getByText("利差 DV01（万元/bp）")).toBeInTheDocument();
+    const spreadDv01Kpi = screen.getByText("利差 DV01（万元/bp）").closest(".ant-statistic");
+    expect(spreadDv01Kpi).not.toBeNull();
+    expect(spreadDv01Kpi).toHaveTextContent("8.00");
+    expect(within(spreadDv01Kpi as HTMLElement).queryByText("80,000")).not.toBeInTheDocument();
     expect(screen.getByText("加权平均利差（个券）")).toBeInTheDocument();
     expect(screen.getByText("30.00 亿")).toBeInTheDocument();
     expect(screen.getByText("-120 万")).toBeInTheDocument();
@@ -243,6 +255,36 @@ describe("CreditSpreadView", () => {
     expect(screen.getByText("信用集中度")).toBeInTheDocument();
   });
 
+  it("surfaces stale and fallback metadata from the credit spread detail envelope", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createCreditSpreadResult(),
+      })),
+      getCreditSpreadAnalysisDetail: vi.fn(async () => ({
+        result_meta: createResultMeta({
+          result_kind: "credit_spread_analysis.detail",
+          quality_flag: "warning",
+          vendor_status: "vendor_stale",
+          fallback_mode: "latest_snapshot",
+          requested_report_date: "2026-03-31",
+          resolved_report_date: "2026-03-29",
+          as_of_date: "2026-03-29",
+          fallback_date: "2026-03-29",
+        }),
+        result: createCreditSpreadDetailResult(),
+      })),
+    };
+
+    renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
+
+    const detailMeta = await screen.findByTestId("credit-spread-detail-result-meta");
+    expect(detailMeta).toHaveTextContent("供应商陈旧");
+    expect(detailMeta).toHaveTextContent("最新快照降级");
+    expect(detailMeta).toHaveTextContent("2026-03-29");
+  });
+
   it("keeps legacy summary visible and shows warning when detail endpoint is unavailable", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
@@ -261,11 +303,7 @@ describe("CreditSpreadView", () => {
       }),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <CreditSpreadView reportDate="2026-03-31" />
-      </ApiClientProvider>,
-    );
+    renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
 
     expect(await screen.findByText("信用债数量")).toBeInTheDocument();
     expect(await screen.findByText("提示")).toBeInTheDocument();

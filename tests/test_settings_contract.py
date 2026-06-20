@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from decimal import Decimal
 from pathlib import Path
 
@@ -16,13 +17,36 @@ from backend.app.governance.settings import (
 )
 
 
-def test_settings_defaults():
-    s = Settings()
+def _clear_moss_env(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("MOSS_") or key == "RAW_FILES_DIR":
+            monkeypatch.delenv(key, raising=False)
+
+
+def test_settings_defaults(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    s = Settings(_env_file=None)
     assert s.environment == "development"
     assert s.agent_enabled is False
+    assert s.agent_provider == "local"
+    assert s.agent_hermes_command == "wsl.exe"
+    assert s.agent_hermes_wsl_distro == "HermesUbuntu"
+    assert s.agent_hermes_home == ""
+    assert s.agent_hermes_transport == "cli"
+    assert s.agent_hermes_bridge_url == "http://127.0.0.1:7891"
+    assert s.agent_hermes_model == ""
+    assert s.agent_hermes_toolsets == ""
+    assert s.agent_hermes_timeout_seconds == 180.0
+    assert s.agent_dexter_command == "dexter"
+    assert s.agent_dexter_transport == "cli"
+    assert s.agent_dexter_bridge_url == "http://127.0.0.1:7892"
+    assert s.agent_dexter_model == ""
+    assert s.agent_dexter_toolsets == ""
+    assert s.agent_dexter_timeout_seconds == 180.0
     assert s.governance_backend == "jsonl"
     assert s.object_store_mode == "local"
     assert s.ftp_rate_pct == Decimal("1.75")
+    assert s.home_snapshot_prewarm_enabled is True
     assert isinstance(s.governance_path, Path)
     assert isinstance(s.data_input_root, Path)
     assert isinstance(s.local_archive_path, Path)
@@ -32,6 +56,21 @@ def test_settings_env_overrides(monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.setenv("MOSS_ENVIRONMENT", "staging")
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    monkeypatch.setenv("MOSS_AGENT_PROVIDER", "hermes")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_COMMAND", "custom-hermes")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_WSL_DISTRO", "CustomUbuntu")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_HOME", "/home/hermes/.hermes-moss")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_TRANSPORT", "bridge")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_BRIDGE_URL", "http://127.0.0.1:7999")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_MODEL", "gpt-test")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_TOOLSETS", "file,terminal")
+    monkeypatch.setenv("MOSS_AGENT_HERMES_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_COMMAND", "dexter-cli")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_TRANSPORT", "sidecar")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_BRIDGE_URL", "http://127.0.0.1:8899")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_MODEL", "dexter-test")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_TOOLSETS", "sql,files")
+    monkeypatch.setenv("MOSS_AGENT_DEXTER_TIMEOUT_SECONDS", "22.5")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "minio")
     monkeypatch.setenv("MOSS_FTP_RATE_PCT", "2.5")
@@ -39,9 +78,24 @@ def test_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", "custom/in")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", "custom/archive")
 
-    s = Settings()
+    s = Settings(_env_file=None)
     assert s.environment == "staging"
     assert s.agent_enabled is True
+    assert s.agent_provider == "hermes"
+    assert s.agent_hermes_command == "custom-hermes"
+    assert s.agent_hermes_wsl_distro == "CustomUbuntu"
+    assert s.agent_hermes_home == "/home/hermes/.hermes-moss"
+    assert s.agent_hermes_transport == "bridge"
+    assert s.agent_hermes_bridge_url == "http://127.0.0.1:7999"
+    assert s.agent_hermes_model == "gpt-test"
+    assert s.agent_hermes_toolsets == "file,terminal"
+    assert s.agent_hermes_timeout_seconds == 12.5
+    assert s.agent_dexter_command == "dexter-cli"
+    assert s.agent_dexter_transport == "sidecar"
+    assert s.agent_dexter_bridge_url == "http://127.0.0.1:8899"
+    assert s.agent_dexter_model == "dexter-test"
+    assert s.agent_dexter_toolsets == "sql,files"
+    assert s.agent_dexter_timeout_seconds == 22.5
     assert s.governance_backend == "sql-authority"
     assert s.object_store_mode == "minio"
     assert s.ftp_rate_pct == Decimal("2.5")
@@ -50,7 +104,17 @@ def test_settings_env_overrides(monkeypatch):
     assert s.local_archive_path == (repo_root / "custom" / "archive").resolve()
 
 
-def test_settings_core_storage_paths_resolve_relative_to_repo_root():
+def test_home_snapshot_prewarm_can_be_disabled_by_env(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    monkeypatch.setenv("MOSS_HOME_SNAPSHOT_PREWARM_ENABLED", "false")
+
+    s = Settings(_env_file=None)
+
+    assert s.home_snapshot_prewarm_enabled is False
+
+
+def test_settings_core_storage_paths_resolve_relative_to_repo_root(monkeypatch):
+    _clear_moss_env(monkeypatch)
     repo_root = Path(__file__).resolve().parents[1]
 
     s = Settings()

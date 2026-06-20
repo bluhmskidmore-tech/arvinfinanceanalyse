@@ -6,7 +6,7 @@ import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
 import { designTokens } from "../../../theme/designSystem";
-import { formatWan, formatYi } from "../utils/formatters";
+import { formatDv01Wan, formatWan, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 function formatScenarioShocks(shocks: Record<string, number>): string {
@@ -130,7 +130,7 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
         rowKey="asset_class"
         pagination={false}
         size="small"
-        scroll={extraKeys.length > 2 ? { x: "max-content" } : undefined}
+        scroll={extraKeys.length > 2 ? { x: "max-content", y: 400 } : { y: 400 }}
       />
     </div>
   );
@@ -271,9 +271,9 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           const w = bondNumericRaw(b.market_value_weight);
           return [
             `<div style="font-weight:600;margin-bottom:4px">${b.tenor}</div>`,
-            `KRD：${Number.isFinite(krd) ? krd.toFixed(3) : b.krd.display}`,
-            `DV01：${Number.isFinite(dv01) ? dv01.toFixed(6) : b.dv01.display}`,
-            `market_value_weight：${Number.isFinite(w) ? w.toFixed(6) : b.market_value_weight.display}`,
+            `KRD：${krd === null ? b.krd.display : krd.toFixed(3)}`,
+            `DV01：${dv01 === null ? b.dv01.display : dv01.toFixed(6)}`,
+            `market_value_weight：${w === null ? b.market_value_weight.display : w.toFixed(6)}`,
           ].join("<br/>");
         },
       },
@@ -298,14 +298,19 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           barMaxWidth: 48,
           data: buckets.map((b) => {
             const krd = bondNumericRaw(b.krd);
-            const color = krd >= 0 ? designTokens.color.primary[600] : designTokens.color.semantic.loss;
+            const color =
+              krd === null
+                ? designTokens.color.neutral[400]
+                : krd >= 0
+                  ? designTokens.color.primary[600]
+                  : designTokens.color.semantic.loss;
             return {
               value: krd,
               itemStyle: { color },
               label: {
                 show: true,
-                position: krd >= 0 ? "top" : "bottom",
-                formatter: Number.isFinite(krd) ? krd.toFixed(3) : b.krd.display,
+                position: krd === null || krd >= 0 ? "top" : "bottom",
+                formatter: krd === null ? b.krd.display : krd.toFixed(3),
                 color: designTokens.color.neutral[800],
                 fontSize: 11,
                 fontVariantNumeric: "tabular-nums",
@@ -352,7 +357,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="DV01 (万元/bp)" value={data.portfolio_dv01.display} />
+            <Statistic title="DV01 (万元/bp)" value={formatDv01Wan(data.portfolio_dv01)} />
           </Card>
         </Col>
         <Col span={6}>
@@ -387,6 +392,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             rowKey="scenario_name"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
             expandable={{ expandedRowRender: renderScenarioAssetClassBreakdown }}
           />
         </Card>
@@ -411,6 +417,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
             rowKey="asset_class"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
           />
         </Card>
       )}

@@ -1,5 +1,3 @@
-import { shellTokens as t } from "../../../theme/tokens";
-
 type AgentResultMetaPanelProps = {
   entries: Array<[string, unknown]>;
   formatValue: (value: unknown) => string;
@@ -21,10 +19,29 @@ const metaKeyLabels: Record<string, string> = {
   scenario_flag: "情景标记",
 };
 
+const visibleMetaKeys = [
+  "trace_id",
+  "basis",
+  "generated_at",
+  "formal_use_allowed",
+  "source_version",
+  "vendor_version",
+  "rule_version",
+  "cache_version",
+  "quality_flag",
+  "vendor_status",
+  "fallback_mode",
+  "scenario_flag",
+];
+
 function formatMetaValue(key: string, value: unknown, fallback: (value: unknown) => string) {
   if (key === "basis") {
     if (value === "formal") return "正式口径";
     if (value === "analytical") return "分析口径";
+  }
+  if (key === "formal_use_allowed") {
+    if (value === true) return "可正式使用";
+    if (value === false) return "仅作分析参考";
   }
   if (key === "quality_flag") {
     const labels: Record<string, string> = {
@@ -50,38 +67,41 @@ function formatMetaValue(key: string, value: unknown, fallback: (value: unknown)
   return fallback(value);
 }
 
+function buildVisibleEntries(entries: Array<[string, unknown]>) {
+  const entryMap = new Map(entries);
+  const visibleEntries = visibleMetaKeys
+    .filter((key) => entryMap.has(key))
+    .map((key) => [key, entryMap.get(key)] as [string, unknown]);
+  return visibleEntries.length > 0 ? visibleEntries : entries.slice(0, 3);
+}
+
 export function AgentResultMetaPanel({ entries, formatValue }: AgentResultMetaPanelProps) {
+  const visibleEntries = buildVisibleEntries(entries);
+
   return (
-    <div
-      style={{
-        padding: 16,
-        borderRadius: 14,
-        border: `1px solid ${t.colorBorderSoft}`,
-        background: t.colorBgSurface,
-      }}
-    >
-      <div
-        style={{
-          color: t.colorTextMuted,
-          fontSize: 12,
-          marginBottom: 8,
-        }}
-      >
-        结果元信息
-      </div>
-      <div
-        style={{
-          fontSize: 13,
-          color: t.colorTextSecondary,
-          lineHeight: 1.7,
-        }}
-      >
-        {entries.map(([key, value]) => (
-          <div key={key}>
-            {metaKeyLabels[key] ?? key}: {formatMetaValue(key, value, formatValue)}
+    <div className="agent-side-panel agent-side-panel--meta">
+      <div className="agent-side-panel__title">运行信息</div>
+      <div className="agent-side-panel__body agent-side-panel__body--rows">
+        {visibleEntries.map(([key, value]) => (
+          <div className="agent-side-panel__row" key={key}>
+            <span>{metaKeyLabels[key] ?? key}</span>
+            <strong>{formatMetaValue(key, value, formatValue)}</strong>
           </div>
         ))}
       </div>
+      {entries.length > visibleEntries.length ? (
+        <details className="agent-side-panel__details">
+          <summary>查看全部运行信息</summary>
+          <div className="agent-side-panel__body agent-side-panel__body--rows">
+            {entries.map(([key, value]) => (
+              <div className="agent-side-panel__row" key={key}>
+                <span>{metaKeyLabels[key] ?? key}</span>
+                <strong>{formatMetaValue(key, value, formatValue)}</strong>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "artifact": "pnl-attribution-gate-i-certification-boundary",
+  "created_date": "2026-06-05",
+  "page": {
+    "page_id": "PAGE-PNL-ATTR-WB-001",
+    "page_slug": "pnl-attribution",
+    "page_name": "PnL Attribution Workbench",
+    "route": "/pnl-attribution",
+    "primary_api": "/api/pnl-attribution/volume-rate"
+  },
+  "gate_i_verdict": {
+    "frontend_surface": "frontend-ready",
+    "business_contract_status": "evidence-pending",
+    "business_contract_certified": false,
+    "formal_use_allowed": false,
+    "closure_approved": false,
+    "reason": "The page has direct governance-record and catalog/date evidence ready for audit review, but page-level closure still requires manual page-contract review, catalog/date review, lineage freshness review, UI/API payload review, live-smoke evidence review, and captured business-owner approval."
+  },
+  "readiness_evidence": {
+    "command": "python scripts/codex_page_readiness.py --page-slug pnl-attribution",
+    "overall_status": "static-pass",
+    "approval_status": "candidate_or_pending",
+    "formal_use_allowed": false,
+    "blocking_gates": [],
+    "static_gates": {
+      "trace_bundle_present": "pass",
+      "evidence_readiness_explicit": "pass",
+      "lineage_mapping_present": "pass",
+      "catalog_date_review_routed": "pass",
+      "catalog_date_evidence_sampled": "pass",
+      "direct_governance_record_ready": "pass",
+      "golden_sample_boundary": "pass",
+      "formal_promotion_boundary": "pass",
+      "business_owner_approval_status": "pass"
+    },
+    "boundary_note": "Static-pass means contract and readiness evidence is routed. It does not approve page closure or formal use."
+  },
+  "catalog_date_evidence": {
+    "status": "sampled",
+    "table_count": 5,
+    "present_table_count": 5,
+    "date_sampled_table_count": 5,
+    "tables": [
+      {
+        "table_name": "fact_formal_pnl_fi",
+        "status": "present",
+        "date_column": "report_date"
+      },
+      {
+        "table_name": "fact_nonstd_pnl_bridge",
+        "status": "present",
+        "date_column": "report_date"
+      },
+      {
+        "table_name": "fact_formal_zqtz_balance_daily",
+        "status": "present",
+        "date_column": "report_date"
+      },
+      {
+        "table_name": "fact_formal_bond_analytics_daily",
+        "status": "present",
+        "date_column": "report_date"
+      },
+      {
+        "table_name": "yield_curve_daily",
+        "status": "present",
+        "date_column": "trade_date"
+      }
+    ],
+    "manual_review_required": true
+  },
+  "governance_record_evidence": {
+    "dry_run_command": "python scripts/emit_pnl_attribution_governance_record.py",
+    "mode": "dry-run",
+    "record_write_status": "not_requested",
+    "target_stream": "cache_manifest",
+    "target_path": "data/governance/cache_manifest.jsonl",
+    "existing_record_line": 5403,
+    "record_key": {
+      "page_id": "PAGE-PNL-ATTR-WB-001",
+      "primary_api": "/api/pnl-attribution/volume-rate",
+      "report_date": "2026-04-30",
+      "cache_key": "pnl-attribution:volume-rate:2026-04-30:mom"
+    },
+    "record": {
+      "basis": "formal",
+      "source_surface": "formal_attribution",
+      "source_version": "sv_pnl_by_business_gs_attr_wb",
+      "rule_version": "rv_pnl_attribution_workbench_v1",
+      "cache_version": "cv_pnl_attribution_workbench_v1",
+      "result_kind": "pnl_attribution.volume_rate",
+      "golden_sample_id": "GS-PNL-ATTR-WB-A",
+      "formal_use_allowed": false,
+      "tables_used": [
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+        "fact_formal_zqtz_balance_daily"
+      ]
+    },
+    "validation_status": "ready_for_audit_review",
+    "governance_record_validation": {
+      "status": "direct_records_ready_for_audit_review",
+      "ready_record_count": 1,
+      "incomplete_record_count": 0,
+      "direct_record_count": 1,
+      "expanded_anchor_record_count": 20
+    },
+    "evidence_scope": {
+      "writes_governance_records": false,
+      "writes_audit_packet": false,
+      "approves_metric_or_page": false,
+      "proves_page_execution": false,
+      "validates_required_fields": true
+    }
+  },
+  "golden_sample_boundary": {
+    "sample_id": "GS-PNL-ATTR-WB-A",
+    "sample_status": "captured-awaiting-approval",
+    "sample_type": "capture-ready",
+    "sample_scope": "GET /api/pnl-attribution/volume-rate workbench DTO for PAGE-PNL-ATTR-WB-001",
+    "covered_metric_ids": [
+      "MTR-PAT-001",
+      "MTR-PAT-002",
+      "MTR-PAT-003",
+      "MTR-PAT-004",
+      "MTR-PAT-005",
+      "MTR-PAT-006"
+    ],
+    "does_not_cover": [
+      "full page closure",
+      "advanced attribution surfaces",
+      "Campisi surfaces",
+      "/api/pnl/overview formal PnL truth",
+      "executive analytical overlay /ui/pnl/attribution",
+      "business-owner approval"
+    ],
+    "dto_vs_page_governance_note": "The captured DTO assertion includes result_meta.formal_use_allowed=true for the fixture-backed primary API sample, while the page-level governance record and closure workflow keep formal_use_allowed=false until candidate closure and business-owner approval are captured."
+  },
+  "manual_audit_review": {
+    "status": "ready_for_audit_review",
+    "closure_approved": false,
+    "required_checks": [
+      "page_contract_review",
+      "catalog_date_sampling",
+      "lineage_freshness_review",
+      "ui_api_payload_review",
+      "live_smoke_evidence_review",
+      "business_owner_approval"
+    ],
+    "next_actions": [
+      "Review page contract and metric dictionary evidence before closure.",
+      "Run catalog/date, lineage freshness, UI/API payload, and live smoke checks before approving formal use.",
+      "Capture business-owner approval through the strict approval template before any closure claim."
+    ]
+  },
+  "business_owner_approval": {
+    "command": "python scripts/check_pnl_attribution_business_owner_approval.py",
+    "approval_status": "pending",
+    "business_owner_approval_captured": false,
+    "formal_use_allowed": false,
+    "closure_approved": false,
+    "approval_action_item_count": 11,
+    "remaining_blockers": [
+      "business_owner_approval",
+      "business_owner_name",
+      "business_owner_role",
+      "approval_decision",
+      "approval_date",
+      "business_owner_signature",
+      "governance_record_review",
+      "golden_sample_review",
+      "ui_api_payload_review",
+      "live_smoke_evidence_review",
+      "verification_commands_rerun",
+      "candidate_boundary_acceptance"
+    ],
+    "template_path": "docs/pnl/pnl-attribution-business-owner-approval-template.md",
+    "evidence_scope": {
+      "approves_metric_or_page": false,
+      "writes_governance_records": false,
+      "proves_page_execution": false,
+      "captures_business_owner_approval": false
+    }
+  },
+  "truth_chain": [
+    "docs/page_contracts.md PAGE-PNL-ATTR-WB-001",
+    "docs/metric_dictionary.md MTR-PAT-001 through MTR-PAT-006, MTR-PAT-101 through MTR-PAT-103, MTR-PAT-201 through MTR-PAT-205, and MTR-PAT-301 through MTR-PAT-304",
+    "backend/app/core_finance/pnl_attribution/workbench.py",
+    "backend/app/services/pnl_attribution_service.py",
+    "backend/app/api/routes/pnl_attribution.py",
+    "backend/app/api/routes/campisi_attribution.py",
+    "frontend/src/api/pnlAttributionClient.ts",
+    "frontend/src/features/pnl-attribution/pages/PnlAttributionPage.tsx"
+  ],
+  "guardrails": [
+    "Do not certify /pnl-attribution from this artifact alone.",
+    "Do not use GS-PNL-ATTR-WB-A to approve advanced, Campisi, executive overlay, or formal PnL overview surfaces.",
+    "Do not merge /pnl-attribution with /ui/pnl/attribution.",
+    "Do not recompute volume-rate, TPL-market, composition, advanced, KRD, or Campisi outputs in the frontend.",
+    "Do not hide generated_at, quality_flag, fallback_mode, no-data, stale, provenance, or candidate boundaries."
+  ],
+  "residual_gaps": [
+    "Candidate metric dictionary-level approval remains pending.",
+    "Golden sample scope is primary workbench DTO only, not full-page or advanced/Campisi closure.",
+    "Business-owner approval is still required before page closure.",
+    "Manual review must compare current API payload and visible UI state before any formal-use claim."
+  ]
+}

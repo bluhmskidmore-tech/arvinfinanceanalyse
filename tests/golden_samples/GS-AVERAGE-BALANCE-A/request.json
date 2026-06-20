@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/analysis/adb",
+  "params": {
+    "start_date": "2025-12-31",
+    "end_date": "2025-12-31"
+  },
+  "basis": "analytical"
+}

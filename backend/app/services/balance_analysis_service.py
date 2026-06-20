@@ -1,15 +1,20 @@
-from __future__ import annotations
-
 """
 Balance-analysis read surfaces: DuckDB access only via `BalanceAnalysisRepository` and other read repositories.
 
 Formal fact writes (`replace_formal_balance_rows`, snapshot tables) are restricted to `backend/app/tasks/` workers.
 """
 
+from __future__ import annotations
+
 import importlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
+
+from backend.app.core_finance.balance_calibration import (
+    balance_calibration_meta_to_dict,
+    build_calibration_meta,
+)
 from backend.app.core_finance.module_registry import get_formal_module_by_fact_table
 from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
@@ -26,16 +31,18 @@ from backend.app.repositories.governance_repo import (
 from backend.app.schemas.balance_analysis import (
     BalanceAnalysisBasisBreakdownPayload,
     BalanceAnalysisBasisBreakdownRow,
+    BalanceAnalysisDatesPayload,
     BalanceAnalysisDecisionItemRow,
-    BalanceAnalysisDecisionItemStatusRow,
-    BalanceAnalysisDecisionItemsSection,
     BalanceAnalysisDecisionItemsPayload,
+    BalanceAnalysisDecisionItemsSection,
+    BalanceAnalysisDecisionItemStatusRow,
     BalanceAnalysisDecisionStatusRecord,
     BalanceAnalysisDecisionStatusUpdateRequest,
-    BalanceAnalysisDatesPayload,
     BalanceAnalysisDetailRow,
     BalanceAnalysisEventCalendarRow,
     BalanceAnalysisEventCalendarSection,
+    BalanceAnalysisMetricDefinition,
+    BalanceAnalysisOverviewPayload,
     BalanceAnalysisPayload,
     BalanceAnalysisRiskAlertRow,
     BalanceAnalysisRiskAlertsSection,
@@ -47,8 +54,7 @@ from backend.app.schemas.balance_analysis import (
     BalanceAnalysisWorkbookTable,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
-from backend.app.services import balance_analysis_summary_export_service
-from backend.app.services import balance_analysis_workbook_service
+from backend.app.services import balance_analysis_summary_export_service, balance_analysis_workbook_service
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
@@ -71,6 +77,7 @@ RULE_VERSION = BALANCE_ANALYSIS_MODULE.rule_version
 BALANCE_ANALYSIS_LOCK = BALANCE_ANALYSIS_MODULE.lock_definition
 
 BALANCE_ANALYSIS_JOB_NAME = "balance_analysis_materialize"
+BALANCE_ANALYSIS_DATA_SOURCE = "balance_analysis_facts"
 PENDING_SOURCE_VERSION = "sv_balance_analysis_pending"
 ALLOWED_BALANCE_POSITION_SCOPES = frozenset({"asset", "liability", "all"})
 ALLOWED_BALANCE_CURRENCY_BASES = frozenset({"native", "CNY"})
@@ -87,13 +94,99 @@ class BalanceAnalysisRefreshConflictError(RuntimeError):
     pass
 
 
-def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[str, object]:
+def _balance_analysis_metric_definitions() -> list[BalanceAnalysisMetricDefinition]:
+    return [
+        BalanceAnalysisMetricDefinition(
+            key="asset_total_market_value_amount",
+            label="资产市值合计",
+            source_field="market_value_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式资产头寸市值金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="asset_total_amortized_cost_amount",
+            label="资产摊余成本合计",
+            source_field="amortized_cost_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式资产头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="asset_total_accrued_interest_amount",
+            label="资产应计利息合计",
+            source_field="accrued_interest_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式资产头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="liability_total_market_value_amount",
+            label="负债市值合计",
+            source_field="market_value_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式负债头寸市值金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="liability_total_amortized_cost_amount",
+            label="负债摊余成本合计",
+            source_field="amortized_cost_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式负债头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+        ),
+        BalanceAnalysisMetricDefinition(
+            key="liability_total_accrued_interest_amount",
+            label="负债应计利息合计",
+            source_field="accrued_interest_amount",
+            raw_unit="yuan",
+            display_unit="yi_yuan",
+            basis="formal",
+            source_surface="formal_balance",
+            applies_to=["overview", "summary", "detail"],
+            description="正式负债头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+        ),
+    ]
+
+
+def refresh_balance_analysis(
+    settings: Settings,
+    *,
+    report_date: str,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     try:
         with acquire_lock(
             _refresh_trigger_lock(report_date=report_date),
             base_dir=settings.governance_path,
             timeout_seconds=0.1,
         ):
+            if normalized_idempotency_key is not None:
+                existing_idempotent_run = _latest_refresh_for_idempotency_key(
+                    settings,
+                    report_date=report_date,
+                    idempotency_key=normalized_idempotency_key,
+                )
+                if existing_idempotent_run is not None:
+                    return _idempotent_refresh_response(existing_idempotent_run)
+
             existing = _latest_inflight_refresh(settings, report_date=report_date)
             if existing is not None:
                 raise BalanceAnalysisRefreshConflictError(
@@ -101,7 +194,7 @@ def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[st
                 )
 
             run_id = _build_run_id()
-            queued_at = datetime.now(timezone.utc).isoformat()
+            queued_at = datetime.now(UTC).isoformat()
             GovernanceRepository(base_dir=settings.governance_path).append(
                 CACHE_BUILD_RUN_STREAM,
                 {
@@ -117,6 +210,7 @@ def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[st
                     ).model_dump(),
                     "report_date": report_date,
                     "queued_at": queued_at,
+                    "idempotency_key": normalized_idempotency_key,
                 },
             )
             try:
@@ -144,6 +238,8 @@ def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[st
                 "trigger_mode": "async",
                 "cache_key": CACHE_KEY,
                 "report_date": report_date,
+                "idempotency_key": normalized_idempotency_key,
+                "idempotency_replay": False,
             }
     except TimeoutError as exc:
         raise BalanceAnalysisRefreshConflictError(
@@ -211,7 +307,24 @@ def balance_analysis_overview_envelope(
         governance_dir=governance_dir,
         report_date=report_date,
     )
-    return build_formal_result_envelope_from_lineage(
+    payload = BalanceAnalysisOverviewPayload(
+        report_date=str(overview["report_date"]),
+        position_scope=str(overview["position_scope"]),  # type: ignore[arg-type]
+        currency_basis=str(overview["currency_basis"]),  # type: ignore[arg-type]
+        detail_row_count=int(overview["detail_row_count"]),
+        summary_row_count=int(overview["summary_row_count"]),
+        total_market_value_amount=_as_decimal(overview["total_market_value_amount"]),
+        total_amortized_cost_amount=_as_decimal(overview["total_amortized_cost_amount"]),
+        total_accrued_interest_amount=_as_decimal(overview["total_accrued_interest_amount"]),
+        asset_total_market_value_amount=_as_decimal(overview["asset_total_market_value_amount"]),
+        liability_total_market_value_amount=_as_decimal(overview["liability_total_market_value_amount"]),
+        asset_total_amortized_cost_amount=_as_decimal(overview["asset_total_amortized_cost_amount"]),
+        liability_total_amortized_cost_amount=_as_decimal(overview["liability_total_amortized_cost_amount"]),
+        asset_total_accrued_interest_amount=_as_decimal(overview["asset_total_accrued_interest_amount"]),
+        liability_total_accrued_interest_amount=_as_decimal(overview["liability_total_accrued_interest_amount"]),
+        metric_definitions=_balance_analysis_metric_definitions(),
+    )
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_overview_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.overview",
         lineage=build_lineage,
@@ -222,23 +335,16 @@ def balance_analysis_overview_envelope(
             field_name=field_name,
             report_date=report_date,
         ),
-        result_payload={
-            "report_date": str(overview["report_date"]),
-            "position_scope": str(overview["position_scope"]),
-            "currency_basis": str(overview["currency_basis"]),
-            "detail_row_count": int(overview["detail_row_count"]),
-            "summary_row_count": int(overview["summary_row_count"]),
-            "total_market_value_amount": _as_decimal(overview["total_market_value_amount"]),
-            "total_amortized_cost_amount": _as_decimal(overview["total_amortized_cost_amount"]),
-            "total_accrued_interest_amount": _as_decimal(overview["total_accrued_interest_amount"]),
-            "asset_total_market_value_amount": _as_decimal(overview["asset_total_market_value_amount"]),
-            "liability_total_market_value_amount": _as_decimal(overview["liability_total_market_value_amount"]),
-            "asset_total_amortized_cost_amount": _as_decimal(overview["asset_total_amortized_cost_amount"]),
-            "liability_total_amortized_cost_amount": _as_decimal(overview["liability_total_amortized_cost_amount"]),
-            "asset_total_accrued_interest_amount": _as_decimal(overview["asset_total_accrued_interest_amount"]),
-            "liability_total_accrued_interest_amount": _as_decimal(overview["liability_total_accrued_interest_amount"]),
-        },
+        result_payload=payload.model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def balance_analysis_summary_envelope(
@@ -270,7 +376,7 @@ def balance_analysis_summary_envelope(
         governance_dir=governance_dir,
         report_date=report_date,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_summary_{report_date}_{position_scope}_{currency_basis}_{offset}_{limit}",
         result_kind="balance-analysis.summary",
         lineage=build_lineage,
@@ -293,6 +399,14 @@ def balance_analysis_summary_envelope(
             ],
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def balance_analysis_basis_breakdown_envelope(
@@ -320,7 +434,7 @@ def balance_analysis_basis_breakdown_envelope(
         governance_dir=governance_dir,
         report_date=report_date,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_basis_breakdown_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.basis-breakdown",
         lineage=build_lineage,
@@ -337,6 +451,14 @@ def balance_analysis_basis_breakdown_envelope(
             rows=[_to_basis_breakdown_row(row) for row in breakdown_rows],
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def export_balance_analysis_summary_csv(
@@ -414,7 +536,7 @@ def balance_analysis_detail_envelope(
         report_date=report_date,
     )
 
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_detail_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.detail",
         lineage=build_lineage,
@@ -434,6 +556,14 @@ def balance_analysis_detail_envelope(
             summary=summary,
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def balance_analysis_workbook_envelope(
@@ -455,7 +585,7 @@ def balance_analysis_workbook_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_workbook_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.workbook",
         lineage=build_lineage,
@@ -521,6 +651,14 @@ def balance_analysis_workbook_envelope(
             ],
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def balance_analysis_decision_items_envelope(
@@ -548,7 +686,7 @@ def balance_analysis_decision_items_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_decision_items_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.decision-items",
         lineage=build_lineage,
@@ -572,6 +710,14 @@ def balance_analysis_decision_items_envelope(
             ],
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def update_balance_analysis_decision_status(
@@ -601,7 +747,7 @@ def update_balance_analysis_decision_status(
     record = BalanceAnalysisDecisionStatusRecord(
         decision_key=update.decision_key,
         status=update.status,
-        updated_at=datetime.now(timezone.utc).isoformat(),
+        updated_at=datetime.now(UTC).isoformat(),
         updated_by=(updated_by or DEFAULT_BALANCE_DECISION_UPDATED_BY).strip()
         or DEFAULT_BALANCE_DECISION_UPDATED_BY,
         comment=update.comment,
@@ -697,13 +843,14 @@ def _extract_generated_decision_section(workbook: dict[str, Any]) -> dict[str, A
 
 
 def _build_decision_key(row: dict[str, object]) -> str:
-    return "::".join(
-        [
-            str(row.get("rule_id") or "").strip(),
-            str(row.get("source_section") or "").strip(),
-            str(row.get("title") or "").strip(),
-        ]
-    )
+    """Stable key for persisted status rows: prefer rule_id (language-stable across localized titles)."""
+    rule_id = str(row.get("rule_id") or "").strip()
+    if rule_id:
+        return rule_id
+    section = str(row.get("source_section") or "").strip()
+    title = str(row.get("title") or "").strip()
+    parts = [part for part in (section, title) if part]
+    return "::".join(parts)
 
 
 def _resolve_balance_build_lineage(
@@ -867,6 +1014,55 @@ def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
     ]
 
 
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _latest_refresh_for_idempotency_key(
+    settings: Settings,
+    *,
+    report_date: str,
+    idempotency_key: str,
+) -> dict[str, object] | None:
+    for record in reversed(_load_refresh_run_records(settings)):
+        if str(record.get("report_date")) != report_date:
+            continue
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        if str(record.get("status")) in IN_FLIGHT_STATUSES and _is_stale_inflight_record(record):
+            _mark_stale_inflight_run(
+                settings=settings,
+                run_id=str(record.get("run_id")),
+                report_date=report_date,
+                error_message="Marked stale balance-analysis idempotent refresh run as failed.",
+            )
+            refreshed_records = _load_refresh_run_records(settings)
+            return next(
+                (
+                    refreshed
+                    for refreshed in reversed(refreshed_records)
+                    if str(refreshed.get("run_id")) == str(record.get("run_id"))
+                ),
+                record,
+            )
+        return record
+    return None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    status = str(record.get("status") or "queued")
+    return {
+        **record,
+        "status": status,
+        "run_id": str(record.get("run_id") or ""),
+        "job_name": BALANCE_ANALYSIS_JOB_NAME,
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
+        "cache_key": CACHE_KEY,
+        "idempotency_replay": True,
+    }
+
+
 def _latest_inflight_refresh(
     settings: Settings,
     *,
@@ -900,7 +1096,7 @@ def _is_stale_inflight_record(record: dict[str, object]) -> bool:
         if not raw_value:
             continue
         timestamp = _parse_timestamp(raw_value)
-        return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
+        return datetime.now(UTC) - timestamp > STALE_IN_FLIGHT_AFTER
     return True
 
 
@@ -908,8 +1104,8 @@ def _parse_timestamp(raw_value: str) -> datetime:
     normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _update_run_status(
@@ -969,12 +1165,27 @@ def _mark_stale_inflight_run(
         report_date=report_date,
         error_message=error_message,
         source_version="sv_balance_analysis_stale",
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(UTC).isoformat(),
     )
 
 
 def _build_run_id() -> str:
-    return f"{BALANCE_ANALYSIS_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    return f"{BALANCE_ANALYSIS_JOB_NAME}:{datetime.now(UTC).isoformat()}"
+
+
+def _formal_balance_calibration_dict(
+    *,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
+) -> dict[str, object]:
+    return balance_calibration_meta_to_dict(
+        build_calibration_meta(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+            source_families=["zqtz", "tyw"],
+            data_basis="formal_facts",
+        )
+    )
 
 
 def _as_decimal(value: object) -> Decimal:

@@ -1,0 +1,36 @@
+/*
+ * Visible layout pilot — background-forward hero + strip (DESIGN anchors, light institutional wash).
+ */
+.decision-items-page .moss-page-v2-decision-hero {
+  padding: 18px 18px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(24, 80, 161, 0.18);
+  border-left: 3px solid #1850a1;
+  background:
+    radial-gradient(ellipse 125% 90% at 0% -10%, rgba(24, 80, 161, 0.13), transparent 58%),
+    radial-gradient(ellipse 95% 80% at 100% 110%, rgba(45, 138, 94, 0.09), transparent 52%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.97) 0%, rgba(228, 238, 252, 0.9) 44%, rgba(242, 248, 244, 0.88) 100%);
+  box-shadow:
+    0 8px 26px rgba(22, 35, 46, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.decision-items-page .moss-page-v2-decision-hero__question {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.decision-items-page .moss-page-v2-decision-hero__report strong {
+  color: #1850a1;
+}
+
+.decision-items-page .moss-page-v2-data-status {
+  padding: 12px 16px;
+  border: 1px solid #dfe4ea;
+  border-left: 3px solid #2d8a5e;
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse 100% 180% at 0% 50%, rgba(45, 138, 94, 0.15), transparent 55%),
+    linear-gradient(95deg, rgba(236, 248, 240, 0.96) 0%, rgba(255, 255, 255, 0.75) 100%);
+  box-shadow: 0 4px 16px rgba(22, 35, 46, 0.055), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}

@@ -316,25 +316,25 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
     assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v1"
     assert result["portfolio_duration"] == "5.05978431"
     assert result["portfolio_modified_duration"] == "4.87293147"
-    assert result["portfolio_dv01"] == "0.20904876"
+    assert result["portfolio_dv01"] == "0.22175249"
     assert result["portfolio_convexity"] == "36.65108294"
     assert result["krd_buckets"] == [
         {
             "tenor": "10Y",
             "krd": "8.03613072",
-            "dv01": "0.11250583",
+            "dv01": "0.12054196",
             "market_value_weight": "0.32634033",
         },
         {
             "tenor": "1Y",
             "krd": "0.98231827",
-            "dv01": "0.00972495",
+            "dv01": "0.00982318",
             "market_value_weight": "0.23076923",
         },
         {
             "tenor": "5Y",
             "krd": "4.56936732",
-            "dv01": "0.08681798",
+            "dv01": "0.09138735",
             "market_value_weight": "0.44289044",
         },
     ]
@@ -345,14 +345,14 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
             "asset_class": "credit",
             "market_value": "330.00000000",
             "duration": "6.27771960",
-            "dv01": "0.19932381",
+            "dv01": "0.21192931",
             "weight": "0.76923077",
         },
         {
             "asset_class": "rate",
             "market_value": "99.00000000",
             "duration": "1.00000000",
-            "dv01": "0.00972495",
+            "dv01": "0.00982318",
             "weight": "0.23076923",
         },
     ]
@@ -366,36 +366,36 @@ def test_bond_analytics_credit_spread_with_real_facts_returns_expected_scenario_
     assert result["credit_market_value"] == "330.00000000"
     assert result["credit_weight"] == "0.76923077"
     assert result["rating_aa_and_below_weight"] == "0.00000000"
-    assert result["spread_dv01"] == "0.19932381"
+    assert result["spread_dv01"] == "0.21192931"
     assert result["weighted_avg_spread_duration"] == "6.04011543"
     assert result["spread_scenarios"] == [
         {
             "scenario_name": "利差走阔 10bp",
             "spread_change_bp": 10.0,
-            "pnl_impact": "-1.99323810",
-            "oci_impact": "-0.86817980",
-            "tpl_impact": "-1.12505830",
+            "pnl_impact": "-2.11929310",
+            "oci_impact": "-0.91387350",
+            "tpl_impact": "-1.20541960",
         },
         {
             "scenario_name": "利差收窄 10bp",
             "spread_change_bp": -10.0,
-            "pnl_impact": "1.99323810",
-            "oci_impact": "0.86817980",
-            "tpl_impact": "1.12505830",
+            "pnl_impact": "2.11929310",
+            "oci_impact": "0.91387350",
+            "tpl_impact": "1.20541960",
         },
         {
             "scenario_name": "利差走阔 25bp",
             "spread_change_bp": 25.0,
-            "pnl_impact": "-4.98309525",
-            "oci_impact": "-2.17044950",
-            "tpl_impact": "-2.81264575",
+            "pnl_impact": "-5.29823275",
+            "oci_impact": "-2.28468375",
+            "tpl_impact": "-3.01354900",
         },
         {
             "scenario_name": "利差收窄 25bp",
             "spread_change_bp": -25.0,
-            "pnl_impact": "4.98309525",
-            "oci_impact": "2.17044950",
-            "tpl_impact": "2.81264575",
+            "pnl_impact": "5.29823275",
+            "oci_impact": "2.28468375",
+            "tpl_impact": "3.01354900",
         },
     ]
     assert result["concentration_by_issuer"] == {

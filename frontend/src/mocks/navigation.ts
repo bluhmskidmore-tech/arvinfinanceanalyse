@@ -34,45 +34,45 @@ export type WorkbenchNavigationGroup = {
 const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections">> = [
   {
     key: "overview",
-    label: "总览工作台",
-    description: "先看总览、经营判断和跨页待办。",
+    label: "经营日报",
+    description: "先看主快照读数、数据边界和跨页待办。",
     icon: "dashboard",
     defaultPath: "/",
   },
   {
     key: "portfolio",
     label: "组合工作台",
-    description: "围绕持仓、资产负债、损益和专题分析展开。",
+    description: "持仓、资产负债、损益与分析归因入口。",
     icon: "bond",
-    defaultPath: "/balance-analysis",
+    defaultPath: "/portfolio",
   },
   {
     key: "market",
     label: "市场工作台",
     description: "承接市场观察、跨资产传导和新闻事件。",
     icon: "market",
-    defaultPath: "/cross-asset",
+    defaultPath: "/market-overview",
   },
   {
     key: "risk",
     label: "风险工作台",
     description: "聚焦风险张量、集中度和流动性压力。",
     icon: "risk",
-    defaultPath: "/risk-tensor",
+    defaultPath: "/risk-overview",
   },
   {
     key: "performance",
     label: "绩效工作台",
     description: "查看团队绩效与 KPI 归因结果。",
     icon: "kpi",
-    defaultPath: "/kpi",
+    defaultPath: "/performance",
   },
   {
     key: "governance",
-    label: "治理工作台",
-    description: "放置配置、报表和自由查询工具。",
+    label: "报表与数据",
+    description: "报表中心、数据中心与自助查询工具。",
     icon: "settings",
-    defaultPath: "/platform-config",
+    defaultPath: "/reports",
   },
 ];
 
@@ -80,7 +80,9 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   dashboard: "overview",
   "operations-analysis": "overview",
   "decision-items": "overview",
+  "portfolio-home": "portfolio",
   "bond-analysis": "portfolio",
+  "bond-trading-desk": "portfolio",
   "balance-analysis": "portfolio",
   "balance-movement-analysis": "portfolio",
   "liability-analytics": "portfolio",
@@ -90,16 +92,22 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   pnl: "portfolio",
   "pnl-bridge": "portfolio",
   "pnl-attribution": "portfolio",
+  "pnl-by-business": "portfolio",
   "ledger-pnl": "portfolio",
   "bank-ledger-dashboard": "portfolio",
   "average-balance": "portfolio",
+  "market-overview": "market",
   "market-data": "market",
+  "macro-observation": "market",
+  "macro-toolkit": "market",
   "cross-asset": "market",
+  "stock-analysis": "market",
   "news-events": "market",
   "risk-overview": "risk",
   "risk-tensor": "risk",
   "concentration-monitor": "risk",
   "cashflow-projection": "risk",
+  "performance-home": "performance",
   "kpi-performance": "performance",
   "team-performance": "performance",
   "platform-config": "governance",
@@ -118,7 +126,6 @@ export const workbenchPathAliases: Record<string, string> = {
   "/cross-asset-drivers": "/cross-asset",
   "/adb": "/average-balance",
   "/assets": "/bond-dashboard",
-  "/pnl-by-business": "/ledger-pnl",
   "/liabilities": "/liability-analytics",
   "/bonds": "/bond-dashboard",
   "/bond-analytics-advanced": "/bond-analysis",
@@ -131,10 +138,10 @@ export function resolveWorkbenchPathAlias(pathname: string): string {
 export const workbenchNavigation: WorkbenchSection[] = [
   {
     key: "dashboard",
-    label: "驾驶舱",
+    label: "经营日报",
     path: "/",
     icon: "dashboard",
-    description: "管理总览与壳层入口",
+    description: "主快照读数与数据边界入口",
     readiness: "live",
     readinessLabel: "已开放",
     readinessNote: "已接真实只读链路，缺数时由后端返回受控回退值。",
@@ -154,15 +161,36 @@ export const workbenchNavigation: WorkbenchSection[] = [
       "已接 source preview、macro、news、formal FX 状态，以及资产负债 overview 速览与跳转。",
   },
   {
+    key: "portfolio-home",
+    label: "组合工作台",
+    path: "/portfolio",
+    icon: "bond",
+    description: "组合一级首页：聚合资产负债、债券总览、持仓和归因入口。",
+    readiness: "live",
+    readinessLabel: "已开放",
+    readinessNote: "一级首页只做摘要与下钻，不替代子页面正式业务逻辑。",
+  },
+  {
     key: "bond-analysis",
     label: "债券分析",
     path: "/bond-analysis",
     icon: "bond",
     description: "债券工作台入口",
     readiness: "live",
-    readinessLabel: "临时开放",
-    governanceStatus: "temporary-exception",
-    readinessNote: "已接治理后的债券分析驾驶舱，页面内按模块就绪度展示已落地与待晋升能力。",
+    readinessLabel: "已开放",
+    readinessNote: "已接债券分析交易台首屏、组合读面、风险监控和下钻复核入口。",
+  },
+  {
+    key: "bond-trading-desk",
+    label: "单券交易分析台",
+    path: "/bond-trading-desk",
+    icon: "bond",
+    description: "单券只读拼装读面，由重仓券/持仓深钻进入。",
+    readiness: "live",
+    readinessLabel: "深钻路由",
+    readinessNote:
+      "只拼装 top-holdings / positions / 利差列表；盘口、约束与相似券等待后端契约，导航默认隐藏。",
+    navigationVisibility: "hidden",
   },
   {
     key: "cross-asset",
@@ -224,11 +252,21 @@ export const workbenchNavigation: WorkbenchSection[] = [
     label: "负债结构分析",
     path: "/liability-analytics",
     icon: "analysis",
-    description: "NIM 压力测试、对手方集中度与负债期限结构（V1 口径）",
+    description: "资金与负债：NIM 压力测试、对手方集中度与负债期限结构（V1 口径）",
     readiness: "live",
     readinessLabel: "已开放",
     readinessNote:
       "已接负债风险桶、收益率/NIM、对手方与月度序列读链路；月度概览与 Top10 柱序列与 V1 对齐。",
+  },
+  {
+    key: "market-overview",
+    label: "市场工作台",
+    path: "/market-overview",
+    icon: "market",
+    description: "市场一级首页：聚合行情、跨资产、宏观工具、股票和新闻事件入口。",
+    readiness: "live",
+    readinessLabel: "已开放",
+    readinessNote: "一级首页展示市场数据状态和关键行情，旧 /market 书签仍跳转到 /market-data。",
   },
   {
     key: "market-data",
@@ -236,10 +274,44 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/market-data",
     icon: "market",
     description: "市场观察入口",
-    readiness: "placeholder",
-    readinessLabel: "Reserved",
+    readiness: "live",
+    readinessLabel: "已开放",
     readinessNote:
-      "Reserved by the current boundary. Market-data preview/vendor/analytical surfaces remain hidden behind placeholder behavior.",
+      "已接正式利率行情读链路，稳定序列走 formal 口径；分析口径模块（Livermore / 联动）独立标注。",
+  },
+  {
+    key: "macro-observation",
+    label: "宏观观察",
+    path: "/macro-observation",
+    icon: "analysis",
+    description: "只读宏观分析入口，展示核心信号、风险状态和策略供数证据。",
+    readiness: "live",
+    readinessLabel: "观察口径",
+    readinessNote:
+      "复用宏观分析读链路，只展示 analytical evidence；刷新、脚本注册表和运行结果留在宏观工具页。",
+  },
+  {
+    key: "macro-toolkit",
+    label: "宏观工具",
+    path: "/macro-toolkit",
+    icon: "analysis",
+    description: "迁移后的宏观脚本工具入口，默认读取系统 Choice/Tushare 数据源。",
+    readiness: "live",
+    readinessLabel: "工具口径",
+    readinessNote:
+      "脚本注册表、分析结果与运行入口已接到后端宏观模块；页面明确标注非正式口径。",
+  },
+  {
+    key: "stock-analysis",
+    label: "股票分析",
+    path: "/stock-analysis",
+    icon: "market",
+    description: "A股市场状态、行业强弱、候选股证据与风险观察。",
+    readiness: "live",
+    readinessLabel: "观察口径",
+    governanceStatus: "temporary-exception",
+    readinessNote:
+      "复用 Livermore / Choice 股票只读分析链路，仅展示观察和复核证据，不生成交易指令。",
   },
   {
     key: "source-preview",
@@ -255,10 +327,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "platform-config",
-    label: "中台配置",
+    label: "数据中心",
     path: "/platform-config",
     icon: "settings",
-    description: "配置与治理入口",
+    description: "系统健康检查、数据源状态与中台配置。",
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
@@ -266,13 +338,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "reports-center",
-    label: "报表中心",
+    label: "报表与数据",
     path: "/reports",
     icon: "reports",
-    description: "报表与导出清单（占位路由）。",
-    readiness: "placeholder",
-    readinessLabel: "保留",
-    readinessNote: "保留导航入口；正式导出仍在各业务页，后续统一收录。",
+    description: "报表与数据一级首页：聚合数据健康、来源状态、自助查询与报表规划。",
+    readiness: "live",
+    readinessLabel: "已开放",
+    readinessNote: "报表能力未接入正式后端接口时明确显示规划中，不伪造报表数据。",
   },
   {
     key: "bond-dashboard",
@@ -332,14 +404,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "risk-overview",
-    label: "风险总览",
+    label: "风险工作台",
     path: "/risk-overview",
     icon: "risk",
-    description: "风险总览与风险下钻入口",
-    readiness: "placeholder",
-    readinessLabel: "Reserved",
-    readinessNote:
-      "Reserved by the current boundary. Direct access stays on placeholder behavior until this surface is explicitly promoted.",
+    description: "风险一级首页：聚合风险张量、集中度和现金流预测状态。",
+    readiness: "live",
+    readinessLabel: "已开放",
+    readinessNote: "一级首页只做风险摘要与下钻，不在前端补算正式风险指标。",
   },
   {
     key: "risk-tensor",
@@ -374,6 +445,16 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessNote: "已接 /api/cashflow-projection 只读链路。",
   },
   {
+    key: "performance-home",
+    label: "绩效工作台",
+    path: "/performance",
+    icon: "kpi",
+    description: "绩效一级首页：聚合 KPI、团队绩效、业务与产品损益入口。",
+    readiness: "live",
+    readinessLabel: "已开放",
+    readinessNote: "一级首页展示绩效读链路状态，不重建 KPI 计分公式。",
+  },
+  {
     key: "kpi-performance",
     label: "绩效考核",
     path: "/kpi",
@@ -390,14 +471,15 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/news-events",
     icon: "decision",
     description: "Choice 新闻事件与回调异常入口",
-    readiness: "placeholder",
-    readinessLabel: "Reserved",
+    readiness: "live",
+    readinessLabel: "临时开放",
+    governanceStatus: "temporary-exception",
     readinessNote:
-      "Reserved by the current boundary. Choice news direct workbench access stays placeholder until promoted.",
+      "已接 Choice 新闻事件只读链路；页面为分析读面（非 formal metric 主链），与壳层「临时例外」横幅一致。",
   },
   {
     key: "product-category-pnl",
-    label: "产品损益",
+    label: "产品分析",
     path: "/product-category-pnl",
     icon: "analysis",
     description: "产品类别损益与场景分析入口",
@@ -408,13 +490,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "pnl",
-    label: "损益明细",
+    label: "收益分析",
     path: "/pnl",
     icon: "analysis",
-    description: "正式损益明细入口",
+    description: "收益总览、损益归因与期间收益（与 V1 /pnl 对齐）",
     readiness: "live",
     readinessLabel: "已开放",
-    readinessNote: "已接正式损益事实表读链路，报告日由后端日期接口驱动。",
+    readinessNote: "收益指标与归因读链路已接；期间收益表为占位接口，正式明细表见 /pnl-formal-v1。",
   },
   {
     key: "pnl-bridge",
@@ -428,7 +510,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "pnl-attribution",
-    label: "损益归因",
+    label: "收益归因",
     path: "/pnl-attribution",
     icon: "analysis",
     description: "规模/利率效应、TPL 市场相关性、损益构成、高级归因与 Campisi",
@@ -438,13 +520,25 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "cube-query",
-    label: "多维查询",
+    label: "自助查询",
     path: "/cube-query",
     icon: "analysis",
     description: "对事实表进行自由维度聚合、筛选、钻取",
-    readiness: "placeholder",
-    readinessLabel: "暂缓",
-    readinessNote: "入口保留；自由聚合查询尚未作为二期主消费面晋升。",
+    readiness: "live",
+    readinessLabel: "已开放",
+    readinessNote:
+      "已接 /api/cube/query 与 /api/cube/dimensions/*；当前仅按已覆盖事实表与 result_meta 声明查询结果口径。",
+  },
+  {
+    key: "pnl-by-business",
+    label: "业务种类损益",
+    path: "/pnl-by-business",
+    icon: "analysis",
+    description: "按 ZQTZ 业务种类1 追溯正式 FI 损益和规模。",
+    readiness: "live",
+    readinessLabel: "临时开放",
+    governanceStatus: "temporary-exception",
+    readinessNote: "读取 /api/pnl/by-business 与 /api/pnl/yearly-summary，不再跳转到总账损益。",
   },
   {
     key: "agent",
@@ -452,11 +546,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/agent",
     icon: "agent",
     description: "智能体分析工作台：面向证据问答、GitNexus 仓库图谱和后续页面助手。",
-    readiness: "placeholder",
-    readinessLabel: "智能体试用",
+    readiness: "live",
+    readinessLabel: "Hermes",
     readinessNote:
-      "Hidden reserved route. Keep the placeholder shell only; the real Agent workbench is outside the current boundary.",
-    navigationVisibility: "hidden",
+      "Hermes Agent is available through /api/agent/query when MOSS_AGENT_PROVIDER=hermes.",
   },
 ];
 
@@ -472,10 +565,7 @@ export function findWorkbenchSectionByPath(
   sections: WorkbenchSection[] = visibleWorkbenchNavigation,
 ) {
   const resolved = resolveWorkbenchPathAlias(pathname);
-  return (
-    sections.find((section) => pathMatchesWorkbenchSection(section.path, resolved)) ??
-    sections[0]
-  );
+  return sections.find((section) => pathMatchesWorkbenchSection(section.path, resolved)) ?? null;
 }
 
 export function resolveWorkbenchGroupKey(section: WorkbenchSection): WorkbenchGroupKey {
@@ -506,6 +596,10 @@ export const primaryWorkbenchNavigationGroups: WorkbenchNavigationGroup[] =
 
 export function findWorkbenchGroupByPath(pathname: string) {
   const currentSection = findWorkbenchSectionByPath(pathname);
+  if (!currentSection) {
+    return null;
+  }
+
   return (
     primaryWorkbenchNavigationGroups.find(
       (group) => resolveWorkbenchGroupKey(currentSection) === group.key,

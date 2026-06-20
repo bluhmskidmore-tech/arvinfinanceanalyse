@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/bond-analytics/credit-spread-migration",
+  "params": {
+    "report_date": "2026-03-31",
+    "spread_scenarios": "10,25"
+  },
+  "basis": "analytical"
+}

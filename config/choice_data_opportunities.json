@@ -1,0 +1,183 @@
+{
+  "catalog_version": "2026-06-10.choice-data-opportunities.v1",
+  "vendor_name": "choice",
+  "generated_from": "Codex research on Choice API functions plus local MOSS Choice catalog/schema evidence",
+  "opportunities": [
+    {
+      "opportunity_id": "choice_yield_curve_full_tenor",
+      "priority": "P0",
+      "domain": "fixed_income_macro",
+      "title": "Full-tenor CGB, CDB, and credit yield curves",
+      "choice_api_functions": ["edb", "csd"],
+      "data_families": ["treasury_curve", "policy_bank_curve", "credit_curve", "curve_spread"],
+      "business_surfaces": ["bond_analytics", "macro_bond_linkage", "yield_curve_materialize"],
+      "landing_targets": ["fact_choice_macro_daily", "choice_market_snapshot", "fact_formal_yield_curve_daily"],
+      "existing_evidence": [
+        "backend/app/tasks/yield_curve_materialize.py already declares choice_yield_curve and choice_macro_snapshot inputs.",
+        "backend/app/core_finance/macro/toolkit/system_sources.py maps Choice treasury and credit curve series ids.",
+        "tests/test_yield_curve_materialize.py verifies Choice fallback and landed Choice AAA curve handling."
+      ],
+      "implementation_state": "partially_landed",
+      "next_step": "Expand confirmed Choice curve series coverage only after live entitlement probes prove code, tenor, unit, and date semantics.",
+      "caveats": [
+        "Do not infer missing tenor points in frontend display.",
+        "Keep bp versus percent units explicit when feeding formal curve facts."
+      ]
+    },
+    {
+      "opportunity_id": "choice_funding_conditions",
+      "priority": "P0",
+      "domain": "fixed_income_macro",
+      "title": "Money-market and policy-rate funding conditions",
+      "choice_api_functions": ["edb"],
+      "data_families": ["dr_repo", "r_repo", "shibor", "lpr", "mlf", "omo", "ncd_yield"],
+      "business_surfaces": ["dashboard_home", "macro_toolkit", "bond_analytics", "macro_bond_linkage"],
+      "landing_targets": ["fact_choice_macro_daily", "choice_market_snapshot", "market_data_series_category"],
+      "existing_evidence": [
+        "config/choice_macro_catalog.json already feeds Choice macro market snapshots.",
+        "docs/tushare_news_backup_refresh_runbook.md calls out homepage funding-condition fallback language.",
+        "frontend and backend macro toolkit surfaces group policy and funding-condition signals."
+      ],
+      "implementation_state": "candidate",
+      "next_step": "Create a small confirmed funding batch for DR007, R007, Shibor, LPR, MLF, OMO, and NCD benchmark series with units and publication-date rules.",
+      "caveats": [
+        "Funding series can revise or publish on non-trading calendars; keep trade_date versus publish_date explicit.",
+        "Use as explanatory market context unless a page contract promotes a specific metric."
+      ]
+    },
+    {
+      "opportunity_id": "choice_bond_position_market_fields",
+      "priority": "P0",
+      "domain": "fixed_income_macro",
+      "title": "Position-bond market fields for external validation",
+      "choice_api_functions": ["css", "csd"],
+      "data_families": ["bond_clean_price", "bond_dirty_price", "ytm", "duration", "remaining_maturity", "rating", "issuer"],
+      "business_surfaces": ["bond_analytics", "bond_dashboard", "portfolio_risk_validation"],
+      "landing_targets": ["new choice_bond_market_observation task table", "governed validation report"],
+      "existing_evidence": [
+        "MOSS fixed-income priority emphasizes metric correctness and traceability.",
+        "Bond analytics surfaces already separate formal internal facts from explanatory market context."
+      ],
+      "implementation_state": "needs_entitlement_probe",
+      "next_step": "Probe a small governed holding-code sample through Choice css/csd, then design a read-only validation table separate from formal ledger truth.",
+      "caveats": [
+        "Internal governed books remain source of truth for positions, cost, PnL, and accounting class.",
+        "Vendor valuation fields must be displayed as external validation, not formal replacement."
+      ]
+    },
+    {
+      "opportunity_id": "choice_treasury_futures_positioning",
+      "priority": "P0",
+      "domain": "fixed_income_macro",
+      "title": "Treasury futures prices and member positioning",
+      "choice_api_functions": ["csd", "ctr", "fut_get_transaction_rankings"],
+      "data_families": ["treasury_futures_ohlc", "basis_proxy", "member_rank", "long_short_positioning"],
+      "business_surfaces": ["bond_analytics", "macro_toolkit", "rates_risk_monitor"],
+      "landing_targets": ["cffex_member_rank", "fact_choice_macro_daily", "choice_market_snapshot"],
+      "existing_evidence": [
+        "backend/app/repositories/choice_client.py already wraps fut_get_transaction_rankings when the Choice runtime exposes it.",
+        "backend/app/schema_registry/duckdb/24_cffex_member_rank.sql includes choice in source ranking."
+      ],
+      "implementation_state": "partially_landed",
+      "next_step": "Tie existing member-rank shape to a Choice entitlement smoke test for T, TF, TL, and TS contract families.",
+      "caveats": [
+        "Futures signals explain hedging pressure; do not convert them into portfolio DV01 without formal hedge-position linkage."
+      ]
+    },
+    {
+      "opportunity_id": "choice_bond_credit_events",
+      "priority": "P1",
+      "domain": "bond_events",
+      "title": "Bond and issuer credit events",
+      "choice_api_functions": ["cfn", "cnq", "ctr"],
+      "data_families": ["rating_action", "default_event", "extension_event", "regulatory_penalty", "issuer_announcement"],
+      "business_surfaces": ["dashboard_home", "bond_news", "credit_risk_watch"],
+      "landing_targets": ["choice_news_event", "news_warehouse"],
+      "existing_evidence": [
+        "config/choice_news_topics.json subscribes to bond market and policy news topic codes.",
+        "backend/app/tasks/choice_news.py can pull and materialize Choice news events."
+      ],
+      "implementation_state": "partially_landed",
+      "next_step": "Repair topic-name encoding and add event classifiers for rate, credit, issuer, and regulatory categories.",
+      "caveats": [
+        "News and events are analytical context unless linked to a governed issuer exposure contract."
+      ]
+    },
+    {
+      "opportunity_id": "choice_equity_sector_cross_section",
+      "priority": "P1",
+      "domain": "equity_strategy",
+      "title": "A-share industry and concept-board cross sections",
+      "choice_api_functions": ["sector", "cses", "css", "csd"],
+      "data_families": ["industry_membership", "concept_membership", "sector_return", "sector_turnover", "sector_valuation"],
+      "business_surfaces": ["stock_analysis", "market_data_livermore", "macro_toolkit"],
+      "landing_targets": ["choice_stock_sector_membership", "choice_stock_concept_membership", "choice_stock_daily_observation"],
+      "existing_evidence": [
+        "config/choice_stock_catalog.json confirms A-share universe, SW2021 membership, daily return, turnover, amplitude, and OHLCV probes.",
+        "Choice concept membership remains unconfirmed in the current stock catalog."
+      ],
+      "implementation_state": "partially_landed",
+      "next_step": "Add cses/sector entitlement probes for board-level return, turnover, and valuation before expanding concept membership.",
+      "caveats": [
+        "Concept-board fields have known entitlement uncertainty; keep optional until live probes return rows."
+      ]
+    },
+    {
+      "opportunity_id": "choice_equity_factor_extension",
+      "priority": "P1",
+      "domain": "equity_strategy",
+      "title": "Equity valuation, quality, momentum, volatility, and dividend factors",
+      "choice_api_functions": ["css", "csd"],
+      "data_families": ["pe_pb_ps", "roe", "margin", "return_momentum", "volatility", "dividend_yield"],
+      "business_surfaces": ["stock_analysis", "market_data_livermore"],
+      "landing_targets": ["choice_stock_factor_snapshot"],
+      "existing_evidence": [
+        "backend/app/schema_registry/duckdb/27_choice_stock_factor_snapshot.sql defines factor snapshot columns.",
+        "backend/app/tasks/choice_stock_materialize.py can fill ROEWA and GPMARGIN through Choice css fallback."
+      ],
+      "implementation_state": "partially_landed",
+      "next_step": "Confirm historical factor availability and units before using factor history in ranking or backtest surfaces.",
+      "caveats": [
+        "Factor values must remain point-in-time; do not mix latest financial data into historical replay dates."
+      ]
+    },
+    {
+      "opportunity_id": "choice_market_calendar_metadata",
+      "priority": "P2",
+      "domain": "calendar_metadata",
+      "title": "Market calendars and macro-series metadata",
+      "choice_api_functions": ["tradedates", "edbquery", "cfnquery", "cec", "cfc", "datastatistics"],
+      "data_families": ["trading_calendar", "series_metadata", "news_topic_catalog", "field_entitlement", "quota_usage"],
+      "business_surfaces": ["refresh_jobs", "data_quality", "market_data_catalog"],
+      "landing_targets": ["market_data_series_category", "refresh diagnostics"],
+      "existing_evidence": [
+        "Choice client already wraps tradedates, edbquery, cfnquery, and live request functions used by materializers.",
+        "Choice news topic JSON currently has garbled topic names but usable topic codes."
+      ],
+      "implementation_state": "candidate",
+      "next_step": "Build read-only diagnostics that report entitlement, quota, calendar, and topic metadata before live refresh runs.",
+      "caveats": [
+        "Diagnostics should not mutate formal facts."
+      ]
+    },
+    {
+      "opportunity_id": "choice_trade_execution_apis",
+      "priority": "avoid",
+      "domain": "operations_guardrail",
+      "title": "Choice trading and portfolio operation APIs",
+      "choice_api_functions": ["porder", "pcancel", "preport", "pquery"],
+      "data_families": ["order_execution", "vendor_portfolio_operations"],
+      "business_surfaces": ["none"],
+      "landing_targets": [],
+      "existing_evidence": [
+        "MOSS current priority is business metric correctness, page closure, traceability, and validation.",
+        "Internal governed books remain the source of truth for position and PnL workflows."
+      ],
+      "implementation_state": "avoid",
+      "next_step": "Do not connect without an explicit trading-system mandate and separate controls.",
+      "caveats": [
+        "Never mix vendor trade operations with governed MOSS analytical ingestion."
+      ]
+    }
+  ]
+}

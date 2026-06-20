@@ -12,13 +12,14 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeFailure,
     FormalComputeMaterializeResult,
 )
 from backend.app.tasks.broker import register_actor_once
-from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_for_report_date
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
+from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_for_report_date
 
 BALANCE_ANALYSIS_MODULE = ensure_formal_module(
     FormalComputeModuleDescriptor(
@@ -204,7 +205,7 @@ def _execute_balance_analysis_materialization(
             zqtz_fact_rows.append(native_row)
             if native_row.source_version:
                 source_versions.add(native_row.source_version)
-        fx_rate, fx_source_version = repo.lookup_fx_rate(
+        fx_lookup = repo.lookup_formal_fx_rate(
             report_date=report_date,
             base_currency=row.currency_code,
         )
@@ -213,14 +214,14 @@ def _execute_balance_analysis_materialization(
             invest_type_raw=invest_type_raw,
             position_scope=position_scope,
             currency_basis="CNY",
-            fx_rate=fx_rate,
+            fx_rate=fx_lookup.rate,
         )
         if cny_row is not None:
             zqtz_fact_rows.append(cny_row)
             if cny_row.source_version:
                 source_versions.add(cny_row.source_version)
-        if fx_source_version and fx_source_version != "sv_fx_identity":
-            fx_source_versions.add(fx_source_version)
+        if fx_lookup.source_version and fx_lookup.source_version != "sv_fx_identity":
+            fx_source_versions.add(fx_lookup.source_version)
 
     for row in tyw_snapshot_rows:
         position_scope = row.position_side if row.position_side in {"asset", "liability"} else "all"
@@ -234,7 +235,7 @@ def _execute_balance_analysis_materialization(
         tyw_fact_rows.append(native_row)
         if native_row.source_version:
             source_versions.add(native_row.source_version)
-        fx_rate, fx_source_version = repo.lookup_fx_rate(
+        fx_lookup = repo.lookup_formal_fx_rate(
             report_date=report_date,
             base_currency=row.currency_code,
         )
@@ -243,21 +244,22 @@ def _execute_balance_analysis_materialization(
             invest_type_raw=invest_type_raw,
             position_scope=position_scope,
             currency_basis="CNY",
-            fx_rate=fx_rate,
+            fx_rate=fx_lookup.rate,
         )
         tyw_fact_rows.append(cny_row)
         if cny_row.source_version:
             source_versions.add(cny_row.source_version)
-        if fx_source_version and fx_source_version != "sv_fx_identity":
-            fx_source_versions.add(fx_source_version)
+        if fx_lookup.source_version and fx_lookup.source_version != "sv_fx_identity":
+            fx_source_versions.add(fx_lookup.source_version)
 
     combined_source_version = "__".join(sorted(source_versions | fx_source_versions)) or "sv_balance_analysis_empty"
     try:
-        repo.replace_formal_balance_rows(
-            report_date=report_date,
-            zqtz_rows=zqtz_fact_rows,
-            tyw_rows=tyw_fact_rows,
-        )
+        with repository_task_write_scope(__name__):
+            repo.replace_formal_balance_rows(
+                report_date=report_date,
+                zqtz_rows=zqtz_fact_rows,
+                tyw_rows=tyw_fact_rows,
+            )
     except Exception as exc:
         raise FormalComputeMaterializeFailure(
             source_version=combined_source_version,
@@ -295,6 +297,7 @@ def _materialize_balance_analysis_facts(
         report_date=report_date,
         governance_dir=str(governance_path),
         lock_base_dir=str(duckdb_file.parent),
+        duckdb_path=str(duckdb_file),
         run_id=run_id,
         execute_materialization=lambda: _execute_balance_analysis_materialization(
             report_date=report_date,

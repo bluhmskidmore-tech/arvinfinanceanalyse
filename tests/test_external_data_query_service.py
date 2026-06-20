@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import duckdb
 
-from backend.app.repositories.external_data_migrations_extra import ensure_std_external_macro_schema
+from backend.app.repositories.external_data_migrations_extra import (
+    ensure_std_external_macro_schema,
+)
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.services.external_data_query_service import (
     fetch_series_data_page,

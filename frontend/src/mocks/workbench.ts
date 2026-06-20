@@ -261,8 +261,9 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   },
   "news-events": {
     title: "新闻事件",
-    summary: "Choice news direct workbench access is reserved in the current cutover boundary.",
-    highlights: ["Route shell retained", "Live news table not promoted", "Backend reserved responses stay explicit"],
+    summary:
+      "工作台路由已接 NewsEventsPage（分析读面）；本占位文案仅保留给 WorkbenchPlaceholderPage 兼容，不代表当前路由仍为壳层。",
+    highlights: ["Choice 事件只读链路", "临时例外治理横幅", "分页与筛选以页面契约为准"],
   },
   "source-preview": {
     title: "Source Preview",
@@ -284,10 +285,50 @@ export const mockHomeSnapshot: HomeSnapshotPayload = {
   attribution: pnlAttributionPayload,
   domains_missing: [],
   domains_effective_date: {
-    balance: "2026-04-18",
+    balance_sheet: "2026-04-18",
     pnl: "2026-04-18",
-    liability: "2026-04-18",
-    bond: "2026-04-18",
   },
   verdict: mockVerdictPayload,
+  product_category_ytd: {
+    view: "ytd",
+    summary_pnl: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    summary_pnl_detail:
+      "演示：与产品分类损益「汇总视图」（ytd）页脚 grand_total.business_net_income 一致；当前为占位。",
+    operating_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    operating_income_detail:
+      "演示：与产品分类损益「汇总视图」（ytd）一致时，此处为 grand_total.business_net_income；当前为占位。",
+    intermediate_business_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    intermediate_business_income_detail:
+      "演示：与产品分类损益「中间业务收入」ytd 行一致时，此处为该行 business_net_income；当前为占位。",
+  },
+  product_category_monthly: {
+    view: "monthly",
+    monthly_income: {
+      raw: null,
+      unit: "yuan",
+      display: "—",
+      precision: 2,
+      sign_aware: true,
+    },
+    monthly_income_detail:
+      "演示：与产品分类损益「月度视图」（monthly）页脚「全部市场科目 + 投资收益合计」一致；当前为占位。",
+  },
 };

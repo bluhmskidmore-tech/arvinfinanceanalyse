@@ -9,6 +9,26 @@
   --ops-green-soft: #ecf8f0;
   --ops-amber: #935a1c;
   --ops-amber-soft: #faf3e7;
+  --ops-display-font: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --ops-shell-border-soft: #e4e9f0;
+  display: grid;
+  gap: 24px;
+}
+
+.operations-analysis-page__hero-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(420px, 1.08fr);
+  gap: 22px;
+  align-items: start;
+  padding: 24px 24px 22px;
+  border: 1px solid var(--ops-line);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(252, 251, 248, 0.99) 0%, rgba(246, 248, 246, 0.98) 100%);
+  box-shadow: 0 18px 40px rgba(22, 35, 46, 0.06);
+}
+
+.operations-analysis-page__hero-header {
+  margin-bottom: 0;
 }
 
 .operations-analysis-page__hero-main {
@@ -18,7 +38,35 @@
 }
 
 .operations-analysis-page__kpi-grid {
+  display: grid;
+  gap: 12px;
   min-width: 0;
+}
+
+.operations-analysis-page__filter-tray > div {
+  border-color: rgba(214, 222, 220, 0.9) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
+}
+
+.operations-analysis-page__filter-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ops-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.operations-analysis-page__filter-control {
+  min-width: 172px;
+  padding: 12px 14px;
+  border: 1px solid var(--ops-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  color: var(--ops-ink);
 }
 
 .operations-analysis-page__primary-metrics {
@@ -35,6 +83,14 @@
 
 .operations-analysis-page__metric-card {
   position: relative;
+  display: grid;
+  gap: 14px;
+  min-height: 172px;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--ops-shell-border-soft);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 249, 245, 0.96) 100%);
+  box-shadow: 0 16px 36px rgba(22, 35, 46, 0.05);
   overflow: hidden;
 }
 
@@ -65,12 +121,207 @@
   box-shadow: none !important;
 }
 
+.operations-analysis-page__metric-card[data-compact="true"] {
+  gap: 10px;
+  min-height: 138px;
+  padding: 16px 16px 14px;
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(22, 35, 46, 0.04);
+}
+
+.operations-analysis-page__metric-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.operations-analysis-page__metric-label {
+  margin: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.operations-analysis-page__metric-value-block {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+}
+
+.operations-analysis-page__metric-unit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-height: 0;
+}
+
+.operations-analysis-page__metric-value {
+  color: var(--moss-color-text-primary);
+  font-family: var(--ops-display-font);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.08;
+}
+
+.operations-analysis-page__metric-card[data-status="warning"] .operations-analysis-page__metric-value {
+  color: var(--moss-color-warning-500);
+}
+
+.operations-analysis-page__metric-card[data-status="danger"] .operations-analysis-page__metric-value {
+  color: var(--moss-color-danger-500);
+}
+
+.operations-analysis-page__metric-card[data-compact="true"] .operations-analysis-page__metric-value {
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.operations-analysis-page__metric-unit {
+  color: var(--moss-color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.operations-analysis-page__metric-card[data-compact="true"] .operations-analysis-page__metric-unit {
+  font-size: 12px;
+}
+
+.operations-analysis-page__metric-detail {
+  margin: 0;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .operations-analysis-page__provenance {
   margin: 0;
   max-width: 820px;
   color: var(--ops-muted);
   font-size: 13px;
   line-height: 1.75;
+}
+
+.operations-analysis-page__section-block,
+.operations-analysis-page__section-lead,
+.operations-analysis-page__recommendation-body {
+  display: grid;
+}
+
+.operations-analysis-page__section-block {
+  gap: 16px;
+}
+
+.operations-analysis-page__section-lead {
+  gap: 10px;
+}
+
+.operations-analysis-page__section-eyebrow {
+  color: var(--ops-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.operations-analysis-page__section-title {
+  max-width: 820px;
+  margin: 0;
+  color: var(--ops-ink);
+  font-family: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.operations-analysis-page__section-description,
+.operations-analysis-page__recommendation-text,
+.operations-analysis-page__entry-intro {
+  max-width: 760px;
+  margin: 0;
+  color: var(--moss-color-text-secondary);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.operations-analysis-page__section-description {
+  line-height: 1.85;
+}
+
+.operations-analysis-page__panel {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  height: 100%;
+  min-height: 0;
+  padding: 22px;
+  border: 1px solid var(--ops-shell-border-soft);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(252, 251, 248, 0.98) 0%, rgba(247, 247, 242, 0.95) 100%);
+  box-shadow: 0 18px 44px rgba(22, 35, 46, 0.06);
+}
+
+.operations-analysis-page__panel-title {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-family: var(--ops-display-font);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.operations-analysis-page__panel-content {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 0;
+}
+
+.operations-analysis-page__recommendation-body {
+  gap: 12px;
+}
+
+.operations-analysis-page__text-link {
+  color: var(--moss-color-primary-600);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+}
+
+.operations-analysis-page__entry-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.operations-analysis-page__entry-title {
+  margin: 0;
+  color: var(--ops-ink);
+  font-family: "Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.operations-analysis-page__balance-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
 }
 
 .operations-analysis-page__decision-layout {
@@ -109,9 +360,11 @@
 }
 
 .operations-analysis-page__topic-entry {
-  margin: 0 !important;
-  border-left-color: var(--ops-blue) !important;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86) 0%, rgba(247, 249, 247, 0.94) 100%) !important;
+  margin: 8px 0 2px !important;
+  padding: 18px 22px 22px;
+  border-left: 4px solid var(--ops-blue) !important;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76) 0%, rgba(247, 247, 242, 0.88) 100%) !important;
 }
 
 @media (max-width: 1180px) {
@@ -134,4 +387,30 @@
   .operations-analysis-page__structure-layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* Compact cockpit alignment for the shared decision hero and status strip. */
+.operations-analysis-page__hero-main .moss-page-v2-decision-hero {
+  padding: 14px 16px;
+  border: 1px solid rgba(115, 132, 153, 0.28);
+  border-left: 3px solid var(--ops-blue);
+  border-radius: var(--moss-radius-sm);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 22px, rgba(115, 132, 153, 0.055) 22px 23px),
+    linear-gradient(180deg, white 0%, var(--moss-color-neutral-50) 100%);
+  box-shadow: 0 1px 5px rgba(15, 45, 80, 0.035);
+}
+
+.operations-analysis-page__hero-main .moss-page-v2-decision-hero__question {
+  color: var(--ops-ink);
+  font-weight: 600;
+}
+
+.operations-analysis-page__hero-main .moss-page-v2-data-status {
+  padding: 8px 10px;
+  border: 1px solid rgba(115, 132, 153, 0.24);
+  border-left: 3px solid var(--ops-green);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: none;
 }

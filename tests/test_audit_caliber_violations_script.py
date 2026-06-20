@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 
 from backend.app.core_finance.calibers import get_caliber_rule, list_caliber_rules
-
 from tests.helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]

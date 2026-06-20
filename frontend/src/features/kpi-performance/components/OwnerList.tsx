@@ -28,10 +28,10 @@ export function OwnerList({
 
   if (loading) {
     return (
-      <Card style={{ minHeight: 400 }}>
-        <div style={{ padding: 48, textAlign: "center" }}>
+      <Card className="kpi-owner-list-card kpi-owner-list-card--loading">
+        <div className="kpi-owner-list__state">
           <Spin />
-          <div style={{ marginTop: 12, color: "#64748b" }}>加载考核对象…</div>
+          <div className="kpi-owner-list__loading-text">加载考核对象…</div>
         </div>
       </Card>
     );
@@ -39,10 +39,10 @@ export function OwnerList({
 
   return (
     <Card
+      className="kpi-owner-list-card"
       title="考核部室"
-      styles={{ body: { padding: 0, maxHeight: 560, overflow: "auto" } }}
     >
-      <div style={{ padding: 12, borderBottom: "1px solid #f0f0f0" }}>
+      <div className="kpi-owner-list__search">
         <Input
           allowClear
           prefix={<SearchOutlined />}
@@ -52,49 +52,45 @@ export function OwnerList({
         />
       </div>
       {filtered.length === 0 ? (
-        <Empty style={{ padding: 24 }} description="无匹配结果" />
+        <Empty className="kpi-owner-list__empty" description="无匹配结果" />
       ) : (
         filtered.map((owner) => {
           const sel = selectedOwnerId === owner.owner_id;
+          const rowClassName = [
+            "kpi-owner-list__row",
+            sel ? "kpi-owner-list__row--selected" : null,
+          ]
+            .filter(Boolean)
+            .join(" ");
           return (
             <div
               key={owner.owner_id}
               role="button"
               tabIndex={0}
+              className={rowClassName}
               onClick={() => onSelect(owner)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") onSelect(owner);
               }}
-              style={{
-                padding: "12px 16px",
-                cursor: "pointer",
-                borderLeft: sel ? "4px solid #1677ff" : "4px solid transparent",
-                background: sel ? "#e6f4ff" : undefined,
-              }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div className="kpi-owner-list__row-content">
                 <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    display: "grid",
-                    placeItems: "center",
-                    background: sel ? "#1677ff" : "#f1f5f9",
-                    color: sel ? "#fff" : "#475569",
-                  }}
+                  className={[
+                    "kpi-owner-list__avatar",
+                    sel ? "kpi-owner-list__avatar--selected" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 >
                   <BankOutlined />
                 </div>
                 <span
-                  style={{
-                    fontWeight: sel ? 600 : 400,
-                    color: sel ? "#0958d9" : "#334155",
-                    flex: 1,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
+                  className={[
+                    "kpi-owner-list__name",
+                    sel ? "kpi-owner-list__name--selected" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 >
                   {owner.owner_name}
                 </span>
@@ -103,18 +99,10 @@ export function OwnerList({
           );
         })
       )}
-      <div
-        style={{
-          padding: "10px 12px",
-          borderTop: "1px solid #f0f0f0",
-          fontSize: 12,
-          color: "#94a3b8",
-          textAlign: "center",
-        }}
-      >
-        共 <strong style={{ color: "#475569" }}>{filtered.length}</strong> 个部室
+      <div className="kpi-owner-list__footer">
+        共 <strong className="kpi-owner-list__footer-count">{filtered.length}</strong> 个部室
         {searchText && filtered.length !== owners.length ? (
-          <span style={{ marginLeft: 4 }}>（筛选自 {owners.length}）</span>
+          <span className="kpi-owner-list__filter-note">（筛选自 {owners.length}）</span>
         ) : null}
       </div>
     </Card>

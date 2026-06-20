@@ -46,6 +46,13 @@ logger = logging.getLogger(__name__)
 
 CHOICE_MACRO_LOCK = LockDefinition(key="lock:duckdb:choice-macro", ttl_seconds=900)
 RULE_VERSION = "rv_choice_macro_thin_slice_v1"
+CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
+CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
+CHOICE_MACRO_SCOPED_REFRESH_JOB_NAME = "choice_macro_scoped_refresh"
+CHOICE_MACRO_SCOPED_CACHE_KEY = "choice_macro.scoped"
+SCOPED_CHOICE_SCOPE_REQUIRED_MESSAGE = (
+    "Scoped Choice macro refresh requires at least one non-empty batch_ids or series_ids value."
+)
 STABLE_DATE_SLICE_SHORT_LOOKBACK_DAYS = 7
 STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS = 31
 PUBLIC_HEADLINE_RULE_VERSION = "rv_public_cross_asset_headline_v1"
@@ -234,6 +241,28 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
         "tags": ["public", "macro", "market", "commodity", "steel", "cross_asset"],
         "policy_note": "public cross-asset headline supplement via 99qh spot_price_qh",
     },
+    "CA.COPPER": {
+        "series_name": "铜主力期货收盘价",
+        "vendor_name": "tushare",
+        "vendor_series_code": "fut_daily:CU.SHF.close",
+        "frequency": "daily",
+        "unit": "CNY/t",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "macro", "market", "commodity", "copper", "cross_asset"],
+        "policy_note": "Tushare fut_daily supplement for copper cross-asset nonferrous lane",
+    },
+    "CA.ALUMINUM": {
+        "series_name": "铝主力期货收盘价",
+        "vendor_name": "tushare",
+        "vendor_series_code": "fut_daily:AL.SHF.close",
+        "frequency": "daily",
+        "unit": "CNY/t",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "macro", "market", "commodity", "aluminum", "cross_asset"],
+        "policy_note": "Tushare fut_daily supplement for aluminum cross-asset nonferrous lane",
+    },
     "EMM00058124": {
         "series_name": "中间价:美元兑人民币",
         "vendor_name": "fx_daily_mid",
@@ -247,12 +276,34 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
     },
 }
 
+_CHOICE_SINGLE_PARAMETER_ERROR_UNSUPPORTED_CODES = frozenset({"EM1"})
+
+
+def _choice_warning(
+    *,
+    code: str,
+    message: str,
+    series_id: str | None = None,
+    vendor_series_code: str | None = None,
+) -> dict[str, str]:
+    warning = {
+        "code": code,
+        "message": message,
+    }
+    if series_id:
+        warning["series_id"] = series_id
+    if vendor_series_code:
+        warning["vendor_series_code"] = vendor_series_code
+    return warning
+
 
 @dramatiq.actor
 def refresh_choice_macro_snapshot(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     backfill_days: int = 0,
+    batch_ids: list[str] | None = None,
+    series_ids: list[str] | None = None,
 ) -> dict[str, object]:
     logger.info("starting refresh_choice_macro_snapshot, backfill_days=%s", backfill_days)
     _init_runtime()
@@ -270,23 +321,47 @@ def refresh_choice_macro_snapshot(
         local_archive_path=str(settings.local_archive_path),
     )
 
-    run = BuildRunRecord(
-        job_name="choice_macro_refresh",
-        status="running",
-        cache_key="choice_macro.latest",
-    )
-    run_id = f"{run.job_name}:{run.created_at}"
     source_version = "sv_choice_macro_pending"
     vendor_version = "vv_none"
+    refresh_warnings: list[dict[str, str]] = []
+    scope_requested = batch_ids is not None or series_ids is not None
+    target_batch_ids = _normalize_choice_scope_values(batch_ids)
+    target_series_ids = _normalize_choice_scope_values(series_ids)
+    if scope_requested and not target_batch_ids and not target_series_ids:
+        raise ValueError(SCOPED_CHOICE_SCOPE_REQUIRED_MESSAGE)
+    scoped_refresh = bool(target_batch_ids or target_series_ids)
+    scoped_cache_version = (
+        _build_choice_scope_cache_version(
+            batch_ids=target_batch_ids,
+            series_ids=target_series_ids,
+        )
+        if scoped_refresh
+        else None
+    )
+    run = BuildRunRecord(
+        job_name=CHOICE_MACRO_SCOPED_REFRESH_JOB_NAME if scoped_refresh else CHOICE_MACRO_REFRESH_JOB_NAME,
+        status="running",
+        cache_key=CHOICE_MACRO_SCOPED_CACHE_KEY if scoped_refresh else CHOICE_MACRO_REFRESH_CACHE_KEY,
+    )
+    run_id = f"{run.job_name}:{run.created_at}"
 
     try:
         if backfill_days > 1:
+            if scoped_refresh:
+                raise ValueError("Scoped Choice macro refresh does not support backfill_days > 1.")
             snapshot, series_registry = _fetch_backfill_snapshots(
                 settings=settings,
                 backfill_days=backfill_days,
+                warnings=refresh_warnings,
             )
         else:
             batches = load_choice_macro_batches(settings)
+            if scoped_refresh:
+                batches = _filter_choice_macro_batches(
+                    batches,
+                    batch_ids=target_batch_ids,
+                    series_ids=target_series_ids,
+                )
             series_registry = _build_choice_series_registry(batches)
             fetch_plan = _build_choice_macro_fetch_plan(batches)
 
@@ -298,30 +373,25 @@ def refresh_choice_macro_snapshot(
                         adapter=adapter,
                         batch=batch,
                         timeout_seconds=settings.choice_timeout_seconds,
+                        warnings=refresh_warnings,
                     )
                 except RuntimeError as exc:
                     if _is_choice_no_data_error(exc):
+                        if scoped_refresh:
+                            _raise_incomplete_scoped_choice_refresh(
+                                sorted(series.series_id for series in batch.series),
+                                [],
+                            )
                         continue
                     raise
                 batch_snapshots.append(snapshot)
             snapshot = merge_choice_macro_snapshots(batch_snapshots)
+            if scoped_refresh:
+                _validate_scoped_choice_snapshot(snapshot, series_registry)
 
         vendor_version = snapshot.vendor_version
         source_version = _build_source_version(snapshot.raw_payload)
 
-        archived = object_store.archive_bytes(
-            payload=json.dumps(snapshot.raw_payload, ensure_ascii=False).encode("utf-8"),
-            source_name="choice-macro",
-            source_key=f"choice/macro/{snapshot.vendor_version}.json",
-            ingest_batch_id=run_id.replace(":", "_"),
-        )
-        vendor_snapshot_manifest = object_store.build_vendor_snapshot_manifest(
-            vendor_name=snapshot.vendor_name,
-            vendor_version=snapshot.vendor_version,
-            archived_path=str(archived["archived_path"]),
-            snapshot_kind="macro",
-            capture_mode="live" if backfill_days <= 1 else "backfill",
-        )
         vendor_version_registry = {
             "vendor_name": snapshot.vendor_name,
             "vendor_version": snapshot.vendor_version,
@@ -341,12 +411,29 @@ def refresh_choice_macro_snapshot(
             try:
                 _ensure_tables(conn)
                 conn.execute("begin transaction")
-                choice_series_ids = _choice_managed_series_ids(conn, series_registry)
-                _delete_choice_managed_rows(
-                    conn,
-                    series_ids=choice_series_ids,
-                    trade_dates=sorted(backfill_trade_dates) if backfill_days > 1 and backfill_trade_dates else None,
-                )
+                if scoped_refresh:
+                    _delete_scoped_choice_rows(
+                        conn,
+                        series_ids=sorted(series_registry),
+                        fact_pairs=sorted(
+                            {
+                                (point.series_id, str(point.trade_date))
+                                for point in snapshot.series
+                                if point.trade_date
+                            }
+                        ),
+                    )
+                else:
+                    choice_series_ids = _choice_managed_series_ids(conn, series_registry)
+                    _delete_choice_managed_rows(
+                        conn,
+                        series_ids=choice_series_ids,
+                        trade_dates=(
+                            sorted(backfill_trade_dates)
+                            if backfill_days > 1 and backfill_trade_dates
+                            else None
+                        ),
+                    )
 
                 for point in snapshot.series:
                     conn.execute(
@@ -448,6 +535,20 @@ def refresh_choice_macro_snapshot(
             finally:
                 conn.close()
 
+        archived = object_store.archive_bytes(
+            payload=json.dumps(snapshot.raw_payload, ensure_ascii=False).encode("utf-8"),
+            source_name="choice-macro",
+            source_key=f"choice/macro/{snapshot.vendor_version}.json",
+            ingest_batch_id=run_id.replace(":", "_"),
+        )
+        vendor_snapshot_manifest = object_store.build_vendor_snapshot_manifest(
+            vendor_name=snapshot.vendor_name,
+            vendor_version=snapshot.vendor_version,
+            archived_path=str(archived["archived_path"]),
+            snapshot_kind="macro",
+            capture_mode="live" if backfill_days <= 1 else "backfill",
+        )
+
         repo.append_many_atomic(
             [
                 (
@@ -462,6 +563,7 @@ def refresh_choice_macro_snapshot(
                     CACHE_MANIFEST_STREAM,
                     CacheManifestRecord(
                         cache_key=run.cache_key,
+                        cache_version=scoped_cache_version,
                         source_version=source_version,
                         vendor_version=snapshot.vendor_version,
                         rule_version=RULE_VERSION,
@@ -474,6 +576,7 @@ def refresh_choice_macro_snapshot(
                         job_name=run.job_name,
                         status="completed",
                         cache_key=run.cache_key,
+                        cache_version=scoped_cache_version,
                         lock=CHOICE_MACRO_LOCK.key,
                         source_version=source_version,
                         vendor_version=snapshot.vendor_version,
@@ -487,6 +590,7 @@ def refresh_choice_macro_snapshot(
             job_name=run.job_name,
             status="failed",
             cache_key=run.cache_key,
+            cache_version=scoped_cache_version,
             lock=CHOICE_MACRO_LOCK.key,
             source_version=source_version,
             vendor_version=vendor_version,
@@ -497,14 +601,68 @@ def refresh_choice_macro_snapshot(
             raise RuntimeError("Failed to append failed choice_macro lineage") from append_error
         raise exc
 
-    return {
+    gate_supplement_result: dict[str, object] | None = None
+    if scoped_refresh:
+        gate_supplement_result = {
+            "status": "skipped",
+            "reason": "scoped_refresh",
+        }
+    else:
+        try:
+            from backend.app.services.livermore_gate_supplement_compute_service import (
+                compute_and_materialize_gate_supplement,
+            )
+
+            gate_supplement_result = compute_and_materialize_gate_supplement(
+                duckdb_path=str(duckdb_file),
+                lookback_days=max(backfill_days, STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS),
+            )
+        except Exception as exc:
+            logger.warning(
+                "livermore gate supplement refresh failed after choice_macro refresh: %s",
+                exc,
+            )
+            gate_warning = _choice_warning(
+                code="gate_supplement_failed",
+                message=str(exc),
+            )
+            refresh_warnings.append(gate_warning)
+            gate_supplement_result = {
+                "status": "failed",
+                "quality_flag": "warning",
+                "warning_code": "gate_supplement_failed",
+                "message": str(exc),
+            }
+
+    status = "completed"
+    quality_flag = "ok"
+    warning_code: str | None = None
+    if refresh_warnings:
+        status = "degraded"
+        quality_flag = "warning"
+        if any(item["code"] == "gate_supplement_failed" for item in refresh_warnings):
+            warning_code = "gate_supplement_failed"
+        else:
+            warning_code = "choice_macro_partial"
+
+    result = {
         "status": "completed",
         "run_id": run_id,
         "series_count": len(snapshot.series),
         "vendor_version": snapshot.vendor_version,
         "source_version": source_version,
         "cache_key": run.cache_key,
+        "gate_supplement_refresh": gate_supplement_result,
     }
+    if scoped_cache_version is not None:
+        result["cache_version"] = scoped_cache_version
+    result["status"] = status
+    result["quality_flag"] = quality_flag
+    if warning_code is not None:
+        result["warning_code"] = warning_code
+    if refresh_warnings:
+        result["warnings"] = refresh_warnings
+    return result
 
 
 def refresh_public_cross_asset_headlines(
@@ -1040,6 +1198,7 @@ def _fetch_choice_macro_batch_snapshot(
     adapter: VendorAdapter,
     batch: ChoiceMacroBatchConfig,
     timeout_seconds: float,
+    warnings: list[dict[str, str]] | None = None,
 ) -> ChoiceMacroSnapshot:
     last_error: RuntimeError | None = None
     for request_options in _iter_choice_batch_request_options(batch):
@@ -1051,21 +1210,48 @@ def _fetch_choice_macro_batch_snapshot(
             )
         except RuntimeError as exc:
             if _is_choice_mixed_ids_error(exc) and len(batch.series) > 1:
-                return merge_choice_macro_snapshots(
-                    [
-                        _fetch_choice_macro_batch_snapshot(
-                            adapter=adapter,
-                            batch=batch.model_copy(
-                                update={
-                                    "series": [series],
-                                    "fetch_granularity": "single",
-                                }
-                            ),
-                            timeout_seconds=timeout_seconds,
+                snapshots: list[ChoiceMacroSnapshot] = []
+                last_split_error: RuntimeError | None = None
+                for series in batch.series:
+                    try:
+                        snapshots.append(
+                            _fetch_choice_macro_batch_snapshot(
+                                adapter=adapter,
+                                batch=batch.model_copy(
+                                    update={
+                                        "series": [series],
+                                        "fetch_granularity": "single",
+                                    }
+                                ),
+                                timeout_seconds=timeout_seconds,
+                                warnings=warnings,
+                            )
                         )
-                        for series in batch.series
-                    ]
-                )
+                    except RuntimeError as split_exc:
+                        if (
+                            not _is_choice_no_data_error(split_exc)
+                            and not _is_choice_unsupported_runtime_error(split_exc)
+                        ):
+                            raise
+                        last_split_error = split_exc
+                if snapshots:
+                    return merge_choice_macro_snapshots(snapshots)
+                if last_split_error is not None:
+                    raise last_split_error
+                raise
+            if _is_choice_unsupported_single_series_error(exc, batch):
+                series = batch.series[0]
+                if warnings is not None:
+                    warnings.append(
+                        _choice_warning(
+                            code="choice_series_unsupported",
+                            series_id=series.series_id,
+                            vendor_series_code=series.vendor_series_code,
+                            message=str(exc),
+                        )
+                    )
+                last_error = RuntimeError(f"unsupported Choice series {series.series_id}: {exc}")
+                break
             if not _is_choice_no_data_error(exc):
                 raise
             last_error = exc
@@ -1111,6 +1297,25 @@ def _is_choice_no_data_error(exc: RuntimeError) -> bool:
 def _is_choice_mixed_ids_error(exc: RuntimeError) -> bool:
     text = str(exc).lower()
     return "parameter error" in text or "can't be mixed" in text or "cannot be mixed" in text
+
+
+def _is_choice_unsupported_runtime_error(exc: RuntimeError) -> bool:
+    return str(exc).lower().startswith("unsupported choice series ")
+
+
+def _is_choice_unsupported_single_series_error(exc: RuntimeError, batch: ChoiceMacroBatchConfig) -> bool:
+    if len(batch.series) != 1:
+        return False
+    text = str(exc).lower()
+    if "format not support" in text:
+        return True
+    if "parameter error" not in text:
+        return False
+    series = batch.series[0]
+    return (
+        series.series_id in _CHOICE_SINGLE_PARAMETER_ERROR_UNSUPPORTED_CODES
+        or series.vendor_series_code in _CHOICE_SINGLE_PARAMETER_ERROR_UNSUPPORTED_CODES
+    )
 
 
 def _parse_choice_request_options_string(request_options: str) -> dict[str, str]:
@@ -1159,6 +1364,90 @@ def _build_choice_macro_fetch_plan(
             continue
         plan.append(batch)
     return plan
+
+
+def _normalize_choice_scope_values(values: list[str] | None) -> list[str]:
+    return [item for value in values or [] if (item := str(value).strip())]
+
+
+def _build_choice_scope_cache_version(
+    *,
+    batch_ids: list[str],
+    series_ids: list[str],
+) -> str:
+    parts: list[str] = []
+    if batch_ids:
+        parts.append("batch_ids=" + ",".join(sorted(set(batch_ids))))
+    if series_ids:
+        parts.append("series_ids=" + ",".join(sorted(set(series_ids))))
+    return ";".join(parts)
+
+
+def _filter_choice_macro_batches(
+    batches: list[ChoiceMacroBatchConfig],
+    *,
+    batch_ids: list[str] | None,
+    series_ids: list[str] | None,
+) -> list[ChoiceMacroBatchConfig]:
+    target_batch_ids = set(_normalize_choice_scope_values(batch_ids))
+    target_series_ids = set(_normalize_choice_scope_values(series_ids))
+    if not target_batch_ids and not target_series_ids:
+        raise ValueError(SCOPED_CHOICE_SCOPE_REQUIRED_MESSAGE)
+
+    filtered: list[ChoiceMacroBatchConfig] = []
+    for batch in batches:
+        if target_batch_ids and batch.batch_id not in target_batch_ids:
+            continue
+        series = [
+            series
+            for series in batch.series
+            if not target_series_ids or series.series_id in target_series_ids
+        ]
+        if not series:
+            continue
+        filtered.append(batch.model_copy(update={"series": series}))
+
+    if not filtered:
+        raise ValueError("Scoped Choice macro refresh matched no series.")
+    return filtered
+
+
+def _validate_scoped_choice_snapshot(
+    snapshot: ChoiceMacroSnapshot,
+    series_registry: dict[str, dict[str, object]],
+) -> None:
+    expected_series_ids = set(series_registry)
+    fetched_series_ids = {point.series_id for point in snapshot.series}
+    missing_series_ids = sorted(expected_series_ids - fetched_series_ids)
+    unexpected_series_ids = sorted(fetched_series_ids - expected_series_ids)
+    if missing_series_ids or unexpected_series_ids:
+        _raise_incomplete_scoped_choice_refresh(missing_series_ids, unexpected_series_ids)
+    seen_series_ids: set[str] = set()
+    duplicate_series_ids: set[str] = set()
+    for point in snapshot.series:
+        if point.series_id in seen_series_ids:
+            duplicate_series_ids.add(point.series_id)
+        seen_series_ids.add(point.series_id)
+    if duplicate_series_ids:
+        raise RuntimeError(
+            "Scoped Choice macro refresh returned duplicate series; "
+            f"duplicate: {', '.join(sorted(duplicate_series_ids))}"
+        )
+
+
+def _raise_incomplete_scoped_choice_refresh(
+    missing_series_ids: list[str],
+    unexpected_series_ids: list[str],
+) -> None:
+    details: list[str] = []
+    if missing_series_ids:
+        details.append(f"missing: {', '.join(missing_series_ids)}")
+    if unexpected_series_ids:
+        details.append(f"unexpected: {', '.join(unexpected_series_ids)}")
+    raise RuntimeError(
+        "Scoped Choice macro refresh returned incomplete series; "
+        + "; ".join(details)
+    )
 
 
 def _serialize_choice_request_options(options: dict[str, object]) -> str:
@@ -1235,7 +1524,7 @@ def merge_choice_macro_snapshots(snapshots: list[ChoiceMacroSnapshot]) -> Choice
         if snapshot.captured_at > captured_at:
             captured_at = snapshot.captured_at
 
-    vendor_version = vendor_versions[0] if len(set(vendor_versions)) == 1 else "__".join(vendor_versions)
+    vendor_version = _merge_choice_vendor_versions(vendor_versions)
     return ChoiceMacroSnapshot(
         vendor_name="choice",
         vendor_version=vendor_version,
@@ -1243,6 +1532,15 @@ def merge_choice_macro_snapshots(snapshots: list[ChoiceMacroSnapshot]) -> Choice
         series=series,
         raw_payload={"batches": raw_batches},
     )
+
+
+def _merge_choice_vendor_versions(vendor_versions: list[str]) -> str:
+    ordered = sorted({item for item in vendor_versions if item})
+    if not ordered:
+        return "vv_none"
+    if len(ordered) == 1:
+        return ordered[0]
+    return "__".join(ordered)
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -1296,10 +1594,32 @@ def _delete_choice_managed_rows(
     conn.execute(f"delete from market_data_series_category where series_id in ({series_placeholders})", series_ids)
 
 
+def _delete_scoped_choice_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: list[str],
+    fact_pairs: list[tuple[str, str]],
+) -> None:
+    if not series_ids:
+        return
+
+    series_placeholders = ", ".join(["?"] * len(series_ids))
+    conn.execute(f"delete from choice_market_snapshot where series_id in ({series_placeholders})", series_ids)
+    conn.execute(f"delete from phase1_macro_vendor_catalog where series_id in ({series_placeholders})", series_ids)
+    conn.execute(f"delete from market_data_series_category where series_id in ({series_placeholders})", series_ids)
+
+    if not fact_pairs:
+        return
+    fact_conditions = " or ".join(["(series_id = ? and trade_date = ?)"] * len(fact_pairs))
+    fact_params = [value for pair in fact_pairs for value in pair]
+    conn.execute(f"delete from fact_choice_macro_daily where {fact_conditions}", fact_params)
+
+
 def _fetch_backfill_snapshots(
     *,
     settings,
     backfill_days: int,
+    warnings: list[dict[str, str]] | None = None,
 ) -> tuple[ChoiceMacroSnapshot, dict[str, dict[str, object]]]:
     """Fetch Choice macro data for each of the last *backfill_days* calendar days.
 
@@ -1324,6 +1644,7 @@ def _fetch_backfill_snapshots(
                     adapter=adapter,
                     batch=batch,
                     timeout_seconds=settings.choice_timeout_seconds,
+                    warnings=warnings,
                 )
             except RuntimeError as exc:
                 if _is_choice_no_data_error(exc):
@@ -1350,6 +1671,7 @@ def _load_public_cross_asset_history_rows(
         _fetch_public_bond_zh_us_history_rows,
         _fetch_public_dr007_history_rows,
         _fetch_tushare_cross_asset_history_rows,
+        _fetch_tushare_commodity_futures_cross_asset_history_rows,
         _fetch_public_brent_history_rows,
         _fetch_public_steel_history_rows,
         _fetch_public_fx_history_rows,
@@ -1548,6 +1870,42 @@ def _fetch_tushare_cross_asset_history_rows(
                 )
             )
 
+    return rows
+
+
+def _fetch_tushare_commodity_futures_cross_asset_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    settings = get_settings()
+    token = resolve_tushare_token_with_settings_fallback(settings)
+    if not token:
+        raise RuntimeError("MOSS_TUSHARE_TOKEN is not configured.")
+
+    ts = import_tushare_pro()
+    pro = ts.pro_api(token)
+    start_date = (report_date - timedelta(days=max(lookback_days, 45) * 2)).strftime("%Y%m%d")
+    end_date = report_date.strftime("%Y%m%d")
+    rows: list[dict[str, object]] = []
+    for series_id, ts_code in (("CA.COPPER", "CU.SHF"), ("CA.ALUMINUM", "AL.SHF")):
+        records = _records_from_tushare_frame(
+            pro.fut_daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+        )
+        vendor_version = f"vv_tushare_fut_daily_{ts_code.replace('.', '_')}_{end_date}"
+        source_version = _source_version_from_records(f"tushare_fut_daily_{ts_code}", records)
+        for record in records:
+            trade_date = _coerce_public_trade_date(record.get("trade_date"))
+            if trade_date is None or trade_date > report_date.isoformat():
+                continue
+            close = _coerce_public_number(record.get("close"))
+            if close is None:
+                close = _coerce_public_number(record.get("settle"))
+            if close is None:
+                continue
+            rows.append(_public_history_row(series_id, trade_date, close, vendor_version, source_version))
     return rows
 
 

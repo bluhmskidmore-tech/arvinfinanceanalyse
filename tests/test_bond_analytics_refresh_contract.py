@@ -6,7 +6,11 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import load_module
 from tests.test_bond_analytics_api import REPORT_DATE
@@ -25,7 +29,21 @@ def _configure_bond_analytics_api_env(tmp_path, monkeypatch) -> object:
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'auth-scope.db').as_posix()}")
     get_settings.cache_clear()
+    scope_repo = UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn)
+    scope_repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="bond_analytics",
+        action="read",
+    )
+    scope_repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="bond_analytics",
+        action="refresh",
+    )
     _seed_bond_snapshot_rows(str(duckdb_path))
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     return governance_dir
@@ -90,6 +108,60 @@ def test_bond_analytics_refresh_prepares_yield_curve_inputs_before_queueing(tmp_
     assert prepared == [(str(get_settings().duckdb_path), REPORT_DATE)]
     assert len(queued_messages) == 1
     assert queued_messages[0]["report_date"] == REPORT_DATE
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch):
+    governance_dir = _configure_bond_analytics_api_env(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    prepared: list[str] = []
+    queued_messages: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        service_mod,
+        "_prepare_yield_curve_inputs_for_refresh",
+        lambda *, settings, report_date: prepared.append(report_date),
+    )
+    monkeypatch.setattr(
+        service_mod.materialize_bond_analytics_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    headers = {"Idempotency-Key": "bond-analytics-refresh-2026-03-31"}
+
+    first_response = client.post(
+        "/api/bond-analytics/refresh",
+        params={"report_date": REPORT_DATE},
+        headers=headers,
+    )
+    second_response = client.post(
+        "/api/bond-analytics/refresh",
+        params={"report_date": REPORT_DATE},
+        headers=headers,
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+    assert second_payload["run_id"] == first_payload["run_id"]
+    assert second_payload["idempotency_key"] == "bond-analytics-refresh-2026-03-31"
+    assert second_payload["idempotency_replay"] is True
+    assert prepared == [REPORT_DATE]
+    assert len(queued_messages) == 1
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("job_name") == JOB_NAME
+        and record.get("run_id") == first_payload["run_id"]
+    ]
+    assert len(records) == 1
     get_settings.cache_clear()
 
 

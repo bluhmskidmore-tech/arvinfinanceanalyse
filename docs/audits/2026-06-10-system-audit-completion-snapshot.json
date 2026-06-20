@@ -1,0 +1,150 @@
+{
+  "report_kind": "system_audit_completion_snapshot",
+  "generated_at": "2026-06-10T21:25:00+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "status": {
+    "overall": "not_complete",
+    "fail_closed": true,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "writes_governance_records": false,
+    "certifies_routes": false,
+    "clears_secret_scan": false,
+    "captures_direct_app_mcp_gitnexus_evidence": false
+  },
+  "source_artifacts": {
+    "manifest": "docs/audits/2026-06-10-system-audit-manifest.json",
+    "completion_checklist": "docs/audits/2026-06-10-system-audit-completion-checklist.md",
+    "action_register": "docs/audits/2026-06-10-system-audit-action-register.md",
+    "owner_governance_follow_up_packet": "docs/audits/2026-06-10-owner-governance-follow-up-packet.json",
+    "owner_governance_follow_up_brief_zh": "docs/audits/2026-06-10-owner-governance-follow-up-brief.zh.md",
+    "calculation_owner_decision_snapshot": "docs/audits/2026-06-10-calculation-p1-owner-decision-snapshot.json",
+    "calculation_owner_meeting_checklist": "docs/audits/2026-06-10-calculation-p1-owner-meeting-checklist.md",
+    "calculation_first_priority_readiness_packet": "docs/audits/2026-06-10-calculation-p1-first-priority-readiness-packet.md",
+    "system_audit_monitoring_snapshot": "docs/audits/2026-06-10-system-audit-monitoring-snapshot.json",
+    "calculation_post_owner_execution_plan": "docs/audits/2026-06-10-calculation-p1-post-owner-execution-plan.md"
+  },
+  "summary": {
+    "open_blocker_count": 5,
+    "completed_blocker_count": 0,
+    "required_completion_gate_count": 5,
+    "business_contract_certified_routes": 0,
+    "owner_approval_pending_pages": 7,
+    "calculation_display_open_p1": 10,
+    "direct_app_tool_discovery_count": 0,
+    "local_secret_gitleaks_finding_count": 2,
+    "readiness_direct_evidence_null_count": 0,
+    "readiness_audit_review_null_count": 0,
+    "readiness_missing_direct_records_count": 23,
+    "readiness_direct_records_ready_for_audit_review_count": 16,
+    "readiness_catalog_date_incomplete_count": 12
+  },
+  "completion_gates": [
+    {
+      "blocker_id": "owner-approval-7-pages",
+      "status": "not_complete",
+      "last_checked_at": "2026-06-10T19:26:44+08:00",
+      "required_evidence": [
+        "owner name",
+        "owner role",
+        "approval decision",
+        "approval date",
+        "owner signature",
+        "page-specific evidence-review acknowledgement for all seven pages",
+        "strict owner checkers exit 0 with captured approvals"
+      ],
+      "current_contradicting_evidence": [
+        "7 pending pages",
+        "0 captured approvals",
+        "0 closure-approved pages",
+        "84 action items",
+        "strict require-captured rejected 7/7"
+      ],
+      "fail_closed_until": "The seven owner approval packets are captured and strict checks pass."
+    },
+    {
+      "blocker_id": "ledger-pnl-direct-governance-record",
+      "status": "not_complete",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "required_evidence": [
+        "approved governance workflow writes or locates direct record",
+        "record covers PAGE-LEDGER-PNL-001",
+        "record covers /api/ledger-pnl/summary",
+        "record covers ledger_pnl.summary:2026-05-31:ALL",
+        "downstream readiness and governance validation rerun"
+      ],
+      "current_contradicting_evidence": [
+        "dry-run candidate only",
+        "record_write_status=not_requested",
+        "existing_record_line=null",
+        "no written record search matches",
+        "governance_record_validation=missing_direct_records",
+        "audit_review=blocked_by_record_gaps",
+        "formal_use_allowed=false"
+      ],
+      "fail_closed_until": "A written or located direct record exists and validation proves the page can advance without overriding owner approval."
+    },
+    {
+      "blocker_id": "calculation-display-p1-decisions",
+      "status": "not_complete",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "required_evidence": [
+        "business owner selects authoritative convention for every remaining P1 row",
+        "docs/calc_rules.md updated for selected conventions",
+        "contracts updated for selected conventions",
+        "implementation updated for selected conventions",
+        "targeted tests updated and passing"
+      ],
+      "current_contradicting_evidence": [
+        "10 rows remain open",
+        "P1-01 through P1-07 remain open",
+        "P1-09 through P1-11 remain open",
+        "only P1-08 is verified closed"
+      ],
+      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests."
+    },
+    {
+      "blocker_id": "direct-app-mcp-gitnexus-evidence",
+      "status": "not_complete",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "required_evidence": [
+        "fresh Codex App tool surface exposes expected MOSS MCP tools",
+        "fresh Codex App tool surface exposes GitNexus tools",
+        "direct App evidence collected",
+        "direct App evidence compared against local stdio evidence"
+      ],
+      "current_contradicting_evidence": [
+        "tool_search returned 0 relevant direct MOSS/GitNexus tools",
+        "focused MOSS keyword rechecks returned 0 tools",
+        "focused GitNexus keyword recheck returned only 3 non-evidence Codex App management tools",
+        "local stdio evidence remains fallback-only",
+        "direct App MCP evidence not captured",
+        "direct GitNexus evidence not captured"
+      ],
+      "fail_closed_until": "Direct App MOSS/GitNexus evidence exists or the blocker is explicitly resolved by the tool owner."
+    },
+    {
+      "blocker_id": "local-secret-hygiene",
+      "status": "not_complete",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
+      "required_evidence": [
+        "environment owner rotates, removes, or accepts local-only config/.env findings outside the repository",
+        "clean-runner gitleaks passes or records accepted local-only findings",
+        "no secret values enter source control",
+        "no secret values enter docs, tests, logs, screenshots, commits, or chat"
+      ],
+      "current_contradicting_evidence": [
+        "redacted gitleaks 2 ignored/untracked config/.env findings",
+        "OSV 0 vulnerabilities does not clear secret findings",
+        "latest non-closing retry at 2026-06-10T17:30:56+08:00 still has 2 redacted gitleaks findings and OSV was not refreshed because proxy 127.0.0.1:9 refused the connection",
+        "latest boundary-only recheck at 2026-06-10T21:25:00+08:00 still shows config/.env exists, is ignored, and is untracked",
+        "secret values not captured",
+        "environment owner action not recorded"
+      ],
+      "fail_closed_until": "Owner action is recorded without secret values and the redacted scan result no longer contradicts the closure claim."
+    }
+  ],
+  "boundary": "This snapshot is machine-readable completion routing only. It does not approve metrics, pages, governance records, route certification, direct App MCP/GitNexus evidence, local secrets, or business-owner signoff."
+}

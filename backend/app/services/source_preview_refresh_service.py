@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
@@ -13,7 +13,6 @@ from backend.app.tasks.source_preview_refresh import (
     build_source_preview_refresh_lock_key,
     refresh_source_preview_cache,
 )
-
 
 IN_FLIGHT_STATUSES = {"queued", "running"}
 TERMINAL_STATUSES = {"completed", "failed"}
@@ -30,13 +29,26 @@ class SourcePreviewRefreshConflictError(RuntimeError):
     pass
 
 
-def refresh_source_preview(settings: Settings) -> dict[str, object]:
+def refresh_source_preview(
+    settings: Settings,
+    *,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     try:
         with acquire_lock(
             _refresh_trigger_lock(settings),
             base_dir=settings.governance_path,
             timeout_seconds=0.1,
         ):
+            if normalized_idempotency_key is not None:
+                existing_idempotent_run = _latest_refresh_for_idempotency_key(
+                    settings,
+                    idempotency_key=normalized_idempotency_key,
+                )
+                if existing_idempotent_run is not None:
+                    return _idempotent_refresh_response(existing_idempotent_run)
+
             existing = _latest_inflight_refresh(settings)
             if existing is not None:
                 raise SourcePreviewRefreshConflictError(
@@ -46,6 +58,7 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
             run_id = _build_run_id()
             lock_key = build_source_preview_refresh_lock_key(settings.duckdb_path)
             preview_sources = list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES)
+            queued_at = datetime.now(UTC).isoformat()
             _append_governance_record(
                 settings,
                 CACHE_BUILD_RUN_STREAM,
@@ -58,6 +71,8 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
                     "source_version": "sv_preview_pending",
                     "vendor_version": "vv_none",
                     "preview_sources": preview_sources,
+                    "queued_at": queued_at,
+                    "idempotency_key": normalized_idempotency_key,
                 },
                 error_message="Source preview refresh governance write failed.",
             )
@@ -67,7 +82,7 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
                 status="queued",
                 source_version="sv_preview_pending",
                 vendor_version="vv_none",
-                queued_at=datetime.now(timezone.utc).isoformat(),
+                queued_at=queued_at,
             )
 
             actor_kwargs = {
@@ -85,6 +100,8 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
                     "trigger_mode": "async",
                     "cache_key": SOURCE_PREVIEW_REFRESH_CACHE_KEY,
                     "preview_sources": preview_sources,
+                    "idempotency_key": normalized_idempotency_key,
+                    "idempotency_replay": False,
                 }
             except Exception as exc:
                 if _should_use_sync_fallback(settings, exc):
@@ -101,6 +118,8 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
                         **payload,
                         "job_name": SOURCE_PREVIEW_REFRESH_JOB_NAME,
                         "trigger_mode": "sync-fallback",
+                        "idempotency_key": normalized_idempotency_key,
+                        "idempotency_replay": False,
                     }
 
                 _record_dispatch_failure(
@@ -146,7 +165,7 @@ def source_preview_refresh_status(
 
 
 def _build_run_id() -> str:
-    return f"{SOURCE_PREVIEW_REFRESH_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    return f"{SOURCE_PREVIEW_REFRESH_JOB_NAME}:{datetime.now(UTC).isoformat()}"
 
 
 def _refresh_trigger_lock(settings: Settings) -> LockDefinition:
@@ -176,6 +195,51 @@ def _latest_inflight_refresh(settings: Settings) -> dict[str, object] | None:
     return None
 
 
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _latest_refresh_for_idempotency_key(
+    settings: Settings,
+    *,
+    idempotency_key: str,
+) -> dict[str, object] | None:
+    for record in reversed(_load_source_preview_refresh_records(settings)):
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        if str(record.get("status")) in IN_FLIGHT_STATUSES and _is_stale_source_preview_inflight_record(record):
+            _mark_stale_source_preview_inflight_run(
+                settings=settings,
+                run_id=str(record.get("run_id")),
+                error_message="Marked stale source preview idempotent refresh run as failed.",
+            )
+            refreshed_records = _load_source_preview_refresh_records(settings)
+            return next(
+                (
+                    refreshed
+                    for refreshed in reversed(refreshed_records)
+                    if str(refreshed.get("run_id")) == str(record.get("run_id"))
+                ),
+                record,
+            )
+        return record
+    return None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    status = str(record.get("status") or "queued")
+    return {
+        **record,
+        "status": status,
+        "run_id": str(record.get("run_id") or ""),
+        "job_name": SOURCE_PREVIEW_REFRESH_JOB_NAME,
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
+        "cache_key": SOURCE_PREVIEW_REFRESH_CACHE_KEY,
+        "idempotency_replay": True,
+    }
+
+
 def _is_stale_source_preview_inflight_record(record: dict[str, object]) -> bool:
     for field_name in ("started_at", "queued_at", "created_at"):
         raw_value = str(record.get(field_name) or "").strip()
@@ -186,10 +250,10 @@ def _is_stale_source_preview_inflight_record(record: dict[str, object]) -> bool:
         )
         parsed = datetime.fromisoformat(normalized)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         else:
-            parsed = parsed.astimezone(timezone.utc)
-        return datetime.now(timezone.utc) - parsed > STALE_IN_FLIGHT_AFTER
+            parsed = parsed.astimezone(UTC)
+        return datetime.now(UTC) - parsed > STALE_IN_FLIGHT_AFTER
     return True
 
 
@@ -213,7 +277,7 @@ def _mark_stale_source_preview_inflight_run(
             "vendor_version": "vv_none",
             "preview_sources": list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
             "error_message": error_message,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
         },
         error_message="Source preview refresh stale-run governance write failed.",
     )
@@ -239,7 +303,7 @@ def _record_dispatch_failure(
             "vendor_version": "vv_none",
             "preview_sources": list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
             "error_message": error_message,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
         },
         error_message="Source preview refresh governance write failed.",
     )
@@ -250,7 +314,7 @@ def _record_dispatch_failure(
         source_version="sv_preview_failed",
         vendor_version="vv_none",
         error_message=error_message,
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(UTC).isoformat(),
     )
 
 

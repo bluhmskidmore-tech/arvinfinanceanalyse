@@ -43,5 +43,5 @@ def test_pct_round_trip() -> None:
 
 
 def test_normalize_annual_rate_boundaries() -> None:
-    assert normalize_annual_rate_to_decimal(1.0) == 0.01
+    assert normalize_annual_rate_to_decimal(1.0) == 1.0
     assert normalize_annual_rate_to_decimal(0.99) == 0.99

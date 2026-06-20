@@ -1,0 +1,749 @@
+{
+  "snapshot_kind": "portfolio_home_closure_evidence",
+  "page_id": "PAGE-PORTFOLIO-HOME-001",
+  "page_slug": "portfolio",
+  "report_date": "2026-05-31",
+  "duckdb_path": "F:\\MOSS-V3\\data\\moss.duckdb",
+  "template_path": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-business-owner-approval-template.md",
+  "current_score": "99.86 / 100",
+  "remaining_gap": "0.14",
+  "score_status": "blocked",
+  "full_score_ready": false,
+  "score_methodology": {
+    "scoring_model": "discrete_full_closure_gate",
+    "gap_basis": "remaining_gap is a full-score readiness gap, not a linear sum of blocker weights",
+    "gap_allocation_allowed": false,
+    "full_score_rule": "current_score is 100.00 / 100 only when every score_blocker is closed with auditable evidence",
+    "blocked_score_rule": "current_score remains 99.86 / 100 while any full-closure blocker remains"
+  },
+  "score_blockers": [
+    "risk_tensor_quality_warning",
+    "krd_contract_decision_required",
+    "bond_maturity_date_remediation_required",
+    "tyw_liability_maturity_date_remediation_required",
+    "duration_exclusion_warning_mismatch",
+    "risk_tensor_warning_mismatch",
+    "business_owner_approval",
+    "owner_decision_intake_blocked"
+  ],
+  "score_blocker_actions": [
+    {
+      "blocker": "risk_tensor_quality_warning",
+      "owner": "risk_owner",
+      "next_action": "Review the warning-consistency evidence, then rematerialize a clean risk tensor or keep the page candidate-only.",
+      "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+      "exit_criteria": "Risk warning clean gate exits 0 and full-closure evidence no longer reports risk_tensor_quality_warning."
+    },
+    {
+      "blocker": "krd_contract_decision_required",
+      "owner": "risk_owner",
+      "next_action": "Approve nearest-bucket mappings for 2Y, 6M, and 20Y, or require an exact-bucket KRD schema/API update.",
+      "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+      "exit_criteria": "KRD review queue exits 0 under the approved contract and the metric contract records the decision."
+    },
+    {
+      "blocker": "bond_maturity_date_remediation_required",
+      "owner": "data_owner",
+      "next_action": "Remediate missing bond maturity_date values or capture a signed scoped exclusion before rematerialization.",
+      "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+      "exit_criteria": "Bond maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary."
+    },
+    {
+      "blocker": "tyw_liability_maturity_date_remediation_required",
+      "owner": "data_owner",
+      "next_action": "Remediate missing TYW liability maturity_date values or capture a signed scoped exclusion before rematerialization.",
+      "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+      "exit_criteria": "TYW liability maturity remediation queue is empty or signed exclusion evidence is captured and surfaced as a boundary."
+    },
+    {
+      "blocker": "duration_exclusion_warning_mismatch",
+      "owner": "data_owner",
+      "next_action": "Reconcile the recomputed duration-exclusion warning evidence with the risk tensor warning text before any full-score claim.",
+      "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-consistent",
+      "exit_criteria": "Risk warning consistency reports matching parsed and recomputed duration-exclusion evidence."
+    },
+    {
+      "blocker": "risk_tensor_warning_mismatch",
+      "owner": "risk_owner",
+      "next_action": "Reconcile risk tensor warning evidence and rematerialize the risk tensor or keep /portfolio candidate-only.",
+      "evidence_command": "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+      "exit_criteria": "Risk warning clean gate exits 0 with no risk tensor warning mismatch."
+    },
+    {
+      "blocker": "business_owner_approval",
+      "owner": "business_owner",
+      "next_action": "Complete and sign the portfolio-home business owner approval template with risk-owner countersignature.",
+      "evidence_command": "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
+      "exit_criteria": "Approval checker exits 0 and evidence_scope.approves_metric_or_page is true."
+    },
+    {
+      "blocker": "owner_decision_intake_blocked",
+      "owner": "business_owner",
+      "next_action": "Reconcile risk-owner CSV decisions, nearest-bucket or exact-bucket evidence, data-owner CSV decisions, scoped-exclusion evidence, and business-owner approval before full-score activation.",
+      "evidence_command": "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+      "exit_criteria": "Owner decision intake strict gate exits 0 and reports intake_ready=true."
+    }
+  ],
+  "gate_summary": {
+    "full_closure_status": "blocked",
+    "risk_warning_decision_status": "blocked",
+    "krd_contract_status": "decision_required",
+    "maturity_remediation_status": "blocked",
+    "business_owner_approval_status": "pending",
+    "owner_decision_intake_status": "pending",
+    "owner_decision_intake_ready": false,
+    "owner_decision_intake_blockers": [
+      "krd_owner_decision_missing",
+      "maturity_owner_decision_missing",
+      "business_owner_approval_missing"
+    ],
+    "owner_decision_intake_alignment_status": "consistent",
+    "owner_decision_intake_alignment_blockers": [],
+    "owner_handoff_completeness_status": "clean",
+    "owner_handoff_completeness_ready": true,
+    "owner_handoff_completeness_blockers": [],
+    "score_blocker_action_coverage_status": "clean",
+    "score_blocker_action_coverage_blockers": [],
+    "score_blocker_action_coverage_unassigned_blockers": [],
+    "approval_dependency_consistency_status": "consistent",
+    "approval_dependency_consistency_blockers": [],
+    "generated_owner_fields_boundaries": {
+      "krd_contract_decision_manifest": true,
+      "maturity_remediation_manifest": true
+    },
+    "risk_tensor_quality_flag": "warning",
+    "krd_remap_tenors": [
+      "20Y",
+      "2Y",
+      "6M"
+    ],
+    "bond_missing_maturity_rows": 114,
+    "tyw_liability_missing_maturity_rows": 1455
+  },
+  "closure_artifact_presence_summary": {
+    "status": "current",
+    "current": true,
+    "blockers": [],
+    "artifact_current_summary": {
+      "krd": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      },
+      "maturity": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      },
+      "business_owner_approval_template": {
+        "status": "present",
+        "current": true,
+        "current_blockers": []
+      },
+      "exact_bucket_schema_evidence": {
+        "status": "not_required",
+        "current": true,
+        "current_blockers": []
+      },
+      "nearest_bucket_approval_evidence": {
+        "status": "not_required",
+        "current": true,
+        "current_blockers": []
+      },
+      "maturity_scoped_exclusion_evidence": {
+        "status": "not_required",
+        "current": true,
+        "current_blockers": []
+      }
+    }
+  },
+  "handoff_completeness_summary": {
+    "status": "clean",
+    "handoff_ready": true,
+    "blockers": [],
+    "summary_current_status": {
+      "artifact": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-owner-input-needed-summary.json",
+      "status": "current",
+      "current": true,
+      "expected_sha256": "bb81b54b2d2b8cb9147b7478eb79411899863333ecd0800ff16a41e1b3723d9f",
+      "actual_sha256": "bb81b54b2d2b8cb9147b7478eb79411899863333ecd0800ff16a41e1b3723d9f"
+    },
+    "handoff_current_status": {
+      "artifact": "F:\\MOSS-V3\\docs\\portfolio\\portfolio-home-owner-handoff-packet.md",
+      "status": "current",
+      "expected_length": 24491,
+      "actual_length": 24491,
+      "expected_sha256": "2ea4851ab89b67e53a394beb93441083eadf36092b84703873fa33ab31070de9",
+      "actual_sha256": "2ea4851ab89b67e53a394beb93441083eadf36092b84703873fa33ab31070de9"
+    },
+    "owner_route_coverage": {
+      "status": "clean",
+      "required_owners": [
+        "risk_owner",
+        "data_owner",
+        "business_owner"
+      ],
+      "present_owners": [
+        "risk_owner",
+        "data_owner",
+        "business_owner"
+      ],
+      "missing_owners": [],
+      "unexpected_owners": [],
+      "duplicate_owners": []
+    },
+    "route_statuses": {
+      "risk_owner": "clean",
+      "data_owner": "clean",
+      "business_owner": "clean"
+    },
+    "evidence_scope": {
+      "approves_metric_or_page": false,
+      "writes_governance_records": false,
+      "fills_owner_decisions": false,
+      "captures_business_owner_approval": false,
+      "proves_full_score_closure": false,
+      "certification_effect": "none"
+    }
+  },
+  "owner_handoff_completeness_alignment": {
+    "status": "consistent",
+    "blockers": [],
+    "compared_fields": [
+      "owner_handoff_completeness_status",
+      "owner_handoff_completeness_ready",
+      "owner_handoff_completeness_blockers"
+    ]
+  },
+  "business_owner_approval_packet_summary": {
+    "packet_status": "pending",
+    "activation_ready": false,
+    "approval_action_item_count": 19,
+    "approval_field_status": {
+      "approval_date": "missing",
+      "verification_commands_rerun": "pending",
+      "evidence_scope_captures_business_owner_approval": "valid"
+    },
+    "business_owner_approval_boundary": {
+      "template_approval_captured": false,
+      "formal_authorization_allowed": false,
+      "governance_write_allowed": false,
+      "page_execution_proven": false,
+      "full_score_closure_ready": false,
+      "activation_ready": false,
+      "status": "pending_owner_input",
+      "blockers": [
+        "business_owner_approval_not_captured",
+        "scorecard_full_score_not_ready",
+        "scorecard_score_status_not_ready",
+        "owner_decision_intake_not_ready",
+        "risk_warning_not_clean"
+      ]
+    },
+    "risk_warning_clean_status": {
+      "status": "blocked",
+      "valid": false,
+      "decision_status": "blocked",
+      "decision_blockers": [
+        "risk_tensor_quality_warning",
+        "risk_tensor_warning_mismatch"
+      ],
+      "evidence_scope": {
+        "checks_warning_consistency": true,
+        "checks_risk_tensor_clean_state": true,
+        "captures_risk_owner_decision": false,
+        "remediates_source_data": false,
+        "approves_metric_or_page": false,
+        "writes_governance_records": false,
+        "captures_business_owner_approval": false,
+        "proves_full_score_closure": false,
+        "certification_effect": "none"
+      },
+      "warning_resolution_matrix": [
+        {
+          "warning_key": "krd_bucket_remap",
+          "owner": "risk_owner",
+          "current_status": "blocked",
+          "current_evidence": {
+            "parsed": [
+              "20Y",
+              "2Y",
+              "6M"
+            ],
+            "recomputed": [
+              "20Y",
+              "2Y",
+              "6M"
+            ]
+          },
+          "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+          "exit_criteria": "Risk owner approves nearest-bucket KRD mapping or supplies exact-bucket schema evidence; KRD review queue exits 0.",
+          "evidence_scope": {
+            "captures_owner_decision": false,
+            "remediates_source_data": false,
+            "approves_metric_or_page": false,
+            "certification_effect": "none"
+          }
+        },
+        {
+          "warning_key": "duration_denominator_exclusion",
+          "owner": "data_owner",
+          "current_status": "blocked",
+          "current_evidence": {
+            "parsed": {
+              "row_count": 120,
+              "market_value_sum": "38318400505.50000008",
+              "missing_maturity_rows": 114,
+              "nonpositive_duration_rows": 6
+            },
+            "recomputed": {
+              "row_count": 120,
+              "market_value_sum": "39109594105.50000008",
+              "missing_maturity_rows": 114,
+              "nonpositive_duration_rows": 6
+            }
+          },
+          "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+          "exit_criteria": "Data owner remediates missing maturity dates or captures signed scoped exclusion; maturity remediation queue exits 0.",
+          "evidence_scope": {
+            "captures_owner_decision": false,
+            "remediates_source_data": false,
+            "approves_metric_or_page": false,
+            "certification_effect": "none"
+          }
+        },
+        {
+          "warning_key": "bond_liquidity_gap_missing_maturity",
+          "owner": "data_owner",
+          "current_status": "blocked",
+          "current_evidence": {
+            "parsed": {
+              "missing_maturity_rows": 114
+            },
+            "recomputed": {
+              "missing_maturity_rows": 114
+            }
+          },
+          "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+          "exit_criteria": "Bond missing maturity rows are remediated or signed scoped exclusion evidence is captured; maturity remediation queue exits 0.",
+          "evidence_scope": {
+            "captures_owner_decision": false,
+            "remediates_source_data": false,
+            "approves_metric_or_page": false,
+            "certification_effect": "none"
+          }
+        },
+        {
+          "warning_key": "tyw_liability_gap_missing_maturity",
+          "owner": "data_owner",
+          "current_status": "blocked",
+          "current_evidence": {
+            "parsed": {
+              "missing_maturity_rows": 1455
+            },
+            "recomputed": {
+              "missing_maturity_rows": 1455
+            }
+          },
+          "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+          "exit_criteria": "TYW liability missing maturity rows are remediated or signed scoped exclusion evidence is captured; maturity remediation queue exits 0.",
+          "evidence_scope": {
+            "captures_owner_decision": false,
+            "remediates_source_data": false,
+            "approves_metric_or_page": false,
+            "certification_effect": "none"
+          }
+        }
+      ],
+      "duration_exclusion_delta_detail": {
+        "status": "mismatch",
+        "delta_basis": "recomputed_minus_parsed",
+        "owner_reconciliation_hint": "Recompute or rematerialize risk tensor warnings so parsed warning numbers match fact_formal_bond_analytics_daily evidence.",
+        "mismatch_fields": [
+          "market_value_sum"
+        ],
+        "delta": {
+          "row_count": 0,
+          "market_value_sum": "791193600.00000000",
+          "missing_maturity_rows": 0,
+          "nonpositive_duration_rows": 0
+        },
+        "parsed_warning_text": "120 rows carry market_value=38318400505.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "expected_warning_text_from_recomputed": "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+        "recomputed_breakdown_by_reason": [
+          {
+            "exclusion_reason": "missing_maturity",
+            "row_count": 114,
+            "market_value_sum": "37622164239.83000008",
+            "dv01_sum": "0.00000000"
+          },
+          {
+            "exclusion_reason": "nonpositive_duration",
+            "row_count": 6,
+            "market_value_sum": "1487429865.67000000",
+            "dv01_sum": "0.00000000"
+          }
+        ]
+      },
+      "risk_tensor_rematerialization_preview": {
+        "status": "would_remain_blocked",
+        "preview_basis": "current_formal_facts_read_only",
+        "writes_database": false,
+        "approves_metric_or_page": false,
+        "certification_effect": "none",
+        "current_consistency_blockers": [
+          "duration_exclusion_warning_mismatch"
+        ],
+        "would_clear_consistency_blockers": [
+          "duration_exclusion_warning_mismatch"
+        ],
+        "preview_consistency_status": "consistent",
+        "preview_consistency_blockers": [],
+        "preview_quality_flag": "warning",
+        "preview_decision_status": "blocked",
+        "preview_decision_blockers": [
+          "risk_tensor_quality_warning"
+        ],
+        "preview_warnings": [
+          "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M",
+          "120 rows carry market_value=39109594105.50000008 and are excluded from portfolio duration denominator: 114 without maturity_date; 6 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
+          "Excluded 114 rows without maturity_date from liquidity gap calculation.",
+          "Excluded 1455 liability rows without maturity_date from liquidity gap calculation."
+        ]
+      }
+    },
+    "rerun_evidence_status": {
+      "status": "valid",
+      "artifact": "docs/portfolio/portfolio-home-evidence-snapshot.json",
+      "valid": true,
+      "blockers": []
+    },
+    "dependency_consistency_status": "consistent",
+    "dependency_consistency_blockers": [],
+    "score_blocker_action_coverage": {
+      "status": "clean",
+      "blockers": [],
+      "unassigned_blockers": [],
+      "covered_blockers": [
+        "risk_tensor_quality_warning",
+        "krd_contract_decision_required",
+        "bond_maturity_date_remediation_required",
+        "tyw_liability_maturity_date_remediation_required",
+        "duration_exclusion_warning_mismatch",
+        "risk_tensor_warning_mismatch",
+        "business_owner_approval",
+        "owner_decision_intake_blocked"
+      ]
+    },
+    "activation_guard": {
+      "no_automatic_approval": true,
+      "partial_activation_invalid": true,
+      "partial_owner_evidence_activation_invalid": true,
+      "strict_scorecard_required": true,
+      "dependency_consistency_required": true,
+      "owner_decision_intake_required": true,
+      "owner_decision_intake_alignment_required": true,
+      "score_blocker_action_coverage_required": true,
+      "rerun_evidence_required": true,
+      "risk_warning_clean_required": true,
+      "closure_artifact_presence_required": true,
+      "activation_ready": false,
+      "required_commands": [
+        "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
+        "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
+        "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched",
+        "python scripts/portfolio_home_owner_action_packet.py --limit 3 --require-clean",
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
+        "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent",
+        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
+        "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current",
+        "python scripts/portfolio_home_evidence_packet_guard.py --require-clean",
+        "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched --output docs/portfolio/portfolio-home-evidence-snapshot.json"
+      ]
+    },
+    "owner_decision_intake_alignment": {
+      "status": "consistent",
+      "blockers": [],
+      "compared_fields": [
+        "intake_status",
+        "intake_ready",
+        "dependency_consistency_status",
+        "dependency_csv_summary_alignment",
+        "owner_input_boundary",
+        "export_current_summary",
+        "owner_decision_statuses",
+        "decision_counts",
+        "decision_gap_counts",
+        "note_gap_counts",
+        "exact_bucket_schema_evidence",
+        "nearest_bucket_approval_evidence",
+        "maturity_scoped_exclusion_evidence"
+      ]
+    },
+    "manifest_consistency_statuses": {
+      "krd_contract_decision_manifest": "consistent",
+      "maturity_remediation_manifest": "consistent"
+    },
+    "generated_owner_fields_boundaries": {
+      "krd_contract_decision_manifest": true,
+      "maturity_remediation_manifest": true
+    },
+    "owner_summary_paths": {
+      "krd_contract_decision_owner_summary": "docs/portfolio/krd-contract-decision/2026-05-31/owner_summary.md",
+      "maturity_remediation_owner_summary": "docs/portfolio/maturity-remediation/2026-05-31/owner_summary.md"
+    },
+    "csv_check_summary": {
+      "krd_summary_row_count": 3,
+      "krd_detail_row_count": 500,
+      "krd_owner_decision_fields_blank": true,
+      "bond_missing_maturity_row_count": 114,
+      "tyw_liability_missing_maturity_row_count": 1455,
+      "maturity_owner_fields_blank": true
+    }
+  },
+  "owner_decision_intake_summary": {
+    "intake_status": "pending_owner_decisions",
+    "intake_ready": false,
+    "dependency_consistency_status": "consistent",
+    "dependency_csv_summary_alignment": {
+      "status": "consistent",
+      "blockers": []
+    },
+    "csv_check_summary": {
+      "krd_summary_row_count": 3,
+      "krd_detail_row_count": 500,
+      "krd_owner_decision_fields_blank": true,
+      "bond_missing_maturity_row_count": 114,
+      "tyw_liability_missing_maturity_row_count": 1455,
+      "maturity_owner_fields_blank": true
+    },
+    "generated_owner_fields_boundaries": {
+      "krd_contract_decision_manifest": true,
+      "maturity_remediation_manifest": true
+    },
+    "owner_input_boundary": {
+      "generated_export_owner_fields_must_be_blank": true,
+      "filled_owner_fields_are_owner_input_only": true,
+      "generated_export_system_fields_must_be_current": true,
+      "allowed_pre_intake_dependency_blockers": [
+        "krd_contract_decision_manifest_owner_decision_fields_not_blank",
+        "maturity_remediation_manifest_owner_fields_not_blank"
+      ],
+      "pre_intake_dependency_blockers": [],
+      "active_dependency_blockers": [],
+      "active_export_current_blockers": []
+    },
+    "export_current_summary": {
+      "krd": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      },
+      "maturity": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      }
+    },
+    "owner_decision_statuses": {
+      "risk_owner": "pending",
+      "data_owner": "pending",
+      "business_owner": "pending"
+    },
+    "owner_decision_blockers": [
+      "krd_owner_decision_missing",
+      "maturity_owner_decision_missing",
+      "business_owner_approval_missing"
+    ],
+    "decision_alignment": {
+      "status": "consistent",
+      "blockers": [],
+      "business_template_decisions": {
+        "krd_contract_decision": "<approve_nearest_bucket | require_exact_bucket_schema | reject>",
+        "maturity_data_decision": "<remediate_source | approve_scoped_exclusion | reject>"
+      },
+      "owner_csv_decisions": {
+        "krd": [],
+        "maturity": []
+      }
+    },
+    "decision_counts": {
+      "krd": {},
+      "maturity": {}
+    },
+    "decision_gap_counts": {
+      "krd": {
+        "missing_decision_rows": 503,
+        "summary_missing_decision_rows": 3,
+        "detail_missing_decision_rows": 500
+      },
+      "maturity": {
+        "missing_decision_rows": 1569,
+        "bond_missing_decision_rows": 114,
+        "tyw_liability_missing_decision_rows": 1455
+      }
+    },
+    "note_gap_counts": {
+      "krd": {},
+      "maturity": {}
+    },
+    "exact_bucket_schema_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
+      "valid": true,
+      "blockers": []
+    },
+    "nearest_bucket_approval_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
+      "valid": true,
+      "blockers": []
+    },
+    "maturity_scoped_exclusion_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
+      "valid": true,
+      "blockers": []
+    }
+  },
+  "scorecard_owner_decision_intake_gate_summary": {
+    "status": "pending",
+    "intake_status": "pending_owner_decisions",
+    "intake_ready": false,
+    "dependency_consistency_status": "consistent",
+    "dependency_csv_summary_alignment": {
+      "status": "consistent",
+      "blockers": []
+    },
+    "owner_input_boundary": {
+      "generated_export_owner_fields_must_be_blank": true,
+      "filled_owner_fields_are_owner_input_only": true,
+      "generated_export_system_fields_must_be_current": true,
+      "allowed_pre_intake_dependency_blockers": [
+        "krd_contract_decision_manifest_owner_decision_fields_not_blank",
+        "maturity_remediation_manifest_owner_fields_not_blank"
+      ],
+      "pre_intake_dependency_blockers": [],
+      "active_dependency_blockers": [],
+      "active_export_current_blockers": []
+    },
+    "export_current_summary": {
+      "krd": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      },
+      "maturity": {
+        "status": "current",
+        "current": true,
+        "current_blockers": []
+      }
+    },
+    "owner_decision_statuses": {
+      "risk_owner": "pending",
+      "data_owner": "pending",
+      "business_owner": "pending"
+    },
+    "blockers": [
+      "krd_owner_decision_missing",
+      "maturity_owner_decision_missing",
+      "business_owner_approval_missing"
+    ],
+    "decision_counts": {
+      "krd": {},
+      "maturity": {}
+    },
+    "decision_gap_counts": {
+      "krd": {
+        "missing_decision_rows": 503,
+        "summary_missing_decision_rows": 3,
+        "detail_missing_decision_rows": 500
+      },
+      "maturity": {
+        "missing_decision_rows": 1569,
+        "bond_missing_decision_rows": 114,
+        "tyw_liability_missing_decision_rows": 1455
+      }
+    },
+    "note_gap_counts": {
+      "krd": {},
+      "maturity": {}
+    },
+    "exact_bucket_schema_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/exact_bucket_schema_evidence.json",
+      "valid": true,
+      "blockers": []
+    },
+    "nearest_bucket_approval_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/krd-contract-decision/2026-05-31/nearest_bucket_approval_evidence.json",
+      "valid": true,
+      "blockers": []
+    },
+    "maturity_scoped_exclusion_evidence": {
+      "status": "not_required",
+      "artifact": "docs/portfolio/maturity-remediation/2026-05-31/maturity_scoped_exclusion_evidence.json",
+      "valid": true,
+      "blockers": []
+    }
+  },
+  "owner_decision_intake_alignment": {
+    "status": "consistent",
+    "blockers": [],
+    "compared_fields": [
+      "intake_status",
+      "intake_ready",
+      "dependency_consistency_status",
+      "dependency_csv_summary_alignment",
+      "owner_input_boundary",
+      "export_current_summary",
+      "owner_decision_statuses",
+      "decision_counts",
+      "decision_gap_counts",
+      "note_gap_counts",
+      "exact_bucket_schema_evidence",
+      "nearest_bucket_approval_evidence",
+      "maturity_scoped_exclusion_evidence"
+    ]
+  },
+  "verification_scope": {
+    "scope": "limited",
+    "embedded_result_count": 1,
+    "total_verification_command_count": 40,
+    "embedded_result_count_matches_report": true,
+    "all_commands_embedded": false,
+    "full_verification_command": "python scripts/verify_portfolio_home_scorecard_commands.py --require-matched",
+    "requires_full_verification_for_full_score": true,
+    "proves_full_score_closure": false,
+    "certification_effect": "limited_verifier_sample_only"
+  },
+  "verification_report": {
+    "page_id": "PAGE-PORTFOLIO-HOME-001",
+    "page_slug": "portfolio",
+    "docs_root": "F:\\MOSS-V3\\docs",
+    "expected_state": "blocked",
+    "verification_status": "matched_expected_blocked_state",
+    "all_matched_expected_exit": true,
+    "all_matched_expected_when_blocked": true,
+    "result_count": 1,
+    "results": [
+      {
+        "name": "full_closure_evidence",
+        "kind": "evidence",
+        "command": "python scripts/portfolio_home_full_closure_evidence.py",
+        "expected_state": "blocked",
+        "expected_exit": "exit_0",
+        "expected_when_blocked": "exit_0",
+        "expected_when_full_score": "exit_0",
+        "argv": [
+          "C:\\Users\\arvin\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+          "scripts/portfolio_home_full_closure_evidence.py"
+        ],
+        "returncode": 0,
+        "matches_expected_exit": true,
+        "matches_expected_when_blocked": true
+      }
+    ]
+  }
+}

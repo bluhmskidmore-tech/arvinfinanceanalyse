@@ -9,24 +9,23 @@ from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
 )
-from backend.app.core_finance.balance_workbook._utils import (
-    _ZERO,
-    _group_rows,
-    _sum_decimal,
-    _weighted_average,
-    _remaining_years,
-    _safe_ratio,
-    _to_wanyuan,
-    _decimal_value,
-    _section,
-    _table,
+from backend.app.core_finance.balance_workbook._analysis_tables import (
+    _build_rating_table,
 )
 from backend.app.core_finance.balance_workbook._bond_tables import (
     _build_maturity_gap_table,
-    _build_issuance_business_type_table,
 )
-from backend.app.core_finance.balance_workbook._analysis_tables import (
-    _build_rating_table,
+from backend.app.core_finance.balance_workbook._utils import (
+    _ZERO,
+    _decimal_value,
+    _group_rows,
+    _remaining_years,
+    _safe_ratio,
+    _section,
+    _sum_decimal,
+    _table,
+    _to_wanyuan,
+    _weighted_average,
 )
 
 
@@ -211,14 +210,15 @@ def _build_risk_alerts_table(
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     maturity_gap = _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows)
-    negative_gap_rows = [row for row in maturity_gap["rows"] if _decimal_value(row.get("gap_amount")) < _ZERO]
+    negative_gap_rows = [row for row in maturity_gap["rows"] if _maturity_full_scope_gap_value(row) < _ZERO]
     if negative_gap_rows:
-        tightest_gap = min(negative_gap_rows, key=lambda row: _decimal_value(row.get("gap_amount")))
+        tightest_gap = min(negative_gap_rows, key=_maturity_full_scope_gap_value)
+        tightest_gap_value = _maturity_full_scope_gap_value(tightest_gap)
         rows.append(
             {
                 "title": f"Negative gap in {tightest_gap['bucket']}",
                 "severity": "high",
-                "reason": f"Gap dropped to {tightest_gap['gap_amount']} wan yuan.",
+                "reason": f"Full-scope gap dropped to {tightest_gap_value} wan yuan.",
                 "source_section": "maturity_gap",
                 "rule_id": "bal_wb_risk_gap_001",
                 "rule_version": "v1",
@@ -271,3 +271,7 @@ def _build_risk_alerts_table(
         ],
         rows,
     )
+
+
+def _maturity_full_scope_gap_value(row: dict[str, Any]) -> Decimal:
+    return _decimal_value(row.get("full_scope_gap_amount", row.get("gap_amount")))

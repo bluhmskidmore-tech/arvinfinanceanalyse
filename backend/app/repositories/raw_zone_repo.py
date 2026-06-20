@@ -21,7 +21,7 @@ class RawZoneRepository:
         return sanitized or "artifact"
 
     def _target_path(self, vendor_name: str, ingest_batch_id: str, filename: str) -> Path:
-        root = Path(self.local_raw_path)
+        root = Path(self.local_raw_path).resolve()
         return (
             root
             / self._safe_component(vendor_name)
@@ -69,7 +69,7 @@ class RawZoneRepository:
         return self.archive_bytes(vendor_name, ingest_batch_id, source_path.name, payload)
 
     def read_bytes(self, raw_zone_path: str) -> bytes:
-        path = Path(raw_zone_path)
+        path = self._resolve_raw_zone_path(raw_zone_path)
         if not path.is_file():
             raise FileNotFoundError(str(path))
         return path.read_bytes()
@@ -90,3 +90,10 @@ class RawZoneRepository:
             "mode": "local_raw",
             "path": str(raw_path),
         }
+
+    def _resolve_raw_zone_path(self, raw_zone_path: str) -> Path:
+        raw_root = Path(self.local_raw_path).resolve()
+        path = Path(raw_zone_path).resolve()
+        if path != raw_root and raw_root not in path.parents:
+            raise ValueError(f"raw_zone_path is outside local raw root: {path}")
+        return path

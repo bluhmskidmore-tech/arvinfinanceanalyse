@@ -9,13 +9,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Any, Mapping
+from typing import Any
 
 from .safe_decimal import safe_decimal
-
 
 ACTION_TYPE_NAMES: dict[str, str] = {
     "TIMING_BUY": "择时买入",
@@ -25,6 +25,153 @@ ACTION_TYPE_NAMES: dict[str, str] = {
     "SWITCH": "换券/结构调整",
     "ADJUST": "持仓调整",
 }
+
+
+def bond_analytics_action_line_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    portfolio_name = str(row.get("portfolio_name") or "").strip()
+    cost_center = str(row.get("cost_center") or "").strip()
+    return {
+        "bond_code": str(row.get("instrument_code") or "").strip(),
+        "book_id": f"{portfolio_name}::{cost_center}",
+        "market_value": row.get("market_value"),
+        "modified_duration": row.get("modified_duration"),
+        "asset_class": str(row.get("asset_class_std") or row.get("accounting_class") or ""),
+    }
+
+
+def build_action_attribution_success_payload(
+    *,
+    report_date: date,
+    period_type: str,
+    raw: Mapping[str, Any],
+    prior_snapshot_date: str | None,
+    pnl_by_key: Mapping[str, Decimal],
+    pnl_warning_codes: list[str],
+    computed_at: str,
+) -> dict[str, Any]:
+    warn_parts: list[str | None] = [str(w) for w in (raw.get("warnings") or [])]
+    if not prior_snapshot_date:
+        warn_parts.append("ACTION_ATTRIBUTION_NO_PRIOR_SNAPSHOT")
+    warn_parts.extend(pnl_warning_codes)
+    warnings = _ordered_unique_warnings(warn_parts)
+
+    missing_inputs: list[str] = []
+    if not pnl_by_key:
+        missing_inputs.append("fact_formal_pnl_fi_capital_gain_517")
+
+    return {
+        "report_date": report_date,
+        "period_type": period_type,
+        "period_start": date.fromisoformat(str(raw["period_start"])),
+        "period_end": date.fromisoformat(str(raw["period_end"])),
+        "total_actions": int(raw["total_actions"]),
+        "total_pnl_from_actions": raw["total_pnl_from_actions"],
+        "by_action_type": list(raw.get("by_action_type", [])),
+        "action_details": list(raw.get("action_details", [])),
+        "period_start_duration": raw["period_start_duration"],
+        "period_end_duration": raw["period_end_duration"],
+        "duration_change_from_actions": raw["duration_change_from_actions"],
+        "period_start_dv01": raw["period_start_dv01"],
+        "period_end_dv01": raw["period_end_dv01"],
+        "status": "ready",
+        "available_components": ["snapshot_diff", "capital_gain_517_allocation"],
+        "missing_inputs": missing_inputs,
+        "blocked_components": [],
+        "computed_at": computed_at,
+        "warnings": warnings,
+        "warnings_detail": [
+            {"code": warning, "level": "warning", "message": warning}
+            for warning in warnings
+        ],
+    }
+
+
+def build_action_attribution_placeholder_payload(
+    *,
+    report_date: date,
+    summary: Mapping[str, Any],
+    facets: Mapping[str, list[dict[str, Any]]],
+    warnings: list[Mapping[str, str]],
+    generated_at: str,
+    default_status: str,
+) -> dict[str, Any]:
+    warning_messages = _ordered_unique_warnings([warning.get("message") for warning in warnings])
+    warning_details: list[dict[str, str]] = []
+    seen_details: set[tuple[str, str, str]] = set()
+    for warning in warnings:
+        detail = {
+            "code": str(warning.get("code") or ""),
+            "level": str(warning.get("level") or "warning"),
+            "message": str(warning.get("message") or ""),
+        }
+        key = (detail["code"], detail["level"], detail["message"])
+        if key in seen_details:
+            continue
+        seen_details.add(key)
+        warning_details.append(detail)
+
+    return {
+        "report_date": report_date,
+        "period_type": str(summary["period_type"]),
+        "period_start": date.fromisoformat(str(summary["period_start"])),
+        "period_end": date.fromisoformat(str(summary["period_end"])),
+        "total_actions": int(summary["total_actions"]),
+        "total_pnl_from_actions": summary["total_pnl_from_actions"],
+        "by_action_type": list(facets.get("by_action_type", [])),
+        "action_details": list(facets.get("action_details", [])),
+        "period_start_duration": summary["period_start_duration"],
+        "period_end_duration": summary["period_end_duration"],
+        "duration_change_from_actions": summary["duration_change_from_actions"],
+        "period_start_dv01": summary["period_start_dv01"],
+        "period_end_dv01": summary["period_end_dv01"],
+        "status": str(summary.get("status") or default_status),
+        "available_components": [str(item) for item in list(summary.get("available_components") or [])],
+        "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
+        "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
+        "computed_at": str(summary.get("computed_at") or generated_at),
+        "warnings": warning_messages,
+        "warnings_detail": warning_details,
+    }
+
+
+def select_action_attribution_pnl_report_dates(
+    *,
+    available_report_dates: list[str],
+    period_type: str,
+    period_start: date,
+    period_end: date,
+) -> tuple[list[str], list[str]]:
+    codes: list[str] = []
+    if period_type == "MoM":
+        return [period_end.isoformat()], codes
+
+    selected: list[str] = []
+    for raw in available_report_dates:
+        try:
+            ds = date.fromisoformat(str(raw))
+        except ValueError:
+            continue
+        if period_start <= ds <= period_end:
+            selected.append(str(raw))
+
+    selected = sorted(set(selected))
+    if len(selected) > 1:
+        codes.append("ACTION_ATTRIBUTION_PNL517_MULTI_MONTH_SUM")
+    return selected, codes
+
+
+def _ordered_unique_warnings(values: list[str | None]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values:
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
 
 
 def _key(inst: str, book: str) -> str:

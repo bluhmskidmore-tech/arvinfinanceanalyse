@@ -1,6 +1,19 @@
+import { useEffect, useState } from "react";
 import { isReservedBoundaryHttpMessage } from "../../../api/httpResponseError";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import "./LivermoreStrategyPanel.css";
+
+type StockCandidate = NonNullable<LivermoreStrategyModel["stockCandidates"]>["items"][number];
+
+type WatchPoolItem = {
+  stockCode: string;
+  stockName: string;
+  sectorName: string;
+  entryTrigger: string;
+  pullbackWatch: string;
+  defenseLine: string;
+  addedFromDate: string | null;
+};
 
 type Props = {
   model: LivermoreStrategyModel | null;
@@ -8,10 +21,58 @@ type Props = {
   isError: boolean;
   fetchErrorDetail?: string | null;
   onRetry: () => void;
+  onRefreshGateSupplement?: () => Promise<{ status: string; computed_rows: number; message?: string }>;
 };
 
 function statusClass(status: string) {
   return `livermore-strategy-panel__status livermore-strategy-panel__status--${status}`;
+}
+
+const WATCH_POOL_STORAGE_KEY = "moss:livermore-watch-pool";
+
+function readWatchPool(): WatchPoolItem[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(WATCH_POOL_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw) as WatchPoolItem[];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((item) => item.stockCode && item.stockName);
+  } catch {
+    return [];
+  }
+}
+
+function writeWatchPool(items: WatchPoolItem[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(WATCH_POOL_STORAGE_KEY, JSON.stringify(items));
+}
+
+function buildWatchPoolItem(
+  candidate: StockCandidate,
+  addedFromDate: string | null,
+): WatchPoolItem {
+  return {
+    stockCode: candidate.stockCode,
+    stockName: candidate.stockName,
+    sectorName: candidate.sectorName,
+    entryTrigger: candidate.entryTrigger,
+    pullbackWatch: candidate.pullbackWatch,
+    defenseLine: candidate.defenseLine,
+    addedFromDate,
+  };
+}
+
+function positionRiskIsInactive(model: LivermoreStrategyModel, inputFamily: string) {
+  return inputFamily === "position_risk" && model.riskExit === null;
 }
 
 export function LivermoreStrategyPanel({
@@ -20,7 +81,34 @@ export function LivermoreStrategyPanel({
   isError,
   fetchErrorDetail,
   onRetry,
+  onRefreshGateSupplement,
 }: Props) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<string | null>(null);
+  const [watchPool, setWatchPool] = useState<WatchPoolItem[]>(readWatchPool);
+
+  useEffect(() => {
+    writeWatchPool(watchPool);
+  }, [watchPool]);
+
+  const handleRefreshGate = async () => {
+    if (!onRefreshGateSupplement || refreshing) return;
+    setRefreshing(true);
+    setRefreshResult(null);
+    try {
+      const res = await onRefreshGateSupplement();
+      if (res.status === "completed") {
+        setRefreshResult(`已计算 ${res.computed_rows} 条门控数据`);
+        setTimeout(() => onRetry(), 600);
+      } else {
+        setRefreshResult(res.message || `状态: ${res.status}`);
+      }
+    } catch (err) {
+      setRefreshResult(`刷新失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   if (isLoading) {
     return (
       <section className="livermore-strategy-panel" data-testid="market-data-livermore-panel">
@@ -64,7 +152,24 @@ export function LivermoreStrategyPanel({
   const noData = model.marketGate.state === "NO_DATA";
   const sectorRank = model.sectorRank;
   const stockCandidates = model.stockCandidates;
+  const meanReversionCandidates = model.meanReversionCandidates;
+  const factorScreenCandidates = model.factorScreenCandidates;
+  const themeBreakout = model.themeBreakout;
   const riskExit = model.riskExit;
+  const watchedCodes = new Set(watchPool.map((item) => item.stockCode));
+
+  const addToWatchPool = (candidate: StockCandidate) => {
+    setWatchPool((current) => {
+      if (current.some((item) => item.stockCode === candidate.stockCode)) {
+        return current;
+      }
+      return [buildWatchPoolItem(candidate, model.asOfDate), ...current];
+    });
+  };
+
+  const removeFromWatchPool = (stockCode: string) => {
+    setWatchPool((current) => current.filter((item) => item.stockCode !== stockCode));
+  };
 
   return (
     <section className="livermore-strategy-panel" data-testid="market-data-livermore-panel">
@@ -77,7 +182,23 @@ export function LivermoreStrategyPanel({
               : "结果日期待定"}
           </div>
         </div>
-        <span className="livermore-strategy-panel__badge">分析口径 · 不生成交易指令</span>
+        <div className="livermore-strategy-panel__actions">
+          {onRefreshGateSupplement ? (
+            <button
+              className="livermore-strategy-panel__refresh-btn"
+              onClick={handleRefreshGate}
+              disabled={refreshing}
+              type="button"
+              title="从已有 CSI300 数据计算 breadth / limit-up 门控"
+            >
+              {refreshing ? "计算中…" : "刷新门控数据"}
+            </button>
+          ) : null}
+          {refreshResult ? (
+            <span className="livermore-strategy-panel__refresh-result">{refreshResult}</span>
+          ) : null}
+          <span className="livermore-strategy-panel__badge">分析口径 · 不生成交易指令</span>
+        </div>
       </div>
 
       {model.statusNotes.length > 0 ? (
@@ -174,7 +295,9 @@ export function LivermoreStrategyPanel({
                   <span className="livermore-strategy-panel__row-title">{gap.inputFamily}</span>
                   <span className="livermore-strategy-panel__row-detail">{gap.evidence}</span>
                 </span>
-                <span className={statusClass(gap.status)}>{gap.statusLabel}</span>
+                <span className={statusClass(positionRiskIsInactive(model, gap.inputFamily) ? "info" : gap.status)}>
+                  {positionRiskIsInactive(model, gap.inputFamily) ? "未启用" : gap.statusLabel}
+                </span>
               </li>
             ))}
           </ul>
@@ -233,13 +356,135 @@ export function LivermoreStrategyPanel({
                       #{item.rank} {item.stockName} · {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
-                      {item.sectorName} · 板块第 {item.sectorRank} 名 · 突破位 {item.breakoutLevel}
+                      {item.sectorName} · 板块第 {item.sectorRank} 名 · 现价 {item.close}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      突破买点 {item.entryTrigger} · 回踩观察 {item.pullbackWatch} · 防守位 {item.defenseLine}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       CLV {item.closeStrength} · gap {item.gapNorm} · 异常换手 {item.abnormalTurnover}
                     </span>
                   </span>
-                  <span className={statusClass("ready")}>{stockCandidates.marketState}</span>
+                  <span className="livermore-strategy-panel__row-actions">
+                    <span className={statusClass("ready")}>{stockCandidates.marketState}</span>
+                    <button
+                      className="livermore-strategy-panel__watch-btn"
+                      disabled={watchedCodes.has(item.stockCode)}
+                      onClick={() => addToWatchPool(item)}
+                      type="button"
+                    >
+                      {watchedCodes.has(item.stockCode) ? "已入池" : "加入观察"}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {stockCandidates ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-watch-pool">
+            <h3 className="livermore-strategy-panel__block-title">观察池</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              本地观察池仅记录策略触发价位，不生成交易指令。
+            </div>
+            {watchPool.length > 0 ? (
+              <ul className="livermore-strategy-panel__list">
+                {watchPool.map((item) => (
+                  <li className="livermore-strategy-panel__row" key={item.stockCode}>
+                    <span className="livermore-strategy-panel__row-main">
+                      <span className="livermore-strategy-panel__row-title">
+                        {item.stockName} · {item.stockCode}
+                      </span>
+                      <span className="livermore-strategy-panel__row-detail">
+                        {item.sectorName} · 买点 {item.entryTrigger} · 回踩 {item.pullbackWatch} · 防守 {item.defenseLine}
+                      </span>
+                      <span className="livermore-strategy-panel__row-detail">
+                        来源日期 {item.addedFromDate ?? "未标记"}
+                      </span>
+                    </span>
+                    <button
+                      className="livermore-strategy-panel__watch-btn"
+                      onClick={() => removeFromWatchPool(item.stockCode)}
+                      type="button"
+                    >
+                      移出
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="livermore-strategy-panel__state">尚未选中候选股。</div>
+            )}
+          </div>
+        ) : null}
+
+        {meanReversionCandidates ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-mean-reversion-candidates">
+            <h3 className="livermore-strategy-panel__block-title">超跌反弹观察池</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {meanReversionCandidates.formulaVersion}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {meanReversionCandidates.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      #{item.rank} {item.stockName} | {item.stockCode}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      {item.sectorName} | close {item.close} | score {item.score}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>{meanReversionCandidates.marketState}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {factorScreenCandidates ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-factor-screen-candidates">
+            <h3 className="livermore-strategy-panel__block-title">多因子选股</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {factorScreenCandidates.formulaVersion} | {factorScreenCandidates.coverageNote}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {factorScreenCandidates.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      #{item.rank} {item.stockName} | {item.stockCode}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      {item.sectorName} | factor score {item.score}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>{factorScreenCandidates.marketState}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {themeBreakout ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-theme-breakout">
+            <h3 className="livermore-strategy-panel__block-title">题材突变</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {themeBreakout.formulaVersion} | {themeBreakout.isProxy ? "proxy" : "landed"}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {themeBreakout.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.themeName}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      #{item.rank} {item.themeName}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      {item.parentSectorName} | {item.reason}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>观察</span>
                 </li>
               ))}
             </ul>
@@ -288,7 +533,9 @@ export function LivermoreStrategyPanel({
                   <span className="livermore-strategy-panel__row-title">{item.label}</span>
                   <span className="livermore-strategy-panel__row-detail">{item.reason}</span>
                 </span>
-                <span className={statusClass("missing")}>未开放</span>
+                <span className={statusClass(item.key === "risk_exit" ? "info" : "missing")}>
+                  {item.key === "risk_exit" ? "未启用" : "未开放"}
+                </span>
               </li>
             ))}
           </ul>

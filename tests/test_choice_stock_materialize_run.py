@@ -51,6 +51,7 @@ def test_choice_stock_materialize_run_main_forwards_args_and_emits_json(monkeypa
             "as_of_date": "2026-04-28",
             "duckdb_path": "tmp/moss.duckdb",
             "catalog_path": "tmp/choice_stock_catalog.json",
+            "enable_tushare_concept_fallback": False,
         }
     ]
     assert json.loads(captured.out) == {
@@ -84,6 +85,7 @@ def test_choice_stock_materialize_run_main_forwards_none_for_omitted_paths(monke
             "as_of_date": "2026-04-28",
             "duckdb_path": None,
             "catalog_path": None,
+            "enable_tushare_concept_fallback": False,
         }
     ]
     assert json.loads(captured.out) == {"status": "completed"}
@@ -144,6 +146,7 @@ def test_choice_stock_materialize_run_main_can_emit_post_run_coverage(monkeypatc
                 "as_of_date": "2026-04-28",
                 "duckdb_path": "tmp/moss.duckdb",
                 "catalog_path": "tmp/choice_stock_catalog.json",
+                "enable_tushare_concept_fallback": False,
             },
         ),
         (
@@ -166,6 +169,59 @@ def test_choice_stock_materialize_run_main_can_emit_post_run_coverage(monkeypatc
             "missing_request_items": [],
             "message": "Choice stock inputs are materialized for 2026-04-28.",
         },
+    }
+    assert captured.err == ""
+
+
+def test_choice_stock_materialize_run_main_can_run_factor_snapshot(monkeypatch, capsys) -> None:
+    module = _load_runner_module()
+    calls: list[dict[str, object]] = []
+
+    def fake_materialize_choice_stock_factor_snapshot(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {
+            "status": "completed",
+            "as_of_date": "2026-04-28",
+            "table": "choice_stock_factor_snapshot",
+            "row_count": 123,
+        }
+
+    monkeypatch.setattr(
+        module,
+        "materialize_choice_stock_factor_snapshot",
+        fake_materialize_choice_stock_factor_snapshot,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "choice_stock_materialize_run.py",
+            "--as-of-date",
+            "2026-04-28",
+            "--duckdb-path",
+            "tmp/moss.duckdb",
+            "--factor-snapshot",
+            "--factor-max-stock-count",
+            "750",
+        ],
+    )
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert calls == [
+        {
+            "as_of_date": "2026-04-28",
+            "duckdb_path": "tmp/moss.duckdb",
+            "max_stock_count": 750,
+        }
+    ]
+    assert json.loads(captured.out) == {
+        "status": "completed",
+        "as_of_date": "2026-04-28",
+        "table": "choice_stock_factor_snapshot",
+        "row_count": 123,
     }
     assert captured.err == ""
 

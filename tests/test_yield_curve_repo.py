@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import duckdb
 
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.yield_curve_repo import (
     FORMAL_FACT_TABLE,
     YieldCurveRepository,
@@ -12,26 +13,31 @@ from backend.app.repositories.yield_curve_repo import (
 from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
 
 
+def _task_write_scope():
+    return repository_task_write_scope("backend.app.tasks.yield_curve_repo_test")
+
+
 def test_fetch_curve_returns_tenor_rate_dict(tmp_path):
     duckdb_path = tmp_path / "moss.duckdb"
     repo = YieldCurveRepository(str(duckdb_path))
-    repo.replace_curve_snapshots(
-        trade_date="2026-04-10",
-        snapshots=[
-            YieldCurveSnapshot(
-                curve_type="treasury",
-                trade_date="2026-04-10",
-                points=[
-                    YieldCurvePoint("1Y", Decimal("1.10")),
-                    YieldCurvePoint("3Y", Decimal("1.30")),
-                ],
-                vendor_name="akshare",
-                vendor_version="vv_curve_1",
-                source_version="sv_curve_1",
-            )
-        ],
-        rule_version="rv_curve_repo_test",
-    )
+    with _task_write_scope():
+        repo.replace_curve_snapshots(
+            trade_date="2026-04-10",
+            snapshots=[
+                YieldCurveSnapshot(
+                    curve_type="treasury",
+                    trade_date="2026-04-10",
+                    points=[
+                        YieldCurvePoint("1Y", Decimal("1.10")),
+                        YieldCurvePoint("3Y", Decimal("1.30")),
+                    ],
+                    vendor_name="akshare",
+                    vendor_version="vv_curve_1",
+                    source_version="sv_curve_1",
+                )
+            ],
+            rule_version="rv_curve_repo_test",
+        )
 
     curve = repo.fetch_curve("2026-04-10", "treasury")
 
@@ -44,34 +50,35 @@ def test_fetch_curve_returns_tenor_rate_dict(tmp_path):
 def test_fetch_latest_trade_date(tmp_path):
     duckdb_path = tmp_path / "moss.duckdb"
     repo = YieldCurveRepository(str(duckdb_path))
-    repo.replace_curve_snapshots(
-        trade_date="2026-04-09",
-        snapshots=[
-            YieldCurveSnapshot(
-                curve_type="treasury",
-                trade_date="2026-04-09",
-                points=[YieldCurvePoint("1Y", Decimal("1.00"))],
-                vendor_name="akshare",
-                vendor_version="vv_curve_old",
-                source_version="sv_curve_old",
-            )
-        ],
-        rule_version="rv_curve_repo_test",
-    )
-    repo.replace_curve_snapshots(
-        trade_date="2026-04-10",
-        snapshots=[
-            YieldCurveSnapshot(
-                curve_type="treasury",
-                trade_date="2026-04-10",
-                points=[YieldCurvePoint("1Y", Decimal("1.10"))],
-                vendor_name="choice",
-                vendor_version="vv_curve_new",
-                source_version="sv_curve_new",
-            )
-        ],
-        rule_version="rv_curve_repo_test",
-    )
+    with _task_write_scope():
+        repo.replace_curve_snapshots(
+            trade_date="2026-04-09",
+            snapshots=[
+                YieldCurveSnapshot(
+                    curve_type="treasury",
+                    trade_date="2026-04-09",
+                    points=[YieldCurvePoint("1Y", Decimal("1.00"))],
+                    vendor_name="akshare",
+                    vendor_version="vv_curve_old",
+                    source_version="sv_curve_old",
+                )
+            ],
+            rule_version="rv_curve_repo_test",
+        )
+        repo.replace_curve_snapshots(
+            trade_date="2026-04-10",
+            snapshots=[
+                YieldCurveSnapshot(
+                    curve_type="treasury",
+                    trade_date="2026-04-10",
+                    points=[YieldCurvePoint("1Y", Decimal("1.10"))],
+                    vendor_name="choice",
+                    vendor_version="vv_curve_new",
+                    source_version="sv_curve_new",
+                )
+            ],
+            rule_version="rv_curve_repo_test",
+        )
 
     assert repo.fetch_latest_trade_date("treasury") == "2026-04-10"
     assert repo.fetch_latest_trade_date_on_or_before("treasury", "2026-04-08") is None
@@ -146,3 +153,46 @@ def test_fetch_curve_snapshot_rejects_mismatched_lineage_across_tenors(tmp_path)
 
     repo = YieldCurveRepository(str(duckdb_path))
     assert repo.fetch_curve_snapshot("2026-04-10", "treasury") is None
+
+
+def test_resolve_curve_snapshot_uses_single_read_connection_for_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    repo = YieldCurveRepository(str(duckdb_path))
+    with _task_write_scope():
+        repo.replace_curve_snapshots(
+            trade_date="2026-04-10",
+            snapshots=[
+                YieldCurveSnapshot(
+                    curve_type="treasury",
+                    trade_date="2026-04-10",
+                    points=[YieldCurvePoint("5Y", Decimal("1.88"))],
+                    vendor_name="choice",
+                    vendor_version="vv_curve",
+                    source_version="sv_curve",
+                )
+            ],
+            rule_version="rv_curve_repo_test",
+        )
+
+    from backend.app.repositories import yield_curve_repo as repo_mod
+
+    connect_calls = 0
+    original_connect = repo_mod._connect
+
+    def counting_connect(*args, **kwargs):
+        nonlocal connect_calls
+        connect_calls += 1
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(repo_mod, "_connect", counting_connect)
+
+    snapshot, warning = repo.resolve_curve_snapshot("2026-04-11", "treasury")
+
+    assert snapshot is not None
+    assert snapshot["trade_date"] == "2026-04-10"
+    assert snapshot["curve"] == {"5Y": Decimal("1.88")}
+    assert "YIELD_CURVE_LATEST_FALLBACK" in str(warning)
+    assert connect_calls == 1

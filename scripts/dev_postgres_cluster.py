@@ -37,6 +37,24 @@ RUNTIME_GOVERNANCE_SEED_FILES = (
     "cache_manifest.jsonl",
     "cache_build_run.jsonl",
 )
+DEV_USER_SCOPE_GRANTS = (
+    {"user_id": "*", "role": None, "resource": "choice_news.data", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "accounting_asset_movement", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "balance_analysis", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "bond_analytics", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "bond_dashboard", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "cashflow_projection", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "dashboard", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "executive", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "ledger_pnl", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "macro_bond_linkage", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "macro_toolkit", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "macro_vendor", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "market_data_ncd_proxy", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "pnl_attribution", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "product_category_pnl", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "research_calendar", "action": "read"},
+)
 
 
 @dataclass(frozen=True)
@@ -123,6 +141,18 @@ def _resolve_python_executable() -> str:
     return shutil.which("python") or sys.executable
 
 
+def _sql_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _sql_nullable_literal(value: str | None) -> str:
+    return "NULL" if value is None else _sql_literal(value)
+
+
 def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
     config.cluster_root.mkdir(parents=True, exist_ok=True)
     if not config.data_dir.exists():
@@ -140,6 +170,7 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
         )
 
     if not _is_port_open(config.host, config.port):
+        _remove_stale_postmaster_pid(config)
         _spawn_postgres_start(config)
     _wait_for_postgres_ready(config)
 
@@ -205,7 +236,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
             "-d",
             config.admin_database,
             "-tAc",
-            f"SELECT 1 FROM pg_roles WHERE rolname = '{config.user}'",
+            f"SELECT 1 FROM pg_roles WHERE rolname = {_sql_literal(config.user)}",
         ],
         capture_output=True,
     ).strip()
@@ -222,7 +253,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
                 "-d",
                 config.admin_database,
                 "-c",
-                f"CREATE ROLE {config.user} LOGIN PASSWORD '{config.password}';",
+                f"CREATE ROLE {_sql_identifier(config.user)} LOGIN PASSWORD {_sql_literal(config.password)};",
             ]
         )
 
@@ -238,7 +269,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
             "-d",
             config.admin_database,
             "-tAc",
-            f"SELECT 1 FROM pg_database WHERE datname = '{config.database}'",
+            f"SELECT 1 FROM pg_database WHERE datname = {_sql_literal(config.database)}",
         ],
         capture_output=True,
     ).strip()
@@ -261,11 +292,12 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
 
 def _reset_moss_public_schema(config: DevPostgresClusterConfig) -> None:
     """Drop and recreate public schema on the moss DB (dev cluster only)."""
+    owner = _sql_identifier(config.user)
     sql = (
         "DROP SCHEMA IF EXISTS public CASCADE; "
         "CREATE SCHEMA public; "
-        "ALTER SCHEMA public OWNER TO moss; "
-        "GRANT ALL ON SCHEMA public TO moss; "
+        f"ALTER SCHEMA public OWNER TO {owner}; "
+        f"GRANT ALL ON SCHEMA public TO {owner}; "
         "GRANT ALL ON SCHEMA public TO public;"
     )
     _run_checked_retry(
@@ -381,6 +413,50 @@ def _apply_alembic_migrations_and_grants(config: DevPostgresClusterConfig) -> No
             ),
         ]
     )
+    _seed_dev_user_scopes(config)
+
+
+def _seed_dev_user_scopes(config: DevPostgresClusterConfig) -> None:
+    statements = []
+    for grant in DEV_USER_SCOPE_GRANTS:
+        user_id = str(grant["user_id"])
+        role = grant["role"]
+        resource = str(grant["resource"])
+        action = str(grant["action"])
+        role_predicate = "role IS NULL" if role is None else f"role = {_sql_literal(str(role))}"
+        statements.append(
+            "INSERT INTO user_role_scope "
+            "(user_id, role, resource, action, scope_key, scope_value, is_active, created_at, updated_at) "
+            f"SELECT {_sql_literal(user_id)}, {_sql_nullable_literal(str(role) if role is not None else None)}, "
+            f"{_sql_literal(resource)}, {_sql_literal(action)}, NULL, NULL, TRUE, NOW(), NOW() "
+            "WHERE NOT EXISTS ("
+            "SELECT 1 FROM user_role_scope "
+            f"WHERE user_id = {_sql_literal(user_id)} "
+            f"AND {role_predicate} "
+            f"AND resource = {_sql_literal(resource)} "
+            f"AND action = {_sql_literal(action)} "
+            "AND scope_key IS NULL "
+            "AND scope_value IS NULL "
+            "AND is_active IS TRUE"
+            ");"
+        )
+    _run_checked(
+        [
+            str(config.bin_dir / "psql.exe"),
+            "-h",
+            config.host,
+            "-p",
+            str(config.port),
+            "-U",
+            "postgres",
+            "-d",
+            config.database,
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            " ".join(statements),
+        ]
+    )
 
 
 def _prepare_runtime_clean_paths(config: DevPostgresClusterConfig) -> None:
@@ -457,12 +533,19 @@ def _seed_runtime_governance_from_repo_if_needed(config: DevPostgresClusterConfi
 
 
 def _resolve_storage_root_for_env(config: DevPostgresClusterConfig) -> Path:
-    if _duckdb_has_seed_data(config.runtime_duckdb_path):
-        return config.runtime_root
+    """Pick DuckDB + sidecar dir for MOSS_* paths.
 
+    Prefer ``data/moss.duckdb`` whenever it already carries seed rows so local
+    materialization scripts (which default to ``data/``) match ``dev-api`` / ``dev-env``.
+
+    If the repo db is empty but ``runtime-clean`` was populated (smoke copy), use runtime.
+    """
     repo_data_root = config.repo_root / "data"
     if _duckdb_has_seed_data(repo_data_root / "moss.duckdb"):
         return repo_data_root
+
+    if _duckdb_has_seed_data(config.runtime_duckdb_path):
+        return config.runtime_root
 
     return config.runtime_root
 
@@ -527,7 +610,7 @@ def _probe_postgres_ready(config: DevPostgresClusterConfig, *, database: str | N
 
 
 def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
-    subprocess.Popen(
+    subprocess.run(
         [
             str(config.bin_dir / "pg_ctl.exe"),
             "-D",
@@ -539,9 +622,30 @@ def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
             "-W",
             "start",
         ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
+
+
+def _remove_stale_postmaster_pid(config: DevPostgresClusterConfig) -> None:
+    pid_file = config.data_dir / "postmaster.pid"
+    if not pid_file.exists() or _is_port_open(config.host, config.port):
+        return
+    status = subprocess.run(
+        [
+            str(config.bin_dir / "pg_ctl.exe"),
+            "-D",
+            str(config.data_dir),
+            "status",
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if status.returncode != 0:
+        pid_file.unlink(missing_ok=True)
 
 
 def _wait_for_postgres_ready(

@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
-
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.cashflow_projection_service import get_cashflow_projection
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/api/cashflow-projection", tags=["cashflow-projection"])
 
 
 @router.get("")
-def cashflow_projection(report_date: str = Query(...)) -> dict:
+def cashflow_projection(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str = Query(...),
+) -> dict:
+    _ensure_cashflow_projection_read_allowed(auth)
     try:
         report_date_value = date.fromisoformat(report_date)
     except ValueError as exc:
@@ -20,5 +26,19 @@ def cashflow_projection(report_date: str = Query(...)) -> dict:
         return get_cashflow_projection(report_date_value)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _ensure_cashflow_projection_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="cashflow_projection",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

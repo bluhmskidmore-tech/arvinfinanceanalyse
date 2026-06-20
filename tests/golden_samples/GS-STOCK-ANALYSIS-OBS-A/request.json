@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/ui/market-data/livermore",
+  "params": {
+    "as_of_date": "2026-04-03"
+  },
+  "basis": "analytical"
+}

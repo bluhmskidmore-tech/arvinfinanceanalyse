@@ -4,9 +4,8 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, Field, model_validator
-
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from pydantic import BaseModel, Field, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -95,10 +94,10 @@ class CashflowProjectionResponse(BaseModel):
     computed_at: str
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
-        "duration_gap": ("ratio", True),
-        "asset_duration": ("ratio", False),
-        "liability_duration": ("ratio", False),
-        "equity_duration": ("ratio", True),
+        "duration_gap": ("years", True),
+        "asset_duration": ("years", False),
+        "liability_duration": ("years", False),
+        "equity_duration": ("years", True),
         "rate_sensitivity_1bp": ("yuan", True),
         "reinvestment_risk_12m": ("pct", False),
     }

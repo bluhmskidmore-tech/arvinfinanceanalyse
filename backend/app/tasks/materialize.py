@@ -1,14 +1,13 @@
-import duckdb
 import logging
 import os
-import hashlib
 import sys
 from importlib import import_module
 from pathlib import Path
 
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
-from backend.app.governance.locks import LockDefinition, MATERIALIZE_LOCK, acquire_lock
+import duckdb
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -33,12 +32,7 @@ def resolve_data_input_root() -> Path:
 
 
 def resolve_materialize_lock(duckdb_file: Path) -> LockDefinition:
-    canonical_path = os.path.normcase(str(duckdb_file.resolve()))
-    digest = hashlib.sha256(canonical_path.encode("utf-8")).hexdigest()[:12]
-    return LockDefinition(
-        key=f"{MATERIALIZE_LOCK.key}:{digest}",
-        ttl_seconds=MATERIALIZE_LOCK.ttl_seconds,
-    )
+    return resolve_duckdb_writer_lock(duckdb_file)
 
 
 def _source_preview_repo():
@@ -103,6 +97,7 @@ def _materialize_cache_view(
                     governance_dir=str(governance_path),
                     data_root=str(resolved_data_root),
                     ingest_batch_id=ingest_batch_id,
+                    archive_root=str(settings.local_archive_path),
                 )
                 source_version = "__".join(
                     str(summary["source_version"])

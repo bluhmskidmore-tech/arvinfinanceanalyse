@@ -1,62 +1,64 @@
 import { designTokens } from "./designSystem";
 
 /**
- * Legacy shell aliases — map design scales to existing consumer keys (WorkbenchShell, pages).
+ * Legacy shell aliases map design scales to existing consumer keys.
+ * Keep these aliases aligned with the homepage blue-gray visual contract.
  */
 export const shellTokens = {
-  /** 与总览工作台大背景一致 */
-  colorBgApp: designTokens.color.neutral[50],
-  /**
-   * 卡片 / 面板衬底：与 Ant Design 默认容器白一致；设计尺度未单独挂 neutral[0]，此处与 colorBgCanvas 对齐。
-   */
-  colorBgSurface: "#ffffff",
-  colorBgCanvas: "#ffffff",
-  /**
-   * 工作台左侧深色导航轨（WorkbenchShell aside）。专用色，非 neutral 尺度派生。
-   * @see DESIGN 侧栏参照
-   */
-  railBg: "#121d2a",
-  /** 深色轨上的分割线、轻描边 */
-  railBorder: "rgba(255, 255, 255, 0.08)",
-  /** 主导航项激活态衬底 */
-  railNavActiveBg: "rgba(255, 255, 255, 0.06)",
-  /** Logo 区与轨内强调底（半透明白） */
-  railSurfaceTint: "rgba(255, 255, 255, 0.1)",
-  railBrandText: "#f5f7fa",
-  railTextOnNavActive: "#f4f7fb",
-  railTextNavIdle: "rgba(220, 228, 236, 0.88)",
-  railTextSupportIdle: "rgba(184, 197, 210, 0.82)",
-  railTextSectionIdle: "rgba(205, 215, 224, 0.88)",
-  railIconBorderActive: "rgba(255, 255, 255, 0.22)",
-  railIconFgActive: "#ffffff",
-  railIconFgIdle: "rgba(184, 197, 210, 0.76)",
-  railCountFgActive: "rgba(223, 235, 255, 0.94)",
-  railCountFgIdle: "rgba(184, 197, 210, 0.62)",
-  /**
-   * 占位 readiness 徽章：浅紫系，与 institutional primary 蓝区分；集中为语义 token 供壳层使用。
-   */
-  readinessBadgePlaceholderBg: "#f2edf8",
-  readinessBadgePlaceholderFg: "#654594",
-  readinessBadgePlaceholderBorder: "#ddd2ee",
-  colorBgMuted: designTokens.color.neutral[100],
+  colorBgApp: designTokens.color.institutional.canvas,
+  colorBgSurface: designTokens.color.institutional.surfaceRaised,
+  colorBgCanvas: designTokens.color.institutional.surface,
+  railBg: designTokens.color.institutional.railTop,
+  railBorder: "rgba(125, 169, 213, 0.24)",
+  railNavActiveBg: "rgba(24, 80, 161, 0.24)",
+  railSurfaceTint: "rgba(59, 130, 246, 0.18)",
+  railBrandText: designTokens.color.cockpit.blue50,
+  railTextOnNavActive: "#ffffff",
+  railTextNavIdle: "rgba(234, 242, 251, 0.82)",
+  railTextSupportIdle: "rgba(234, 242, 251, 0.62)",
+  railTextSectionIdle: "rgba(234, 242, 251, 0.70)",
+  railIconBorderActive: "rgba(96, 165, 250, 0.36)",
+  railIconFgActive: designTokens.color.info[300],
+  railIconFgIdle: "rgba(234, 242, 251, 0.56)",
+  railCountFgActive: "#ffffff",
+  railCountFgIdle: "rgba(234, 242, 251, 0.48)",
+  readinessBadgePlaceholderBg: designTokens.color.neutral[100],
+  readinessBadgePlaceholderFg: designTokens.color.neutral[700],
+  readinessBadgePlaceholderBorder: designTokens.color.neutral[200],
+  colorBgMuted: designTokens.color.institutional.surfaceMuted,
   colorBgSuccessSoft: designTokens.color.success[50],
   colorBgWarningSoft: designTokens.color.warning[50],
   colorBgDangerSoft: designTokens.color.danger[50],
-  /** 默认描边：与 DESIGN「细边框」一致，避免 #d1d5db 主内容区显脏 */
-  colorBorder: designTokens.color.neutral[200],
-  colorBorderSoft: designTokens.color.neutral[100],
-  colorBorderStrong: designTokens.color.neutral[300],
+  colorBorder: designTokens.color.institutional.border,
+  colorBorderSoft: designTokens.color.cockpit.border150,
+  colorBorderStrong: designTokens.color.institutional.borderStrong,
   colorBorderWarning: designTokens.color.warning[200],
   colorTextPrimary: designTokens.color.neutral[900],
   colorTextSecondary: designTokens.color.neutral[600],
   colorTextMuted: designTokens.color.neutral[500],
   colorTextWarning: designTokens.color.warning[700],
   colorAccent: designTokens.color.primary[600],
-  colorAccentSoft: designTokens.color.primary[100],
+  colorAccentSoft: designTokens.color.primary[50],
   colorSuccess: designTokens.color.success[500],
   colorWarning: designTokens.color.warning[500],
   colorDanger: designTokens.color.danger[500],
-  shadowPanel: designTokens.shadow.panel,
-  radiusPanel: designTokens.radius.xl,
-  radiusCard: designTokens.radius.lg,
+  colorInfo: designTokens.color.info[500],
+  shadowPanel: "0 1px 2px rgba(15, 37, 68, 0.06), 0 14px 30px rgba(15, 37, 68, 0.07)",
+  shadowCard: "0 1px 2px rgba(15, 37, 68, 0.045), 0 6px 14px rgba(15, 37, 68, 0.04)",
+  shadowRail: "10px 0 30px rgba(5, 18, 31, 0.22)",
+  appBackdrop:
+    "linear-gradient(180deg, #edf2f7 0%, #dfe7f0 100%)",
+  radiusPanel: designTokens.radius.sm,
+  radiusCard: designTokens.radius.sm,
+  railMarkGlow: "linear-gradient(145deg, rgba(184, 138, 45, 0.28), rgba(47, 128, 168, 0.20))",
+  terminalBarBg:
+    "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(244,247,250,0.98) 100%)",
+  terminalBarBorder: "rgba(159, 177, 196, 0.72)",
+  marketPulseBg:
+    "linear-gradient(90deg, rgba(251, 252, 254, 0.96) 0%, rgba(244, 247, 250, 0.94) 100%)",
+  marketPulseBorder: "rgba(159, 177, 196, 0.58)",
+  canvasPaperBg:
+    "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(251,252,254,0.96) 100%)",
+  canvasPaperShade:
+    "linear-gradient(90deg, rgba(47, 128, 168, 0.045) 0%, rgba(47, 128, 168, 0) 34%)",
 } as const;

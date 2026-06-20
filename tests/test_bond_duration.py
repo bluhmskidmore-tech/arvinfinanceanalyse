@@ -1,16 +1,15 @@
 """
 Unit tests for bond_duration.py — Macaulay duration, modified duration, convexity.
 """
-from decimal import Decimal
 from datetime import date
-
+from decimal import Decimal
 
 from backend.app.core_finance.bond_duration import (
-    compute_macaulay_duration,
-    modified_duration_from_macaulay,
-    estimate_convexity_bond,
     _estimate_macaulay_duration_years,
+    compute_macaulay_duration,
+    estimate_convexity_bond,
     estimate_duration,
+    modified_duration_from_macaulay,
 )
 
 
@@ -99,6 +98,17 @@ class TestComputeMacaulayDuration:
         assert duration > Decimal("0")
         assert duration <= years
 
+    def test_invalid_frequency_falls_back_to_annual(self):
+        """Invalid coupon frequency should not mask duration fallback with NameError."""
+        years = Decimal("5.0")
+        coupon = Decimal("0.04")
+        ytm = Decimal("0.05")
+
+        duration = compute_macaulay_duration(years, coupon, ytm, 0)
+        annual_duration = compute_macaulay_duration(years, coupon, ytm, 1)
+
+        assert duration == annual_duration
+
     def test_duration_decreases_with_higher_yield(self):
         """Duration decreases as yield increases (inverse relationship)."""
         years = Decimal("10.0")
@@ -153,6 +163,15 @@ class TestModifiedDuration:
         frequency = 1
 
         modified = modified_duration_from_macaulay(macaulay, ytm, frequency)
+
+        assert modified == macaulay
+
+    def test_invalid_frequency_returns_macaulay(self):
+        """Invalid coupon frequency should fail closed to Macaulay duration."""
+        macaulay = Decimal("5.0")
+        ytm = Decimal("0.05")
+
+        modified = modified_duration_from_macaulay(macaulay, ytm, 0)
 
         assert modified == macaulay
 

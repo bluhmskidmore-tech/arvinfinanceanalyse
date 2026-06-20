@@ -47,6 +47,15 @@ def test_rejects_different_content_same_path(tmp_path) -> None:
         repo.archive_bytes("v", "b", "f.json", b"b")
 
 
+def test_read_bytes_rejects_path_outside_raw_root(tmp_path) -> None:
+    repo = RawZoneRepository(local_raw_path=str(tmp_path / "raw"))
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(b'{"secret": true}')
+
+    with pytest.raises(ValueError, match="outside local raw root"):
+        repo.read_bytes(str(outside))
+
+
 def test_healthcheck_ok(tmp_path) -> None:
     repo = RawZoneRepository(local_raw_path=str(tmp_path / "raw"))
     hc = repo.healthcheck()

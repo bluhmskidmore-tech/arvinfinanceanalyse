@@ -1,8 +1,71 @@
 ﻿import { describe, expect, it, test, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
+import { createDeferredApiClient } from "../api/clientContext";
 
 describe("createApiClient", () => {
+  it("keeps mock health endpoints available", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    await expect(client.getHealth()).resolves.toEqual({ status: "ok" });
+    await expect(client.getHealthLive()).resolves.toEqual({ status: "ok" });
+    await expect(client.getHealthSummary()).resolves.toEqual({ status: "ok" });
+  });
+
+  it("uses real mode to fetch health endpoints", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ status: "ok" }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getHealth();
+    await client.getHealthLive();
+    await client.getHealthSummary();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/health/ready",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/health/live",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/health",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("keeps real health failures actionable", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.getHealthLive()).rejects.toThrow(
+      "Request failed: /health/live (503)",
+    );
+  });
+
   it("uses mock mode by default", async () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -19,6 +82,49 @@ describe("createApiClient", () => {
 
     expect(payload.result_meta.vendor_status).toBe("ok");
     expect(payload.result_meta.fallback_mode).toBe("none");
+  });
+
+  it("keeps mock positions list count envelopes at candidate analytical boundary", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const bonds = await client.getPositionsBondsList({
+      reportDate: "2026-01-10",
+      subType: "GOV",
+      page: 1,
+      pageSize: 10,
+    });
+    const interbank = await client.getPositionsInterbankList({
+      reportDate: "2026-01-10",
+      productType: "REPO",
+      direction: "Asset",
+      page: 1,
+      pageSize: 10,
+    });
+
+    expect(bonds.result_meta).toMatchObject({
+      basis: "analytical",
+      formal_use_allowed: false,
+      quality_flag: "warning",
+      result_kind: "positions.bonds.list",
+      requested_report_date: "2026-01-10",
+      resolved_report_date: "2026-01-10",
+      as_of_date: "2026-01-10",
+      date_basis: "positions_snapshot_report_date",
+      tables_used: ["zqtz_bond_daily_snapshot"],
+      evidence_rows: 0,
+    });
+    expect(interbank.result_meta).toMatchObject({
+      basis: "analytical",
+      formal_use_allowed: false,
+      quality_flag: "warning",
+      result_kind: "positions.interbank.list",
+      requested_report_date: "2026-01-10",
+      resolved_report_date: "2026-01-10",
+      as_of_date: "2026-01-10",
+      date_basis: "positions_snapshot_report_date",
+      tables_used: ["tyw_interbank_daily_snapshot"],
+      evidence_rows: 0,
+    });
   });
 
   it("keeps mock balance-analysis overview, detail, basis, and summary amounts consistent", async () => {
@@ -192,7 +298,7 @@ describe("createApiClient", () => {
       "FVOCI",
       "估值及买卖价差等",
       "生息资产",
-      "衍生品",
+      "汇兑损益及衍生",
       "中间业务收入",
       "资产端合计",
       "同业存放",
@@ -278,26 +384,13 @@ describe("createApiClient", () => {
           total_avg_assets: 175000000,
           total_spot_liabilities: 0,
           total_avg_liabilities: 0,
+          total_avg_interbank_assets: 25000000,
+          total_avg_interbank_liabilities: 0,
           asset_yield: 3.3571,
           liability_cost: null,
           net_interest_margin: null,
           assets_breakdown: [],
           liabilities_breakdown: [],
-          accounting_basis_daily_avg: {
-            report_date: "2025-06-03",
-            currency_basis: "CNX",
-            daily_avg_total: "500000000",
-            accounting_controls: ["142%", "143%", "1440101%", "141%"],
-            excluded_controls: ["144020%"],
-            rows: [
-              {
-                basis_bucket: "AC",
-                daily_avg_balance: "220000000",
-                daily_avg_pct: "44",
-                source_account_patterns: ["142%", "143%"],
-              },
-            ],
-          },
         },
       }),
     }));
@@ -314,14 +407,7 @@ describe("createApiClient", () => {
     expect(payload).not.toHaveProperty("liabilities");
     expect(payload.result_meta?.result_kind).toBe("adb.comparison");
     expect(payload.result_meta?.source_version).toBe("sv_adb");
-    expect(payload.accounting_basis_daily_avg?.daily_avg_total).toBe(500000000);
-    expect(payload.accounting_basis_daily_avg?.rows[0]).toMatchObject({
-      basis_bucket: "AC",
-      daily_avg_balance: 220000000,
-      daily_avg_pct: 44,
-      source_account_patterns: ["142%", "143%"],
-    });
-    expect(payload.accounting_basis_daily_avg?.excluded_controls).toEqual(["144020%"]);
+    expect(payload.accounting_basis_daily_avg).toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",
@@ -333,6 +419,347 @@ describe("createApiClient", () => {
     );
   });
 
+  it("preserves null comparison average balance instead of coercing to zero", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_adb_comparison_null_avg",
+          basis: "analytical",
+          result_kind: "adb.comparison",
+          formal_use_allowed: false,
+          source_version: "sv_adb",
+          vendor_version: "vv_none",
+          rule_version: "rv_adb",
+          cache_version: "cv_adb",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-15T09:00:00Z",
+        },
+        result: {
+          report_date: "2025-06-03",
+          start_date: "2025-06-02",
+          end_date: "2025-06-03",
+          num_days: 2,
+          simulated: false,
+          total_spot_assets: 250000000,
+          total_avg_assets: 175000000,
+          total_spot_liabilities: 50000000,
+          total_avg_liabilities: 25000000,
+          total_avg_interbank_assets: 0,
+          total_avg_interbank_liabilities: 0,
+          asset_yield: null,
+          liability_cost: null,
+          net_interest_margin: null,
+          assets_breakdown: [
+            {
+              category: "asset-null",
+              spot_balance: "100000000",
+              avg_balance: null,
+              proportion: "12.5",
+              weighted_rate: null,
+            },
+            {
+              category: "asset-missing",
+              spot_balance: "200000000",
+              proportion: "25.5",
+              weighted_rate: null,
+            },
+            {
+              category: "asset-zero",
+              spot_balance: "0",
+              avg_balance: 0,
+              proportion: "0",
+              weighted_rate: null,
+            },
+          ],
+          liabilities_breakdown: [
+            {
+              category: "liability-null",
+              spot_balance: "50000000",
+              avg_balance: null,
+              proportion: "7.5",
+              weighted_rate: null,
+            },
+            {
+              category: "liability-missing",
+              spot_balance: "60000000",
+              proportion: "8.5",
+              weighted_rate: null,
+            },
+            {
+              category: "liability-zero",
+              spot_balance: "0",
+              avg_balance: 0,
+              proportion: "0",
+              weighted_rate: null,
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getAdbComparison("2025-06-02", "2025-06-03");
+
+    expect(payload.assets_breakdown.map((item) => item.avg_balance)).toEqual([null, null, 0]);
+    expect(payload.liabilities_breakdown.map((item) => item.avg_balance)).toEqual([null, null, 0]);
+    expect(payload.assets_breakdown.map((item) => item.spot_balance)).toEqual([
+      100000000,
+      200000000,
+      0,
+    ]);
+    expect(payload.assets_breakdown.map((item) => item.proportion)).toEqual([12.5, 25.5, 0]);
+  });
+
+  it("preserves null monthly breakdown average balance instead of coercing to zero", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_adb_monthly_null_avg",
+          basis: "analytical",
+          result_kind: "adb.monthly",
+          formal_use_allowed: false,
+          source_version: "sv_adb",
+          vendor_version: "vv_none",
+          rule_version: "rv_adb",
+          cache_version: "cv_adb",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-15T09:00:00Z",
+        },
+        result: {
+          year: 2025,
+          months: [
+            {
+              month: "2025-01",
+              month_label: "Jan",
+              num_days: 31,
+              avg_assets: 100,
+              avg_liabilities: 50,
+              asset_yield: null,
+              liability_cost: null,
+              net_interest_margin: null,
+              mom_change_assets: null,
+              mom_change_pct_assets: null,
+              mom_change_liabilities: null,
+              mom_change_pct_liabilities: null,
+              breakdown_assets: [
+                { category: "asset-null", avg_balance: null, proportion: null, weighted_rate: null },
+                { category: "asset-zero", avg_balance: 0, proportion: 0, weighted_rate: null },
+              ],
+              breakdown_liabilities: [
+                { category: "liability-null", avg_balance: null, proportion: null, weighted_rate: null },
+                { category: "liability-zero", avg_balance: 0, proportion: 0, weighted_rate: null },
+              ],
+            },
+          ],
+          ytd_avg_assets: 100,
+          ytd_avg_liabilities: 50,
+          ytd_asset_yield: null,
+          ytd_liability_cost: null,
+          ytd_nim: null,
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getAdbMonthly(2025);
+
+    expect(payload.months[0].breakdown_assets.map((item) => item.avg_balance)).toEqual([null, 0]);
+    expect(payload.months[0].breakdown_liabilities.map((item) => item.avg_balance)).toEqual([
+      null,
+      0,
+    ]);
+  });
+
+  it("preserves null monthly totals and accounting-basis balances instead of coercing to zero", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_adb_comparison_null_accounting_basis",
+            basis: "analytical",
+            result_kind: "adb.comparison",
+            formal_use_allowed: false,
+            source_version: "sv_adb",
+            vendor_version: "vv_none",
+            rule_version: "rv_adb",
+            cache_version: "cv_adb",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-15T09:00:00Z",
+          },
+          result: {
+            report_date: "2025-06-03",
+            start_date: "2025-06-02",
+            end_date: "2025-06-03",
+            num_days: 2,
+            simulated: false,
+            total_spot_assets: 250000000,
+            total_avg_assets: 175000000,
+            total_spot_liabilities: 50000000,
+            total_avg_liabilities: 25000000,
+            total_avg_interbank_assets: 0,
+            total_avg_interbank_liabilities: 0,
+            asset_yield: null,
+            liability_cost: null,
+            net_interest_margin: null,
+            assets_breakdown: [],
+            liabilities_breakdown: [],
+            accounting_basis_daily_avg: {
+              report_date: "2025-06-03",
+              currency_basis: "CNY",
+              daily_avg_total: null,
+              rows: [
+                {
+                  basis_bucket: "AC",
+                  daily_avg_balance: null,
+                  daily_avg_pct: null,
+                  source_account_patterns: [],
+                },
+                {
+                  basis_bucket: "FVOCI",
+                  daily_avg_balance: 0,
+                  daily_avg_pct: 0,
+                  source_account_patterns: [],
+                },
+              ],
+              accounting_controls: [],
+              excluded_controls: [],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_adb_monthly_null_totals",
+            basis: "analytical",
+            result_kind: "adb.monthly",
+            formal_use_allowed: false,
+            source_version: "sv_adb",
+            vendor_version: "vv_none",
+            rule_version: "rv_adb",
+            cache_version: "cv_adb",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-15T09:00:00Z",
+          },
+          result: {
+            year: 2025,
+            months: [
+              {
+                month: "2025-01",
+                month_label: "Jan",
+                num_days: 31,
+                avg_assets: null,
+                avg_liabilities: null,
+                asset_yield: null,
+                liability_cost: null,
+                net_interest_margin: null,
+                mom_change_assets: null,
+                mom_change_pct_assets: null,
+                mom_change_liabilities: null,
+                mom_change_pct_liabilities: null,
+                breakdown_assets: [],
+                breakdown_liabilities: [],
+              },
+              {
+                month: "2025-02",
+                month_label: "Feb",
+                num_days: 28,
+                avg_assets: 0,
+                avg_liabilities: 0,
+                asset_yield: null,
+                liability_cost: null,
+                net_interest_margin: null,
+                mom_change_assets: null,
+                mom_change_pct_assets: null,
+                mom_change_liabilities: null,
+                mom_change_pct_liabilities: null,
+                breakdown_assets: [],
+                breakdown_liabilities: [],
+              },
+            ],
+            accounting_basis_daily_avg_trend: [
+              {
+                report_date: "2025-01-31",
+                report_month: "2025-01",
+                currency_basis: "CNY",
+                daily_avg_total: null,
+                rows: [
+                  {
+                    basis_bucket: "AC",
+                    daily_avg_balance: null,
+                    daily_avg_pct: null,
+                    source_account_patterns: [],
+                  },
+                  {
+                    basis_bucket: "FVOCI",
+                    daily_avg_balance: 0,
+                    daily_avg_pct: 0,
+                    source_account_patterns: [],
+                  },
+                ],
+                accounting_controls: [],
+                excluded_controls: [],
+              },
+            ],
+            ytd_avg_assets: null,
+            ytd_avg_liabilities: null,
+            ytd_asset_yield: null,
+            ytd_liability_cost: null,
+            ytd_nim: null,
+          },
+        }),
+      });
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const comparison = await client.getAdbComparison("2025-06-02", "2025-06-03");
+    const monthly = await client.getAdbMonthly(2025);
+
+    expect(comparison.accounting_basis_daily_avg?.daily_avg_total).toBeNull();
+    expect(comparison.accounting_basis_daily_avg?.rows.map((item) => item.daily_avg_balance)).toEqual([
+      null,
+      0,
+    ]);
+    expect(monthly.months.map((item) => item.avg_assets)).toEqual([null, 0]);
+    expect(monthly.months.map((item) => item.avg_liabilities)).toEqual([null, 0]);
+    expect(monthly.accounting_basis_daily_avg_trend?.[0]?.daily_avg_total).toBeNull();
+    expect(monthly.accounting_basis_daily_avg_trend?.[0]?.rows.map((item) => item.daily_avg_balance)).toEqual([
+      null,
+      0,
+    ]);
+    expect(monthly.ytd_avg_assets).toBeNull();
+    expect(monthly.ytd_avg_liabilities).toBeNull();
+  });
+
   it("uses real mode to fetch ledger pnl dates, summary, and detail payloads", async () => {
     const fetchMock = vi
       .fn()
@@ -341,9 +768,9 @@ describe("createApiClient", () => {
         json: async () => ({
           result_meta: {
             trace_id: "tr_ledger_dates",
-            basis: "formal",
+            basis: "ledger",
             result_kind: "ledger_pnl.dates",
-            formal_use_allowed: true,
+            formal_use_allowed: false,
             source_version: "sv_ledger_dates",
             vendor_version: "vv_none",
             rule_version: "rv_ledger",
@@ -353,6 +780,8 @@ describe("createApiClient", () => {
             fallback_mode: "none",
             scenario_flag: false,
             generated_at: "2026-04-17T00:00:00Z",
+            tables_used: ["qdb_general_ledger_workbook"],
+            evidence_rows: 1,
           },
           result: { dates: ["2025-12-31"] },
         }),
@@ -362,9 +791,9 @@ describe("createApiClient", () => {
         json: async () => ({
           result_meta: {
             trace_id: "tr_ledger_summary",
-            basis: "formal",
+            basis: "ledger",
             result_kind: "ledger_pnl.summary",
-            formal_use_allowed: true,
+            formal_use_allowed: false,
             source_version: "sv_ledger_summary",
             vendor_version: "vv_none",
             rule_version: "rv_ledger",
@@ -374,6 +803,13 @@ describe("createApiClient", () => {
             fallback_mode: "none",
             scenario_flag: false,
             generated_at: "2026-04-17T00:00:00Z",
+            requested_report_date: "2025-12-31",
+            resolved_report_date: "2025-12-31",
+            as_of_date: "2025-12-31",
+            date_basis: "ledger_report_date",
+            filters_applied: { report_date: "2025-12-31", currency: "CNX" },
+            tables_used: ["qdb_general_ledger_workbook"],
+            evidence_rows: 0,
           },
           result: {
             report_date: "2025-12-31",
@@ -393,9 +829,9 @@ describe("createApiClient", () => {
         json: async () => ({
           result_meta: {
             trace_id: "tr_ledger_data",
-            basis: "formal",
+            basis: "ledger",
             result_kind: "ledger_pnl.data",
-            formal_use_allowed: true,
+            formal_use_allowed: false,
             source_version: "sv_ledger_data",
             vendor_version: "vv_none",
             rule_version: "rv_ledger",
@@ -405,6 +841,13 @@ describe("createApiClient", () => {
             fallback_mode: "none",
             scenario_flag: false,
             generated_at: "2026-04-17T00:00:00Z",
+            requested_report_date: "2025-12-31",
+            resolved_report_date: "2025-12-31",
+            as_of_date: "2025-12-31",
+            date_basis: "ledger_report_date",
+            filters_applied: { report_date: "2025-12-31", currency: "CNX" },
+            tables_used: ["qdb_general_ledger_workbook"],
+            evidence_rows: 0,
           },
           result: {
             report_date: "2025-12-31",
@@ -415,6 +858,48 @@ describe("createApiClient", () => {
               total_pnl: { yuan: "1.00", yi: "0.00", wan: "0.00" },
               count: 0,
             },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_ledger_formal_indicator_contract",
+            basis: "ledger",
+            result_kind: "ledger_pnl.formal_financial_indicator_source_contract",
+            formal_use_allowed: false,
+            source_version: "sv_formal_financial_indicators_excel_202603_contract",
+            vendor_version: "vv_none",
+            rule_version: "rv_formal_financial_indicators_source_status_v1",
+            cache_version: "cv_ledger_pnl_financial_indicator_contract_v1",
+            quality_flag: "warning",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+            as_of_date: "2026-03-31",
+            date_basis: "report_month_end",
+          },
+          result: {
+            sample_id: "GS-LEDGER-PNL-FIN-IND-202603-B",
+            sample_status: "contract_fixture",
+            surface: "/ledger-pnl formal financial indicator source contract",
+            report_month: "202603",
+            report_date: "2026-03-31",
+            source_workbook: "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx",
+            source_sheet: "财务指标-汇总",
+            source_basis: "Excel 2026-03 formal financial indicator table supplied by user",
+            source_version: "sv_formal_financial_indicators_excel_202603_contract",
+            rule_version: "rv_formal_financial_indicators_source_status_v1",
+            formal_use_allowed: false,
+            contract_note: "Source contract only.",
+            status_semantics: {
+              formal_pending: "formal pending",
+              candidate_qdb_aligned: "candidate only",
+              needs_reconciliation: "needs reconciliation",
+            },
+            metrics: [],
           },
         }),
       });
@@ -428,6 +913,7 @@ describe("createApiClient", () => {
     await client.getLedgerPnlDates();
     await client.getLedgerPnlSummary("2025-12-31", "CNX");
     await client.getLedgerPnlData("2025-12-31", "CNX");
+    await client.getLedgerPnlFormalFinancialIndicators("202603");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -446,6 +932,13 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "http://localhost:8000/api/ledger-pnl/data?date=2025-12-31&currency=CNX",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/ledger-pnl/formal-financial-indicators?report_month=202603",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
@@ -623,6 +1116,89 @@ describe("createApiClient", () => {
             },
           },
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_campisi_decision",
+            basis: "formal",
+            result_kind: "campisi.decision_grade",
+            formal_use_allowed: true,
+            source_version: "sv_campisi",
+            vendor_version: "vv_none",
+            rule_version: "rv_campisi",
+            cache_version: "cv_campisi",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: {
+            basis: "campisi_decision_grade_v1",
+            report_date: "2026-03-31",
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            num_days: 30,
+            summary: {
+              formal_actual_pnl: 10,
+              explained_pnl: 10,
+              residual_noise: 0,
+              residual_ratio: 0,
+              valuation_change_516: 1,
+              fvoci_valuation_change_516: 0,
+              fvtpl_valuation_change_516: 1,
+              main_driver: "carry",
+              quality_flag: "ok",
+              bond_scope_row_count: 1,
+              out_of_scope_pnl_row_count: 0,
+            },
+            formal_pnl_view: {
+              total_actual_pnl: 10,
+              explained_pnl: 10,
+              residual_noise: 0,
+              components: {
+                carry: 10,
+                rate_level_effect: 0,
+                curve_shape_effect: 0,
+                credit_spread_effect: 0,
+                convexity_effect: 0,
+                realized_trading: 0,
+                manual_adjustment: 0,
+                selection_proxy: 0,
+                residual_noise: 0,
+              },
+              closure: {
+                status: "closed",
+                difference: 0,
+                basis: "fact_formal_pnl_fi.total_pnl",
+              },
+            },
+            valuation_oci_view: {
+              total_valuation_change_516: 1,
+              fvoci_valuation_change_516: 0,
+              fvtpl_valuation_change_516: 1,
+              rows_by_accounting_basis: [],
+              reinvestment: { implemented: false, message: "数据源不足" },
+            },
+            effects: [],
+            accounting_matrix: {},
+            ability_matrix: [],
+            risk_tensor_check: {},
+            residual_diagnostics: {
+              missing_curve_count: 0,
+              missing_spread_count: 0,
+              duplicate_position_keys: 0,
+              aggregated_position_groups: 1,
+              unmatched_pnl_rows: 0,
+              stale_curve_fallback_count: 0,
+              warnings: [],
+            },
+            warnings: [],
+            method_notes: [],
+          },
+        }),
       });
 
     const client = createApiClient({
@@ -634,6 +1210,7 @@ describe("createApiClient", () => {
     await client.getPnlCampisiFourEffects({ endDate: "2026-03-31", lookbackDays: 30 });
     await client.getPnlCampisiEnhanced({ endDate: "2026-03-31", lookbackDays: 30 });
     await client.getPnlCampisiMaturityBuckets({ endDate: "2026-03-31", lookbackDays: 30 });
+    await client.getPnlCampisiDecisionGrade({ endDate: "2026-03-31", lookbackDays: 30 });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -652,6 +1229,13 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "http://localhost:8000/api/pnl-attribution/campisi/maturity-buckets?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/pnl-attribution/campisi/decision-grade?end_date=2026-03-31&lookback_days=30",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
@@ -929,6 +1513,556 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
       "http://localhost:8000/api/bond-analytics/accounting-class-audit?report_date=2026-03-31",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("normalizes real bond portfolio headline numerics for display", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_portfolio_headlines",
+          basis: "formal",
+          result_kind: "bond_analytics.portfolio_headlines",
+          formal_use_allowed: true,
+          source_version: "sv_ph",
+          vendor_version: "vv_ph",
+          rule_version: "rv_ph",
+          cache_version: "cv_ph",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-05-31T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-05-31",
+          total_market_value: "332281921064.45000000",
+          weighted_ytm: "0.02561294",
+          weighted_duration: "4.44842730",
+          weighted_coupon: "0.01906003",
+          total_dv01: "105628442.39590558",
+          bond_count: 1710,
+          credit_weight: "0.29955411",
+          issuer_hhi: "0.05312225",
+          issuer_top5_weight: "0.42432973",
+          by_asset_class: [
+            {
+              asset_class: "credit",
+              market_value: "99536414280.77000000",
+              duration: "2.69704353",
+              dv01: "25862175.57270329",
+              weight: "0.29955411",
+            },
+          ],
+          warnings: [],
+          computed_at: "2026-05-31T00:00:00Z",
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const envelope = await client.getBondAnalyticsPortfolioHeadlines("2026-05-31");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/portfolio-headlines?report_date=2026-05-31",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+    expect(envelope.result.total_market_value).toMatchObject({
+      raw: 332281921064.45,
+      unit: "yuan",
+      sign_aware: false,
+      display: expect.any(String),
+    });
+    expect(envelope.result.weighted_ytm).toMatchObject({
+      raw: 0.02561294,
+      unit: "pct",
+      sign_aware: true,
+      display: expect.any(String),
+    });
+    expect(envelope.result.weighted_duration).toMatchObject({
+      raw: 4.4484273,
+      unit: "ratio",
+      sign_aware: false,
+      display: expect.any(String),
+    });
+    expect(envelope.result.total_dv01).toMatchObject({
+      raw: 105628442.39590558,
+      unit: "dv01",
+      sign_aware: false,
+      display: expect.any(String),
+    });
+    expect(envelope.result.credit_weight).toMatchObject({
+      raw: 0.29955411,
+      unit: "ratio",
+      sign_aware: false,
+      display: expect.any(String),
+    });
+    expect(envelope.result.by_asset_class[0]?.market_value).toMatchObject({
+      raw: 99536414280.77,
+      unit: "yuan",
+      sign_aware: false,
+      display: expect.any(String),
+    });
+    expect(envelope.result.by_asset_class[0]?.weight).toMatchObject({
+      raw: 0.29955411,
+      unit: "ratio",
+      sign_aware: false,
+      display: expect.any(String),
+    });
+  });
+
+  it("uses real mode for the bond analytics DV01 risk endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_risk",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          accounting_class: "OCI",
+          total_face_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          total_market_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          face_weighted_modified_duration: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          position_count: 0,
+          shock_scenarios: [],
+          tenor_buckets: [],
+          top_bonds: [],
+          top_issuers: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01Risk("2026-03-31", {
+      accountingClass: "all",
+      topN: 50,
+      shockBps: "5,25",
+    });
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_risk");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-risk?report_date=2026-03-31&accounting_class=all&top_n=50&shock_bps=5%2C25",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("uses real mode for the bond analytics DV01 reconciliation endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01_recon",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_reconciliation",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          accounting_class: "OCI",
+          total_face_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          total_market_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          face_weighted_modified_duration: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          position_count: 0,
+          rows: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01Reconciliation("2026-03-31", {
+      accountingClass: "all",
+    });
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_reconciliation");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-reconciliation?report_date=2026-03-31&accounting_class=all",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("uses real mode for the bond analytics DV01 movement endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01_movement",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_movement",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          previous_report_date: "2026-02-28",
+          accounting_class: "OCI",
+          source_status: "ready",
+          current_total_face_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          previous_total_face_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          current_total_market_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          previous_total_market_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          current_face_weighted_modified_duration: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          previous_face_weighted_modified_duration: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          current_total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          previous_total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          delta_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "+0",
+            precision: 0,
+            sign_aware: true,
+          },
+          current_position_count: 0,
+          previous_position_count: 0,
+          attribution: [],
+          anomaly_bonds: [],
+          methodology_checks: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01Movement("2026-03-31", {
+      accountingClass: "all",
+      topN: 50,
+    });
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_movement");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-movement?report_date=2026-03-31&accounting_class=all&top_n=50",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("uses real mode for the bond analytics DV01 action plan endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01_action_plan",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_action_plan",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          accounting_class: "OCI",
+          risk_level: "ok",
+          policy_basis: "page_threshold",
+          threshold_note: "页面预警阈值，不代表正式限额。",
+          limit_source: "page_threshold",
+          limit_source_version: "unconfigured",
+          limit_rule_version: "rv_dv01_page_threshold_v3",
+          limit_effective_date: null,
+          total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          limit_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          warning_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          limit_usage: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          remaining_limit_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "+0",
+            precision: 0,
+            sign_aware: true,
+          },
+          dv01_to_reduce: {
+            raw: 0,
+            unit: "dv01",
+            display: "+0",
+            precision: 0,
+            sign_aware: true,
+          },
+          hedge_instrument_label: "DV01 hedge unit",
+          hedge_instrument_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          suggested_hedge_units: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: true,
+          },
+          position_count: 0,
+          breach_count: 0,
+          scenario_breaches: [],
+          tenor_actions: [],
+          issuer_actions: [],
+          bond_actions: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01ActionPlan("2026-03-31", {
+      accountingClass: "all",
+      topN: 50,
+    });
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_action_plan");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-action-plan?report_date=2026-03-31&accounting_class=all&top_n=50",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("uses real mode for the bond analytics DV01 limit config status endpoint", async () => {
+    const zeroDv01 = {
+      raw: 0,
+      unit: "dv01",
+      display: "0",
+      precision: 0,
+      sign_aware: false,
+    };
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01_limit_config_status",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_limit_config_status",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          overall_status: "incomplete",
+          configured_count: 0,
+          missing_count: 4,
+          invalid_count: 0,
+          rows: [
+            {
+              accounting_class: "OCI",
+              status: "missing",
+              limit_dv01: zeroDv01,
+              warning_dv01: zeroDv01,
+              hedge_target_dv01: zeroDv01,
+              limit_source: "unconfigured",
+              limit_source_version: "unconfigured",
+              limit_rule_version: "unconfigured",
+              limit_effective_date: null,
+              message: "未找到正式 DV01 限额配置。",
+            },
+          ],
+          warnings: ["未接入正式 DV01 限额配置。"],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01LimitConfigStatus("2026-03-31");
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_limit_config_status");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-limit-config-status?report_date=2026-03-31",
       expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
     );
   });
@@ -1506,6 +2640,21 @@ describe("createApiClient", () => {
     expect(errorOnly.result.events[0]?.error_code).toBe(101);
   });
 
+  it("keeps deferred mock market rates on the full market-data mock", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+
+    const payload = await client.getMarketDataRates();
+    const stableSeriesIds = payload.result.series.map((series) => series.series_id);
+
+    expect(payload.result_meta.result_kind).toBe("market_data.rates");
+    expect(payload.result_meta.formal_use_allowed).toBe(true);
+    expect(stableSeriesIds).toEqual(
+      expect.arrayContaining(["M001", "M003", "EMM01843735", "CA.USDCNY"]),
+    );
+    expect(stableSeriesIds).not.toContain("CGB10Y");
+    expect(stableSeriesIds).not.toContain("CDB10Y");
+  });
+
   it("uses real mode to fetch Choice news events with filters", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -1545,13 +2694,14 @@ describe("createApiClient", () => {
       offset: 0,
       groupId: "news_cmd1",
       topicCode: "S888010007API",
+      stockCode: "000001.SZ",
       errorOnly: true,
       receivedFrom: "2026-04-10T08:00:00Z",
       receivedTo: "2026-04-10T10:00:00Z",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/ui/news/choice-events/latest?limit=2&offset=0&group_id=news_cmd1&topic_code=S888010007API&error_only=true&received_from=2026-04-10T08%3A00%3A00Z&received_to=2026-04-10T10%3A00%3A00Z",
+      "http://localhost:8000/ui/news/choice-events/latest?limit=2&offset=0&group_id=news_cmd1&topic_code=S888010007API&stock_code=000001.SZ&error_only=true&received_from=2026-04-10T08%3A00%3A00Z&received_to=2026-04-10T10%3A00%3A00Z",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",
@@ -1705,6 +2855,33 @@ describe("createApiClient", () => {
           }),
         };
       }
+      if (url.includes("/api/pnl/v1-data?date=2026-02-28")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_pnl_v1_data",
+              basis: "formal",
+              result_kind: "pnl.v1_data",
+              formal_use_allowed: true,
+              source_version: "sv_pnl",
+              vendor_version: "vv_none",
+              rule_version: "rv_pnl",
+              cache_version: "cv_pnl",
+              quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
+              scenario_flag: false,
+              generated_at: "2026-04-11T03:00:00Z",
+            },
+            result: {
+              report_date: "2026-02-28",
+              source_tables: ["data_input/pnl"],
+              rows: [],
+            },
+          }),
+        };
+      }
       return {
         ok: true,
         json: async () => ({
@@ -1745,7 +2922,11 @@ describe("createApiClient", () => {
 
     await client.getFormalPnlDates();
     await client.getFormalPnlData("2026-02-28");
+    await client.getPnlV1Data("2026-02-28");
     await client.getFormalPnlOverview("2026-02-28");
+    await client.getPnlByBusiness("2026-02-28");
+    await client.getPnlByBusinessYtd(2026, "2026-03-31");
+    await client.getPnlYearlyBusinessSummary(2026);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1767,7 +2948,43 @@ describe("createApiClient", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
+      "http://localhost:8000/api/pnl/v1-data?date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
       "http://localhost:8000/api/pnl/overview?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/api/pnl/by-business?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://localhost:8000/api/pnl/by-business-ytd?year=2026&as_of_date=2026-03-31",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://localhost:8000/api/pnl/yearly-summary?year=2026",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",
@@ -3324,6 +4541,10 @@ describe("createApiClient", () => {
     ]);
     expect(envelope.result.stock_candidates?.candidate_count).toBe(2);
     expect(envelope.result.risk_exit?.signal_count).toBe(1);
+    expect(envelope.result.unsupported_outputs).toContainEqual({
+      key: "theme_breakout",
+      reason: "concept membership table pending",
+    });
     expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(false);
     expect(envelope.result.unsupported_outputs.some((item) => item.key === "risk_exit")).toBe(false);
   });
@@ -3431,6 +4652,187 @@ describe("createApiClient", () => {
       "http://localhost:8000/ui/market-data/livermore",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch Livermore signal confluence", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_livermore_signal_confluence",
+          basis: "analytical",
+          result_kind: "market_data.livermore.signal_confluence",
+          formal_use_allowed: false,
+          source_version: "sv_livermore__sv_macro",
+          vendor_version: "vv_livermore__vv_macro",
+          rule_version: "rv_livermore_signal_confluence_v1",
+          cache_version: "cv_livermore_signal_confluence_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+          scenario_flag: false,
+          generated_at: "2026-04-29T00:00:00Z",
+        },
+        result: {
+          as_of_date: "2026-04-29",
+          macro_context: {
+            status: "neutral",
+            composite_score: 0,
+            multiplier: 0.5,
+          },
+          strategy_context: {
+            market_gate_state: "WARM",
+            market_gate_exposure: 0.4,
+            allows_new_entry_observations: true,
+          },
+          position_size_hint: 0.2,
+          entry_observations: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              action: "observe_entry_setup",
+              trigger_price: 21.8,
+              current_price: 21.9,
+              invalidation_reference_price: 20.6,
+            },
+          ],
+          exit_observations: [],
+          diagnostics: [
+            "Observation-only output. This service does not generate trading instructions.",
+          ],
+          disclaimer: "Observation-only output. This service does not generate trading instructions.",
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const envelope = await client.getLivermoreSignalConfluence({ asOfDate: "2026-04-29" });
+
+    expect(envelope.result.as_of_date).toBe("2026-04-29");
+    expect(envelope.result.strategy_context.market_gate_state).toBe("WARM");
+    expect(envelope.result.entry_observations[0]?.action).toBe("observe_entry_setup");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/signal-confluence?as_of_date=2026-04-29",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("uses real mode to materialize Livermore position snapshots", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        as_of_date: "2026-04-30",
+        row_count: 1,
+        run_id: "livermore_position_snapshot:2026-04-30:test",
+        source_file_hash: "sha256:test",
+        source_systems: ["unit_test_position_book"],
+        source_version: "sv_livermore_position_test",
+        vendor_version: "vv_livermore_position_csv_test",
+        csv_path: "livermore/positions.csv",
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.materializeLivermorePositionSnapshot({
+      asOfDate: "2026-04-30",
+      csvPath: "livermore/positions.csv",
+    });
+
+    expect(payload.risk_exit_input_status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/position-snapshot",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          as_of_date: "2026-04-30",
+          csv_path: "livermore/positions.csv",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to materialize manual Livermore position snapshots", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        fact_source: "livermore_position_snapshot",
+        input_mode: "manual",
+        as_of_date: "2026-04-30",
+        row_count: 1,
+        run_id: "livermore_position_snapshot:2026-04-30:test",
+        source_file_hash: "sha256:test",
+        source_systems: ["livermore_position_snapshot_manual"],
+        source_version: "sv_livermore_position_test",
+        vendor_version: "vv_livermore_position_manual_test",
+        csv_path: null,
+        risk_exit_input_status: "ready",
+        risk_exit_input_block_reason: "",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.materializeLivermoreManualPositionSnapshot({
+      asOfDate: "2026-04-30",
+      positions: [
+        {
+          stockCode: "000001.SZ",
+          stockName: "Alpha",
+          entryCost: 10.5,
+          barsSinceEntry: 6,
+          positionQuantity: 10000,
+        },
+      ],
+    });
+
+    expect(payload.input_mode).toBe("manual");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/position-snapshot/manual",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          as_of_date: "2026-04-30",
+          positions: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              entry_cost: 10.5,
+              bars_since_entry: 6,
+              position_quantity: 10000,
+            },
+          ],
+        }),
       }),
     );
   });

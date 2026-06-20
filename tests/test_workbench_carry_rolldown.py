@@ -2,6 +2,8 @@
 # build_advanced_attribution_summary（static_return_annualized 不 ×12）。
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
 from backend.app.core_finance.pnl_attribution.workbench import (
@@ -33,6 +35,34 @@ def test_build_carry_roll_down_golden_sample() -> None:
     assert out["portfolio_carry"] == pytest.approx(0.85, rel=0, abs=1e-4)
     assert out["portfolio_rolldown"] == pytest.approx(0.63, rel=0, abs=1e-4)
     assert out["portfolio_static_return"] == pytest.approx(1.48, rel=0, abs=1e-4)
+
+
+def test_build_carry_roll_down_uses_current_curve_roll() -> None:
+    bond_rows = [
+        {
+            "asset_class_std": "rate",
+            "market_value": 500_000_000,
+            "coupon_rate": 0.0285,
+            "modified_duration": 4.2,
+            "ytm": 0.028,
+            "years_to_maturity": 5.0,
+        }
+    ]
+    out = build_carry_roll_down(
+        report_date="2025-12-31",
+        bond_rows=bond_rows,
+        ftp_rate_pct=2.0,
+        curve_slope_bp=None,
+        treasury_curve={"4Y": Decimal("2.70"), "5Y": Decimal("2.85")},
+    )
+
+    item = out["items"][0]
+
+    assert item["curve_slope"] == pytest.approx(15.0, rel=0, abs=1e-6)
+    assert item["rolldown"] == pytest.approx(0.63, rel=0, abs=1e-6)
+    assert item["rolldown_pnl"] == pytest.approx(262_500.0, rel=0, abs=1e-6)
+    assert out["portfolio_rolldown"] == pytest.approx(0.63, rel=0, abs=1e-4)
+    assert out["total_rolldown_pnl"] == pytest.approx(262_500.0, rel=0, abs=1e-4)
 
 
 def test_build_advanced_attribution_static_annualized_equals_portfolio_static() -> None:

@@ -115,6 +115,22 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
   },
   {
     kind: "single",
+    key: "copper",
+    label: "铜主力期货",
+    format: "plain",
+    tag: "有色",
+    candidateSeriesIds: ["CA.COPPER"],
+  },
+  {
+    kind: "single",
+    key: "aluminum",
+    label: "铝主力期货",
+    format: "plain",
+    tag: "有色",
+    candidateSeriesIds: ["CA.ALUMINUM"],
+  },
+  {
+    kind: "single",
     key: "usdcny",
     label: "USD/CNY",
     format: "fx",

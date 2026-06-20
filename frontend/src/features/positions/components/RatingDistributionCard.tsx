@@ -81,7 +81,7 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
   return (
     <Card
       size="small"
-      title="评级分布"
+      title="评级收益率"
       extra={
         <Typography.Text type="secondary">
           {data?.num_days != null ? `${data.num_days} 天` : "—"} · 利率债默认 AAA
@@ -95,11 +95,12 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
       ) : data && data.items.length > 0 ? (
         <>
           {chartOption ? (
-            <ReactECharts option={chartOption} style={{ height: 220 }} notMerge lazyUpdate />
+            <ReactECharts option={chartOption} style={{ height: 190 }} notMerge lazyUpdate />
           ) : null}
           <Table
             size="small"
             pagination={false}
+            scroll={{ x: "max-content" }}
             dataSource={data.items.map((row, idx) => ({
               key: row.rating,
               ...row,
@@ -124,7 +125,7 @@ export default function RatingDistributionCard({ startDate, endDate, subType }: 
                 ),
               },
               {
-                title: "日均(亿)",
+                title: "日均",
                 dataIndex: "avg_daily_balance",
                 align: "right",
                 render: (v: string) => formatAmountYi(v),

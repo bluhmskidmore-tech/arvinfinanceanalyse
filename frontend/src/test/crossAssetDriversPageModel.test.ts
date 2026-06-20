@@ -22,6 +22,19 @@ import {
   buildCrossAssetWatchList,
 } from "../features/cross-asset/lib/crossAssetDriversPageModel";
 
+const FORMAL_NCD_MATRIX_BLOCKED_STATUS = {
+  status: "blocked",
+  required_shape: "tenor_rating_matrix",
+  current_proxy_basis: "shibor_funding_proxy",
+  choice_status: "shibor_landed; formal_ncd_matrix_unconfirmed",
+  tushare_status: "shibor_landed; formal_ncd_matrix_unconfirmed",
+  missing_requirements: [
+    "governed NCD tenor-rating source contract",
+    "issuer/rating tenor matrix rows",
+    "unit/date semantics and golden sample approval",
+  ],
+};
+
 function makeResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_cross_asset_test",
@@ -110,6 +123,28 @@ describe("crossAssetDriversPageModel", () => {
     expect(fallback?.detail).toContain("降级快照");
   });
 
+  it("surfaces linkage quality warnings with localized detail in status flags", () => {
+    const flags = buildCrossAssetStatusFlags({
+      linkageMeta: makeResultMeta({
+        result_kind: "macro_bond_linkage.analysis",
+        quality_flag: "warning",
+      }),
+      latestSeries: [makePoint("EMM01843735", "Choice financial condition", -1.54)],
+      crossAssetDataDate: "2026-06-09",
+      linkageReportDate: "2026-06-09",
+      linkageWarnings: [
+        "风险张量使用最近日期 2026-05-31，目标日期为 2026-06-09。",
+        "Indicator history too short: SHIBOR:隔夜",
+      ],
+    });
+
+    const linkageWarning = flags.find((flag) => flag.id === "linkage-quality-warning");
+    expect(linkageWarning?.label).toBe("联动预警");
+    expect(linkageWarning?.tone).toBe("warning");
+    expect(linkageWarning?.detail).toContain("风险张量沿用 2026-05-31");
+    expect(linkageWarning?.detail).not.toContain("Indicator history too short");
+  });
+
   it("marks the cross-asset chain as dual-source when Choice and Tushare supplements coexist", () => {
     const flags = buildCrossAssetStatusFlags({
       latestMeta: makeResultMeta(),
@@ -139,6 +174,25 @@ describe("crossAssetDriversPageModel", () => {
     expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("双源就绪");
   });
 
+  it("splits permission denials from transport load failures in status flags", () => {
+    const flags = buildCrossAssetStatusFlags({
+      latestSeries: [],
+      crossAssetDataDate: "",
+      linkageReportDate: "",
+      moduleFailures: [
+        { module: "macro_bond_linkage.analysis", kind: "permission" },
+        { module: "choice_macro.latest", kind: "load" },
+      ],
+    });
+
+    expect(flags.find((flag) => flag.id === "access-denied")?.label).toContain(
+      "macro_bond_linkage.analysis",
+    );
+    expect(flags.find((flag) => flag.id === "loading-failure")?.label).toContain(
+      "choice_macro.latest",
+    );
+  });
+
   it("puts failed module ids on the loading-failure flag label for header-only pill visibility", () => {
     const flags = buildCrossAssetStatusFlags({
       latestSeries: [],
@@ -151,6 +205,36 @@ describe("crossAssetDriversPageModel", () => {
       "加载失败 · choice_macro.latest, macro_bond_linkage.analysis",
     );
     expect(loadFail?.label).toContain("choice_macro.latest");
+  });
+
+  it("does not synthesize fallback research conclusions when macro-bond linkage failed", () => {
+    const vm = buildCrossAssetDriversViewModel({
+      env: {
+        liquidity_score: 0.42,
+        rate_direction_score: -0.35,
+        inflation_score: 0.24,
+        growth_score: -0.2,
+      },
+      topCorrelations: [],
+      linkageWarnings: [],
+      kpis: [],
+      latestSeries: [],
+      crossAssetDataDate: "",
+      linkageReportDate: "2026-04-30",
+      ncdProxy: null,
+      ncdProxyAvailable: false,
+      loadingFailures: ["macro_bond_linkage.analysis"],
+    });
+
+    expect(vm.statusFlags.find((flag) => flag.id === "loading-failure")?.label).toContain(
+      "macro_bond_linkage.analysis",
+    );
+    expect(vm.researchCards.every((card) => card.status === "pending_signal")).toBe(true);
+    expect(vm.researchCards.every((card) => card.source !== "fallback")).toBe(true);
+    expect(vm.researchCards.map((card) => card.summary).join(" ")).not.toContain("兜底判断");
+    expect(vm.transmissionAxes.every((axis) => axis.status === "pending_signal")).toBe(true);
+    expect(vm.transmissionAxes.every((axis) => axis.source !== "fallback")).toBe(true);
+    expect(vm.transmissionAxes.map((axis) => axis.summary).join(" ")).not.toContain("兜底判断");
   });
 
   it("builds candidate actions from current environment scores and top-correlation evidence", () => {
@@ -379,7 +463,111 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[2].lines.every((line) => line.stateLabel === "pending_definition")).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("Choice"))).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("治理源"))).toBe(true);
+    expect(rows[2].lines[0].dataLabel).toContain("equity_option.iv");
+    expect(rows[2].lines[0].dataLabel).toContain("equity_option.put_call_ratio");
+    expect(rows[2].lines[1].dataLabel).toContain("commodity_option.iv");
+    expect(rows[2].lines[2].dataLabel).toContain("rates_option.implied_vol");
+    expect(rows[2].lines.every((line) => line.sourceLabel.includes("phase1_macro_vendor_catalog"))).toBe(true);
+    expect(rows[2].lines.every((line) => line.sourceLabel.includes("choice_market_snapshot"))).toBe(true);
+    expect(rows[2].lines.every((line) => line.sourceLabel.includes("fact_choice_macro_daily"))).toBe(true);
     expect(rows[2].lines[0].explanation).toContain("治理后的权益期权输入尚不可用");
+  });
+
+  it("does not repeat full transmission-axis summaries inside asset-class detail lines", () => {
+    const equitySummary =
+      "CSI300 equity-bond spread is 5.10ppt with CSI300 move -0.35%.";
+    const megaCapSummary = "CSI300 top10 weight concentration is 23.54% (top5 15.53%).";
+    const kpis = resolveCrossAssetKpis([
+      makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, { unit: "x", latest_change: 0.16 }),
+      makePoint("CA.MEGA_CAP_WEIGHT", "CSI300 Top10 weight", 23.5367, {
+        unit: "%",
+        latest_change: 0.2,
+      }),
+      makePoint("CA.MEGA_CAP_TOP5_WEIGHT", "CSI300 Top5 weight", 15.532, {
+        unit: "%",
+        latest_change: 0.1,
+      }),
+    ]);
+    const axes = buildTransmissionAxisRows({
+      transmissionAxes: [
+        {
+          axis_key: "equity_bond_spread",
+          status: "ready",
+          stance: "conflicted",
+          summary: equitySummary,
+          impacted_views: ["duration", "credit"],
+          required_series_ids: ["tushare.index.000300.SH.daily"],
+          warnings: [],
+        } satisfies MacroBondTransmissionAxis,
+        {
+          axis_key: "mega_cap_equities",
+          status: "ready",
+          stance: "neutral",
+          summary: megaCapSummary,
+          impacted_views: ["credit", "instrument"],
+          required_series_ids: ["tushare.index.000300.SH.weight"],
+          warnings: [],
+        } satisfies MacroBondTransmissionAxis,
+      ],
+      env: {},
+    });
+
+    const rows = buildCrossAssetClassAnalysisRows({ kpis, transmissionAxes: axes });
+    const stock = rows.find((row) => row.key === "stock");
+    const valuation = stock?.lines.find((line) => line.key === "valuation_spread");
+    const megaCap = stock?.lines.find((line) => line.key === "mega_cap_weight");
+
+    expect(stock?.explanation).toContain("股票通道");
+    expect(stock?.explanation).not.toContain(equitySummary);
+    expect(stock?.explanation).not.toContain(megaCapSummary);
+    expect(valuation?.explanation).toContain("14.58");
+    expect(valuation?.explanation).not.toContain(equitySummary);
+    expect(megaCap?.explanation).toContain("23.54%");
+    expect(megaCap?.explanation).not.toContain(megaCapSummary);
+  });
+
+  it("treats a landed latest value as usable even without sparkline history", () => {
+    const kpis = resolveCrossAssetKpis([
+      makePoint("CA.BRENT", "Brent", 82.3, {
+        latest_change: undefined,
+        recent_points: [],
+      }),
+    ]);
+
+    const rows = buildCrossAssetClassAnalysisRows({ kpis, transmissionAxes: [] });
+    const energy = rows.find((row) => row.key === "commodities")?.lines.find((line) => line.key === "energy");
+
+    expect(energy?.status).toBe("ready");
+    expect(energy?.stateLabel).toBe("ready");
+    expect(energy?.dataLabel).toContain("82.3");
+  });
+
+  it("marks nonferrous commodities ready when governed copper and aluminum inputs exist", () => {
+    const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
+    const kpis = resolveCrossAssetKpis([
+      makePoint("CA.COPPER", "铜主力期货收盘价", 101030, {
+        unit: "CNY/t",
+        latest_change: -600,
+        ...vendor("tushare"),
+      }),
+      makePoint("CA.ALUMINUM", "铝主力期货收盘价", 24430, {
+        unit: "CNY/t",
+        latest_change: -185,
+        ...vendor("tushare"),
+      }),
+    ]);
+
+    const rows = buildCrossAssetClassAnalysisRows({ kpis, transmissionAxes: [] });
+    const nonferrous = rows.find((row) => row.key === "commodities")?.lines.find((line) => line.key === "nonferrous");
+
+    expect(nonferrous?.status).toBe("ready");
+    expect(nonferrous?.stateLabel).toBe("ready");
+    expect(nonferrous?.dataLabel).toContain("101,030");
+    expect(nonferrous?.dataLabel).toContain("24,430");
+    expect(nonferrous?.sourceLabel).toContain("CA.COPPER");
+    expect(nonferrous?.sourceLabel).toContain("CA.ALUMINUM");
+    expect(nonferrous?.explanation).toContain("铜主力期货");
+    expect(nonferrous?.explanation).toContain("铝主力期货");
   });
 
   it("builds stock index and mega-cap evidence items with unit, date, and source trace", () => {
@@ -409,11 +597,11 @@ describe("crossAssetDriversPageModel", () => {
     ]);
     expect(items[0]).toMatchObject({
       sourceLabel: "Choice接入码: EMM01843735",
-      unitLabel: "index",
+      unitLabel: "指数",
       tradeDate: "2026-04-10",
     });
     expect(items[1].sourceLabel).toBe("Tushare: CA.CSI300_PE");
-    expect(items[1].unitLabel).toBe("x");
+    expect(items[1].unitLabel).toBe("倍");
     expect(items[2].valueLabel).toBe("23.54%");
     expect(items[2].unitLabel).toBe("%");
     expect(items[3].sourceLabel).toBe("Tushare: CA.MEGA_CAP_TOP5_WEIGHT");
@@ -582,6 +770,7 @@ describe("crossAssetDriversPageModel", () => {
         as_of_date: "2026-04-23",
         proxy_label: "Tushare Shibor funding proxy",
         is_actual_ncd_matrix: false,
+        formal_ncd_matrix_status: FORMAL_NCD_MATRIX_BLOCKED_STATUS,
         rows: [
           {
             row_key: "shibor_fixing",
@@ -601,8 +790,9 @@ describe("crossAssetDriversPageModel", () => {
       },
     });
     expect(evidence.isActualNcdMatrix).toBe(false);
-    expect(evidence.proxyWarning).toMatch(/not actual NCD issuance matrix/i);
-    expect(evidence.proxyWarning).toMatch(/warehouse|landed|quote medians unavailable/i);
+    expect(evidence.proxyLabel).toBe("Tushare Shibor 资金代理");
+    expect(evidence.proxyWarning).toContain("不是真实 NCD 发行矩阵");
+    expect(evidence.proxyWarning).toContain("Tushare Shibor");
     expect(evidence.rowCaptions[0]).toContain("Shibor fixing");
     expect(evidence.rowCaptions[0]).toContain("9M 1.464");
     expect(evidence.rowCaptions.some((line) => /Quote median/i.test(line))).toBe(false);
@@ -615,6 +805,7 @@ describe("crossAssetDriversPageModel", () => {
         as_of_date: "2026-04-23",
         proxy_label: "Test proxy",
         is_actual_ncd_matrix: false,
+        formal_ncd_matrix_status: FORMAL_NCD_MATRIX_BLOCKED_STATUS,
         rows: [],
         warnings: [
           "Proxy only; not actual NCD issuance matrix.",
@@ -623,9 +814,48 @@ describe("crossAssetDriversPageModel", () => {
       },
     });
     expect(actions[0].action).toContain("NCD");
-    expect(actions[0].reason).toMatch(/not actual NCD issuance matrix/i);
-    expect(actions[0].reason).toMatch(/quote medians unavailable/i);
-    expect(actions[0].action).not.toMatch(/真实|actual\s+NCD\s+issuance\s+matrix/i);
+    expect(actions[0].reason).toContain("不是真实 NCD 发行矩阵");
+    expect(actions[0].reason).toContain("Tushare Shibor");
+    expect(actions[0].action).not.toMatch(/actual\s+NCD\s+issuance\s+matrix/i);
+  });
+
+  it("surfaces mixed Choice/Tushare proxy provenance and fallback tenor date", () => {
+    const evidence = buildCrossAssetNcdProxyEvidence({
+      available: true,
+      result: {
+        as_of_date: "2026-06-09",
+        proxy_label: "Choice/Tushare Shibor funding proxy",
+        is_actual_ncd_matrix: false,
+        formal_ncd_matrix_status: FORMAL_NCD_MATRIX_BLOCKED_STATUS,
+        rows: [
+          {
+            row_key: "shibor_fixing",
+            label: "Shibor fixing",
+            "1M": 1.427,
+            "3M": 1.4144,
+            "6M": 1.4299,
+            "9M": 1.45,
+            "1Y": 1.43,
+            quote_count: null,
+          },
+        ],
+        warnings: [
+          "Proxy only; not actual NCD issuance matrix.",
+          "Using landed Choice Shibor with Tushare fallback for 9M; fallback date 2026-05-28; quote medians unavailable.",
+        ],
+      },
+    });
+
+    expect(evidence.asOfDate).toBe("2026-06-09");
+    expect(evidence.proxyLabel).toBe("Choice/Tushare Shibor 资金代理");
+    expect(evidence.proxyWarning).toContain("使用已落地 Choice Shibor");
+    expect(evidence.proxyWarning).toContain("由 Tushare 补齐");
+    expect(evidence.proxyWarning).toContain("9M");
+    expect(evidence.proxyWarning).toContain("2026-05-28");
+    expect(evidence.proxyWarning).toContain("不是真实 NCD 发行矩阵");
+    expect(evidence.proxyWarning).not.toContain("Using landed Choice Shibor");
+    expect(evidence.rowCaptions[0]).toContain("1M 1.427");
+    expect(evidence.rowCaptions[0]).toContain("9M 1.45");
   });
 
   it("buildCrossAssetDriversViewModel aggregates cards, axes, calendar, NCD evidence, and flags", () => {
@@ -741,7 +971,7 @@ describe("crossAssetDriversPageModel", () => {
       linkageWarnings: ["analytical only"],
     });
 
-    expect(actions[0].reason.toLowerCase()).toContain("duration");
+    expect(actions[0].reason).toContain("久期判断");
     expect(actions.some((row) => row.evidence.includes("全球利率"))).toBe(true);
     expect(watchRows[0].note).toContain("久期判断");
     expect(watchRows[0].signalText).toContain("全球利率");

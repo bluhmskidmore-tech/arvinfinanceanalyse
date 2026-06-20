@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Select, Input, Button } from "antd";
+import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import type {
   BalanceAnalysisDecisionItemStatusRow,
   BalanceAnalysisDecisionStatus,
@@ -12,12 +14,16 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import {
-  PageHeader,
+  DataStatusStrip,
+  PageDecisionHero,
   PageSectionLead,
 } from "../../../components/page/PagePrimitives";
 import { pageSurfacePanelStyle } from "../../../components/page/PagePrimitiveStyles";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { shellTokens } from "../../../theme/tokens";
 import { buildDecisionItemsPageViewModel } from "../lib/decisionItemsPageModel";
+
+import "./DecisionItemsPage.css";
 
 const t = designTokens;
 
@@ -64,6 +70,12 @@ const tdStyle = {
 type StatusFilter = "all" | BalanceAnalysisDecisionStatus;
 type SeverityFilter = "all" | BalanceAnalysisSeverity;
 
+const SEVERITY_ORDER: Record<BalanceAnalysisSeverity, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
+
 const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "全部状态" },
   { value: "pending", label: "待处理" },
@@ -88,6 +100,11 @@ const CURRENCY_OPTIONS: { value: BalanceCurrencyBasis; label: string }[] = [
   { value: "CNY", label: "人民币（CNY）" },
   { value: "native", label: "本币（原币）" },
 ];
+
+function cleanReportDateParam(value: string | null): string | null {
+  const trimmed = value?.trim() ?? "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
 
 function formatMetaLine(meta: ResultMeta | undefined) {
   if (!meta) {
@@ -140,16 +157,33 @@ function resultMetaSubline(meta: ResultMeta | undefined) {
 export default function DecisionItemsPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const linkedReportDate = cleanReportDateParam(searchParams.get("report_date"));
+  const linkedSource = searchParams.get("source")?.trim() ?? "";
+  const linkedActionId = searchParams.get("action_id")?.trim() ?? "";
+  const isDashboardRiskReviewQueue =
+    linkedSource === "dashboard-home" && linkedActionId === "risk-review-queue";
 
-  const [selectedReportDate, setSelectedReportDate] = useState<string | null>(null);
+  const [selectedReportDate, setSelectedReportDate] = useState<string | null>(linkedReportDate);
   const [positionScope, setPositionScope] = useState<BalancePositionScope>("all");
   const [currencyBasis, setCurrencyBasis] = useState<BalanceCurrencyBasis>("CNY");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    isDashboardRiskReviewQueue ? "pending" : "all",
+  );
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [draftComment, setDraftComment] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [updateFeedback, setUpdateFeedback] = useState<string | null>(null);
   const [updatingKey, setUpdatingKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedReportDate(linkedReportDate);
+    setStatusFilter(isDashboardRiskReviewQueue ? "pending" : "all");
+    setSelectedKey(null);
+    setDraftComment("");
+    setUpdateFeedback(null);
+  }, [isDashboardRiskReviewQueue, linkedReportDate]);
 
   const datesQuery = useQuery({
     queryKey: ["balance-analysis", "dates"],
@@ -165,17 +199,17 @@ export default function DecisionItemsPage() {
   const reportDate = selectedReportDate ?? defaultLatest;
 
   const currentUserQuery = useQuery({
-    queryKey: ["balance-analysis", "current-user"],
+    queryKey: ["balance-analysis", "current-user", client.mode],
     queryFn: () => client.getBalanceAnalysisCurrentUser(),
   });
 
   const itemsQuery = useQuery({
-    queryKey: [
-      "balance-analysis-decision-items",
+    queryKey: apiQueryKeys.balanceAnalysisDecisionItems(
+      client.mode,
       reportDate,
       positionScope,
       currencyBasis,
-    ],
+    ),
     queryFn: () =>
       client.getBalanceAnalysisDecisionItems({
         reportDate: reportDate!,
@@ -211,7 +245,7 @@ export default function DecisionItemsPage() {
   );
 
   const filteredRows = useMemo(() => {
-    return vm.rows.filter((row) => {
+    const rows = vm.rows.filter((row) => {
       if (statusFilter !== "all" && row.latest_status?.status !== statusFilter) {
         return false;
       }
@@ -220,7 +254,11 @@ export default function DecisionItemsPage() {
       }
       return true;
     });
-  }, [vm.rows, statusFilter, severityFilter]);
+    if (!isDashboardRiskReviewQueue) {
+      return rows;
+    }
+    return [...rows].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+  }, [isDashboardRiskReviewQueue, vm.rows, statusFilter, severityFilter]);
 
   const selectedRow = useMemo(
     () => vm.rows.find((r) => r.decision_key === selectedKey) ?? null,
@@ -247,6 +285,7 @@ export default function DecisionItemsPage() {
         return;
       }
       setActionError(null);
+      setUpdateFeedback(null);
       setUpdatingKey(row.decision_key);
       try {
         await client.updateBalanceAnalysisDecisionStatus({
@@ -257,8 +296,10 @@ export default function DecisionItemsPage() {
           status,
           comment,
         });
-        await queryClient.invalidateQueries({ queryKey: ["balance-analysis-decision-items"] });
+        await queryClient.invalidateQueries({ queryKey: ["balance-analysis", "decision-items"] });
         await queryClient.invalidateQueries({ queryKey: ["balance-analysis", "current-user"] });
+        await queryClient.invalidateQueries({ queryKey: ["home-snapshot"] });
+        setUpdateFeedback(`${status === "confirmed" ? "已确认" : "已忽略"}并回写：${row.title}`);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         setActionError(message);
@@ -280,37 +321,101 @@ export default function DecisionItemsPage() {
 
   const noDates = !datesQuery.isLoading && !datesError && sortedDates.length === 0;
   const showMockWarning = client.mode === "mock";
+  const decisionWriteCapability = currentUserQuery.data?.can_write_decision_status ?? null;
+  const canWriteDecisionItems = decisionWriteCapability === true;
+  const cannotWriteDecisionItems = Boolean(currentUserQuery.data) && decisionWriteCapability === false;
+  const decisionWritePermissionUnknown =
+    currentUserQuery.isError || (Boolean(currentUserQuery.data) && decisionWriteCapability === null);
+  const writePermissionNotice = decisionWritePermissionUnknown
+    ? {
+        className: "decision-items-page__permission-unknown",
+        testId: "decision-items-permission-unknown",
+        text: "权限状态暂不可用，暂不开放确认或忽略回写。",
+      }
+    : cannotWriteDecisionItems
+      ? {
+          className: "decision-items-page__readonly-notice",
+          testId: "decision-items-readonly-notice",
+          text: "当前用户无治理事项回写权限，仅可查看队列与证据。",
+        }
+      : null;
   const userLabel = currentUserQuery.data
     ? `${currentUserQuery.data.user_id}（${currentUserQuery.data.role}）`
     : "—";
 
   return (
     <div
+      className="decision-items-page"
       data-testid="decision-items-page"
       style={{ padding: t.space[6], background: t.color.neutral[50], minHeight: "100%" }}
     >
-      <PageHeader
-        eyebrow="工作台"
+      <PageDecisionHero
+        testId="decision-items-contract-hero"
         title="决策事项"
-        description="按报告日与口径拉取资产负债分析「决策事项」读模型，可在此确认/忽略并写回同一路径的更新接口。"
+        titleTestId="decision-items-page-title"
+        questionTestId="decision-items-page-subtitle"
+        eyebrow="工作台"
+        reportDateSlot={
+          <span data-testid="decision-items-report-date-slot">
+            报告日 <strong style={{ ...tabularNumsStyle }}>{reportDate || "—"}</strong>
+          </span>
+        }
+        businessQuestion="按报告日与口径拉取资产负债分析「决策事项」读模型，可在此确认/忽略并写回同一路径的更新接口。"
         style={{ marginBottom: t.space[4] }}
-      />
-
-      {showMockWarning ? (
-        <div
-          style={{
-            marginBottom: t.space[4],
-            padding: t.space[3],
-            borderRadius: t.radius.md,
-            border: `1px solid ${t.color.warning[300]}`,
-            background: t.color.warning[50],
-            color: t.color.neutral[800],
-            fontSize: t.fontSize[13],
-          }}
-        >
-          当前为 mock 数据模式，决策事项与操作人回写为本地模拟，不代表生产正式结果。
+        actions={
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "8px 14px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              ...(client.mode === "real"
+                ? { background: shellTokens.colorBgSuccessSoft, color: shellTokens.colorSuccess }
+                : { background: shellTokens.colorAccentSoft, color: shellTokens.colorAccent }),
+            }}
+          >
+            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          </span>
+        }
+      >
+        <div style={{ marginTop: t.space[3], display: "grid", gap: t.space[3] }}>
+          <DataStatusStrip testId="decision-items-data-status-strip">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: t.space[3], alignItems: "center" }}>
+              <span style={{ fontSize: t.fontSize[13], color: t.color.neutral[700] }}>
+                模式 {client.mode === "real" ? "real" : "mock"} · 操作人 {userLabel}
+              </span>
+            </div>
+            {isDashboardRiskReviewQueue ? (
+              <div className="decision-items-page__entry-context" data-testid="decision-items-entry-context">
+                来自首页风险复核队列 · 默认聚焦待处理事项，高风险优先
+              </div>
+            ) : null}
+            {writePermissionNotice ? (
+              <div className={writePermissionNotice.className} data-testid={writePermissionNotice.testId}>
+                {writePermissionNotice.text}
+              </div>
+            ) : null}
+            {showMockWarning ? (
+              <div
+                style={{
+                  marginTop: t.space[3],
+                  padding: t.space[3],
+                  borderRadius: t.radius.md,
+                  border: `1px solid ${t.color.warning[300]}`,
+                  background: t.color.warning[50],
+                  color: t.color.neutral[800],
+                  fontSize: t.fontSize[13],
+                }}
+              >
+                当前为 mock 数据模式，决策事项与操作人回写为本地模拟，不代表生产正式结果。
+              </div>
+            ) : null}
+          </DataStatusStrip>
         </div>
-      ) : null}
+      </PageDecisionHero>
 
       <PageSectionLead
         eyebrow="治理"
@@ -456,6 +561,12 @@ export default function DecisionItemsPage() {
         </div>
       ) : null}
 
+      {updateFeedback ? (
+        <div className="decision-items-page__update-feedback" data-testid="decision-items-update-feedback">
+          {updateFeedback}
+        </div>
+      ) : null}
+
       {noDates ? (
         <div
           data-testid="decision-items-error"
@@ -549,39 +660,48 @@ export default function DecisionItemsPage() {
                             {(row.latest_status?.updated_by || "—") + " / " + (row.latest_status?.updated_at || "—")}
                           </td>
                           <td style={tdStyle}>
-                            <div style={{ display: "flex", gap: t.space[2] }}>
-                              <Button
-                                size="small"
-                                data-testid={`decision-items-confirm-${index}`}
-                                type="primary"
-                                disabled={busy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const comment =
-                                    row.decision_key === selectedKey
-                                      ? draftComment.trim() || undefined
-                                      : row.latest_status?.comment?.trim() || undefined;
-                                  void runUpdate(row, "confirmed", comment);
-                                }}
+                            {canWriteDecisionItems ? (
+                              <div style={{ display: "flex", gap: t.space[2] }}>
+                                <Button
+                                  size="small"
+                                  data-testid={`decision-items-confirm-${index}`}
+                                  type="primary"
+                                  disabled={busy}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const comment =
+                                      row.decision_key === selectedKey
+                                        ? draftComment.trim() || undefined
+                                        : row.latest_status?.comment?.trim() || undefined;
+                                    void runUpdate(row, "confirmed", comment);
+                                  }}
+                                >
+                                  确认
+                                </Button>
+                                <Button
+                                  size="small"
+                                  data-testid={`decision-items-dismiss-${index}`}
+                                  disabled={busy}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const comment =
+                                      row.decision_key === selectedKey
+                                        ? draftComment.trim() || undefined
+                                        : row.latest_status?.comment?.trim() || undefined;
+                                    void runUpdate(row, "dismissed", comment);
+                                  }}
+                                >
+                                  忽略
+                                </Button>
+                              </div>
+                            ) : (
+                              <span
+                                className="decision-items-page__readonly-inline"
+                                data-testid={`decision-items-readonly-${index}`}
                               >
-                                确认
-                              </Button>
-                              <Button
-                                size="small"
-                                data-testid={`decision-items-dismiss-${index}`}
-                                disabled={busy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const comment =
-                                    row.decision_key === selectedKey
-                                      ? draftComment.trim() || undefined
-                                      : row.latest_status?.comment?.trim() || undefined;
-                                  void runUpdate(row, "dismissed", comment);
-                                }}
-                              >
-                                忽略
-                              </Button>
-                            </div>
+                                只读
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -640,21 +760,27 @@ export default function DecisionItemsPage() {
                     placeholder="填写确认/忽略说明（会随写回一起提交，可选）"
                   />
                 </label>
-                <div style={{ display: "flex", gap: t.space[2] }}>
-                  <Button
-                    type="primary"
-                    disabled={updatingKey === selectedRow.decision_key}
-                    onClick={() => void runUpdate(selectedRow, "confirmed", draftComment.trim() || undefined)}
-                  >
-                    确认
-                  </Button>
-                  <Button
-                    disabled={updatingKey === selectedRow.decision_key}
-                    onClick={() => void runUpdate(selectedRow, "dismissed", draftComment.trim() || undefined)}
-                  >
-                    忽略
-                  </Button>
-                </div>
+                {canWriteDecisionItems ? (
+                  <div style={{ display: "flex", gap: t.space[2] }}>
+                    <Button
+                      type="primary"
+                      disabled={updatingKey === selectedRow.decision_key}
+                      onClick={() => void runUpdate(selectedRow, "confirmed", draftComment.trim() || undefined)}
+                    >
+                      确认
+                    </Button>
+                    <Button
+                      disabled={updatingKey === selectedRow.decision_key}
+                      onClick={() => void runUpdate(selectedRow, "dismissed", draftComment.trim() || undefined)}
+                    >
+                      忽略
+                    </Button>
+                  </div>
+                ) : (
+                  <div className={writePermissionNotice?.className ?? "decision-items-page__readonly-notice"}>
+                    {writePermissionNotice?.text ?? "当前用户无治理事项回写权限，仅可查看队列与证据。"}
+                  </div>
+                )}
               </div>
             )}
           </aside>

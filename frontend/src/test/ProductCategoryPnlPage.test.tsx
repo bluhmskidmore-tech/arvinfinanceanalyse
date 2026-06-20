@@ -1,11 +1,16 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { vi } from "vitest";
+import { beforeAll, vi } from "vitest";
 
 import { ActionRequestError, createApiClient } from "../api/client";
-import { PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY } from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
+import type { ProductCategoryInterestSpreadPayload } from "../api/contracts";
+import {
+  PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
+  formatProductCategoryChartNumberTwoDecimals,
+} from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 vi.mock("../lib/echarts", () => ({
@@ -32,6 +37,10 @@ vi.mock("../lib/echarts", () => ({
   ),
 }));
 
+beforeAll(async () => {
+  await preloadWorkbenchRouteModules("product-category-pnl");
+}, 20_000);
+
 function renderWorkbenchAppWithClient(client: ReturnType<typeof createApiClient>) {
   return renderWorkbenchApp(["/product-category-pnl"], { client });
 }
@@ -40,8 +49,34 @@ function yuan(yi: number): string {
   return String(yi * 100_000_000);
 }
 
-function annualizedCash(scaleYi: number, ratePct: number, days: number): string {
-  return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
+function fixtureCashAmount(scaleYi: number, ratePct: number, days: number): string {
+  return String(scaleYi * 1000 + ratePct * 100 + days);
+}
+
+function withEmptyInterestSpread<T extends { result: object }>(envelope: T): T {
+  const result = { ...envelope.result } as Record<string, unknown>;
+  result.interest_spread = {
+    all_currency_asset_yield_pct: null,
+    all_currency_liability_yield_pct: null,
+    all_currency_spread_pct: null,
+    cny_asset_yield_pct: null,
+    cny_liability_yield_pct: null,
+    cny_spread_pct: null,
+  };
+  return { ...envelope, result: result as T["result"] };
+}
+
+function withEmptyInterestEarningSpread<T extends { result: object }>(envelope: T): T {
+  const result = { ...envelope.result } as Record<string, unknown>;
+  result.interest_earning_spread = {
+    all_currency_asset_yield_pct: null,
+    all_currency_liability_yield_pct: null,
+    all_currency_spread_pct: null,
+    cny_asset_yield_pct: null,
+    cny_liability_yield_pct: null,
+    cny_spread_pct: null,
+  };
+  return { ...envelope, result: result as T["result"] };
 }
 
 function readChartOption(panelTestId: string) {
@@ -49,20 +84,38 @@ function readChartOption(panelTestId: string) {
   return JSON.parse(
     within(panel).getByTestId("product-category-echarts-option").textContent ?? "null",
   ) as {
-    legend?: { data?: string[] };
+    backgroundColor?: string;
+    grid?: { top?: number; bottom?: number; containLabel?: boolean };
+    legend?: { data?: string[]; top?: number; right?: number; bottom?: number };
+    tooltip?: { backgroundColor?: string; borderColor?: string };
     xAxis?: { data?: string[] } | Array<{ data?: string[] }>;
-    yAxis?: { min?: number; max?: number; scale?: boolean } | Array<{ min?: number; max?: number; scale?: boolean }>;
+    yAxis?:
+      | { min?: number; max?: number; name?: string; scale?: boolean }
+      | Array<{ min?: number; max?: number; name?: string; scale?: boolean }>;
     series?: Array<{
       name?: string;
       type?: string;
       data?: unknown[];
       yAxisIndex?: number;
+      barMinHeight?: number;
+      barGap?: string;
+      barMaxWidth?: number;
+      itemStyle?: { color?: string; borderColor?: string; borderRadius?: number[] };
       symbolSize?: number;
       lineStyle?: { width?: number };
       label?: { show?: boolean };
       endLabel?: { show?: boolean };
     }>;
   };
+}
+
+async function waitForTrendDiagnosticsAutoLoad() {
+  await screen.findByTestId("product-category-diagnostics-surface");
+  await waitFor(() => {
+    expect(screen.getByTestId("product-category-operating-action-backtest")).not.toHaveTextContent(
+      "选择报表日期后",
+    );
+  });
 }
 
 function buildMockAttributionEnvelope(reportDate: string, compare: "mom" | "yoy" = "mom") {
@@ -134,17 +187,108 @@ function buildMockAttributionEnvelope(reportDate: string, compare: "mom" | "yoy"
   });
 }
 
+function renderWorkbenchAppWithTwoMonthLiabilityTrend() {
+  const baseClient = createApiClient({ mode: "mock" });
+  renderWorkbenchAppWithClient({
+    ...baseClient,
+    getProductCategoryDates: vi.fn(async () =>
+      buildMockApiEnvelope("product_category_pnl.dates", {
+        report_dates: ["2026-02-28", "2026-01-31"],
+      }),
+    ),
+    getProductCategoryPnl: vi.fn(async (options) => {
+      const env = buildMockProductCategoryPnlEnvelope(options);
+      if (options.reportDate !== "2026-01-31") {
+        return env;
+      }
+      return {
+        ...env,
+        result: {
+          ...env.result,
+          liability_total: {
+            ...env.result.liability_total,
+            weighted_yield: "1.58",
+          },
+        },
+      };
+    }),
+  });
+}
+
 describe("ProductCategoryPnlPage", () => {
+  it("formats chart display numbers with two decimals", () => {
+    expect(formatProductCategoryChartNumberTwoDecimals(0.7)).toBe("0.70");
+    expect(formatProductCategoryChartNumberTwoDecimals("1728.585")).toBe("1728.59");
+    expect(formatProductCategoryChartNumberTwoDecimals(null)).toBe("-");
+    expect(formatProductCategoryChartNumberTwoDecimals(undefined)).toBe("-");
+  });
+
   it("renders the page shell, summary, and table structure", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     const table = await screen.findByTestId("product-category-table");
+    expect(table).toHaveTextContent("人民币净收入");
+    expect(table).toHaveTextContent("外币净收入");
+    expect(table).toHaveTextContent("营业净收入");
+    expect(table).not.toHaveTextContent("人民币减收入");
+    expect(table).not.toHaveTextContent("外币减收入");
+    expect(table).not.toHaveTextContent("营业减收入");
+    expect(screen.getByTestId("product-category-page")).toHaveClass("product-category-page-shell");
+    expect(screen.getByTestId("product-category-contract-hero")).toHaveClass(
+      "product-category-contract-hero",
+    );
     expect(screen.getByTestId("product-category-page-title")).toHaveTextContent("产品分类损益");
     expect(screen.getByTestId("product-category-page-subtitle")).toHaveTextContent(
       "按业务分类查看损益、FTP 和净收入",
     );
     expect(screen.getByTestId("product-category-role-badge")).toHaveTextContent("系统层");
     expect(screen.getByTestId("product-category-boundary-copy")).toHaveTextContent("系统层经营口径");
+    const heroOwnerStatus = screen.getByTestId("product-category-owner-signable-status");
+    const productCategoryBranch = screen.getByTestId("product-category-branch-product-category-pnl");
+    expect(
+      heroOwnerStatus.compareDocumentPosition(productCategoryBranch) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(heroOwnerStatus).toHaveTextContent("Owner-signable=false");
+    expect(heroOwnerStatus).toHaveTextContent("Certified=false");
+    expect(heroOwnerStatus).toHaveTextContent("Owner approval pending");
+    expect(heroOwnerStatus).toHaveTextContent("Golden sample awaiting approval");
+    expect(heroOwnerStatus).toHaveTextContent("Manual audit partial units=10");
+    expect(screen.getByTestId("product-category-formal-readiness-band")).toHaveTextContent(
+      "正式主链首屏摘要",
+    );
+    expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
+      "report_date=2026-02-28",
+    );
+    expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
+      "view=monthly",
+    );
+    expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
+      "quality=ok",
+    );
+    expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
+      "fallback=none",
+    );
+    const certificationBlockers = screen.getByTestId("product-category-certification-blockers");
+    expect(certificationBlockers).toHaveTextContent("Owner approval pending");
+    expect(certificationBlockers).toHaveTextContent("Golden sample awaiting approval");
+    expect(certificationBlockers).toHaveTextContent("Manual audit partial units=10");
+    expect(certificationBlockers).toHaveTextContent("Fresh pre-signature rerun required");
+    expect(certificationBlockers).toHaveTextContent("Unit=亿元");
+    expect(certificationBlockers).toHaveTextContent("Date basis=report_date");
+    expect(certificationBlockers).toHaveTextContent("Source=formal read model");
+    expect(screen.getByTestId("product-category-formal-headline-totals")).toHaveTextContent(
+      "MTR-PCP-001",
+    );
+    expect(screen.getByTestId("product-category-formal-headline-totals")).toHaveTextContent(
+      "MTR-PCP-002",
+    );
+    expect(screen.getByTestId("product-category-formal-headline-totals")).toHaveTextContent(
+      "MTR-PCP-003",
+    );
+    expect(screen.getByTestId("product-category-first-screen-category-rows")).toHaveTextContent(
+      "买入返售",
+    );
     expect(screen.getByTestId("product-category-adjustment-lead")).toHaveTextContent(
       "手工调整与审计",
     );
@@ -161,6 +305,28 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-matrix")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-watchlist")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-spread")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-operating-analysis")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-operating-profit-rank")).toHaveTextContent("1.45");
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-operating-movement")).toHaveTextContent("0.02");
+    });
+    expect(screen.getByTestId("product-category-operating-quadrant")).toHaveTextContent("2.57");
+    expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("动作优先级队列");
+    expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("选择性扩张");
+    expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("重定价/提效");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作队列次月命中率");
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
+    });
+    expect(screen.getByTestId("product-category-financial-analysis")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 情景敏感度");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("加载矩阵");
+    expect(screen.getByTestId("product-category-attribution-waterfall")).toHaveTextContent("经营差异瀑布");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("产品差异根因拆解台");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("主导原因");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("规模因素");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("未解释");
+    expect(screen.getByTestId("product-category-decision-focus")).toHaveTextContent("本期决策焦点");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债端趋势分析");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债侧产品类别口径");
     expect(screen.queryByText("同业负债")).not.toBeInTheDocument();
@@ -174,7 +340,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(metaPanel).toHaveTextContent("product_category_pnl.detail");
     expect(metaPanel).toHaveTextContent("mock_product_category_pnl.detail");
     expect(screen.getByTestId("product-category-governance-strip")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-as-of-date-gap")).toHaveTextContent(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY);
+    const asOfGap = screen.getByTestId("product-category-as-of-date-gap");
+    expect(asOfGap).toHaveTextContent(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY);
+    expect(asOfGap.textContent).not.toContain("2026-02-28");
     expect(
       screen.queryByTestId("product-category-governance-notice-fallback_mode"),
     ).not.toBeInTheDocument();
@@ -190,6 +358,73 @@ describe("ProductCategoryPnlPage", () => {
       "/ledger-pnl?report_date=2026-02-28",
     );
     expect(within(table).getAllByRole("row")).toHaveLength(20);
+  });
+
+  it("keeps the formal decision chain before adjustment, analysis, and the full table", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("product-category-table");
+    const page = screen.getByTestId("product-category-page");
+    const order = [
+      "product-category-contract-hero",
+      "product-category-data-status-strip",
+      "product-category-scenario-lead",
+      "product-category-formal-readiness-band",
+      "product-category-adjustment-lead",
+      "product-category-financial-analysis",
+      "product-category-operating-analysis",
+      "product-category-formal-table-lead",
+      "product-category-formal-table-mobile-readout",
+      "product-category-formal-table-raw-grid",
+      "product-category-table",
+      "product-category-result-meta",
+    ].map((testId) =>
+      Array.from(page.querySelectorAll("[data-testid]")).findIndex(
+        (node) => node.getAttribute("data-testid") === testId,
+      ),
+    );
+
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("places a mobile formal table readout before the raw formal grid", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("product-category-table");
+    const readout = screen.getByTestId("product-category-formal-table-mobile-readout");
+    const rawGrid = screen.getByTestId("product-category-formal-table-raw-grid");
+
+    expect(readout.compareDocumentPosition(rawGrid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(readout).toHaveTextContent("移动正式表读数");
+    expect(readout).toHaveTextContent("报告日");
+    expect(readout).toHaveTextContent("视图");
+    expect(readout).toHaveTextContent("合计经营净收入");
+    expect(readout).toHaveTextContent("资产端经营净收入");
+    expect(readout).toHaveTextContent("负债端经营净收入");
+    expect(readout).toHaveTextContent("首个业务行");
+    expect(readout).toHaveTextContent("规模日均");
+    expect(readout).toHaveTextContent("加权收益率");
+    expect(readout).toHaveTextContent("展示行数");
+    expect(within(rawGrid).getByTestId("product-category-table")).toBeInTheDocument();
+  });
+
+  it("opens an action queue closure drawer from an operating action row", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const queue = await screen.findByTestId("product-category-operating-action-queue");
+    await user.click(await within(queue).findByRole("button", { name: /查看 买入返售 动作详情/ }));
+
+    const drawer = screen.getByTestId("product-category-operating-action-drawer");
+    expect(drawer).toHaveTextContent("动作闭环详情");
+    expect(drawer).toHaveTextContent("买入返售");
+    expect(drawer).toHaveTextContent("压降或限额复核");
+    expect(drawer).toHaveTextContent("核对正式表净营收、规模、收益率与归因变动");
+    expect(drawer).toHaveTextContent("净营收 -0.05 亿元");
+
+    await user.click(within(drawer).getByRole("button", { name: "关闭动作详情" }));
+    expect(screen.queryByTestId("product-category-operating-action-drawer")).not.toBeInTheDocument();
   });
 
   it("renders monthly MoM operating attribution from the formal baseline", async () => {
@@ -246,6 +481,66 @@ describe("ProductCategoryPnlPage", () => {
     expect(detailRow).toHaveTextContent("0.30");
     expect(detailRow).toHaveTextContent("0.18");
     expect(pointDetails).toHaveTextContent("0.20");
+  });
+
+  it("places a mobile attribution comparison readout before the raw comparison table", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+      buildMockAttributionEnvelope(options.reportDate, options.compare),
+    );
+    const client = {
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryAttribution: attributionSpy,
+    } as ReturnType<typeof createApiClient> & {
+      getProductCategoryAttribution: typeof attributionSpy;
+    };
+    renderWorkbenchAppWithClient(client);
+
+    const rawTable = await screen.findByTestId("product-category-attribution-comparison-table");
+    const readout = screen.getByTestId("product-category-attribution-comparison-mobile-readout");
+
+    expect(readout.compareDocumentPosition(rawTable) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(readout).toHaveTextContent("0.46");
+    expect(readout).toHaveTextContent("0.30");
+    expect(readout).toHaveTextContent("0.00");
+    expect(readout).toHaveTextContent("complete");
+  });
+
+  it("places a mobile attribution detail readout before the raw detail table", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+      buildMockAttributionEnvelope(options.reportDate, options.compare),
+    );
+    const client = {
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryAttribution: attributionSpy,
+    } as ReturnType<typeof createApiClient> & {
+      getProductCategoryAttribution: typeof attributionSpy;
+    };
+    renderWorkbenchAppWithClient(client);
+
+    const rawTable = await screen.findByTestId("product-category-attribution-detail-table");
+    const readout = screen.getByTestId("product-category-attribution-detail-mobile-readout");
+
+    expect(readout.compareDocumentPosition(rawTable) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(readout).toHaveTextContent("2026");
+    expect(readout).toHaveTextContent("2026");
+    expect(readout).toHaveTextContent("0.46");
+    expect(readout).toHaveTextContent("0.26");
+    expect(readout).toHaveTextContent("110.00");
+    expect(readout).toHaveTextContent("100.00");
+    expect(readout).toHaveTextContent("2.60%");
+    expect(readout).toHaveTextContent("2.40%");
   });
 
   it("switches product-category attribution to year-over-year comparison", async () => {
@@ -342,15 +637,136 @@ describe("ProductCategoryPnlPage", () => {
       expect(pnlSpy).toHaveBeenCalled();
       expect(adjSpy).toHaveBeenCalled();
     });
-    expect(pnlSpy.mock.calls.some((call) => call[0]!.reportDate === firstDate)).toBe(true);
     expect(pnlSpy.mock.calls.map((call) => call[0]!.reportDate)).toEqual(
       expect.arrayContaining([firstDate, "2026-02-28", "2026-01-31"]),
     );
-    expect(pnlSpy.mock.calls[0]![0]).toMatchObject({ view: "monthly" });
+    expect(pnlSpy.mock.calls[0]![0]).toMatchObject({ reportDate: firstDate, view: "monthly" });
     expect(adjSpy.mock.calls.every((call) => call[0] === firstDate)).toBe(true);
     expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
       "href",
       "/ledger-pnl?report_date=2026-03-31",
+    );
+  });
+
+  it("loads product-category scenario sensitivity only when requested", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getProductCategoryPnl = vi.fn((options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
+      baseClient.getProductCategoryPnl(options),
+    );
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl,
+    });
+
+    await screen.findByTestId("product-category-table");
+    expect(getProductCategoryPnl.mock.calls.every((call) => call[0]?.scenarioRatePct === undefined)).toBe(true);
+
+    await user.click(within(screen.getByTestId("product-category-scenario-sensitivity")).getByRole("button"));
+
+    await waitFor(() => {
+      const scenarioRates = getProductCategoryPnl.mock.calls
+        .map((call) => call[0]?.scenarioRatePct)
+        .filter(Boolean)
+        .sort();
+      expect(scenarioRates).toEqual(["1.50", "1.60", "1.75", "2.00"]);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("总净营收");
+    });
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("情景解读");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("关键变动行排行");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("每 1bp");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 压力路径");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("压力复核包");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("临界 FTP");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("资产/负债冲抵");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("复核顺序");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("管理动作");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("产品行热力条");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("多情景对比");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("仅承压");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("仅改善");
+    const closure = screen.getByTestId("product-category-scenario-action-closure");
+    expect(closure).toHaveTextContent("情景动作闭环");
+    expect(closure).toHaveTextContent("本期经营动作清单");
+    expect(closure).toHaveTextContent("待处理");
+    expect(closure).toHaveTextContent("建议动作");
+    expect(within(closure).queryByTestId("product-category-scenario-action-memo")).not.toBeInTheDocument();
+    await user.click(within(closure).getAllByRole("button", { name: "复核中" })[0]!);
+    expect(closure).toHaveTextContent("复核中 1");
+    expect(within(closure).queryByTestId("product-category-scenario-action-memo")).not.toBeInTheDocument();
+    await user.click(within(closure).getAllByRole("button", { name: "生成复核备忘" })[0]!);
+    const memo = within(closure).getByTestId("product-category-scenario-action-memo");
+    expect(memo).toHaveTextContent("复核备忘");
+    expect(memo).toHaveTextContent("状态：复核中");
+
+    await user.click(screen.getByRole("button", { name: "仅改善" }));
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent(
+      "当前筛选下暂无可比较产品行。",
+    );
+    await user.click(screen.getByRole("button", { name: "仅承压" }));
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("生息资产");
+    await user.click(screen.getByRole("button", { name: /生息资产 多情景对比/ }));
+    expect(screen.getByTestId("product-category-scenario-explanation")).toHaveTextContent("生息资产");
+
+    await user.click(screen.getByRole("button", { name: /复核 1/ }));
+    const explanation = screen.getByTestId("product-category-scenario-explanation");
+    expect(explanation).toHaveTextContent("复核解释包");
+    expect(explanation).toHaveTextContent("生息资产");
+    expect(explanation).toHaveTextContent("正式归因");
+    expect(explanation).toHaveTextContent("FTP因素");
+    expect(explanation).toHaveTextContent("-0.62");
+    expect(explanation).toHaveTextContent("未解释");
+    expect(explanation).toHaveTextContent("口径桥");
+    expect(explanation).toHaveTextContent("情景压力");
+    expect(explanation).toHaveTextContent("正式归因合计");
+    expect(explanation).toHaveTextContent("复核动作");
+    expect(explanation).toHaveTextContent("核对正式归因期间口径");
+    expect(explanation).toHaveTextContent("重点追踪 FTP因素");
+    expect(within(explanation).getAllByRole("button", { name: "待核对" })).toHaveLength(3);
+
+    await user.click(within(explanation).getAllByRole("button", { name: "已确认" })[0]!);
+    expect(within(explanation).getAllByRole("button", { name: "已确认" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(within(explanation).getAllByRole("button", { name: "有差异" })[0]!);
+    expect(within(explanation).getAllByRole("button", { name: "有差异" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    expect(explanation).toHaveTextContent("复核结论台");
+    expect(explanation).toHaveTextContent("待核对 2");
+    expect(explanation).toHaveTextContent("已确认 0");
+    expect(explanation).toHaveTextContent("有差异 1");
+
+    await user.click(within(explanation).getByRole("button", { name: "全部确认" }));
+    expect(within(explanation).getAllByRole("button", { name: "已确认" })).toHaveLength(3);
+    expect(explanation).toHaveTextContent("已确认 3");
+    expect(explanation).toHaveTextContent("复核结论：生息资产动作已全部确认，可进入留痕归档。");
+
+    await user.click(within(explanation).getAllByRole("button", { name: "有差异" })[1]!);
+    await user.click(within(explanation).getByRole("button", { name: "FTP 驱动异常" }));
+    expect(within(explanation).getByRole("button", { name: "FTP 驱动异常" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(explanation).toHaveTextContent("差异原因：FTP 驱动异常");
+    expect(explanation).toHaveTextContent("复核备忘");
+    expect(explanation).toHaveTextContent("当前产品：生息资产");
+
+    await user.click(within(explanation).getAllByRole("button", { name: "已确认" })[1]!);
+    expect(explanation).toHaveTextContent("差异原因：未选择");
+
+    await user.click(within(explanation).getByRole("button", { name: "重置复核" }));
+    expect(explanation).toHaveTextContent("待核对 3");
+    expect(within(explanation).getAllByRole("button", { name: "待核对" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
   });
 
@@ -384,6 +800,82 @@ describe("ProductCategoryPnlPage", () => {
     expect(monthSelect.options).toHaveLength(0);
   });
 
+  it("Unit 1: disappeared selected date is kept and uses the existing visible error path instead of silently switching", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const selectedDate = "2026-02-28";
+    const replacementDate = "2026-03-31";
+    let staleSelectedDateShouldFail = false;
+    const datesSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [selectedDate, "2026-01-31"],
+        }),
+      )
+      .mockResolvedValue(
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [replacementDate, "2026-01-31"],
+        }),
+      );
+    const pnlSpy = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) => {
+      if (staleSelectedDateShouldFail && options.reportDate === selectedDate) {
+        throw new Error("unit1-selected-date-disappeared");
+      }
+      return baseClient.getProductCategoryPnl(options);
+    });
+    const refreshSpy = vi.fn(async () => ({
+      status: "completed",
+      run_id: "product_category_pnl:unit1-date-disappeared",
+      job_name: "product_category_pnl",
+      trigger_mode: "sync-fallback",
+      cache_key: "product_category_pnl.formal",
+      month_count: 2,
+      report_dates: [replacementDate, "2026-01-31"],
+      rule_version: "rv_product_category_pnl_v1",
+      source_version: "sv_test",
+    }));
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: datesSpy,
+      getProductCategoryPnl: pnlSpy,
+      refreshProductCategoryPnl: refreshSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    expect(screen.getByTestId("product-category-report-date-slot")).toHaveTextContent(selectedDate);
+    expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
+      "href",
+      `/ledger-pnl?report_date=${selectedDate}`,
+    );
+
+    staleSelectedDateShouldFail = true;
+    await user.click(screen.getByTestId("product-category-refresh-button"));
+
+    await waitFor(() => expect(datesSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(
+        pnlSpy.mock.calls.some((call) => call[0]?.reportDate === selectedDate && call[0]?.view === "monthly"),
+      ).toBe(true);
+    });
+    expect(pnlSpy.mock.calls.some((call) => call[0]?.reportDate === replacementDate)).toBe(false);
+    expect(screen.getByTestId("product-category-report-date-slot")).toHaveTextContent(selectedDate);
+    expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
+      "href",
+      `/ledger-pnl?report_date=${selectedDate}`,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
+    });
+    expect(
+      screen
+        .getAllByRole("button")
+        .some((button) => button.textContent === "\u91cd\u8bd5" || button.textContent === "閲嶈瘯"),
+    ).toBe(true);
+  });
+
   it("shows report date choices as months while keeping month-end values for the API", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
@@ -403,7 +895,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-watchlist")).toBeInTheDocument();
   });
 
-  it("renders spread movement attribution from current and prior trend snapshots", async () => {
+  it("keeps spread movement attribution incomplete without backend spread fields", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     renderWorkbenchAppWithClient({
       ...baseClient,
@@ -413,7 +905,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         if (options.reportDate !== "2026-01-31") {
           return env;
         }
@@ -463,15 +955,14 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
+    await waitForTrendDiagnosticsAutoLoad();
     const spread = await screen.findByTestId("product-category-diagnostics-spread");
     await waitFor(() => {
-      expect(spread).toHaveTextContent("105bp");
+      expect(spread).toHaveTextContent("缺少完整收益率对比");
     });
     expect(spread).toHaveTextContent("2026年02月");
     expect(spread).toHaveTextContent("2026年01月");
-    expect(spread).toHaveTextContent("+13bp");
-    expect(spread).toHaveTextContent("+3bp");
-    expect(spread).toHaveTextContent("+10bp");
+    expect(spread).toHaveTextContent("后端未返回资产端或负债端收益率字段，无法展示利差归因。");
   });
 
   it("shows explicit diagnostics fallback copy when rows or spread inputs are incomplete", async () => {
@@ -484,7 +975,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const envelope = buildMockProductCategoryPnlEnvelope(options);
+        const envelope = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const assetTotal = { ...envelope.result.asset_total, weighted_yield: null };
         const liabilityTotal = {
           ...envelope.result.liability_total,
@@ -511,8 +1002,9 @@ describe("ProductCategoryPnlPage", () => {
       "当前 payload 未返回可诊断的产品行。",
     );
     expect(screen.getByTestId("product-category-diagnostics-spread-incomplete")).toHaveTextContent(
-      "当前资产端或负债端收益率缺失，无法计算当期利差。",
+      "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
     );
+    await waitForTrendDiagnosticsAutoLoad();
     const liabilityOption = readChartOption("product-category-liability-side-trend");
     expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年02月"] });
     expect(liabilityOption.series?.[0]?.data).toEqual([null]);
@@ -547,6 +1039,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-liability-side-detail-credit_linked_notes");
     const liabilityOption = readChartOption("product-category-liability-side-trend");
     expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年02月"] });
@@ -563,16 +1056,79 @@ describe("ProductCategoryPnlPage", () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     await screen.findByTestId("product-category-table");
-    expect(screen.getByTestId("product-category-derived-chart-tpl-scale-yield")).toBeInTheDocument();
+    expect(await screen.findByTestId("product-category-derived-chart-tpl-scale-yield")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-currency-net-income")).toBeInTheDocument();
     expect(
       screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toHaveTextContent(
+      "资产负债利差趋势图",
+    );
+    const existingInterestSpreadOption = readChartOption("product-category-derived-chart-interest-spread");
+    expect(existingInterestSpreadOption.legend?.data).toEqual([
+      "生息资产收益率（%）",
+      "负债端加权收益率（%）",
+      "生息资产利差（%）",
+    ]);
+    expect(existingInterestSpreadOption.series?.map((series) => series.name)).toEqual([
+      "生息资产收益率（%）",
+      "负债端加权收益率（%）",
+      "生息资产利差（%）",
+    ]);
+    expect(screen.getByTestId("product-category-derived-chart-interest-earning-spread")).toHaveTextContent(
+      "生息资产负债利差趋势图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-earning-asset-liability-scale")).toHaveTextContent(
+      "生息资产和附息负债走势图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-earning-spread-yoy")).toHaveTextContent(
+      "2年生息资产利差对比图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-earning-spread-yoy-cny")).toHaveTextContent(
+      "人民币口径2年生息资产利差对比图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toHaveTextContent(
+      "2年资产负债利差对比图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toHaveTextContent(
+      "人民币口径2年资产负债利差对比图",
+    );
     expect(screen.getByTestId("product-category-derived-chart-intermediate-business-income-yoy")).toBeInTheDocument();
-    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(8);
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
+    });
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("样本覆盖");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("等待下一期 2026-03-31 payload 验证");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("已回测");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最新月待观察");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("归因覆盖");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("回测闸口");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("样本不足");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补样本任务");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补 2 个月");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("需补月份：2026-03-31、2026-04-30");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最早复核：2026-04-30 后");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("复核工作量");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("规则处置");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收紧 3");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("回测校准建议");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收紧触发条件");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("低置信");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最新信号校准复核");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补样本后复核");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("P3 低样本复核");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("历史均值");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("当前证据");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("规模 1013.32 亿元");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("观察月份");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("观察口径");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("判定缺口");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("确认最新收益率改善证据");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("放行条件");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("未命中诊断");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收益率未改善");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
+    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(12);
   });
 
   it("builds chart series from bond_tpl, grand_total, interest_earning_assets, and liability_total fields", async () => {
@@ -585,7 +1141,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const withGrandTotal = {
           ...env,
           result: {
@@ -634,6 +1190,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-derived-chart-tpl-scale-yield");
 
     const tplOption = readChartOption("product-category-derived-chart-tpl-scale-yield");
@@ -684,20 +1241,72 @@ describe("ProductCategoryPnlPage", () => {
     expect(interestOption.series?.[0]?.data).toEqual([2800, 2898.5]);
     expect(interestOption.series?.[1]?.data).toEqual([1.2, 1.45]);
 
-    const spreadOption = readChartOption("product-category-derived-chart-interest-spread");
-    expect(spreadOption.legend?.data).toEqual([
-      "生息资产收益率（%）",
-      "负债端加权收益率（%）",
-      "生息资产利差（%）",
+    const interestEarningAssetLiabilityScaleOption = readChartOption(
+      "product-category-derived-chart-interest-earning-asset-liability-scale",
+    );
+    expect(interestEarningAssetLiabilityScaleOption.legend?.data).toEqual([
+      "生息资产日均额（亿元）",
+      "附息负债日均额（亿元）",
     ]);
-    expect(spreadOption.series?.map((series) => series.name)).toEqual([
-      "生息资产收益率（%）",
-      "负债端加权收益率（%）",
-      "生息资产利差（%）",
+    expect(interestEarningAssetLiabilityScaleOption.series?.map((series) => series.name)).toEqual([
+      "生息资产日均额（亿元）",
+      "附息负债日均额（亿元）",
     ]);
-    expect(spreadOption.series?.[0]?.data).toEqual([2.35, 2.4]);
-    expect(spreadOption.series?.[1]?.data).toEqual([1.58, 1.63]);
-    expect(spreadOption.series?.[2]?.data).toEqual([0.77, 0.77]);
+    expect(interestEarningAssetLiabilityScaleOption.series?.map((series) => series.type)).toEqual(["bar", "bar"]);
+    expect(interestEarningAssetLiabilityScaleOption.series?.[0]?.data).toEqual([2800, 2898.5]);
+    expect(interestEarningAssetLiabilityScaleOption.series?.[1]?.data).toEqual([1728.58, 1728.58]);
+    expect(interestEarningAssetLiabilityScaleOption.backgroundColor).toBe("transparent");
+    expect(interestEarningAssetLiabilityScaleOption.tooltip).toMatchObject({
+      backgroundColor: "rgba(255, 255, 255, 0.98)",
+      borderColor: "rgba(148, 163, 184, 0.34)",
+    });
+    expect(interestEarningAssetLiabilityScaleOption.legend).toMatchObject({
+      top: 4,
+      right: 8,
+      data: [
+        "生息资产日均额（亿元）",
+        "附息负债日均额（亿元）",
+      ],
+    });
+    expect(interestEarningAssetLiabilityScaleOption.grid).toMatchObject({
+      top: 46,
+      bottom: 18,
+      containLabel: true,
+    });
+    expect(interestEarningAssetLiabilityScaleOption.yAxis).toMatchObject({
+      name: "亿元",
+      scale: true,
+    });
+    expect(interestEarningAssetLiabilityScaleOption.series?.[0]).toMatchObject({
+      barMaxWidth: 12,
+      barMinHeight: 2,
+      barGap: "36%",
+      itemStyle: {
+        color: "rgba(71, 96, 128, 0.72)",
+        borderColor: "rgba(45, 67, 96, 0.34)",
+        borderRadius: [2, 2, 0, 0],
+      },
+    });
+    expect(interestEarningAssetLiabilityScaleOption.series?.[1]).toMatchObject({
+      barMaxWidth: 12,
+      barMinHeight: 2,
+      itemStyle: {
+        color: "rgba(166, 132, 81, 0.66)",
+        borderColor: "rgba(130, 87, 34, 0.3)",
+        borderRadius: [2, 2, 0, 0],
+      },
+    });
+
+    const interestEarningSpreadYoyOption = readChartOption(
+      "product-category-derived-chart-interest-earning-spread-yoy",
+    );
+    expect(interestEarningSpreadYoyOption.series?.map((series) => series.name)).toEqual([
+      "2026年",
+    ]);
+    expect(interestEarningSpreadYoyOption.series?.[0]?.data).toEqual([0.77, 0.77]);
+    expect(interestEarningSpreadYoyOption.series?.[0]?.label?.show).toBe(true);
+
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread")).not.toBeInTheDocument();
 
     const liabilityOption = readChartOption("product-category-liability-side-trend");
     expect(liabilityOption.legend?.data).toEqual([
@@ -730,7 +1339,40 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-liability-side-detail-credit_linked_notes")).toBeInTheDocument();
   });
 
-  it("renders a same-month two-year comparison chart for interest-earning asset spread", async () => {
+  it("places a mobile liability-side detail matrix readout before the raw detail matrix", async () => {
+    renderWorkbenchAppWithTwoMonthLiabilityTrend();
+
+    await waitForTrendDiagnosticsAutoLoad();
+    const rawMatrix = await screen.findByTestId("product-category-liability-side-detail-matrix");
+    const readout = screen.getByTestId("product-category-liability-side-detail-matrix-mobile-readout");
+
+    expect(readout.compareDocumentPosition(rawMatrix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(readout).toHaveTextContent("1728.58");
+    expect(readout).toHaveTextContent("1.63");
+    expect(readout).toHaveTextContent("+5bp");
+    expect(readout).toHaveTextContent("2");
+  });
+
+  it("places mobile liability-side currency readouts before each raw currency matrix", async () => {
+    renderWorkbenchAppWithTwoMonthLiabilityTrend();
+
+    await waitForTrendDiagnosticsAutoLoad();
+    const cnyMatrix = await screen.findByTestId("product-category-liability-side-currency-matrix-cny");
+    const foreignMatrix = screen.getByTestId("product-category-liability-side-currency-matrix-foreign");
+    const cnyReadout = screen.getByTestId("product-category-liability-side-currency-matrix-cny-mobile-readout");
+    const foreignReadout = screen.getByTestId(
+      "product-category-liability-side-currency-matrix-foreign-mobile-readout",
+    );
+
+    expect(cnyReadout.compareDocumentPosition(cnyMatrix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(foreignReadout.compareDocumentPosition(foreignMatrix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cnyReadout).toHaveTextContent("cny");
+    expect(cnyReadout).toHaveTextContent("1729.55");
+    expect(foreignReadout).toHaveTextContent("foreign");
+    expect(foreignReadout).toHaveTextContent("0.97");
+  });
+
+  it("does not render all-currency spread comparison without backend spread fields", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const ratesByDate: Record<string, { asset: string; liability: string }> = {
       "2025-01-31": { asset: "2.20", liability: "1.60" },
@@ -773,7 +1415,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = ratesByDate[options.reportDate] ?? { asset: "2.00", liability: "1.50" };
         return {
           ...env,
@@ -793,35 +1435,11 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await screen.findByTestId("product-category-derived-chart-interest-spread-yoy");
-    const comparisonOption = readChartOption("product-category-derived-chart-interest-spread-yoy");
-
-    expect(comparisonOption.xAxis).toMatchObject({
-      data: [
-        "\u0031\u6708",
-        "\u0032\u6708",
-        "\u0033\u6708",
-        "\u0034\u6708",
-        "\u0035\u6708",
-        "\u0036\u6708",
-        "\u0037\u6708",
-        "\u0038\u6708",
-        "\u0039\u6708",
-        "\u0031\u0030\u6708",
-        "\u0031\u0031\u6708",
-        "\u0031\u0032\u6708",
-      ],
-    });
-    expect(comparisonOption.legend?.data).toEqual(["\u0032\u0030\u0032\u0035\u5e74", "\u0032\u0030\u0032\u0036\u5e74"]);
-    expect(comparisonOption.series?.map((series) => series.data)).toEqual([
-      [0.6, 0.65, 0.7, 0.68, 0.69, 0.72, 0.71, 0.73, 0.74, 0.76, 0.78, 0.8],
-      [0.75, 0.8, 0.85, null, null, null, null, null, null, null, null, null],
-    ]);
-    expect(comparisonOption.series?.every((series) => series.label?.show)).toBe(true);
-    expect(comparisonOption.series?.map((series) => series.endLabel?.show)).toEqual([false, false]);
+    await waitForTrendDiagnosticsAutoLoad();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy")).not.toBeInTheDocument();
   });
 
-  it("renders a CNY-basis two-year comparison chart for interest-earning asset spread", async () => {
+  it("does not render CNY spread comparison without backend RMB spread fields", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const dateInputs: Record<string, { days: number; assetCny: number; liabilityCny: number }> = {
       "2025-01-31": { days: 31, assetCny: 2.2, liabilityCny: 1.5 },
@@ -864,7 +1482,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? { days: 31, assetCny: 2, liabilityCny: 1.5 };
         return {
           ...env,
@@ -875,7 +1493,7 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    cny_cash: fixtureCashAmount(100, rates.assetCny, rates.days),
                     weighted_yield: "9.99",
                   }
                 : row,
@@ -883,7 +1501,7 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              cny_cash: fixtureCashAmount(80, rates.liabilityCny, rates.days),
               weighted_yield: "1.00",
             },
           },
@@ -891,30 +1509,8 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await screen.findByTestId("product-category-derived-chart-interest-spread-yoy-cny");
-    const cnyOption = readChartOption("product-category-derived-chart-interest-spread-yoy-cny");
-
-    expect(cnyOption.xAxis).toMatchObject({
-      data: [
-        "\u0031\u6708",
-        "\u0032\u6708",
-        "\u0033\u6708",
-        "\u0034\u6708",
-        "\u0035\u6708",
-        "\u0036\u6708",
-        "\u0037\u6708",
-        "\u0038\u6708",
-        "\u0039\u6708",
-        "\u0031\u0030\u6708",
-        "\u0031\u0031\u6708",
-        "\u0031\u0032\u6708",
-      ],
-    });
-    expect(cnyOption.legend?.data).toEqual(["\u0032\u0030\u0032\u0035\u5e74", "\u0032\u0030\u0032\u0036\u5e74"]);
-    expect(cnyOption.series?.map((series) => series.data)).toEqual([
-      [0.7, 0.7, 0.7, 0.68, 0.69, 0.72, 0.71, 0.73, 0.74, 0.76, 0.78, 0.8],
-      [0.85, 0.85, 0.85, null, null, null, null, null, null, null, null, null],
-    ]);
+    await waitForTrendDiagnosticsAutoLoad();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
   });
 
   it("renders a two-year comparison chart for intermediate business income from the governed row only", async () => {
@@ -960,7 +1556,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const income = incomeByDate[options.reportDate];
         return {
           ...env,
@@ -988,6 +1584,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-derived-chart-intermediate-business-income-yoy");
     const incomeOption = readChartOption("product-category-derived-chart-intermediate-business-income-yoy");
 
@@ -1014,8 +1611,7 @@ describe("ProductCategoryPnlPage", () => {
     ]);
   });
 
-  it("links interest-spread attribution details to all-currency and RMB chart clicks", async () => {
-    const user = userEvent.setup();
+  it("keeps interest-spread attribution incomplete when backend spread fields are absent", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const dateInputs: Record<
       string,
@@ -1051,7 +1647,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
         return {
           ...env,
@@ -1062,7 +1658,7 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    cny_cash: fixtureCashAmount(100, rates.assetCny, rates.days),
                     weighted_yield: rates.asset,
                   }
                 : row,
@@ -1070,7 +1666,7 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              cny_cash: fixtureCashAmount(80, rates.liabilityCny, rates.days),
               weighted_yield: rates.liability,
             },
           },
@@ -1078,38 +1674,18 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
+    await waitForTrendDiagnosticsAutoLoad();
     const attribution = await screen.findByTestId("product-category-interest-spread-attribution");
     await waitFor(() => {
       expect(attribution).toHaveTextContent("\u5168\u53e3\u5f84");
       expect(attribution).toHaveTextContent("\u0033\u6708");
-      expect(attribution).toHaveTextContent("+15.0bp");
+      expect(attribution).toHaveTextContent("\u90e8\u5206\u6570\u636e\u4f7f\u7528\u56de\u9000\u503c");
     });
-
-    const allCurrencyChart = screen.getByTestId("product-category-derived-chart-interest-spread-yoy");
-    await user.click(within(allCurrencyChart).getByTestId("product-category-echarts-click-index-1"));
-    await waitFor(() => {
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u5168\u53e3\u5f84",
-      );
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u0032\u6708",
-      );
-    });
-
-    const cnyChart = screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny");
-    await user.click(within(cnyChart).getByTestId("product-category-echarts-click-index-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u4eba\u6c11\u5e01\u53e3\u5f84",
-      );
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u0033\u6708",
-      );
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent("+15.0bp");
-    });
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
   });
 
-  it("re-anchors the linked attribution month when the selected report date changes", async () => {
+  it("does not offer CNY linked attribution when backend RMB spread fields are absent", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
     const dateInputs: Record<
@@ -1129,7 +1705,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
         return {
           ...env,
@@ -1140,7 +1716,7 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    cny_cash: fixtureCashAmount(100, rates.assetCny, rates.days),
                     weighted_yield: rates.asset,
                   }
                 : row,
@@ -1148,7 +1724,7 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              cny_cash: fixtureCashAmount(80, rates.liabilityCny, rates.days),
               weighted_yield: rates.liability,
             },
           },
@@ -1156,27 +1732,23 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-interest-spread-attribution");
-    const cnyChart = await screen.findByTestId("product-category-derived-chart-interest-spread-yoy-cny");
-    await user.click(within(cnyChart).getByTestId("product-category-echarts-click-index-1"));
-    await waitFor(() => {
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u4eba\u6c11\u5e01\u53e3\u5f84",
-      );
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u0033\u6708",
-      );
-    });
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
 
     const monthSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
     await user.selectOptions(monthSelect, "2026-02-28");
+    await waitForTrendDiagnosticsAutoLoad();
 
     await waitFor(() => {
       expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u4eba\u6c11\u5e01\u53e3\u5f84",
+        "\u5168\u53e3\u5f84",
       );
       expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
         "\u0032\u6708",
+      );
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u90e8\u5206\u6570\u636e\u4f7f\u7528\u56de\u9000\u503c",
       );
     });
   });
@@ -1192,12 +1764,13 @@ describe("ProductCategoryPnlPage", () => {
       ),
     });
 
+    await waitForTrendDiagnosticsAutoLoad();
     const panel = await screen.findByTestId("product-category-interest-spread-attribution");
     expect(panel).toHaveTextContent("\u5f85\u8865\u6570");
     expect(panel).toHaveTextContent("\u7f3a\u5c11\u4e0a\u5e74\u540c\u6708\u6570\u636e");
   });
 
-  it("makes the interest spread trend visually prominent without clipping out-of-band values", async () => {
+  it("does not render an interest spread trend chart from asset and liability yields alone", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     renderWorkbenchAppWithClient({
       ...baseClient,
@@ -1207,7 +1780,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         if (options.reportDate !== "2026-01-31") {
           return {
             ...env,
@@ -1239,19 +1812,51 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await screen.findByTestId("product-category-derived-chart-interest-spread");
+    await waitForTrendDiagnosticsAutoLoad();
+    await waitFor(() => {
+      expect(screen.queryByTestId("product-category-derived-chart-interest-spread")).not.toBeInTheDocument();
+    });
+  });
 
-    const spreadOption = readChartOption("product-category-derived-chart-interest-spread");
-    expect(spreadOption.yAxis).toMatchObject({ scale: true });
-    const yAxis = Array.isArray(spreadOption.yAxis) ? spreadOption.yAxis[0] : spreadOption.yAxis;
-    const plottedValues = (spreadOption.series ?? []).flatMap((series) =>
-      Array.isArray(series.data) ? series.data.filter((value): value is number => typeof value === "number") : [],
-    );
-    expect(yAxis?.min).toBeLessThanOrEqual(Math.min(...plottedValues));
-    expect(yAxis?.max).toBeGreaterThanOrEqual(Math.max(...plottedValues));
-    expect(spreadOption.series?.map((series) => series.lineStyle?.width)).toEqual([4, 3.4, 4]);
-    expect(spreadOption.series?.map((series) => series.symbolSize)).toEqual([8, 7, 8]);
-    expect(spreadOption.series?.every((series) => series.endLabel?.show)).toBe(true);
+  it("does not render interest-earning spread comparison charts without backend interest-earning spread fields", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31", "2025-02-28", "2025-01-31"],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = withEmptyInterestEarningSpread(buildMockProductCategoryPnlEnvelope(options));
+        const interestSpread: ProductCategoryInterestSpreadPayload = {
+          all_currency_asset_yield_pct: { raw: "2.68", display: "2.68%", unit: "percent" },
+          all_currency_liability_yield_pct: { raw: "1.63", display: "1.63%", unit: "percent" },
+          all_currency_spread_pct: { raw: "1.05", display: "1.05%", unit: "percent" },
+          cny_asset_yield_pct: { raw: "2.64", display: "2.64%", unit: "percent" },
+          cny_liability_yield_pct: { raw: "1.62", display: "1.62%", unit: "percent" },
+          cny_spread_pct: { raw: "1.02", display: "1.02%", unit: "percent" },
+        };
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            rows: env.result.rows.map((row) =>
+              row.category_id === "interest_earning_assets"
+                ? { ...row, weighted_yield: "9.99" }
+                : row,
+            ),
+            interest_spread: interestSpread,
+          },
+        };
+      }),
+    });
+
+    await waitForTrendDiagnosticsAutoLoad();
+    expect(await screen.findByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
+    expect(await screen.findByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-earning-spread-yoy")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-earning-spread-yoy-cny")).not.toBeInTheDocument();
   });
 
   it("builds derived charts on 2025 quarter-end points, 2025 Nov-Dec, and 2026 Jan-Mar with one view basis", async () => {
@@ -1260,6 +1865,7 @@ describe("ProductCategoryPnlPage", () => {
     const getProductCategoryPnl = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
       buildMockProductCategoryPnlEnvelope(options),
     );
+    const getProductCategoryAttribution = vi.fn(baseClient.getProductCategoryAttribution);
     renderWorkbenchAppWithClient({
       ...baseClient,
       getProductCategoryDates: vi.fn(async () =>
@@ -1278,8 +1884,16 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl,
+      getProductCategoryAttribution,
     });
 
+    await screen.findByTestId("product-category-table");
+    await waitFor(() => {
+      expect(getProductCategoryPnl).toHaveBeenCalledWith({
+        reportDate: "2026-03-31",
+        view: "monthly",
+      });
+    });
     await screen.findByTestId("product-category-derived-chart-tpl-scale-yield");
     await waitFor(() => {
       const tplOption = readChartOption("product-category-derived-chart-tpl-scale-yield");
@@ -1320,10 +1934,37 @@ describe("ProductCategoryPnlPage", () => {
       "2026-01-31:monthly",
       "2026-02-28:monthly",
     ]);
+    await waitFor(() => {
+      expect(
+        getProductCategoryAttribution.mock.calls.filter((call) => call[0].reportDate !== "2026-03-31"),
+      ).toHaveLength(7);
+    });
+    const historyAttributionCalls = getProductCategoryAttribution.mock.calls
+      .map((call) => call[0])
+      .filter((options) => options.reportDate !== "2026-03-31")
+      .map((options) => `${options.reportDate}:${options.compare ?? "mom"}`)
+      .sort();
+    expect(historyAttributionCalls).toEqual([
+      "2025-03-31:mom",
+      "2025-06-30:mom",
+      "2025-09-30:mom",
+      "2025-11-30:mom",
+      "2025-12-31:mom",
+      "2026-01-31:mom",
+      "2026-02-28:mom",
+    ]);
 
     getProductCategoryPnl.mockClear();
+    getProductCategoryAttribution.mockClear();
     const viewButtons = within(screen.getByRole("group", { name: "视图模式" })).getAllByRole("button");
     await user.click(viewButtons[1]!);
+    await waitFor(() => {
+      expect(getProductCategoryPnl).toHaveBeenCalledWith({
+        reportDate: "2026-03-31",
+        view: "ytd",
+      });
+    });
+
     await waitFor(() => {
       expect(getProductCategoryPnl).toHaveBeenCalledTimes(9);
     });
@@ -1354,25 +1995,44 @@ describe("ProductCategoryPnlPage", () => {
           result: {
             ...env.result,
             available_views: ["monthly", "qtd", "ytd", "year_to_report_month_end"],
-            rows: env.result.rows.map((r) =>
-              r.category_id === "repo_assets"
-                ? {
-                    ...r,
-                    cnx_scale: "101000000",
-                    cny_scale: "102000000",
-                    foreign_scale: "103000000",
-                    cnx_cash: "104000000",
-                    cny_cash: "105000000",
-                    cny_ftp: "106000000",
-                    cny_net: "-107000000",
-                    foreign_cash: "108000000",
-                    foreign_ftp: "109000000",
-                    foreign_net: "-110000000",
-                    business_net_income: "111000000",
-                    weighted_yield: "2.345",
-                  }
-                : r,
-            ),
+            rows: env.result.rows.map((r) => {
+              if (r.category_id === "repo_assets") {
+                return {
+                  ...r,
+                  cnx_scale: "101000000",
+                  cny_scale: "102000000",
+                  foreign_scale: "103000000",
+                  cnx_cash: "104000000",
+                  cny_cash: "105000000",
+                  cny_ftp: "106000000",
+                  cny_net: "-107000000",
+                  foreign_cash: "108000000",
+                  foreign_ftp: "109000000",
+                  foreign_net: "-110000000",
+                  business_net_income: "111000000",
+                  weighted_yield: "2.345",
+                };
+              }
+              if (r.category_id === "interbank_deposits") {
+                return {
+                  ...r,
+                  category_name: "liability delta fixture",
+                  cnx_scale: "-57850000000",
+                  cny_scale: "-57906000000",
+                  foreign_scale: "56000000",
+                  cnx_cash: "-104000000",
+                  cny_cash: "-105000000",
+                  cny_ftp: "-106000000",
+                  cny_net: "-107000000",
+                  foreign_cash: "108000000",
+                  foreign_ftp: "109000000",
+                  foreign_net: "110000000",
+                  business_net_income: "-111000000",
+                  weighted_yield: "1.234",
+                };
+              }
+              return r;
+            }),
           },
         };
       }),
@@ -1398,6 +2058,23 @@ describe("ProductCategoryPnlPage", () => {
     ]);
 
     const viewGroup = screen.getByRole("group", { name: "视图模式" });
+    const liabilityRow = within(table).getByText("liability delta fixture").closest("tr");
+    expect(liabilityRow).toBeTruthy();
+    expect(within(liabilityRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "liability delta fixture",
+      "578.50",
+      "579.06",
+      "-0.56",
+      "1.04",
+      "1.05",
+      "1.06",
+      "1.07",
+      "-1.08",
+      "-1.09",
+      "-1.10",
+      "1.11",
+      "1.23",
+    ]);
     expect(within(viewGroup).getAllByRole("button")).toHaveLength(2);
     expect(within(viewGroup).queryByText("qtd")).not.toBeInTheDocument();
     expect(within(viewGroup).queryByText("year_to_report_month_end")).not.toBeInTheDocument();
@@ -1491,8 +2168,8 @@ describe("ProductCategoryPnlPage", () => {
     denyBaselinePnl = true;
     await user.click(screen.getByTestId("product-category-refresh-button"));
 
-    const formalTableTitle = await screen.findByText("产品类别损益分析表（单位：亿元）");
-    const formalSection = formalTableTitle.closest("section");
+    const formalLead = await screen.findByTestId("product-category-formal-table-lead");
+    const formalSection = formalLead.nextElementSibling as HTMLElement | null;
     expect(formalSection).toBeTruthy();
 
     await waitFor(() => {
@@ -1532,7 +2209,7 @@ describe("ProductCategoryPnlPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：1.60%");
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
-        "scenario",
+        "场景覆盖",
       );
     });
   });
@@ -1598,7 +2275,7 @@ describe("ProductCategoryPnlPage", () => {
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.00");
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("0.52");
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
-        "scenario",
+        "场景覆盖",
       );
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
         "是",
@@ -1629,6 +2306,18 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     await screen.findByTestId("product-category-table");
+    expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
+      "quality=warning",
+    );
+    expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
+      "vendor=vendor_stale",
+    );
+    expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
+      "fallback=latest_snapshot",
+    );
+    expect(screen.getByTestId("product-category-formal-readiness-band")).toHaveTextContent(
+      "data-state-review-required",
+    );
     expect(screen.getByTestId("product-category-governance-notice-fallback_mode")).toHaveTextContent(
       "最新快照降级",
     );
@@ -2019,6 +2708,7 @@ describe("ProductCategoryPnlPage", () => {
   it("shows adjustment summary on the main page and keeps full timeline in audit view", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
+    const confirmSpy = vi.spyOn(window, "confirm");
     const listSpy = vi.fn(async () => ({
       report_date: "2026-02-28",
       adjustment_count: 1,
@@ -2095,27 +2785,127 @@ describe("ProductCategoryPnlPage", () => {
       source_version: "sv_test",
     }));
 
+    try {
+      renderWorkbenchAppWithClient({
+        ...baseClient,
+        getProductCategoryManualAdjustments: listSpy,
+        revokeProductCategoryManualAdjustment: revokeSpy,
+        refreshProductCategoryPnl: refreshSpy,
+      });
+
+      await screen.findByTestId("product-category-adjustment-history");
+      expect(screen.queryByTestId("product-category-event-pca-existing-1-edited")).not.toBeInTheDocument();
+      expect(screen.getByTestId("product-category-adjustment-history")).toHaveTextContent("2");
+      expect(screen.getByTestId("product-category-audit-link")).toHaveAttribute(
+        "href",
+        "/product-category-pnl/audit",
+      );
+
+      const revokeButton = screen.getByTestId("product-category-revoke-pca-existing-1");
+      confirmSpy.mockReturnValueOnce(false);
+      await user.click(revokeButton);
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(revokeSpy).not.toHaveBeenCalled();
+      expect(refreshSpy).not.toHaveBeenCalled();
+
+      confirmSpy.mockReturnValueOnce(true);
+      await user.click(revokeButton);
+
+      await waitFor(() => {
+        expect(revokeSpy).toHaveBeenCalledWith("pca-existing-1");
+        expect(refreshSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(confirmSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it("Unit 5: main adjustment summary refetch failure hides stale rows and keeps retry available", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const staleMarker = "unit5-main-stale-adjustment";
+    let denyAdjustments = false;
+    const listSpy = vi.fn(async () => {
+      if (denyAdjustments) {
+        throw new Error("unit5-main-adjustment-refetch-failed");
+      }
+      return {
+        report_date: "2026-02-28",
+        adjustment_count: 1,
+        adjustment_limit: 20,
+        adjustment_offset: 0,
+        event_total: 1,
+        event_limit: 20,
+        event_offset: 0,
+        adjustments: [
+          {
+            adjustment_id: "pca-main-stale-1",
+            created_at: "2026-04-10T09:30:00Z",
+            stream: "product_category_pnl_adjustments",
+            report_date: "2026-02-28",
+            operator: "DELTA",
+            approval_status: "approved",
+            account_code: "51402010001",
+            currency: "CNX",
+            account_name: staleMarker,
+            event_type: "edited",
+            monthly_pnl: "6",
+          },
+        ],
+        events: [
+          {
+            adjustment_id: "pca-main-stale-1",
+            created_at: "2026-04-10T09:35:00Z",
+            stream: "product_category_pnl_adjustments",
+            report_date: "2026-02-28",
+            operator: "DELTA",
+            approval_status: "approved",
+            account_code: "51402010001",
+            currency: "CNX",
+            account_name: staleMarker,
+            event_type: "edited",
+            monthly_pnl: "6",
+          },
+        ],
+      };
+    });
+    const refreshSpy = vi.fn(async () => ({
+      status: "completed",
+      run_id: "product_category_pnl:unit5-main-adjustment-error",
+      job_name: "product_category_pnl",
+      trigger_mode: "sync-fallback",
+      cache_key: "product_category_pnl.formal",
+      month_count: 2,
+      report_dates: ["2026-01-31", "2026-02-28"],
+      rule_version: "rv_product_category_pnl_v1",
+      source_version: "sv_test",
+    }));
+
     renderWorkbenchAppWithClient({
       ...baseClient,
       getProductCategoryManualAdjustments: listSpy,
-      revokeProductCategoryManualAdjustment: revokeSpy,
       refreshProductCategoryPnl: refreshSpy,
     });
 
-    await screen.findByTestId("product-category-adjustment-history");
-    expect(screen.queryByTestId("product-category-event-pca-existing-1-edited")).not.toBeInTheDocument();
-    expect(screen.getByTestId("product-category-adjustment-history")).toHaveTextContent("2");
-    expect(screen.getByTestId("product-category-audit-link")).toHaveAttribute(
-      "href",
-      "/product-category-pnl/audit",
-    );
+    const history = await screen.findByTestId("product-category-adjustment-history");
+    expect(within(history).getByText(staleMarker)).toBeInTheDocument();
 
-    await user.click(screen.getByTestId("product-category-revoke-pca-existing-1"));
+    denyAdjustments = true;
+    await user.click(screen.getByTestId("product-category-refresh-button"));
+
+    const adjustmentLead = await screen.findByTestId("product-category-adjustment-lead");
+    const adjustmentSection = adjustmentLead.nextElementSibling as HTMLElement | null;
+    expect(adjustmentSection).toBeTruthy();
 
     await waitFor(() => {
-      expect(revokeSpy).toHaveBeenCalledWith("pca-existing-1");
-      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(within(adjustmentSection!).getByText("数据载入失败。")).toBeInTheDocument();
     });
+    expect(within(adjustmentSection!).getByRole("button", { name: "重试" })).toBeInTheDocument();
+    expect(within(adjustmentSection!).queryByTestId("product-category-adjustment-history")).not.toBeInTheDocument();
+    expect(screen.queryByText(staleMarker)).not.toBeInTheDocument();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("edits and restores a rejected adjustment", async () => {

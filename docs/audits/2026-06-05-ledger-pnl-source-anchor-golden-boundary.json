@@ -1,0 +1,226 @@
+{
+  "page_slug": "ledger-pnl",
+  "page_id": "PAGE-LEDGER-PNL-001",
+  "generated_at": "2026-06-05T21:30:49.1988807+08:00",
+  "generated_by": "Codex Task 3 source-anchor and golden-sample boundary review",
+  "purpose": "Record the Ledger PnL Gate I source-anchor, grain, key, metric, and golden-sample boundaries without approving page closure or formal use.",
+  "evidence_scope": {
+    "writes_governance_records": false,
+    "checks_record_existence": false,
+    "validates_required_fields": false,
+    "proves_page_execution": false,
+    "approves_metric_or_page": false,
+    "approves_formal_use": false,
+    "captures_business_owner_approval": false,
+    "records_boundary_evidence": true
+  },
+  "dataset_grain": {
+    "summary_grain": "one ledger summary per report_date and currency filter",
+    "detail_grain": "ledger account rows for the selected report_date and currency filter",
+    "natural_key": [
+      "page_id",
+      "primary_api",
+      "report_date",
+      "basis",
+      "source_surface",
+      "currency_or_ALL"
+    ],
+    "execution_identifier": "cache_key",
+    "current_summary_cache_key": "ledger_pnl.summary:2026-05-31:ALL",
+    "date_basis": "ledger_report_date"
+  },
+  "page_contract_boundary": {
+    "source": "docs/page_contracts.md section 14.0 PAGE-LEDGER-PNL-001",
+    "primary_business_question": "what does the ledger/QDB analytical read chain show for the selected report date, and which formal financial indicators are still pending source confirmation?",
+    "must_keep_separate": [
+      "ledger/QDB analytics",
+      "formal financial indicator truth",
+      "formal PnL",
+      "product-category PnL",
+      "PnL bridge"
+    ],
+    "formal_indicator_rule": "formal indicator source-contract values must stay value=null and formal_use_allowed=false until a governed production source and release evidence exist"
+  },
+  "candidate_metric_bindings": [
+    {
+      "metric_id": "MTR-LPN-001",
+      "display_name": "core ledger PnL",
+      "payload_field": "LedgerPnlSummaryPayload.ledger_monthly_pnl_core",
+      "source_endpoint": "GET /api/ledger-pnl/summary",
+      "display_unit": "yi yuan",
+      "precision": 2,
+      "status": "candidate",
+      "pending_confirmation": true,
+      "bound_page_id": "PAGE-LEDGER-PNL-001",
+      "bound_sample_id": "none"
+    },
+    {
+      "metric_id": "MTR-LPN-002",
+      "display_name": "all ledger PnL",
+      "payload_field": "LedgerPnlSummaryPayload.ledger_monthly_pnl_all",
+      "source_endpoint": "GET /api/ledger-pnl/summary",
+      "display_unit": "yi yuan",
+      "precision": 2,
+      "status": "candidate",
+      "pending_confirmation": true,
+      "bound_page_id": "PAGE-LEDGER-PNL-001",
+      "bound_sample_id": "none"
+    },
+    {
+      "metric_id": "MTR-LPN-003",
+      "display_name": "ledger net assets",
+      "payload_field": "LedgerPnlSummaryPayload.ledger_net_assets",
+      "source_endpoint": "GET /api/ledger-pnl/summary",
+      "display_unit": "yi yuan",
+      "precision": 2,
+      "status": "candidate",
+      "pending_confirmation": true,
+      "bound_page_id": "PAGE-LEDGER-PNL-001",
+      "bound_sample_id": "none"
+    }
+  ],
+  "source_anchor_status": [
+    {
+      "table_name": "qdb_general_ledger_workbook",
+      "configured_anchor": true,
+      "result_meta_tables_used": true,
+      "catalog_status": "unknown_table",
+      "date_column": null,
+      "available_dates": [],
+      "risk": "The current result_meta and governance candidate cite this workbook anchor, but data-catalog evidence cannot describe it as a DuckDB table."
+    },
+    {
+      "table_name": "ledger_import_batch",
+      "configured_anchor": true,
+      "result_meta_tables_used": false,
+      "catalog_status": "present",
+      "date_column": "as_of_date",
+      "available_dates": [
+        "2026-03-31",
+        "2026-03-17",
+        "2026-03-14",
+        "2026-03-12",
+        "2026-03-11"
+      ],
+      "risk": "Catalog/date evidence exists, but the current summary candidate uses qdb_general_ledger_workbook only."
+    },
+    {
+      "table_name": "ledger_raw_row",
+      "configured_anchor": true,
+      "result_meta_tables_used": false,
+      "catalog_status": "present_no_date_column",
+      "date_column": null,
+      "available_dates": [],
+      "risk": "The table exists but has no date column sampled by the catalog evidence, so it cannot by itself prove report_date freshness."
+    }
+  ],
+  "current_direct_record_candidate": {
+    "source_artifact": "docs/audits/2026-06-05-ledger-pnl-gate-i-direct-record-preflight-candidate.json",
+    "report_date": "2026-05-31",
+    "basis": "ledger",
+    "source_surface": "ledger_pnl.summary",
+    "tables_used": [
+      "qdb_general_ledger_workbook"
+    ],
+    "source_version": "sv_product_category_3353b116b9a6",
+    "rule_version": "rv_ledger_pnl_v1",
+    "cache_version": "cv_ledger_pnl_v1",
+    "cache_key": "ledger_pnl.summary:2026-05-31:ALL",
+    "formal_use_allowed": false,
+    "preflight_status": "ready_for_audit_review",
+    "record_write_status": "not_written"
+  },
+  "implementation_evidence": {
+    "backend_service": "backend/app/services/ledger_pnl_service.py",
+    "cache_key_function": "_ledger_pnl_cache_key(result_kind, report_date, currency) -> result_kind:report_date:currency_or_ALL",
+    "summary_envelope": "ledger_pnl_summary_envelope builds result_meta with basis=ledger, result_kind=ledger_pnl.summary, cache_key, tables_used=[qdb_general_ledger_workbook], date_basis=ledger_report_date, and formal_use_allowed=false",
+    "frontend_page": "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.tsx",
+    "frontend_contract": "summary cards display MTR-LPN-001 through MTR-LPN-003 with pending_confirmation=true and result_meta context"
+  },
+  "test_evidence": [
+    {
+      "path": "tests/test_ledger_pnl_service.py",
+      "coverage": [
+        "summary numeric fields",
+        "basis=ledger",
+        "formal_use_allowed=false",
+        "result_kind=ledger_pnl.summary",
+        "tables_used=[qdb_general_ledger_workbook]",
+        "cache_key=ledger_pnl.summary:YYYY-MM-DD:CURRENCY_OR_ALL",
+        "missing source warning behavior"
+      ]
+    },
+    {
+      "path": "tests/test_result_meta_required.py",
+      "coverage": [
+        "ResultMeta schema includes cache_key",
+        "ResultMeta accepts stable ledger cache key strings"
+      ]
+    },
+    {
+      "path": "frontend/src/test/LedgerPnlPage.test.tsx",
+      "coverage": [
+        "ledger summary and detail metadata are non-formal ledger basis",
+        "summary cards surface MTR-LPN candidate markers",
+        "formal financial indicator source-contract values remain pending/null",
+        "currency residual judgments are gated when metadata is not comparable"
+      ]
+    },
+    {
+      "path": "tests/test_ledger_pnl_business_owner_approval_status.py",
+      "coverage": [
+        "business-owner approval remains pending by default",
+        "strict approval mode blocks missing approval",
+        "formal_use_allowed and closure_approved promotion attempts are rejected"
+      ]
+    }
+  ],
+  "golden_sample_boundary": {
+    "dedicated_summary_golden_sample": "missing",
+    "metric_dictionary_bound_sample_id": "none",
+    "metric_contract_golden_samples": [],
+    "formal_indicator_fixture": "GS-LEDGER-PNL-FIN-IND-202603-B",
+    "formal_indicator_fixture_scope": "formal financial indicator source-contract fixture only; it does not approve ledger summary metrics or system values for formal use",
+    "required_before_formal_promotion": [
+      "capture-ready ledger summary golden sample for MTR-LPN-001 through MTR-LPN-003",
+      "written direct PAGE/API governance record",
+      "supporting source-table/result-kind lineage",
+      "manual audit review",
+      "business-owner approval",
+      "closure_approved=true evidence"
+    ]
+  },
+  "finance_data_quality_checks": {
+    "completeness": "incomplete because the direct governance record is not written and qdb_general_ledger_workbook is unknown to catalog evidence",
+    "uniqueness_and_grain": "candidate grain is defined by report_date and currency_or_ALL, but no written record exists to enforce one audited record per key",
+    "validity": "result_meta carries report_date, date_basis, cache_key, source_version, rule_version, and formal_use_allowed=false; catalog freshness is incomplete for configured anchors",
+    "consistency": "frontend must consume backend summary values and must not recompute totals; formal financial indicator values stay separate and null until approved",
+    "timeliness": "ledger_import_batch has sampled as_of_date values; ledger_raw_row has no sampled date column; qdb_general_ledger_workbook is unknown_table",
+    "reconciliation": "no dedicated summary golden sample exists, so MTR-LPN-001 through MTR-LPN-003 cannot be certified from current evidence"
+  },
+  "retained_boundaries": [
+    "Keep PAGE-LEDGER-PNL-001 as evidence-pending.",
+    "Keep MTR-LPN-001 through MTR-LPN-003 as candidate metrics with pending_confirmation=true.",
+    "Keep formal_use_allowed=false.",
+    "Keep closure_approved=false.",
+    "Do not use ledger summary cards to replace formal PnL, product-category PnL, PnL bridge, or formal financial indicator truth.",
+    "Do not write governance records from this artifact.",
+    "Do not treat the dry-run preflight as page certification."
+  ],
+  "next_actions": [
+    "Create or locate a written direct PAGE/API governance record through the approved governance workflow.",
+    "Add or locate supporting lineage for qdb_general_ledger_workbook, ledger_import_batch, and ledger_raw_row where evidence exists.",
+    "Resolve the qdb_general_ledger_workbook unknown_table catalog finding or document the non-DuckDB source basis explicitly.",
+    "Create a dedicated ledger summary golden sample before any MTR-LPN formal promotion.",
+    "Rerun validate_page_governance_records after any approved write.",
+    "Complete manual audit review and business-owner approval before closure."
+  ],
+  "non_approvals": [
+    "This artifact does not certify PAGE-LEDGER-PNL-001.",
+    "This artifact does not approve MTR-LPN-001 through MTR-LPN-003.",
+    "This artifact does not write a governance record.",
+    "This artifact does not prove live page/API execution completeness.",
+    "This artifact does not capture business-owner approval.",
+    "This artifact does not grant formal use."
+  ]
+}

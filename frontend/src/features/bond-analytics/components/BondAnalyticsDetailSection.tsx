@@ -27,6 +27,11 @@ const KRDCurveRiskView = lazy(() =>
     default: module.KRDCurveRiskView,
   })),
 );
+const DV01RiskView = lazy(() =>
+  import("./DV01RiskView").then((module) => ({
+    default: module.DV01RiskView,
+  })),
+);
 const CreditSpreadView = lazy(() =>
   import("./CreditSpreadView").then((module) => ({
     default: module.CreditSpreadView,
@@ -57,6 +62,7 @@ const TAB_ITEMS: Array<{ key: BondAnalyticsModuleKey; label: string }> = [
   { key: "return-decomposition", label: "收益分解" },
   { key: "benchmark-excess", label: "基准超额" },
   { key: "krd-curve-risk", label: "KRD 曲线风险" },
+  { key: "dv01-risk", label: "DV01 风险" },
   { key: "credit-spread", label: "信用利差" },
   { key: "portfolio-headlines", label: "组合头条" },
   { key: "top-holdings", label: "重仓券" },
@@ -106,6 +112,10 @@ function renderActiveModule(
 
   if (activeTab === "krd-curve-risk") {
     return <KRDCurveRiskView reportDate={reportDate} scenarioSet={scenarioSet} />;
+  }
+
+  if (activeTab === "dv01-risk") {
+    return <DV01RiskView reportDate={reportDate} />;
   }
 
   if (activeTab === "credit-spread") {

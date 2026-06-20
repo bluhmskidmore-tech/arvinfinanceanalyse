@@ -1,5 +1,6 @@
-import pytest
 import builtins
+
+import pytest
 
 from tests.helpers import load_module
 

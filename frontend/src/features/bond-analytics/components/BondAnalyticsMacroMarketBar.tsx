@@ -26,9 +26,9 @@ const emptyStyle: CSSProperties = {
   ...wrapStyle,
   borderStyle: "dashed",
   color: c.neutral[500],
-  fontSize: dt.fontSize[13],
-  textAlign: "center",
-  padding: dt.space[4],
+  fontSize: dt.fontSize[12],
+  textAlign: "left",
+  padding: "5px 10px",
 };
 
 export function BondAnalyticsMacroMarketBar() {
@@ -43,7 +43,7 @@ export function BondAnalyticsMacroMarketBar() {
   if (q.isPending) {
     return (
       <div style={wrapStyle} data-testid="bond-analytics-macro-bar-loading">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: dt.space[2], minHeight: 56 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: dt.space[2], minHeight: 24 }}>
           <Spin size="small" />
           <span style={{ color: c.neutral[600], fontSize: dt.fontSize[12] }}>加载宏观序列…</span>
         </div>

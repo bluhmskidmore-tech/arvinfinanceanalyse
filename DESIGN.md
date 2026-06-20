@@ -71,6 +71,7 @@
 
 - **Single source of numeric scales:** `frontend/src/theme/designSystem.ts`；域内可扩展（如 `bondAnalyticsCockpitTokens`）但需与本文件**语义一致**。
 - **Formal metrics:** 展示仅消费后端或已约定 adapter 输出，前端不自行推导正式金融指标（与 `AGENTS.md` / `CLAUDE.md` 一致）。
+- **全站版式（opt-in）：** 页面解剖、栅格与状态面等见 [`docs/frontend-layout-contract.md`](docs/frontend-layout-contract.md)。未在本文「Page: …」中**锁定区块顺序**的页面以该契约为默认骨架；已锁定页（如本节债券分析首页）仍以**本文顺序与层次**为准。
 
 ## Decisions Log
 
@@ -78,4 +79,4 @@
 |------|----------|-----------|
 | 2026-04-27 | 引入根目录 DESIGN.md，债券分析页以提供之完稿为权威 ±5% | 用户选择参考图为唯一视觉稿，统一协作与实现验收 |
 | 2026-04-27 | 延续系统字体栈，不强制外联展示字体 | 与现有 `designSystem` 一致，减少内网与加载变量 |
-| 2026-04-27 | 配色与「总览工作台」对齐：`primary[600]` #1850a1、success/warning/danger/info 与 neutral 底/字色按完稿重标；壳层 surface/canvas 改为白底 | 用户指定总览为配色参考，单一 token 源便于全站一致 |
+| 2026-05-29 | 经营驾驶舱首页改为「分层卡片 + 更大留白」视觉方向：一级白底柔阴影、二级浅底无边框；Hero 仅保留今日判断渐变；间距统一 8/12/16/24 | 用户授权较大视觉改动，解决格子套格子拥挤感，不影响业务区块与数据口径 |

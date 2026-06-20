@@ -298,13 +298,13 @@
   - `not_applicable`
 - 输出必须保持为 lineage-aware pass/fail evidence，不得产出分析指标、read model 或 materialized target 描述。
 
-### 3.6F Liability Analytics Compatibility Reserved-Surface Contract
+### 3.6F Liability Analytics Compatibility Live-Surface Contract
 
-- `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 当前属于 repo-wide `Phase 2` 明确排除面。
-- 上述 public routes 当前必须显式 `503 fail-closed` / `reserved surface`，不得冒充当前已晋升 analytical consumer surface。
-- 上述 public routes 当前不得返回 `{ result_meta, result }` envelope；reserved 状态下不得伪装为已纳入 governed 或 analytical rollout。
+- `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 当前为已开放 analytical compatibility surface。
+- 上述 public routes 必须返回 `{ result_meta, result }` envelope，并保持 `basis=analytical` 等 compatibility 语义。
+- 上述 public routes 不得被误写为 formal balance/PnL truth；页面与文档必须保留 mixed-source / compat 边界。
 - `report_date` 与 `year` 等基础参数校验仍可保留；参数非法时允许继续返回 `422`。
-- `backend/app/core_finance/liability_analytics_compat.py` 的兼容实现与单测资产可继续保留，但不得因此误写为当前 active public rollout。
+- `backend/app/core_finance/liability_analytics_compat.py` 的兼容实现与单测资产可继续保留，但不得因此误写为 formal read model。
 
 本轮对应测试文件：
 - `tests/test_liability_analytics_api.py`
@@ -312,10 +312,10 @@
 
 ## 4. Phase 3：分析深钻验收
 
-### 4.1 cube query（future / excluded surface）
-- 当前 repo-wide `Phase 2` 边界下，`/api/cube/query` 与 `/api/cube/dimensions/*` 仍属明确排除面。
-- 当前 public route contract 应为显式 `503 reserved surface`，而不是 current governed rollout。
-- 下列能力要求仅作为未来阶段验收目标保留，不构成当前 active cutover 验收：
+### 4.1 cube query（controlled query surface）
+- 当前 repo-wide 边界下，`/api/cube/query` 与 `/api/cube/dimensions/*` 已开放为受控 query surface。
+- 当前 public route contract 应返回后端 query result 与 `result_meta`；formal 语义只按已覆盖事实表与测试样本声明。
+- 下列能力要求作为当前与后续阶段验收目标保留：
 - 支持 `dimensions`
 - 支持 `measures`
 - 支持 `filters`

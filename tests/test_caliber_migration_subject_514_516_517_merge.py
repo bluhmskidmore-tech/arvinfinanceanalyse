@@ -7,10 +7,12 @@ from typing import get_args
 
 import pytest
 
-from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCOUNT_PREFIXES
+from backend.app.core_finance.config.classification_rules import (
+    LEDGER_PNL_ACCOUNT_PREFIXES,
+)
 from backend.app.core_finance.pnl import (
-    JournalType,
     SIGN_FLIP_JOURNAL_TYPES,
+    JournalType,
     _normalize_nonstd_signed_amount,
 )
 from backend.app.tasks.pnl_materialize import ALLOWED_NONSTD_JOURNAL_TYPES

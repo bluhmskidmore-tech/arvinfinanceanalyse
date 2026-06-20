@@ -2,10 +2,9 @@ import os
 import sys
 
 import dramatiq
+from backend.app.governance.settings import get_settings
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq.brokers.stub import StubBroker
-
-from backend.app.governance.settings import get_settings
 
 broker: StubBroker | RedisBroker | None = None
 DEFAULT_MAX_RETRIES = 20

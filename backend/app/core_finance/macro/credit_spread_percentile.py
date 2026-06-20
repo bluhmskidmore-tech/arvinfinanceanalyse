@@ -6,9 +6,10 @@ M16: 信用利差历史分位（纯函数，自 V1 macro_analysis.credit_spread_
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any
 
 from app.core_finance.macro.helpers import build_curve_history
 
@@ -105,7 +106,7 @@ def compute_credit_spread_percentile(
 
     today_snap = history_wide[0] if history_wide else {}
     rows_1y_snaps = [
-        h for h, d in zip(history_wide, dates_used) if d >= cutoff_1y
+        h for h, d in zip(history_wide, dates_used, strict=False) if d >= cutoff_1y
     ][: _M16_LOOKBACK_DAYS_1Y]
 
     spreads_out: list[dict[str, Any]] = []

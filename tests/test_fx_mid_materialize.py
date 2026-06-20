@@ -194,6 +194,54 @@ def test_fx_mid_materialize_populates_duckdb_from_csv_override(tmp_path):
     ]
 
 
+def test_fx_mid_materialize_holds_global_duckdb_writer_lock(tmp_path, monkeypatch):
+    fx_mod = _load_fx_task_module()
+    materialize_mod = load_module(
+        "backend.app.tasks.materialize",
+        "backend/app/tasks/materialize.py",
+    )
+    locks_mod = load_module(
+        "backend.app.governance.locks",
+        "backend/app/governance/locks.py",
+    )
+
+    csv_path = tmp_path / "fx_mid.csv"
+    duckdb_path = tmp_path / "moss.duckdb"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2026-02-27,USD,CNY,7.24,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    writer_lock = materialize_mod.resolve_materialize_lock(duckdb_path)
+    observed = {"contention_checked": False}
+    original_replace = fx_mod._replace_fx_mid_rows
+
+    def replace_under_lock(*args, **kwargs):
+        with pytest.raises(TimeoutError):
+            with locks_mod.acquire_lock(
+                writer_lock,
+                base_dir=duckdb_path.parent,
+                timeout_seconds=0.01,
+            ):
+                pass
+        observed["contention_checked"] = True
+        return original_replace(*args, **kwargs)
+
+    monkeypatch.setattr(fx_mod, "_replace_fx_mid_rows", replace_under_lock)
+
+    payload = fx_mod.materialize_fx_mid_rows.fn(
+        csv_path=str(csv_path),
+        duckdb_path=str(duckdb_path),
+    )
+
+    assert payload["status"] == "completed"
+    assert observed["contention_checked"] is True
+
+
 def test_resolve_fx_mid_csv_path_returns_none_without_explicit_override(tmp_path):
     fx_mod = _load_fx_task_module()
 

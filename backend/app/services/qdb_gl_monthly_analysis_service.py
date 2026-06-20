@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-from pathlib import Path
-from typing import Any
-from datetime import datetime, timezone
-from uuid import uuid4
 import csv
+from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from io import StringIO
+from pathlib import Path
+from typing import Any, NamedTuple
+from uuid import uuid4
 
-from backend.app.repositories.governance_repo import (
-    CACHE_BUILD_RUN_STREAM,
-    GovernanceRepository,
-)
-from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.core_finance.qdb_gl_monthly_analysis import (
     build_qdb_gl_monthly_analysis_workbook,
     export_qdb_gl_monthly_analysis_workbook_xlsx_bytes,
@@ -20,6 +15,12 @@ from backend.app.core_finance.qdb_gl_monthly_analysis import (
     parse_daily_avg,
     parse_general_ledger,
 )
+from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
+from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_formal_result_envelope,
@@ -29,12 +30,26 @@ from backend.app.services.qdb_gl_input_validation_service import (
     validate_qdb_gl_baseline_source,
 )
 
-
 RULE_VERSION = "rv_qdb_gl_monthly_analysis_v1"
 CACHE_VERSION = "cv_qdb_gl_monthly_analysis_v1"
 JOB_NAME = "qdb_gl_monthly_analysis"
 LOCK_KEY = "lock:duckdb:qdb-gl-monthly-analysis"
+CACHE_KEY = "qdb_gl_monthly_analysis.analytical"
+FAILED_SOURCE_VERSION = "sv_qdb_gl_monthly_analysis_failed"
 ADJUSTMENT_STREAM = "monthly_operating_analysis_adjustments"
+REFRESH_LOCK_TIMEOUT_SECONDS = 30.0
+QDB_SOURCE_TABLE_BY_KIND = {
+    "average_balance": "qdb_gl_average_balance_workbook",
+    "ledger_reconciliation": "qdb_gl_ledger_reconciliation_workbook",
+}
+
+
+class _ResolvedMonthPair(NamedTuple):
+    avg_path: Path
+    ledger_path: Path
+    source_version: str
+    tables_used: list[str]
+    evidence_rows: int
 
 
 def qdb_gl_monthly_analysis_dates_envelope(*, source_dir: str | Path) -> dict[str, object]:
@@ -55,10 +70,14 @@ def qdb_gl_monthly_analysis_workbook_envelope(
     governance_dir: str | Path | None = None,
     report_month: str,
 ) -> dict[str, object]:
-    workbook_payload, source_version = _rebuild_workbook_payload(
+    workbook_payload, source_version, tables_used, evidence_rows, comparison_months = _rebuild_workbook_payload(
         source_dir=source_dir,
         governance_dir=governance_dir,
         report_month=report_month,
+    )
+    resolved_report_month = _require_matching_workbook_report_month(
+        workbook_payload=workbook_payload,
+        requested_report_month=report_month,
     )
     meta = build_analytical_result_meta(
         trace_id=f"tr_qdb_gl_monthly_analysis_workbook_{report_month}",
@@ -66,6 +85,15 @@ def qdb_gl_monthly_analysis_workbook_envelope(
         cache_version=CACHE_VERSION,
         source_version=source_version,
         rule_version=RULE_VERSION,
+        filters_applied=_monthly_analysis_filters(
+            report_month=report_month,
+            comparison_months=comparison_months,
+        ),
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        requested_report_date=report_month,
+        resolved_report_date=resolved_report_month,
+        date_basis="qdb_gl_monthly_analysis_report_month",
     )
     return build_formal_result_envelope(result_meta=meta, result_payload=workbook_payload)
 
@@ -92,11 +120,15 @@ def qdb_gl_monthly_analysis_scenario_envelope(
     scenario_name: str,
     threshold_overrides: dict[str, int | float] | None = None,
 ) -> dict[str, object]:
-    workbook_payload, source_version = _rebuild_workbook_payload(
+    workbook_payload, source_version, tables_used, evidence_rows, comparison_months = _rebuild_workbook_payload(
         source_dir=source_dir,
         governance_dir=governance_dir,
         report_month=report_month,
         threshold_overrides=threshold_overrides,
+    )
+    resolved_report_month = _require_matching_workbook_report_month(
+        workbook_payload=workbook_payload,
+        requested_report_month=report_month,
     )
     applied_overrides = {key: value for key, value in (threshold_overrides or {}).items()}
     meta = build_analytical_result_meta(
@@ -105,6 +137,15 @@ def qdb_gl_monthly_analysis_scenario_envelope(
         cache_version=CACHE_VERSION,
         source_version=source_version,
         rule_version=RULE_VERSION,
+        filters_applied=_monthly_analysis_filters(
+            report_month=report_month,
+            comparison_months=comparison_months,
+        ),
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        requested_report_date=report_month,
+        resolved_report_date=resolved_report_month,
+        date_basis="qdb_gl_monthly_analysis_report_month",
     )
     return build_formal_result_envelope(
         result_meta=meta,
@@ -122,32 +163,57 @@ def refresh_qdb_gl_monthly_analysis(
     source_dir: str | Path,
     governance_dir: str | Path,
     report_month: str,
+    idempotency_key: str | None = None,
 ) -> dict[str, object]:
-    _resolve_valid_month_pair(source_dir, report_month)
-    run_id = f"{JOB_NAME}:{report_month}"
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     repo = GovernanceRepository(base_dir=governance_dir)
-    repo.append(
-        CACHE_BUILD_RUN_STREAM,
-        CacheBuildRunRecord(
+    _require_month_pair_binding(source_dir, report_month)
+    with acquire_lock(
+        _refresh_trigger_lock(report_month=report_month),
+        base_dir=governance_dir,
+        timeout_seconds=REFRESH_LOCK_TIMEOUT_SECONDS,
+    ):
+        if normalized_idempotency_key is not None:
+            existing_run = _latest_refresh_for_idempotency_key(
+                repo,
+                report_month=report_month,
+                idempotency_key=normalized_idempotency_key,
+            )
+            if existing_run is not None:
+                return _idempotent_refresh_response(existing_run)
+
+        run_id = _build_run_id(report_month=report_month)
+        try:
+            workbook_payload, source_version, tables_used, evidence_rows, comparison_months = _rebuild_workbook_payload(
+                source_dir=source_dir,
+                governance_dir=governance_dir,
+                report_month=report_month,
+            )
+            resolved_report_month = _require_matching_workbook_report_month(
+                workbook_payload=workbook_payload,
+                requested_report_month=report_month,
+            )
+        except Exception as exc:
+            return _record_failed_refresh(
+                repo=repo,
+                run_id=run_id,
+                report_month=report_month,
+                idempotency_key=normalized_idempotency_key,
+                exc=exc,
+            )
+
+        return _record_completed_refresh(
+            repo=repo,
             run_id=run_id,
-            job_name=JOB_NAME,
-            status="completed",
-            cache_key="qdb_gl_monthly_analysis.analytical",
-            cache_version=CACHE_VERSION,
-            lock=LOCK_KEY,
-            source_version=report_month,
-            vendor_version="vv_none",
-            rule_version=RULE_VERSION,
-        ).model_dump(),
-    )
-    return {
-        "status": "completed",
-        "run_id": run_id,
-        "job_name": JOB_NAME,
-        "trigger_mode": "sync",
-        "cache_key": "qdb_gl_monthly_analysis.analytical",
-        "report_month": report_month,
-    }
+            report_month=report_month,
+            resolved_report_month=resolved_report_month,
+            source_version=source_version,
+            workbook_payload=workbook_payload,
+            tables_used=tables_used,
+            evidence_rows=evidence_rows,
+            comparison_months=comparison_months,
+            idempotency_key=normalized_idempotency_key,
+        )
 
 
 def qdb_gl_monthly_analysis_refresh_status(
@@ -163,10 +229,172 @@ def qdb_gl_monthly_analysis_refresh_status(
     if not records:
         raise ValueError(f"Unknown qdb_gl_monthly_analysis run_id={run_id}")
     latest = records[-1]
+    status = str(latest.get("status") or "")
     return {
         **latest,
-        "trigger_mode": "terminal" if str(latest.get("status")) == "completed" else "async",
+        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
     }
+
+
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _refresh_trigger_lock(*, report_month: str) -> LockDefinition:
+    return LockDefinition(
+        key=f"{LOCK_KEY}:{report_month}:trigger",
+        ttl_seconds=30,
+    )
+
+
+def _require_month_pair_binding(source_dir: str | Path, report_month: str) -> None:
+    if not _has_complete_month_pair_binding(_group_bindings(source_dir), report_month):
+        raise ValueError(
+            f"Missing QDB GL month pair for report_month={report_month}. "
+            "Expected both ledger_reconciliation and average_balance source workbooks."
+        )
+
+
+def _latest_refresh_for_idempotency_key(
+    repo: GovernanceRepository,
+    *,
+    report_month: str,
+    idempotency_key: str,
+) -> dict[str, object] | None:
+    records = [
+        record
+        for record in repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name")) == JOB_NAME
+        and str(record.get("cache_key")) == CACHE_KEY
+        and str(record.get("report_date")) == report_month
+        and str(record.get("idempotency_key") or "").strip() == idempotency_key
+    ]
+    return records[-1] if records else None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    status = str(record.get("status") or "")
+    return {
+        **record,
+        "job_name": JOB_NAME,
+        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
+        "cache_key": CACHE_KEY,
+        "idempotency_replay": True,
+    }
+
+
+def _build_run_id(*, report_month: str) -> str:
+    return f"{JOB_NAME}:{report_month}:{datetime.now(UTC).isoformat()}"
+
+
+def _record_failed_refresh(
+    *,
+    repo: GovernanceRepository,
+    run_id: str,
+    report_month: str,
+    idempotency_key: str | None,
+    exc: Exception,
+) -> dict[str, object]:
+    error_message = _qdb_gl_monthly_analysis_build_error_message(
+        report_month=report_month,
+        exc=exc,
+    )
+    failed_record = CacheBuildRunRecord(
+        run_id=run_id,
+        job_name=JOB_NAME,
+        status="failed",
+        cache_key=CACHE_KEY,
+        cache_version=CACHE_VERSION,
+        lock=LOCK_KEY,
+        source_version=FAILED_SOURCE_VERSION,
+        vendor_version="vv_none",
+        rule_version=RULE_VERSION,
+        report_date=report_month,
+        finished_at=datetime.now(UTC).isoformat(),
+        error_message=error_message,
+        failure_category="qdb_gl_monthly_analysis_build",
+        failure_reason=type(exc).__name__,
+    ).model_dump()
+    failed_record["idempotency_key"] = idempotency_key
+    repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
+    return {
+        "status": "failed",
+        "run_id": run_id,
+        "job_name": JOB_NAME,
+        "trigger_mode": "sync",
+        "cache_key": CACHE_KEY,
+        "report_month": report_month,
+        "report_date": report_month,
+        "source_version": FAILED_SOURCE_VERSION,
+        "failure_category": failed_record["failure_category"],
+        "failure_reason": failed_record["failure_reason"],
+        "error_message": error_message,
+        "idempotency_key": idempotency_key,
+        "idempotency_replay": False,
+    }
+
+
+def _record_completed_refresh(
+    *,
+    repo: GovernanceRepository,
+    run_id: str,
+    report_month: str,
+    resolved_report_month: str,
+    source_version: str,
+    workbook_payload: dict[str, Any],
+    tables_used: list[str],
+    evidence_rows: int,
+    comparison_months: dict[str, dict[str, str]],
+    idempotency_key: str | None,
+) -> dict[str, object]:
+    sheets = workbook_payload.get("sheets")
+    sheet_count = len(sheets) if isinstance(sheets, list) else 0
+    completed_record = CacheBuildRunRecord(
+        run_id=run_id,
+        job_name=JOB_NAME,
+        status="completed",
+        cache_key=CACHE_KEY,
+        cache_version=CACHE_VERSION,
+        lock=LOCK_KEY,
+        source_version=source_version,
+        vendor_version="vv_none",
+        rule_version=RULE_VERSION,
+        report_date=report_month,
+        finished_at=datetime.now(UTC).isoformat(),
+    ).model_dump()
+    completed_record["idempotency_key"] = idempotency_key
+    repo.append(CACHE_BUILD_RUN_STREAM, completed_record)
+    return {
+        "status": "completed",
+        "run_id": run_id,
+        "job_name": JOB_NAME,
+        "trigger_mode": "sync",
+        "cache_key": CACHE_KEY,
+        "report_month": report_month,
+        "report_date": report_month,
+        "resolved_report_date": resolved_report_month,
+        "source_version": source_version,
+        "sheet_count": sheet_count,
+        "tables_used": tables_used,
+        "evidence_rows": evidence_rows,
+        "comparison_months": comparison_months,
+        "idempotency_key": idempotency_key,
+        "idempotency_replay": False,
+    }
+
+
+def _qdb_gl_monthly_analysis_build_error_message(
+    *,
+    report_month: str,
+    exc: Exception,
+) -> str:
+    message = str(exc).strip()
+    if report_month in message:
+        return message
+    if message:
+        return f"QDB GL monthly analysis refresh failed for report_month={report_month}: {message}"
+    return f"QDB GL monthly analysis refresh failed for report_month={report_month}."
 
 
 def create_qdb_gl_monthly_analysis_manual_adjustment(
@@ -178,7 +406,7 @@ def create_qdb_gl_monthly_analysis_manual_adjustment(
     record = {
         "adjustment_id": adjustment_id,
         "event_type": "created",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "stream": ADJUSTMENT_STREAM,
         **payload,
     }
@@ -218,7 +446,7 @@ def update_qdb_gl_monthly_analysis_manual_adjustment(
         **payload,
         "adjustment_id": adjustment_id,
         "event_type": "edited",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "stream": ADJUSTMENT_STREAM,
     }
     GovernanceRepository(base_dir=governance_dir).append(ADJUSTMENT_STREAM, record)
@@ -235,7 +463,7 @@ def revoke_qdb_gl_monthly_analysis_manual_adjustment(
         **current,
         "adjustment_id": adjustment_id,
         "event_type": "revoked",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "approval_status": "rejected",
         "stream": ADJUSTMENT_STREAM,
     }
@@ -253,7 +481,7 @@ def restore_qdb_gl_monthly_analysis_manual_adjustment(
         **current,
         "adjustment_id": adjustment_id,
         "event_type": "restored",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "approval_status": "approved",
         "stream": ADJUSTMENT_STREAM,
     }
@@ -308,7 +536,7 @@ def _discover_report_months(source_dir: str | Path) -> list[str]:
     return sorted(month for month, kinds in grouped.items() if {"ledger_reconciliation", "average_balance"} <= set(kinds))
 
 
-def _resolve_valid_month_pair(source_dir: str | Path, report_month: str) -> tuple[Path, Path, str]:
+def _resolve_valid_month_pair(source_dir: str | Path, report_month: str) -> _ResolvedMonthPair:
     grouped = _group_bindings(source_dir)
     month_bindings = grouped.get(report_month)
     if not month_bindings or "average_balance" not in month_bindings or "ledger_reconciliation" not in month_bindings:
@@ -320,8 +548,54 @@ def _resolve_valid_month_pair(source_dir: str | Path, report_month: str) -> tupl
     ledger_evidence = validate_qdb_gl_baseline_source(ledger_binding.path)
     if not avg_evidence.admissible or not ledger_evidence.admissible:
         raise ValueError(f"QDB GL month pair failed input-contract validation for report_month={report_month}.")
-    source_version = "__".join(sorted([avg_evidence.source_version, ledger_evidence.source_version]))
-    return avg_binding.path, ledger_binding.path, source_version
+    evidences = [avg_evidence, ledger_evidence]
+    source_version = "__".join(sorted([evidence.source_version for evidence in evidences]))
+    tables_used = _tables_used_from_qdb_evidence(evidences)
+    if set(tables_used) != set(QDB_SOURCE_TABLE_BY_KIND.values()):
+        raise ValueError(f"QDB GL month pair source evidence is incomplete for report_month={report_month}.")
+    return _ResolvedMonthPair(
+        avg_path=avg_binding.path,
+        ledger_path=ledger_binding.path,
+        source_version=source_version,
+        tables_used=tables_used,
+        evidence_rows=len(evidences),
+    )
+
+
+def _tables_used_from_qdb_evidence(evidences: list[Any]) -> list[str]:
+    return sorted(
+        {
+            table_name
+            for evidence in evidences
+            if (table_name := QDB_SOURCE_TABLE_BY_KIND.get(str(evidence.source_kind))) is not None
+        }
+    )
+
+
+def _require_matching_workbook_report_month(
+    *,
+    workbook_payload: dict[str, Any],
+    requested_report_month: str,
+) -> str:
+    resolved_report_month = str(workbook_payload.get("report_month") or "").strip()
+    if resolved_report_month != requested_report_month:
+        returned = resolved_report_month or "<missing>"
+        raise ValueError(
+            "QDB GL monthly analysis workbook report_month mismatch: "
+            f"requested {requested_report_month}, rebuilt {returned}."
+        )
+    return resolved_report_month
+
+
+def _monthly_analysis_filters(
+    *,
+    report_month: str,
+    comparison_months: dict[str, dict[str, str]],
+) -> dict[str, object]:
+    return {
+        "report_month": report_month,
+        "comparison_months": comparison_months,
+    }
 
 
 def _group_bindings(source_dir: str | Path) -> dict[str, dict[str, Any]]:
@@ -337,9 +611,22 @@ def _rebuild_workbook_payload(
     governance_dir: str | Path | None,
     report_month: str,
     threshold_overrides: dict[str, int | float] | None = None,
-) -> tuple[dict[str, Any], str]:
-    avg_path, ledger_path, source_version = _resolve_valid_month_pair(source_dir, report_month)
-    merged_data = merge_all(parse_general_ledger(ledger_path), parse_daily_avg(avg_path))
+) -> tuple[dict[str, Any], str, list[str], int, dict[str, dict[str, str]]]:
+    resolved_pair = _resolve_valid_month_pair(source_dir, report_month)
+    merged_data = merge_all(
+        parse_general_ledger(resolved_pair.ledger_path),
+        parse_daily_avg(resolved_pair.avg_path),
+    )
+    (
+        comparison_data,
+        comparison_source_versions,
+        comparison_tables_used,
+        comparison_evidence_rows,
+        comparison_months,
+    ) = _load_comparison_merged_data(
+        source_dir=source_dir,
+        report_month=report_month,
+    )
     active_adjustments = _load_active_adjustments(
         governance_dir=governance_dir,
         report_month=report_month,
@@ -349,9 +636,72 @@ def _rebuild_workbook_payload(
         report_month=report_month,
         merged_data=merged_data,
         threshold_overrides=threshold_overrides,
+        comparison_data=comparison_data,
     )
     _apply_analysis_adjustments(workbook_payload, active_adjustments)
-    return workbook_payload, source_version
+    all_source_versions = [resolved_pair.source_version, *comparison_source_versions]
+    return (
+        workbook_payload,
+        "__".join(sorted(all_source_versions)),
+        sorted({*resolved_pair.tables_used, *comparison_tables_used}),
+        resolved_pair.evidence_rows + comparison_evidence_rows,
+        comparison_months,
+    )
+
+
+def _load_comparison_merged_data(
+    *,
+    source_dir: str | Path,
+    report_month: str,
+) -> tuple[dict[str, dict[str, Any]], list[str], list[str], int, dict[str, dict[str, str]]]:
+    comparison_months = {
+        "prior_month": _shift_report_month(report_month, -1),
+        "two_months_ago": _shift_report_month(report_month, -2),
+        "prior_year": _shift_report_month(report_month, -12),
+    }
+    grouped = _group_bindings(source_dir)
+    comparison_data: dict[str, dict[str, Any]] = {}
+    source_versions: list[str] = []
+    tables_used: list[str] = []
+    evidence_rows = 0
+    month_statuses: dict[str, dict[str, str]] = {}
+    for comparison_key, comparison_month in comparison_months.items():
+        if comparison_month is None:
+            month_statuses[comparison_key] = {"report_month": "", "status": "missing"}
+            continue
+        try:
+            resolved_pair = _resolve_valid_month_pair(source_dir, comparison_month)
+        except ValueError:
+            status = "invalid" if _has_complete_month_pair_binding(grouped, comparison_month) else "missing"
+            month_statuses[comparison_key] = {"report_month": comparison_month, "status": status}
+            continue
+        comparison_data[comparison_key] = merge_all(
+            parse_general_ledger(resolved_pair.ledger_path),
+            parse_daily_avg(resolved_pair.avg_path),
+        )
+        source_versions.append(f"{comparison_key}:{comparison_month}:{resolved_pair.source_version}")
+        tables_used.extend(resolved_pair.tables_used)
+        evidence_rows += resolved_pair.evidence_rows
+        month_statuses[comparison_key] = {"report_month": comparison_month, "status": "loaded"}
+    return comparison_data, source_versions, sorted(set(tables_used)), evidence_rows, month_statuses
+
+
+def _has_complete_month_pair_binding(grouped: dict[str, dict[str, Any]], report_month: str) -> bool:
+    month_bindings = grouped.get(report_month) or {}
+    return {"average_balance", "ledger_reconciliation"} <= set(month_bindings)
+
+
+def _shift_report_month(report_month: str, month_delta: int) -> str | None:
+    if len(report_month) != 6 or not report_month.isdigit():
+        return None
+    year = int(report_month[:4])
+    month = int(report_month[4:])
+    if month < 1 or month > 12:
+        return None
+    month_index = year * 12 + month - 1 + month_delta
+    shifted_year = month_index // 12
+    shifted_month = month_index % 12 + 1
+    return f"{shifted_year:04d}{shifted_month:02d}"
 
 
 def _load_active_adjustments(

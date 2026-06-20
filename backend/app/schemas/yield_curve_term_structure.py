@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, Field
-
 from backend.app.schemas.common_numeric import Numeric
+from pydantic import BaseModel, Field
 
 
 class YieldCurveTermPoint(BaseModel):

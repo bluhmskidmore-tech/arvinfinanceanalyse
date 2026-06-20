@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 # Windows / Py3.14: 与 test_executive_service_contract 一致，避免 SQLAlchemy import 阻塞
 import platform as _platform
-
-_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
-
-import datetime as dt
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +13,9 @@ from types import SimpleNamespace
 import pytest
 
 from tests.helpers import load_module
+
+# Windows / Py3.14: avoid slow SQLAlchemy platform.machine() probing before dynamic backend imports.
+_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
 
 
 def _exec_service_module():
@@ -145,7 +146,7 @@ def test_executive_overview_metrics_include_history_json_field(exec_mod, monkeyp
                 "asset_yield": 2.45,
                 "liability_cost": 2.07,
                 "market_liability_cost": 2.07,
-                "nim": 0.38 if report_date == "2030-03-15" else 0.33,
+                "nim": 0.0038 if report_date == "2030-03-15" else 0.0033,
             },
         },
     )

@@ -42,6 +42,32 @@ def test_sector_rank_uses_provisional_percentile_formula_and_tie_breaks() -> Non
     assert items[0]["constituent_count"] == 2
 
 
+def test_sector_rank_attaches_leader_constituents_by_turn() -> None:
+    result = compute_sector_rank(
+        as_of_date="2026-04-06",
+        rows=[
+            SectorRankConstituent("000001.SZ", "801780", "Bank", 4.0, 4.0, 4.0, "Bank A"),
+            SectorRankConstituent("600000.SH", "801780", "Bank", 6.0, 6.0, 6.0, "Bank B"),
+            SectorRankConstituent("000002.SZ", "801010", "Agriculture", 4.0, 3.0, 1.0, "Agri A"),
+            SectorRankConstituent("000003.SZ", "801020", "Mining", 3.0, 4.0, 3.0, "Mine A"),
+            SectorRankConstituent("000004.SZ", "801030", "Manufacturing", 3.0, 4.0, 3.0, "Mfg A"),
+        ],
+        leader_constituents_per_sector=2,
+    )
+
+    assert result.ready is True
+    assert result.payload is not None
+    payload = cast(dict[str, Any], result.payload)
+    assert payload["leader_constituent_limit"] == 2
+    assert payload["leader_constituent_method"] == "top_turn_same_day"
+    items = cast(list[dict[str, Any]], payload["items"])
+    bank = next(row for row in items if row["sector_code"] == "801780")
+    leaders = cast(list[dict[str, Any]], bank["leader_constituents"])
+    assert [leader["stock_code"] for leader in leaders] == ["600000.SH", "000001.SZ"]
+    assert leaders[0]["stock_name"] == "Bank B"
+    assert leaders[0]["turn"] == pytest.approx(6.0)
+
+
 def test_sector_rank_excludes_invalid_constituents_and_empty_sectors() -> None:
     result = compute_sector_rank(
         as_of_date="2026-04-06",

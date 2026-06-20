@@ -1,0 +1,620 @@
+/* Institutional console final layer: high-density finance shell, no business semantics. */
+.workbench-shell-grid--institutional-console {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.46) 0%, rgba(255, 255, 255, 0) 164px),
+    linear-gradient(180deg, var(--moss-institutional-bg) 0%, var(--moss-institutional-bg-deep) 100%) !important;
+  color: var(--moss-institutional-text);
+}
+
+.workbench-shell-grid--institutional-console :where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--moss-institutional-focus-ring);
+  outline-offset: 2px;
+}
+
+.workbench-shell-grid--institutional-console .workbench-shell-aside {
+  border-right: 1px solid rgba(125, 169, 213, 0.2) !important;
+  background:
+    linear-gradient(180deg, rgba(29, 59, 92, 0.26), rgba(29, 59, 92, 0) 42%),
+    var(--moss-institutional-rail-bg) !important;
+  box-shadow: var(--moss-shadow-rail) !important;
+}
+
+.workbench-shell-grid--institutional-console .workbench-shell-rail-mark {
+  border-radius: var(--moss-radius-sm);
+  border-color: rgba(184, 138, 45, 0.36);
+  background:
+    linear-gradient(145deg, rgba(184, 138, 45, 0.22), rgba(47, 128, 168, 0.18)),
+    rgba(255, 255, 255, 0.08);
+  color: #fffdf8;
+}
+
+.workbench-shell-grid--institutional-console .workbench-shell-group-link,
+.workbench-shell-grid--institutional-console .workbench-shell-secondary-link,
+.workbench-shell-grid--institutional-console .workbench-shell-support-link,
+.workbench-shell-grid--institutional-console .workbench-shell-agent-nav__link {
+  border-radius: var(--moss-radius-sm);
+  transition: background-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out), border-color var(--moss-motion-duration-fast) var(--moss-motion-ease-out), color var(--moss-motion-duration-fast) var(--moss-motion-ease-out);
+}
+
+.workbench-shell-grid--institutional-console .workbench-shell-group-link:hover,
+.workbench-shell-grid--institutional-console .workbench-shell-secondary-link:hover,
+.workbench-shell-grid--institutional-console .workbench-shell-support-link:hover,
+.workbench-shell-grid--institutional-console .workbench-shell-agent-nav__link:hover {
+  border-color: rgba(125, 169, 213, 0.28);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.workbench-shell-grid--institutional-console [data-testid="workbench-group-nav"] a[data-active="true"],
+.workbench-shell-grid--institutional-console [data-testid="workbench-support-nav"] a[data-active="true"],
+.workbench-shell-grid--institutional-console .workbench-shell-agent-nav__link[data-active="true"] {
+  box-shadow: var(--moss-shadow-institutional-active) !important;
+}
+
+.workbench-shell-grid--institutional-console [data-testid="workbench-terminal-bar"],
+.workbench-shell-grid--institutional-console .workbench-main-column > main,
+.workbench-shell-grid--institutional-console .workbench-main-surface {
+  border-color: var(--moss-institutional-border) !important;
+  background:
+    linear-gradient(90deg, rgba(47, 128, 168, 0.045), rgba(47, 128, 168, 0) 36%),
+    linear-gradient(180deg, var(--moss-institutional-surface-raised) 0%, var(--moss-institutional-surface) 100%) !important;
+  box-shadow: var(--moss-shadow-panel) !important;
+}
+
+.workbench-shell-grid--institutional-console [data-testid="workbench-terminal-bar"] {
+  gap: 7px !important;
+  min-height: 58px;
+  padding: 8px 11px !important;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+.workbench-shell-grid--institutional-console .workbench-terminal-bar-split {
+  gap: var(--moss-space-2);
+}
+
+.workbench-shell-grid--institutional-console .workbench-operator-pill-quiet,
+.workbench-shell-grid--institutional-console .workbench-terminal-utility-navlink,
+.workbench-shell-grid--institutional-console .workbench-shell-report-chip {
+  border-radius: var(--moss-radius-sm);
+}
+
+.workbench-shell-grid--institutional-console .workbench-main-column > main,
+.workbench-shell-grid--institutional-console .workbench-main-surface {
+  border-radius: var(--moss-radius-sm) !important;
+}
+
+.workbench-shell-grid--institutional-console .workbench-main-surface--minimal,
+.workbench-shell-grid--institutional-console .workbench-main-column > main.workbench-main-surface--minimal,
+.workbench-shell-grid--bond-analysis.workbench-shell-grid--institutional-console .workbench-main-column > main {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid--institutional-console .workbench-page-title-display {
+  color: var(--moss-institutional-text);
+  font-size: 29px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0 !important;
+}
+
+.workbench-shell-grid--institutional-console .workbench-market-ticker-shell {
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 8px;
+  scrollbar-width: none;
+}
+
+.workbench-shell-grid--institutional-console .workbench-market-ticker-shell::-webkit-scrollbar {
+  display: none;
+}
+
+.workbench-shell-grid--institutional-console .workbench-market-ticker-label {
+  color: var(--moss-institutional-text-muted);
+  flex: 0 0 auto;
+  letter-spacing: 0;
+}
+
+.workbench-shell-grid--institutional-console .workbench-market-ticker-strong,
+.workbench-shell-grid--institutional-console :where(.ant-statistic-content, .ant-table-cell, .moss-page-v2-kpi-metric__value) {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.workbench-shell-grid--institutional-console .workbench-market-ticker-item {
+  flex: 0 0 auto;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-card) {
+  border-color: var(--moss-institutional-border);
+  border-radius: var(--moss-radius-sm);
+  background:
+    linear-gradient(180deg, var(--moss-institutional-surface-raised) 0%, var(--moss-institutional-surface) 100%);
+  box-shadow: var(--moss-shadow-card);
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-card-head) {
+  min-height: 36px;
+  border-bottom-color: var(--moss-institutional-border);
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-card-body) {
+  padding: 14px;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-card-head-title) {
+  color: var(--moss-institutional-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-btn, .ant-input, .ant-picker, .ant-select-selector, .ant-segmented, .ant-tag) {
+  border-radius: var(--moss-radius-sm);
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-btn) {
+  box-shadow: none;
+  font-weight: 650;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-tag) {
+  margin-inline-end: var(--moss-space-1);
+  border-color: var(--moss-institutional-border);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-table-wrapper) {
+  border: 1px solid var(--moss-institutional-border);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-institutional-surface-raised);
+  box-shadow: none;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-table) {
+  color: var(--moss-institutional-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-table-thead > tr > th) {
+  border-bottom: 1px solid var(--moss-institutional-border-strong);
+  background: linear-gradient(180deg, var(--moss-institutional-surface-muted), var(--moss-institutional-bg));
+  color: var(--moss-institutional-text-muted);
+  font-size: 11.5px;
+  font-weight: 760;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-table-tbody > tr > td) {
+  border-bottom-color: rgba(201, 212, 223, 0.74);
+  line-height: 1.35;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-table-tbody > tr:nth-child(even) > td) {
+  background: var(--moss-institutional-row-stripe);
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-table-tbody > tr:hover > td) {
+  background: var(--moss-institutional-row-hover) !important;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-tabs-nav::before) {
+  border-bottom-color: var(--moss-institutional-border);
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-tabs-tab) {
+  color: var(--moss-institutional-text-muted);
+  font-weight: 650;
+}
+
+.workbench-shell-grid--institutional-console :where(.ant-tabs-ink-bar) {
+  background: var(--moss-institutional-accent-gold);
+}
+
+.workbench-shell-grid--institutional-console .moss-page-v2-surface,
+.workbench-shell-grid--institutional-console .moss-page-v2-decision-hero,
+.workbench-shell-grid--institutional-console .moss-page-v2-data-status,
+.workbench-shell-grid--institutional-console .moss-page-v2-kpi-metric,
+.workbench-shell-grid--institutional-console .moss-page-v2-evidence-panel,
+.workbench-shell-grid--institutional-console .moss-page-v2-state-surface {
+  border-color: var(--moss-institutional-border);
+  border-radius: var(--moss-radius-sm);
+  background:
+    linear-gradient(180deg, var(--moss-institutional-surface-raised) 0%, var(--moss-institutional-surface) 100%);
+  box-shadow: none;
+}
+
+.workbench-shell-grid--institutional-console .moss-page-v2-kpi-band {
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+  gap: 6px;
+}
+
+.workbench-shell-grid--institutional-console .moss-page-v2-kpi-metric {
+  min-height: 56px;
+  padding: 8px 9px;
+}
+
+.workbench-shell-grid--institutional-console .moss-page-v2-kpi-metric__label,
+.workbench-shell-grid--institutional-console .moss-page-v2-decision-hero__eyebrow,
+.workbench-shell-grid--institutional-console .workbench-section-subnav__eyebrow {
+  letter-spacing: 0;
+}
+
+.workbench-shell-grid--institutional-console .moss-page-v2-kpi-metric__value {
+  font-size: 19px;
+}
+
+.workbench-shell-grid--institutional-console .moss-page-v2-decision-hero {
+  border-left-color: var(--moss-institutional-accent-gold);
+  background:
+    linear-gradient(90deg, rgba(184, 138, 45, 0.08), rgba(184, 138, 45, 0) 34%),
+    linear-gradient(180deg, var(--moss-institutional-surface-raised) 0%, var(--moss-institutional-surface) 100%);
+}
+
+.workbench-shell-grid--institutional-console :where(.dashboard-home-panel, .dashboard-cockpit-card, .dashboard-core-metric-card.ant-card) {
+  border-color: var(--moss-institutional-border);
+  border-radius: var(--moss-radius-sm);
+  box-shadow: var(--moss-shadow-card);
+}
+
+@media (min-width: 901px) {
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl .workbench-main-column,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl .workbench-main-column,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-main-column {
+    gap: 8px;
+    padding-top: 10px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl .workbench-main-column > main,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl .workbench-main-column > main,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-main-column > main {
+    gap: 10px !important;
+    padding: 16px 18px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-terminal-bar"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-terminal-bar"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-terminal-bar"] {
+    min-height: 46px;
+    gap: 6px !important;
+    padding: 6px 10px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl .workbench-market-ticker-shell,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl .workbench-market-ticker-shell,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-market-ticker-shell {
+    padding: 2px 6px 4px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-section-subnav"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-section-subnav"] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0 !important;
+    padding-bottom: 6px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__header,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__header,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-section-subnav"] .workbench-section-subnav__header {
+    display: none !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__links,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__links,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-section-subnav"] .workbench-section-subnav__links {
+    gap: 6px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__link,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__link,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-section-subnav"] .workbench-section-subnav__link {
+    min-height: 28px;
+    padding: 5px 9px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-governance-banner"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-governance-banner"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-governance-banner"] {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 3px 10px !important;
+    padding: 7px 10px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-governance-banner"] .workbench-notice__title,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-governance-banner"] .workbench-notice__title,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-governance-banner"] .workbench-notice__title {
+    font-size: 13px !important;
+    line-height: 1.3 !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-governance-banner"] .workbench-notice__body,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-governance-banner"] .workbench-notice__body,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-governance-banner"] .workbench-notice__body {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-governance-banner"] .workbench-notice__hint,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-governance-banner"] .workbench-notice__hint,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-governance-banner"] .workbench-notice__hint {
+    font-size: 10.5px !important;
+    line-height: 1.32 !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-main-column {
+    gap: 8px;
+    padding-top: 10px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-main-column > main {
+    gap: 10px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-terminal-bar"] {
+    min-height: 40px;
+    gap: 4px !important;
+    padding: 4px 8px !important;
+    box-shadow: none !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-terminal-bar-split {
+    gap: 6px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-page-context-shell {
+    gap: 6px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-page-title-display {
+    font-size: 25px !important;
+    line-height: 0.98 !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-page-context"] > .workbench-page-title-display {
+    font-size: 25px !important;
+    line-height: 0.98 !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-shell-report-chip,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-operator-pill-quiet {
+    min-height: 24px;
+    padding: 2px 7px !important;
+    font-size: 10.5px;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-terminal-utility-navlink {
+    padding: 2px 1px !important;
+    font-size: 11px;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-terminal-utility-icon {
+    font-size: 10px;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-market-ticker-shell {
+    gap: 6px !important;
+    padding: 1px 4px 3px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-section-subnav"] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0 !important;
+    padding-bottom: 6px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-section-subnav"] .workbench-section-subnav__header {
+    display: none !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-section-subnav"] .workbench-section-subnav__links {
+    gap: 6px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-section-subnav"] .workbench-section-subnav__link {
+    min-height: 28px;
+    padding: 5px 9px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-governance-banner"] {
+    grid-template-columns: auto minmax(0, 1fr) minmax(210px, 0.42fr);
+    align-items: center;
+    gap: 3px 10px !important;
+    min-height: 36px;
+    border-color: rgba(184, 138, 45, 0.28) !important;
+    background:
+      linear-gradient(90deg, rgba(184, 138, 45, 0.07), rgba(184, 138, 45, 0.02) 34%),
+      rgba(255, 255, 255, 0.72) !important;
+    padding: 5px 10px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-governance-banner"] .workbench-notice__title {
+    font-size: 13px !important;
+    line-height: 1.3 !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-governance-banner"] .workbench-notice__body {
+    overflow: hidden;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-governance-banner"] .workbench-notice__hint {
+    grid-column: auto;
+    overflow: hidden;
+    font-size: 10.5px !important;
+    line-height: 1.32 !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 1180px) {
+  .workbench-shell-grid--institutional-console {
+    padding: var(--moss-space-3) !important;
+  }
+
+  .workbench-shell-grid--institutional-console .workbench-main-column {
+    gap: var(--moss-space-2);
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-shell-aside,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl .workbench-shell-aside,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl .workbench-shell-aside,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-shell-aside {
+    display: none !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-main-column,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl .workbench-main-column,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl .workbench-main-column,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-main-column {
+    padding: var(--moss-space-2) !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-main-column > main {
+    gap: 8px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl .workbench-main-column > main,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl .workbench-main-column > main,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-main-column > main {
+    gap: 8px !important;
+    padding: 12px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-section-subnav"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-section-subnav"],
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-section-subnav"] {
+    gap: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-section-subnav"] .workbench-section-subnav__header,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__header,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__header,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-section-subnav"] .workbench-section-subnav__header {
+    display: none !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-section-subnav"] .workbench-section-subnav__links,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__links,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-section-subnav"] .workbench-section-subnav__links,
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-section-subnav"] .workbench-section-subnav__links {
+    gap: 6px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-shell-aside {
+    display: none !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-main-column {
+    padding: var(--moss-space-2) !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-main-column > main {
+    gap: 8px !important;
+    padding: 12px !important;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-market-ticker-shell {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-market-ticker-shell::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .workbench-shell-grid--institutional-console {
+    padding: var(--moss-space-2) !important;
+  }
+
+  .workbench-shell-grid--institutional-console [data-testid="workbench-terminal-bar"] {
+    display: grid !important;
+    min-height: 0;
+    padding: var(--moss-space-3) !important;
+  }
+
+  .workbench-shell-grid--institutional-console .workbench-terminal-bar-split,
+  .workbench-shell-grid--institutional-console [data-testid="workbench-page-context"] {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
+    width: 100%;
+  }
+
+  .workbench-shell-grid--institutional-console [data-testid="workbench-operator-zone"] {
+    display: flex !important;
+    flex-wrap: wrap;
+    justify-content: flex-start !important;
+    gap: var(--moss-space-2) !important;
+    width: 100%;
+  }
+
+  .workbench-shell-grid--institutional-console .workbench-page-title-display {
+    font-size: 22px !important;
+    line-height: 1.12;
+  }
+
+  .workbench-shell-grid--institutional-console.workbench-shell-grid--desktop-aligned [data-testid="workbench-page-context"] > .workbench-page-title-display {
+    font-size: 22px !important;
+    line-height: 1.12 !important;
+  }
+
+  .workbench-shell-grid--institutional-console .workbench-operator-pill-quiet,
+  .workbench-shell-grid--institutional-console .workbench-shell-report-chip {
+    min-height: 36px;
+    align-items: center;
+  }
+
+  .workbench-shell-grid--institutional-console .workbench-terminal-utility-navlink {
+    min-height: 44px;
+    justify-content: center;
+    padding-inline: var(--moss-space-3);
+  }
+
+  .workbench-shell-grid--institutional-console .workbench-market-ticker-shell {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .workbench-shell-grid--institutional-console .moss-page-v2-decision-hero__title {
+    font-size: 20px;
+  }
+
+  .workbench-shell-grid--institutional-console :where(.ant-card-body) {
+    padding: 12px;
+  }
+}

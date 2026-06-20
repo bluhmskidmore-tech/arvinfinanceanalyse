@@ -38,7 +38,7 @@
 
 ## 3. 第一批范围
 
-本批覆盖 `tests/golden_samples/` 下 **12** 个目录所对应的主链（含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
+本批覆盖 `tests/golden_samples/` 下 **22** 个目录所对应的主链与治理边界（其中 21 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
 
 - `/ui/balance-analysis/overview`
 - `/ui/balance-analysis/workbook`
@@ -50,11 +50,18 @@
 - `/ui/home/overview`
 - `/ui/home/summary`
 - `/ui/pnl/attribution`
+- `/api/ledger-pnl/summary`
+- `/api/cashflow-projection` (`GS-CASHFLOW-PROJECTION-A`)
+- `/api/bond-analytics/action-attribution`
+- `/api/bond-analytics/credit-spread-migration` (`GS-CONCENTRATION-MONITOR-A`)
+- `/ui/market-data/livermore`（`GS-STOCK-ANALYSIS-OBS-A`）
+- `/ui/market-data/rates` formal fragment（`GS-MKT-RATES-FRAGMENT-A`；**非** full-page closure）
+- `/api/analysis/adb` (`GS-AVERAGE-BALANCE-A`)
 
 不纳入本批：
 
 - `/` 驾驶舱聚合页
-- `/api/bond-analytics/portfolio-headlines`（`GS-BOND-HEADLINE-A` 仍为 **blocked-by-contract-gap**）
+- `/api/bond-dashboard/headline-kpis`（`GS-BOND-HEADLINE-A` 已为 **capture-ready** 页面样本）
 - `/ui/risk/overview`
 - `/ui/home/alerts`
 - `/ui/home/contribution`
@@ -76,6 +83,12 @@ tests/golden_samples/
   GS-BAL-WORKBOOK-A/
   GS-PNL-OVERVIEW-A/
   GS-PNL-DATA-A/
+  GS-PNL-ATTR-WB-A/
+  GS-BOND-HEADLINE-A/
+  GS-BOND-ANALYSIS-ACTION-ATTR-A/
+  GS-CONCENTRATION-MONITOR-A/
+  GS-STOCK-ANALYSIS-OBS-A/
+  GS-AVERAGE-BALANCE-A/
   GS-PROD-CAT-PNL-A/
   GS-BRIDGE-A/
   GS-BRIDGE-WARN-B/
@@ -84,6 +97,9 @@ tests/golden_samples/
   GS-EXEC-OVERVIEW-A/
   GS-EXEC-PNL-ATTR-A/
   GS-EXEC-SUMMARY-A/
+  GS-LEDGER-PNL-SUMMARY-A/
+  GS-CASHFLOW-PROJECTION-A/
+  GS-PORTFOLIO-HOME-A/
 ```
 
 每个目录包含：
@@ -95,7 +111,7 @@ tests/golden_samples/
 
 ## 5. Batch A 样本总表
 
-与 `tests/test_golden_samples_capture_ready.py` 中注册的 12 个 `sample_id` 对齐（含 `GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B` 与 `GS-PROD-CAT-PNL-A`）。
+与 `tests/test_golden_samples_capture_ready.py` 中注册的 21 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-CONCENTRATION-MONITOR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-MKT-RATES-FRAGMENT-A`、`GS-AVERAGE-BALANCE-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
 
 | sample_id | surface | status | preferred_report_date | 证据来源 | 样本类型 |
 | --- | --- | --- | --- | --- | --- |
@@ -103,6 +119,15 @@ tests/golden_samples/
 | `GS-BAL-WORKBOOK-A` | `/ui/balance-analysis/workbook` | `capture-ready` | `2025-12-31` | `tests/test_balance_analysis_api.py`、`tests/test_balance_analysis_workbook_contract.py` | 结构样本 |
 | `GS-PNL-OVERVIEW-A` | `/api/pnl/overview` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 正常样本 |
 | `GS-PNL-DATA-A` | `/api/pnl/data` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 明细样本 |
+| `GS-PNL-ATTR-WB-A` | `GET /api/pnl-attribution/volume-rate` | `capture-ready` | `2026-04-30` | `tests/test_pnl_attribution_workbench_contract.py` + `tests/test_golden_samples_capture_ready.py` | workbench primary API 样本 |
+| `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | `capture-ready` | `2026-03-31` | `tests/test_bond_dashboard_api_contract.py`、`tests/test_golden_samples_capture_ready.py` | bond-dashboard headline 页面样本 |
+| `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `GET /api/bond-analytics/action-attribution` | `capture-ready` | `2026-03-31` | `tests/test_golden_samples_capture_ready.py`、`tests/test_bond_analysis_business_owner_approval_status.py` | bond-analysis action-attribution 页面 DTO 样本 |
+| `GS-CONCENTRATION-MONITOR-A` | `GET /api/bond-analytics/credit-spread-migration` | `capture-ready` | `2026-03-31` | `tests/test_golden_samples_capture_ready.py` | concentration-monitor candidate concentration DTO sample; not formal risk truth or certified concentration-limit approval |
+| `GS-STOCK-ANALYSIS-OBS-A` | `GET /ui/market-data/livermore` | `capture-ready` | `2026-04-03` | `tests/test_golden_samples_capture_ready.py`、`tests/test_stock_analysis_business_owner_approval_status.py` | stock-analysis Livermore observational 页面 DTO 样本；非交易指令 |
+| `GS-MKT-RATES-FRAGMENT-A` | `GET /ui/market-data/rates` | `capture-ready` | `2026-04-10` | `tests/test_golden_samples_capture_ready.py`、`frontend/src/features/market-data/lib/marketDataRatesFragmentGolden.test.ts` | PAGE-MKT-001 formal rates **fragment** only；不关闭 `GAP-MKT-DATA` |
+| `GS-AVERAGE-BALANCE-A` | `GET /api/analysis/adb` | `capture-ready` | `2025-12-31` | `tests/test_golden_samples_capture_ready.py` | average-balance daily ADB candidate DTO sample; not formal balance truth, monthly ADB/NIM truth, manual audit, or owner approval |
+| `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | `capture-ready` | `2026-04-30` | `tests/test_ledger_pnl_service.py`、`tests/test_golden_samples_capture_ready.py` | ledger-pnl 页面级 summary DTO 样本 |
+| `GS-CASHFLOW-PROJECTION-A` | `GET /api/cashflow-projection` | `capture-ready` | `2026-04-30` | `tests/test_cashflow_projection.py`, `tests/test_golden_samples_capture_ready.py` | cashflow-projection candidate liquidity projection DTO sample; not formal liquidity/risk/balance/PnL truth |
 | `GS-PROD-CAT-PNL-A` | `GET /ui/pnl/product-category` | `capture-ready` | `2026-02-28` | `tests/test_product_category_pnl_flow.py`、`tests/test_golden_samples_capture_ready.py` | formal 明细/主表样本 |
 | `GS-BRIDGE-A` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 正常样本 |
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py`（warning profile） | `warning-profile` 样本 |
@@ -112,24 +137,26 @@ tests/golden_samples/
 | `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
 | `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | `capture-ready` | `2026-02-28` | `tests/test_executive_release_contract.py` + `tests/test_executive_dashboard_endpoints.py` | narrative 样本 |
 
-## 5.1 已在计划中、但本批延后的样本
+## 5.1 Bond dashboard headline sample status
 
-| sample_id | surface | status | 延后原因 |
+| sample_id | surface | status | 说明 |
 | --- | --- | --- | --- |
-| `GS-BOND-HEADLINE-A` | `/api/bond-analytics/portfolio-headlines` | `blocked-by-contract-gap` / **candidate** | **`PAGE-BOND-001` 专章已存在**；**直至** Headline/风险卡等在 `docs/metric_dictionary.md` 建立可冻结 `MTR-*` 同源、且本包具备 `tests/golden_samples/GS-BOND-HEADLINE-A/` 并由 capture-ready gate 收录前，不提升为与 Batch A 同级的“主包就绪”样本（**当前无该目录**） |
+| `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | `capture-ready` | 冻结 bond-dashboard 首屏 headline DTO 真值、环比字段、空态行为与 candidate metadata；**不**自动批准 `GAP-BOND-DASH-HL` 的字典级 `MTR-*` 绑定 |
 
 ## 5.2 Wave 1 页面：`page_id` → `metric_id` → `sample_id` → 测试
 
-与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。**不新增** `tests/golden_samples/` 目录。
+与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。`/market-data` 保持 mixed-source；**无** full-page capture-ready golden sample，但 `GS-MKT-RATES-FRAGMENT-A` 已冻结 `GET /ui/market-data/rates` formal rates 片段（`capture-ready pending approval`）。`/market-data` 的 **GAP-MKT-DATA**、NCD proxy、Livermore blocked、宏观联动警示等文档化边界见 `docs/page_contracts.md` §13.8.J 与 `docs/plans/market-workbench-cursor-prompts.md`（执行拆分，非权威定义）。
 
 | 前端路由 | `page_id` | 可钉 `metric_id`（字典已批） | `sample_id` | 测试锚点 |
 | --- | --- | --- | --- | --- |
 | `/operations-analysis` | `PAGE-OPS-001` | `MTR-BAL-001`~`003`, `MTR-BAL-101`~`102`（overview 切片） | `GS-BAL-OVERVIEW-A` | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
 | `/operations-analysis` | `PAGE-OPS-001` | `MTR-BAL-004`~`006`, `MTR-BAL-103`；筛选口径 `MTR-BAL-104`~`105`（summary 表） | —（无专包；不与 frozen JSON 逐项锁死） | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
 | `/operations-analysis` | `PAGE-OPS-001` | —（macro / FX / news / 运营条） | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
-| `/bond-dashboard` | `PAGE-BOND-001`（见 `page_contracts` §13.6） | —（Headline / 风险卡见字典 **GAP-BOND-DASH-***；**无** capture-ready 黄金包目录） | `GS-BOND-HEADLINE-A` **仍为 blocked-by-contract-gap**（无 `tests/golden_samples/GS-BOND-HEADLINE-A/`） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/bond-dashboard` | `PAGE-BOND-001`（见 `page_contracts` §13.6） | —（Headline / 风险卡见字典 **GAP-BOND-DASH-***；字典级 metric 同源仍待单独批准） | `GS-BOND-HEADLINE-A` **capture-ready**（冻结 `GET /api/bond-dashboard/headline-kpis`；非 `MTR-*` 批准） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/bond-analysis` | `PAGE-BOND-ANALYSIS-001` | `MTR-BOND-ACT-001`~`MTR-BOND-ACT-006`（candidate；`formal_use_allowed=false`；pending owner approval） | `GS-BOND-ANALYSIS-ACTION-ATTR-A` **capture-ready pending approval**（冻结 `GET /api/bond-analytics/action-attribution` 页面 DTO；非公式/owner 审批） | `tests/test_golden_samples_capture_ready.py`；`tests/test_bond_analysis_business_owner_approval_status.py` |
+| `/stock-analysis` | `GAP-STOCK-ANALYSIS-PAGE` | —（observational-only；无 `PAGE-STOCK-*` / `MTR-STOCK-*` approval；`formal_use_allowed=false`） | `GS-STOCK-ANALYSIS-OBS-A` **capture-ready pending approval**（冻结 `GET /ui/market-data/livermore` observation DTO；非交易指令/owner 审批） | `tests/test_golden_samples_capture_ready.py`；`tests/test_stock_analysis_business_owner_approval_status.py` |
 | `/positions` | `PAGE-POS-001`（见 §13.7） | —（**GAP-POS-LIST**：`MTR-*` / 样本仍未钉死） | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
-| `/market-data` | `PAGE-MKT-001`（见 §13.8） | —（**GAP-MKT-DATA**） | — | `frontend/src/test/MarketDataPage.test.tsx` |
+| `/market-data` | `PAGE-MKT-001`（见 §13.8） | —（mixed-source；无 full-page `metric_id` 黄金样本） | `GS-MKT-RATES-FRAGMENT-A` **capture-ready pending approval**（formal rates fragment only） | `tests/test_golden_samples_capture_ready.py`；`frontend/src/features/market-data/lib/marketDataRatesFragmentGolden.test.ts`；`frontend/src/test/MarketDataPage.test.tsx` |
 
 ## 6. 样本定义
 
@@ -330,8 +357,8 @@ tests/golden_samples/
   - `result_meta.basis == "formal"`
   - `result_meta.result_kind == "risk.tensor"`
   - `result_meta.source_version == "sv_risk_tensor__sv_bond_snap_1"`
-  - `result_meta.rule_version == "rv_risk_tensor_formal_materialize_v1"`
-  - `result_meta.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1"`
+  - `result_meta.rule_version == "rv_risk_tensor_formal_materialize_v2"`
+  - `result_meta.cache_version == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2"`
   - `result_meta.quality_flag == "ok"`
   - `result.report_date == "2026-03-31"`
   - `MTR-RSK-101 == 3`
@@ -363,7 +390,8 @@ tests/golden_samples/
 - 状态：`capture-ready`
 - `caliber_label` 冻结字段：
   - `aum` 固定为 `本币资产口径`。
-  - `yield` / `nim` / `dv01` 当前固定为 `null`。
+  - `yield` 固定为 `FI + 非标桥接`，标签为 `年度损益（不扣FTP）`，明细说明来自 `fact_formal_pnl_fi + fact_nonstd_pnl_bridge` 且不扣减 FTP。
+  - `nim` / `dv01` 当前固定为 `null`。
   - 该形状与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 的当前契约一致。
 - 证据：
   - `tests/test_executive_release_contract.py::test_gs_exec_overview_release_contract`
@@ -470,12 +498,36 @@ tests/golden_samples/
 | `GS-BAL-OVERVIEW-A` | `GS-BAL-WORKBOOK-A` | 总量与 governed workbook 主表一致 |
 | `GS-PNL-OVERVIEW-A` | `GS-PNL-DATA-A` | overview 聚合值可由 data 复核 |
 | `GS-PNL-OVERVIEW-A` | `GS-BRIDGE-A` | `total_pnl` 与 `actual_pnl` 方向一致 |
+| `GS-PNL-ATTR-WB-A` | `GS-PNL-OVERVIEW-A` / `GS-BRIDGE-A` | workbench volume-rate 只能解释归因主 API DTO，不替代 formal PnL truth 或 bridge truth |
+| `GS-LEDGER-PNL-SUMMARY-A` | `GS-PNL-OVERVIEW-A` / `GS-PROD-CAT-PNL-A` / `GS-BRIDGE-A` | ledger summary DTO 只冻结 `/ledger-pnl` 候选展示口径；不得替代 formal PnL、product-category PnL 或 PnL bridge truth |
+| `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `GS-BOND-HEADLINE-A` | bond-analysis action-attribution DTO 只冻结 `/bond-analysis` 候选展示口径；不得替代 `/bond-dashboard` headline truth、固定收益公式批准或 owner approval |
+| `GS-CONCENTRATION-MONITOR-A` | `GS-RISK-A` / `GS-BOND-HEADLINE-A` | concentration-monitor credit-spread-migration DTO 只冻结 `/concentration-monitor` 候选集中度展示口径；不得替代 formal risk truth、债券 headline truth、集中度限额突破批准或 owner approval |
+| `GS-STOCK-ANALYSIS-OBS-A` | — | stock-analysis Livermore observation DTO 只冻结 `/stock-analysis` 观察口径；不得替代交易指令、执行批准、allocation advice、position-change command、formal stock-analysis truth 或 owner approval |
 | `GS-RISK-A` | `GS-EXEC-OVERVIEW-A` | 管理层 DV01 与专业页 DV01 不自相矛盾 |
 | `GS-EXEC-PNL-ATTR-A` | `GS-PNL-OVERVIEW-A` / `GS-BRIDGE-A` | analytical overlay 不得脱离 formal 主链解释范围 |
 
+## 8.1 Supporting-only portfolio sample
+
+`GS-PORTFOLIO-HOME-A` is registered for `PAGE-PORTFOLIO-HOME-001` and `/portfolio`.
+
+Status:
+- `supporting-only`
+- not `capture-ready`
+- not live API capture
+- not page execution proof
+- not page-level formal approval
+
+Purpose:
+- record the portfolio module-home evidence boundary at `decision_anchor_date=2026-05-31`
+- keep `/portfolio` tied to downstream balance, bond dashboard, positions, PnL attribution, and risk tensor evidence
+- document that risk tensor date evidence now includes the portfolio anchor `2026-05-31`, therefore the frontend date gate may observe `risk_closure_ready=true`
+- preserve the boundary that the downstream `2026-05-31` risk tensor payload is still warning-quality evidence and does not upgrade the page to full decision-grade risk closure
+
+This sample must not be used to approve standalone `MTR-*` metrics, live page execution, or full risk-tensor decision closure. It only supports same-day risk date evidence wording.
+
 ## 9. 当前结论
 
-仓库中已有 **12** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类与两类 warning profile）；治理重点转为：**契约/字典/冻结 JSON 一致性**。
+仓库中已有 **20** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类、PnL attribution workbench、ledger summary、cashflow projection、average-balance daily ADB、bond-analysis action-attribution、concentration-monitor credit-spread-migration、stock-analysis observation 与两类 warning profile），另有 **1** 个 supporting-only 治理边界样本目录；治理重点转为：**契约/字典/冻结 JSON 一致性**。
 
 因此下一步是维护与对账，而不是再扩张“计划-only”文档：
 

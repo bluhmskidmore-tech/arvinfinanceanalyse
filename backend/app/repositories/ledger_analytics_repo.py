@@ -6,9 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
-from backend.app.repositories.snapshot_repo import ensure_snapshot_tables
-from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 
 POSITION_EXPORT_COLUMNS = (
     "position_key",
@@ -44,72 +41,14 @@ POSITION_EXPORT_COLUMNS = (
 )
 
 
-def ensure_ledger_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    text = (REGISTRY_DIR / "20_ledger_analytics.sql").read_text(encoding="utf-8")
-    for statement in parse_registry_sql_text(text):
-        conn.execute(statement)
-
-
-def refresh_position_snapshot_agg(conn: duckdb.DuckDBPyConnection) -> None:
-    ensure_ledger_analytics_tables(conn)
-    conn.execute(
-        """
-        insert or replace into position_snapshot_agg (
-          batch_id, as_of_date, total_rows, asset_rows, liability_rows,
-          asset_face_amount, liability_face_amount, net_face_exposure,
-          source_version, rule_version, refreshed_at
-        )
-        with grouped as (
-          select
-            batch_id,
-            as_of_date,
-            count(*)::integer as total_rows,
-            sum(case when direction = 'ASSET' then 1 else 0 end)::integer as asset_rows,
-            sum(case when direction = 'LIABILITY' then 1 else 0 end)::integer as liability_rows,
-            sum(case when direction = 'ASSET' then face_amount end) as asset_face_amount,
-            sum(case when direction = 'LIABILITY' then face_amount end) as liability_face_amount,
-            max(source_version) as source_version,
-            max(rule_version) as rule_version
-          from position_snapshot
-          group by batch_id, as_of_date
-        )
-        select
-          batch_id,
-          as_of_date,
-          total_rows,
-          asset_rows,
-          liability_rows,
-          asset_face_amount,
-          liability_face_amount,
-          case
-            when asset_face_amount is null and liability_face_amount is null then null
-            else coalesce(asset_face_amount, 0) - coalesce(liability_face_amount, 0)
-          end as net_face_exposure,
-          source_version,
-          rule_version,
-          current_timestamp::varchar as refreshed_at
-        from grouped
-        """
-    )
-    conn.execute(
-        """
-        delete from position_snapshot_agg a
-        where not exists (
-          select 1
-          from position_snapshot s
-          where s.batch_id = a.batch_id and s.as_of_date = a.as_of_date
-        )
-        """
-    )
-
-
 @dataclass(slots=True)
 class LedgerAnalyticsRepository:
     path: str
 
     def list_dates(self) -> list[dict[str, Any]]:
+        if not self._database_exists():
+            return []
         with self._connect() as conn:
-            self._prepare(conn)
             if self._has_zqtz_rows(conn):
                 rows = conn.execute(
                     """
@@ -135,17 +74,26 @@ class LedgerAnalyticsRepository:
                     for row in rows
                 ]
 
-            refresh_position_snapshot_agg(conn)
+            if not _table_exists(conn, "position_snapshot"):
+                return []
             rows = conn.execute(
                 """
-                select a.as_of_date, a.batch_id, a.source_version, a.rule_version, a.total_rows
-                from position_snapshot_agg a
+                select
+                  s.as_of_date,
+                  s.batch_id,
+                  max(s.source_version) as source_version,
+                  max(s.rule_version) as rule_version,
+                  count(*)::integer as total_rows
+                from position_snapshot s
                 join (
                   select as_of_date, max(batch_id) as batch_id
-                  from position_snapshot_agg
+                  from position_snapshot
                   group by as_of_date
-                ) latest using (as_of_date, batch_id)
-                order by a.as_of_date desc
+                ) latest
+                  on s.as_of_date = latest.as_of_date
+                 and s.batch_id = latest.batch_id
+                group by s.as_of_date, s.batch_id
+                order by s.as_of_date desc
                 """
             ).fetchall()
         return [
@@ -160,22 +108,28 @@ class LedgerAnalyticsRepository:
         ]
 
     def dashboard(self, *, requested_as_of_date: str) -> dict[str, Any] | None:
+        if not self._database_exists():
+            return None
         with self._connect() as conn:
-            self._prepare(conn)
             if self._has_zqtz_rows(conn):
                 return self._dashboard_from_zqtz(conn, requested_as_of_date=requested_as_of_date)
 
-            refresh_position_snapshot_agg(conn)
             resolved = self._resolve_batch(conn, requested_as_of_date=requested_as_of_date)
             if resolved is None:
                 return None
             row = conn.execute(
                 """
                 select
-                  batch_id, as_of_date, asset_face_amount, liability_face_amount,
-                  net_face_exposure, source_version, rule_version, total_rows
-                from position_snapshot_agg
+                  batch_id,
+                  as_of_date,
+                  sum(case when direction = 'ASSET' then face_amount end) as asset_face_amount,
+                  sum(case when direction = 'LIABILITY' then face_amount end) as liability_face_amount,
+                  max(source_version) as source_version,
+                  max(rule_version) as rule_version,
+                  count(*)::integer as total_rows
+                from position_snapshot
                 where batch_id = ? and as_of_date = ?
+                group by batch_id, as_of_date
                 """,
                 [resolved["batch_id"], resolved["as_of_date"]],
             ).fetchone()
@@ -189,10 +143,10 @@ class LedgerAnalyticsRepository:
             "stale": bool(resolved["fallback"]),
             "asset_face_amount": _to_100m(row[2]),
             "liability_face_amount": _to_100m(row[3]),
-            "net_face_exposure": _to_100m(row[4]),
-            "source_version": str(row[5]),
-            "rule_version": str(row[6]),
-            "total_rows": int(row[7]),
+            "net_face_exposure": _to_100m(_net_face_amount(row[2], row[3])),
+            "source_version": str(row[4]),
+            "rule_version": str(row[5]),
+            "total_rows": int(row[6]),
         }
 
     def list_positions(
@@ -203,8 +157,9 @@ class LedgerAnalyticsRepository:
         limit: int | None,
         offset: int,
     ) -> dict[str, Any] | None:
+        if not self._database_exists():
+            return None
         with self._connect() as conn:
-            self._prepare(conn)
             if self._has_zqtz_rows(conn):
                 return self._list_positions_from_zqtz(
                     conn,
@@ -214,7 +169,6 @@ class LedgerAnalyticsRepository:
                     offset=offset,
                 )
 
-            refresh_position_snapshot_agg(conn)
             resolved = self._resolve_batch(conn, requested_as_of_date=requested_as_of_date)
             if resolved is None:
                 return None
@@ -247,15 +201,11 @@ class LedgerAnalyticsRepository:
             "items": [_position_row(row) for row in rows],
         }
 
-    def _prepare(self, conn: duckdb.DuckDBPyConnection) -> None:
-        apply_pending_migrations_on_connection(conn)
-        ensure_snapshot_tables(conn)
-        ensure_ledger_analytics_tables(conn)
+    def _database_exists(self) -> bool:
+        return Path(self.path).is_file()
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
-        duckdb_file = Path(self.path)
-        duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-        return duckdb.connect(str(duckdb_file), read_only=False)
+        return duckdb.connect(str(Path(self.path)), read_only=True)
 
     @staticmethod
     def _has_zqtz_rows(conn: duckdb.DuckDBPyConnection) -> bool:
@@ -432,15 +382,26 @@ class LedgerAnalyticsRepository:
         *,
         requested_as_of_date: str,
     ) -> dict[str, Any] | None:
+        if not _table_exists(conn, "position_snapshot"):
+            return None
         exact = conn.execute(
             """
             select batch_id, as_of_date, source_version, rule_version
-            from position_snapshot_agg
+            from (
+              select
+                batch_id,
+                as_of_date,
+                max(source_version) as source_version,
+                max(rule_version) as rule_version
+              from position_snapshot
+              where as_of_date = ?
+              group by batch_id, as_of_date
+            )
             where as_of_date = ?
             order by batch_id desc
             limit 1
             """,
-            [requested_as_of_date],
+            [requested_as_of_date, requested_as_of_date],
         ).fetchone()
         if exact is not None:
             return {
@@ -453,7 +414,15 @@ class LedgerAnalyticsRepository:
         fallback = conn.execute(
             """
             select batch_id, as_of_date, source_version, rule_version
-            from position_snapshot_agg
+            from (
+              select
+                batch_id,
+                as_of_date,
+                max(source_version) as source_version,
+                max(rule_version) as rule_version
+              from position_snapshot
+              group by batch_id, as_of_date
+            )
             order by as_of_date desc, batch_id desc
             limit 1
             """

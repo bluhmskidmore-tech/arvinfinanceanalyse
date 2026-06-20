@@ -56,6 +56,19 @@ The sample must be captured against this chain:
 - `asset_total.category_id == "asset_total"`
 - `liability_total.category_id == "liability_total"`
 - `grand_total.category_id == "grand_total"`
+- This sample is now bound to the three headline `metric_id` values and the decision 3C row-level detail metric set.
+- `MTR-PCP-001`: `result.asset_total.business_net_income`
+- `MTR-PCP-002`: `result.liability_total.business_net_income`
+- `MTR-PCP-003`: `result.grand_total.business_net_income`
+- `MTR-PCP-004`: `result.rows[].cnx_scale`
+- `MTR-PCP-005`: `result.rows[].cny_scale`
+- `MTR-PCP-006`: `result.rows[].foreign_scale`
+- `MTR-PCP-007`: `result.rows[].cny_ftp`
+- `MTR-PCP-008`: `result.rows[].foreign_ftp`
+- `MTR-PCP-009`: `result.rows[].cny_net`
+- `MTR-PCP-010`: `result.rows[].foreign_net`
+- `MTR-PCP-011`: `result.rows[].business_net_income`
+- `MTR-PCP-012`: `result.rows[].weighted_yield`
 
 ### Category structure
 
@@ -68,6 +81,16 @@ The sample must be captured against this chain:
 - scenario companion request flips the page to `basis == "scenario"`
 - scenario companion request changes governed scenario-owned FTP fields
 - scenario companion request does not change baseline row identity or the category tree
+- scenario companion request remains a probe until the Scenario promotion gate is met
+
+### Scenario promotion gate
+
+Promoting the companion probe into a second full golden matrix sample requires:
+
+- A separate scenario `request.json` and `response.json` pair captured from the governed endpoint.
+- Scenario-specific assertions that freeze row identity, category tree, scenario-owned FTP deltas, and unchanged non-scenario fields.
+- No new scenario `metric_id` binding without an approved metric matrix and metric dictionary rows.
+- Business-owner or delegated approval recorded in a non-placeholder scenario approval artifact.
 
 ### Reproducibility
 
@@ -84,9 +107,9 @@ The sample must be captured against this chain:
 
 This sample is now `capture-ready`, but these gaps remain visible:
 
-- the page still lacks a standalone outward `as_of_date`
-- page truth is frozen at field level, but not yet at approved `metric_id` level
-- scenario comparison is defined as a companion probe, not yet a separate frozen sample
+- standalone outward `as_of_date` is intentionally not provided for this page under decision 1B
+- additional detail fields and scenario outputs outside `MTR-PCP-004`~`MTR-PCP-012` are not active `metric_id` bindings without a new approved matrix / dictionary / sample / test bundle
+- scenario comparison is defined as a companion probe, not yet a separate frozen sample, until the Scenario promotion gate is met
 
 ## 8. Expected Pack Shape
 

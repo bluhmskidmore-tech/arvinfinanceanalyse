@@ -1,18 +1,138 @@
+import logging
+from pathlib import Path
 
 import duckdb
-from backend.app.governance.settings import get_settings
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from backend.app.services.macro_vendor_service import (
+    choice_macro_refresh_status,
+    load_choice_macro_latest_payload,
+)
 from tests.helpers import load_module
+
+MACRO_VENDOR_READ_HEADERS = {"X-User-Id": "macro-vendor-read-user", "X-User-Role": "viewer"}
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
+
+
+def _configure_macro_vendor_scope_store(tmp_path: Path, monkeypatch):
+    sqlite_path = tmp_path / "macro-vendor-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    return repo_mod.UserScopeRepository(auth_dsn)
+
+
+def _seed_macro_vendor_read_scope(tmp_path: Path, monkeypatch) -> None:
+    _configure_macro_vendor_scope_store(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_vendor",
+        action="read",
+    )
+
+
+def _macro_vendor_read_auth(route_module):
+    return route_module.AuthContext(
+        user_id=MACRO_VENDOR_READ_HEADERS["X-User-Id"],
+        role=MACRO_VENDOR_READ_HEADERS["X-User-Role"],
+        identity_source="test",
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "params"),
+    [
+        ("/ui/market-data/rates", {}),
+        ("/ui/market-data/catalog", {}),
+        ("/ui/preview/macro-foundation", {}),
+        ("/ui/macro/choice-series/latest", {}),
+        ("/ui/market-data/fx/formal-status", {}),
+        ("/ui/market-data/fx/analytical", {}),
+        ("/ui/macro/choice-series/refresh-status", {}),
+    ],
+)
+def test_macro_vendor_read_surfaces_require_explicit_read_scope(
+    path: str,
+    params: dict[str, object],
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    _configure_macro_vendor_scope_store(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "missing.duckdb"))
+    route_module.market_home_response_cache.invalidate()
+
+    def _unexpected_service_call(*_args, **_kwargs):
+        raise AssertionError("Macro vendor read service should not run without macro_vendor/read.")
+
+    monkeypatch.setattr(route_module, "choice_macro_formal_envelope", _unexpected_service_call)
+    monkeypatch.setattr(route_module, "macro_foundation_formal_envelope", _unexpected_service_call)
+    monkeypatch.setattr(route_module, "macro_vendor_envelope", _unexpected_service_call)
+    monkeypatch.setattr(route_module, "choice_macro_latest_envelope", _unexpected_service_call)
+    monkeypatch.setattr(route_module, "fx_formal_status_envelope", _unexpected_service_call)
+    monkeypatch.setattr(route_module, "fx_analytical_envelope", _unexpected_service_call)
+    monkeypatch.setattr(route_module, "choice_macro_refresh_status", _unexpected_service_call)
+
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get(path, params=params, headers=MACRO_VENDOR_READ_HEADERS)
+
+    assert response.status_code == 403, f"Expected 403 for {path}, got {response.status_code}: {response.text}"
+
+
+def test_choice_macro_refresh_status_reads_governance_runs(tmp_path):
+    governance_mod = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    governance_mod.GovernanceRepository(base_dir=tmp_path).append(
+        governance_mod.CACHE_BUILD_RUN_STREAM,
+        {
+            "job_name": "choice_macro_refresh",
+            "cache_key": "choice_macro.latest",
+            "run_id": "choice-run-1",
+            "status": "running",
+        },
+    )
+
+    payload = choice_macro_refresh_status(tmp_path, run_id="choice-run-1")
+
+    assert payload["run_id"] == "choice-run-1"
+    assert payload["trigger_mode"] == "async"
+    with pytest.raises(ValueError, match="missing-run"):
+        choice_macro_refresh_status(tmp_path, run_id="missing-run")
 
 
 def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_path, monkeypatch):
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "empty.duckdb"))
     get_settings.cache_clear()
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
 
-    response = client.get("/ui/preview/macro-foundation")
+    response = client.get("/ui/preview/macro-foundation", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -23,6 +143,26 @@ def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_p
     assert payload["result_meta"]["fallback_mode"] == "none"
     assert payload["result"]["read_target"] == "duckdb"
     assert payload["result"]["series"] == []
+    get_settings.cache_clear()
+
+
+def test_market_data_rates_logs_api_perf(tmp_path, monkeypatch, caplog):
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "empty-rates-perf.duckdb"))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get("/ui/market-data/rates", headers=MACRO_VENDOR_READ_HEADERS)
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/market-data/rates")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind")
     get_settings.cache_clear()
 
 
@@ -90,11 +230,12 @@ def test_choice_macro_latest_ignores_empty_snapshot_table_when_fact_rows_exist(
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
 
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -174,13 +315,14 @@ def test_choice_macro_latest_supports_legacy_catalog_schema(
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",
         "backend/app/api/routes/macro_vendor.py",
     )
 
-    payload = route_module.choice_series_latest()
+    payload = route_module.choice_series_latest(auth=_macro_vendor_read_auth(route_module))
     assert [item["series_id"] for item in payload["result"]["series"]] == ["cn_repo_7d"]
     assert payload["result"]["series"][0]["refresh_tier"] is None
     assert "vendor_series_code" not in payload["result"]["series"][0]
@@ -295,13 +437,14 @@ def test_choice_macro_latest_reads_persisted_market_data_categories(
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",
         "backend/app/api/routes/macro_vendor.py",
     )
 
-    payload = route_module.choice_series_latest()
+    payload = route_module.choice_series_latest(auth=_macro_vendor_read_auth(route_module))
     row = payload["result"]["series"][0]
     assert row["series_id"] == "cn_repo_7d"
     assert row["refresh_tier"] == "fallback"
@@ -404,13 +547,14 @@ def test_choice_macro_latest_exposes_vendor_name_without_vendor_code(
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",
         "backend/app/api/routes/macro_vendor.py",
     )
 
-    payload = route_module.choice_series_latest()
+    payload = route_module.choice_series_latest(auth=_macro_vendor_read_auth(route_module))
 
     point = payload["result"]["series"][0]
     assert point["series_id"] == "CA.MEGA_CAP_WEIGHT"
@@ -452,8 +596,9 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
 
     monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
     monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
 
-    payload = route_module.choice_series_refresh(backfill_days=7)
+    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=7)
 
     assert calls == [("choice", 7), ("public_cross_asset", None)]
     assert payload["status"] == "completed"
@@ -462,6 +607,63 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
     assert payload["public_cross_asset"]["series_count"] == 3
     assert payload["public_cross_asset"]["row_count"] == 20
     assert payload["warnings"] == ["tushare index_weight used latest available date"]
+
+
+def test_choice_macro_refresh_invalidates_cached_latest_payload(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    route_module.market_home_response_cache.invalidate()
+    build_calls: list[object] = []
+
+    def _latest_envelope(_duckdb_path: object, *, category: object | None = None) -> dict[str, object]:
+        build_calls.append(category)
+        return {
+            "result_meta": {"result_kind": "macro.choice.latest"},
+            "result": {"series": [{"series_id": f"series-{len(build_calls)}"}]},
+        }
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            return {"status": "completed", "run_id": f"choice-refresh-{backfill_days}"}
+
+    monkeypatch.setattr(route_module, "choice_macro_latest_envelope", _latest_envelope)
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", lambda: {"status": "completed"})
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    auth = _macro_vendor_read_auth(route_module)
+    first = route_module.choice_series_latest(auth=auth)
+    second = route_module.choice_series_latest(auth=auth)
+    route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=3)
+    third = route_module.choice_series_latest(auth=auth)
+
+    assert first["result"]["series"][0]["series_id"] == "series-1"
+    assert second["result"]["series"][0]["series_id"] == "series-1"
+    assert third["result"]["series"][0]["series_id"] == "series-2"
+    assert build_calls == [None, None]
+    route_module.market_home_response_cache.invalidate()
+
+
+def test_choice_macro_refresh_keeps_auth_dependency_contract():
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+
+    route = next(
+        item
+        for item in app.routes
+        if getattr(item, "path", "") == "/ui/macro/choice-series/refresh"
+    )
+
+    assert [dependency.name for dependency in route.dependant.dependencies] == ["auth"]
+    assert "auth" not in [param.name for param in route.dependant.body_params]
+    assert "backfill_days" in [param.name for param in route.dependant.query_params]
 
 
 def test_choice_macro_latest_filters_persisted_market_data_categories(
@@ -545,15 +747,32 @@ def test_choice_macro_latest_filters_persisted_market_data_categories(
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
 
-    default_response = client.get("/ui/macro/choice-series/latest")
-    fallback_response = client.get("/ui/macro/choice-series/latest", params={"category": "fallback"})
-    isolated_response = client.get("/ui/macro/choice-series/latest", params={"category": "isolated"})
-    stable_response = client.get("/ui/macro/choice-series/latest", params={"category": "stable"})
-    invalid_response = client.get("/ui/macro/choice-series/latest", params={"category": "duration"})
+    default_response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
+    fallback_response = client.get(
+        "/ui/macro/choice-series/latest",
+        params={"category": "fallback"},
+        headers=MACRO_VENDOR_READ_HEADERS,
+    )
+    isolated_response = client.get(
+        "/ui/macro/choice-series/latest",
+        params={"category": "isolated"},
+        headers=MACRO_VENDOR_READ_HEADERS,
+    )
+    stable_response = client.get(
+        "/ui/macro/choice-series/latest",
+        params={"category": "stable"},
+        headers=MACRO_VENDOR_READ_HEADERS,
+    )
+    invalid_response = client.get(
+        "/ui/macro/choice-series/latest",
+        params={"category": "duration"},
+        headers=MACRO_VENDOR_READ_HEADERS,
+    )
 
     assert default_response.status_code == 200
     assert fallback_response.status_code == 200
@@ -702,13 +921,14 @@ def test_choice_macro_latest_excludes_isolated_rows_and_exposes_policy_fields(
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",
         "backend/app/api/routes/macro_vendor.py",
     )
 
-    payload = route_module.choice_series_latest()
+    payload = route_module.choice_series_latest(auth=_macro_vendor_read_auth(route_module))
     assert [item["series_id"] for item in payload["result"]["series"]] == ["cn_repo_7d"]
     assert payload["result"]["series"][0]["refresh_tier"] == "stable"
     assert payload["result"]["series"][0]["fetch_mode"] == "date_slice"
@@ -720,6 +940,7 @@ def test_choice_macro_latest_excludes_isolated_rows_and_exposes_policy_fields(
 
 
 def test_macro_foundation_preview_degrades_to_empty_payload_for_corrupt_duckdb(tmp_path, monkeypatch):
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     corrupt_duckdb = tmp_path / "corrupt.duckdb"
     corrupt_duckdb.write_text("not-a-duckdb-file", encoding="utf-8")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(corrupt_duckdb))
@@ -727,7 +948,7 @@ def test_macro_foundation_preview_degrades_to_empty_payload_for_corrupt_duckdb(t
 
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/preview/macro-foundation")
+    response = client.get("/ui/preview/macro-foundation", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -767,11 +988,12 @@ def test_macro_foundation_preview_reports_aggregated_vendor_version_from_catalog
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
 
-    response = client.get("/ui/preview/macro-foundation")
+    response = client.get("/ui/preview/macro-foundation", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -843,19 +1065,166 @@ def test_macro_foundation_preview_exposes_policy_metadata_from_catalog(
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",
         "backend/app/api/routes/macro_vendor.py",
     )
 
-    payload = route_module.macro_foundation()
+    payload = route_module.macro_foundation(auth=_macro_vendor_read_auth(route_module))
 
     assert payload["result"]["series"][0]["refresh_tier"] == "stable"
     assert payload["result"]["series"][0]["fetch_mode"] == "date_slice"
     assert payload["result"]["series"][0]["fetch_granularity"] == "batch"
     assert payload["result"]["series"][0]["policy_note"] == "main refresh date-slice lane"
     get_settings.cache_clear()
+
+
+def test_market_data_catalog_tolerates_legacy_policy_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "market-data-catalog-legacy-policy.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'legacy_macro',
+                'Legacy macro',
+                'tushare',
+                'vv_legacy',
+                'monthly',
+                'pct',
+                'live_backfill',
+                'monthly',
+                'on_demand',
+                'legacy external catalog metadata'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    response = client.get("/ui/market-data/catalog", headers=MACRO_VENDOR_READ_HEADERS)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "market_data.catalog"
+    assert payload["result"]["series"][0]["series_id"] == "legacy_macro"
+    assert payload["result"]["series"][0]["refresh_tier"] is None
+    assert payload["result"]["series"][0]["fetch_mode"] is None
+    assert payload["result"]["series"][0]["fetch_granularity"] is None
+    assert payload["result"]["series"][0]["policy_note"] == "legacy external catalog metadata"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_tolerates_legacy_policy_metadata(tmp_path):
+    duckdb_path = tmp_path / "choice-macro-latest-legacy-policy.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'legacy_macro',
+                'Legacy macro',
+                '2026-04-09',
+                1.23,
+                'monthly',
+                'pct',
+                'sv_choice_macro_legacy',
+                'vv_legacy',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice_macro_refresh:legacy'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'legacy_macro',
+                'Legacy macro',
+                'tushare',
+                'vv_legacy',
+                'monthly',
+                'pct',
+                'live_backfill',
+                'monthly',
+                'on_demand',
+                'legacy external catalog metadata'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    payload = load_choice_macro_latest_payload(str(duckdb_path))
+
+    assert payload.series[0].series_id == "legacy_macro"
+    assert payload.series[0].refresh_tier is None
+    assert payload.series[0].fetch_mode is None
+    assert payload.series[0].fetch_granularity is None
+    assert payload.series[0].policy_note == "legacy external catalog metadata"
 
 
 def test_choice_macro_latest_returns_up_to_twenty_recent_points(tmp_path, monkeypatch):
@@ -939,13 +1308,14 @@ def test_choice_macro_latest_returns_up_to_twenty_recent_points(tmp_path, monkey
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",
         "backend/app/api/routes/macro_vendor.py",
     )
 
-    payload = route_module.choice_series_latest()
+    payload = route_module.choice_series_latest(auth=_macro_vendor_read_auth(route_module))
     series = payload["result"]["series"][0]
     assert len(series["recent_points"]) == 6
     assert series["recent_points"][0]["trade_date"] == "2026-04-06"
@@ -1019,11 +1389,12 @@ def test_macro_foundation_preview_reports_snapshot_source_version_when_available
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
 
-    response = client.get("/ui/preview/macro-foundation")
+    response = client.get("/ui/preview/macro-foundation", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -1082,11 +1453,12 @@ def test_macro_foundation_preview_keeps_empty_source_version_when_snapshot_exist
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
 
-    response = client.get("/ui/preview/macro-foundation")
+    response = client.get("/ui/preview/macro-foundation", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -1144,11 +1516,12 @@ def test_choice_macro_latest_returns_stale_result_meta_when_latest_rows_are_stal
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
 
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()

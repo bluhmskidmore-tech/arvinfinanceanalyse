@@ -10,9 +10,9 @@ import logging
 from calendar import monthrange
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
-from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from decimal import ROUND_HALF_UP, Decimal
+from enum import StrEnum
+from typing import Any
 
 from .safe_decimal import safe_decimal
 
@@ -26,14 +26,14 @@ MAX_DURATION = Decimal("30.0")
 DEFAULT_DURATION = Decimal("3.0")
 
 
-class DayCountConvention(str, Enum):
+class DayCountConvention(StrEnum):
     ACT_365 = "ACT/365"
     ACT_360 = "ACT/360"
     ACT_ACT = "ACT/ACT"
     THIRTY_360 = "30/360"
 
 
-class QualityFlag(str, Enum):
+class QualityFlag(StrEnum):
     OK = "OK"
     WARN = "WARN"
     BAD = "BAD"
@@ -45,12 +45,12 @@ class ReconciliationResult:
     explained_pnl: Decimal = Decimal("0")
     actual_pnl: Decimal = Decimal("0")
     residual: Decimal = Decimal("0")
-    residual_ratio: Optional[Decimal] = None
+    residual_ratio: Decimal | None = None
     quality_flag: QualityFlag = QualityFlag.NA
-    explained_breakdown: Dict[str, Decimal] = field(default_factory=dict)
-    diagnostics: List[str] = field(default_factory=list)
+    explained_breakdown: dict[str, Decimal] = field(default_factory=dict)
+    diagnostics: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "explained_pnl": float(self.explained_pnl),
             "actual_pnl": float(self.actual_pnl),
@@ -63,7 +63,7 @@ class ReconciliationResult:
 
 
 def calculate_reconciliation(
-    explained_components: Dict[str, Decimal],
+    explained_components: dict[str, Decimal],
     actual_pnl: Decimal,
     threshold_warn: Decimal = DEFAULT_RESIDUAL_THRESHOLD_WARN,
     threshold_bad: Decimal = DEFAULT_RESIDUAL_THRESHOLD_BAD,
@@ -138,7 +138,7 @@ def get_days_in_month(year: int, month: int) -> int:
 def get_day_count_factor(
     report_date: date,
     convention: DayCountConvention = DayCountConvention.ACT_365,
-    period_days: Optional[int] = None,
+    period_days: int | None = None,
 ) -> Decimal:
     if period_days is None:
         period_days = get_days_in_month(report_date.year, report_date.month)
@@ -193,10 +193,10 @@ def safe_divide(
 
 
 def estimate_modified_duration(
-    maturity_date: Optional[date],
+    maturity_date: date | None,
     report_date: date,
     coupon_rate: Decimal,
-    ytm: Optional[Decimal] = None,
+    ytm: Decimal | None = None,
     coupon_frequency: int = 1,
 ) -> Decimal:
     if maturity_date is None:
@@ -246,27 +246,38 @@ def estimate_convexity(duration: Decimal, ytm: Decimal | None = None) -> Decimal
 
 
 def interpolate_yield_curve(
-    yield_curve: Dict[int, Decimal],
+    yield_curve: dict[int, Decimal],
     target_tenor: float,
 ) -> Decimal:
+    """Interpolate a yield from a {tenor_years_int: rate} curve.
+
+    Delegates to ``curve_engine`` cubic spline when ≥ 3 points are available;
+    falls back to piecewise linear otherwise.  Signature unchanged.
+    """
     if not yield_curve:
         return Decimal("0")
 
-    tenors = sorted(yield_curve.keys())
-    target = Decimal(str(target_tenor))
+    from backend.app.core_finance.curve_engine.curve_types import (
+        CurvePoint,
+        FittedCurve,
+        InterpolationMethod,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+    )
 
-    if target <= Decimal(str(tenors[0])):
-        return yield_curve[tenors[0]]
-    if target >= Decimal(str(tenors[-1])):
-        return yield_curve[tenors[-1]]
-
-    for i in range(len(tenors) - 1):
-        t1, t2 = tenors[i], tenors[i + 1]
-        if Decimal(str(t1)) <= target <= Decimal(str(t2)):
-            y1, y2 = yield_curve[t1], yield_curve[t2]
-            return y1 + (y2 - y1) * (target - Decimal(str(t1))) / Decimal(str(t2 - t1))
-
-    return Decimal("0")
+    curve_points = sorted(
+        [CurvePoint(years=float(t), rate=yield_curve[t]) for t in yield_curve],
+        key=lambda p: p.years,
+    )
+    if len(curve_points) >= 3:
+        fitted = _build_spline(list(curve_points))
+    else:
+        fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=tuple(curve_points))
+    return _engine_interpolate(fitted, target_tenor)
 
 
 TENOR_BUCKETS = [
@@ -294,7 +305,7 @@ def get_tenor_bucket(maturity_years: float) -> str:
     return "30Y"
 
 
-def get_adjacent_tenor_buckets(maturity_years: float) -> Tuple[str, str, float]:
+def get_adjacent_tenor_buckets(maturity_years: float) -> tuple[str, str, float]:
     key_tenors = [1, 2, 3, 5, 7, 10, 15, 20, 30]
 
     if maturity_years <= key_tenors[0]:
@@ -311,7 +322,7 @@ def get_adjacent_tenor_buckets(maturity_years: float) -> Tuple[str, str, float]:
     return "10Y", "10Y", 0.5
 
 
-class PnLScope(str, Enum):
+class PnLScope(StrEnum):
     TOTAL_PNL = "total_pnl"
     INTEREST_ONLY = "interest_only"
     FV_CHANGE_ONLY = "fv_change_only"
@@ -325,7 +336,7 @@ def validate_pnl_scope(
     capital_gain: Decimal,
     total_pnl: Decimal,
     tolerance: Decimal = Decimal("0.01"),
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     calculated_total = interest_income + fair_value_change + capital_gain
     diff = abs(total_pnl - calculated_total)
 

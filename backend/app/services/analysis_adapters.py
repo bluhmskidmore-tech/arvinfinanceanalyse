@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 
@@ -23,7 +24,6 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta,
     build_scenario_result_meta,
 )
-
 
 PRODUCT_CATEGORY_AVAILABLE_VIEWS = [
     "monthly",
@@ -91,8 +91,25 @@ class ProductCategoryPnlAnalysisAdapter:
             ]
 
         asset_total = next(row for row in typed_rows if row.category_id == "asset_total")
+        interest_earning_assets = next(row for row in typed_rows if row.category_id == "interest_earning_assets")
         liability_total = next(row for row in typed_rows if row.category_id == "liability_total")
         grand_total = next(row for row in typed_rows if row.category_id == "grand_total")
+        from backend.app.core_finance.product_category_pnl import (
+            calculate_product_category_interest_spread_metrics,
+        )
+
+        interest_spread = calculate_product_category_interest_spread_metrics(
+            report_date=query.report_date,
+            view=view,
+            asset_row=asset_total.model_dump(mode="python"),
+            liability_row=liability_total.model_dump(mode="python"),
+        )
+        interest_earning_spread = calculate_product_category_interest_spread_metrics(
+            report_date=query.report_date,
+            view=view,
+            asset_row=interest_earning_assets.model_dump(mode="python"),
+            liability_row=liability_total.model_dump(mode="python"),
+        )
 
         result_kind = (
             "analysis.product_category_pnl"
@@ -131,6 +148,8 @@ class ProductCategoryPnlAnalysisAdapter:
                     "asset_total": asset_total.model_dump(mode="json"),
                     "liability_total": liability_total.model_dump(mode="json"),
                     "grand_total": grand_total.model_dump(mode="json"),
+                    "interest_spread": asdict(interest_spread),
+                    "interest_earning_spread": asdict(interest_earning_spread),
                 },
                 rows=[row.model_dump(mode="json") for row in typed_rows],
                 attribution=_build_product_category_attribution(typed_rows, grand_total),

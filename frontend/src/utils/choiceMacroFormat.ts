@@ -5,9 +5,14 @@ type ChoiceMacroFormatOptions = {
   emptyDisplay?: string;
 };
 
+const DISPLAY_UNITLESS_UNITS = new Set(["index", "x"]);
+
 function normalizeUnit(point: ChoiceMacroLatestPoint): string {
   const unit = point.unit?.trim() ?? "";
   if (!unit || unit.toLowerCase() === "unknown") {
+    return "";
+  }
+  if (DISPLAY_UNITLESS_UNITS.has(unit.toLowerCase())) {
     return "";
   }
   return unit;

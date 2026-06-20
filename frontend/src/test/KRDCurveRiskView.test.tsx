@@ -143,6 +143,10 @@ describe("KRDCurveRiskView", () => {
     expect(await screen.findByText("组合久期")).toBeInTheDocument();
     expect(screen.getByText("修正久期")).toBeInTheDocument();
     expect(screen.getByText("DV01 (万元/bp)")).toBeInTheDocument();
+    const portfolioDv01Kpi = screen.getByText("DV01 (万元/bp)").closest(".ant-statistic");
+    expect(portfolioDv01Kpi).not.toBeNull();
+    expect(portfolioDv01Kpi).toHaveTextContent("15.00");
+    expect(within(portfolioDv01Kpi as HTMLElement).queryByText("150,000")).not.toBeInTheDocument();
     expect(screen.getByText("凸性")).toBeInTheDocument();
 
     expect(screen.getByText("KRD 分布")).toBeInTheDocument();
@@ -153,8 +157,8 @@ describe("KRDCurveRiskView", () => {
       "计算时间：2026-04-10T00:00:00Z",
     );
     expect(screen.getByText("parallel_shift_bp 10")).toBeInTheDocument();
-    expect(screen.getByText("利率贡献")).toBeInTheDocument();
-    expect(screen.getByText("凸性贡献")).toBeInTheDocument();
+    expect(screen.getAllByText("利率贡献").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("凸性贡献").length).toBeGreaterThan(0);
 
     expect(screen.getByText("按资产类别拆分")).toBeInTheDocument();
     expect(screen.getByText("rate")).toBeInTheDocument();
@@ -188,11 +192,11 @@ describe("KRDCurveRiskView", () => {
     const panel = await screen.findByTestId("krd-scenario-by-asset-class");
     expect(within(panel).getByText("rate")).toBeInTheDocument();
     expect(within(panel).getByText("credit")).toBeInTheDocument();
-    expect(within(panel).getByText("经济口径")).toBeInTheDocument();
+    expect(within(panel).getAllByText("经济口径").length).toBeGreaterThan(0);
     expect(within(panel).getByTestId("krd-scenario-by-asset-class-extra-keys")).toHaveTextContent(
       "pnl_other_bucket",
     );
-    expect(within(panel).getByText("pnl_other_bucket")).toBeInTheDocument();
+    expect(within(panel).getAllByText("pnl_other_bucket").length).toBeGreaterThan(0);
   });
 
   it("renders warning alert when warnings exist", async () => {

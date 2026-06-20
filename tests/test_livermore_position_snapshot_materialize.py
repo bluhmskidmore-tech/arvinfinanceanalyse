@@ -5,7 +5,9 @@ import csv
 import duckdb
 import pytest
 
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_migrations import (
+    apply_pending_migrations_on_connection,
+)
 from backend.app.tasks.livermore_position_snapshot_materialize import (
     materialize_livermore_position_snapshot,
 )

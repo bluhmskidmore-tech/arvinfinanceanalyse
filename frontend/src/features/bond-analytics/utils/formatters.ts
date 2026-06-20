@@ -1,7 +1,12 @@
 import type { Numeric } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
 
-function coerceRaw(value: Numeric | string | number): number {
+type FormatValue = Numeric | string | number | null | undefined;
+
+function coerceRaw(value: FormatValue): number {
+  if (value == null) {
+    return Number.NaN;
+  }
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : Number.NaN;
   }
@@ -15,7 +20,7 @@ function coerceRaw(value: Numeric | string | number): number {
 }
 
 /** Format yuan amount to 亿 with 2 decimal places */
-export const formatYi = (value: Numeric | string | number): string => {
+export const formatYi = (value: FormatValue): string => {
   const num = coerceRaw(value);
   if (Number.isNaN(num)) return "-";
   return `${(num / 1e8).toLocaleString("zh-CN", {
@@ -25,15 +30,25 @@ export const formatYi = (value: Numeric | string | number): string => {
 };
 
 /** Format yuan amount to 万 with no decimal places */
-export const formatWan = (value: Numeric | string | number): string => {
+export const formatWan = (value: FormatValue): string => {
   const num = coerceRaw(value);
   if (Number.isNaN(num)) return "-";
   return `${(num / 1e4).toLocaleString("zh-CN", { maximumFractionDigits: 0 })} 万`;
 };
 
+/** Format DV01 raw yuan-per-bp exposure to 万元/bp display. */
+export const formatDv01Wan = (value: FormatValue, digits = 2): string => {
+  const num = coerceRaw(value);
+  if (Number.isNaN(num)) return "-";
+  return (num / 1e4).toLocaleString("zh-CN", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+};
+
 /** Format percentage: `pct` unit uses server display; `ratio` uses raw×100 (e.g. 0.25 → 25%). */
-export const formatPct = (value: Numeric | string): string => {
-  if (typeof value !== "string") {
+export const formatPct = (value: Numeric | string | null | undefined): string => {
+  if (value != null && typeof value !== "string") {
     if (value.unit === "pct" && value.display) {
       return value.display;
     }
@@ -47,8 +62,14 @@ export const formatPct = (value: Numeric | string): string => {
 };
 
 /** Format bp value */
-export const formatBp = (value: Numeric | string): string => {
-  if (typeof value !== "string" && value.unit === "bp" && value.display) {
+export const formatBp = (value: Numeric | string | number | null | undefined): string => {
+  if (
+    value != null &&
+    typeof value !== "string" &&
+    typeof value !== "number" &&
+    value.unit === "bp" &&
+    value.display
+  ) {
     return value.display;
   }
   const num = coerceRaw(value);

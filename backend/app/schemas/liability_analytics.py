@@ -3,9 +3,8 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -214,11 +213,36 @@ class LiabilityRiskBucketsPayload(BaseModel):
     issued_liabilities_term_buckets: list[LiabilityBucketAmountItem] = Field(default_factory=list)
 
 
+class LiabilityYieldHistoryPoint(BaseModel):
+    """Time series point for yield_metrics charts (plain floats, not Numeric envelopes)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    date: str
+    asset_yield: float | None = None
+    liability_cost: float | None = None
+    market_liability_cost: float | None = None
+    nim: float | None = None
+
+
+class LiabilityYieldScatterPoint(BaseModel):
+    """Scatter point: years-to-maturity (x), YTM as decimal (y), |market value| (z)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+    z: float
+    name: str
+
+
 class LiabilityYieldMetricsPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     report_date: str
     kpi: LiabilityYieldKpi
+    history: list[LiabilityYieldHistoryPoint] = Field(default_factory=list)
+    scatter: list[LiabilityYieldScatterPoint] = Field(default_factory=list)
 
 
 class LiabilityCounterpartyPayload(BaseModel):

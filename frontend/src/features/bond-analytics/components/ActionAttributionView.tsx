@@ -1,12 +1,13 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useQuery } from "@tanstack/react-query";
 import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
-import type { Numeric, ResultMeta } from "../../../api/contracts";
+import type { ApiEnvelope, Numeric, ResultMeta } from "../../../api/contracts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { bondNumericDisplay, bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { PeriodType, ActionAttributionResponse } from "../types";
 import { ACTION_TYPE_NAMES } from "../types";
 import { formatWan } from "../utils/formatters";
+import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { SectionLead } from "./SectionLead";
 
 interface Props {
@@ -76,7 +77,7 @@ const detailColumns = [
     width: 120,
     render: (v: Numeric) => {
       const num = bondNumericRaw(v);
-      const color = num >= 0 ? "#cf1322" : "#3f8600";
+      const color = num === null ? undefined : num >= 0 ? "#cf1322" : "#3f8600";
       return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
     },
   },
@@ -94,7 +95,7 @@ const detailColumns = [
     width: 110,
     render: (v: Numeric) => {
       const num = bondNumericRaw(v);
-      const color = num >= 0 ? "#cf1322" : "#3f8600";
+      const color = num === null ? undefined : num >= 0 ? "#cf1322" : "#3f8600";
       return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
     },
   },
@@ -138,40 +139,25 @@ const detailColumns = [
 
 export function ActionAttributionView({ reportDate, periodType }: Props) {
   const client = useApiClient();
-  const [data, setData] = useState<ActionAttributionResponse | null>(null);
-  const [meta, setMeta] = useState<ResultMeta | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: [...bondAnalyticsQueryKeyRoot, "overview-action-attribution", client.mode, reportDate, periodType],
+    queryFn: (): Promise<ApiEnvelope<ActionAttributionResponse>> =>
+      client.getBondAnalyticsActionAttribution(reportDate, periodType),
+    enabled: Boolean(reportDate),
+    retry: false,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      setMeta(null);
-      try {
-        const envelope = await client.getBondAnalyticsActionAttribution(reportDate, periodType);
-        if (!cancelled) {
-          setData(envelope.result);
-          setMeta(envelope.result_meta);
-        }
-      } catch (e: unknown) {
-        if (!cancelled) {
-          setError((e as Error).message);
-          setData(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    if (reportDate) fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, [client, reportDate, periodType]);
-
-  if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
-  if (error) return <Alert type="error" message={`加载失败：${error}`} />;
+  if (!reportDate) return null;
+  if (query.isPending) return <Spin style={{ display: "block", margin: "40px auto" }} />;
+  if (query.isError)
+    return (
+      <Alert
+        type="error"
+        message={`加载失败：${query.error instanceof Error ? query.error.message : String(query.error)}`}
+      />
+    );
+  const data = query.data?.result;
+  const meta = query.data?.result_meta ?? null;
   if (!data) return null;
 
   const hasReadinessMeta =
@@ -282,7 +268,8 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
             {data.by_action_type.map((item) => {
               const pnl = bondNumericRaw(item.total_pnl_economic);
               const totalPnl = bondNumericRaw(data.total_pnl_from_actions);
-              const pct = totalPnl !== 0 ? (pnl / totalPnl) * 100 : 0;
+              const pct = pnl !== null && totalPnl !== null && totalPnl !== 0 ? (pnl / totalPnl) * 100 : 0;
+              const pnlColor = pnl === null ? "#5c6b82" : pnl >= 0 ? "#cf1322" : "#3f8600";
               return (
                 <div key={item.action_type} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <Tag color={ACTION_COLORS[item.action_type] || "default"} style={{ width: 80, textAlign: "center" }}>
@@ -310,7 +297,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
                       lineHeight: 1.4,
                     }}
                   >
-                    <div style={{ fontVariantNumeric: "tabular-nums", color: pnl >= 0 ? "#cf1322" : "#3f8600" }}>
+                    <div style={{ fontVariantNumeric: "tabular-nums", color: pnlColor }}>
                       经济 {formatWan(item.total_pnl_economic)}
                     </div>
                     <div style={{ fontVariantNumeric: "tabular-nums" }}>

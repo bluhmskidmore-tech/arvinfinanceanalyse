@@ -25,7 +25,15 @@ dependencies = [
 dev = [
   "httpx>=0.28,<1",
   "pandas>=2.2,<3",
-  "pytest>=8.3,<9",
+  "pytest>=9.0.3,<10",
+]
+otel = [
+    "opentelemetry-api>=1.39,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1.39,<2",
+    "opentelemetry-instrumentation-fastapi>=0.60b0,<1",
+    "opentelemetry-instrumentation-requests>=0.60b0,<1",
+    "opentelemetry-instrumentation-sqlalchemy>=0.60b0,<1",
+    "opentelemetry-sdk>=1.39,<2",
 ]
 
 [build-system]
@@ -62,6 +70,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B", "F841"]
+"app/core_finance/macro/toolkit/scripts/*.py" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -25,26 +25,26 @@ function numeric(
 
 function overviewVm(): NonNullable<DashboardAdapterOutput["overview"]["vm"]> {
   return {
-    title: "鎬昏",
+    title: "总览",
     metrics: [
       {
         id: "m1",
         caliberLabel: null,
-        label: "璧勪骇瑙勬ā",
-        value: numeric(12_000_000_000, "120.00 浜?", "yuan", false),
+        label: "资产规模",
+        value: numeric(12_000_000_000, "120.00 亿", "yuan", false),
         delta: numeric(0.021, "+2.10%", "pct"),
         tone: "positive",
-        detail: "杈冧笂鏈堟湯",
+        detail: "较上月末",
         history: null,
       },
       {
         id: "m2",
         caliberLabel: null,
-        label: "娴佸姩鎬ц鐩?",
+        label: "流动性覆盖",
         value: numeric(1.18, "118.00%", "pct", false),
-        delta: numeric(0, "鎸佸钩", "pct", false),
+        delta: numeric(0, "持平", "pct", false),
         tone: "neutral",
-        detail: "鐩戠鍙ｅ緞",
+        detail: "监管口径",
         history: null,
       },
     ],
@@ -72,21 +72,21 @@ describe("OverviewSection", () => {
 
     expect(screen.getByText("经营总览")).toBeInTheDocument();
     expect(screen.getByText("2 项")).toBeInTheDocument();
-    expect(screen.getByText("璧勪骇瑙勬ā")).toBeInTheDocument();
-    expect(screen.getByText("120.00 浜?")).toBeInTheDocument();
+    expect(screen.getByText("资产规模")).toBeInTheDocument();
+    expect(screen.getByText("120.00 亿")).toBeInTheDocument();
     expect(screen.getByText("+2.10%")).toBeInTheDocument();
-    expect(screen.getByText("杈冧笂鏈堟湯")).toBeInTheDocument();
-    expect(screen.getByText("娴佸姩鎬ц鐩?")).toBeInTheDocument();
+    expect(screen.getByText("较上月末")).toBeInTheDocument();
+    expect(screen.getByText("流动性覆盖")).toBeInTheDocument();
     expect(screen.getByText("118.00%")).toBeInTheDocument();
-    expect(screen.getByText("鎸佸钩")).toBeInTheDocument();
-    expect(screen.getByText("鐩戠鍙ｅ緞")).toBeInTheDocument();
+    expect(screen.getByText("持平")).toBeInTheDocument();
+    expect(screen.getByText("监管口径")).toBeInTheDocument();
   });
 
   it("renders empty state when overview state is empty", () => {
     renderOverview({ kind: "empty" });
 
     expect(screen.getByText("当前暂无可展示内容。")).toBeInTheDocument();
-    expect(screen.queryByText("璧勪骇瑙勬ā")).not.toBeInTheDocument();
+    expect(screen.queryByText("资产规模")).not.toBeInTheDocument();
   });
 
   it("shows retry in error state and calls onRetry", async () => {

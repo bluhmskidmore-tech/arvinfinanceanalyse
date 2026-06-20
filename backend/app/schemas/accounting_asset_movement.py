@@ -311,6 +311,14 @@ class AccountingAssetMovementDatesPayload(BaseModel):
 
     report_dates: list[str]
     currency_basis: str
+    latest_read_model_report_date: str | None = None
+    latest_upstream_control_report_date: str | None = None
+    freshness_status: Literal[
+        "fresh",
+        "read_model_lagging",
+        "read_model_empty",
+        "upstream_empty",
+    ]
 
 
 class AccountingAssetMovementRefreshPayload(BaseModel):
@@ -320,8 +328,11 @@ class AccountingAssetMovementRefreshPayload(BaseModel):
     cache_key: str
     report_date: str
     currency_basis: str
-    row_count: int
-    source_version: str
+    run_id: str | None = None
+    job_name: str | None = None
+    trigger_mode: str | None = None
+    row_count: int | None = None
+    source_version: str | None = None
     rule_version: str
     product_category_refreshed_dates: list[str] = Field(default_factory=list)
     formal_balance_refreshed_dates: list[str] = Field(default_factory=list)

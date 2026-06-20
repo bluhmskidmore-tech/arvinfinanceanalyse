@@ -30,6 +30,15 @@ def resolve_interest_payment_frequency(value: object) -> tuple[str, bool]:
     return "annual", True
 
 
+def coupon_frequency_per_year(value: object) -> int:
+    frequency, _used_fallback = resolve_interest_payment_frequency(value)
+    if frequency == "quarterly":
+        return 4
+    if frequency == "semi-annual":
+        return 2
+    return 1
+
+
 def coupon_interval_months(value: object) -> int:
     frequency, _used_fallback = resolve_interest_payment_frequency(value)
     if frequency == "quarterly":

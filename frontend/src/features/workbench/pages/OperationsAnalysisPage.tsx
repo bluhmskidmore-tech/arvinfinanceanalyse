@@ -10,10 +10,8 @@ import { FilterBar } from "../../../components/FilterBar";
 import {
   PageFilterTray,
   PageHeader,
-  PageSurfacePanel,
 } from "../../../components/page/PagePrimitives";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { shellTokens } from "../../../theme/tokens";
 import { BusinessConclusion } from "../business-analysis/BusinessConclusion";
 import { BusinessContributionTable } from "../business-analysis/BusinessContributionTable";
 import { ManagementOutput } from "../business-analysis/ManagementOutput";
@@ -31,252 +29,7 @@ import {
 } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 import "./OperationsAnalysisPage.css";
 
-const DISPLAY_FONT =
-  '"Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif';
-
 const OPERATIONS_PRODUCT_CATEGORY_VIEW = "monthly";
-
-const pageShellStyle = {
-  display: "grid",
-  gap: 24,
-} as const;
-
-const heroShellStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 0.92fr) minmax(420px, 1.08fr)",
-  gap: 22,
-  alignItems: "start",
-  padding: "24px 24px 22px",
-  borderRadius: 24,
-  background: "linear-gradient(180deg, rgba(252,251,248,0.99) 0%, rgba(246,248,246,0.98) 100%)",
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  boxShadow: "0 18px 40px rgba(22, 35, 46, 0.06)",
-} as const;
-
-const heroHeaderStyle = {
-  marginBottom: 0,
-} as const;
-
-const controlStyle = {
-  minWidth: 172,
-  padding: "12px 14px",
-  borderRadius: 14,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "rgba(255, 255, 255, 0.88)",
-  color: shellTokens.colorTextPrimary,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.75)",
-} as const;
-
-const linkStyle = {
-  color: shellTokens.colorAccent,
-  fontWeight: 700,
-  letterSpacing: "0.01em",
-  textDecoration: "none",
-} as const;
-
-const filterTrayStyle = {
-  background: "rgba(255,255,255,0.6)",
-  borderColor: "rgba(214, 222, 220, 0.9)",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.7)",
-} as const;
-
-const filterLabelStyle = {
-  display: "block",
-  marginBottom: 6,
-  color: shellTokens.colorTextMuted,
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-} as const;
-
-const balanceOverviewGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  gap: 16,
-  marginTop: 16,
-} as const;
-
-const operationsHeroStripStyle = {
-  display: "grid",
-  gap: 12,
-} as const;
-
-const headlineMetricShellStyle = {
-  display: "grid",
-  gap: 14,
-  minHeight: 172,
-  padding: "18px 18px 16px",
-  borderRadius: 22,
-  background:
-    "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,249,245,0.96) 100%)",
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  boxShadow: "0 16px 36px rgba(22, 35, 46, 0.05)",
-} as const;
-
-const compactMetricShellStyle = {
-  ...headlineMetricShellStyle,
-  minHeight: 138,
-  gap: 10,
-  padding: "16px 16px 14px",
-  borderRadius: 18,
-  boxShadow: "0 12px 28px rgba(22, 35, 46, 0.04)",
-} as const;
-
-const metricLabelRowStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 10,
-} as const;
-
-const metricLabelStyle = {
-  margin: 0,
-  color: shellTokens.colorTextMuted,
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  lineHeight: 1.45,
-  textTransform: "uppercase",
-} as const;
-
-const metricValueBlockStyle = {
-  display: "grid",
-  alignContent: "start",
-  gap: 8,
-  minHeight: 0,
-} as const;
-
-const metricUnitRowStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "baseline",
-  gap: "4px 8px",
-  minHeight: 0,
-} as const;
-
-const metricDetailStyle = {
-  margin: 0,
-  color: shellTokens.colorTextSecondary,
-  fontSize: 12,
-  lineHeight: 1.6,
-} as const;
-
-const sectionLeadShellStyle = {
-  display: "grid",
-  gap: 10,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: shellTokens.colorTextMuted,
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  maxWidth: 820,
-  color: shellTokens.colorTextPrimary,
-  fontSize: 24,
-  fontWeight: 800,
-  letterSpacing: "-0.03em",
-  lineHeight: 1.2,
-  fontFamily: DISPLAY_FONT,
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 760,
-  color: shellTokens.colorTextSecondary,
-  fontSize: 14,
-  lineHeight: 1.85,
-} as const;
-
-const sectionBlockStyle = {
-  display: "grid",
-  gap: 16,
-} as const;
-
-const focusEntryShellStyle = {
-  marginTop: 8,
-  marginBottom: 2,
-  padding: "18px 22px 22px",
-  borderRadius: 24,
-  borderLeft: `4px solid ${shellTokens.colorAccent}`,
-  background:
-    "linear-gradient(180deg, rgba(255,255,255,0.76) 0%, rgba(247,247,242,0.88) 100%)",
-} as const;
-
-const recommendationBodyStyle = {
-  display: "grid",
-  gap: 12,
-} as const;
-
-const recommendationTextStyle = {
-  margin: 0,
-  color: shellTokens.colorTextSecondary,
-  fontSize: 14,
-  lineHeight: 1.8,
-  maxWidth: 760,
-} as const;
-
-const alignedPanelStyle = {
-  display: "grid",
-  gap: 16,
-  height: "100%",
-  padding: 22,
-  borderRadius: 24,
-  background:
-    "linear-gradient(180deg, rgba(252,251,248,0.98) 0%, rgba(247,247,242,0.95) 100%)",
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  boxShadow: "0 18px 44px rgba(22, 35, 46, 0.06)",
-} as const;
-
-const alignedPanelTitleStyle = {
-  margin: 0,
-  color: shellTokens.colorTextPrimary,
-  fontSize: 18,
-  fontWeight: 750,
-  letterSpacing: "-0.02em",
-  lineHeight: 1.3,
-  fontFamily: DISPLAY_FONT,
-} as const;
-
-const alignedPanelContentStyle = {
-  display: "grid",
-  gap: 12,
-  alignContent: "start",
-  minHeight: 0,
-} as const;
-
-const entryHeaderStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  gap: 12,
-  width: "100%",
-} as const;
-
-const entryTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 750,
-  lineHeight: 1.3,
-  letterSpacing: "-0.02em",
-  color: shellTokens.colorTextPrimary,
-  fontFamily: DISPLAY_FONT,
-} as const;
-
-const entryIntroStyle = {
-  margin: 0,
-  color: shellTokens.colorTextSecondary,
-  fontSize: 14,
-  lineHeight: 1.8,
-  maxWidth: 760,
-} as const;
 
 function OperationsSectionLead({
   eyebrow,
@@ -288,10 +41,10 @@ function OperationsSectionLead({
   description: string;
 }) {
   return (
-    <div style={sectionLeadShellStyle}>
-      <span style={sectionEyebrowStyle}>{eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{title}</h2>
-      <p style={sectionDescriptionStyle}>{description}</p>
+    <div className="operations-analysis-page__section-lead">
+      <span className="operations-analysis-page__section-eyebrow">{eyebrow}</span>
+      <h2 className="operations-analysis-page__section-title">{title}</h2>
+      <p className="operations-analysis-page__section-description">{description}</p>
     </div>
   );
 }
@@ -304,10 +57,10 @@ function OperationsPanel({
   children: ReactNode;
 }) {
   return (
-    <PageSurfacePanel as="section" style={alignedPanelStyle}>
-      <h3 style={alignedPanelTitleStyle}>{title}</h3>
-      <div style={alignedPanelContentStyle}>{children}</div>
-    </PageSurfacePanel>
+    <section className="operations-analysis-page__panel">
+      <h3 className="operations-analysis-page__panel-title">{title}</h3>
+      <div className="operations-analysis-page__panel-content">{children}</div>
+    </section>
   );
 }
 
@@ -328,47 +81,31 @@ function OperationsMetricCard({
   status?: "normal" | "warning" | "danger";
   className?: string;
 }) {
-  const valueColor =
-    status === "warning"
-      ? shellTokens.colorWarning
-      : status === "danger"
-        ? shellTokens.colorDanger
-        : shellTokens.colorTextPrimary;
+  const cardClassName = ["operations-analysis-page__metric-card", className]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div className={className} style={compact ? compactMetricShellStyle : headlineMetricShellStyle}>
-      <div style={metricLabelRowStyle}>
-        <p style={metricLabelStyle}>{label}</p>
+    <div
+      className={cardClassName}
+      data-compact={compact ? "true" : undefined}
+      data-status={status}
+    >
+      <div className="operations-analysis-page__metric-label-row">
+        <p className="operations-analysis-page__metric-label">{label}</p>
       </div>
-      <div style={metricValueBlockStyle}>
-        <div style={metricUnitRowStyle}>
-          <span
-            style={{
-              color: valueColor,
-              fontSize: compact ? 22 : 30,
-              fontWeight: 800,
-              letterSpacing: "-0.03em",
-              lineHeight: compact ? 1.15 : 1.08,
-              fontFamily: DISPLAY_FONT,
-            }}
-          >
+      <div className="operations-analysis-page__metric-value-block">
+        <div className="operations-analysis-page__metric-unit-row">
+          <span className="operations-analysis-page__metric-value">
             {value}
           </span>
           {unit ? (
-            <span
-              style={{
-                color: shellTokens.colorTextMuted,
-                fontSize: compact ? 12 : 13,
-                fontWeight: 700,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-              }}
-            >
+            <span className="operations-analysis-page__metric-unit">
               {unit}
             </span>
           ) : null}
         </div>
-        {detail ? <p style={metricDetailStyle}>{detail}</p> : null}
+        {detail ? <p className="operations-analysis-page__metric-detail">{detail}</p> : null}
       </div>
     </div>
   );
@@ -779,9 +516,8 @@ export default function OperationsAnalysisPage() {
     <section
       className="operations-analysis-page"
       data-testid="operations-layout-preview"
-      style={pageShellStyle}
     >
-      <div style={heroShellStyle}>
+      <div className="operations-analysis-page__hero-shell">
         <div className="operations-analysis-page__hero-main">
           <PageHeader
             title="经营分析"
@@ -789,37 +525,39 @@ export default function OperationsAnalysisPage() {
             description="从产品分类损益正式读模型出发，先给经营判断与可执行动作；资产负债余额读面只保留为专题入口。"
             badgeLabel={client.mode === "real" ? "真实只读链路" : "本地演示数据"}
             badgeTone={client.mode === "real" ? "positive" : "accent"}
-            style={heroHeaderStyle}
+            className="operations-analysis-page__hero-header"
           />
 
-          <PageFilterTray style={filterTrayStyle}>
-            <FilterBar>
-              <label>
-                <span style={filterLabelStyle}>范围</span>
-                <select style={controlStyle} disabled>
-                  <option>金融市场条线</option>
-                </select>
-              </label>
-              <label>
-                <span style={filterLabelStyle}>口径</span>
-                <select style={controlStyle} disabled>
-                  <option>产品分类损益</option>
-                </select>
-              </label>
-              <label>
-                <span style={filterLabelStyle}>币种</span>
-                <select style={controlStyle} disabled>
-                  <option>全部</option>
-                </select>
-              </label>
-              <label>
-                <span style={filterLabelStyle}>周期</span>
-                <select style={controlStyle} disabled>
-                  <option>月度</option>
-                </select>
-              </label>
-            </FilterBar>
-          </PageFilterTray>
+          <div className="operations-analysis-page__filter-tray">
+            <PageFilterTray>
+              <FilterBar>
+                <label>
+                  <span className="operations-analysis-page__filter-label">范围</span>
+                  <select className="operations-analysis-page__filter-control" disabled>
+                    <option>金融市场条线</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="operations-analysis-page__filter-label">口径</span>
+                  <select className="operations-analysis-page__filter-control" disabled>
+                    <option>产品分类损益</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="operations-analysis-page__filter-label">币种</span>
+                  <select className="operations-analysis-page__filter-control" disabled>
+                    <option>全部</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="operations-analysis-page__filter-label">周期</span>
+                  <select className="operations-analysis-page__filter-control" disabled>
+                    <option>月度</option>
+                  </select>
+                </label>
+              </FilterBar>
+            </PageFilterTray>
+          </div>
 
           <p className="operations-analysis-page__provenance" data-testid="operations-hero-provenance">
             {client.mode === "real"
@@ -833,7 +571,6 @@ export default function OperationsAnalysisPage() {
         <div
           className="operations-analysis-page__kpi-grid"
           data-testid="operations-business-kpis"
-          style={operationsHeroStripStyle}
         >
           <div className="operations-analysis-page__primary-metrics">
             {primaryHeadlineCards.map((card) => (
@@ -844,7 +581,7 @@ export default function OperationsAnalysisPage() {
                 unit={card.unit}
                 detail={card.detail}
                 status={card.status}
-                className="operations-analysis-page__metric-card operations-analysis-page__metric-card--primary"
+                className="operations-analysis-page__metric-card--primary"
               />
             ))}
           </div>
@@ -858,7 +595,7 @@ export default function OperationsAnalysisPage() {
                 detail={card.detail}
                 status={card.status}
                 compact
-                className="operations-analysis-page__metric-card operations-analysis-page__metric-card--support"
+                className="operations-analysis-page__metric-card--support"
               />
             ))}
           </div>
@@ -866,7 +603,7 @@ export default function OperationsAnalysisPage() {
       </div>
 
       <div className="operations-analysis-page__decision-layout">
-        <div style={sectionBlockStyle}>
+        <div className="operations-analysis-page__section-block">
           <OperationsSectionLead
             eyebrow="核心视图"
             title="结论、桥接与质量观察"
@@ -898,10 +635,10 @@ export default function OperationsAnalysisPage() {
 
         <div className="operations-analysis-page__decision-rail">
           <OperationsPanel title={recommendation.title}>
-            <div data-testid="operations-entry-recommendation" style={recommendationBodyStyle}>
-              <p style={recommendationTextStyle}>{recommendation.detail}</p>
+            <div data-testid="operations-entry-recommendation" className="operations-analysis-page__recommendation-body">
+              <p className="operations-analysis-page__recommendation-text">{recommendation.detail}</p>
               <div>
-                <Link to={recommendation.actionTo} style={linkStyle}>
+                <Link to={recommendation.actionTo} className="operations-analysis-page__text-link">
                   {recommendation.actionLabel}
                 </Link>
               </div>
@@ -913,7 +650,7 @@ export default function OperationsAnalysisPage() {
         </div>
       </div>
 
-      <div style={sectionBlockStyle}>
+      <div className="operations-analysis-page__section-block">
         <OperationsSectionLead
           eyebrow="贡献"
           title="经营贡献与行动项"
@@ -953,7 +690,7 @@ export default function OperationsAnalysisPage() {
         </div>
       </div>
 
-      <div style={sectionBlockStyle}>
+      <div className="operations-analysis-page__section-block">
         <OperationsSectionLead
           eyebrow="结构"
           title="期限与集中度 / 专题入口"
@@ -965,7 +702,6 @@ export default function OperationsAnalysisPage() {
           <div
             className="operations-analysis-page__topic-entry"
             data-testid="operations-entry-balance-section"
-            style={focusEntryShellStyle}
           >
         <AsyncSection
           title=""
@@ -983,11 +719,11 @@ export default function OperationsAnalysisPage() {
             void balanceOverviewQuery.refetch();
           }}
           extra={
-            <div style={entryHeaderStyle}>
-              <h2 style={entryTitleStyle}>
+            <div className="operations-analysis-page__entry-header">
+              <h2 className="operations-analysis-page__entry-title">
                 专题入口：资产负债正式读面
               </h2>
-              <Link to="/balance-analysis" style={linkStyle} aria-label="进入资产负债分析">
+              <Link to="/balance-analysis" className="operations-analysis-page__text-link" aria-label="进入资产负债分析">
                 进入资产负债分析
               </Link>
             </div>
@@ -995,7 +731,7 @@ export default function OperationsAnalysisPage() {
         >
           {balanceOverview ? (
             <div>
-              <p style={entryIntroStyle}>
+              <p className="operations-analysis-page__entry-intro">
                 报告日{" "}
                 <span data-testid="operations-entry-balance-report-date">
                   {balanceOverview.report_date}
@@ -1004,7 +740,7 @@ export default function OperationsAnalysisPage() {
                 币种口径={balanceOverview.currency_basis}。这里只保留正式工作簿速览，
                 作为经营分析后的专题入口，不在本页展开完整工作簿。
               </p>
-              <div style={balanceOverviewGridStyle}>
+              <div className="operations-analysis-page__balance-overview-grid">
                 {[
                   {
                     testId: "operations-entry-balance-detail-rows",

@@ -1,6 +1,14 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
-import type { ProductCategoryPnlRow, ResultMeta } from "../../../api/contracts";
+import type {
+  ProductCategoryAttributionEffects,
+  ProductCategoryAttributionPayload,
+  ProductCategoryPnlPayload,
+  ProductCategoryPnlRow,
+  ResultMeta,
+} from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
 
 import {
@@ -12,11 +20,12 @@ import {
   PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS,
   PRODUCT_CATEGORY_MAIN_PAGE_VIEWS,
   availableViewsSupportMainPageSelector,
-  buildProductCategoryTrendSnapshot,
+  buildProductCategoryTrendSnapshot as buildProductCategoryTrendSnapshotModel,
   collectProductCategoryGovernanceNotices,
   defaultProductCategoryScenarioRateForReportDate,
   formatProductCategoryAttributionEffect,
   formatProductCategoryDualMetaDistinctLine,
+  formatProductCategoryForeignDisplayValue,
   formatProductCategoryReportMonthLabel,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
@@ -24,15 +33,34 @@ import {
   mainPageViewsAreGovernedDetailSubset,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
+  selectProductCategoryAttributionWaterfallSurface,
+  selectProductCategoryDecisionFocusSurface,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
+  selectProductCategoryInterestEarningAssetLiabilityScaleChart,
+  selectProductCategoryInterestEarningSpreadChart,
+  selectProductCategoryInterestEarningSpreadYearComparisonChart,
   selectProductCategoryInterestSpreadAttributionSurface,
+  selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
+  selectProductCategoryOperatingAnalysisSurface,
+  selectProductCategoryOperatingActionBacktestSurface,
+  selectProductCategoryRootCauseSurface,
+  selectProductCategoryScenarioExplanation,
+  selectProductCategoryScenarioSensitivitySurface,
   selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportDates,
   selectProductCategoryTrendReportPoints,
+  toneForProductCategoryForeignDisplayValue,
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
+
+const GOLDEN_SAMPLE_A_RESPONSE = JSON.parse(
+  readFileSync(
+    "../tests/golden_samples/GS-PROD-CAT-PNL-A/response.json",
+    "utf8",
+  ),
+) as { result: ProductCategoryPnlPayload };
 
 function resultMeta(overrides: Partial<ResultMeta>): ResultMeta {
   return {
@@ -83,8 +111,98 @@ function yi(value: number): string {
   return String(value * 100_000_000);
 }
 
-function annualizedCash(scaleYi: number, ratePct: number, days: number): string {
-  return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
+function nonFormulaCashFixture(scaleYi: number, ratePct: number, days: number): string {
+  return String(scaleYi * 1000 + ratePct * 100 + days);
+}
+
+function pctMetric(raw: string) {
+  return { raw, display: `${Number(raw).toFixed(2)}%`, unit: "percent" as const };
+}
+
+function interestSpreadPayload(input: {
+  allAsset?: string | null;
+  allLiability?: string | null;
+  allSpread?: string | null;
+  cnyAsset?: string | null;
+  cnyLiability?: string | null;
+  cnySpread?: string | null;
+}) {
+  return {
+    all_currency_asset_yield_pct:
+      input.allAsset === undefined ? null : input.allAsset === null ? null : pctMetric(input.allAsset),
+    all_currency_liability_yield_pct:
+      input.allLiability === undefined
+        ? null
+        : input.allLiability === null
+          ? null
+          : pctMetric(input.allLiability),
+    all_currency_spread_pct:
+      input.allSpread === undefined ? null : input.allSpread === null ? null : pctMetric(input.allSpread),
+    cny_asset_yield_pct:
+      input.cnyAsset === undefined ? null : input.cnyAsset === null ? null : pctMetric(input.cnyAsset),
+    cny_liability_yield_pct:
+      input.cnyLiability === undefined ? null : input.cnyLiability === null ? null : pctMetric(input.cnyLiability),
+    cny_spread_pct:
+      input.cnySpread === undefined ? null : input.cnySpread === null ? null : pctMetric(input.cnySpread),
+  };
+}
+
+type ProductCategoryPnlPayloadFixture = Omit<ProductCategoryPnlPayload, "interest_spread"> &
+  Partial<Pick<ProductCategoryPnlPayload, "interest_spread">>;
+
+function productCategoryPnlPayload(payload: ProductCategoryPnlPayloadFixture): ProductCategoryPnlPayload {
+  return {
+    interest_spread: null,
+    ...payload,
+  };
+}
+
+function buildProductCategoryTrendSnapshot(payload: ProductCategoryPnlPayloadFixture, label?: string) {
+  return buildProductCategoryTrendSnapshotModel(productCategoryPnlPayload(payload), label);
+}
+
+function attributionPayload(overrides: Partial<ProductCategoryAttributionPayload>): ProductCategoryAttributionPayload {
+  return {
+    report_date: "2026-02-28",
+    compare: "mom",
+    current_report_date: "2026-02-28",
+    prior_report_date: "2026-01-31",
+    state: "complete",
+    reason: null,
+    rows: [],
+    totals: null,
+    ...overrides,
+  };
+}
+
+function attributionRow(
+  partial: Pick<ProductCategoryAttributionPayload["rows"][number], "category_id"> &
+    Omit<Partial<ProductCategoryAttributionPayload["rows"][number]>, "effects"> & {
+      effects?: Partial<ProductCategoryAttributionEffects>;
+    },
+): ProductCategoryAttributionPayload["rows"][number] {
+  const { effects, ...rest } = partial;
+  return {
+    category_name: rest.category_name ?? rest.category_id,
+    side: rest.side ?? "asset",
+    level: rest.level ?? 0,
+    state: rest.state ?? "complete",
+    current: rest.current ?? null,
+    prior: rest.prior ?? null,
+    effects: {
+      day_effect: "0",
+      scale_effect: "0",
+      rate_effect: "0",
+      ftp_effect: "0",
+      direct_effect: "0",
+      unexplained_effect: "0",
+      explained_effect: "0",
+      delta_business_net_income: "0",
+      closure_error: "0",
+      ...effects,
+    },
+    ...rest,
+  };
 }
 
 describe("productCategoryPnlPageModel", () => {
@@ -122,6 +240,1389 @@ describe("productCategoryPnlPageModel", () => {
     expect(formatProductCategoryReportMonthLabel("2026-02-28")).toBe("\u0032\u0030\u0032\u0036\u5e74\u0030\u0032\u6708");
     expect(formatProductCategoryReportMonthLabel("2025-12-31")).toBe("\u0032\u0030\u0032\u0035\u5e74\u0031\u0032\u6708");
     expect(formatProductCategoryReportMonthLabel("not-a-date")).toBe("not-a-date");
+  });
+
+  it("builds operating analysis from current rows and existing attribution data", () => {
+    const rows = [
+      row({
+        category_id: "bond_investment",
+        category_name: "债券投资",
+        cnx_scale: yi(3000),
+        business_net_income: yi(7),
+        weighted_yield: "2.50",
+        children: ["bond_ac", "bond_fvoci"],
+      }),
+      row({
+        category_id: "repo_assets",
+        category_name: "买入返售",
+        cnx_scale: yi(200),
+        business_net_income: yi(-0.3),
+        weighted_yield: "1.20",
+      }),
+      row({
+        category_id: "bond_ac",
+        category_name: "AC债券投资",
+        cnx_scale: yi(2000),
+        business_net_income: yi(5),
+        weighted_yield: "2.60",
+        level: 1,
+      }),
+      row({
+        category_id: "bond_fvoci",
+        category_name: "FVOCI",
+        cnx_scale: yi(1000),
+        business_net_income: yi(1),
+        weighted_yield: "1.80",
+        level: 1,
+      }),
+      row({
+        category_id: "intermediate_business_income",
+        category_name: "中间业务收入",
+        cnx_scale: "0",
+        business_net_income: yi(0.05),
+        weighted_yield: null,
+      }),
+      row({
+        category_id: "asset_total",
+        category_name: "资产端合计",
+        cnx_scale: yi(4200),
+        business_net_income: yi(7.75),
+        weighted_yield: "2.35",
+        is_total: true,
+      }),
+    ];
+    const surface = selectProductCategoryOperatingAnalysisSurface({
+      rows,
+      grandTotal: row({
+        category_id: "grand_total",
+        category_name: "全表合计",
+        side: "all",
+        business_net_income: yi(8),
+        is_total: true,
+      }),
+      attribution: attributionPayload({
+        rows: [
+          attributionRow({
+            category_id: "bond_investment",
+            category_name: "债券投资",
+            effects: {
+              delta_business_net_income: yi(1.5),
+              rate_effect: yi(0.9),
+              scale_effect: yi(0.2),
+              ftp_effect: yi(0.1),
+              direct_effect: yi(0.2),
+              unexplained_effect: yi(0.1),
+            },
+          }),
+          attributionRow({
+            category_id: "repo_assets",
+            category_name: "买入返售",
+            effects: {
+              delta_business_net_income: yi(-0.4),
+              rate_effect: yi(-0.3),
+              scale_effect: yi(-0.05),
+              ftp_effect: yi(-0.03),
+              unexplained_effect: yi(-0.02),
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(surface.contribution.profitRows[0]).toMatchObject({
+      categoryId: "bond_ac",
+      categoryLabel: "AC债券投资",
+      netIncomeLabel: "5.00",
+      contributionLabel: "62.5%",
+      tone: "positive",
+    });
+    expect(surface.contribution.profitRows.map((item) => item.categoryId)).not.toContain("bond_investment");
+    expect(surface.contribution.pressureRows[0]).toMatchObject({
+      categoryId: "repo_assets",
+      netIncomeLabel: "-0.30",
+      contributionLabel: "-3.8%",
+      tone: "negative",
+    });
+    expect(surface.movement.rows[0]).toMatchObject({
+      categoryId: "repo_assets",
+      deltaLabel: "-0.40",
+      leadingDriverLabel: "利率因素",
+      leadingDriverValueLabel: "-0.30",
+    });
+    expect(surface.movement.rows.map((item) => item.categoryId)).not.toContain("bond_investment");
+    expect(surface.quadrant.rows.map((item) => item.categoryId)).not.toContain("bond_investment");
+    expect(surface.quadrant.rows).toEqual([
+      expect.objectContaining({
+        categoryId: "bond_ac",
+        quadrant: "core_profit_pool",
+        quadrantLabel: "核心利润池",
+      }),
+      expect.objectContaining({
+        categoryId: "bond_fvoci",
+        quadrant: "scale_efficiency_watch",
+        quadrantLabel: "高规模低收益",
+      }),
+      expect.objectContaining({
+        categoryId: "repo_assets",
+        quadrant: "shrink_or_reprice",
+        quadrantLabel: "低规模低收益",
+      }),
+    ]);
+  });
+
+  it("builds an operating action queue from profitability, scale, yield, and attribution evidence", () => {
+    const rows = [
+      row({
+        category_id: "selective_growth_asset",
+        category_name: "选择性增长资产",
+        cnx_scale: yi(120),
+        business_net_income: yi(0.8),
+        weighted_yield: "3.20",
+      }),
+      row({
+        category_id: "large_low_yield_asset",
+        category_name: "大规模低收益资产",
+        cnx_scale: yi(1000),
+        business_net_income: yi(0.3),
+        weighted_yield: "1.20",
+      }),
+      row({
+        category_id: "loss_asset",
+        category_name: "亏损资产",
+        cnx_scale: yi(550),
+        business_net_income: yi(-0.4),
+        weighted_yield: "1.10",
+      }),
+      row({
+        category_id: "unexplained_asset",
+        category_name: "未解释资产",
+        cnx_scale: yi(800),
+        business_net_income: yi(1.1),
+        weighted_yield: "2.40",
+      }),
+    ];
+    const surface = selectProductCategoryOperatingAnalysisSurface({
+      rows,
+      grandTotal: row({
+        category_id: "grand_total",
+        category_name: "全表合计",
+        side: "all",
+        business_net_income: yi(1.8),
+        is_total: true,
+      }),
+      attribution: attributionPayload({
+        rows: [
+          attributionRow({
+            category_id: "large_low_yield_asset",
+            category_name: "大规模低收益资产",
+            effects: {
+              delta_business_net_income: yi(-0.2),
+              rate_effect: yi(-0.16),
+            },
+          }),
+          attributionRow({
+            category_id: "loss_asset",
+            category_name: "亏损资产",
+            effects: {
+              delta_business_net_income: yi(-0.5),
+              rate_effect: yi(-0.3),
+            },
+          }),
+          attributionRow({
+            category_id: "unexplained_asset",
+            category_name: "未解释资产",
+            effects: {
+              delta_business_net_income: yi(0.6),
+              unexplained_effect: yi(0.45),
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(surface.actionQueue.emptyCopy).toBeNull();
+    expect(surface.actionQueue.rows.map((item) => item.actionKind)).toEqual([
+      "shrink_or_limit",
+      "review_attribution",
+      "reprice_or_improve",
+      "selective_growth",
+    ]);
+    expect(surface.actionQueue.rows).toEqual([
+      expect.objectContaining({
+        priorityLabel: "P1",
+        categoryId: "loss_asset",
+        actionLabel: "压降或限额复核",
+        triggerLabel: "负贡献叠加收益偏低",
+        primaryMetricLabel: "-0.40",
+      }),
+      expect.objectContaining({
+        priorityLabel: "P2",
+        categoryId: "unexplained_asset",
+        actionLabel: "归因复核",
+        triggerLabel: "未解释差异偏高",
+        primaryMetricLabel: "+0.45",
+      }),
+      expect.objectContaining({
+        priorityLabel: "P3",
+        categoryId: "large_low_yield_asset",
+        actionLabel: "重定价/提效",
+        triggerLabel: "高规模低收益",
+        primaryMetricLabel: "1.20%",
+      }),
+      expect.objectContaining({
+        priorityLabel: "P4",
+        categoryId: "selective_growth_asset",
+        actionLabel: "选择性扩张",
+        triggerLabel: "低规模高收益",
+        primaryMetricLabel: "3.20%",
+      }),
+    ]);
+    expect(surface.actionQueue.rows[0]?.evidenceItems).toEqual([
+      "净营收 -0.40 亿元",
+      "规模 550.00 亿元",
+      "收益率 1.10%",
+      "变动 -0.50 亿元",
+    ]);
+  });
+
+  it("requires low-yield evidence before placing a loss row in the operating action queue", () => {
+    const surface = selectProductCategoryOperatingAnalysisSurface({
+      rows: [
+        row({
+          category_id: "high_yield_loss_asset",
+          category_name: "高收益亏损资产",
+          cnx_scale: yi(120),
+          business_net_income: yi(-0.4),
+          weighted_yield: "4.00",
+        }),
+        row({
+          category_id: "low_yield_scale_asset",
+          category_name: "高规模低收益资产",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.6),
+          weighted_yield: "1.10",
+        }),
+        row({
+          category_id: "core_asset",
+          category_name: "核心资产",
+          cnx_scale: yi(900),
+          business_net_income: yi(1.2),
+          weighted_yield: "3.00",
+        }),
+      ],
+      grandTotal: row({
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(1.4),
+        is_total: true,
+      }),
+      attribution: attributionPayload({ rows: [] }),
+    });
+
+    expect(surface.actionQueue.rows.map((item) => item.actionKind)).toEqual(["reprice_or_improve"]);
+    expect(surface.actionQueue.rows[0]).toEqual(expect.objectContaining({
+      categoryId: "low_yield_scale_asset",
+      actionLabel: "重定价/提效",
+      triggerLabel: "高规模低收益",
+    }));
+    expect(surface.actionQueue.rows.map((item) => item.categoryId)).not.toContain("high_yield_loss_asset");
+  });
+
+  it("uses absolute unexplained attribution and avoids duplicate action rows for the same category", () => {
+    const surface = selectProductCategoryOperatingAnalysisSurface({
+      rows: [
+        row({
+          category_id: "loss_reprice_asset",
+          category_name: "亏损低收益资产",
+          cnx_scale: yi(1200),
+          business_net_income: yi(-0.7),
+          weighted_yield: "1.00",
+        }),
+        row({
+          category_id: "next_reprice_asset",
+          category_name: "次级低收益资产",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.4),
+          weighted_yield: "1.10",
+        }),
+        row({
+          category_id: "negative_unexplained_asset",
+          category_name: "负向未解释资产",
+          cnx_scale: yi(800),
+          business_net_income: yi(0.5),
+          weighted_yield: "2.20",
+        }),
+        row({
+          category_id: "growth_asset",
+          category_name: "成长资产",
+          cnx_scale: yi(120),
+          business_net_income: yi(0.8),
+          weighted_yield: "3.20",
+        }),
+      ],
+      grandTotal: row({
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(1),
+        is_total: true,
+      }),
+      attribution: attributionPayload({
+        rows: [
+          attributionRow({
+            category_id: "negative_unexplained_asset",
+            category_name: "负向未解释资产",
+            effects: {
+              delta_business_net_income: yi(-0.8),
+              unexplained_effect: yi(-0.65),
+            },
+          }),
+          attributionRow({
+            category_id: "loss_reprice_asset",
+            category_name: "亏损低收益资产",
+            effects: {
+              delta_business_net_income: yi(-0.7),
+              rate_effect: yi(-0.5),
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(surface.actionQueue.rows.map((item) => item.actionKind)).toEqual([
+      "shrink_or_limit",
+      "review_attribution",
+      "reprice_or_improve",
+      "selective_growth",
+    ]);
+    expect(surface.actionQueue.rows.map((item) => item.categoryId)).toEqual([
+      "loss_reprice_asset",
+      "negative_unexplained_asset",
+      "next_reprice_asset",
+      "growth_asset",
+    ]);
+    expect(surface.actionQueue.rows[1]).toEqual(expect.objectContaining({
+      actionLabel: "归因复核",
+      primaryMetricLabel: "-0.65",
+    }));
+  });
+
+  it("backtests operating action signals against the next monthly payload", () => {
+    const january: ProductCategoryPnlPayload = productCategoryPnlPayload({
+      report_date: "2026-01-31",
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          report_date: "2026-01-31",
+          category_id: "loss_asset",
+          category_name: "亏损资产",
+          cnx_scale: yi(600),
+          business_net_income: yi(-0.5),
+          weighted_yield: "1.00",
+        }),
+        row({
+          report_date: "2026-01-31",
+          category_id: "scale_asset",
+          category_name: "高规模低收益",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.2),
+          weighted_yield: "1.20",
+        }),
+        row({
+          report_date: "2026-01-31",
+          category_id: "growth_asset",
+          category_name: "成长资产",
+          cnx_scale: yi(100),
+          business_net_income: yi(0.4),
+          weighted_yield: "3.20",
+        }),
+      ],
+      asset_total: row({ report_date: "2026-01-31", category_id: "asset_total", is_total: true }),
+      liability_total: row({
+        report_date: "2026-01-31",
+        category_id: "liability_total",
+        side: "liability",
+        is_total: true,
+      }),
+      grand_total: row({
+        report_date: "2026-01-31",
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(0.1),
+        is_total: true,
+      }),
+    });
+    const february: ProductCategoryPnlPayload = {
+      ...january,
+      report_date: "2026-02-28",
+      rows: [
+        row({
+          report_date: "2026-02-28",
+          category_id: "loss_asset",
+          category_name: "亏损资产",
+          cnx_scale: yi(500),
+          business_net_income: yi(-0.2),
+          weighted_yield: "1.40",
+        }),
+        row({
+          report_date: "2026-02-28",
+          category_id: "scale_asset",
+          category_name: "高规模低收益",
+          cnx_scale: yi(1100),
+          business_net_income: yi(0.15),
+          weighted_yield: "1.10",
+        }),
+        row({
+          report_date: "2026-02-28",
+          category_id: "growth_asset",
+          category_name: "成长资产",
+          cnx_scale: yi(150),
+          business_net_income: yi(0.5),
+          weighted_yield: "3.10",
+        }),
+      ],
+      asset_total: row({ report_date: "2026-02-28", category_id: "asset_total", is_total: true }),
+      liability_total: row({
+        report_date: "2026-02-28",
+        category_id: "liability_total",
+        side: "liability",
+        is_total: true,
+      }),
+      grand_total: row({
+        report_date: "2026-02-28",
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(0.45),
+        is_total: true,
+      }),
+    };
+
+    const surface = selectProductCategoryOperatingActionBacktestSurface({
+      payloads: [january, february],
+      attributionsByReportDate: new Map([
+        ["2026-01-31", attributionPayload({ report_date: "2026-01-31", rows: [] })],
+      ]),
+    });
+
+    expect(surface.emptyCopy).toBeNull();
+    expect(surface.summary).toEqual(expect.objectContaining({
+      evaluatedMonthCount: 1,
+      signalCount: 3,
+      latestPendingCount: 3,
+      coverageLabel: "2026-01-31 至 2026-01-31",
+      attributionCoverageLabel: "1/2",
+      attributionCoverageDetailLabel: "归因覆盖 1/2；缺少 2026-02-28",
+      backtestGateLabel: "样本不足",
+      backtestGateDetailLabel: "连续回测 1/3 个月；可评价信号 3 条，未达到规则放行阈值",
+      backtestGateTone: "negative",
+      sampleRepairLabel: "补 2 个月",
+      sampleRepairDetailLabel: "闸口需 3 个月/6 条信号；当前 1 个月/3 条信号",
+      sampleRepairDateLabel: "需补月份：2026-03-31、2026-04-30",
+      sampleRepairReviewLabel: "最早复核：2026-04-30 后",
+      reviewWorkloadLabel: "P3 1",
+      reviewWorkloadDetailLabel: "复核 1 条；P1 0 条，P2 0 条，P3 1 条",
+      dispositionLabel: "收紧 1",
+      dispositionDetailLabel: "规则处置：收紧 1 条，观察 0 条，保留 2 条",
+    }));
+    expect(surface.actionRows.map((item) => item.actionKind)).toEqual([
+      "shrink_or_limit",
+      "reprice_or_improve",
+      "selective_growth",
+    ]);
+    expect(surface.actionRows[0]).toEqual(expect.objectContaining({
+      actionLabel: "压降或限额复核",
+      signalCount: 1,
+      hitRateLabel: "100.0%",
+      averageNetIncomeDeltaLabel: "+0.30",
+      averageYieldDeltaBpLabel: "+40.0bp",
+      averageScaleDeltaLabel: "-100.00",
+    }));
+    expect(surface.actionRows[1]).toEqual(expect.objectContaining({
+      actionLabel: "重定价/提效",
+      hitRateLabel: "0.0%",
+      averageYieldDeltaBpLabel: "-10.0bp",
+    }));
+    expect(surface.missReasonRows[0]).toEqual(expect.objectContaining({
+      actionKind: "reprice_or_improve",
+      actionLabel: "重定价/提效",
+      missCount: 1,
+      missRateLabel: "100.0%",
+      primaryReasonLabel: "收益率未改善",
+      reasonRows: [
+        expect.objectContaining({
+          reasonKey: "yield_not_improved",
+          reasonLabel: "收益率未改善",
+          sampleCount: 1,
+        }),
+        expect.objectContaining({
+          reasonKey: "scale_mismatch",
+          reasonLabel: "规模方向错配",
+          sampleCount: 1,
+        }),
+        expect.objectContaining({
+          reasonKey: "net_income_drag",
+          reasonLabel: "净营收拖累",
+          sampleCount: 1,
+        }),
+      ],
+    }));
+    expect(surface.calibrationRows[0]).toEqual(expect.objectContaining({
+      actionKind: "reprice_or_improve",
+      actionLabel: "重定价/提效",
+      recommendationLabel: "收紧触发条件",
+      reasonLabel: "命中率 0.0%，主因收益率未改善",
+      confidenceLabel: "低置信",
+      confidenceDetailLabel: "1 条可评价样本",
+    }));
+    expect(surface.latestReviewRows).toEqual([
+      expect.objectContaining({
+        categoryId: "scale_asset",
+        categoryLabel: "高规模低收益",
+        actionLabel: "重定价/提效",
+        reviewLabel: "补样本后复核",
+        riskRankLabel: "P3 低样本复核",
+        riskReasonLabel: "低置信；主因收益率未改善",
+        reasonLabel: "历史回测建议收紧触发条件：命中率 0.0%，主因收益率未改善",
+        impactLabel: "历史均值：净营收 -0.05 亿元 · 收益率 -10.0bp · 规模 +100.00 亿元",
+        releaseConditionLabel: "放行条件：收益率转正改善且净营收不恶化",
+        watchReportDateLabel: "观察月份：2026-03-31",
+        observationLabel: "观察口径：下一期收益率改善且净营收不恶化",
+        gapLabel: "判定缺口：当前收益率 1.10%，需下一期收益率转正改善",
+        currentEvidenceItems: [
+          "规模 1100.00 亿元",
+          "收益率 1.10%",
+          "净营收 0.15 亿元",
+        ],
+        checkItems: [
+          "确认最新收益率改善证据",
+          "复核规模扩张是否稀释收益率",
+          "核对净营收是否同步改善",
+        ],
+      }),
+    ]);
+    expect(surface.actionRows[2]).toEqual(expect.objectContaining({
+      actionLabel: "选择性扩张",
+      hitRateLabel: "100.0%",
+      averageScaleDeltaLabel: "+50.00",
+    }));
+    expect(surface.examples[0]).toEqual(expect.objectContaining({
+      reportDate: "2026-01-31",
+      nextReportDate: "2026-02-28",
+      categoryLabel: "亏损资产",
+      actionLabel: "压降或限额复核",
+      outcomeLabel: "命中",
+      netIncomeDeltaLabel: "+0.30",
+    }));
+  });
+
+  it("does not backtest operating actions across non-consecutive report months", () => {
+    const january: ProductCategoryPnlPayload = productCategoryPnlPayload({
+      report_date: "2026-01-31",
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          report_date: "2026-01-31",
+          category_id: "scale_asset",
+          category_name: "高规模低收益",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.2),
+          weighted_yield: "1.20",
+        }),
+        row({
+          report_date: "2026-01-31",
+          category_id: "growth_asset",
+          category_name: "成长资产",
+          cnx_scale: yi(100),
+          business_net_income: yi(0.4),
+          weighted_yield: "3.20",
+        }),
+      ],
+      asset_total: row({ report_date: "2026-01-31", category_id: "asset_total", is_total: true }),
+      liability_total: row({
+        report_date: "2026-01-31",
+        category_id: "liability_total",
+        side: "liability",
+        is_total: true,
+      }),
+      grand_total: row({
+        report_date: "2026-01-31",
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(0.6),
+        is_total: true,
+      }),
+    });
+    const march: ProductCategoryPnlPayload = {
+      ...january,
+      report_date: "2026-03-31",
+      rows: january.rows.map((item) => ({ ...item, report_date: "2026-03-31" })),
+    };
+
+    const surface = selectProductCategoryOperatingActionBacktestSurface({
+      payloads: [january, march],
+    });
+
+    expect(surface.summary.evaluatedMonthCount).toBe(0);
+    expect(surface.summary.signalCount).toBe(0);
+    expect(surface.summary.latestPendingCount).toBe(2);
+    expect(surface.coverageRows).toEqual([
+      {
+        reportDate: "2026-01-31",
+        nextReportDate: "2026-03-31",
+        statusLabel: "跳过：非连续月份",
+        detailLabel: "期望下一月末 2026-02-28，实际 2026-03-31",
+        signalCount: 2,
+        tone: "negative",
+      },
+      {
+        reportDate: "2026-03-31",
+        nextReportDate: null,
+        statusLabel: "最新月待观察",
+        detailLabel: "等待下一期 2026-04-30 payload 验证",
+        signalCount: 2,
+        tone: "neutral",
+      },
+    ]);
+    expect(surface.actionRows).toEqual([]);
+    expect(surface.missReasonRows).toEqual([]);
+    expect(surface.calibrationRows).toEqual([]);
+    expect(surface.latestReviewRows).toEqual([]);
+    expect(surface.emptyCopy).toBe(
+      "需要至少两个连续月度正式 payload 才能回测行动信号；2026-01-31 后缺少 2026-02-28，实际下一期为 2026-03-31。",
+    );
+  });
+
+  it("marks sample repair as signal-only when backtest months are covered", () => {
+    const payloadForReportDate = (reportDate: string): ProductCategoryPnlPayload => productCategoryPnlPayload({
+      report_date: reportDate,
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          report_date: reportDate,
+          category_id: "high_scale_low_yield",
+          category_name: "高规模低收益",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.2),
+          weighted_yield: "1.10",
+        }),
+        row({
+          report_date: reportDate,
+          category_id: "low_scale_high_yield",
+          category_name: "低规模高收益",
+          cnx_scale: yi(100),
+          business_net_income: yi(0),
+          weighted_yield: "3.40",
+        }),
+      ],
+      asset_total: row({ report_date: reportDate, category_id: "asset_total", is_total: true }),
+      liability_total: row({
+        report_date: reportDate,
+        category_id: "liability_total",
+        side: "liability",
+        is_total: true,
+      }),
+      grand_total: row({
+        report_date: reportDate,
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(0.6),
+        is_total: true,
+      }),
+    });
+
+    const surface = selectProductCategoryOperatingActionBacktestSurface({
+      payloads: [
+        payloadForReportDate("2026-01-31"),
+        payloadForReportDate("2026-02-28"),
+        payloadForReportDate("2026-03-31"),
+        payloadForReportDate("2026-04-30"),
+      ],
+    });
+
+    expect(surface.summary).toEqual(expect.objectContaining({
+      evaluatedMonthCount: 3,
+      signalCount: 3,
+      sampleRepairLabel: "补 3 条信号",
+      sampleRepairDateLabel: "需补月份：-",
+      sampleRepairReviewLabel: "最早复核：待补齐信号后",
+    }));
+  });
+
+  it("builds a scenario sensitivity matrix from backend scenario payloads only", () => {
+    const baseline = productCategoryPnlPayload({
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          business_net_income: yi(5),
+        }),
+        row({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          business_net_income: yi(-0.5),
+        }),
+      ],
+      asset_total: row({ category_id: "asset_total", business_net_income: yi(6), is_total: true }),
+      liability_total: row({
+        category_id: "liability_total",
+        side: "liability",
+        business_net_income: yi(-1.2),
+        is_total: true,
+      }),
+      grand_total: row({ category_id: "grand_total", business_net_income: yi(4.8), is_total: true }),
+    });
+    const scenarios: ProductCategoryPnlPayload[] = [
+      {
+        ...baseline,
+        scenario_rate_pct: "1.50",
+        rows: [
+          row({
+            category_id: "bond_ac",
+            category_name: "AC债券投资",
+            business_net_income: yi(5.4),
+          }),
+          row({
+            category_id: "repo_assets",
+            category_name: "买入返售",
+            business_net_income: yi(-0.3),
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", business_net_income: yi(6.4), is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          business_net_income: yi(-1.1),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", business_net_income: yi(5.3), is_total: true }),
+      },
+      {
+        ...baseline,
+        scenario_rate_pct: "2.00",
+        rows: [
+          row({
+            category_id: "bond_ac",
+            category_name: "AC债券投资",
+            business_net_income: yi(4.2),
+          }),
+          row({
+            category_id: "repo_assets",
+            category_name: "买入返售",
+            business_net_income: yi(-0.6),
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", business_net_income: yi(5.3), is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          business_net_income: yi(-1.4),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", business_net_income: yi(3.9), is_total: true }),
+      },
+    ];
+
+    const surface = selectProductCategoryScenarioSensitivitySurface({
+      baseline,
+      scenarios,
+    });
+
+    expect(surface.baselineGrandTotalLabel).toBe("4.80");
+    expect(surface.rows).toEqual([
+      expect.objectContaining({
+        rateLabel: "1.50%",
+        assetNetIncomeLabel: "6.40",
+        assetDeltaLabel: "+0.40",
+        liabilityNetIncomeLabel: "1.10",
+        liabilityDeltaLabel: "+0.10",
+        grandNetIncomeLabel: "5.30",
+        grandDeltaLabel: "+0.50",
+        topMoverCategoryLabel: "AC债券投资",
+        topMoverDeltaLabel: "+0.40",
+        tone: "positive",
+      }),
+      expect.objectContaining({
+        rateLabel: "2.00%",
+        assetDeltaLabel: "-0.70",
+        liabilityDeltaLabel: "-0.20",
+        grandDeltaLabel: "-0.90",
+        topMoverCategoryLabel: "AC债券投资",
+        topMoverDeltaLabel: "-0.80",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.insightCards).toEqual([
+      expect.objectContaining({
+        key: "best_case",
+        label: "最佳情景",
+        valueLabel: "1.50% / 5.30",
+        detailLabel: "较基线 +0.50 亿元",
+        tone: "positive",
+      }),
+      expect.objectContaining({
+        key: "worst_case",
+        label: "最差情景",
+        valueLabel: "2.00% / 3.90",
+        detailLabel: "较基线 -0.90 亿元",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        key: "range",
+        label: "情景区间",
+        valueLabel: "1.40",
+        detailLabel: "5.30 - 3.90 亿元",
+        tone: "neutral",
+      }),
+      expect.objectContaining({
+        key: "ftp_slope",
+        label: "FTP 斜率",
+        valueLabel: "-0.03",
+        detailLabel: "每 1bp 约影响净营收",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.riskRows).toEqual([
+      expect.objectContaining({
+        categoryLabel: "AC债券投资",
+        worstRateLabel: "2.00%",
+        worstDeltaLabel: "-0.80",
+        occurrenceLabel: "2 个情景触发最大变动",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.pathPoints).toEqual([
+      expect.objectContaining({
+        rateLabel: "1.50%",
+        grandNetIncomeLabel: "5.30",
+        grandDeltaLabel: "+0.50",
+        positionPct: 0,
+        positionClassName: "is-position-0",
+        tone: "positive",
+      }),
+      expect.objectContaining({
+        rateLabel: "2.00%",
+        grandNetIncomeLabel: "3.90",
+        grandDeltaLabel: "-0.90",
+        positionPct: 100,
+        positionClassName: "is-position-100",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.actionItems).toEqual([
+      expect.objectContaining({
+        title: "锁定下行情景敞口",
+        valueLabel: "-0.90",
+        detailLabel: "2.00% 情景较基线少 0.90 亿元",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        title: "优先复核 AC债券投资",
+        valueLabel: "-0.80",
+        detailLabel: "最大产品行变动出现在 2.00%",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        title: "设置情景监控阈值",
+        valueLabel: "1.40",
+        detailLabel: "覆盖最佳到最差情景净营收区间",
+        tone: "neutral",
+      }),
+    ]);
+    expect(surface.pressureSummary.breakeven).toEqual(
+      expect.objectContaining({
+        label: "临界 FTP",
+        valueLabel: "约 1.68%",
+        detailLabel: "线性插值：1.50% 高于基线 +0.50，2.00% 低于基线 -0.90",
+        tone: "warning",
+      }),
+    );
+    expect(surface.pressureSummary.sideOffset).toEqual(
+      expect.objectContaining({
+        rateLabel: "2.00%",
+        totalDeltaLabel: "-0.90",
+        assetDeltaLabel: "-0.70",
+        liabilityDeltaLabel: "-0.20",
+        offsetLabel: "0.00",
+        conclusionLabel: "资产端与负债端同向承压，未形成冲抵。",
+        assetWidthClassName: "is-width-75",
+        liabilityWidthClassName: "is-width-25",
+        tone: "negative",
+      }),
+    );
+    expect(surface.pressureSummary.reviewRows).toEqual([
+      expect.objectContaining({
+        priorityLabel: "复核 1",
+        categoryId: "bond_ac",
+        categoryLabel: "AC债券投资",
+        sideLabel: "资产端",
+        triggerRateLabel: "2.00%",
+        deltaLabel: "-0.80",
+        actionLabel: "复核 FTP 敞口、规模与收益率输入",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        priorityLabel: "复核 2",
+        categoryId: "repo_assets",
+        categoryLabel: "买入返售",
+        sideLabel: "资产端",
+        triggerRateLabel: "1.50%",
+        deltaLabel: "+0.20",
+        actionLabel: "确认情景收益改善来源可持续",
+        tone: "positive",
+      }),
+    ]);
+    expect(surface.heatRows).toEqual([
+      expect.objectContaining({
+        categoryLabel: "AC债券投资",
+        exposureLabel: "-0.80",
+        widthPct: 100,
+        widthClassName: "is-width-100",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        categoryLabel: "买入返售",
+        exposureLabel: "+0.20",
+        widthPct: 25,
+        widthClassName: "is-width-25",
+        tone: "positive",
+      }),
+    ]);
+    expect(surface.comparisonRows).toEqual([
+      expect.objectContaining({
+        categoryId: "bond_ac",
+        categoryLabel: "AC债券投资",
+        sideLabel: "资产端",
+        baselineNetIncomeLabel: "5.00",
+        bestRateLabel: "1.50%",
+        bestDeltaLabel: "+0.40",
+        worstRateLabel: "2.00%",
+        worstDeltaLabel: "-0.80",
+        rangeLabel: "1.20",
+        tone: "negative",
+        cells: [
+          expect.objectContaining({
+            rateLabel: "1.50%",
+            netIncomeLabel: "5.40",
+            deltaLabel: "+0.40",
+            tone: "positive",
+          }),
+          expect.objectContaining({
+            rateLabel: "2.00%",
+            netIncomeLabel: "4.20",
+            deltaLabel: "-0.80",
+            tone: "negative",
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        categoryId: "repo_assets",
+        categoryLabel: "买入返售",
+        sideLabel: "资产端",
+        baselineNetIncomeLabel: "-0.50",
+        bestRateLabel: "1.50%",
+        bestDeltaLabel: "+0.20",
+        worstRateLabel: "2.00%",
+        worstDeltaLabel: "-0.10",
+        rangeLabel: "0.30",
+      }),
+    ]);
+    expect(surface.actionClosureRows).toEqual([
+      expect.objectContaining({
+        priorityLabel: "动作 1",
+        categoryId: "bond_ac",
+        categoryLabel: "AC债券投资",
+        sideLabel: "资产端",
+        triggerRateLabel: "2.00%",
+        exposureLabel: "-0.80",
+        scenarioNetIncomeLabel: "4.20",
+        recommendationLabel: "压降 FTP 敞口并复核规模、收益率输入",
+        evidenceItems: [
+          "正式基线净营收 5.00 亿元",
+          "2.00% 情景净营收 4.20 亿元",
+          "较基线 -0.80 亿元",
+        ],
+        memoLabel: "AC债券投资在 2.00% 情景较基线 -0.80 亿元；压降 FTP 敞口并复核规模、收益率输入。",
+      }),
+      expect.objectContaining({
+        priorityLabel: "动作 2",
+        categoryId: "repo_assets",
+        categoryLabel: "买入返售",
+        triggerRateLabel: "2.00%",
+        exposureLabel: "-0.10",
+      }),
+    ]);
+    expect(surface.analysisCopy).toBe("FTP 上行时全表净营收承压，最差情景较基线 -0.90 亿元。");
+    expect(surface.emptyCopy).toBeNull();
+  });
+
+  it("builds a selected scenario review explanation from scenario rows and matching attribution evidence", () => {
+    const baseline = productCategoryPnlPayload({
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          business_net_income: yi(5),
+        }),
+        row({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          business_net_income: yi(-0.5),
+        }),
+      ],
+      asset_total: row({ category_id: "asset_total", business_net_income: yi(6), is_total: true }),
+      liability_total: row({
+        category_id: "liability_total",
+        side: "liability",
+        business_net_income: yi(-1.2),
+        is_total: true,
+      }),
+      grand_total: row({ category_id: "grand_total", business_net_income: yi(4.8), is_total: true }),
+    });
+    const scenarios: ProductCategoryPnlPayload[] = [
+      {
+        ...baseline,
+        scenario_rate_pct: "1.50",
+        rows: [
+          row({ category_id: "bond_ac", category_name: "AC债券投资", business_net_income: yi(5.4) }),
+          row({ category_id: "repo_assets", category_name: "买入返售", business_net_income: yi(-0.3) }),
+        ],
+        asset_total: row({ category_id: "asset_total", business_net_income: yi(6.4), is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          business_net_income: yi(-1.1),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", business_net_income: yi(5.3), is_total: true }),
+      },
+      {
+        ...baseline,
+        scenario_rate_pct: "2.00",
+        rows: [
+          row({ category_id: "bond_ac", category_name: "AC债券投资", business_net_income: yi(4.2) }),
+          row({ category_id: "repo_assets", category_name: "买入返售", business_net_income: yi(-0.6) }),
+        ],
+        asset_total: row({ category_id: "asset_total", business_net_income: yi(5.3), is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          business_net_income: yi(-1.4),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", business_net_income: yi(3.9), is_total: true }),
+      },
+    ];
+    const attribution = attributionPayload({
+      rows: [
+        attributionRow({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          effects: {
+            delta_business_net_income: yi(-0.9),
+            scale_effect: yi(-0.15),
+            rate_effect: yi(0.2),
+            ftp_effect: yi(-0.55),
+            unexplained_effect: yi(-0.25),
+            closure_error: yi(0.01),
+          },
+        }),
+      ],
+    });
+
+    const surface = selectProductCategoryScenarioSensitivitySurface({ baseline, scenarios });
+    const explanation = selectProductCategoryScenarioExplanation({
+      categoryId: surface.pressureSummary.reviewRows[0]?.categoryId,
+      baseline,
+      scenarios,
+      attribution,
+    });
+
+    expect(explanation).toEqual(
+      expect.objectContaining({
+        categoryId: "bond_ac",
+        categoryLabel: "AC债券投资",
+        sideLabel: "资产端",
+        triggerRateLabel: "2.00%",
+        scenarioDeltaLabel: "-0.80",
+        baselineNetIncomeLabel: "5.00",
+        scenarioNetIncomeLabel: "4.20",
+        summaryLabel: "AC债券投资在 2.00% 情景较正式基线 -0.80 亿元；正式归因显示主导因素为 FTP因素 -0.55 亿元。",
+        bridgeLabel: "口径桥：情景压力 -0.80 亿元；正式归因合计 -0.75 亿元；差异 -0.05 亿元。",
+        bridgeConclusionLabel: "情景压力与正式归因差异 0.05 亿元，需分开复核情景 FTP 假设和正式归因期间口径。",
+        bridgeTone: "warning",
+        reviewActionItems: [
+          "先复核情景 FTP 假设：确认 2.00% 情景是否只改变 FTP，不混入正式期间变动。",
+          "核对正式归因期间口径：确认正式归因的 current/prior 日期、月度/同比口径与情景基线不同。",
+          "重点追踪 FTP因素：复核 FTP 输入、基准利率和资产负债侧映射。",
+        ],
+        emptyCopy: null,
+      }),
+    );
+    expect(explanation?.driverRows).toEqual([
+      expect.objectContaining({ label: "FTP因素", valueLabel: "-0.55", tone: "negative" }),
+      expect.objectContaining({ label: "未解释", valueLabel: "-0.25", tone: "negative" }),
+      expect.objectContaining({ label: "利率因素", valueLabel: "+0.20", tone: "positive" }),
+      expect.objectContaining({ label: "规模因素", valueLabel: "-0.15", tone: "negative" }),
+    ]);
+  });
+
+  it("builds a governed attribution waterfall from the grand total attribution row", () => {
+    const grandTotal = attributionRow({
+      category_id: "grand_total",
+      category_name: "全表合计",
+      side: "all",
+      current: {
+        report_date: "2026-02-28",
+        days: 28,
+        scale: "0",
+        yield_pct: null,
+        cash: "0",
+        ftp: "0",
+        business_net_income: yi(6.1),
+      },
+      prior: {
+        report_date: "2026-01-31",
+        days: 31,
+        scale: "0",
+        yield_pct: null,
+        cash: "0",
+        ftp: "0",
+        business_net_income: yi(5),
+      },
+      effects: {
+        day_effect: yi(-0.2),
+        scale_effect: yi(0.7),
+        rate_effect: yi(0.4),
+        ftp_effect: yi(0.3),
+        direct_effect: yi(0.1),
+        unexplained_effect: yi(-0.15),
+        closure_error: yi(-0.05),
+        explained_effect: yi(1.3),
+        delta_business_net_income: yi(1.1),
+      },
+    });
+
+    const surface = selectProductCategoryAttributionWaterfallSurface(
+      attributionPayload({
+        totals: {
+          asset_total: attributionRow({ category_id: "asset_total" }),
+          liability_total: attributionRow({ category_id: "liability_total", side: "liability" }),
+          grand_total: grandTotal,
+        },
+      }),
+    );
+
+    expect(surface.title).toBe("全表合计经营差异瀑布");
+    expect(surface.deltaLabel).toBe("+1.10");
+    expect(surface.rows.map((item) => [item.key, item.label, item.valueLabel, item.cumulativeLabel])).toEqual([
+      ["prior", "对比期净营收", "5.00", "5.00"],
+      ["day_effect", "天数因素", "-0.20", "4.80"],
+      ["scale_effect", "规模因素", "+0.70", "5.50"],
+      ["rate_effect", "利率因素", "+0.40", "5.90"],
+      ["ftp_effect", "FTP因素", "+0.30", "6.20"],
+      ["direct_effect", "直接因素", "+0.10", "6.30"],
+      ["unexplained_effect", "未解释", "-0.15", "6.15"],
+      ["closure_error", "闭合误差", "-0.05", "6.10"],
+      ["current", "本期净营收", "6.10", "6.10"],
+    ]);
+    expect(surface.emptyCopy).toBeNull();
+  });
+
+  it("builds a decision focus list from contribution, deterioration, and unexplained drivers", () => {
+    const rows = [
+      row({
+        category_id: "bond_ac",
+        category_name: "AC债券投资",
+        business_net_income: yi(5),
+      }),
+      row({
+        category_id: "repo_assets",
+        category_name: "买入返售",
+        business_net_income: yi(-0.7),
+      }),
+      row({
+        category_id: "derivatives",
+        category_name: "衍生工具",
+        business_net_income: yi(-0.2),
+      }),
+    ];
+    const attribution = attributionPayload({
+      rows: [
+        attributionRow({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          effects: {
+            delta_business_net_income: yi(0.4),
+            unexplained_effect: yi(0.05),
+          },
+        }),
+        attributionRow({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          effects: {
+            delta_business_net_income: yi(-0.8),
+            unexplained_effect: yi(-0.15),
+          },
+        }),
+        attributionRow({
+          category_id: "derivatives",
+          category_name: "衍生工具",
+          effects: {
+            delta_business_net_income: yi(-0.1),
+            unexplained_effect: yi(-0.45),
+          },
+        }),
+      ],
+    });
+
+    const surface = selectProductCategoryDecisionFocusSurface({
+      rows,
+      grandTotal: row({ category_id: "grand_total", business_net_income: yi(4.1), is_total: true }),
+      attribution,
+    });
+
+    expect(surface.items).toEqual([
+      expect.objectContaining({
+        key: "top_contributor",
+        categoryLabel: "AC债券投资",
+        reasonLabel: "本期贡献最高",
+        primaryLabel: "5.00",
+        tone: "positive",
+      }),
+      expect.objectContaining({
+        key: "top_pressure",
+        categoryLabel: "买入返售",
+        reasonLabel: "本期压力最大",
+        primaryLabel: "-0.70",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        key: "largest_deterioration",
+        categoryLabel: "买入返售",
+        reasonLabel: "环比恶化最大",
+        primaryLabel: "-0.80",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        key: "largest_unexplained",
+        categoryLabel: "衍生工具",
+        reasonLabel: "未解释金额最大",
+        primaryLabel: "-0.45",
+        secondaryLabel: "需要复核归因残差",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.emptyCopy).toBeNull();
+  });
+
+  it("builds a product root-cause drilldown from formal attribution rows", () => {
+    const rows = [
+      row({
+        category_id: "bond_ac",
+        category_name: "AC债券投资",
+        cnx_scale: yi(130),
+        weighted_yield: "2.80",
+        business_net_income: yi(1.2),
+      }),
+      row({
+        category_id: "repo_assets",
+        category_name: "买入返售",
+        cnx_scale: yi(80),
+        weighted_yield: "1.70",
+        business_net_income: yi(-0.35),
+      }),
+    ];
+    const attribution = attributionPayload({
+      rows: [
+        attributionRow({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          current: {
+            report_date: "2026-02-28",
+            days: 28,
+            scale: yi(130),
+            yield_pct: "2.80",
+            cash: yi(0.75),
+            ftp: yi(0.12),
+            business_net_income: yi(1.2),
+          },
+          prior: {
+            report_date: "2026-01-31",
+            days: 31,
+            scale: yi(118),
+            yield_pct: "2.50",
+            cash: yi(0.55),
+            ftp: yi(0.1),
+            business_net_income: yi(0.72),
+          },
+          effects: {
+            delta_business_net_income: yi(0.48),
+            scale_effect: yi(0.16),
+            rate_effect: yi(0.24),
+            ftp_effect: yi(-0.08),
+            direct_effect: yi(0.03),
+            unexplained_effect: yi(0.07),
+            closure_error: yi(0.01),
+          },
+        }),
+        attributionRow({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          effects: {
+            delta_business_net_income: yi(-0.2),
+            scale_effect: yi(-0.04),
+            rate_effect: yi(-0.05),
+            ftp_effect: yi(-0.03),
+            direct_effect: yi(0),
+            unexplained_effect: yi(-0.08),
+            closure_error: yi(0),
+          },
+        }),
+      ],
+    });
+
+    const surface = selectProductCategoryRootCauseSurface({ rows, attribution });
+
+    expect(surface.emptyCopy).toBeNull();
+    expect(surface.headline).toMatchObject({
+      categoryId: "bond_ac",
+      categoryLabel: "AC债券投资",
+      deltaLabel: "+0.48",
+      driverLabel: "利率因素",
+      driverValueLabel: "+0.24",
+      currentNetIncomeLabel: "1.20",
+      priorNetIncomeLabel: "0.72",
+      scaleLabel: "130.00",
+      yieldLabel: "2.80%",
+    });
+    expect(surface.driverRows.map((item) => [item.key, item.label, item.valueLabel, item.shareLabel])).toEqual([
+      ["rate_effect", "利率因素", "+0.24", "50.0%"],
+      ["scale_effect", "规模因素", "+0.16", "33.3%"],
+      ["ftp_effect", "FTP因素", "-0.08", "-16.7%"],
+      ["unexplained_effect", "未解释", "+0.07", "14.6%"],
+      ["direct_effect", "直接因素", "+0.03", "6.3%"],
+      ["closure_error", "闭合误差", "+0.01", "2.1%"],
+    ]);
+    expect(surface.evidenceItems).toEqual([
+      "本期净营收 1.20 亿元",
+      "对比期净营收 0.72 亿元",
+      "当前规模 130.00 亿元",
+      "当前收益率 2.80%",
+      "闭合误差 +0.01 亿元",
+    ]);
   });
 
   it("formats attribution effects from governed yuan values into yi display values", () => {
@@ -237,6 +1738,11 @@ describe("productCategoryPnlPageModel", () => {
           rows: [],
           assetTotal,
           liabilityTotal,
+          interestSpread: interestSpreadPayload({
+            allAsset: "2.68",
+            allLiability: "1.63",
+            allSpread: null,
+          }),
         },
         {
           reportDate: "2026-01-31",
@@ -254,6 +1760,11 @@ describe("productCategoryPnlPageModel", () => {
             business_net_income: "15000000",
             weighted_yield: "1.60",
             is_total: true,
+          }),
+          interestSpread: interestSpreadPayload({
+            allAsset: "2.55",
+            allLiability: "1.60",
+            allSpread: null,
           }),
         },
       ],
@@ -288,12 +1799,12 @@ describe("productCategoryPnlPageModel", () => {
       yieldLabel: "\u6536\u76ca\u7387\u7f3a\u5931",
     });
     expect(surface.spreadAttribution).toMatchObject({
-      state: "ready",
+      state: "incomplete",
       currentAssetYieldLabel: "2.68%",
       currentLiabilityYieldLabel: "1.63%",
-      currentSpreadLabel: "105bp",
-      priorSpreadLabel: "95bp",
-      spreadDeltaLabel: "+10bp",
+      currentSpreadLabel: "-",
+      priorSpreadLabel: "-",
+      spreadDeltaLabel: "-",
     });
   });
 
@@ -350,7 +1861,7 @@ describe("productCategoryPnlPageModel", () => {
     expect(surface.spreadAttribution.state).toBe("incomplete");
     if (surface.spreadAttribution.state === "incomplete") {
       expect(surface.spreadAttribution.reason).toBe(
-        "\u5f53\u524d\u8d44\u4ea7\u7aef\u6216\u8d1f\u503a\u7aef\u6536\u76ca\u7387\u7f3a\u5931\uff0c\u65e0\u6cd5\u8ba1\u7b97\u5f53\u671f\u5229\u5dee\u3002",
+        "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
       );
       expect(surface.spreadAttribution.currentSpreadLabel).toBe("-");
       expect(surface.spreadAttribution.priorSpreadLabel).toBe("-");
@@ -453,7 +1964,7 @@ describe("productCategoryPnlPageModel", () => {
     ]);
   });
 
-  it("groups interest-earning spread by year for same-month comparison", () => {
+  it("keeps interest-earning spread comparison unavailable without backend spread fields", () => {
     const snapshot = (reportDate: string, assetYield: string, liabilityYield: string) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
@@ -488,12 +1999,379 @@ describe("productCategoryPnlPageModel", () => {
       snapshot("2025-02-28", "2.28", "1.63"),
     ]);
 
-    expect(chart?.labels).toEqual(["\u0031\u6708", "\u0032\u6708", "\u0033\u6708", "\u0031\u0032\u6708"]);
-    expect(chart?.monthKeys).toEqual([1, 2, 3, 12]);
-    expect(chart?.series).toEqual([
-      { year: "\u0032\u0030\u0032\u0035\u5e74", spread: [0.6, 0.65, 0.7, 0.8] },
-      { year: "\u0032\u0030\u0032\u0036\u5e74", spread: [0.75, 0.8, 0.85, null] },
+    expect(chart).toBeNull();
+  });
+
+  it("builds interest spread comparison from backend spread fields", () => {
+    const snapshot = (reportDate: string, spread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          weighted_yield: "9.99",
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: "1.00",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allAsset: "2.55",
+          allLiability: "1.70",
+          allSpread: spread,
+        }),
+      });
+
+    const chart = selectProductCategoryInterestSpreadYearComparisonChart([
+      snapshot("2026-03-31", "0.85"),
+      snapshot("2025-01-31", "0.60"),
+      snapshot("2026-01-31", "0.75"),
+      snapshot("2025-03-31", "0.70"),
+      snapshot("2026-02-28", "0.80"),
+      snapshot("2025-02-28", "0.65"),
     ]);
+
+    expect(chart?.labels).toEqual(["1\u6708", "2\u6708", "3\u6708"]);
+    expect(chart?.series).toEqual([
+      { year: "2025\u5e74", spread: [0.6, 0.65, 0.7] },
+      { year: "2026\u5e74", spread: [0.75, 0.8, 0.85] },
+    ]);
+  });
+
+  it("does not build an interest spread trend chart without backend spread fields", () => {
+    const snapshot = (reportDate: string, assetYield: string, liabilityYield: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            weighted_yield: assetYield,
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: liabilityYield,
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+      });
+
+    expect(
+      selectProductCategoryInterestSpreadChart([
+        snapshot("2026-01-31", "2.40", "1.65"),
+        snapshot("2026-02-28", "2.48", "1.68"),
+      ]),
+    ).toBeNull();
+  });
+
+  it("builds an interest spread trend chart from backend spread fields only", () => {
+    const snapshot = (reportDate: string, asset: string, liability: string, spread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          weighted_yield: "9.99",
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: "1.00",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allAsset: asset,
+          allLiability: liability,
+          allSpread: spread,
+        }),
+      });
+
+    expect(
+      selectProductCategoryInterestSpreadChart([
+        snapshot("2026-01-31", "2.40", "1.65", "0.75"),
+        snapshot("2026-02-28", "2.48", "1.68", "0.80"),
+      ]),
+    ).toEqual({
+      labels: ["2026\u5e7401\u6708", "2026\u5e7402\u6708"],
+      assetYield: [2.4, 2.48],
+      liabilityYield: [1.65, 1.68],
+      spread: [0.75, 0.8],
+    });
+  });
+
+  it("builds the interest-earning spread chart from its dedicated backend fields only", () => {
+    const snapshot = buildProductCategoryTrendSnapshot({
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          category_id: "interest_earning_assets",
+          weighted_yield: "99.99",
+        }),
+      ],
+      asset_total: row({
+        category_id: "asset_total",
+        weighted_yield: "88.88",
+        is_total: true,
+      }),
+      liability_total: row({
+        category_id: "liability_total",
+        side: "liability",
+        weighted_yield: "77.77",
+        is_total: true,
+      }),
+      grand_total: row({ category_id: "grand_total", is_total: true }),
+      interest_spread: interestSpreadPayload({
+        allAsset: "9.00",
+        allLiability: "8.00",
+        allSpread: "1.00",
+      }),
+      interest_earning_spread: interestSpreadPayload({
+        allAsset: "2.40",
+        allLiability: "1.63",
+        allSpread: "0.77",
+      }),
+    });
+
+    expect(selectProductCategoryInterestEarningSpreadChart([snapshot])).toEqual({
+      labels: ["2026年02月"],
+      assetYield: [2.4],
+      liabilityYield: [1.63],
+      spread: [0.77],
+    });
+  });
+
+  it("builds the interest-earning asset and interest-bearing liability scale chart from row and liability total fields", () => {
+    const snapshot = (reportDate: string, assetScaleYi: number, liabilityScaleYi: number) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            cnx_scale: yi(assetScaleYi),
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          cnx_scale: yi(liabilityScaleYi),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+      });
+
+    expect(
+      selectProductCategoryInterestEarningAssetLiabilityScaleChart([
+        snapshot("2026-01-31", 2800, -1700),
+        snapshot("2026-02-28", 2898.5, -1728.58),
+      ]),
+    ).toEqual({
+      labels: ["2026年01月", "2026年02月"],
+      interestEarningAssetScale: [2800, 2898.5],
+      interestBearingLiabilityScale: [1700, 1728.58],
+    });
+  });
+
+  it("builds two-year interest-earning spread comparisons from dedicated backend spread fields only", () => {
+    const snapshot = (reportDate: string, allSpread: string, cnySpread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            weighted_yield: "99.99",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: "77.77",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allSpread: "9.99",
+          cnySpread: "8.88",
+        }),
+        interest_earning_spread: interestSpreadPayload({
+          allSpread,
+          cnySpread,
+        }),
+      });
+
+    expect(
+      selectProductCategoryInterestEarningSpreadYearComparisonChart([
+        snapshot("2025-01-31", "0.60", "0.55"),
+        snapshot("2025-02-28", "0.65", "0.60"),
+        snapshot("2026-01-31", "0.75", "0.70"),
+        snapshot("2026-02-28", "0.80", "0.73"),
+      ]),
+    ).toMatchObject({
+      labels: ["1月", "2月"],
+      series: [
+        { year: "2025年", spread: [0.6, 0.65] },
+        { year: "2026年", spread: [0.75, 0.8] },
+      ],
+    });
+
+    expect(
+      selectProductCategoryInterestEarningSpreadYearComparisonChart([
+        snapshot("2025-01-31", "0.60", "0.55"),
+        snapshot("2025-02-28", "0.65", "0.60"),
+        snapshot("2026-01-31", "0.75", "0.70"),
+        snapshot("2026-02-28", "0.80", "0.73"),
+      ], "cny")?.series,
+    ).toEqual([
+      { year: "2025年", spread: [0.55, 0.6] },
+      { year: "2026年", spread: [0.7, 0.73] },
+    ]);
+  });
+
+  it("reads backend Decimal interest spread sample values without frontend recomputation", () => {
+    const snapshot = buildProductCategoryTrendSnapshot({
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly"],
+      scenario_rate_pct: null,
+      rows: [],
+      asset_total: row({
+        category_id: "asset_total",
+        report_date: "2026-02-28",
+        weighted_yield: "999.99",
+        cny_cash: nonFormulaCashFixture(100, 9.99, 28),
+        cny_scale: yi(100),
+        is_total: true,
+      }),
+      liability_total: row({
+        category_id: "liability_total",
+        side: "liability",
+        report_date: "2026-02-28",
+        weighted_yield: "111.11",
+        cny_cash: nonFormulaCashFixture(80, 1.11, 28),
+        cny_scale: yi(80),
+        is_total: true,
+      }),
+      grand_total: row({ category_id: "grand_total", report_date: "2026-02-28", is_total: true }),
+      interest_spread: interestSpreadPayload({
+        allAsset: "2.55",
+        allLiability: "1.70",
+        allSpread: "0.85",
+        cnyAsset: "1.49821429",
+        cnyLiability: "0.29241072",
+        cnySpread: "1.20580357",
+      }),
+    });
+
+    expect(selectProductCategoryInterestSpreadChart([snapshot])).toEqual({
+      labels: ["2026\u5e7402\u6708"],
+      assetYield: [2.55],
+      liabilityYield: [1.7],
+      spread: [0.85],
+    });
+    expect(selectProductCategoryInterestSpreadYearComparisonChart([snapshot], "cny")?.series).toEqual([
+      { year: "2026\u5e74", spread: [1.20580357] },
+    ]);
+  });
+
+  it("does not backfill spread diagnostics from row weighted yields when backend spread yield fields are missing", () => {
+    const snapshot = (reportDate: string, assetYield: string, liabilityYield: string, spread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          weighted_yield: assetYield,
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: liabilityYield,
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allSpread: spread,
+        }),
+      });
+
+    const surface = buildProductCategoryDiagnosticsSurface({
+      rows: [],
+      trendSnapshots: [
+        snapshot("2026-02-28", "9.99", "1.00", "0.85"),
+        snapshot("2026-01-31", "8.88", "0.90", "0.70"),
+      ],
+    });
+
+    const attribution = surface.spreadAttribution;
+    expect(attribution.state).toBe("incomplete");
+    if (attribution.state !== "incomplete") {
+      throw new Error("expected incomplete spread attribution");
+    }
+    expect(attribution.currentAssetYieldLabel).toBe("缺失");
+    expect(attribution.currentLiabilityYieldLabel).toBe("缺失");
+    expect(attribution.assetYieldDeltaLabel).toBe("-");
+    expect(attribution.liabilityYieldDeltaLabel).toBe("-");
+    expect(attribution.reason).toBe("后端未返回资产端或负债端收益率字段，无法展示利差归因。");
+  });
+
+  it("does not describe product-category spread as a frontend-derived yield difference", () => {
+    const pageSource = [
+      "src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+      "src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+    ]
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
+
+    expect(pageSource).not.toContain("生息资产收益率 - 负债端成本率");
+    expect(pageSource).not.toContain("按生息资产收益率减负债端付息率展示利差变化。");
+    expect(pageSource).not.toContain("按人民币生息资产收益率减人民币负债端成本");
+    expect(pageSource).not.toContain("资产收益率上行扩大利差");
+    expect(pageSource).not.toContain("负债成本上行压缩利差");
+    expect(pageSource).not.toContain("利差变化=资产收益率贡献+负债成本贡献");
+    expect(pageSource).toContain("后端返回的利差指标变动");
   });
 
   it("groups intermediate business income by governed row without total fallback", () => {
@@ -599,13 +2477,8 @@ describe("productCategoryPnlPageModel", () => {
     ).toBeNull();
   });
 
-  it("computes RMB interest-earning asset spread from interest_earning_assets CNY cash and scale", () => {
-    const snapshot = (
-      reportDate: string,
-      days: number,
-      assetCnyRate: number,
-      liabilityCnyRate: number,
-    ) =>
+  it("does not derive RMB spread from CNY cash and scale without backend yield fields", () => {
+    const snapshot = (reportDate: string, days: number) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
         view: "monthly",
@@ -616,8 +2489,8 @@ describe("productCategoryPnlPageModel", () => {
             category_id: "interest_earning_assets",
             report_date: reportDate,
             cny_scale: yi(100),
-            cny_cash: annualizedCash(100, assetCnyRate, days),
-            weighted_yield: "9.99",
+            cny_cash: nonFormulaCashFixture(100, 2.4, days),
+            weighted_yield: null,
           }),
         ],
         asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
@@ -626,28 +2499,24 @@ describe("productCategoryPnlPageModel", () => {
           side: "liability",
           report_date: reportDate,
           cny_scale: yi(80),
-          cny_cash: annualizedCash(80, liabilityCnyRate, days),
-          weighted_yield: "1.00",
+          cny_cash: nonFormulaCashFixture(80, 1.55, days),
+          weighted_yield: null,
           is_total: true,
         }),
         grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
       });
 
     const chart = selectProductCategoryInterestSpreadYearComparisonChart([
-      snapshot("2025-01-31", 31, 2.2, 1.5),
-      snapshot("2025-02-28", 28, 2.3, 1.6),
-      snapshot("2026-01-31", 31, 2.4, 1.55),
-      snapshot("2026-02-28", 28, 2.5, 1.65),
+      snapshot("2025-01-31", 31),
+      snapshot("2025-02-28", 28),
+      snapshot("2026-01-31", 31),
+      snapshot("2026-02-28", 28),
     ], "cny");
 
-    expect(chart?.labels).toEqual(["\u0031\u6708", "\u0032\u6708"]);
-    expect(chart?.series).toEqual([
-      { year: "\u0032\u0030\u0032\u0035\u5e74", spread: [0.7, 0.7] },
-      { year: "\u0032\u0030\u0032\u0036\u5e74", spread: [0.85, 0.85] },
-    ]);
+    expect(chart).toBeNull();
   });
 
-  it("keeps RMB spread months as null when CNY scale is unavailable", () => {
+  it("does not reuse backend weighted yield for RMB spread without backend RMB yield fields", () => {
     const chart = selectProductCategoryInterestSpreadYearComparisonChart([
       buildProductCategoryTrendSnapshot({
         report_date: "2025-01-31",
@@ -659,7 +2528,7 @@ describe("productCategoryPnlPageModel", () => {
             category_id: "interest_earning_assets",
             report_date: "2025-01-31",
             cny_scale: "0",
-            cny_cash: annualizedCash(100, 2.2, 31),
+            cny_cash: nonFormulaCashFixture(100, 2.2, 31),
             weighted_yield: "9.99",
           }),
         ],
@@ -669,7 +2538,7 @@ describe("productCategoryPnlPageModel", () => {
           side: "liability",
           report_date: "2025-01-31",
           cny_scale: yi(80),
-          cny_cash: annualizedCash(80, 1.5, 31),
+          cny_cash: nonFormulaCashFixture(80, 1.5, 31),
           weighted_yield: "1.00",
           is_total: true,
         }),
@@ -685,7 +2554,7 @@ describe("productCategoryPnlPageModel", () => {
             category_id: "interest_earning_assets",
             report_date: "2026-01-31",
             cny_scale: yi(100),
-            cny_cash: annualizedCash(100, 2.4, 31),
+            cny_cash: nonFormulaCashFixture(100, 2.4, 31),
             weighted_yield: "9.99",
           }),
         ],
@@ -695,7 +2564,7 @@ describe("productCategoryPnlPageModel", () => {
           side: "liability",
           report_date: "2026-01-31",
           cny_scale: yi(80),
-          cny_cash: annualizedCash(80, 1.55, 31),
+          cny_cash: nonFormulaCashFixture(80, 1.55, 31),
           weighted_yield: "1.00",
           is_total: true,
         }),
@@ -703,13 +2572,54 @@ describe("productCategoryPnlPageModel", () => {
       }),
     ], "cny");
 
+    expect(chart).toBeNull();
+  });
+
+  it("builds RMB spread comparison from backend RMB spread fields", () => {
+    const snapshot = (reportDate: string, spread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          cny_scale: "0",
+          cny_cash: nonFormulaCashFixture(100, 9.99, 31),
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          cny_scale: yi(80),
+          cny_cash: nonFormulaCashFixture(80, 1.55, 31),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          cnyAsset: "2.55",
+          cnyLiability: "1.70",
+          cnySpread: spread,
+        }),
+      });
+
+    const chart = selectProductCategoryInterestSpreadYearComparisonChart([
+      snapshot("2025-01-31", "0.70"),
+      snapshot("2025-02-28", "0.72"),
+      snapshot("2026-01-31", "0.85"),
+      snapshot("2026-02-28", "0.88"),
+    ], "cny");
+
     expect(chart?.series).toEqual([
-      { year: "\u0032\u0030\u0032\u0035\u5e74", spread: [null] },
-      { year: "\u0032\u0030\u0032\u0036\u5e74", spread: [0.85] },
+      { year: "2025\u5e74", spread: [0.7, 0.72] },
+      { year: "2026\u5e74", spread: [0.85, 0.88] },
     ]);
   });
 
-  it("computes weighted interest spread attribution and reconciles bp movement", () => {
+  it("keeps weighted interest spread attribution unavailable without backend spread fields", () => {
     const snapshot = (reportDate: string, assetYield: string, liabilityYield: string) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
@@ -721,17 +2631,24 @@ describe("productCategoryPnlPageModel", () => {
             category_id: "interest_earning_assets",
             report_date: reportDate,
             cnx_scale: yi(120),
-            cnx_cash: annualizedCash(120, Number(assetYield), 31),
+            cnx_cash: nonFormulaCashFixture(120, Number(assetYield), 31),
             weighted_yield: assetYield,
           }),
         ],
-        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          cnx_scale: yi(120),
+          cnx_cash: nonFormulaCashFixture(120, Number(assetYield), 31),
+          weighted_yield: assetYield,
+          is_total: true,
+        }),
         liability_total: row({
           category_id: "liability_total",
           side: "liability",
           report_date: reportDate,
           cnx_scale: yi(100),
-          cnx_cash: annualizedCash(100, Number(liabilityYield), 31),
+          cnx_cash: nonFormulaCashFixture(100, Number(liabilityYield), 31),
           weighted_yield: liabilityYield,
           is_total: true,
         }),
@@ -747,8 +2664,82 @@ describe("productCategoryPnlPageModel", () => {
       2026,
     );
 
+    expect(surface.complete).toBe(false);
+    expect(surface.summary).toMatchObject({
+      assetYieldCurrent: null,
+      assetYieldPrior: null,
+      liabilityYieldCurrent: null,
+      liabilityYieldPrior: null,
+      spreadCurrent: null,
+      spreadPrior: null,
+      assetContributionBp: null,
+      liabilityContributionBp: null,
+      spreadDeltaBp: null,
+    });
+    expect(surface.incompleteReasons).toEqual([
+      "\u5168\u53e3\u5f84\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u5168\u53e3\u5f84\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u5168\u53e3\u5f84\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "\u5168\u53e3\u5f84\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+    ]);
+    expect(surface.rows.map((item) => item.key)).toEqual(["asset_yield", "liability_cost", "spread"]);
+    expect(surface.details.map((item) => item.key)).toEqual(["asset_total", "liability_total"]);
+  });
+
+  it("builds weighted interest spread attribution from backend spread fields", () => {
+    const snapshot = (
+      reportDate: string,
+      assetYield: string,
+      liabilityYield: string,
+      spread: string,
+    ) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            weighted_yield: "99.99",
+          }),
+        ],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          cnx_scale: yi(120),
+          cnx_cash: nonFormulaCashFixture(120, Number(assetYield), 31),
+          weighted_yield: "99.99",
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          cnx_scale: yi(100),
+          cnx_cash: nonFormulaCashFixture(100, Number(liabilityYield), 31),
+          weighted_yield: "1.00",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allAsset: assetYield,
+          allLiability: liabilityYield,
+          allSpread: spread,
+        }),
+      });
+
+    const surface = selectProductCategoryInterestSpreadAttributionSurface(
+      [
+        snapshot("2025-03-31", "2.35", "1.65", "0.70"),
+        snapshot("2026-03-31", "2.55", "1.70", "0.85"),
+      ],
+      { basis: "weighted", month: 3 },
+      2026,
+    );
+
     expect(surface.complete).toBe(true);
-    expect(surface.incompleteReasons).toEqual([]);
     expect(surface.summary).toMatchObject({
       assetYieldCurrent: 2.55,
       assetYieldPrior: 2.35,
@@ -760,19 +2751,10 @@ describe("productCategoryPnlPageModel", () => {
       liabilityContributionBp: -5,
       spreadDeltaBp: 15,
     });
-    expect(surface.summary.spreadDeltaBp).toBe(
-      Number(
-        (
-          (surface.summary.assetContributionBp ?? 0) +
-          (surface.summary.liabilityContributionBp ?? 0)
-        ).toFixed(1),
-      ),
-    );
-    expect(surface.rows.map((item) => item.key)).toEqual(["asset_yield", "liability_cost", "spread"]);
-    expect(surface.details.map((item) => item.key)).toEqual(["interest_earning_assets", "liability_total"]);
+    expect(surface.details.map((item) => item.key)).toEqual(["asset_total", "liability_total"]);
   });
 
-  it("computes RMB attribution from CNY cash and scale while ignoring weighted yields", () => {
+  it("keeps RMB attribution incomplete instead of deriving yields from CNY cash and scale", () => {
     const snapshot = (reportDate: string, days: number, assetCnyRate: number, liabilityCnyRate: number) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
@@ -784,8 +2766,8 @@ describe("productCategoryPnlPageModel", () => {
             category_id: "interest_earning_assets",
             report_date: reportDate,
             cny_scale: yi(100),
-            cny_cash: annualizedCash(100, assetCnyRate, days),
-            weighted_yield: "9.99",
+            cny_cash: nonFormulaCashFixture(100, assetCnyRate, days),
+            weighted_yield: null,
           }),
         ],
         asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
@@ -794,8 +2776,8 @@ describe("productCategoryPnlPageModel", () => {
           side: "liability",
           report_date: reportDate,
           cny_scale: yi(80),
-          cny_cash: annualizedCash(80, liabilityCnyRate, days),
-          weighted_yield: "1.00",
+          cny_cash: nonFormulaCashFixture(80, liabilityCnyRate, days),
+          weighted_yield: null,
           is_total: true,
         }),
         grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
@@ -805,6 +2787,73 @@ describe("productCategoryPnlPageModel", () => {
       [
         snapshot("2025-03-31", 31, 2.3, 1.6),
         snapshot("2026-03-31", 31, 2.55, 1.7),
+      ],
+      { basis: "cny", month: 3 },
+      2026,
+    );
+
+    expect(surface.complete).toBe(false);
+    expect(surface.summary).toMatchObject({
+      assetYieldCurrent: null,
+      assetYieldPrior: null,
+      liabilityYieldCurrent: null,
+      liabilityYieldPrior: null,
+      spreadCurrent: null,
+      spreadPrior: null,
+      assetContributionBp: null,
+      liabilityContributionBp: null,
+      spreadDeltaBp: null,
+    });
+    expect(surface.incompleteReasons).toEqual([
+      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+    ]);
+  });
+
+  it("builds RMB attribution from backend RMB spread fields", () => {
+    const snapshot = (
+      reportDate: string,
+      assetYield: string,
+      liabilityYield: string,
+      spread: string,
+    ) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          cny_scale: "0",
+          cny_cash: nonFormulaCashFixture(100, Number(assetYield), 31),
+          weighted_yield: "99.99",
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          cny_scale: yi(80),
+          cny_cash: nonFormulaCashFixture(80, Number(liabilityYield), 31),
+          weighted_yield: "1.00",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          cnyAsset: assetYield,
+          cnyLiability: liabilityYield,
+          cnySpread: spread,
+        }),
+      });
+
+    const surface = selectProductCategoryInterestSpreadAttributionSurface(
+      [
+        snapshot("2025-03-31", "2.30", "1.60", "0.70"),
+        snapshot("2026-03-31", "2.55", "1.70", "0.85"),
       ],
       { basis: "cny", month: 3 },
       2026,
@@ -824,7 +2873,7 @@ describe("productCategoryPnlPageModel", () => {
     });
   });
 
-  it("returns incomplete reasons and null RMB contribution when prior CNY scale is unavailable", () => {
+  it("does not reuse backend weighted yield for RMB attribution without backend RMB yield fields", () => {
     const surface = selectProductCategoryInterestSpreadAttributionSurface(
       [
         buildProductCategoryTrendSnapshot({
@@ -837,7 +2886,7 @@ describe("productCategoryPnlPageModel", () => {
               category_id: "interest_earning_assets",
               report_date: "2025-03-31",
               cny_scale: "0",
-              cny_cash: annualizedCash(100, 2.3, 31),
+              cny_cash: nonFormulaCashFixture(100, 2.3, 31),
               weighted_yield: "9.99",
             }),
           ],
@@ -847,7 +2896,7 @@ describe("productCategoryPnlPageModel", () => {
             side: "liability",
             report_date: "2025-03-31",
             cny_scale: yi(80),
-            cny_cash: annualizedCash(80, 1.6, 31),
+            cny_cash: nonFormulaCashFixture(80, 1.6, 31),
             weighted_yield: "1.00",
             is_total: true,
           }),
@@ -863,7 +2912,7 @@ describe("productCategoryPnlPageModel", () => {
               category_id: "interest_earning_assets",
               report_date: "2026-03-31",
               cny_scale: yi(100),
-              cny_cash: annualizedCash(100, 2.55, 31),
+              cny_cash: nonFormulaCashFixture(100, 2.55, 31),
               weighted_yield: "9.99",
             }),
           ],
@@ -873,7 +2922,7 @@ describe("productCategoryPnlPageModel", () => {
             side: "liability",
             report_date: "2026-03-31",
             cny_scale: yi(80),
-            cny_cash: annualizedCash(80, 1.7, 31),
+            cny_cash: nonFormulaCashFixture(80, 1.7, 31),
             weighted_yield: "1.00",
             is_total: true,
           }),
@@ -885,11 +2934,23 @@ describe("productCategoryPnlPageModel", () => {
     );
 
     expect(surface.complete).toBe(false);
-    expect(surface.summary.assetYieldPrior).toBeNull();
-    expect(surface.summary.assetContributionBp).toBeNull();
-    expect(surface.summary.spreadDeltaBp).toBeNull();
-    expect(surface.incompleteReasons.join(" ")).toContain("\u4eba\u6c11\u5e01");
-    expect(surface.incompleteReasons.join(" ")).toContain("\u751f\u606f\u8d44\u4ea7");
+    expect(surface.summary).toMatchObject({
+      assetYieldCurrent: null,
+      assetYieldPrior: null,
+      liabilityYieldCurrent: null,
+      liabilityYieldPrior: null,
+      spreadCurrent: null,
+      spreadPrior: null,
+      assetContributionBp: null,
+      liabilityContributionBp: null,
+      spreadDeltaBp: null,
+    });
+    expect(surface.incompleteReasons).toEqual([
+      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+    ]);
   });
 
   it("sorts trend chart snapshots by report date instead of async query arrival order", () => {
@@ -1214,8 +3275,8 @@ describe("productCategoryPnlPageModel", () => {
             cnx_scale: yi(75),
             cny_scale: yi(60),
             foreign_scale: yi(15),
-            cny_cash: annualizedCash(60, 2.00, 31),
-            foreign_cash: annualizedCash(15, 1.00, 31),
+            cny_cash: nonFormulaCashFixture(60, 2.00, 31),
+            foreign_cash: nonFormulaCashFixture(15, 1.00, 31),
             weighted_yield: "1.10",
           }),
           row({
@@ -1226,8 +3287,8 @@ describe("productCategoryPnlPageModel", () => {
             cnx_scale: yi(120),
             cny_scale: yi(110),
             foreign_scale: yi(10),
-            cny_cash: annualizedCash(110, 1.50, 31),
-            foreign_cash: annualizedCash(10, 2.50, 31),
+            cny_cash: nonFormulaCashFixture(110, 1.50, 31),
+            foreign_cash: nonFormulaCashFixture(10, 2.50, 31),
             weighted_yield: "1.45",
           }),
         ],
@@ -1241,8 +3302,8 @@ describe("productCategoryPnlPageModel", () => {
           cnx_scale: yi(195),
           cny_scale: yi(170),
           foreign_scale: yi(25),
-          cny_cash: annualizedCash(170, 1.68, 31),
-          foreign_cash: annualizedCash(25, 1.60, 31),
+          cny_cash: nonFormulaCashFixture(170, 1.68, 31),
+          foreign_cash: nonFormulaCashFixture(25, 1.60, 31),
           weighted_yield: "1.30",
         }),
         grand_total: row({ category_id: "grand_total", is_total: true }),
@@ -1261,8 +3322,8 @@ describe("productCategoryPnlPageModel", () => {
             cnx_scale: yi(80),
             cny_scale: yi(64),
             foreign_scale: yi(16),
-            cny_cash: annualizedCash(64, 2.10, 28),
-            foreign_cash: annualizedCash(16, 1.25, 28),
+            cny_cash: nonFormulaCashFixture(64, 2.10, 28),
+            foreign_cash: nonFormulaCashFixture(16, 1.25, 28),
             weighted_yield: "1.20",
           }),
           row({
@@ -1273,8 +3334,8 @@ describe("productCategoryPnlPageModel", () => {
             cnx_scale: yi(118),
             cny_scale: "not_available",
             foreign_scale: yi(8),
-            cny_cash: annualizedCash(108, 1.60, 28),
-            foreign_cash: annualizedCash(8, 2.75, 28),
+            cny_cash: nonFormulaCashFixture(108, 1.60, 28),
+            foreign_cash: nonFormulaCashFixture(8, 2.75, 28),
             weighted_yield: "1.40",
           }),
         ],
@@ -1288,8 +3349,8 @@ describe("productCategoryPnlPageModel", () => {
           cnx_scale: yi(198),
           cny_scale: yi(174),
           foreign_scale: yi(24),
-          cny_cash: annualizedCash(174, 2.00, 28),
-          foreign_cash: annualizedCash(24, 1.75, 28),
+          cny_cash: nonFormulaCashFixture(174, 2.00, 28),
+          foreign_cash: nonFormulaCashFixture(24, 1.75, 28),
           weighted_yield: "1.25",
         }),
         grand_total: row({ category_id: "grand_total", is_total: true }),
@@ -1315,14 +3376,14 @@ describe("productCategoryPnlPageModel", () => {
       categoryId: "liability_total",
       categoryLabel: "负债合计",
       cells: [
-        { amountLabel: "170.00", rateLabel: "1.68" },
-        { amountLabel: "174.00", rateLabel: "2.00" },
+        { amountLabel: "170.00", rateLabel: "-" },
+        { amountLabel: "174.00", rateLabel: "-" },
       ],
-      movement: { amountLabel: "+4.00", rateLabel: "+32bp" },
+      movement: { amountLabel: "+4.00", rateLabel: "-" },
     });
     expect(cnyMatrix?.rows.find((item) => item.categoryId === "interbank_cds")).toMatchObject({
       cells: [
-        { amountLabel: "110.00", rateLabel: "1.50" },
+        { amountLabel: "110.00", rateLabel: "-" },
         { amountLabel: "-", rateLabel: "-" },
       ],
       movement: { amountLabel: "-", rateLabel: "-" },
@@ -1333,10 +3394,10 @@ describe("productCategoryPnlPageModel", () => {
     expect(foreignMatrix?.rows[0]).toMatchObject({
       categoryId: "liability_total",
       cells: [
-        { amountLabel: "25.00", rateLabel: "1.60" },
-        { amountLabel: "24.00", rateLabel: "1.75" },
+        { amountLabel: "25.00", rateLabel: "-" },
+        { amountLabel: "24.00", rateLabel: "-" },
       ],
-      movement: { amountLabel: "-1.00", rateLabel: "+15bp" },
+      movement: { amountLabel: "-1.00", rateLabel: "-" },
     });
   });
 
@@ -1565,7 +3626,48 @@ describe("productCategoryPnlPageModel", () => {
     });
   });
 
-  it("formats yuan money values as yi yuan, with liability-side absolute display", () => {
+  it("keeps the liability detail fallback-table branch unreachable for current model-derived rows", () => {
+    const snapshots = [
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "credit_linked_notes",
+            category_name: "credit linked notes",
+            side: "liability",
+            report_date: "2026-03-31",
+            cnx_scale: yi(25),
+            weighted_yield: "3.25",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(1700),
+          weighted_yield: "1.75",
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026-03"),
+    ];
+
+    const surface = buildProductCategoryLiabilitySideTrendSurface(snapshots);
+    const hasFallbackTableRowsWithoutMatrix =
+      surface.detailRows.length > 0 && surface.detailMatrix.rows.length === 0;
+
+    expect(surface.detailRows.map((item) => item.categoryId)).toEqual(["credit_linked_notes"]);
+    expect(surface.detailMatrix.rows.map((item) => item.categoryId)).toEqual([
+      "liability_total",
+      "credit_linked_notes",
+    ]);
+    expect(hasFallbackTableRowsWithoutMatrix).toBe(false);
+  });
+
+  it("formats yuan money values as yi yuan, with liability-side absolute display except foreign deltas", () => {
     expect(formatProductCategoryValue("285499749.04110849")).toBe("2.85");
     expect(
       formatProductCategoryRowDisplayValue(
@@ -1585,6 +3687,202 @@ describe("productCategoryPnlPageModel", () => {
         "-123456789",
       ),
     ).toBe("-1.23");
+    expect(
+      formatProductCategoryForeignDisplayValue(
+        row({ category_id: "repo_liabilities", side: "liability" }),
+        "123456789",
+      ),
+    ).toBe("-1.23");
+    expect(
+      formatProductCategoryForeignDisplayValue(
+        row({ category_id: "repo_liabilities", side: "liability" }),
+        "-123456789",
+      ),
+    ).toBe("1.23");
+    expect(
+      toneForProductCategoryForeignDisplayValue(
+        row({ category_id: "repo_liabilities", side: "liability" }),
+        "123456789",
+      ),
+    ).toBe(PRODUCT_CATEGORY_VALUE_TONE_COLORS.negative);
+  });
+
+  it("freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority", () => {
+    const baselineRows = GOLDEN_SAMPLE_A_RESPONSE.result.rows.map((sampleRow) => {
+      if (sampleRow.category_id === "repo_liabilities") {
+        return {
+          ...sampleRow,
+          business_net_income: "-123456789",
+          cny_net: "-223456789",
+          cny_ftp: "-323456789",
+          weighted_yield: "1.41",
+        };
+      }
+      if (sampleRow.category_id === "repo_assets") {
+        return {
+          ...sampleRow,
+          business_net_income: "-123456789",
+          cny_net: "-223456789",
+          cny_ftp: "-323456789",
+          weighted_yield: "1.47",
+        };
+      }
+      return sampleRow;
+    });
+    const detailRows = selectProductCategoryDetailRows(baselineRows, undefined);
+    const grandTotal = selectDisplayedProductCategoryGrandTotal(
+      undefined,
+      GOLDEN_SAMPLE_A_RESPONSE.result.grand_total,
+    );
+
+    const matrix = detailRows
+      .filter((rowItem) =>
+        rowItem.category_id === "repo_assets" || rowItem.category_id === "repo_liabilities",
+      )
+      .map((rowItem) => ({
+        categoryId: rowItem.category_id,
+        side: rowItem.side,
+        businessNetIncomeDisplay: formatProductCategoryRowDisplayValue(
+          rowItem,
+          rowItem.business_net_income,
+        ),
+        cnyNetDisplay: formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_net),
+        cnyFtpDisplay: formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_ftp),
+        weightedYieldDisplay: formatProductCategoryYieldValue(rowItem.weighted_yield),
+      }));
+
+    expect(matrix).toEqual([
+      {
+        categoryId: "repo_assets",
+        side: "asset",
+        businessNetIncomeDisplay: "-1.23",
+        cnyNetDisplay: "-2.23",
+        cnyFtpDisplay: "-3.23",
+        weightedYieldDisplay: "1.47",
+      },
+      {
+        categoryId: "repo_liabilities",
+        side: "liability",
+        businessNetIncomeDisplay: "1.23",
+        cnyNetDisplay: "2.23",
+        cnyFtpDisplay: "3.23",
+        weightedYieldDisplay: "1.41",
+      },
+    ]);
+    expect(detailRows.some((rowItem) => rowItem.category_id === "grand_total")).toBe(false);
+    expect(grandTotal).toBe(GOLDEN_SAMPLE_A_RESPONSE.result.grand_total);
+  });
+
+  it("binds decision 3C detail metrics MTR-PCP-004 through MTR-PCP-012 to backend row fields", () => {
+    const detailRows = selectProductCategoryDetailRows(
+      GOLDEN_SAMPLE_A_RESPONSE.result.rows,
+      undefined,
+    );
+    const rowsById = new Map(detailRows.map((rowItem) => [rowItem.category_id, rowItem]));
+    const repoAssets = rowsById.get("repo_assets");
+    const repoLiabilities = rowsById.get("repo_liabilities");
+
+    expect(repoAssets).toBeDefined();
+    expect(repoLiabilities).toBeDefined();
+
+    const display3cMetricSet = (rowItem: ProductCategoryPnlRow) => ({
+      "MTR-PCP-004": formatProductCategoryRowDisplayValue(rowItem, rowItem.cnx_scale),
+      "MTR-PCP-005": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_scale),
+      "MTR-PCP-006": formatProductCategoryForeignDisplayValue(rowItem, rowItem.foreign_scale),
+      "MTR-PCP-007": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_ftp),
+      "MTR-PCP-008": formatProductCategoryForeignDisplayValue(rowItem, rowItem.foreign_ftp),
+      "MTR-PCP-009": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_net),
+      "MTR-PCP-010": formatProductCategoryForeignDisplayValue(rowItem, rowItem.foreign_net),
+      "MTR-PCP-011": formatProductCategoryRowDisplayValue(rowItem, rowItem.business_net_income),
+      "MTR-PCP-012": formatProductCategoryYieldValue(rowItem.weighted_yield),
+    });
+
+    expect(display3cMetricSet(repoAssets as ProductCategoryPnlRow)).toEqual({
+      "MTR-PCP-004": "0.00",
+      "MTR-PCP-005": "0.00",
+      "MTR-PCP-006": "0.00",
+      "MTR-PCP-007": "0.00",
+      "MTR-PCP-008": "0.00",
+      "MTR-PCP-009": "-0.00",
+      "MTR-PCP-010": "0.00",
+      "MTR-PCP-011": "-0.00",
+      "MTR-PCP-012": "0.00",
+    });
+    expect(display3cMetricSet(repoLiabilities as ProductCategoryPnlRow)).toEqual({
+      "MTR-PCP-004": "0.00",
+      "MTR-PCP-005": "0.00",
+      "MTR-PCP-006": "-0.00",
+      "MTR-PCP-007": "0.00",
+      "MTR-PCP-008": "-0.00",
+      "MTR-PCP-009": "0.00",
+      "MTR-PCP-010": "0.00",
+      "MTR-PCP-011": "0.00",
+      "MTR-PCP-012": "-115.87",
+    });
+  });
+
+  it("freezes decision 3C nonzero asset and liability field display semantics", () => {
+    const assetRow = row({
+      category_id: "repo_assets",
+      side: "asset",
+      cnx_scale: "101000000",
+      cny_scale: "-102000000",
+      foreign_scale: "103000000",
+      cny_ftp: "-104000000",
+      foreign_ftp: "105000000",
+      cny_net: "-106000000",
+      foreign_net: "107000000",
+      business_net_income: "-108000000",
+      weighted_yield: "2.345",
+    });
+    const liabilityRow = row({
+      category_id: "repo_liabilities",
+      side: "liability",
+      cnx_scale: "-201000000",
+      cny_scale: "-202000000",
+      foreign_scale: "203000000",
+      cny_ftp: "-204000000",
+      foreign_ftp: "205000000",
+      cny_net: "-206000000",
+      foreign_net: "207000000",
+      business_net_income: "-208000000",
+      weighted_yield: "1.234",
+    });
+
+    const display3cMetricSet = (rowItem: ProductCategoryPnlRow) => ({
+      "MTR-PCP-004": formatProductCategoryRowDisplayValue(rowItem, rowItem.cnx_scale),
+      "MTR-PCP-005": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_scale),
+      "MTR-PCP-006": formatProductCategoryForeignDisplayValue(rowItem, rowItem.foreign_scale),
+      "MTR-PCP-007": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_ftp),
+      "MTR-PCP-008": formatProductCategoryForeignDisplayValue(rowItem, rowItem.foreign_ftp),
+      "MTR-PCP-009": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_net),
+      "MTR-PCP-010": formatProductCategoryForeignDisplayValue(rowItem, rowItem.foreign_net),
+      "MTR-PCP-011": formatProductCategoryRowDisplayValue(rowItem, rowItem.business_net_income),
+      "MTR-PCP-012": formatProductCategoryYieldValue(rowItem.weighted_yield),
+    });
+
+    expect(display3cMetricSet(assetRow)).toEqual({
+      "MTR-PCP-004": "1.01",
+      "MTR-PCP-005": "-1.02",
+      "MTR-PCP-006": "1.03",
+      "MTR-PCP-007": "-1.04",
+      "MTR-PCP-008": "1.05",
+      "MTR-PCP-009": "-1.06",
+      "MTR-PCP-010": "1.07",
+      "MTR-PCP-011": "-1.08",
+      "MTR-PCP-012": "2.35",
+    });
+    expect(display3cMetricSet(liabilityRow)).toEqual({
+      "MTR-PCP-004": "2.01",
+      "MTR-PCP-005": "2.02",
+      "MTR-PCP-006": "-2.03",
+      "MTR-PCP-007": "2.04",
+      "MTR-PCP-008": "-2.05",
+      "MTR-PCP-009": "2.06",
+      "MTR-PCP-010": "-2.07",
+      "MTR-PCP-011": "2.08",
+      "MTR-PCP-012": "1.23",
+    });
   });
 
   it("formats nullish values as dash and passes through invalid decimal-like strings unchanged", () => {
@@ -1619,9 +3917,11 @@ describe("productCategoryPnlPageModel", () => {
     expect(toneForProductCategoryValue(null)).toBe(PRODUCT_CATEGORY_VALUE_TONE_COLORS.default);
   });
 
-  it("exposes a stable as_of_date gap string for the page (no invented as_of_date)", () => {
+  it("exposes the no-standalone-as_of_date decision without inventing a replacement date", () => {
     expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("归属日期");
-    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("无独立外显");
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("不提供独立 as_of_date");
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("报告日期");
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("生成时间");
   });
 
   it("collects governance notices for fallback, vendor, and quality degradation from result_meta", () => {

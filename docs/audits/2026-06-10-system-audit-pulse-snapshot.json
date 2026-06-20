@@ -1,0 +1,159 @@
+{
+  "report_kind": "system_audit_pulse",
+  "generated_at": "2026-06-10T21:25:00+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "manifest_path": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-system-audit-manifest.json",
+  "status": "pass",
+  "full_score_ready": false,
+  "completion_state": "not_complete",
+  "open_blocker_count": 5,
+  "calculation_post_owner_plan_renderer_sync": true,
+  "open_blockers": [
+    {
+      "id": "owner-approval-7-pages",
+      "status": "pending",
+      "last_checked_at": "2026-06-10T19:26:44+08:00"
+    },
+    {
+      "id": "ledger-pnl-direct-governance-record",
+      "status": "dry_run_candidate_only",
+      "last_checked_at": "2026-06-10T21:25:00+08:00"
+    },
+    {
+      "id": "calculation-display-p1-decisions",
+      "status": "owner_decision_required",
+      "last_checked_at": "2026-06-10T21:25:00+08:00"
+    },
+    {
+      "id": "direct-app-mcp-gitnexus-evidence",
+      "status": "tool_surface_unavailable_in_session",
+      "last_checked_at": "2026-06-10T21:25:00+08:00"
+    },
+    {
+      "id": "local-secret-hygiene",
+      "status": "local_ignored_untracked_findings",
+      "last_checked_at": "2026-06-10T21:25:00+08:00"
+    }
+  ],
+  "evidence_scope": {
+    "read_only": true,
+    "writes_duckdb": false,
+    "writes_governance_records": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false,
+    "clears_secret_scan": false,
+    "promotes_candidate_data": false
+  },
+  "route_scope": {
+    "route_count": 39,
+    "seeded_trace_bundle_count": 39,
+    "visible_navigation_route_count": 36,
+    "visible_unseeded_route_count": 0,
+    "business_contract_certified_count": 0,
+    "evidence_pending_count": 23,
+    "gate_i_gap_count": 0,
+    "frontend_ready_count": 6,
+    "frontend_only_count": 10,
+    "unclassified_count": 0
+  },
+  "business_display": {
+    "tracked_route_count": 26,
+    "route_gap_count": 0,
+    "browser_smoke_a11y_configured_route_count": 26,
+    "browser_smoke_a11y_gap_count": 0,
+    "coverage_status": "tracked"
+  },
+  "completion_snapshot": {
+    "status": "pass",
+    "open_blocker_count": 5,
+    "completion_gate_count": 5,
+    "follow_up_packet_count": 5,
+    "follow_up_brief_blocker_count": 5,
+    "follow_up_completion_order_status": "pass",
+    "follow_up_completion_order_error_count": 0,
+    "calculation_prework_p1_count": 10,
+    "calculation_packet_p1_count": 10,
+    "calculation_meeting_record_complete": false,
+    "calculation_missing_meeting_field_count": 8,
+    "calculation_post_owner_ready_for_implementation_count": 0,
+    "calculation_post_owner_owner_decision_capture_complete": false,
+    "calculation_post_owner_non_implementation_decision_count": 0,
+    "calculation_post_owner_blocking_reasons": [
+      "owner_decision_capture_incomplete"
+    ],
+    "calculation_post_owner_incomplete_count": 10,
+    "calculation_post_owner_invalid_selected_decision_count": 0,
+    "calculation_post_owner_no_invalid_selected_decisions": true,
+    "calculation_post_owner_global_gate_ready": false,
+    "calculation_post_owner_implementation_ready": false,
+    "calculation_post_owner_plan_renderer_sync": true,
+    "error_count": 0
+  },
+  "blocker_intake_board": {
+    "status": "open_external_input_required",
+    "blocker_count": 5,
+    "completion_order": [
+      "calculation-display-p1-decisions",
+      "ledger-pnl-direct-governance-record",
+      "owner-approval-7-pages",
+      "direct-app-mcp-gitnexus-evidence",
+      "local-secret-hygiene"
+    ],
+    "next_blocker_id": "calculation-display-p1-decisions",
+    "next_blocker_detail": {
+      "blocker_id": "calculation-display-p1-decisions",
+      "responsible_owner_type": "business_owner_and_metric_governance",
+      "strict_gate_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py --require-owner-decisions-captured",
+      "required_external_input_count": 2,
+      "first_required_external_input": "business owner selects the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11",
+      "required_output_count": 11,
+      "first_required_output": "authoritative convention selected for P1-01",
+      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests.",
+      "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention."
+    },
+    "evidence_scope": {
+      "read_only": true,
+      "approves_metrics": false,
+      "approves_pages": false,
+      "captures_business_owner_approval": false,
+      "writes_governance_records": false,
+      "authorizes_ledger_pnl_governance_write": false,
+      "captures_direct_app_mcp_gitnexus_evidence": false,
+      "requests_or_captures_secret_values": false,
+      "clears_secret_scan": false,
+      "certifies_routes": false
+    },
+    "boundary": "This blocker intake board is read-only. It does not approve metrics, pages, business-owner signoff, governance records, route certification, direct App MCP/GitNexus evidence, local secret hygiene, or Ledger PnL --write execution."
+  },
+  "strict_gate_matrix": {
+    "status": "pass",
+    "source": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-system-audit-monitoring-snapshot.json",
+    "source_generated_at": "2026-06-10T21:25:00+08:00",
+    "completion_state": "not_complete",
+    "full_score_ready": false,
+    "open_blocker_count": 5,
+    "gate_count": 8,
+    "expected_blocked_gate_count": 8,
+    "strict_pass_gate_count": 0,
+    "unexpected_gate_count": 0
+  },
+  "all_page_readiness": {
+    "source": "manifest_last_full_readiness",
+    "page_count": 39,
+    "static_pass_count": 39,
+    "non_static_pass_count": 0,
+    "run_supported_count": 27,
+    "owner_approval_pending_count": 7,
+    "owner_approval_action_item_sum": 84,
+    "direct_evidence_explicit_count": 39,
+    "direct_evidence_null_count": 0,
+    "audit_review_null_count": 0,
+    "missing_direct_records_count": 23,
+    "direct_records_ready_for_audit_review_count": 16,
+    "catalog_date_incomplete_count": 12
+  },
+  "drift_errors": [],
+  "claim_boundary": "This pulse is a read-only monitoring aggregate. It does not approve metrics, pages, owner signoff, governance records, secret hygiene, direct App MCP/GitNexus evidence, or route certification."
+}

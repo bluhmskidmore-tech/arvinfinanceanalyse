@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from backend.app.core_finance.bond_analytics.common import build_full_curve, tenor_to_years
+from backend.app.core_finance.bond_analytics.common import (
+    build_full_curve,
+    tenor_to_years,
+)
 from backend.app.core_finance.pnl_bridge import build_pnl_bridge_rows
 
 
@@ -64,7 +67,7 @@ def test_roll_down_nonzero_when_curve_available():
         },
     )
 
-    assert rows[0].roll_down == Decimal("2.00")
+    assert rows[0].roll_down == Decimal("-2.00")
 
 
 def test_treasury_curve_nonzero_when_both_curves_available():

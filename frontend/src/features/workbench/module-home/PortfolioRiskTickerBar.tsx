@@ -1,0 +1,84 @@
+import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { resolveMarketChangeDirection } from "./marketHomeChangeTone";
+import { MarketHomeKpiSparkline } from "./MarketHomeKpiSparkline";
+import type { ModuleHomeDetailPanel } from "./moduleHomeModel";
+import styles from "./portfolioHome.module.css";
+
+const TICKER_LIMIT = 7;
+
+type PortfolioRiskTickerBarProps = {
+  riskPanel?: ModuleHomeDetailPanel;
+};
+
+function tickerChangeClass(detail: string | undefined, sparkline: readonly number[] | undefined) {
+  const direction = resolveMarketChangeDirection(detail, sparkline);
+  if (direction === "up") return dhStyles.dhUpRed;
+  if (direction === "down") return dhStyles.dhDownGreen;
+  return styles.portfolioRiskTickerChangeNeutral;
+}
+
+export function PortfolioRiskTickerBar({ riskPanel }: PortfolioRiskTickerBarProps) {
+  const rows = riskPanel?.rows.slice(0, TICKER_LIMIT) ?? [];
+
+  if (rows.length === 0) {
+    return (
+      <section
+        className={styles.portfolioRiskTickerBar}
+        data-testid="module-home-portfolio-risk-ticker"
+        aria-label="组合风险指标条"
+      >
+        <p className={styles.portfolioRiskTickerEmpty}>风险指标待返回</p>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className={styles.portfolioRiskTickerBar}
+      data-testid="module-home-portfolio-risk-ticker"
+      aria-label="组合风险指标条"
+    >
+      <div className={styles.portfolioRiskTickerHead}>
+        <span>Key Risks</span>
+        <strong>风险读数</strong>
+      </div>
+      <div className={styles.portfolioRiskTickerTrack}>
+        {rows.map((row) => {
+          const changeDirection = resolveMarketChangeDirection(row.detail, row.sparkline);
+          return (
+            <div
+              className={styles.portfolioRiskTickerCell}
+              data-tone={row.tone}
+              data-testid={`module-home-portfolio-ticker-${row.key}`}
+              key={row.key}
+            >
+              <span className={styles.portfolioRiskTickerLabel}>{row.label}</span>
+              <div className={styles.portfolioRiskTickerValueRow}>
+                <strong className={`${dhStyles.dhNum} ${styles.portfolioRiskTickerValue}`}>
+                  {row.value}
+                </strong>
+                {row.sparkline && row.sparkline.length >= 2 ? (
+                  <MarketHomeKpiSparkline
+                    values={row.sparkline}
+                    tone={row.tone}
+                    changeDirection={changeDirection}
+                    variant="ticker"
+                  />
+                ) : null}
+              </div>
+              <em
+                className={`${dhStyles.dhNum} ${styles.portfolioRiskTickerChange} ${tickerChangeClass(
+                  row.detail,
+                  row.sparkline,
+                )}`}
+                data-change={changeDirection ?? "flat"}
+              >
+                {row.source ?? row.detail ?? "—"}
+              </em>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}

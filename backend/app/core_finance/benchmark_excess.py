@@ -10,11 +10,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Mapping
 
 from .safe_decimal import safe_decimal
-
 
 BENCHMARK_PROFILES: dict[str, dict[str, object]] = {
     "TREASURY_INDEX": {

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
-from decimal import Decimal
 from calendar import monthrange
-
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 
 from backend.app.models.base import Base
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
 
 def _normalize_sqlalchemy_dsn(dsn: str) -> str:
@@ -58,7 +57,15 @@ class KpiRepository:
     dsn: str
 
     def __post_init__(self) -> None:
-        self.engine = create_engine(_normalize_sqlalchemy_dsn(self.dsn), future=True)
+        normalized_dsn = _normalize_sqlalchemy_dsn(self.dsn)
+        connect_args: dict[str, object] = {}
+        if normalized_dsn.startswith("postgresql+psycopg://"):
+            connect_args["connect_timeout"] = 1
+        self.engine = create_engine(
+            normalized_dsn,
+            future=True,
+            connect_args=connect_args,
+        )
         self._session_factory = sessionmaker(self.engine, future=True)
         if self.engine.dialect.name == "sqlite":
             Base.metadata.create_all(

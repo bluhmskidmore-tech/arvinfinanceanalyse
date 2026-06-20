@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,6 +25,8 @@ from backend.app.services.ingest_service import IngestService
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import resolve_data_input_root
 from backend.app.tasks.materialize import resolve_materialize_lock
+
+logger = logging.getLogger(__name__)
 
 SOURCE_PREVIEW_REFRESH_JOB_NAME = "source_preview_refresh"
 SOURCE_PREVIEW_REFRESH_CACHE_KEY = "source_preview.foundation"
@@ -109,11 +112,12 @@ def _refresh_source_preview_cache(
                 governance_dir=str(governance_path),
                 ingest_batch_id=selected_ingest_batch_id,
                 source_families=list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
+                archive_root=str(settings.local_archive_path),
             )
             try:
                 cleanup_preview_backups(str(duckdb_file))
             except Exception:
-                pass
+                logger.warning("cleanup_preview_backups failed after successful materialize", exc_info=True)
     except Exception as exc:
         if snapshot_ready:
             try:
@@ -122,7 +126,7 @@ def _refresh_source_preview_cache(
                 try:
                     cleanup_preview_backups(str(duckdb_file))
                 except Exception:
-                    pass
+                    logger.warning("cleanup_preview_backups failed during error recovery", exc_info=True)
 
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,

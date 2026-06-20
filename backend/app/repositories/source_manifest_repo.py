@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from backend.app.repositories.governance_repo import (
     SOURCE_MANIFEST_STREAM,
     GovernanceRepository,
 )
-
 
 SOURCE_MANIFEST_SCHEMA_VERSION = "phase1.manifest.v1"
 MANIFEST_ELIGIBLE_STATUSES = frozenset({"completed", "rerun"})
@@ -25,7 +24,7 @@ class SourceManifestRepository:
         for record in existing:
             latest_by_identity[self._source_identity(record)] = record
 
-        created_at = datetime.now(timezone.utc).isoformat()
+        created_at = datetime.now(UTC).isoformat()
         persisted_rows: list[dict[str, object]] = []
         for row in rows:
             record = {

@@ -8,7 +8,9 @@ from typing import get_args
 import pytest
 
 from backend.app.core_finance.calibers.enums import Basis
-from backend.app.core_finance.calibers.rules.formal_scenario_gate import ForbiddenBasisViewCombination
+from backend.app.core_finance.calibers.rules.formal_scenario_gate import (
+    ForbiddenBasisViewCombination,
+)
 from backend.app.schemas.analysis_service import AnalysisBasis, AnalysisQuery
 from tests.helpers import load_module
 

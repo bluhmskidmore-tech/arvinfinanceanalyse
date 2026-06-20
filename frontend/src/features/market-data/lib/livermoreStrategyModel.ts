@@ -76,10 +76,51 @@ export type LivermoreStrategyModel = {
       stockName: string;
       sectorName: string;
       sectorRank: number;
+      close: string;
       breakoutLevel: string;
+      ma20: string;
+      ma60: string;
+      ma120: string;
+      entryTrigger: string;
+      pullbackWatch: string;
+      defenseLine: string;
       closeStrength: string;
       gapNorm: string;
       abnormalTurnover: string;
+    }>;
+  };
+  meanReversionCandidates: null | {
+    formulaVersion: string;
+    marketState: LivermoreStrategyPayload["market_gate"]["state"];
+    items: Array<{
+      rank: number;
+      stockCode: string;
+      stockName: string;
+      sectorName: string;
+      close: string;
+      score: string;
+    }>;
+  };
+  factorScreenCandidates: null | {
+    formulaVersion: string;
+    marketState: LivermoreStrategyPayload["market_gate"]["state"];
+    coverageNote: string;
+    items: Array<{
+      rank: number;
+      stockCode: string;
+      stockName: string;
+      sectorName: string;
+      score: string;
+    }>;
+  };
+  themeBreakout: null | {
+    formulaVersion: string;
+    isProxy: boolean;
+    items: Array<{
+      rank: number;
+      themeName: string;
+      parentSectorName: string;
+      reason: string;
     }>;
   };
   riskExit: null | {
@@ -104,9 +145,13 @@ export type LivermoreStrategyModel = {
 };
 
 const outputLabels: Record<LivermoreOutputKey, string> = {
+  hybrid_fusion: "hybrid fusion",
   market_gate: "市场门控",
   sector_rank: "板块排序",
   stock_candidates: "个股候选",
+  mean_reversion_candidates: "超跌反弹观察池",
+  factor_screen_candidates: "多因子选股",
+  theme_breakout: "题材突变",
   risk_exit: "风险退出",
 };
 
@@ -135,6 +180,7 @@ const gapStatusLabels: Record<LivermoreStrategyPayload["data_gaps"][number]["sta
   missing: "缺失",
   partial: "部分",
   stale: "陈旧",
+  ready: "就绪",
 };
 
 function fallbackLabel(value: ResultMeta["fallback_mode"]) {
@@ -247,10 +293,57 @@ export function buildLivermoreStrategyModel(input: {
             stockName: item.stock_name,
             sectorName: item.sector_name,
             sectorRank: item.sector_rank,
+            close: formatMetric(item.close),
             breakoutLevel: formatMetric(item.breakout_level),
+            ma20: formatMetric(item.ma20),
+            ma60: formatMetric(item.ma60),
+            ma120: formatMetric(item.ma120),
+            entryTrigger: formatMetric(item.breakout_level),
+            pullbackWatch: formatMetric(item.ma20),
+            defenseLine: formatMetric(item.ma60),
             closeStrength: formatMetric(item.close_strength),
             gapNorm: formatMetric(item.gap_norm),
             abnormalTurnover: formatMetric(item.abnormal_turnover),
+          })),
+        }
+      : null,
+    meanReversionCandidates: payload.mean_reversion_candidates
+      ? {
+          formulaVersion: payload.mean_reversion_candidates.formula_version,
+          marketState: payload.mean_reversion_candidates.market_state,
+          items: payload.mean_reversion_candidates.items.map((item) => ({
+            rank: item.rank,
+            stockCode: item.stock_code,
+            stockName: item.stock_name,
+            sectorName: item.sector_name,
+            close: formatMetric(item.close),
+            score: formatMetric(item.score),
+          })),
+        }
+      : null,
+    factorScreenCandidates: payload.factor_screen_candidates
+      ? {
+          formulaVersion: payload.factor_screen_candidates.formula_version,
+          marketState: payload.factor_screen_candidates.market_state,
+          coverageNote: payload.factor_screen_candidates.coverage_note,
+          items: payload.factor_screen_candidates.items.map((item) => ({
+            rank: item.rank,
+            stockCode: item.stock_code,
+            stockName: item.stock_name,
+            sectorName: item.sector_name,
+            score: formatMetric(item.score),
+          })),
+        }
+      : null,
+    themeBreakout: payload.theme_breakout
+      ? {
+          formulaVersion: payload.theme_breakout.formula_version,
+          isProxy: payload.theme_breakout.is_proxy,
+          items: payload.theme_breakout.items.map((item) => ({
+            rank: item.rank,
+            themeName: item.theme_name,
+            parentSectorName: item.parent_sector_name,
+            reason: item.reason,
           })),
         }
       : null,

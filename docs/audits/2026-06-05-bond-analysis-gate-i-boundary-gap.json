@@ -1,0 +1,133 @@
+{
+  "artifact_id": "bond-analysis-gate-i-boundary-gap-2026-06-05",
+  "route": "/bond-analysis",
+  "page_slug": "bond-analysis",
+  "date": "2026-06-05",
+  "status": "gate-i-gap",
+  "frontend_surface_status": "frontend-ready",
+  "business_contract_status": "evidence-pending",
+  "business_contract_certified": false,
+  "certification_allowed": false,
+  "summary": "The /bond-analysis route is frontend-ready and now has a direct route-specific Gate I readiness gap lane, but it still does not have direct page contract closure, golden-sample boundary, governance-validation evidence, manual audit review, or business-owner approval. Do not certify it by borrowing /bond-dashboard evidence.",
+  "route_evidence": {
+    "route_file": "frontend/src/router/routes.tsx",
+    "route_mapping": "/bond-analysis renders BondAnalyticsView",
+    "route_alias": "bond-analytics-advanced redirects to /bond-analysis",
+    "separate_bond_dashboard_route": "/bond-dashboard renders BondDashboardPage"
+  },
+  "browser_surface_evidence": {
+    "source_file": "frontend/.codex-tmp/bond-analysis-gate-g/layout-verification.json",
+    "viewports": [
+      {
+        "name": "desktop-1440",
+        "status": 200,
+        "no_document_overflow": true,
+        "fallback_route": false,
+        "busy_count": 0,
+        "console_message_count": 0,
+        "page_error_count": 0,
+        "anchors_present": {
+          "top_cockpit": true,
+          "accounting_dv01_mobile_readout": true,
+          "accounting_dv01_raw_grid": true,
+          "accounting_readout_before_raw_grid": true,
+          "holdings_mobile_readout": true,
+          "holdings_raw_grid": true,
+          "holdings_readout_before_raw_grid": true
+        }
+      },
+      {
+        "name": "tablet-768",
+        "status": 200,
+        "no_document_overflow": true,
+        "fallback_route": false,
+        "busy_count": 0,
+        "console_message_count": 0,
+        "page_error_count": 0,
+        "anchors_present": {
+          "top_cockpit": true,
+          "accounting_dv01_mobile_readout": true,
+          "accounting_dv01_raw_grid": true,
+          "accounting_readout_before_raw_grid": true,
+          "holdings_mobile_readout": true,
+          "holdings_raw_grid": true,
+          "holdings_readout_before_raw_grid": true
+        }
+      },
+      {
+        "name": "mobile-390",
+        "status": 200,
+        "no_document_overflow": true,
+        "fallback_route": false,
+        "busy_count": 0,
+        "console_message_count": 0,
+        "page_error_count": 0,
+        "anchors_present": {
+          "top_cockpit": true,
+          "accounting_dv01_mobile_readout": true,
+          "accounting_dv01_raw_grid": true,
+          "accounting_readout_before_raw_grid": true,
+          "holdings_mobile_readout": true,
+          "holdings_raw_grid": true,
+          "holdings_readout_before_raw_grid": true
+        }
+      }
+    ],
+    "evidence_scope": "Browser evidence proves page-surface runtime cleanliness and mobile readout ordering only. It does not prove business-contract certification, golden-sample approval, governance closure, or business-owner approval."
+  },
+  "readiness_gap": {
+    "command": "python scripts/codex_page_readiness.py --page-slug bond-analysis",
+    "observed_status": "static-pass",
+    "observed_exit_code": 0,
+    "page_id": "GAP-BOND-ANALYSIS-PAGE",
+    "approval_status": "gap_or_observational",
+    "formal_use_allowed": false,
+    "golden_samples": [],
+    "run_supported": true,
+    "primary_api": "/api/bond-analytics/action-attribution",
+    "observed_error_summary": null,
+    "implication": "There is now a direct machine-checkable gap lane for /bond-analysis. It routes the page for smoke and verification but does not provide direct page-contract closure, golden-sample approval, governance validation, audit review, or business-owner approval."
+  },
+  "non_reusable_evidence": [
+    {
+      "source": "docs/page_contracts.md",
+      "boundary": "PAGE-BOND-001 names route /bond-dashboard and GET /api/bond-dashboard/*, including /api/bond-dashboard/headline-kpis.",
+      "not_applicable_to": "/bond-analysis"
+    },
+    {
+      "source": "tests/golden_samples/GS-BOND-HEADLINE-A/approval.md",
+      "boundary": "GS-BOND-HEADLINE-A is captured from GET /api/bond-dashboard/headline-kpis?report_date=2026-03-31 and has status captured-awaiting-approval.",
+      "not_applicable_to": "/bond-analysis"
+    },
+    {
+      "source": "docs/metric_dictionary.md",
+      "boundary": "MTR-BOND-001 through MTR-BOND-004 are candidate bond-dashboard headline metrics bound to PAGE-BOND-001 and GS-BOND-HEADLINE-A.",
+      "not_applicable_to": "/bond-analysis"
+    }
+  ],
+  "fixed_income_conventions_to_preserve": [
+    "report_date and result_meta date semantics",
+    "DV01 scale and sign convention",
+    "duration in years",
+    "yield or YTM displayed as percent",
+    "curve or spread movement displayed in bp where applicable",
+    "market value amount scale",
+    "accounting class and holdings grain",
+    "stale, fallback, no-data, temporary-exception, and formal/candidate status markers"
+  ],
+  "required_closure_work": [
+    "Add or map a direct /bond-analysis page contract if this route is meant to be Gate I certified.",
+    "Use the direct bond-analysis readiness slug as the route-specific gap lane without conflating it with bond-dashboard.",
+    "Collect metric-contract, lineage, catalog/date, and governance evidence for /api/bond-analytics/* surfaces used by BondAnalyticsView.",
+    "Define a golden-sample boundary for bond-analysis if any displayed fixed-income decision metrics are to be certified.",
+    "Run manual audit review and capture business-owner approval before any certification wording."
+  ],
+  "forbidden_claims": [
+    "/bond-analysis is business-contract-certified",
+    "GS-BOND-HEADLINE-A certifies /bond-analysis",
+    "PAGE-BOND-001 covers BondAnalyticsView without an explicit alias decision",
+    "Browser cleanliness proves fixed-income metric correctness",
+    "Bond dashboard candidate MTR-BOND metrics approve bond-analysis DV01, duration, yield, PnL, KRD, credit-spread, or holdings metrics"
+  ],
+  "allowed_claim": "The /bond-analysis frontend surface is ready under the recorded browser checks, but Gate I business-contract certification is blocked by a direct route readiness and evidence-boundary gap."
+}

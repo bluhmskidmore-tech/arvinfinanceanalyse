@@ -6,6 +6,7 @@ import {
   bondNumericDisplay,
   bondNumericRaw,
   bondNumericRawOrNull,
+  finiteNumberOr,
   returnDecompositionWaterfallDisplayStrings,
   returnDecompositionWaterfallRawSteps,
 } from "./bondAnalyticsAdapter";
@@ -63,16 +64,16 @@ describe("bondNumericRaw", () => {
     expect(bondNumericRaw("3.25")).toBe(3.25);
   });
 
-  it("returns 0 for null raw", () => {
-    expect(bondNumericRaw(num({ raw: null }))).toBe(0);
+  it("returns null for null raw", () => {
+    expect(bondNumericRaw(num({ raw: null }))).toBeNull();
   });
 
-  it("returns 0 for undefined", () => {
-    expect(bondNumericRaw(undefined)).toBe(0);
+  it("returns null for undefined", () => {
+    expect(bondNumericRaw(undefined)).toBeNull();
   });
 
-  it("returns 0 for non-finite string", () => {
-    expect(bondNumericRaw("x")).toBe(0);
+  it("returns null for non-finite string", () => {
+    expect(bondNumericRaw("x")).toBeNull();
   });
 });
 
@@ -113,6 +114,20 @@ describe("bondChartMagnitude", () => {
   it("accepts Numeric", () => {
     expect(bondChartMagnitude(num({ raw: 4, unit: "ratio" }))).toBe(4);
   });
+
+  it("preserves missing magnitude", () => {
+    expect(bondChartMagnitude("x")).toBeNull();
+    expect(bondChartMagnitude(num({ raw: null }))).toBeNull();
+  });
+});
+
+describe("finiteNumberOr", () => {
+  it("keeps finite numbers and uses the explicit fallback for missing chart values", () => {
+    expect(finiteNumberOr(12.5)).toBe(12.5);
+    expect(finiteNumberOr(null)).toBe(0);
+    expect(finiteNumberOr(undefined, -1)).toBe(-1);
+    expect(finiteNumberOr(Number.NaN, 7)).toBe(7);
+  });
 });
 
 describe("returnDecompositionWaterfall helpers", () => {
@@ -128,6 +143,21 @@ describe("returnDecompositionWaterfall helpers", () => {
       explained_pnl: num({ raw: 28 }),
     });
     expect(returnDecompositionWaterfallRawSteps(d)).toEqual([1, 2, 3, 4, 5, 6, 7, 28]);
+  });
+
+  it("uses chart-safe zeroes for missing values while preserving signed finite values", () => {
+    const d = rd({
+      carry: num({ raw: null }),
+      roll_down: num({ raw: 0 }),
+      rate_effect: num({ raw: -3 }),
+      spread_effect: num({ raw: Number.NaN }),
+      fx_effect: num({ raw: 4 }),
+      convexity_effect: num({ raw: null }),
+      trading: num({ raw: -2 }),
+      explained_pnl: num({ raw: Number.NaN }),
+    });
+
+    expect(returnDecompositionWaterfallRawSteps(d)).toEqual([0, 0, -3, 0, 4, 0, -2, 0]);
   });
 
   it("builds display strings aligned to waterfall categories", () => {

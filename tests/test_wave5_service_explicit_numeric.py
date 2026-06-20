@@ -7,7 +7,6 @@ from pathlib import Path
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE_PATHS = [
     ROOT / "backend" / "app" / "services" / "bond_analytics_service.py",
@@ -68,6 +67,26 @@ def test_cashflow_projection_service_promotes_nested_numeric_dicts(tmp_path, mon
             }
         ]
 
+    def fake_fetch_zqtz_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+        assert report_date == "2026-01-01"
+        assert position_scope == "all"
+        assert currency_basis == "CNY"
+        return [
+            {
+                "instrument_code": "BOND-001",
+                "instrument_name": "Bond 1",
+                "position_scope": "asset",
+                "maturity_date": date(2026, 7, 1),
+                "face_value_amount": Decimal("100"),
+                "market_value_amount": Decimal("100"),
+                "coupon_rate": Decimal("0.05"),
+                "interest_mode": "年付",
+                "currency_code": "CNY",
+                "source_version": "sv_bond_1",
+                "rule_version": "rv_bond_1",
+            }
+        ]
+
     monkeypatch.setattr(
         service_mod.BondAnalyticsRepository,
         "fetch_bond_analytics_rows",
@@ -77,6 +96,11 @@ def test_cashflow_projection_service_promotes_nested_numeric_dicts(tmp_path, mon
         service_mod.CashflowProjectionRepository,
         "fetch_formal_tyw_liability_rows",
         fake_fetch_tyw_rows,
+    )
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_zqtz_rows",
+        fake_fetch_zqtz_rows,
     )
 
     payload = service_mod.get_cashflow_projection(date(2026, 1, 1))

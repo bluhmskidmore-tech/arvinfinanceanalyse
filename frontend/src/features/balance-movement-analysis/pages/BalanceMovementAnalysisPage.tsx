@@ -4,6 +4,8 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  BalanceMovementDatesPayload,
+  BalanceMovementPayload,
   BalanceBasisMovementDecomposition,
   BalanceDifferenceAttributionWaterfall,
   BalanceBusinessMovementTrendMonth,
@@ -14,10 +16,12 @@ import type {
   BalanceZqtzConcentrationAnalysis,
   BalanceZqtzConcentrationDimensionKey,
   BalanceZqtzMaturityStructure,
+  ResultMeta,
 } from "../../../api/contracts";
 import AccountingBasisStackedShareChart, {
   type AccountingBasisStackedSharePoint,
 } from "../../../components/charts/AccountingBasisStackedShareChart";
+import { CalibrationBadge } from "../../../components/CalibrationBadge";
 import { FilterBar } from "../../../components/FilterBar";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
@@ -647,20 +651,38 @@ function formatTrendAxisMonth(reportMonth: string) {
   return `${year.slice(2)}-${String(monthNumber).padStart(2, "0")}`;
 }
 
-function toSharePoint(month: BalanceMovementTrendMonth): AccountingBasisStackedSharePoint {
+type BalanceStructureSharePoint = {
+  monthLabel: string;
+  AC: number | null;
+  OCI: number | null;
+  TPL: number | null;
+  acValueYi?: number;
+  ociValueYi?: number;
+  tplValueYi?: number;
+  totalValueYi?: number;
+};
+
+function nullableNumber(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toSharePoint(month: BalanceMovementTrendMonth): BalanceStructureSharePoint {
   const total = Number(month.current_balance_total);
-  const point: AccountingBasisStackedSharePoint = {
+  const point: BalanceStructureSharePoint = {
     monthLabel: formatTrendAxisMonth(month.report_month),
-    AC: 0,
-    OCI: 0,
-    TPL: 0,
+    AC: null,
+    OCI: null,
+    TPL: null,
     totalValueYi: Number.isFinite(total) ? total / 100000000 : undefined,
   };
   for (const bucket of balanceMovementBuckets) {
     const row = trendBucket(month, bucket);
     const value = Number(row?.current_balance);
-    const share = total > 0 && Number.isFinite(value) ? (value / total) * 100 : Number(row?.current_balance_pct);
-    point[bucket] = Number.isFinite(share) ? share : 0;
+    point[bucket] = nullableNumber(row?.current_balance_pct);
     if (bucket === "AC") point.acValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
     if (bucket === "OCI") point.ociValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
     if (bucket === "TPL") point.tplValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
@@ -668,12 +690,55 @@ function toSharePoint(month: BalanceMovementTrendMonth): AccountingBasisStackedS
   return point;
 }
 
+function toCompleteSharePoint(
+  point: BalanceStructureSharePoint,
+): AccountingBasisStackedSharePoint | null {
+  const { AC, OCI, TPL } = point;
+  if (
+    AC === null ||
+    OCI === null ||
+    TPL === null ||
+    !Number.isFinite(AC) ||
+    !Number.isFinite(OCI) ||
+    !Number.isFinite(TPL)
+  ) {
+    return null;
+  }
+  return { ...point, AC, OCI, TPL };
+}
+
 function formatSignedPoint(value: number) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}pp`;
 }
 
-function formatShareEvolutionPct(value: number) {
+function formatSignedPointNullable(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value)
+    ? "—"
+    : formatSignedPoint(value);
+}
+
+function nullableDelta(
+  current: number | null | undefined,
+  base: number | null | undefined,
+): number | null {
+  if (
+    current === null ||
+    current === undefined ||
+    base === null ||
+    base === undefined ||
+    !Number.isFinite(current) ||
+    !Number.isFinite(base)
+  ) {
+    return null;
+  }
+  return current - base;
+}
+
+function formatShareEvolutionPct(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
   return `${value.toFixed(2)}%`;
 }
 
@@ -711,7 +776,7 @@ function formatSignedYiDelta(
 }
 
 type StructureShareTableRow = {
-  point: AccountingBasisStackedSharePoint;
+  point: BalanceStructureSharePoint;
   reportMonth: string;
 };
 
@@ -720,8 +785,11 @@ function numericValue(value: string | number | null | undefined) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function shareDeltaPp(row: BalanceMovementRow): number {
-  return numericValue(row.current_balance_pct) - numericValue(row.previous_balance_pct);
+function shareDeltaPp(row: BalanceMovementRow): number | null {
+  return nullableDelta(
+    nullableNumber(row.current_balance_pct),
+    nullableNumber(row.previous_balance_pct),
+  );
 }
 
 function isPreviousCalendarMonth(currentReportDate: string, previousReportDate: string) {
@@ -749,15 +817,15 @@ type BalanceMovementDriver = {
   balanceChange: number;
   balanceChangeYi: number;
   contributionPct: number;
-  currentBalancePct: number;
-  previousBalancePct: number;
-  shareDelta: number;
+  currentBalancePct: number | null;
+  previousBalancePct: number | null;
+  shareDelta: number | null;
 };
 
 function toMovementDriver(row: BalanceMovementRow): BalanceMovementDriver {
   const balanceChange = numericValue(row.balance_change);
-  const currentBalancePct = numericValue(row.current_balance_pct);
-  const previousBalancePct = numericValue(row.previous_balance_pct);
+  const currentBalancePct = nullableNumber(row.current_balance_pct);
+  const previousBalancePct = nullableNumber(row.previous_balance_pct);
   return {
     bucket: row.basis_bucket,
     balanceChange,
@@ -765,8 +833,15 @@ function toMovementDriver(row: BalanceMovementRow): BalanceMovementDriver {
     contributionPct: numericValue(row.contribution_pct),
     currentBalancePct,
     previousBalancePct,
-    shareDelta: currentBalancePct - previousBalancePct,
+    shareDelta: nullableDelta(currentBalancePct, previousBalancePct),
   };
+}
+
+function shareBarWidth(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "0%";
+  }
+  return `${Math.min(Math.max(value, 1), 100)}%`;
 }
 
 function formatSignedYiNumber(value: number) {
@@ -805,6 +880,188 @@ function movementDirection(value: string | number | null | undefined) {
   return "持平";
 }
 
+function formatMetaList(values: string[] | undefined) {
+  return values && values.length > 0 ? values.join("、") : "—";
+}
+
+function csvCell(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const text = String(value);
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function buildCsv(rows: Array<Array<string | number | boolean | null | undefined>>) {
+  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob(["\uFEFF", content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildBalanceMovementCsv(options: {
+  result: BalanceMovementPayload;
+  resultMeta: ResultMeta | null;
+  businessTopMove: BusinessMomMove | undefined;
+  accountingTopDriver: BalanceMovementDriver | undefined;
+  residualComponent: BalanceDifferenceAttributionWaterfall["components"][number] | undefined;
+  unsupportedComponents: BalanceDifferenceAttributionWaterfall["components"];
+  maturityStructure: BalanceZqtzMaturityStructure | null;
+  concentrationAnalysis: BalanceZqtzConcentrationAnalysis | null;
+  explanationClosure: BalanceExplanationClosure | null;
+  dimensionCards: AnalysisDimensionCard[];
+  historicalAnomalyDiagnostics: HistoricalAnomalyDiagnostics;
+}) {
+  const {
+    result,
+    resultMeta,
+    businessTopMove,
+    accountingTopDriver,
+    residualComponent,
+    unsupportedComponents,
+    maturityStructure,
+    concentrationAnalysis,
+    explanationClosure,
+    dimensionCards,
+    historicalAnomalyDiagnostics,
+  } = options;
+  const residualRatioText =
+    explanationClosure?.residualRatioPct === null ||
+    explanationClosure?.residualRatioPct === undefined
+      ? ""
+      : formatPct(explanationClosure.residualRatioPct);
+  const csvRows: Array<Array<string | number | boolean | null | undefined>> = [
+    ["section", "field", "value", "note"],
+    ["meta", "report_date", result.report_date, ""],
+    ["meta", "currency_basis", result.currency_basis, ""],
+    ["meta", "quality_flag", resultMeta?.quality_flag, ""],
+    ["meta", "trace_id", resultMeta?.trace_id, ""],
+    ["meta", "rule_version", resultMeta?.rule_version, ""],
+    ["meta", "source_version", resultMeta?.source_version, ""],
+    ["meta", "tables_used", resultMeta?.tables_used?.join(";"), ""],
+    ["meta", "evidence_rows", resultMeta?.evidence_rows, ""],
+    [
+      "dimension",
+      "business_top_move",
+      businessTopMove
+        ? `${businessTopMove.label} ${formatSignedYiCell(businessTopMove.deltaYuan)} 亿`
+        : "",
+      businessTopMove ? sourceNotePreview(businessTopMove.sourceNote) : "",
+    ],
+    [
+      "dimension",
+      "accounting_basis_top_move",
+      accountingTopDriver
+        ? `${accountingTopDriver.bucket} ${formatSignedYiNumber(accountingTopDriver.balanceChangeYi)} 亿`
+        : "",
+      accountingTopDriver ? `contribution_pct=${formatPct(accountingTopDriver.contributionPct)}` : "",
+    ],
+    [
+      "dimension",
+      "residual_unclassified",
+      residualComponent ? `${formatSignedYiCell(residualComponent.amount)} 亿` : "",
+      "未分类残差只用于闭合，不反推估值差或外币折算差。",
+    ],
+    [
+      "dimension",
+      "unsupported_components",
+      unsupportedComponents.map((component) => component.component_label).join(";"),
+      "未支持，不反推。",
+    ],
+    [
+      "dimension",
+      "maturity_coverage",
+      maturityStructure ? formatPct(maturityStructure.meta.coverage_pct) : "",
+      maturityStructure?.meta.status ?? "",
+    ],
+    [
+      "dimension",
+      "concentration_coverage",
+      concentrationAnalysis ? formatPct(concentrationAnalysis.meta.coverage_pct) : "",
+      concentrationAnalysis?.meta.status ?? "",
+    ],
+    [
+      "diagnostic",
+      "explanation_closure",
+      explanationClosure?.headline,
+      explanationClosure?.note,
+    ],
+    [
+      "diagnostic",
+      "residual_ratio",
+      residualRatioText,
+      "页面诊断阈值，不是正式指标",
+    ],
+    ...dimensionCards.flatMap((card) =>
+      card.tags.map((tag) => ["diagnostic", `${card.key}_tag`, tag.label, tag.tone]),
+    ),
+    [
+      "historical_anomaly",
+      "headline",
+      historicalAnomalyDiagnostics.headline,
+      "页面诊断提示，不是正式风险指标",
+    ],
+    [
+      "historical_anomaly",
+      "sample_count",
+      historicalAnomalyDiagnostics.sampleCount,
+      historicalAnomalyDiagnostics.baselinePairCount > 0
+        ? `baseline_pairs=${historicalAnomalyDiagnostics.baselinePairCount}`
+        : "历史样本不足",
+    ],
+    ...historicalAnomalyDiagnostics.accountingSignals.map((signal) => [
+      "historical_anomaly",
+      `accounting_${signal.bucket}`,
+      `${formatSignedYiCell(signal.currentDelta)} 亿`,
+      `${signal.headline}${signal.directionReversal ? "；方向反转" : ""}`,
+    ]),
+    ...historicalAnomalyDiagnostics.businessSignals.map((signal) => [
+      "historical_anomaly",
+      "business_move",
+      `${signal.label} ${formatSignedYiCell(signal.currentDelta)} 亿`,
+      `高于近 ${signal.baselineCount} 期常态`,
+    ]),
+    [],
+    [
+      "basis_bucket",
+      "previous_balance_yi",
+      "current_balance_yi",
+      "balance_change_yi",
+      "contribution_pct",
+      "reconciliation_status",
+    ],
+    ...result.rows.map((row) => [
+      row.basis_bucket,
+      formatYiCell(row.previous_balance),
+      formatYiCell(row.current_balance),
+      formatSignedYiCell(row.balance_change),
+      formatPct(row.contribution_pct),
+      row.reconciliation_status,
+    ]),
+    [],
+    ["waterfall_component", "label", "value", "note"],
+    ...(result.difference_attribution_waterfall?.components ?? []).map((component) => [
+      component.component_key,
+      component.component_label,
+      component.is_supported === false ? "待拆分" : `${formatSignedYiCell(component.amount)} 亿`,
+      component.evidence_note,
+    ]),
+  ];
+  return `${buildCsv(csvRows)}\r\n`;
+}
+
 function dataIndexFromTooltip(params: unknown) {
   const first = Array.isArray(params) ? params[0] : params;
   if (!first || typeof first !== "object" || !("dataIndex" in first)) {
@@ -827,7 +1084,7 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
           driver.bucket,
           `变动：${formatSignedYiNumber(driver.balanceChangeYi)} 亿`,
           `贡献：${formatPct(driver.contributionPct)}`,
-          `占比变化：${formatSignedPoint(driver.shareDelta)}`,
+          `占比变化：${formatSignedPointNullable(driver.shareDelta)}`,
         ].join("<br/>");
       },
     },
@@ -866,6 +1123,470 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
       },
     ],
   };
+}
+
+type BalanceDiagnosticTone = "ok" | "info" | "warn" | "critical" | "unknown";
+
+type BalanceDiagnosticTag = {
+  label: string;
+  tone: BalanceDiagnosticTone;
+};
+
+type BalanceEvidenceItem = {
+  label: string;
+  value: string;
+  note?: string;
+};
+
+type BalanceExplanationClosure = {
+  tone: BalanceDiagnosticTone;
+  headline: string;
+  supportedComponents: BalanceDifferenceAttributionWaterfall["components"];
+  unsupportedComponents: BalanceDifferenceAttributionWaterfall["components"];
+  residualComponent?: BalanceDifferenceAttributionWaterfall["components"][number];
+  residualRatioPct: number | null;
+  note: string;
+};
+
+type AnalysisDimensionCard = {
+  key: string;
+  title: string;
+  metric: string;
+  detail: string;
+  href: string;
+  tags: BalanceDiagnosticTag[];
+  evidence: BalanceEvidenceItem[];
+};
+
+function amountToNumber(value: string | number | null | undefined) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function buildExplanationClosure(options: {
+  waterfall: BalanceDifferenceAttributionWaterfall | null;
+  summary: BalanceMovementPayload["summary"] | null;
+}): BalanceExplanationClosure | null {
+  const { waterfall, summary } = options;
+  if (!waterfall) {
+    return null;
+  }
+  const supportedComponents = waterfall.components.filter(
+    (component) => component.is_supported !== false && !component.is_residual,
+  );
+  const unsupportedComponents = waterfall.components.filter(
+    (component) => component.is_supported === false,
+  );
+  const residualComponent = waterfall.components.find((component) => component.is_residual);
+  const residualAmount = amountToNumber(residualComponent?.amount);
+  const totalChange = amountToNumber(summary?.balance_change_total);
+  const residualRatioPct =
+    residualAmount !== null && totalChange !== null && Math.abs(totalChange) > 0
+      ? (Math.abs(residualAmount) / Math.abs(totalChange)) * 100
+      : null;
+
+  if (unsupportedComponents.length > 0) {
+    return {
+      tone: residualRatioPct !== null && residualRatioPct > 2 ? "critical" : "warn",
+      headline: "存在待补口径，不能反推为已解释",
+      supportedComponents,
+      unsupportedComponents,
+      residualComponent,
+      residualRatioPct,
+      note: "估值差和外币折算差缺少可闭合字段；页面只展示后端已返回的证据项。",
+    };
+  }
+
+  return {
+    tone: residualRatioPct !== null && residualRatioPct > 2 ? "warn" : "ok",
+    headline: "现有瀑布项可用于本页解释闭合",
+    supportedComponents,
+    unsupportedComponents,
+    residualComponent,
+    residualRatioPct,
+    note: "该判断是页面诊断提示，不替代正式审计归因。",
+  };
+}
+
+function coverageTone(value: string | number | null | undefined): BalanceDiagnosticTone {
+  const coverage = amountToNumber(value);
+  if (coverage === null) {
+    return "unknown";
+  }
+  if (coverage < 80) {
+    return "critical";
+  }
+  if (coverage < 95) {
+    return "warn";
+  }
+  return "ok";
+}
+
+function residualTone(ratioPct: number | null, unsupportedCount: number): BalanceDiagnosticTone {
+  if (unsupportedCount > 0) {
+    return "warn";
+  }
+  if (ratioPct !== null && ratioPct > 2) {
+    return "warn";
+  }
+  return "ok";
+}
+
+type HistoricalAccountingSignal = {
+  bucket: BalanceMovementRow["basis_bucket"];
+  headline: string;
+  currentDelta: number;
+  baselineAverageAbs: number | null;
+  baselineCount: number;
+  directionReversal: boolean;
+};
+
+type HistoricalBusinessSignal = {
+  label: string;
+  currentDelta: number;
+  baselineAverageAbs: number | null;
+  baselineCount: number;
+};
+
+type HistoricalAnomalyDiagnostics = {
+  sampleCount: number;
+  baselinePairCount: number;
+  headline: string;
+  accountingSignals: HistoricalAccountingSignal[];
+  businessSignals: HistoricalBusinessSignal[];
+};
+
+function averageAbs(values: number[]) {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce((total, value) => total + Math.abs(value), 0) / values.length;
+}
+
+function directionOf(value: number) {
+  if (value > 0) return 1;
+  if (value < 0) return -1;
+  return 0;
+}
+
+function buildDeltaSeries<T>(
+  months: T[],
+  getReportDate: (month: T) => string,
+  getValue: (month: T) => string | number | null | undefined,
+) {
+  const deltas: number[] = [];
+  for (let index = 0; index < months.length - 1; index += 1) {
+    const current = months[index];
+    const previous = months[index + 1];
+    if (!current || !previous || !isPreviousCalendarMonth(getReportDate(current), getReportDate(previous))) {
+      continue;
+    }
+    const delta = trendDelta(getValue(current), getValue(previous));
+    if (delta !== null) {
+      deltas.push(delta);
+    }
+  }
+  return deltas;
+}
+
+function anomalyHeadline(label: string, currentDelta: number, baselineAverageAbs: number | null, baselineCount: number) {
+  if (baselineAverageAbs === null || baselineAverageAbs === 0) {
+    return Math.abs(currentDelta) > 0 ? `${label} 新增跳变` : `${label} 未见异常`;
+  }
+  return Math.abs(currentDelta) >= baselineAverageAbs * 3
+    ? `${label} 高于近 ${baselineCount} 期常态`
+    : `${label} 接近近 ${baselineCount} 期常态`;
+}
+
+function buildHistoricalAnomalyDiagnostics(options: {
+  trendMonths: BalanceMovementTrendMonth[];
+  businessTrendMonths: BalanceBusinessMovementTrendMonth[];
+  businessRows: BusinessMovementMatrixRow[];
+}): HistoricalAnomalyDiagnostics {
+  const { trendMonths, businessTrendMonths, businessRows } = options;
+  const sampleCount = Math.max(trendMonths.length, businessTrendMonths.length);
+  const baselinePairCount = Math.max(0, sampleCount - 2);
+  const accountingSignals =
+    baselinePairCount > 0
+      ? balanceMovementBuckets
+          .map((bucket): HistoricalAccountingSignal | null => {
+            const deltas = buildDeltaSeries(
+              trendMonths,
+              (month) => month.report_date,
+              (month) => trendBucket(month, bucket)?.current_balance,
+            );
+            const [currentDelta, ...historyDeltas] = deltas;
+            if (currentDelta === undefined || historyDeltas.length === 0) {
+              return null;
+            }
+            const baselineAverageAbs = averageAbs(historyDeltas);
+            const directionReversal =
+              directionOf(currentDelta) !== 0 &&
+              directionOf(historyDeltas[0]) !== 0 &&
+              directionOf(currentDelta) !== directionOf(historyDeltas[0]);
+            const headline = anomalyHeadline(bucket, currentDelta, baselineAverageAbs, historyDeltas.length);
+            if (!directionReversal && !headline.includes("高于")) {
+              return null;
+            }
+            return {
+              bucket,
+              headline,
+              currentDelta,
+              baselineAverageAbs,
+              baselineCount: historyDeltas.length,
+              directionReversal,
+            };
+          })
+          .filter((signal): signal is HistoricalAccountingSignal => signal !== null)
+          .sort((left, right) => Math.abs(right.currentDelta) - Math.abs(left.currentDelta))
+      : [];
+
+  const businessSignals =
+    baselinePairCount > 0
+      ? businessRows
+          .filter((row) => row.side === "asset" || row.side === "liability")
+          .map((row): HistoricalBusinessSignal | null => {
+            const deltas = buildDeltaSeries(
+              businessTrendMonths,
+              (month) => month.report_date,
+              (month) => row.getValue(month),
+            );
+            const [currentDelta, ...historyDeltas] = deltas;
+            if (currentDelta === undefined || historyDeltas.length === 0) {
+              return null;
+            }
+            const baselineAverageAbs = averageAbs(historyDeltas);
+            const headline = anomalyHeadline(row.label, currentDelta, baselineAverageAbs, historyDeltas.length);
+            if (!headline.includes("高于") && !headline.includes("新增")) {
+              return null;
+            }
+            return {
+              label: row.label,
+              currentDelta,
+              baselineAverageAbs,
+              baselineCount: historyDeltas.length,
+            };
+          })
+          .filter((signal): signal is HistoricalBusinessSignal => signal !== null)
+          .sort((left, right) => Math.abs(right.currentDelta) - Math.abs(left.currentDelta))
+          .slice(0, 5)
+      : [];
+
+  return {
+    sampleCount,
+    baselinePairCount,
+    headline: baselinePairCount > 0 ? "本期相对历史常态的偏离" : "历史样本不足",
+    accountingSignals,
+    businessSignals,
+  };
+}
+
+function EvidenceStrip({ meta }: { meta: ResultMeta }) {
+  return (
+    <section
+      className="balance-movement-evidence-strip"
+      data-testid="balance-movement-analysis-evidence-strip"
+      aria-label="余额变动分析证据条"
+    >
+      <div>
+        <span>quality_flag</span>
+        <strong>{meta.quality_flag}</strong>
+      </div>
+      <div>
+        <span>trace_id</span>
+        <strong>{meta.trace_id}</strong>
+      </div>
+      <div>
+        <span>tables_used</span>
+        <strong>{formatMetaList(meta.tables_used)}</strong>
+      </div>
+      <div>
+        <span>evidence_rows</span>
+        <strong>{meta.evidence_rows ?? "—"}</strong>
+      </div>
+      <div>
+        <span>rule_version</span>
+        <strong>{meta.rule_version || "—"}</strong>
+      </div>
+      <div>
+        <span>source_version</span>
+        <strong>{meta.source_version || "—"}</strong>
+      </div>
+    </section>
+  );
+}
+
+type BalanceMovementFreshnessStatus = NonNullable<BalanceMovementDatesPayload["freshness_status"]>;
+
+function freshnessStatusLabel(status: BalanceMovementFreshnessStatus | undefined) {
+  switch (status) {
+    case "fresh":
+      return "数据已同步";
+    case "read_model_lagging":
+      return "读模型落后上游";
+    case "read_model_empty":
+      return "读模型未生成";
+    case "upstream_empty":
+      return "上游暂无控制账";
+    default:
+      return "新鲜度待确认";
+  }
+}
+
+function freshnessStatusDetail(status: BalanceMovementFreshnessStatus | undefined) {
+  switch (status) {
+    case "fresh":
+      return "上游控制账与页面读模型日期一致。";
+    case "read_model_lagging":
+      return "上游已有更晚月份，当前页面仍停留在读模型已有月份。";
+    case "read_model_empty":
+      return "上游已有控制账数据，但页面读模型尚未生成可选日期。";
+    case "upstream_empty":
+      return "页面有读模型日期，但未发现同口径上游控制账。";
+    default:
+      return "当前接口未返回上游与读模型的日期对齐信息。";
+  }
+}
+
+function freshnessStatusTone(status: BalanceMovementFreshnessStatus | undefined) {
+  if (status === "fresh") {
+    return "ok";
+  }
+  if (status === "read_model_lagging" || status === "read_model_empty") {
+    return "warn";
+  }
+  return "info";
+}
+
+function FreshnessStrip({
+  dates,
+  selectedDate,
+}: {
+  dates: BalanceMovementDatesPayload;
+  selectedDate: string;
+}) {
+  const status = dates.freshness_status;
+  const latestReadModelDate = dates.latest_read_model_report_date ?? dates.report_dates[0] ?? null;
+  const latestUpstreamDate = dates.latest_upstream_control_report_date ?? null;
+  const tone = freshnessStatusTone(status);
+  return (
+    <section
+      className={`balance-movement-freshness-strip balance-movement-freshness-strip--${tone}`}
+      data-testid="balance-movement-analysis-freshness"
+      aria-label="余额变动分析数据新鲜度"
+    >
+      <div className="balance-movement-freshness-strip__summary">
+        <span>{freshnessStatusLabel(status)}</span>
+        <strong>{freshnessStatusDetail(status)}</strong>
+      </div>
+      <dl className="balance-movement-freshness-strip__facts">
+        <div>
+          <dt>上游最新</dt>
+          <dd>{latestUpstreamDate ?? "未发现"}</dd>
+        </div>
+        <div>
+          <dt>读模型最新</dt>
+          <dd>{latestReadModelDate ?? "未生成"}</dd>
+        </div>
+        <div>
+          <dt>当前选择</dt>
+          <dd>{selectedDate || "未选择"}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+function AnalysisDimensionOverview({
+  cards,
+  onEvidence,
+}: {
+  cards: AnalysisDimensionCard[];
+  onEvidence: (key: string) => void;
+}) {
+  return (
+    <section
+      className="balance-movement-dimension-overview"
+      data-testid="balance-movement-analysis-dimension-overview"
+    >
+      <div className="balance-movement-dimension-overview__header">
+        <span>分析维度总览</span>
+        <strong>先看变化、可信度、未解释项</strong>
+      </div>
+      <div className="balance-movement-dimension-grid">
+        {cards.map((card) => (
+          <article
+            key={card.key}
+            className="balance-movement-dimension-card"
+            data-testid={`balance-movement-analysis-dimension-card-${card.key}`}
+          >
+            <a href={card.href} className="balance-movement-dimension-card__jump">
+              <span>{card.title}</span>
+              <strong>{card.metric}</strong>
+              <p>{card.detail}</p>
+            </a>
+            <div className="balance-movement-dimension-tags">
+              {card.tags.map((tag) => (
+                <span
+                  key={`${card.key}-${tag.label}`}
+                  className={`balance-movement-dimension-tag balance-movement-dimension-tag--${tag.tone}`}
+                >
+                  {tag.label}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="balance-movement-dimension-card__evidence"
+              data-testid={`balance-movement-analysis-dimension-evidence-${card.key}`}
+              onClick={() => onEvidence(card.key)}
+            >
+              证据
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AnalysisEvidenceDrawer({
+  card,
+  onClose,
+}: {
+  card: AnalysisDimensionCard;
+  onClose: () => void;
+}) {
+  return (
+    <aside
+      aria-label="分析维度证据"
+      className="balance-movement-evidence-drawer"
+      data-testid="balance-movement-analysis-evidence-drawer"
+    >
+      <div className="balance-movement-evidence-drawer__header">
+        <div>
+          <span>分析维度证据</span>
+          <h2>{card.title}</h2>
+        </div>
+        <button type="button" onClick={onClose} aria-label="关闭证据">
+          关闭
+        </button>
+      </div>
+      <strong>{card.metric}</strong>
+      <p>{card.detail}</p>
+      <dl className="balance-movement-evidence-drawer__list">
+        {card.evidence.map((item) => (
+          <div key={`${card.key}-${item.label}`}>
+            <dt>{item.label}</dt>
+            <dd>
+              {item.value}
+              {item.note ? <span>{item.note}</span> : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </aside>
+  );
 }
 
 function StructureMigrationPanel({
@@ -972,6 +1693,185 @@ function DifferenceAttributionWaterfallPanel({
   );
 }
 
+function ExplanationClosurePanel({ closure }: { closure: BalanceExplanationClosure }) {
+  return (
+    <section
+      className={`balance-movement-closure balance-movement-closure--${closure.tone}`}
+      data-testid="balance-movement-analysis-explanation-closure"
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>解释闭合度</span>
+          <h2>{closure.headline}</h2>
+        </div>
+        <strong>{closure.unsupportedComponents.length > 0 ? "口径待补" : "可解释"}</strong>
+      </div>
+      <p className="balance-movement-derived-panel__summary">{closure.note}</p>
+      <div className="balance-movement-closure-grid">
+        <div>
+          <span>已支持解释项</span>
+          <strong>{closure.supportedComponents.length} 项</strong>
+        </div>
+        <div>
+          <span>未支持项</span>
+          <strong>
+            {closure.unsupportedComponents.map((component) => component.component_label).join("、") || "无"}
+          </strong>
+        </div>
+        <div>
+          <span>未分类 / 残差</span>
+          <strong>
+            {closure.residualComponent
+              ? `${formatSignedYiCell(closure.residualComponent.amount)} 亿`
+              : "—"}
+          </strong>
+        </div>
+        <div>
+          <span>残差占本期变动</span>
+          <strong>
+            {closure.residualRatioPct === null ? "—" : formatPct(closure.residualRatioPct)}
+          </strong>
+        </div>
+      </div>
+      {closure.unsupportedComponents.length > 0 ? (
+        <ul className="balance-movement-closure-list">
+          {closure.unsupportedComponents.map((component) => (
+            <li key={component.component_key}>
+              <strong>{component.component_label}</strong>
+              <span>未支持，不反推。{component.evidence_note}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function HistoricalAnomalyPanel({
+  diagnostics,
+}: {
+  diagnostics: HistoricalAnomalyDiagnostics;
+}) {
+  const sampleLabel =
+    diagnostics.sampleCount > 0 ? `仅 ${diagnostics.sampleCount} 期样本` : "暂无历史样本";
+  const hasBaseline = diagnostics.baselinePairCount > 0;
+  return (
+    <section
+      className="balance-movement-anomaly-panel"
+      data-testid="balance-movement-analysis-anomaly-diagnostics"
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>历史异常定位</span>
+          <h2>{diagnostics.headline}</h2>
+        </div>
+        <strong>{hasBaseline ? `近 ${diagnostics.baselinePairCount} 期常态` : sampleLabel}</strong>
+      </div>
+      <p className="balance-movement-derived-panel__summary">
+        页面诊断提示，不是正式风险指标；只用现有趋势 payload 比较本期变动与最近历史变动，不反推交易动作。
+      </p>
+      <div className="balance-movement-anomaly-grid">
+        <div className="balance-movement-anomaly-card">
+          <span>AC / OCI / TPL 异常判断</span>
+          {hasBaseline ? (
+            diagnostics.accountingSignals.length > 0 ? (
+              <ul className="balance-movement-anomaly-list">
+                {diagnostics.accountingSignals.map((signal) => (
+                  <li key={signal.bucket}>
+                    <strong>{signal.bucket}</strong>
+                    <span>{signal.headline}</span>
+                    <p>
+                      本期 {formatSignedYiCell(signal.currentDelta)} 亿；近 {signal.baselineCount} 期平均{" "}
+                      {signal.baselineAverageAbs === null ? "—" : `${formatYiCell(signal.baselineAverageAbs)} 亿`}
+                      {signal.directionReversal ? "；方向反转" : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>未发现高于历史常态的 AC / OCI / TPL 单桶变动。</p>
+            )
+          ) : (
+            <p>历史样本不足，{sampleLabel}，暂不判断异常。</p>
+          )}
+        </div>
+        <div className="balance-movement-anomaly-card">
+          <span>业务品类异常榜</span>
+          {hasBaseline ? (
+            diagnostics.businessSignals.length > 0 ? (
+              <ul className="balance-movement-anomaly-list">
+                {diagnostics.businessSignals.map((signal) => (
+                  <li key={signal.label}>
+                    <strong>{signal.label}</strong>
+                    <span>{formatSignedYiCell(signal.currentDelta)} 亿</span>
+                    <p>
+                      高于近 {signal.baselineCount} 期常态；历史平均{" "}
+                      {signal.baselineAverageAbs === null ? "—" : `${formatYiCell(signal.baselineAverageAbs)} 亿`}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>未发现高于历史常态的业务品类变动。</p>
+            )
+          ) : (
+            <p>历史样本不足，{sampleLabel}，先看本期 Top 变动。</p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ResidualUnsupportedPanel({
+  waterfall,
+}: {
+  waterfall: BalanceDifferenceAttributionWaterfall;
+}) {
+  const unsupportedComponents = waterfall.components.filter((component) => component.is_supported === false);
+  const residualComponent = waterfall.components.find((component) => component.is_residual);
+  return (
+    <section
+      id="balance-movement-analysis-residual-anchor"
+      className="balance-movement-derived-panel balance-movement-residual-panel"
+      data-testid="balance-movement-analysis-residual-closure"
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>残差与待补口径</span>
+          <h2>哪些差异还不能解释</h2>
+        </div>
+        <strong>{unsupportedComponents.length} 项待补</strong>
+      </div>
+      <p className="balance-movement-derived-panel__summary">
+        估值差和外币折算差当前没有可独立闭合字段；页面只展示后端已确认项和未分类残差，不在浏览器端反推正式口径。
+      </p>
+      <div className="balance-movement-residual-grid">
+        <div className="balance-movement-residual-card">
+          <span>未分类 / 残差</span>
+          <strong>{residualComponent ? `${formatSignedYiCell(residualComponent.amount)} 亿` : "—"}</strong>
+          <p>{residualComponent?.evidence_note ?? "当前瀑布未返回残差项。"}</p>
+        </div>
+        <div className="balance-movement-residual-card">
+          <span>待补口径</span>
+          <strong>{unsupportedComponents.map((component) => component.component_label).join("、") || "—"}</strong>
+          <p>未支持，不反推；待后端提供可闭合证据后再升级为正式拆分。</p>
+        </div>
+      </div>
+      {unsupportedComponents.length > 0 ? (
+        <ul className="balance-movement-residual-list">
+          {unsupportedComponents.map((component) => (
+            <li key={component.component_key}>
+              <strong>{component.component_label}</strong>
+              <span>{component.evidence_note}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function BasisMovementDecompositionPanel({
   decomposition,
 }: {
@@ -979,6 +1879,7 @@ function BasisMovementDecompositionPanel({
 }) {
   return (
     <section
+      id="balance-movement-analysis-basis-anchor"
       className="balance-movement-derived-panel"
       data-testid="balance-movement-analysis-basis-decomposition"
     >
@@ -1060,6 +1961,7 @@ function ZqtzMaturityStructurePanel({
 }) {
   return (
     <section
+      id="balance-movement-analysis-coverage-anchor"
       className="balance-movement-derived-panel"
       data-testid="balance-movement-analysis-zqtz-maturity"
     >
@@ -1187,6 +2089,7 @@ export default function BalanceMovementAnalysisPage() {
   const [currencyBasis, setCurrencyBasis] = useState(queryCurrencyBasis);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [selectedEvidenceKey, setSelectedEvidenceKey] = useState<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["balance-movement-analysis", "dates", client.mode, currencyBasis],
@@ -1277,6 +2180,7 @@ export default function BalanceMovementAnalysisPage() {
     detailQuery.data?.result.zqtz_maturity_structure ?? null;
   const zqtzConcentrationAnalysis =
     detailQuery.data?.result.zqtz_concentration_analysis ?? null;
+  const resultMeta = detailQuery.data?.result_meta ?? null;
   const accountingByReportDate = useMemo(() => {
     const map = new Map<string, BalanceMovementTrendMonth>();
     for (const month of accountingMatrixMonths) {
@@ -1368,9 +2272,24 @@ export default function BalanceMovementAnalysisPage() {
     () => structureShareTableRows.map((row) => row.point),
     [structureShareTableRows],
   );
+  const balanceStructureChartRows = useMemo(() => {
+    const chartRows: AccountingBasisStackedSharePoint[] = [];
+    for (const point of balanceStructureTrend) {
+      const chartPoint = toCompleteSharePoint(point);
+      if (chartPoint === null) {
+        return [];
+      }
+      chartRows.push(chartPoint);
+    }
+    return chartRows;
+  }, [balanceStructureTrend]);
   const balanceStructureInsight = useMemo(() => {
-    const first = balanceStructureTrend[0];
-    const latest = balanceStructureTrend[balanceStructureTrend.length - 1];
+    const first = balanceStructureTrend[0]
+      ? toCompleteSharePoint(balanceStructureTrend[0])
+      : null;
+    const latest = balanceStructureTrend[balanceStructureTrend.length - 1]
+      ? toCompleteSharePoint(balanceStructureTrend[balanceStructureTrend.length - 1])
+      : null;
     if (!first || !latest || first.monthLabel === latest.monthLabel) {
       return null;
     }
@@ -1398,7 +2317,13 @@ export default function BalanceMovementAnalysisPage() {
   const topMovementDriver = movementDrivers[0];
   const maxShareShiftDriver = useMemo(
     () =>
-      [...movementDrivers].sort(
+      movementDrivers.filter(
+        (
+          driver,
+        ): driver is BalanceMovementDriver & {
+          shareDelta: number;
+        } => driver.shareDelta !== null && Number.isFinite(driver.shareDelta),
+      ).sort(
         (left, right) => Math.abs(right.shareDelta) - Math.abs(left.shareDelta),
       )[0],
     [movementDrivers],
@@ -1464,6 +2389,15 @@ export default function BalanceMovementAnalysisPage() {
       ),
     [businessMatrixMonths, businessMatrixRows],
   );
+  const historicalAnomalyDiagnostics = useMemo(
+    () =>
+      buildHistoricalAnomalyDiagnostics({
+        trendMonths,
+        businessTrendMonths,
+        businessRows: businessMatrixRows,
+      }),
+    [businessMatrixRows, businessTrendMonths, trendMonths],
+  );
   const zqtzAssetDetailRows = useMemo(
     () => buildZqtzAssetDetailRows(businessMatrixMonths),
     [businessMatrixMonths],
@@ -1492,6 +2426,176 @@ export default function BalanceMovementAnalysisPage() {
     }
     return `「变动额」环比主导为 ${trendMoMDriverBucket}，「占比变化（pp）」主导为 ${structureShareDriverBucket}；二者可同时成立。`;
   }, [trendMoMDriverBucket, structureShareDriverBucket]);
+
+  const unsupportedWaterfallComponents = useMemo(
+    () =>
+      differenceAttributionWaterfall?.components.filter(
+        (component) => component.is_supported === false,
+      ) ?? [],
+    [differenceAttributionWaterfall],
+  );
+  const residualWaterfallComponent = useMemo(
+    () => differenceAttributionWaterfall?.components.find((component) => component.is_residual),
+    [differenceAttributionWaterfall],
+  );
+  const explanationClosure = useMemo(
+    () =>
+      buildExplanationClosure({
+        waterfall: differenceAttributionWaterfall,
+        summary: detailQuery.data?.result.summary ?? null,
+      }),
+    [differenceAttributionWaterfall, detailQuery.data?.result.summary],
+  );
+  const analysisDimensionCards = useMemo<AnalysisDimensionCard[]>(() => {
+    const businessTopMove = businessTopMomMoves[0];
+    const unsupportedLabels = unsupportedWaterfallComponents.map((component) => component.component_label);
+    const maturityCoverage = zqtzMaturityStructure
+      ? formatPct(zqtzMaturityStructure.meta.coverage_pct)
+      : "—";
+    const concentrationCoverage = zqtzConcentrationAnalysis
+      ? formatPct(zqtzConcentrationAnalysis.meta.coverage_pct)
+      : "—";
+    return [
+      {
+        key: "business",
+        title: "业务品类 Top 变动",
+        metric: businessTopMove
+          ? `${businessTopMove.label} ${formatSignedYiCell(businessTopMove.deltaYuan)} 亿`
+          : "暂无连续业务行",
+        detail: businessTopMove
+          ? `${sourceKindLabel(businessTopMove.sourceKind)} · ${sourceNotePreview(businessTopMove.sourceNote)}`
+          : "需要至少两个连续报告月。",
+        href: "#balance-movement-analysis-business-summary-anchor",
+        tags: businessTopMove
+          ? [{ label: "主导变动", tone: "info" }]
+          : [{ label: "样本不足", tone: "unknown" }],
+        evidence: [
+          { label: "维度字段", value: "business_trend_months / product category derived rows" },
+          {
+            label: "Top 变动",
+            value: businessTopMove
+              ? `${businessTopMove.label} ${formatSignedYiCell(businessTopMove.deltaYuan)} 亿`
+              : "—",
+          },
+          {
+            label: "来源说明",
+            value: businessTopMove ? sourceNotePreview(businessTopMove.sourceNote) : "样本不足",
+          },
+          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
+        ],
+      },
+      {
+        key: "basis",
+        title: "AC / OCI / FVTPL",
+        metric: topMovementDriver
+          ? `${topMovementDriver.bucket} ${formatSignedYiNumber(topMovementDriver.balanceChangeYi)} 亿`
+          : "暂无分桶变动",
+        detail: topMovementDriver
+          ? `贡献 ${formatPct(topMovementDriver.contributionPct)} · 期末占比 ${formatPct(topMovementDriver.currentBalancePct)}`
+          : "等待 AC/OCI/TPL 读模型返回。",
+        href: "#balance-movement-analysis-basis-anchor",
+        tags: [
+          { label: "主导分桶", tone: "info" },
+          ...(trendMoMDriverBucket && structureShareDriverBucket && trendMoMDriverBucket !== structureShareDriverBucket
+            ? [{ label: "结构迁移", tone: "warn" as const }]
+            : []),
+        ],
+        evidence: [
+          { label: "维度字段", value: "rows[].basis_bucket / balance_change / contribution_pct" },
+          { label: "主导分桶", value: topMovementDriver?.bucket ?? "—" },
+          { label: "rule_version", value: resultMeta?.rule_version ?? "—" },
+          { label: "source_version", value: resultMeta?.source_version ?? "—" },
+        ],
+      },
+      {
+        key: "residual",
+        title: "对账残差",
+        metric: residualWaterfallComponent
+          ? `${formatSignedYiCell(residualWaterfallComponent.amount)} 亿`
+          : "暂无残差项",
+        detail:
+          unsupportedLabels.length > 0
+            ? `${unsupportedLabels.join("、")} 未支持，不反推`
+            : "当前瀑布未返回待补口径。",
+        href: "#balance-movement-analysis-residual-anchor",
+        tags: [
+          {
+            label: unsupportedLabels.length > 0 ? "口径待补" : "残差闭合",
+            tone: residualTone(explanationClosure?.residualRatioPct ?? null, unsupportedLabels.length),
+          },
+        ],
+        evidence: [
+          { label: "维度字段", value: "difference_attribution_waterfall.components" },
+          {
+            label: "残差",
+            value: residualWaterfallComponent
+              ? `${formatSignedYiCell(residualWaterfallComponent.amount)} 亿`
+              : "—",
+          },
+          {
+            label: "未支持项",
+            value: unsupportedLabels.join("、") || "无",
+            note: "未支持，不反推",
+          },
+          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
+          { label: "rule_version", value: resultMeta?.rule_version ?? "—" },
+          { label: "source_version", value: resultMeta?.source_version ?? "—" },
+          { label: "tables_used", value: formatMetaList(resultMeta?.tables_used) },
+          {
+            label: "evidence_rows",
+            value:
+              resultMeta?.evidence_rows === null || resultMeta?.evidence_rows === undefined
+                ? "—"
+                : String(resultMeta.evidence_rows),
+          },
+          { label: "限制", value: "估值差和外币折算差没有可闭合字段，不在前端反算。" },
+        ],
+      },
+      {
+        key: "coverage",
+        title: "期限 / 集中度覆盖",
+        metric: `期限 ${maturityCoverage} / 集中度 ${concentrationCoverage}`,
+        detail: `期限 ${drilldownStatusLabel(zqtzMaturityStructure?.meta.status)} · 集中度 ${drilldownStatusLabel(zqtzConcentrationAnalysis?.meta.status)}`,
+        href: "#balance-movement-analysis-coverage-anchor",
+        tags: [
+          {
+            label: `期限覆盖`,
+            tone: coverageTone(zqtzMaturityStructure?.meta.coverage_pct),
+          },
+          {
+            label: `集中度覆盖`,
+            tone: coverageTone(zqtzConcentrationAnalysis?.meta.coverage_pct),
+          },
+        ],
+        evidence: [
+          { label: "期限覆盖", value: maturityCoverage },
+          { label: "集中度覆盖", value: concentrationCoverage },
+          {
+            label: "期限状态",
+            value: drilldownStatusLabel(zqtzMaturityStructure?.meta.status),
+          },
+          {
+            label: "集中度状态",
+            value: drilldownStatusLabel(zqtzConcentrationAnalysis?.meta.status),
+          },
+          { label: "trace_id", value: resultMeta?.trace_id ?? "—" },
+        ],
+      },
+    ];
+  }, [
+    businessTopMomMoves,
+    explanationClosure,
+    resultMeta,
+    residualWaterfallComponent,
+    structureShareDriverBucket,
+    topMovementDriver,
+    trendMoMDriverBucket,
+    unsupportedWaterfallComponents,
+    zqtzConcentrationAnalysis,
+    zqtzMaturityStructure,
+  ]);
+  const selectedEvidenceCard =
+    analysisDimensionCards.find((card) => card.key === selectedEvidenceKey) ?? null;
 
   const seriesContextSegments = useMemo(() => {
     const segments: string[] = [];
@@ -1538,24 +2642,54 @@ export default function BalanceMovementAnalysisPage() {
           : movementRefreshCount > 1
             ? `，读模型 ${movementRefreshCount} 月`
             : "";
-      setRefreshMessage(`${payload.status}: ${payload.row_count} 行${refreshDetail}`);
-      await detailQuery.refetch();
-      await datesQuery.refetch();
+      const rowCountText =
+        typeof payload.row_count === "number" ? `${payload.row_count} 行` : "已排队";
+      setRefreshMessage(`${payload.status}: ${rowCountText}${refreshDetail}`);
+      if (payload.status !== "queued") {
+        await detailQuery.refetch();
+        await datesQuery.refetch();
+      }
     } finally {
       setIsRefreshing(false);
     }
+  }
+
+  function handleExportCsv() {
+    if (!detailQuery.data) {
+      return;
+    }
+    const csv = buildBalanceMovementCsv({
+      result: detailQuery.data.result,
+      resultMeta,
+      businessTopMove: businessTopMomMoves[0],
+      accountingTopDriver: topMovementDriver,
+      residualComponent: residualWaterfallComponent,
+      unsupportedComponents: unsupportedWaterfallComponents,
+      maturityStructure: zqtzMaturityStructure,
+      concentrationAnalysis: zqtzConcentrationAnalysis,
+      explanationClosure,
+      dimensionCards: analysisDimensionCards,
+      historicalAnomalyDiagnostics,
+    });
+    downloadCsv(
+      `balance-movement-analysis-${detailQuery.data.result.report_date}-${detailQuery.data.result.currency_basis}.csv`,
+      csv,
+    );
   }
 
   return (
     <section data-testid="balance-movement-analysis-page">
       <div style={pageHeaderStyle}>
         <div>
-          <h1
-            data-testid="balance-movement-analysis-title"
-            style={{ margin: 0, fontSize: 28, fontWeight: 700 }}
-          >
-            余额变动分析
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <h1
+              data-testid="balance-movement-analysis-title"
+              style={{ margin: 0, fontSize: 28, fontWeight: 700 }}
+            >
+              余额变动分析
+            </h1>
+            <CalibrationBadge calibration={detailQuery.data?.result.calibration} />
+          </div>
           <p
             data-testid="balance-movement-analysis-subtitle"
             style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}
@@ -1629,6 +2763,14 @@ export default function BalanceMovementAnalysisPage() {
         {refreshMessage ? (
           <span data-testid="balance-movement-analysis-refresh-message">{refreshMessage}</span>
         ) : null}
+        <button
+          type="button"
+          data-testid="balance-movement-analysis-export-csv"
+          onClick={handleExportCsv}
+          disabled={!detailQuery.data}
+        >
+          导出当前视图 CSV
+        </button>
       </FilterBar>
       {dateStatus ? (
         <div
@@ -1640,6 +2782,10 @@ export default function BalanceMovementAnalysisPage() {
           <span>{dateStatus.detail}</span>
         </div>
       ) : null}
+      {datesQuery.data?.result ? (
+        <FreshnessStrip dates={datesQuery.data.result} selectedDate={selectedDate} />
+      ) : null}
+      {resultMeta ? <EvidenceStrip meta={resultMeta} /> : null}
 
       {summary ? (
         <section
@@ -1733,6 +2879,23 @@ export default function BalanceMovementAnalysisPage() {
         </section>
       ) : null}
 
+      {detailQuery.data ? (
+        <AnalysisDimensionOverview
+          cards={analysisDimensionCards}
+          onEvidence={setSelectedEvidenceKey}
+        />
+      ) : null}
+      {selectedEvidenceCard ? (
+        <AnalysisEvidenceDrawer
+          card={selectedEvidenceCard}
+          onClose={() => setSelectedEvidenceKey(null)}
+        />
+      ) : null}
+
+      {detailQuery.data ? (
+        <HistoricalAnomalyPanel diagnostics={historicalAnomalyDiagnostics} />
+      ) : null}
+
       {summary ? (
         <div data-testid="balance-movement-analysis-summary" style={cardGridStyle}>
           <div style={cardStyle}>
@@ -1760,6 +2923,12 @@ export default function BalanceMovementAnalysisPage() {
 
       {differenceAttributionWaterfall ? (
         <DifferenceAttributionWaterfallPanel waterfall={differenceAttributionWaterfall} />
+      ) : null}
+
+      {explanationClosure ? <ExplanationClosurePanel closure={explanationClosure} /> : null}
+
+      {differenceAttributionWaterfall ? (
+        <ResidualUnsupportedPanel waterfall={differenceAttributionWaterfall} />
       ) : null}
 
       {basisMovementDecomposition ? (
@@ -1860,6 +3029,7 @@ export default function BalanceMovementAnalysisPage() {
 
       {summary && topMovementDriver && maxShareShiftDriver ? (
         <section
+          id="balance-movement-analysis-business-summary-anchor"
           data-testid="balance-movement-analysis-business-summary"
           className="balance-movement-business-summary"
         >
@@ -1898,7 +3068,7 @@ export default function BalanceMovementAnalysisPage() {
               <p>
                 AC 压舱石占比{" "}
                 {formatPct(rowByBucket.get("AC")?.current_balance_pct)}，较期初{" "}
-                {formatSignedPoint(movementDriverByBucket.get("AC")?.shareDelta ?? 0)}
+                {formatSignedPointNullable(movementDriverByBucket.get("AC")?.shareDelta)}
               </p>
             </div>
             <div>
@@ -1906,7 +3076,7 @@ export default function BalanceMovementAnalysisPage() {
               <p>
                 OCI 配置占比{" "}
                 {formatPct(rowByBucket.get("OCI")?.current_balance_pct)}，较期初{" "}
-                {formatSignedPoint(movementDriverByBucket.get("OCI")?.shareDelta ?? 0)}
+                {formatSignedPointNullable(movementDriverByBucket.get("OCI")?.shareDelta)}
               </p>
             </div>
           </div>
@@ -2071,17 +3241,17 @@ export default function BalanceMovementAnalysisPage() {
                       <span
                         className="balance-movement-structure-shift__previous"
                         style={{
-                          width: `${Math.min(Math.max(driver.previousBalancePct, 1), 100)}%`,
+                          width: shareBarWidth(driver.previousBalancePct),
                         }}
                       />
                       <span
                         className="balance-movement-structure-shift__current"
                         style={{
-                          width: `${Math.min(Math.max(driver.currentBalancePct, 1), 100)}%`,
+                          width: shareBarWidth(driver.currentBalancePct),
                         }}
                       />
                     </div>
-                    <em>{formatSignedPoint(driver.shareDelta)}</em>
+                    <em>{formatSignedPointNullable(driver.shareDelta)}</em>
                   </div>
                 );
               })}
@@ -2292,11 +3462,17 @@ export default function BalanceMovementAnalysisPage() {
             className="balance-movement-structure-chart"
             data-testid="balance-movement-analysis-structure-chart"
           >
-            <AccountingBasisStackedShareChart
-              rows={balanceStructureTrend}
-              title="金融投资账户结构演变：余额口径"
-            />
-            {balanceStructureTrend.length > 0 ? (
+            {balanceStructureChartRows.length > 0 ? (
+              <AccountingBasisStackedShareChart
+                rows={balanceStructureChartRows}
+                title="金融投资账户结构演变：余额口径"
+              />
+            ) : (
+              <p className="balance-movement-share-evolution-table__note">
+                占比数据缺失，结构图暂不可比
+              </p>
+            )}
+            {structureShareTableRows.length > 0 ? (
               <>
                 <p
                   className="balance-movement-share-evolution-table__title"
@@ -2331,7 +3507,7 @@ export default function BalanceMovementAnalysisPage() {
                         <th scope="col">同比·OCI</th>
                         <th scope="col">同比·TPL</th>
                         <th scope="col">同比·合计</th>
-                        {balanceStructureTrend.length > 1 ? (
+                        {structureShareTableRows.length > 1 ? (
                           <>
                             <th scope="col">较首月·AC</th>
                             <th scope="col">较首月·OCI</th>
@@ -2347,7 +3523,7 @@ export default function BalanceMovementAnalysisPage() {
                         const prev = index > 0 ? structureShareTableRows[index - 1] : null;
                         const yoyKey = priorYearSameMonth(reportMonth);
                         const yoy = yoyKey ? shareRowByReportMonth.get(yoyKey) : undefined;
-                        const showFirstDelta = balanceStructureTrend.length > 1 && first !== undefined;
+                        const showFirstDelta = structureShareTableRows.length > 1 && first !== undefined;
                         return (
                           <tr key={point.monthLabel}>
                             <th scope="row">{point.monthLabel}</th>
@@ -2360,17 +3536,17 @@ export default function BalanceMovementAnalysisPage() {
                             <td>{formatShareEvolutionYi(point.tplValueYi)}</td>
                             <td>
                               {prev
-                                ? formatSignedPoint(point.AC - prev.point.AC)
+                                ? formatSignedPointNullable(nullableDelta(point.AC, prev.point.AC))
                                 : "—"}
                             </td>
                             <td>
                               {prev
-                                ? formatSignedPoint(point.OCI - prev.point.OCI)
+                                ? formatSignedPointNullable(nullableDelta(point.OCI, prev.point.OCI))
                                 : "—"}
                             </td>
                             <td>
                               {prev
-                                ? formatSignedPoint(point.TPL - prev.point.TPL)
+                                ? formatSignedPointNullable(nullableDelta(point.TPL, prev.point.TPL))
                                 : "—"}
                             </td>
                             <td>
@@ -2381,17 +3557,17 @@ export default function BalanceMovementAnalysisPage() {
                             </td>
                             <td>
                               {yoy
-                                ? formatSignedPoint(point.AC - yoy.point.AC)
+                                ? formatSignedPointNullable(nullableDelta(point.AC, yoy.point.AC))
                                 : "—"}
                             </td>
                             <td>
                               {yoy
-                                ? formatSignedPoint(point.OCI - yoy.point.OCI)
+                                ? formatSignedPointNullable(nullableDelta(point.OCI, yoy.point.OCI))
                                 : "—"}
                             </td>
                             <td>
                               {yoy
-                                ? formatSignedPoint(point.TPL - yoy.point.TPL)
+                                ? formatSignedPointNullable(nullableDelta(point.TPL, yoy.point.TPL))
                                 : "—"}
                             </td>
                             <td>
@@ -2402,9 +3578,9 @@ export default function BalanceMovementAnalysisPage() {
                             </td>
                             {showFirstDelta ? (
                               <>
-                                <td>{formatSignedPoint(point.AC - first.point.AC)}</td>
-                                <td>{formatSignedPoint(point.OCI - first.point.OCI)}</td>
-                                <td>{formatSignedPoint(point.TPL - first.point.TPL)}</td>
+                                <td>{formatSignedPointNullable(nullableDelta(point.AC, first.point.AC))}</td>
+                                <td>{formatSignedPointNullable(nullableDelta(point.OCI, first.point.OCI))}</td>
+                                <td>{formatSignedPointNullable(nullableDelta(point.TPL, first.point.TPL))}</td>
                               </>
                             ) : null}
                           </tr>
@@ -2471,7 +3647,7 @@ export default function BalanceMovementAnalysisPage() {
                   </td>
                   <td style={tableCellStyle}>{formatPct(row.current_balance_pct)}</td>
                   <td className="balance-movement-detail-table__num">
-                    {formatSignedPoint(shareDeltaPp(row))}
+                    {formatSignedPointNullable(shareDeltaPp(row))}
                   </td>
                   <td style={tableCellStyle}>
                     {formatBalanceAmountToYiFromYuan(row.balance_change)}

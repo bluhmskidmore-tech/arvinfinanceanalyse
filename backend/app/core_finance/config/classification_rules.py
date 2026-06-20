@@ -6,7 +6,6 @@ Canonical classification rules shared across core finance services.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Optional
 
 from backend.app.core_finance.accounting_basis_constants import (
     ACCOUNTING_BASIS_FVOCI,
@@ -70,7 +69,7 @@ def _contains_sql_like_substring(text: str, pattern: str) -> bool:
     return bool(core) and core in text
 
 
-def is_bond_liability(asset_class: Optional[str]) -> bool:
+def is_bond_liability(asset_class: str | None) -> bool:
     if asset_class is None:
         return False
     normalized = str(asset_class).strip()
@@ -83,25 +82,25 @@ def is_bond_liability(asset_class: Optional[str]) -> bool:
     )
 
 
-def is_bond_asset(asset_class: Optional[str]) -> bool:
+def is_bond_asset(asset_class: str | None) -> bool:
     if asset_class is None:
         return True
     return not is_bond_liability(asset_class)
 
 
-def is_interbank_asset(product_type: Optional[str]) -> bool:
+def is_interbank_asset(product_type: str | None) -> bool:
     text = str(product_type or "")
     if any(_contains_sql_like_substring(text, kw) for kw in INTERBANK_ASSET_KEYWORDS):
         return True
     return any(kw in text for kw in INTERBANK_ASSET_KEYWORDS_PLAIN)
 
 
-def is_interbank_liability(product_type: Optional[str]) -> bool:
+def is_interbank_liability(product_type: str | None) -> bool:
     text = str(product_type or "")
     return any(_contains_sql_like_substring(text, kw) for kw in INTERBANK_LIABILITY_KEYWORDS)
 
 
-def is_interbank_liability_core(product_type: Optional[str]) -> bool:
+def is_interbank_liability_core(product_type: str | None) -> bool:
     text = str(product_type or "")
     return any(_contains_sql_like_substring(text, kw) for kw in INTERBANK_LIABILITY_CORE_KEYWORDS)
 
@@ -159,12 +158,12 @@ def _match_invest_type_by_substring(value: str) -> str | None:
 
 
 def infer_invest_type(
-    portfolio: Optional[str],
-    asset_type: Optional[str],
-    asset_class: Optional[str] = None,
-    interest_income: Optional[Decimal] = None,
+    portfolio: str | None,
+    asset_type: str | None,
+    asset_class: str | None = None,
+    interest_income: Decimal | None = None,
     is_nonstd: bool = False,
-) -> Optional[str]:
+) -> str | None:
     if is_nonstd and interest_income is not None:
         return "H" if interest_income > 0 else "T"
     for value in (asset_type, portfolio):

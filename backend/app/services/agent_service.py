@@ -87,10 +87,8 @@ def _build_intent_handlers(
 def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
     repo_cls = BalanceAnalysisRepository
     if repo_cls is None:
-        repo_cls = getattr(
-            importlib.import_module("backend.app.repositories.balance_analysis_repo"),
-            "BalanceAnalysisRepository",
-        )
+        balance_analysis_repo_module = importlib.import_module("backend.app.repositories.balance_analysis_repo")
+        repo_cls = balance_analysis_repo_module.BalanceAnalysisRepository
     repo = repo_cls(duckdb_path)
     report_date = _latest_or_requested(request, repo.list_report_dates())
     if report_date is None:
@@ -577,8 +575,9 @@ def _requested_report_date(request: AgentQueryRequest) -> str | None:
     current_filters = request.context.get("current_filters")
     if not isinstance(current_filters, dict):
         current_filters = {}
+    page_current_filters = request.page_context.current_filters if request.page_context else {}
     for key in ("report_date", "date"):
-        for container in (request.filters, request.context, current_filters):
+        for container in (request.filters, request.context, current_filters, page_current_filters):
             value = container.get(key)
             if value is not None and str(value).strip():
                 return str(value).strip()

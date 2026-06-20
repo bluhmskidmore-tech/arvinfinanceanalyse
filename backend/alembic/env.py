@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 from __future__ import annotations
 
 import os
@@ -8,9 +9,6 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-
-from alembic import context
-from sqlalchemy import create_engine, pool
 
 from backend.app.governance.settings import DEFAULT_POSTGRES_DSN, resolve_postgres_dsn
 from backend.app.models.base import Base
@@ -23,11 +21,14 @@ from backend.app.models.governance import (  # noqa: F401
 )
 from backend.app.models.job_state import JobRunState  # noqa: F401
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner  # noqa: F401
+from sqlalchemy import create_engine, pool
+
+from alembic import context
 
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

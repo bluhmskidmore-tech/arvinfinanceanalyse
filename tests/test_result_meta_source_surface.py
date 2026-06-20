@@ -6,7 +6,11 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from backend.app.schemas.result_meta import ResultMeta, SourceSurface
+from backend.app.schemas.result_meta import (
+    ResultMeta,
+    SourceSurface,
+    infer_source_surface_for_result_kind,
+)
 from backend.app.services import pnl_attribution_service as pa_svc
 
 
@@ -30,6 +34,7 @@ class TestResultMetaSourceSurface:
             "formal_liability",
             "bond_analytics",
             "risk_tensor",
+            "choice_news",
         ],
     )
     def test_accepts_each_literal(self, value: str) -> None:
@@ -62,6 +67,9 @@ class TestResultMetaSourceSurface:
                 rule_version="rv_x",
                 cache_version="cv_x",
             )
+
+    def test_choice_news_result_kind_infers_source_surface(self) -> None:
+        assert infer_source_surface_for_result_kind("news.choice.latest") == "choice_news"
 
 
 class _EmptyRepo:
@@ -123,7 +131,9 @@ class TestExecutiveEnvelopesCarrySurface:
     """
 
     def test_analytical_builder_accepts_source_surface(self) -> None:
-        from backend.app.services.formal_result_runtime import build_analytical_result_meta
+        from backend.app.services.formal_result_runtime import (
+            build_analytical_result_meta,
+        )
 
         rm = build_analytical_result_meta(
             trace_id="tr_x",

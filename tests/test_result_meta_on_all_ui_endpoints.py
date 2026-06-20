@@ -13,10 +13,33 @@ from fastapi.testclient import TestClient
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.balance_analysis_repo import ensure_balance_analysis_tables
-from backend.app.repositories.governance_repo import CACHE_MANIFEST_STREAM, GovernanceRepository
+from backend.app.repositories.balance_analysis_repo import (
+    ensure_balance_analysis_tables,
+)
+from backend.app.repositories.governance_repo import (
+    CACHE_MANIFEST_STREAM,
+    GovernanceRepository,
+)
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.tasks.balance_analysis_materialize import CACHE_KEY, RULE_VERSION
 from tests.helpers import load_module
+
+EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
+MACRO_VENDOR_READ_HEADERS = {"X-User-Id": "macro-vendor-read-user", "X-User-Role": "viewer"}
+MACRO_VENDOR_READ_PATHS = {
+    "/ui/preview/macro-foundation",
+    "/ui/macro/choice-series/latest",
+    "/ui/market-data/fx/formal-status",
+    "/ui/market-data/fx/analytical",
+}
+MACRO_TOOLKIT_READ_HEADERS = {"X-User-Id": "macro-toolkit-read-user", "X-User-Role": "viewer"}
+MACRO_TOOLKIT_READ_PATHS = {
+    "/ui/macro/toolkit/scripts",
+    "/ui/macro/toolkit/analysis",
+    "/ui/macro/toolkit/analysis/strategy-summaries",
+    "/ui/macro/toolkit/adversarial-signal",
+    "/ui/macro/toolkit/choice-stock/refresh-status",
+}
 
 
 def _required_result_meta_keys() -> frozenset[str]:
@@ -59,9 +82,26 @@ def _stub_executive_payload(result_kind: str) -> dict[str, Any]:
     return {"result_meta": _stub_result_meta(result_kind), "result": {}}
 
 
-def _executive_contract_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def _grant_executive_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "executive-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="executive",
+        action="read",
+    )
+
+
+def _executive_contract_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     module = load_module(
-        f"tests._result_meta_exec.executive_contract",
+        "tests._result_meta_exec.executive_contract",
         "backend/app/api/routes/executive.py",
     )
     monkeypatch.setattr(
@@ -81,7 +121,10 @@ def _executive_contract_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     )
     app = FastAPI()
     app.include_router(module.router)
-    return TestClient(app)
+    _grant_executive_read_scope(tmp_path, monkeypatch)
+    client = TestClient(app)
+    client.headers.update(EXECUTIVE_READ_HEADERS)
+    return client
 
 
 def _assert_json_envelope(payload: dict[str, Any], *, path: str) -> dict[str, Any]:
@@ -130,6 +173,115 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
     )
 
 
+def _grant_balance_analysis_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "balance-analysis-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+
+
+def _grant_product_category_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "product-category-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="product_category_pnl",
+        action="read",
+    )
+
+
+def _grant_balance_movement_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "balance-movement-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="accounting_asset_movement",
+        action="read",
+    )
+
+
+def _grant_livermore_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "livermore-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="market_data.livermore",
+        action="read",
+    )
+
+
+def _grant_macro_vendor_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "macro-vendor-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(auth_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_vendor",
+        action="read",
+    )
+
+
+def _grant_macro_toolkit_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "macro-toolkit-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(auth_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_toolkit",
+        action="read",
+    )
+
+
 @pytest.mark.parametrize(
     "path,params",
     [
@@ -139,6 +291,16 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
         ("/ui/pnl/product-category/dates", {}),
         ("/ui/balance-movement-analysis/dates", {}),
         ("/ui/balance-analysis/dates", {}),
+        ("/ui/preview/macro-foundation", {}),
+        ("/ui/macro/toolkit/scripts", {}),
+        ("/ui/macro/toolkit/analysis", {"detail": "core"}),
+        ("/ui/macro/toolkit/analysis/strategy-summaries", {}),
+        ("/ui/macro/toolkit/adversarial-signal", {}),
+        ("/ui/macro/toolkit/choice-stock/refresh-status", {}),
+        ("/ui/macro/choice-series/latest", {}),
+        ("/ui/market-data/fx/formal-status", {}),
+        ("/ui/market-data/fx/analytical", {}),
+        ("/ui/market-data/livermore", {}),
     ],
 )
 def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_path, monkeypatch):
@@ -149,10 +311,21 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
     if path == "/ui/balance-analysis/dates":
         _seed_balance_analysis_dates_contract_surface(tmp_path)
+        _grant_balance_analysis_read_scope(tmp_path, monkeypatch)
+    if path == "/ui/pnl/product-category/dates":
+        _grant_product_category_read_scope(tmp_path, monkeypatch)
+    if path == "/ui/balance-movement-analysis/dates":
+        _grant_balance_movement_read_scope(tmp_path, monkeypatch)
+    if path == "/ui/market-data/livermore":
+        _grant_livermore_read_scope(tmp_path, monkeypatch)
+    if path in MACRO_VENDOR_READ_PATHS:
+        _grant_macro_vendor_read_scope(tmp_path, monkeypatch)
+    if path in MACRO_TOOLKIT_READ_PATHS:
+        _grant_macro_toolkit_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     if path in {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}:
-        client = _executive_contract_client(monkeypatch)
+        client = _executive_contract_client(monkeypatch, tmp_path)
     else:
         for mod in (
             "backend.app.main",
@@ -161,7 +334,17 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
             sys.modules.pop(mod, None)
 
         client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
-    response = client.get(path, params=params or None)
+    response = client.get(
+        path,
+        params=params or None,
+        headers=(
+            MACRO_VENDOR_READ_HEADERS
+            if path in MACRO_VENDOR_READ_PATHS
+            else MACRO_TOOLKIT_READ_HEADERS
+            if path in MACRO_TOOLKIT_READ_PATHS
+            else None
+        ),
+    )
     assert response.status_code == 200, f"{path} -> {response.status_code} {response.text}"
     meta = _assert_json_envelope(response.json(), path=path)
     _assert_basis_consistency(meta, path=path)
@@ -172,7 +355,7 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
-    client = _executive_contract_client(monkeypatch)
+    client = _executive_contract_client(monkeypatch, tmp_path)
 
     for path in (
         "/ui/home/overview",
@@ -190,21 +373,13 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
 @pytest.mark.parametrize(
     "path",
     (
-        "/ui/preview/macro-foundation",
-        "/ui/macro/choice-series/latest",
-        "/ui/market-data/fx/formal-status",
-        "/ui/market-data/fx/analytical",
-        "/ui/market-data/livermore",
-        "/ui/news/choice-events/latest",
         "/ui/preview/source-foundation",
         "/ui/preview/source-foundation/history",
         "/ui/preview/source-foundation/zqtz/rows",
         "/ui/preview/source-foundation/zqtz/traces",
-        "/ui/qdb-gl-monthly-analysis/dates",
         "/ui/home/contribution",
         "/ui/home/alerts",
         "/ui/risk/overview",
-        "/ui/home/snapshot",
     ),
 )
 def test_excluded_ui_surfaces_fail_closed_without_governed_result_meta(
@@ -212,12 +387,20 @@ def test_excluded_ui_surfaces_fail_closed_without_governed_result_meta(
 ):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    if path in {"/ui/home/contribution", "/ui/home/alerts", "/ui/risk/overview"}:
+        _grant_executive_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     sys.modules.pop("backend.app.main", None)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
     params = {"limit": 1, "offset": 0} if path.endswith(("/rows", "/traces")) else None
-    response = client.get(path, params=params)
+    response = client.get(
+        path,
+        params=params,
+        headers=EXECUTIVE_READ_HEADERS
+        if path in {"/ui/home/contribution", "/ui/home/alerts", "/ui/risk/overview"}
+        else None,
+    )
     assert response.status_code == 503, path
     body = response.json()
     assert "result_meta" not in body, path
@@ -225,7 +408,8 @@ def test_excluded_ui_surfaces_fail_closed_without_governed_result_meta(
     get_settings.cache_clear()
 
 
-def test_excluded_macro_vendor_surfaces_do_not_emit_governed_envelopes(tmp_path, monkeypatch):
+def test_macro_vendor_surfaces_emit_governed_envelopes(tmp_path, monkeypatch):
+    _grant_macro_vendor_read_scope(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
@@ -238,9 +422,10 @@ def test_excluded_macro_vendor_surfaces_do_not_emit_governed_envelopes(tmp_path,
         "/ui/market-data/fx/formal-status",
         "/ui/market-data/fx/analytical",
     ):
-        response = client.get(path)
-        assert response.status_code == 503, path
-        assert "result_meta" not in response.json(), path
+        response = client.get(path, headers=MACRO_VENDOR_READ_HEADERS)
+        assert response.status_code == 200, path
+        meta = _assert_json_envelope(response.json(), path=path)
+        _assert_basis_consistency(meta, path=path)
     get_settings.cache_clear()
 
 
@@ -285,7 +470,8 @@ def test_agent_post_disabled_stub_is_explicit_not_live_envelope(tmp_path, monkey
     )
     assert response.status_code == 503
     body = response.json()
-    assert "reserved" in str(body.get("detail", "")).lower()
+    assert body.get("enabled") is False
+    assert "disabled" in str(body.get("detail", "")).lower()
     assert "result_meta" not in body
     get_settings.cache_clear()
 
@@ -303,6 +489,7 @@ def test_product_category_scenario_request_sets_scenario_basis(tmp_path, monkeyp
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = sys.modules.get("backend.app.tasks.product_category_pnl")

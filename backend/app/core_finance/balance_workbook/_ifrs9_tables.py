@@ -10,13 +10,13 @@ from backend.app.core_finance.balance_analysis import (
 )
 from backend.app.core_finance.balance_workbook._utils import (
     _ZERO,
-    _group_rows,
-    _sum_decimal,
-    _weighted_average,
-    _safe_ratio,
-    _to_wanyuan,
     _decimal_value,
+    _group_rows,
+    _safe_ratio,
+    _sum_decimal,
     _table,
+    _to_wanyuan,
+    _weighted_average,
 )
 
 

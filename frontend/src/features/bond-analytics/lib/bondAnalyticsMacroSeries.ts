@@ -5,12 +5,13 @@ import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
  * 与 `MarketDataPage` 利率走势（RATE_TREND）及国开 10Y 对齐；标签为业务简称。
  */
 export const BOND_ANALYTICS_MACRO_BAR_SERIES = [
-  { series_id: "EMM00166466", shortLabel: "国债 10Y" },
-  { series_id: "EMM00166462", shortLabel: "国开 5Y" },
-  { series_id: "EMM00166502", shortLabel: "国开 10Y" },
-  { series_id: "EMM00166252", shortLabel: "SHIBOR 隔夜" },
-  { series_id: "EMM00166460", shortLabel: "国债 3Y" },
-  { series_id: "EMM00166464", shortLabel: "国债 7Y" },
+  { series_id: "EMM00166466", shortLabel: "10年国债" },
+  { series_id: "EMM00166502", shortLabel: "10年国开" },
+  { series_id: "CA.CN_US_SPREAD", shortLabel: "中美10年利差" },
+  { series_id: "M002", shortLabel: "DR007" },
+  { series_id: "CA.USDCNY", shortLabel: "美元/人民币" },
+  { series_id: "CA.BRENT", shortLabel: "原油" },
+  { series_id: "CA.CSI300", shortLabel: "沪深300" },
 ] as const;
 
 /** 中段「曲线走势」时间序列：国债 10Y + 国开长端 + 国开 5Y（与宏观走势一致、偏期限结构链） */

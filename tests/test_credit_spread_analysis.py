@@ -2,19 +2,72 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import textwrap
 import time
+import uuid
 from datetime import date
 from decimal import Decimal
-import uuid
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
-from tests.test_bond_analytics_materialize_flow import REPORT_DATE, _seed_bond_snapshot_rows
+from tests.test_bond_analytics_materialize_flow import (
+    REPORT_DATE,
+    _seed_bond_snapshot_rows,
+)
+
+CREDIT_SPREAD_READ_HEADERS = {"X-User-Id": "credit-spread-read-user", "X-User-Role": "viewer"}
+
+
+def _credit_spread_scope_repo(tmp_path: Path, monkeypatch) -> UserScopeRepository:
+    sqlite_path = tmp_path / "credit-spread-read-scope.db"
+    dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    return UserScopeRepository(dsn)
+
+
+def _grant_credit_spread_read(tmp_path: Path, monkeypatch) -> None:
+    _credit_spread_scope_repo(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="credit_spread_analysis",
+        action="read",
+    )
+
+
+def test_credit_spread_detail_requires_explicit_read_scope(tmp_path, monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.credit_spread_analysis",
+        "backend/app/api/routes/credit_spread_analysis.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_credit_spread_analysis",
+        lambda _report_date: {"result_meta": {"result_kind": "credit_spread_analysis.detail"}, "result": {}},
+    )
+    _credit_spread_scope_repo(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/credit-spread-analysis/detail",
+        params={"report_date": REPORT_DATE},
+        headers=CREDIT_SPREAD_READ_HEADERS,
+    )
+
+    assert response.status_code == 403
 
 
 def test_compute_bond_spreads_basic():
@@ -61,6 +114,37 @@ def test_compute_bond_spreads_basic():
     assert row.spread_duration == Decimal("2.5")
     assert row.spread_dv01 == Decimal("0.025")
     assert row.weight == Decimal("1")
+
+
+def test_compute_bond_spreads_uses_face_value_for_spread_dv01():
+    module = load_module(
+        f"tests._credit_spread_analysis.core_{uuid.uuid4().hex}",
+        "backend/app/core_finance/credit_spread_analysis.py",
+    )
+
+    rows = module.compute_bond_spreads(
+        bond_rows=[
+            {
+                "instrument_code": "CB-FACE",
+                "instrument_name": "credit bond",
+                "asset_class_std": "credit",
+                "rating": "AAA",
+                "tenor_bucket": "3Y",
+                "ytm": Decimal("0.035"),
+                "modified_duration": Decimal("2.5"),
+                "market_value": Decimal("100"),
+                "face_value": Decimal("1000"),
+            },
+        ],
+        treasury_curve={
+            "1Y": Decimal("2.00"),
+            "5Y": Decimal("3.00"),
+        },
+    )
+
+    row = rows[0]
+    assert row.spread_dv01 == Decimal("0.25")
+    assert row.spread_dv01 != Decimal("0.025")
 
 
 def test_spread_term_structure_aggregation():
@@ -154,12 +238,13 @@ def test_api_returns_real_data(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
+    _grant_credit_spread_read(tmp_path, monkeypatch)
 
     _seed_bond_snapshot_rows(str(duckdb_path))
     _seed_curve_rows(str(duckdb_path))
 
     task_mod = load_module(
-        f"tests._credit_spread_analysis.task_{uuid.uuid4().hex}",
+        "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
     )
     task_mod.materialize_bond_analytics_facts.fn(
@@ -183,7 +268,9 @@ def test_api_returns_real_data(tmp_path, monkeypatch):
                         "tests._credit_spread_analysis.main_subprocess",
                         "backend/app/main.py",
                     ).app
-                    response = TestClient(app).get(
+                    client = TestClient(app)
+                    client.headers.update({CREDIT_SPREAD_READ_HEADERS!r})
+                    response = client.get(
                         "/api/credit-spread-analysis/detail",
                         params={{"report_date": "{REPORT_DATE}"}},
                     )
@@ -200,6 +287,9 @@ def test_api_returns_real_data(tmp_path, monkeypatch):
                 **os.environ,
                 "MOSS_DUCKDB_PATH": str(duckdb_path),
                 "MOSS_GOVERNANCE_PATH": str(governance_dir),
+                "MOSS_POSTGRES_DSN": os.environ["MOSS_POSTGRES_DSN"],
+                "MOSS_GOVERNANCE_SQL_DSN": os.environ.get("MOSS_GOVERNANCE_SQL_DSN", ""),
+                ROLE_HEADER_TRUST_ENV: os.environ[ROLE_HEADER_TRUST_ENV],
             },
             cwd=str(Path(__file__).resolve().parents[1]),
         )

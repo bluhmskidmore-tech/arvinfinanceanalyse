@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import duckdb
@@ -15,12 +16,18 @@ def choice_news_latest_envelope(
     offset: int = 0,
     group_id: str | None = None,
     topic_code: str | None = None,
+    stock_code: str | None = None,
     error_only: bool = False,
     received_from: str | None = None,
     received_to: str | None = None,
 ) -> dict[str, object]:
     duckdb_file = Path(duckdb_path)
+    as_of_date = date.today().isoformat()
+    effective_received_to = received_to or as_of_date
+    normalized_stock_code = stock_code.strip().upper() if stock_code and stock_code.strip() else None
+    stock_filter_tokens = _choice_news_stock_filter_tokens(normalized_stock_code)
     rows: list[tuple[object, ...]]
+    excluded_future_rows = 0
     if not duckdb_file.exists():
         total_rows = 0
         rows = []
@@ -35,10 +42,30 @@ def choice_news_latest_envelope(
                 where_clause, params = _choice_news_filters(
                     group_id=group_id,
                     topic_code=topic_code,
+                    stock_filter_tokens=stock_filter_tokens,
                     error_only=error_only,
                     received_from=received_from,
-                    received_to=received_to,
+                    received_to=effective_received_to,
                 )
+                future_where_clause, future_params = _choice_news_filters(
+                    group_id=group_id,
+                    topic_code=topic_code,
+                    stock_filter_tokens=stock_filter_tokens,
+                    error_only=error_only,
+                    received_from=received_from,
+                    received_to=None,
+                )
+                future_filter = " and " if future_where_clause else "where "
+                future_row = conn.execute(
+                    f"""
+                    select count(*)
+                    from choice_news_event
+                    {future_where_clause}
+                    {future_filter}try_cast(substr(cast(received_at as varchar), 1, 10) as date) > ?::date
+                    """,
+                    [*future_params, as_of_date],
+                ).fetchone()
+                excluded_future_rows = int(future_row[0]) if future_row is not None else 0
                 total_row = conn.execute(
                     f"select count(*) from choice_news_event {where_clause}",
                     params,
@@ -80,6 +107,19 @@ def choice_news_latest_envelope(
         for event_key, received_at, group_id, content_type, serial_id, request_id, error_code, error_msg, topic_code, item_index, payload_text, payload_json in rows
     ]
 
+    result_payload: dict[str, object] = {
+        "total_rows": int(total_rows),
+        "limit": limit,
+        "offset": offset,
+        "as_of_date": as_of_date,
+        "excluded_future_rows": excluded_future_rows,
+        "events": payload_rows,
+    }
+    if normalized_stock_code is not None:
+        result_payload["stock_code"] = normalized_stock_code
+        result_payload["stock_filter_mode"] = "payload_text_or_json_best_effort"
+        result_payload["stock_filter_tokens"] = stock_filter_tokens
+
     return build_result_envelope(
         basis="analytical",
         trace_id="tr_choice_news_latest",
@@ -87,19 +127,24 @@ def choice_news_latest_envelope(
         cache_version=CACHE_VERSION,
         source_version=f"sv_choice_news_{len(payload_rows)}",
         rule_version=RULE_VERSION,
-        quality_flag="ok",
-        result_payload={
-            "total_rows": int(total_rows),
-            "limit": limit,
-            "offset": offset,
-            "events": payload_rows,
+        quality_flag="warning" if excluded_future_rows else "ok",
+        filters_applied={
+            "received_to": effective_received_to,
+            "future_rows_excluded": excluded_future_rows,
         },
+        result_payload=result_payload,
+        source_surface="choice_news",
+        tables_used=["choice_news_event"],
+        evidence_rows=len(payload_rows),
+        as_of_date=as_of_date,
+        date_basis="received_at_as_of_filter",
     )
 
 
 def _choice_news_filters(
     group_id: str | None,
     topic_code: str | None,
+    stock_filter_tokens: list[str],
     error_only: bool,
     received_from: str | None,
     received_to: str | None,
@@ -112,6 +157,14 @@ def _choice_news_filters(
     if topic_code is not None:
         filters.append("topic_code = ?")
         params.append(topic_code)
+    if stock_filter_tokens:
+        stock_clauses: list[str] = []
+        for token in stock_filter_tokens:
+            stock_clauses.append(
+                "(upper(coalesce(payload_text, '')) like ? or upper(coalesce(payload_json, '')) like ?)"
+            )
+            params.extend([f"%{token.upper()}%", f"%{token.upper()}%"])
+        filters.append("(" + " or ".join(stock_clauses) + ")")
     if error_only:
         filters.append("error_code != 0")
     if received_from is not None:
@@ -123,3 +176,13 @@ def _choice_news_filters(
     if not filters:
         return "", params
     return "where " + " and ".join(filters), params
+
+
+def _choice_news_stock_filter_tokens(stock_code: str | None) -> list[str]:
+    if not stock_code:
+        return []
+    tokens = [stock_code]
+    stem = stock_code.split(".", 1)[0]
+    if len(stem) == 6 and stem.isdigit():
+        tokens.append(stem)
+    return list(dict.fromkeys(tokens))

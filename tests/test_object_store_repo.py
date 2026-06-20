@@ -233,6 +233,26 @@ def test_read_archived_bytes_missing_file(tmp_path):
         repo.read_archived_bytes(str(tmp_path / "nope.bin"))
 
 
+def test_read_archived_bytes_rejects_path_outside_local_archive_root(tmp_path):
+    archive_root = tmp_path / "archive"
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"secret")
+    repo = ObjectStoreRepository(
+        endpoint="x:9000",
+        access_key="k",
+        secret_key="s",
+        bucket="b",
+        mode="local",
+        local_archive_path=str(archive_root),
+    )
+
+    with pytest.raises(ValueError, match="outside local archive root"):
+        repo.read_archived_bytes(str(outside))
+    with pytest.raises(ValueError, match="outside local archive root"):
+        with repo.open_archived_binary(str(outside)):
+            pass
+
+
 def test_build_vendor_snapshot_manifest_shape():
     repo = ObjectStoreRepository(
         endpoint="x:9000",

@@ -6,9 +6,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final
 
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
-
 from backend.app.schemas.qdb_gl_contract import (
     QdbGlBaselineBinding,
     QdbGlBaselineValidationEvidence,
@@ -16,7 +13,8 @@ from backend.app.schemas.qdb_gl_contract import (
     QdbGlContractFinding,
     QdbGlLineage,
 )
-
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 RULE_VERSION = "rv_qdb_gl_input_contract_v1"
 
@@ -356,7 +354,6 @@ def _validate_average_rows(
         if all(_is_blank(value) for value in row_values):
             continue
 
-        recognized_tuple = False
         column_index = 0
         while column_index < len(row_values):
             currency_value = row_values[column_index]
@@ -367,8 +364,6 @@ def _validate_average_rows(
 
             account_code_value = row_values[column_index + 1] if len(row_values) > column_index + 1 else None
             balance_value = row_values[column_index + 2] if len(row_values) > column_index + 2 else None
-            recognized_tuple = True
-
             if _is_blank(account_code_value):
                 _record_failure(
                     checks,

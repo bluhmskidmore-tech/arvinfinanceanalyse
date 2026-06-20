@@ -7,9 +7,15 @@ import duckdb
 import pytest
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.yield_curve_repo import FORMAL_FACT_TABLE, ensure_yield_curve_tables
+from backend.app.repositories.yield_curve_repo import (
+    FORMAL_FACT_TABLE,
+    ensure_yield_curve_tables,
+)
 from tests.helpers import load_module
-from tests.test_bond_analytics_materialize_flow import REPORT_DATE, _seed_bond_snapshot_rows
+from tests.test_bond_analytics_materialize_flow import (
+    REPORT_DATE,
+    _seed_bond_snapshot_rows,
+)
 
 
 def _seed_curve_rows(duckdb_path: str) -> None:

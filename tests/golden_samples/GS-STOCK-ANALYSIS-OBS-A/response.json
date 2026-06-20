@@ -1,0 +1,444 @@
+{
+  "result_meta": {
+    "basis": "analytical",
+    "trace_id": "tr_stock_analysis_obs_gs_a",
+    "result_kind": "market_data.livermore",
+    "cache_version": "cv_livermore_strategy_v1",
+    "source_version": "sv_stock_analysis_obs_gs_a",
+    "vendor_version": "vv_choice_stock_obs_gs_a",
+    "rule_version": "rv_livermore_strategy_v1",
+    "quality_flag": "warning",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "filters_applied": {
+      "requested_as_of_date": "2026-04-03",
+      "as_of_date": "2026-04-03",
+      "stock_candidate_policy": "exp3b"
+    },
+    "tables_used": [
+      "fact_choice_macro_daily"
+    ],
+    "evidence_rows": 3,
+    "formal_use_allowed": false,
+    "scenario_flag": false,
+    "source_surface": "market_data",
+    "generated_at": "2026-06-06T00:00:00Z",
+    "requested_report_date": null,
+    "resolved_report_date": null,
+    "as_of_date": null,
+    "fallback_date": null,
+    "date_basis": null,
+    "cache_key": null,
+    "next_drill": []
+  },
+  "result": {
+    "as_of_date": "2026-04-03",
+    "requested_as_of_date": "2026-04-03",
+    "strategy_name": "Livermore A-Share Defended Trend",
+    "basis": "analytical",
+    "market_gate": {
+      "state": "PENDING_DATA",
+      "passed_conditions": 0,
+      "required_conditions": 4,
+      "available_conditions": 0,
+      "exposure": 0.0,
+      "conditions": [
+        {
+          "key": "csi300_close_gt_ma60",
+          "label": "CSI300 close > MA60",
+          "status": "missing",
+          "source_series_id": "CA.CSI300",
+          "evidence": "Need at least 60 broad-index observations; found 3."
+        },
+        {
+          "key": "csi300_ma20_gt_ma60",
+          "label": "CSI300 MA20 > MA60",
+          "status": "missing",
+          "source_series_id": "CA.CSI300",
+          "evidence": "Need at least 60 broad-index observations; found 3."
+        },
+        {
+          "key": "breadth_5d_positive",
+          "label": "5-day breadth > 0",
+          "status": "missing",
+          "source_series_id": null,
+          "evidence": "Breadth inputs are not landed for the Phase 1 slice."
+        },
+        {
+          "key": "limit_up_quality_positive",
+          "label": "Limit-up seal/break quality positive",
+          "status": "missing",
+          "source_series_id": null,
+          "evidence": "Limit-up quality inputs are not landed for the Phase 1 slice."
+        }
+      ]
+    },
+    "rule_readiness": [
+      {
+        "key": "market_gate",
+        "title": "Market gate",
+        "status": "partial",
+        "required_inputs": [
+          "broad_index_history",
+          "breadth",
+          "limit_up_quality"
+        ],
+        "missing_inputs": [
+          "breadth",
+          "limit_up_quality"
+        ],
+        "summary": "Broad-index history is present but only 3 observations are landed."
+      },
+      {
+        "key": "sector_rank",
+        "title": "Sector ranking",
+        "status": "missing",
+        "required_inputs": [
+          "sector_membership",
+          "sector_strength"
+        ],
+        "missing_inputs": [
+          "sector_membership",
+          "sector_strength"
+        ],
+        "summary": "Choice stock catalog is missing; missing or unconfirmed required input families: sector_membership, sector_strength."
+      },
+      {
+        "key": "stock_pivot",
+        "title": "Stock pivot filters",
+        "status": "blocked",
+        "required_inputs": [
+          "stock_universe",
+          "stock_ohlcv",
+          "stock_status",
+          "limit_up_quality",
+          "sector_rank",
+          "market_gate",
+          "stock_candidate_policy"
+        ],
+        "missing_inputs": [
+          "stock_universe",
+          "stock_ohlcv",
+          "stock_status",
+          "limit_up_quality",
+          "sector_rank",
+          "market_gate"
+        ],
+        "summary": "Choice stock catalog is missing; missing or unconfirmed required input families: stock_universe, stock_ohlcv, stock_status, limit_up_quality."
+      },
+      {
+        "key": "risk_exit",
+        "title": "Risk and exit rules",
+        "status": "blocked",
+        "required_inputs": [
+          "positions",
+          "entry_cost",
+          "bars_since_entry",
+          "close_history",
+          "volume_history"
+        ],
+        "missing_inputs": [
+          "positions",
+          "entry_cost",
+          "bars_since_entry",
+          "close_history",
+          "volume_history"
+        ],
+        "summary": "The defended-bundle 10EMA invalidation + volume confirmation MVP remains blocked. Existing formal ledger position_snapshot/position_snapshot_agg are not accepted for Livermore A-share risk_exit because their governed schema is bond/ledger-shaped and lacks proven stock_code, Livermore entry_cost, and bars_since_entry semantics. Current accepted stock holding fact source remains livermore_position_snapshot plus choice_stock_daily_observation close_history."
+      }
+    ],
+    "data_gaps": [
+      {
+        "input_family": "broad_index_history",
+        "status": "partial",
+        "evidence": "CA.CSI300 history has 3 observations; 60 are required."
+      },
+      {
+        "input_family": "price_spread",
+        "status": "missing",
+        "evidence": "Macro layer inputs are not all landed."
+      },
+      {
+        "input_family": "PMI",
+        "status": "missing",
+        "evidence": "Manufacturing PMI (M0017126) is not landed in fact_choice_macro_daily."
+      },
+      {
+        "input_family": "credit_impulse",
+        "status": "missing",
+        "evidence": "Social financing YoY delta (M5525763 or M0001385) requires at least two monthly observations."
+      },
+      {
+        "input_family": "macro_score",
+        "status": "missing",
+        "evidence": "Macro layer inputs are not all landed."
+      },
+      {
+        "input_family": "turnover_persistence",
+        "status": "missing",
+        "evidence": "choice_stock_daily_observation turn history is not landed for turnover persistence."
+      },
+      {
+        "input_family": "valuation_percentile_history",
+        "status": "missing",
+        "evidence": "choice_stock_factor_snapshot PE/PB history is not landed for valuation support."
+      },
+      {
+        "input_family": "breadth",
+        "status": "missing",
+        "evidence": "5-day breadth input family is not landed in DuckDB for this slice."
+      },
+      {
+        "input_family": "limit_up_quality",
+        "status": "missing",
+        "evidence": "Choice stock catalog is missing; missing or unconfirmed required input families: limit_up_quality."
+      },
+      {
+        "input_family": "position_risk",
+        "status": "missing",
+        "evidence": "The defended-bundle 10EMA invalidation + volume confirmation MVP remains blocked. Existing formal ledger position_snapshot/position_snapshot_agg are not accepted for Livermore A-share risk_exit because their governed schema is bond/ledger-shaped and lacks proven stock_code, Livermore entry_cost, and bars_since_entry semantics. Current accepted stock holding fact source remains livermore_position_snapshot plus choice_stock_daily_observation close_history."
+      },
+      {
+        "input_family": "sector_strength",
+        "status": "missing",
+        "evidence": "Choice stock catalog is missing; missing or unconfirmed required input families: sector_membership, sector_strength."
+      },
+      {
+        "input_family": "stock_universe",
+        "status": "missing",
+        "evidence": "Choice stock catalog is missing; missing or unconfirmed required input families: stock_universe, stock_ohlcv, stock_status, limit_up_quality."
+      }
+    ],
+    "diagnostics": [
+      {
+        "severity": "warning",
+        "code": "LIVERMORE_BROAD_INDEX_INSUFFICIENT_HISTORY",
+        "message": "Need at least 60 broad-index observations; found 3.",
+        "input_family": "broad_index_history"
+      },
+      {
+        "severity": "warning",
+        "code": "LIVERMORE_BREADTH_MISSING",
+        "message": "Breadth inputs are unavailable; the market gate is capped at the trend-only slice.",
+        "input_family": "breadth"
+      },
+      {
+        "severity": "warning",
+        "code": "LIVERMORE_LIMIT_UP_QUALITY_MISSING",
+        "message": "Choice stock catalog is missing; missing or unconfirmed required input families: limit_up_quality.",
+        "input_family": "limit_up_quality"
+      },
+      {
+        "severity": "warning",
+        "code": "LIVERMORE_RISK_INPUTS_MISSING",
+        "message": "The defended-bundle 10EMA invalidation + volume confirmation MVP remains blocked. Existing formal ledger position_snapshot/position_snapshot_agg are not accepted for Livermore A-share risk_exit because their governed schema is bond/ledger-shaped and lacks proven stock_code, Livermore entry_cost, and bars_since_entry semantics. Current accepted stock holding fact source remains livermore_position_snapshot plus choice_stock_daily_observation close_history.",
+        "input_family": "position_risk"
+      },
+      {
+        "severity": "warning",
+        "code": "LIVERMORE_SECTOR_INPUTS_MISSING",
+        "message": "Choice stock catalog is missing; missing or unconfirmed required input families: sector_membership, sector_strength.",
+        "input_family": "sector_strength"
+      },
+      {
+        "severity": "warning",
+        "code": "LIVERMORE_STOCK_INPUTS_MISSING",
+        "message": "Choice stock catalog is missing; missing or unconfirmed required input families: stock_universe, stock_ohlcv, stock_status, limit_up_quality.",
+        "input_family": "stock_universe"
+      }
+    ],
+    "supported_outputs": [
+      "market_gate"
+    ],
+    "unsupported_outputs": [
+      {
+        "key": "sector_rank",
+        "reason": "Choice stock catalog is missing; missing or unconfirmed required input families: sector_membership, sector_strength."
+      },
+      {
+        "key": "stock_candidates",
+        "reason": "Choice stock catalog is missing; missing or unconfirmed required input families: stock_universe, stock_ohlcv, stock_status, limit_up_quality."
+      },
+      {
+        "key": "mean_reversion_candidates",
+        "reason": "Choice stock catalog is missing; missing or unconfirmed required input families: stock_universe, stock_ohlcv, stock_status."
+      },
+      {
+        "key": "factor_screen_candidates",
+        "reason": "choice_stock_factor_snapshot is unavailable because no resolved as_of_date is available."
+      },
+      {
+        "key": "theme_breakout",
+        "reason": "Choice stock catalog is missing; missing or unconfirmed required input families: stock_universe, sector_membership, sector_strength, stock_ohlcv, stock_status."
+      },
+      {
+        "key": "hybrid_fusion",
+        "reason": "Hybrid fusion requires at least one landed candidate source: stock_candidates, factor_screen_candidates, or theme_breakout."
+      },
+      {
+        "key": "risk_exit",
+        "reason": "The defended-bundle 10EMA invalidation + volume confirmation MVP remains blocked. Existing formal ledger position_snapshot/position_snapshot_agg are not accepted for Livermore A-share risk_exit because their governed schema is bond/ledger-shaped and lacks proven stock_code, Livermore entry_cost, and bars_since_entry semantics. Current accepted stock holding fact source remains livermore_position_snapshot plus choice_stock_daily_observation close_history."
+      }
+    ],
+    "cycle_rotation_framework": {
+      "strategy_name": "A-share cycle rotation research framework",
+      "display_name": "A股景气周期选股与行业轮动",
+      "observation_only": true,
+      "implementation_stage": "verification_pending",
+      "boundary": "Research-only framework assembled from available read-only evidence; no return, sizing or execution claim is produced until missing inputs are governed. LifeCourt layer uses proxy reconstruction until social/text pipelines are landed.",
+      "score_formula": "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport",
+      "lifecourt_formula": "LifeCourtScore = 0.18*VCOV + 0.14*CONS + 0.14*BURST + 0.20*PCONF - 0.16*CROWD + 0.10*HYGIENE + 0.08*REGIME",
+      "fusion_formula": "FusionScore = 0.65*CycleScore + 0.35*LifeCourtScore",
+      "rebalance_cadence": "Monthly core review with weekly satellite monitoring.",
+      "constraints": [
+        "monthly core review; weekly satellite monitoring",
+        "industry cap 25%",
+        "single stock cap 5%",
+        "exclude ST and suspended stocks",
+        "exclude bottom 30% liquidity names until liquidity evidence is landed",
+        "require 250 trading-day history before replay statistics are trusted"
+      ],
+      "macro_formula": "MacroScore = 0.40 PMI + 0.35 CreditImpulse + 0.25 PriceSpread",
+      "macro_layer": {
+        "ready": false,
+        "macro_score": null,
+        "available_inputs": [
+          "market_gate"
+        ],
+        "missing_inputs": [
+          "PMI",
+          "credit_impulse",
+          "price_spread"
+        ],
+        "evidence": "Macro layer inputs are not all landed.",
+        "lineage": {
+          "formula": "MacroScore = 0.40*PMI + 0.35*CreditImpulse + 0.25*PriceSpread",
+          "pmi": {},
+          "credit_impulse": {},
+          "price_spread": {}
+        }
+      },
+      "lifecourt_overlay": {
+        "display_name": "生命法庭覆盖层（量化重建）",
+        "observation_only": true,
+        "implementation_stage": "proxy_reconstruction",
+        "boundary": "LifeCourt inputs are proxy-reconstructed from theme/trend/factor evidence; original influencer rule text is not fully available.",
+        "available_inputs": [],
+        "missing_inputs": [
+          "social_text_raw",
+          "ocr_asr_pipeline",
+          "bot_spam_detection",
+          "margin_balance",
+          "unlock_event_panel",
+          "sector_rank_for_regime"
+        ],
+        "life_long_gates": [
+          "LifeCourtScore in top 15%",
+          "PCONF in top 30%",
+          "CROWD below 80th percentile",
+          "HYGIENE > 0"
+        ],
+        "rebalance_cadence": "Weekly overlay review on top of monthly cycle core."
+      },
+      "fusion_policy": {
+        "cycle_weight": 0.65,
+        "life_weight": 0.35,
+        "conflict_policy": "cycle_filter_life_overlay",
+        "matrix": [
+          {
+            "cycle": "strong",
+            "life": "strong",
+            "action": "core_plus_trading"
+          },
+          {
+            "cycle": "strong",
+            "life": "neutral",
+            "action": "core_reduce_trading"
+          },
+          {
+            "cycle": "neutral",
+            "life": "strong",
+            "action": "satellite_trial"
+          },
+          {
+            "cycle": "weak",
+            "life": "strong",
+            "action": "high_liquidity_trial_only"
+          },
+          {
+            "cycle": "weak",
+            "life": "weak",
+            "action": "clear_or_defensive"
+          }
+        ]
+      },
+      "layers": [
+        {
+          "key": "macro_direction",
+          "title": "Macro direction",
+          "weight": 0.3,
+          "status": "missing_inputs",
+          "available_inputs": [
+            "market_gate"
+          ],
+          "missing_inputs": [
+            "PMI",
+            "credit_impulse",
+            "price_spread"
+          ],
+          "evidence": "Livermore market gate is PENDING_DATA; Macro layer inputs are not all landed."
+        },
+        {
+          "key": "industry_cycle",
+          "title": "Industry cycle",
+          "weight": 0.35,
+          "status": "missing_inputs",
+          "available_inputs": [],
+          "missing_inputs": [
+            "industry_profit_cycle",
+            "industry_revenue_cycle"
+          ],
+          "evidence": "sector_rank is unavailable, so the industry-cycle layer is blocked."
+        },
+        {
+          "key": "market_flow",
+          "title": "Market flow",
+          "weight": 0.2,
+          "status": "missing_inputs",
+          "available_inputs": [],
+          "missing_inputs": [
+            "fund_flow",
+            "northbound_flow",
+            "turnover_persistence"
+          ],
+          "evidence": "Stock candidate review is unavailable; fund-flow confirmation is not landed."
+        },
+        {
+          "key": "valuation_support",
+          "title": "Valuation support",
+          "weight": 0.15,
+          "status": "missing_inputs",
+          "available_inputs": [],
+          "missing_inputs": [
+            "earnings_revision",
+            "valuation_percentile_history"
+          ],
+          "evidence": "factor_screen_candidates is unavailable; valuation support is not confirmed."
+        },
+        {
+          "key": "execution_constraints",
+          "title": "Execution constraints",
+          "weight": null,
+          "status": "verification_pending",
+          "available_inputs": [],
+          "missing_inputs": [
+            "transaction_cost",
+            "disclosure_lag",
+            "liquidity_floor"
+          ],
+          "evidence": "Risk-exit evidence is unavailable; sizing, cost and liquidity controls remain pending."
+        }
+      ]
+    }
+  }
+}

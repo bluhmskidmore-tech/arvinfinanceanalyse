@@ -22,19 +22,23 @@ class TestCashflowProjectionNumericMigration:
             computed_at="2026-01-01T00:00:00Z",
         )
         assert isinstance(payload.duration_gap, Numeric)
-        assert payload.duration_gap.unit == "ratio"
+        assert payload.duration_gap.unit == "years"
+        assert payload.asset_duration.unit == "years"
+        assert payload.liability_duration.unit == "years"
+        assert payload.equity_duration.unit == "years"
         assert payload.rate_sensitivity_1bp.unit == "yuan"
+        assert payload.reinvestment_risk_12m.unit == "pct"
         assert payload.asset_duration.sign_aware is False
 
     def test_accepts_native_numeric(self) -> None:
         payload = CashflowProjectionResponse(
             report_date=date(2026, 1, 1),
-            duration_gap=Numeric(raw=2.0, unit="ratio", display="+2.00", precision=2, sign_aware=True),
-            asset_duration=Numeric(raw=3.5, unit="ratio", display="3.50", precision=2, sign_aware=False),
-            liability_duration=Numeric(raw=1.5, unit="ratio", display="1.50", precision=2, sign_aware=False),
-            equity_duration=Numeric(raw=4.0, unit="ratio", display="+4.00", precision=2, sign_aware=True),
+            duration_gap=Numeric(raw=2.0, unit="years", display="+2.00", precision=2, sign_aware=True),
+            asset_duration=Numeric(raw=3.5, unit="years", display="3.50", precision=2, sign_aware=False),
+            liability_duration=Numeric(raw=1.5, unit="years", display="1.50", precision=2, sign_aware=False),
+            equity_duration=Numeric(raw=4.0, unit="years", display="+4.00", precision=2, sign_aware=True),
             rate_sensitivity_1bp=Numeric(raw=0.08, unit="yuan", display="+0.08", precision=2, sign_aware=True),
-            reinvestment_risk_12m=Numeric(raw=0.25, unit="ratio", display="0.25", precision=2, sign_aware=False),
+            reinvestment_risk_12m=Numeric(raw=0.25, unit="pct", display="25.00%", precision=2, sign_aware=False),
             monthly_buckets=[],
             top_maturing_assets_12m=[],
             computed_at="2026-01-01T00:00:00Z",

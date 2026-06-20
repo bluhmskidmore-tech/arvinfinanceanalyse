@@ -167,15 +167,17 @@ function createActionAttributionEnvelope() {
   };
 }
 
-function renderViewContent(client = createApiClient({ mode: "mock" })) {
-  latestOverviewProps = null;
-  latestDetailProps = null;
-
-  const queryClient = new QueryClient({
+function renderViewContent(
+  client = createApiClient({ mode: "mock" }),
+  queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, refetchOnWindowFocus: false },
     },
-  });
+  }),
+) {
+  latestOverviewProps = null;
+  latestDetailProps = null;
+
   return render(
     <MemoryRouter>
       <ApiClientProvider client={client}>
@@ -197,15 +199,19 @@ describe("BondAnalyticsViewContent", () => {
     vi.unstubAllGlobals();
   });
 
-  it("passes initial wiring state into overview and detail mocks", async () => {
+  it("defers detail wiring until a drilldown is opened", async () => {
+    const user = userEvent.setup();
     const client = {
       ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
       getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
     };
     renderViewContent(client);
 
     await screen.findByTestId("mock-bond-analytics-overview-panels");
-    await screen.findByTestId("mock-bond-analytics-detail-section");
 
     await waitFor(() => {
       expect(latestOverviewProps?.reportDate).toBeTruthy();
@@ -214,20 +220,121 @@ describe("BondAnalyticsViewContent", () => {
     const firstDate = (latestOverviewProps?.dateOptions as { value: string }[])[0]?.value;
     expect(firstDate).toBeTruthy();
     expect(latestOverviewProps?.reportDate).toBe(firstDate);
-    expect(latestDetailProps?.reportDate).toBe(firstDate);
-
     expect(latestOverviewProps?.periodType).toBe("MoM");
-    expect(latestDetailProps?.periodType).toBe("MoM");
+    expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
+    expect(screen.queryByTestId("mock-bond-analytics-detail-section")).not.toBeInTheDocument();
+    expect(latestDetailProps).toBeNull();
 
-    expect(latestDetailProps?.activeTab).toBe("action-attribution");
-    expect(screen.getByTestId("mock-bond-analytics-detail-section")).toHaveAttribute(
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+
+    expect(await screen.findByTestId("mock-bond-analytics-detail-section")).toHaveAttribute(
       "data-active-tab",
-      "action-attribution",
+      "credit-spread",
     );
+    expect(latestDetailProps?.reportDate).toBe(firstDate);
+    expect(latestDetailProps?.periodType).toBe("MoM");
+    expect(latestDetailProps?.activeTab).toBe("credit-spread");
     expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalled();
   });
 
+  it("puts the workstation overview directly after the toolbar", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => ({
+        result_meta: createResultMeta({
+          quality_flag: "warning",
+          fallback_mode: "latest_snapshot",
+          result_kind: "bond_analytics.action_attribution",
+        }),
+        result: createActionAttributionResult({
+          total_actions: 4,
+          total_pnl_from_actions: yuan(250_000_000),
+          duration_change_from_actions: ratio(-0.12),
+          period_start_dv01: dv01(120_000),
+          period_end_dv01: dv01(132_000),
+          warnings: ["duration input unavailable - set to 0"],
+        }),
+      })),
+    };
+
+    renderViewContent(client);
+
+    const toolbar = await screen.findByTestId("bond-analysis-toolbar");
+    const overview = await screen.findByTestId("mock-bond-analytics-overview-panels");
+    const detail = screen.getByTestId("bond-analysis-detail-drilldown");
+
+    expect(screen.queryByTestId("bond-analysis-decision-cockpit")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(toolbar.compareDocumentPosition(overview)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(overview.compareDocumentPosition(detail)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(detail).toHaveTextContent("复核入口");
+    expect(detail).toHaveTextContent("下钻证据与参数");
+    expect(detail).toHaveTextContent("不在底部生成新的方向性结论");
+    expect(detail).not.toHaveTextContent("分析师解读");
+    await waitFor(() => {
+      expect(latestOverviewProps?.actionAttributionResult).toEqual(
+        expect.objectContaining({
+          total_actions: 4,
+        }),
+      );
+    });
+    expect(detail).not.toHaveAttribute("open");
+    expect(screen.queryByTestId("mock-bond-analytics-detail-section")).not.toBeInTheDocument();
+    expect(latestDetailProps).toBeNull();
+  });
+
+  it("keeps the workstation visible when action-attribution evidence fails", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => {
+        throw new Error("backend 503 for action attribution");
+      }),
+    };
+
+    renderViewContent(client);
+
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+
+    await waitFor(() => {
+      expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalledWith("2026-03-31", "MoM");
+    });
+    expect(screen.queryByTestId("bond-analysis-decision-cockpit")).not.toBeInTheDocument();
+    expect(latestOverviewProps?.actionAttributionResult).toBeNull();
+  });
+
+  it("does not render a decision cockpit when no report date can be resolved", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: [] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+
+    renderViewContent(client);
+
+    await waitFor(() => {
+      expect(client.getBondAnalyticsDates).toHaveBeenCalled();
+      expect(client.getBondAnalyticsActionAttribution).not.toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId("bond-analysis-decision-cockpit")).not.toBeInTheDocument();
+  });
+
   it("loads research calendar events for the effective report date and passes them to the overview panels", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnWindowFocus: false },
+      },
+    });
     const getResearchCalendarEvents = vi.fn(async () => [
       {
         id: "rc_bond_001",
@@ -241,10 +348,14 @@ describe("BondAnalyticsViewContent", () => {
     ]);
     const client = {
       ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
       getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
       getResearchCalendarEvents,
     };
-    renderViewContent(client);
+    renderViewContent(client, queryClient);
 
     await screen.findByTestId("mock-bond-analytics-overview-panels");
 
@@ -260,6 +371,82 @@ describe("BondAnalyticsViewContent", () => {
     expect(getResearchCalendarEvents).toHaveBeenCalledWith({ reportDate: "2026-03-31" });
   });
 
+  it("refetches research calendar events when the client mode changes", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnWindowFocus: false },
+      },
+    });
+    const getMockResearchCalendarEvents = vi.fn(async () => [
+      {
+        id: "rc_mock",
+        date: "2026-03-31",
+        title: "mock calendar",
+        kind: "internal" as const,
+        severity: "medium" as const,
+      },
+    ]);
+    const getRealResearchCalendarEvents = vi.fn(async () => [
+      {
+        id: "rc_real",
+        date: "2026-03-31",
+        title: "real calendar",
+        kind: "internal" as const,
+        severity: "high" as const,
+      },
+    ]);
+    const mockClient = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+      getResearchCalendarEvents: getMockResearchCalendarEvents,
+    };
+    const realClient = {
+      ...createApiClient({ mode: "real" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+      getResearchCalendarEvents: getRealResearchCalendarEvents,
+    };
+
+    const view = renderViewContent(mockClient, queryClient);
+
+    await waitFor(() => {
+      expect(getMockResearchCalendarEvents).toHaveBeenCalledWith({ reportDate: "2026-03-31" });
+    });
+    await waitFor(() => {
+      expect(latestOverviewProps?.calendarItems).toEqual([
+        expect.objectContaining({ event: "mock calendar", level: "medium" }),
+      ]);
+    });
+
+    view.rerender(
+      <MemoryRouter>
+        <ApiClientProvider client={realClient}>
+          <QueryClientProvider client={queryClient}>
+            <BondAnalyticsViewContent />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(getRealResearchCalendarEvents).toHaveBeenCalledWith({ reportDate: "2026-03-31" });
+    });
+    await waitFor(() => {
+      expect(latestOverviewProps?.calendarItems).toEqual([
+        expect.objectContaining({ event: "real calendar", level: "high" }),
+      ]);
+    });
+    expect(getMockResearchCalendarEvents).toHaveBeenCalledTimes(1);
+    expect(getRealResearchCalendarEvents).toHaveBeenCalledTimes(1);
+  });
+
   it("propagates overview interactions into the detail mock", async () => {
     const user = userEvent.setup();
     const client = {
@@ -271,13 +458,19 @@ describe("BondAnalyticsViewContent", () => {
     await screen.findByTestId("mock-bond-analytics-overview-panels");
 
     await user.click(screen.getByTestId("trigger-open-credit-spread"));
-    expect(latestDetailProps?.activeTab).toBe("credit-spread");
+    await waitFor(() => {
+      expect(latestDetailProps?.activeTab).toBe("credit-spread");
+    });
 
     await user.click(screen.getByTestId("trigger-report-date"));
-    expect(latestDetailProps?.reportDate).toBe("2025-12-31");
+    await waitFor(() => {
+      expect(latestDetailProps?.reportDate).toBe("2025-12-31");
+    });
 
     await user.click(screen.getByTestId("trigger-period-type"));
-    expect(latestDetailProps?.periodType).toBe("YTD");
+    await waitFor(() => {
+      expect(latestDetailProps?.periodType).toBe("YTD");
+    });
   });
 
   it("surfaces successful refresh run id to overview and remounts the detail mock", async () => {
@@ -300,6 +493,8 @@ describe("BondAnalyticsViewContent", () => {
     await waitFor(() => {
       expect(latestOverviewProps?.reportDate).toBeTruthy();
     });
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+    await screen.findByTestId("mock-bond-analytics-detail-section");
     const instanceBefore = screen
       .getByTestId("mock-bond-analytics-detail-section")
       .getAttribute("data-detail-instance");

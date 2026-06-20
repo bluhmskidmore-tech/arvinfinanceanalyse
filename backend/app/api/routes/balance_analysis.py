@@ -2,33 +2,30 @@ from __future__ import annotations
 
 import importlib
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import quote
 
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
-
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.balance_analysis import BalanceAnalysisDecisionStatusUpdateRequest
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
 from backend.app.services.balance_analysis_service import (
     BalanceAnalysisRefreshConflictError,
     BalanceAnalysisRefreshServiceError,
-    balance_analysis_decision_items_envelope,
     balance_analysis_basis_breakdown_envelope,
     balance_analysis_dates_envelope,
+    balance_analysis_decision_items_envelope,
     balance_analysis_detail_envelope,
     balance_analysis_overview_envelope,
-    balance_analysis_refresh_status,
     balance_analysis_summary_envelope,
     balance_analysis_workbook_envelope,
-    export_balance_analysis_workbook_xlsx,
     export_balance_analysis_summary_csv,
+    export_balance_analysis_workbook_xlsx,
     refresh_balance_analysis,
     update_balance_analysis_decision_status,
 )
-from backend.app.schemas.balance_analysis import BalanceAnalysisDecisionStatusUpdateRequest
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
 router = APIRouter(prefix="/ui/balance-analysis")
 
@@ -51,13 +48,60 @@ def _require_balance_analysis_report_date_qs(report_date: str) -> str:
     return candidate
 
 
-@router.get("/dates")
-def dates() -> dict[str, object]:
+def _ensure_balance_analysis_read_allowed(auth: AuthContext) -> None:
     settings = get_settings()
     try:
-        return balance_analysis_dates_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="balance_analysis",
+            action="read",
+        )
+    except PermissionError as exc:
+        if _allows_development_fallback_read(auth=auth, environment=settings.environment):
+            return
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _allows_development_fallback_read(*, auth: AuthContext, environment: object) -> bool:
+    return (
+        str(environment).strip().lower() == "development"
+        and auth.identity_source == "fallback"
+        and auth.user_id == "anonymous"
+        and auth.role == "viewer"
+    )
+
+
+def _can_write_balance_analysis_decision_status(auth: AuthContext) -> bool | None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="balance_analysis.decision_status",
+            action="write",
+        )
+        return True
+    except PermissionError:
+        return False
+    except RuntimeError:
+        return None
+
+
+@router.get("/dates")
+def dates(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
+    settings = get_settings()
+    try:
+        return timed_api_call(
+            "/ui/balance-analysis/dates",
+            lambda: balance_analysis_dates_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+            ),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -65,18 +109,23 @@ def dates() -> dict[str, object]:
 
 @router.get("")
 def detail(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
-        return balance_analysis_detail_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis",
+            lambda: balance_analysis_detail_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -86,18 +135,23 @@ def detail(
 
 @router.get("/overview")
 def overview(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
-        return balance_analysis_overview_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis/overview",
+            lambda: balance_analysis_overview_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -107,22 +161,27 @@ def overview(
 
 @router.get("/summary")
 def summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
-        return balance_analysis_summary_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
-            limit=limit,
-            offset=offset,
+        return timed_api_call(
+            "/ui/balance-analysis/summary",
+            lambda: balance_analysis_summary_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+                limit=limit,
+                offset=offset,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -132,18 +191,23 @@ def summary(
 
 @router.get("/summary-by-basis")
 def summary_by_basis(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
-        return balance_analysis_basis_breakdown_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis/summary-by-basis",
+            lambda: balance_analysis_basis_breakdown_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -153,6 +217,7 @@ def summary_by_basis(
 
 @router.get("/advanced-attribution")
 def advanced_attribution(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(..., description="Report date (YYYY-MM-DD) for the not_ready attribution contract."),
     scenario_name: str | None = Query(
         None,
@@ -169,6 +234,7 @@ def advanced_attribution(
 ) -> dict[str, object]:
     """Analytical/scenario advanced attribution contract; never part of the governed workbook tables."""
     normalized = _require_balance_analysis_report_date_qs(report_date)
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     return advanced_attribution_bundle_envelope(
         report_date=normalized,
@@ -182,18 +248,23 @@ def advanced_attribution(
 
 @router.get("/workbook")
 def workbook(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
-        return balance_analysis_workbook_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis/workbook",
+            lambda: balance_analysis_workbook_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -209,23 +280,29 @@ def current_user(
         "user_id": auth.user_id,
         "role": auth.role,
         "identity_source": auth.identity_source,
+        "can_write_decision_status": _can_write_balance_analysis_decision_status(auth),
     }
 
 
 @router.get("/decision-items")
 def decision_items(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
-        return balance_analysis_decision_items_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis=currency_basis,
+        return timed_api_call(
+            "/ui/balance-analysis/decision-items",
+            lambda: balance_analysis_decision_items_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                governance_dir=str(settings.governance_path),
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -265,10 +342,12 @@ def update_decision_status(
 
 @router.get("/summary/export")
 def export_summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> Response:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         filename, content = export_balance_analysis_summary_csv(
@@ -291,10 +370,12 @@ def export_summary(
 
 @router.get("/workbook/export")
 def export_workbook(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> Response:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         filename, content = export_balance_analysis_workbook_xlsx(
@@ -323,11 +404,24 @@ def export_workbook(
 @router.post("/refresh")
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     report_date: str = Query(...),
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return refresh_balance_analysis(settings, report_date=report_date)
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="balance_analysis",
+            action="refresh",
+        )
+        return refresh_balance_analysis(
+            settings,
+            report_date=report_date,
+            idempotency_key=idempotency_key,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except BalanceAnalysisRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BalanceAnalysisRefreshServiceError as exc:
@@ -337,7 +431,11 @@ def refresh(
 
 
 @router.get("/refresh-status")
-def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
+def refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(...),
+) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         service_mod = importlib.import_module("backend.app.services.balance_analysis_service")

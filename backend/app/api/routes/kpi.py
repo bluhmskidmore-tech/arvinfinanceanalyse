@@ -4,14 +4,13 @@ import csv
 from io import StringIO
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
-
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import kpi_workbench_service
 from backend.app.services.kpi_service import kpi_owners_payload, kpi_period_summary_payload
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/kpi", tags=["kpi"])
 
@@ -88,6 +87,20 @@ def _raise_workbench_http_error(exc: Exception) -> None:
     raise exc
 
 
+def _ensure_kpi_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="kpi",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 def _render_report_csv(*, rows: list[dict[str, object]], year: int, as_of_date: str | None) -> PlainTextResponse:
     buffer = StringIO()
     fieldnames = [
@@ -122,9 +135,11 @@ def _render_report_csv(*, rows: list[dict[str, object]], year: int, as_of_date: 
 
 @router.get("/owners")
 def kpi_owners(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int | None = Query(None, ge=2000, le=2100),
     is_active: bool | None = Query(True),
 ) -> dict:
+    _ensure_kpi_read_allowed(auth)
     try:
         return kpi_owners_payload(dsn=_get_dsn(), year=year, is_active=is_active)
     except RuntimeError as exc:
@@ -133,11 +148,13 @@ def kpi_owners(
 
 @router.get("/values/summary")
 def kpi_values_summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     owner_id: int = Query(..., ge=1),
     year: int = Query(..., ge=2000, le=2100),
     period_type: str = Query(...),
     period_value: int | None = Query(None),
 ) -> dict:
+    _ensure_kpi_read_allowed(auth)
     try:
         return kpi_period_summary_payload(
             dsn=_get_dsn(),
@@ -154,10 +171,12 @@ def kpi_values_summary(
 
 @router.get("/metrics")
 def list_kpi_metrics(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     owner_id: int | None = Query(None, ge=1),
     year: int | None = Query(None, ge=2000, le=2100),
     is_active: bool | None = Query(None),
 ) -> dict:
+    _ensure_kpi_read_allowed(auth)
     try:
         return kpi_workbench_service.list_metrics(
             dsn=_get_dsn(),
@@ -170,7 +189,11 @@ def list_kpi_metrics(
 
 
 @router.get("/metrics/{metric_id}")
-def get_kpi_metric(metric_id: int) -> dict:
+def get_kpi_metric(
+    metric_id: int,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict:
+    _ensure_kpi_read_allowed(auth)
     try:
         return kpi_workbench_service.get_metric(dsn=_get_dsn(), metric_id=metric_id)
     except Exception as exc:
@@ -231,10 +254,12 @@ def delete_kpi_metric(
 
 @router.get("/values")
 def get_kpi_values(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     owner_id: int = Query(..., ge=1),
     as_of_date: str = Query(...),
     include_trace: bool = Query(False),
 ) -> dict:
+    _ensure_kpi_read_allowed(auth)
     try:
         return kpi_workbench_service.get_values(
             dsn=_get_dsn(),
@@ -312,7 +337,14 @@ def fetch_and_recalc_kpi(
 ) -> dict:
     settings = get_settings()
     try:
-        ensure_user_allowed(auth=auth, settings=settings, resource="kpi.value", action="write")
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="kpi.value",
+            action="write",
+            scope_key="owner_id",
+            scope_value=str(owner_id),
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -329,11 +361,13 @@ def fetch_and_recalc_kpi(
 
 @router.get("/report", response_model=None)
 def get_kpi_report(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., ge=2000, le=2100),
     owner_id: int | None = Query(None, ge=1),
     as_of_date: str | None = Query(None),
     format: str | None = Query(None),
 ) -> object:
+    _ensure_kpi_read_allowed(auth)
     try:
         payload = kpi_workbench_service.build_report(
             dsn=_get_dsn(),

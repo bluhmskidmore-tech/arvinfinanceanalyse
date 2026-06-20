@@ -10,12 +10,16 @@ from backend.app.repositories.external_data_catalog_repo import (
     ensure_external_data_catalog_schema,
 )
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
-from backend.app.repositories.research_calendar_repo import ensure_supply_auction_calendar_schema
+from backend.app.repositories.research_calendar_repo import (
+    ensure_supply_auction_calendar_schema,
+)
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
 from backend.app.services.external_std_research_calendar_etl_service import (
     ExternalStdResearchCalendarEtlService,
 )
-from backend.app.services.research_calendar_ingest_service import ResearchCalendarIngestService
+from backend.app.services.research_calendar_ingest_service import (
+    ResearchCalendarIngestService,
+)
 
 
 def _memory_catalog() -> ExternalDataCatalogRepository:

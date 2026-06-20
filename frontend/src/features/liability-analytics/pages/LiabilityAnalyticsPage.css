@@ -1,0 +1,183 @@
+.liability-analytics-page {
+  display: grid;
+  gap: var(--moss-space-4);
+  min-width: 0;
+}
+
+.liability-analytics-page__mode-badge,
+.liability-analytics-page__status-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.liability-analytics-page__mode-badge {
+  padding: 8px 12px;
+  border: 1px solid var(--moss-color-border-default);
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-text-primary);
+}
+
+.liability-analytics-page__mode-badge[data-tone="ok"],
+.liability-analytics-page__status-badge[data-tone="ok"] {
+  border-color: color-mix(in srgb, var(--moss-color-success-500) 42%, transparent);
+  background: var(--moss-color-success-50);
+  color: var(--moss-color-success-800);
+}
+
+.liability-analytics-page__mode-badge[data-tone="mock"],
+.liability-analytics-page__status-badge[data-tone="mock"] {
+  border-color: color-mix(in srgb, var(--moss-color-info-500) 42%, transparent);
+  background: var(--moss-color-info-50);
+  color: var(--moss-color-info-800);
+}
+
+.liability-analytics-page__status-badge {
+  padding: 6px 9px;
+  border: 1px solid var(--moss-color-border-default);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-text-secondary);
+}
+
+.liability-analytics-page__status-badge[data-tone="warning"] {
+  border-color: color-mix(in srgb, var(--moss-color-warning-500) 45%, transparent);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-800);
+}
+
+.liability-analytics-page__status-badge[data-tone="danger"] {
+  border-color: color-mix(in srgb, var(--moss-color-danger-500) 45%, transparent);
+  background: var(--moss-color-danger-50);
+  color: var(--moss-color-danger-800);
+}
+
+.liability-analytics-page__hero-conclusion {
+  display: grid;
+  gap: var(--moss-space-1);
+}
+
+.liability-analytics-page__hero-conclusion strong {
+  color: var(--moss-color-primary-900);
+  font-size: 15px;
+}
+
+.liability-analytics-page__hero-conclusion small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.liability-analytics-page__tabs {
+  margin-bottom: 0;
+}
+
+.liability-analytics-page__filter-field {
+  display: grid;
+  gap: var(--moss-space-1);
+}
+
+.liability-analytics-page__report-date-select {
+  min-width: 160px;
+}
+
+.liability-analytics-page__fixed-date-note {
+  align-self: flex-end;
+}
+
+.liability-analytics-page__evidence-grid {
+  margin-bottom: var(--moss-space-4);
+}
+
+.liability-analytics-page__state-stack,
+.liability-analytics-page__evidence-ledger,
+.liability-analytics-page__section-stack {
+  display: grid;
+  gap: var(--moss-space-3);
+}
+
+.liability-analytics-page__evidence-card {
+  display: grid;
+  gap: var(--moss-space-2);
+  min-width: 0;
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-border-default);
+  border-left: 4px solid var(--moss-color-neutral-300);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+}
+
+.liability-analytics-page__evidence-card[data-tone="ok"] {
+  border-left-color: var(--moss-color-success-500);
+}
+
+.liability-analytics-page__evidence-card[data-tone="warning"] {
+  border-left-color: var(--moss-color-warning-500);
+}
+
+.liability-analytics-page__evidence-card[data-tone="danger"] {
+  border-left-color: var(--moss-color-danger-500);
+}
+
+.liability-analytics-page__evidence-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--moss-space-2);
+}
+
+.liability-analytics-page__evidence-card-top strong {
+  color: var(--moss-color-text-primary);
+}
+
+.liability-analytics-page__evidence-card-top span {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+}
+
+.liability-analytics-page__evidence-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+  margin: 0;
+}
+
+.liability-analytics-page__evidence-card div {
+  min-width: 0;
+}
+
+.liability-analytics-page__evidence-card dt {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+}
+
+.liability-analytics-page__evidence-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--moss-color-text-primary);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.liability-analytics-page__kpi-unit {
+  margin-left: 4px;
+  color: var(--moss-color-text-secondary);
+  font-family: var(--moss-font-sans);
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .liability-analytics-page {
+    gap: var(--moss-space-3);
+  }
+
+  .liability-analytics-page__evidence-card dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

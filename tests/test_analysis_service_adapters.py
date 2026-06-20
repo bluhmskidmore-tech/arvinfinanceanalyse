@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
 import sys
+from datetime import date
 from types import SimpleNamespace
 
 from tests.helpers import load_module
@@ -555,12 +555,24 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
         "build_bond_action_attribution_placeholder_envelope",
         fake_placeholder,
     )
+    service_module._action_attribution_cache.clear()
+
+    class EmptyBondAnalyticsRepository:
+        def list_report_dates(self):
+            return []
+
+        def fetch_bond_analytics_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+            return []
+
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", lambda *_args, **_kwargs: EmptyBondAnalyticsRepository())
 
     payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")
 
     assert captured["query"].analysis_key == "bond_action_attribution"
     assert payload["result"]["period_type"] == "MoM"
     assert payload["result_meta"]["result_kind"] == "bond_analytics.action_attribution"
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["result_meta"]["source_surface"] == "bond_analytics"
     assert payload["result"]["status"] == "unavailable"
     assert payload["result"]["missing_inputs"] == ["trade_level_action_facts"]
@@ -624,6 +636,16 @@ def test_bond_action_service_uses_schema_default_status_when_summary_omits_it(mo
         "build_bond_action_attribution_placeholder_envelope",
         fake_placeholder,
     )
+    service_module._action_attribution_cache.clear()
+
+    class EmptyBondAnalyticsRepository:
+        def list_report_dates(self):
+            return []
+
+        def fetch_bond_analytics_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+            return []
+
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", lambda *_args, **_kwargs: EmptyBondAnalyticsRepository())
 
     payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")
 

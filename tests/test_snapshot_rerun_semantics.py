@@ -23,6 +23,61 @@ def _load_tasks():
     return ingest_mod, snap_mod
 
 
+def _zqtz_duplicate_canonical_grain_count(conn: duckdb.DuckDBPyConnection, batch_id: str) -> int:
+    grain_columns = (
+        "report_date",
+        "instrument_code",
+        "instrument_name",
+        "portfolio_name",
+        "cost_center",
+        "currency_code",
+        "account_category",
+        "asset_class",
+        "bond_type",
+        "coalesce(business_type_primary, '')",
+        "maturity_date",
+        "next_call_date",
+        "is_issuance_like",
+        "source_version",
+        "ingest_batch_id",
+    )
+    return conn.execute(
+        f"""
+        select count(*) from (
+          select
+            {", ".join(grain_columns)},
+            count(*) c
+          from zqtz_bond_daily_snapshot
+          where ingest_batch_id = ?
+          group by {", ".join(str(index) for index in range(1, len(grain_columns) + 1))}
+          having c > 1
+        )
+        """,
+        [batch_id],
+    ).fetchone()[0]
+
+
+def _zqtz_duplicate_report_position_count(conn: duckdb.DuckDBPyConnection, batch_id: str) -> int:
+    return conn.execute(
+        """
+        select count(*) from (
+          select
+          report_date,
+          instrument_code,
+          portfolio_name,
+          cost_center,
+          currency_code,
+          count(*) c
+          from zqtz_bond_daily_snapshot
+          where ingest_batch_id = ?
+          group by 1,2,3,4,5
+          having c > 1
+        )
+        """,
+        [batch_id],
+    ).fetchone()[0]
+
+
 def test_zqtz_rerun_same_batch_no_duplicate_grains(tmp_path, monkeypatch):
     ingest_mod, snap_mod = _load_tasks()
 
@@ -50,19 +105,9 @@ def test_zqtz_rerun_same_batch_no_duplicate_grains(tmp_path, monkeypatch):
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
-        n1 = conn.execute(
-            """
-            select count(*) from (
-              select report_date, instrument_code, portfolio_name, cost_center, currency_code, count(*) c
-              from zqtz_bond_daily_snapshot
-              where ingest_batch_id = ?
-              group by 1,2,3,4,5
-              having c > 1
-            )
-            """,
-            [batch_id],
-        ).fetchone()[0]
+        n1 = _zqtz_duplicate_canonical_grain_count(conn, batch_id)
         assert n1 == 0
+        assert _zqtz_duplicate_report_position_count(conn, batch_id) > 0
         total1 = conn.execute(
             "select count(*) from zqtz_bond_daily_snapshot where ingest_batch_id = ?",
             [batch_id],
@@ -79,18 +124,7 @@ def test_zqtz_rerun_same_batch_no_duplicate_grains(tmp_path, monkeypatch):
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
-        n2 = conn.execute(
-            """
-            select count(*) from (
-              select report_date, instrument_code, portfolio_name, cost_center, currency_code, count(*) c
-              from zqtz_bond_daily_snapshot
-              where ingest_batch_id = ?
-              group by 1,2,3,4,5
-              having c > 1
-            )
-            """,
-            [batch_id],
-        ).fetchone()[0]
+        n2 = _zqtz_duplicate_canonical_grain_count(conn, batch_id)
         assert n2 == 0
         total2 = conn.execute(
             "select count(*) from zqtz_bond_daily_snapshot where ingest_batch_id = ?",

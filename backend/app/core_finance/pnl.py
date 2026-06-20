@@ -20,8 +20,9 @@ from backend.app.core_finance.field_normalization import (
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
 CurrencyBasis = Literal["CNY", "CNX"]
-_INTEREST_INCOME_PREFIX = "514"
+_INTEREST_INCOME_PREFIX = LEDGER_PNL_ACCOUNT_PREFIXES[0]
 _MANUAL_ADJUSTMENT_TOKEN = "adjustment"
+# Human: caliber-subject_514_516_517_merge-justified -- Literal requires concrete members; the assert below locks them to LEDGER_PNL_ACCOUNT_PREFIXES.
 JournalType = Literal["514", "516", "517", "adjustment"]
 assert set(get_args(JournalType)) == set(LEDGER_PNL_ACCOUNT_PREFIXES) | {
     _MANUAL_ADJUSTMENT_TOKEN
@@ -36,6 +37,21 @@ SIGN_FLIP_JOURNAL_TYPES: frozenset[str] = frozenset(LEDGER_PNL_ACCOUNT_PREFIXES)
 }
 
 ZERO = Decimal("0")
+TWOPLACES = Decimal("0.01")
+YIELD_PCT_PLACES = Decimal("0.000001")
+_FORMAL_517_EVENT_SEMANTICS: frozenset[str] = frozenset(
+    {
+        "realized_formal",
+        "realized_disposal",
+        "realized_redemption",
+    }
+)
+_FVTPL_NON_OVERLAP_517_EVENT_SEMANTICS: frozenset[str] = frozenset(
+    {
+        "realized_incremental",
+        "realized_no_prior_516",
+    }
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -144,6 +160,46 @@ class RecognizedPnlComponents:
         )
 
 
+@dataclass(slots=True, frozen=True)
+class PnlByBusinessYieldAndFtp:
+    annualized_yield_pct: Decimal | None
+    ftp_rate_pct: Decimal
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
+
+
+def compute_pnl_by_business_yield_and_ftp(
+    *,
+    total_pnl: Decimal,
+    avg_balance: Decimal,
+    calendar_days: int,
+    ftp_rate_pct: Decimal,
+) -> PnlByBusinessYieldAndFtp:
+    normalized_ftp_rate_pct = _quantize_yield_pct(ftp_rate_pct)
+    if avg_balance <= ZERO or calendar_days <= 0:
+        return PnlByBusinessYieldAndFtp(
+            annualized_yield_pct=None,
+            ftp_rate_pct=normalized_ftp_rate_pct,
+            ftp_cost=None,
+            ftp_net_pnl=None,
+            ftp_net_annualized_yield_pct=None,
+        )
+
+    annualized_yield_pct = _quantize_yield_pct(
+        (total_pnl / avg_balance) * Decimal("365") / Decimal(str(calendar_days)) * Decimal("100")
+    )
+    ftp_rate_ratio = ftp_rate_pct / Decimal("100")
+    ftp_cost = _quantize_amount(avg_balance * ftp_rate_ratio * Decimal(str(calendar_days)) / Decimal("365"))
+    return PnlByBusinessYieldAndFtp(
+        annualized_yield_pct=annualized_yield_pct,
+        ftp_rate_pct=normalized_ftp_rate_pct,
+        ftp_cost=ftp_cost,
+        ftp_net_pnl=_quantize_amount(total_pnl - ftp_cost),
+        ftp_net_annualized_yield_pct=_quantize_yield_pct(annualized_yield_pct - normalized_ftp_rate_pct),
+    )
+
+
 def build_formal_pnl_fi_fact_rows(
     fi_records: Iterable[FiPnlRecord],
 ) -> list[FormalPnlFiFactRow]:
@@ -204,11 +260,11 @@ def build_nonstd_pnl_bridge_rows(
         trace_ids: list[str] = []
 
         for item in items:
-            if item.journal_type == "514":
+            if item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[0]:
                 interest_income_514 += item.signed_amount
-            elif item.journal_type == "516":
+            elif item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[1]:
                 fair_value_change_516 += item.signed_amount
-            elif item.journal_type == "517":
+            elif item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[2]:
                 capital_gain_517 += item.signed_amount
             else:
                 manual_adjustment += item.signed_amount
@@ -338,8 +394,11 @@ __all__ = [
     "JournalType",
     "NonStdJournalEntry",
     "NonStdPnlBridgeRow",
+    "PnlByBusinessYieldAndFtp",
     "build_formal_pnl_fi_fact_rows",
     "build_nonstd_pnl_bridge_rows",
+    "compute_nonstd_signed_ledger_amount",
+    "compute_pnl_by_business_yield_and_ftp",
     "normalize_fi_pnl_records",
     "normalize_nonstd_journal_entries",
 ]
@@ -392,6 +451,26 @@ def _normalize_nonstd_signed_amount(
     if normalized_dc in {"\u501f", "debit", "dr"}:
         return raw_amount * Decimal("-1")
     raise ValueError(f"Unsupported dc_flag={dc_flag!r} for journal_type={journal_type}")
+
+
+def compute_nonstd_signed_ledger_amount(
+    *,
+    raw_amount: object,
+    dc_flag: object,
+    journal_type: str,
+) -> Decimal:
+    """与 ``normalize_nonstd_journal_entries`` / 物化桥接相同的借贷与 direct_* 签符规则。
+
+    V1 汇总（如业务种类 YTD）必须与此一致，否则会出现「桥接事实表与页面损益不一致」。
+    """
+    jt = str(journal_type or "").strip()
+    if jt not in get_args(JournalType):
+        raise ValueError(f"Unsupported journal_type={journal_type!r}")
+    return _normalize_nonstd_signed_amount(
+        raw_amount=_coerce_decimal(raw_amount),
+        journal_type=jt,  # type: ignore[arg-type]
+        dc_flag=str(dc_flag),
+    )
 
 
 def _normalize_fi_invest_type(value: str) -> tuple[InvestTypeStd, AccountingBasis]:
@@ -465,6 +544,14 @@ def _append_unique(items: list[str], value: str) -> None:
         items.append(value)
 
 
+def _quantize_amount(value: Decimal) -> Decimal:
+    return value.quantize(TWOPLACES)
+
+
+def _quantize_yield_pct(value: object) -> Decimal:
+    return Decimal(str(value)).quantize(YIELD_PCT_PLACES)
+
+
 def _recognized_pnl_components(row: FiPnlRecord) -> RecognizedPnlComponents:
     return RecognizedPnlComponents(
         interest_income_514=row.interest_income_514,
@@ -483,11 +570,10 @@ def _recognized_pnl_components(row: FiPnlRecord) -> RecognizedPnlComponents:
 def _is_517_formal_allowed(row: FiPnlRecord) -> bool:
     if not row.realized_flag:
         return False
-    return row.event_semantics.strip().lower() in {
-        "realized_formal",
-        "realized_disposal",
-        "realized_redemption",
-    }
+    event_semantics = row.event_semantics.strip().lower()
+    if row.accounting_basis == ACCOUNTING_BASIS_FVTPL:
+        return event_semantics in _FVTPL_NON_OVERLAP_517_EVENT_SEMANTICS
+    return event_semantics in _FORMAL_517_EVENT_SEMANTICS
 
 
 def _is_manual_adjustment_formal_allowed(row: FiPnlRecord) -> bool:

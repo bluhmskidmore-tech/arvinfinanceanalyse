@@ -188,11 +188,12 @@ class LedgerImportRepository:
 
     def list_batches(self, *, limit: int = 20) -> list[dict[str, Any]]:
         duckdb_file = Path(self.path)
-        duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        if not duckdb_file.is_file():
+            return []
+        conn = duckdb.connect(str(duckdb_file), read_only=True)
         try:
-            apply_pending_migrations_on_connection(conn)
-            ensure_ledger_import_tables(conn)
+            if not _table_exists(conn, "ledger_import_batch"):
+                return []
             rows = conn.execute(
                 """
                 select
@@ -258,3 +259,16 @@ class LedgerImportRepository:
     def _next_batch_id(conn: duckdb.DuckDBPyConnection) -> int:
         row = conn.execute("select coalesce(max(batch_id), 0) + 1 from ledger_import_batch").fetchone()
         return int(row[0])
+
+
+def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    row = conn.execute(
+        """
+        select 1
+        from information_schema.tables
+        where table_schema = 'main' and table_name = ?
+        limit 1
+        """,
+        [table_name],
+    ).fetchone()
+    return row is not None

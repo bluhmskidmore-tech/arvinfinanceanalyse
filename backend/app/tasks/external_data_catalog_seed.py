@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import duckdb
-
 from backend.app.duckdb_schema_bootstrap import upgrade_duckdb_schema_head
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository

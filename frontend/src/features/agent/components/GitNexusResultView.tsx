@@ -2,9 +2,9 @@ import { shellTokens as t } from "../../../theme/tokens";
 
 type GitNexusResultCard = {
   title: string;
-  value?: string;
+  value?: string | null;
   type: string;
-  data?: Record<string, unknown>[] | Record<string, unknown>;
+  data?: Record<string, unknown>[] | Record<string, unknown> | null;
 };
 
 const GITNEXUS_PROCESS_CARD_TITLE = "GitNexus Processes Table";

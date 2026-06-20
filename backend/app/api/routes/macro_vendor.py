@@ -1,16 +1,22 @@
 from typing import Annotated
 
-from backend.app.governance.settings import get_settings
-from backend.app.repositories.governance_repo import (
-    CACHE_BUILD_RUN_STREAM,
-    GovernanceRepository,
+from backend.app.api.perf_logging import timed_api_call
+from backend.app.api.response_cache import (
+    market_home_catalog_cache_key,
+    market_home_choice_latest_cache_key,
+    market_home_rates_cache_key,
+    market_home_response_cache,
 )
+from backend.app.governance.settings import get_settings
 from backend.app.schemas.macro_vendor import ChoiceMacroRefreshTier
-from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.macro_vendor_service import (
+    choice_macro_formal_envelope,
     choice_macro_latest_envelope,
+    choice_macro_refresh_status,
     fx_analytical_envelope,
     fx_formal_status_envelope,
+    macro_foundation_formal_envelope,
     macro_vendor_envelope,
 )
 from backend.app.tasks.choice_macro import (
@@ -22,30 +28,81 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 router = APIRouter()
 
 
-def _raise_macro_vendor_reserved_surface() -> None:
-    raise HTTPException(
-        status_code=503,
-        detail="Macro vendor and market-data analytical surfaces are reserved by the current boundary.",
+def _ensure_macro_vendor_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="macro_vendor",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ── Formal market-data endpoints (Phase 1 promotion) ───────────────
+
+@router.get("/ui/market-data/rates")
+def market_data_rates(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
+    """Formal-basis rates for the market-data page (stable series only)."""
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return market_home_response_cache.get_or_build(
+        market_home_rates_cache_key(settings.duckdb_path),
+        lambda: timed_api_call(
+            "/ui/market-data/rates",
+            lambda: choice_macro_formal_envelope(settings.duckdb_path),
+        ),
     )
 
+
+@router.get("/ui/market-data/catalog")
+def market_data_catalog(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
+    """Formal-basis macro catalog for the market-data page."""
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return market_home_response_cache.get_or_build(
+        market_home_catalog_cache_key(settings.duckdb_path),
+        lambda: macro_foundation_formal_envelope(settings.duckdb_path),
+    )
+
+
+# ── Analytical / preview endpoints (unlocked from 503) ─────────────
+
 @router.get("/ui/preview/macro-foundation")
-def macro_foundation() -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+def macro_foundation(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return macro_vendor_envelope(settings.duckdb_path)
 
 
 @router.get("/ui/macro/choice-series/latest")
-def choice_series_latest(category: ChoiceMacroRefreshTier | None = None) -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+def choice_series_latest(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    category: ChoiceMacroRefreshTier | None = None,
+) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return market_home_response_cache.get_or_build(
+        market_home_choice_latest_cache_key(settings.duckdb_path, category),
+        lambda: choice_macro_latest_envelope(settings.duckdb_path, category=category),
+    )
 
 
 @router.get("/ui/market-data/fx/formal-status")
-def fx_formal_status() -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+def fx_formal_status(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return fx_formal_status_envelope(settings.duckdb_path)
 
 
 @router.get("/ui/market-data/fx/analytical")
-def fx_analytical() -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+def fx_analytical(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return fx_analytical_envelope(settings.duckdb_path)
 
 
 @router.post("/ui/macro/choice-series/refresh")
@@ -53,12 +110,29 @@ def choice_series_refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     backfill_days: int = Query(default=0, ge=0, le=90),
 ) -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+    settings = get_settings()
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="macro_vendor.choice_series",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    choice_refresh = getattr(refresh_choice_macro_snapshot, "fn", refresh_choice_macro_snapshot)
+    choice_payload = choice_refresh(backfill_days=backfill_days)
+    public_payload = _run_public_cross_asset_headline_refresh()
+    # Fresh upstream snapshot just landed; drop cached market reads so the next
+    # page load reflects it instead of waiting out the TTL.
+    market_home_response_cache.invalidate()
+    return _merge_choice_and_public_refresh_payloads(choice_payload, public_payload)
 
 
 def _run_public_cross_asset_headline_refresh() -> dict[str, object]:
     try:
-        return refresh_public_cross_asset_headlines()
+        public_refresh = getattr(refresh_public_cross_asset_headlines, "fn", refresh_public_cross_asset_headlines)
+        return public_refresh()
     except RuntimeError as exc:
         error_text = str(exc)
         return {
@@ -88,6 +162,12 @@ def _merge_choice_and_public_refresh_payloads(
 
 @router.get("/ui/macro/choice-series/refresh-status")
 def choice_series_refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     run_id: str = Query(default=""),
 ) -> dict[str, object]:
-    _raise_macro_vendor_reserved_surface()
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    try:
+        return choice_macro_refresh_status(settings.governance_path, run_id=run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -22,23 +22,23 @@ function numeric(
 
 function contributionFixture(): ContributionPayload {
   return {
-    title: "璐＄尞",
+    title: "贡献",
     rows: [
       {
         id: "r1",
-        name: "鍥烘敹涓€鍙?",
-        owner: "鍥㈤槦 A",
-        contribution: numeric(3_200_000, "+0.03 浜?"),
+        name: "固收一号",
+        owner: "团队 A",
+        contribution: numeric(3_200_000, "+0.03 亿"),
         completion: 72,
-        status: "杩涜涓?",
+        status: "进行中",
       },
       {
         id: "r2",
-        name: "鍒╃巼绛栫暐",
-        owner: "璐︽埛 B",
-        contribution: numeric(1_100_000, "+0.01 浜?"),
+        name: "利率策略",
+        owner: "账户 B",
+        contribution: numeric(1_100_000, "+0.01 亿"),
         completion: 100,
-        status: "瀹屾垚",
+        status: "完成",
       },
     ],
   };
@@ -65,26 +65,26 @@ describe("ContributionSection", () => {
     expect(screen.getByRole("columnheader", { name: "完成度" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument();
 
-    const row1 = screen.getByRole("row", { name: /鍥烘敹涓€鍙?/ });
-    expect(within(row1).getByText("鍥烘敹涓€鍙?")).toBeInTheDocument();
-    expect(within(row1).getByText("鍥㈤槦 A")).toBeInTheDocument();
-    expect(within(row1).getByText("+0.03 浜?")).toBeInTheDocument();
-    expect(within(row1).getByText("杩涜涓?")).toBeInTheDocument();
+    const row1 = screen.getByRole("row", { name: /固收一号/ });
+    expect(within(row1).getByText("固收一号")).toBeInTheDocument();
+    expect(within(row1).getByText("团队 A")).toBeInTheDocument();
+    expect(within(row1).getByText("+0.03 亿")).toBeInTheDocument();
+    expect(within(row1).getByText("进行中")).toBeInTheDocument();
 
     const completionCell = within(row1).getAllByRole("cell")[3];
     const barHost = completionCell.querySelector("div[style*='overflow']") as HTMLElement | null;
     expect(barHost).toBeTruthy();
     expect(barHost?.querySelector("div")).toBeTruthy();
 
-    const row2 = screen.getByRole("row", { name: /鍒╃巼绛栫暐/ });
-    expect(within(row2).getByText("鍒╃巼绛栫暐")).toBeInTheDocument();
-    expect(within(row2).getByText("璐︽埛 B")).toBeInTheDocument();
-    expect(within(row2).getByText("+0.01 浜?")).toBeInTheDocument();
-    expect(within(row2).getByText("瀹屾垚")).toBeInTheDocument();
+    const row2 = screen.getByRole("row", { name: /利率策略/ });
+    expect(within(row2).getByText("利率策略")).toBeInTheDocument();
+    expect(within(row2).getByText("账户 B")).toBeInTheDocument();
+    expect(within(row2).getByText("+0.01 亿")).toBeInTheDocument();
+    expect(within(row2).getByText("完成")).toBeInTheDocument();
   });
 
   it("renders empty state when rows is empty", () => {
-    const data: ContributionPayload = { title: "璐＄尞", rows: [] };
+    const data: ContributionPayload = { title: "贡献", rows: [] };
 
     render(
       <ContributionSection

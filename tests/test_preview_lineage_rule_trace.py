@@ -4,11 +4,26 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.source_preview_repo import RULE_VERSION
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import ROOT, load_module
+
+
+@pytest.fixture(autouse=True)
+def _enable_source_preview_http(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_HTTP_ENABLED", "true")
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'source-preview-read-scope.db').as_posix()}")
+    get_settings.cache_clear()
+    UserScopeRepository(get_settings().postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="source_preview.source_foundation",
+        action="read",
+    )
 
 
 def _completed_manifest_records(governance_dir: Path) -> list[dict[str, object]]:

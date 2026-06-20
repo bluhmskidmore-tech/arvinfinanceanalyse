@@ -106,13 +106,14 @@ The minimum governed first-screen structure is:
 
 ## 9. Field Freeze
 
-The first freeze is field-level. Do not invent `metric_id` bindings before they are approved.
+The first freeze is field-level. P0 first approved the three headline `metric_id` bindings below.
+On 2026-05-11, product decision `3C` approved expanding detail rows into formal metrics for scale, FTP, net income, and yield fields. The concrete 3C numbering is now `MTR-PCP-004` through `MTR-PCP-012`, scoped only to the approved `result.rows[]` detail fields.
 
 Headline truth fields:
 
-- `result.asset_total.business_net_income`
-- `result.liability_total.business_net_income`
-- `result.grand_total.business_net_income`
+- `MTR-PCP-001`: `result.asset_total.business_net_income`
+- `MTR-PCP-002`: `result.liability_total.business_net_income`
+- `MTR-PCP-003`: `result.grand_total.business_net_income`
 
 Minimum row fields:
 
@@ -134,7 +135,7 @@ Minimum scenario comparison fields:
 
 ### 9.1 First-Stage Field Freeze
 
-This is a page-level field freeze, not a formal `metric_id` approval.
+This is a page-level field freeze for detail semantics. It is also the source field set for the active 2026-05-11 decision 3C detail metrics in `docs/metric_dictionary.md`.
 
 | Field path | Page meaning | Unit / display | Baseline vs scenario behavior | Frontend rule |
 | --- | --- | --- | --- | --- |
@@ -152,22 +153,70 @@ This is a page-level field freeze, not a formal `metric_id` approval.
 
 First-stage prohibitions:
 
-- do not invent `metric_id` bindings from this table
+- do not invent detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`
 - do not treat liability sign normalization as backend truth
 - do not use `available_views` to add first-screen controls
 - do not recompute `grand_total` in frontend
 - do not change row identity during scenario display
 
+#### 9.1.1 Decision 3C Detail Metric Expansion Matrix
+
+Decision 3C detail metric expansion is active for the rows below. These rows are row-level metrics only: `category_id`, `side`, `view`, and `report_date` remain dimensions, and scenario payloads remain analytical unless a future decision explicitly promotes them.
+
+| Active metric_id | Source field path | Field group | Unit / display | Baseline vs scenario behavior | Test / evidence anchor |
+| --- | --- | --- | --- | --- | --- |
+| `MTR-PCP-004` | `result.rows[].cnx_scale` | scale | amount; page display uses yi yuan | scenario preserves row identity; scale remains backend-owned | metric dictionary, GS assertions, model display test |
+| `MTR-PCP-005` | `result.rows[].cny_scale` | scale | amount; page display uses yi yuan | scenario preserves row identity; scale remains backend-owned | metric dictionary, GS assertions, model display test |
+| `MTR-PCP-006` | `result.rows[].foreign_scale` | scale | amount; page display uses yi yuan | scenario preserves row identity; scale remains backend-owned | metric dictionary, GS assertions, model display test |
+| `MTR-PCP-007` | `result.rows[].cny_ftp` | FTP | amount; page display uses yi yuan | scenario may change scenario-owned FTP fields without changing row identity | metric dictionary, GS assertions, model display test |
+| `MTR-PCP-008` | `result.rows[].foreign_ftp` | FTP | amount; page display uses yi yuan | scenario may change scenario-owned FTP fields without changing row identity | metric dictionary, GS assertions, model display test |
+| `MTR-PCP-009` | `result.rows[].cny_net` | net income | amount; page display uses yi yuan | scenario may change value through backend payload; frontend must not re-aggregate | metric dictionary, GS assertions, asset/liability display test |
+| `MTR-PCP-010` | `result.rows[].foreign_net` | net income | amount; page display uses yi yuan | scenario may change value through backend payload; frontend must not re-aggregate | metric dictionary, GS assertions, asset/liability display test |
+| `MTR-PCP-011` | `result.rows[].business_net_income` | net income | amount; page display uses yi yuan | scenario may change value through backend payload; frontend must not re-aggregate | metric dictionary, GS assertions, asset/liability display test |
+| `MTR-PCP-012` | `result.rows[].weighted_yield` | yield | percent value; not money-scaled | scenario may change value through backend payload; null remains explicit for non-yield rows | metric dictionary, GS assertions, yield-format test |
+
+Matrix constraints:
+
+- active product-category metric ids are `MTR-PCP-001` through `MTR-PCP-012`
+- no additional product-category detail field is dictionary-active without a new approved matrix, dictionary row, sample assertion, and test
+- totals (`result.asset_total.*`, `result.liability_total.*`, `result.grand_total.*`) may be used as roll-up evidence, but row-level metric activation must still name the row scope and field path explicitly
+
 ### 9.2 Manual adjustment create — client validation (main page)
 
 `ProductCategoryPnlPage` `handleManualAdjustmentSubmit` runs **before** `createProductCategoryManualAdjustment`: empty `report_date` → `请选择报表月份。`; empty `account_code` → `请输入科目代码。`; all amount fields empty → `至少填写一个调整数值。`; any single amount non-empty (with date + code) proceeds to create. Frozen test names and matrix: `docs/pnl/product-category-closure-checklist.md` Unit 4 + `frontend/src/test/ProductCategoryPnlPage.test.tsx` (`Unit 4: …` cases).
 
+### 9.3 Manual Adjustment Surface Ownership
+
+This section documents existing tested surfaces; it does not change endpoint policy.
+
+- `/product-category-pnl`: canonical first-screen summary and quick-action surface.
+- `/product-category-pnl/audit`: canonical full audit surface for current-state list, event timeline, filters, dual sort, pagination, retry, and CSV export.
+- Full event-timeline evidence belongs to the audit page; the main page may show only a summary count and audit link.
+- Lifecycle actions (`edit`, `revoke`, `restore`) are allowed on both surfaces only as already tested; the source-of-truth behavior is the shared manual-adjustment API plus PnL refresh path.
+- `revoke` is destructive and requires browser confirmation on both surfaces before the shared API is called; cancel leaves the API and refresh workflow untouched.
+- No dual-sort rationale or export policy is approved by this surface note.
+
+### 9.4 Manual Adjustment Edit Field Policy
+
+This is a documentation freeze of existing tested behavior, not a new product approval.
+
+- `report_date` is carried from the selected/current row and stays read-only in the form.
+- `operator`, `approval_status`, `account_code`, `currency`, `account_name`, `beginning_balance`, `ending_balance`, `monthly_pnl`, `daily_avg_balance`, and `annual_avg_balance` are the current editable draft fields.
+- `approval_status` controls revoke/restore availability only as already tested: approved -> revoke enabled, pending -> neither, rejected -> restore enabled.
+- Edit remains enabled for approved, pending, and rejected rows in the existing tests; do not infer this as final product policy for every edge case.
+- Edit submit reuses the same validation gate as create: report date, account code, and at least one numeric adjustment field are required before the API call.
+- Additional revoke friction beyond the tested confirmation gate is not approved here.
+
 ## 10. Time Semantics
 
-- `requested_report_date`: query parameter `report_date`
-- `resolved_report_date`: currently `result.report_date`
-- `generated_at`: `result_meta.generated_at`
-- `as_of_date`: currently missing as a standalone outward field; treat this as an explicit contract gap, not an implicit assumption
+- `requested_report_date`: user-requested report date; currently query parameter `report_date`
+- `resolved_report_date`: backend-returned report date; currently `result.report_date`
+- `as_of_date`: intentionally not a standalone outward field for product-category PnL
+- `generated_at`: system generation timestamp; currently `result_meta.generated_at`
+
+Decision 1B (2026-05-11): do not add a standalone outward `as_of_date` field for this page. The page must show `report_date` and `generated_at` separately and must not present either as a replacement `as_of_date`.
+
+Implementation status: the no-standalone-field decision is now page-visible via `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY`; API schemas should not add an `as_of_date` field for product-category PnL without reopening this decision.
 
 No silent fallback is allowed. If degradation occurs, it must be visible.
 
@@ -175,8 +224,20 @@ No silent fallback is allowed. If degradation occurs, it must be visible.
 
 - The report-date dropdown is populated from `GET /ui/pnl/product-category/dates` → `result.report_dates` in the order returned by the API (backend ordering is asserted in `tests/test_product_category_pnl_flow.py`).
 - When local `selectedDate` is empty and `report_dates` is non-empty, the page sets `selectedDate` to the **first** list entry (`nextDefaultReportDateIfUnset` in `productCategoryPnlPageModel.ts`). This applies to the main product-category PnL page and the legacy manual-adjustment audit body on the same feature.
+- Decision 2A (2026-05-11): after the user has a non-empty selected date, do not silently switch it. If the selected date disappears from the returned list, keep the selection and surface the existing no-data/error path rather than silently moving to the first returned date.
 - The link from this page to `/ledger-pnl` for the same calendar selection uses `buildLedgerPnlHrefForReportDate`: empty selection → `/ledger-pnl` with no query; otherwise `report_date` is passed via `encodeURIComponent`.
-- This subsection does not add an outward `as_of_date`; section 10 above remains the source of truth for that gap.
+- This subsection does not add an outward `as_of_date`; section 10 above records the permanent no-standalone-field decision.
+
+### 10.2 Fallback-Date Boundary
+
+This subsection is a boundary, not an approval to add a new date field.
+
+- The current outward product-category PnL contract has no standalone `fallback_date` field and no standalone `as_of_date` field.
+- Do not infer a fallback date from `report_date`, `resolved_report_date`, or `generated_at`.
+- If backend `result_meta` or lineage evidence reports fallback behavior, the page may surface raw `fallback_mode` / source-status evidence only.
+- Raw fallback evidence is not replacement date truth.
+- Any future outward `fallback_date` or `as_of_date` field requires reopening product/API decision 1B and adding targeted API/schema/page tests in the same change.
+- Current evidence is governance-strip and formal-readiness visibility only; it is not page certification or business-owner approval.
 
 ## 11. Result Meta Visibility
 
@@ -201,7 +262,7 @@ In addition, the first-screen governance strip (above the `FormalResultMetaPanel
 - `vendor_status` is `vendor_stale` or `vendor_unavailable`, or `quality_flag` is not `ok` (dedicated status lines; no ZQTZ/holdings inference)
 - both formal baseline and scenario responses are loaded: a one-line line states that the two `result_meta` values are shown in separate cards and lists `basis` + `trace_id` for each (they must not be merged into a single effective meta)
 
-The strip also states the explicit outward gap that there is no standalone `as_of_date` field (see §10); the page does not fabricate a calendar `as_of_date`.
+The strip also states the explicit product decision that there is no standalone `as_of_date` field (see section 10); the page does not fabricate a calendar `as_of_date`.
 
 The page must explicitly surface:
 
@@ -210,6 +271,42 @@ The page must explicitly surface:
 - fallback mode
 - loading failure
 - metric-definition pending confirmation
+
+### 11.1 Stale / Fallback / Refresh Matrix Skeleton
+
+This skeleton separates behavior already evidenced by tests from behavior that still needs product/API approval. It is intentionally not final UX copy.
+
+| State | Current evidence | Current page expectation | Open decision |
+| --- | --- | --- | --- |
+| `fallback_mode != none` | `ProductCategoryGovernanceStrip` / `collectProductCategoryGovernanceNotices`; page test covers degraded meta and `ProductCategoryFormalReadinessBand` raw status | Dedicated first-screen status line plus formal-readiness `fallback=<raw>` and `data-state-review-required` marker | Final banner copy and whether it belongs outside the governance strip |
+| `vendor_status in {vendor_stale, vendor_unavailable}` | governance-strip helper and page test; formal-readiness raw status | Dedicated first-screen status line plus formal-readiness `vendor=<raw>` and `data-state-review-required` marker; no holdings/ZQTZ inference | Product wording for stale/vendor unavailable severity |
+| `quality_flag != ok` | governance-strip helper and page test; formal-readiness raw status | Dedicated first-screen status line plus formal-readiness `quality=<raw>` and `data-state-review-required` marker | Product wording for warning/error/stale levels |
+| formal and scenario both loaded | dual-meta helper and page test | Formal and scenario result metadata remain separate | None for the existing one-line distinction |
+| refresh `queued` / `running` | Unit 3 page tests and `runRefreshWorkflow` polling snapshot | In-flight line shows status and disables refresh-related controls | None for queued/running visibility; timeout wording remains open |
+| refresh terminal `failed` | Unit 3 page tests | Error remains visible and in-flight line clears | Final long-running failure/timeout copy |
+| empty `report_dates` | Unit 1 page test | Skip PnL/adjustment fetches and keep ledger link bare | None for empty-list behavior |
+| selected date no longer appears in `report_dates` | Decision 2A + `nextDefaultReportDateIfUnset` + Unit 1 page test | Keep the selected date; do not silently switch to the first returned date; surface the existing no-data/error path | None for no-silent-switch behavior |
+| standalone `as_of_date` | no-standalone-field copy and page/model test | Do not fabricate `as_of_date` from report date or generated time | None unless product reopens 1B |
+
+Unknown cells in this table must not be converted to code behavior without updating this contract and targeted tests.
+
+### 11.2 Evidence-Only Cross-Surface State Matrix
+
+This matrix records only states already covered by tests plus the 2026-05-11 no-silent-date-switch / no-standalone-as_of_date decisions; it does not define timeout copy.
+
+| Surface | State | Evidence | Current expectation | Still open |
+| --- | --- | --- | --- | --- |
+| `/product-category-pnl` first screen | degraded `result_meta` fallback/vendor/quality | `surfaces degraded result_meta (fallback, vendor, quality) in the governance strip, not only inside the meta panel` | governance strip shows dedicated notices; formal readiness band shows raw `quality`, `vendor`, `fallback`, and `data-state-review-required` | final banner wording / severity labels |
+| `/product-category-pnl` formal table | baseline refetch failure after refresh | `Unit 9: formal baseline refetch failure shows AsyncSection error; no stale table, summary, or footer` | error branch replaces table, summary, and footer instead of presenting cached money as success | final stale-banner copy |
+| `/product-category-pnl` refresh control | queued / running | `Unit 3: refresh shows in-flight status (queued→running), disables refresh, then records last run id` | in-flight line is visible and refresh button is disabled until completion | timeout wording |
+| `/product-category-pnl` refresh control | HTTP 409 conflict | `surfaces refresh conflict (409) with explicit copy and does not record a successful run id` | error copy is visible; no successful run id is recorded | product wording beyond current copy |
+| `/product-category-pnl` refresh control | HTTP 503 sync fallback failure | `surfaces sync-fallback service failure (503) with explicit copy and does not record a successful run id` | error copy is visible; no successful run id is recorded | product wording beyond current copy |
+| `/product-category-pnl` refresh control | terminal failed status | `surfaces terminal failed refresh status as an error (not silent success)` | terminal failure stays visible and the in-flight line clears | long-running failure copy |
+| `/product-category-pnl` adjustment summary | failed refetch after prior rows | `Unit 5: main adjustment summary refetch failure hides stale rows and keeps retry available` | stale prior rows are not left in the DOM under the adjustment summary error region | partial degradation policy |
+| `/product-category-pnl/audit` list/timeline | initial/refetch list failure | `Unit 5: list/timeline failure surfaces AsyncSection error, hides current+event bodies, and retry refetches` | error region hides current-state and event bodies until retry succeeds | partial degradation policy |
+| `/product-category-pnl/audit` list/timeline | failed refetch after prior rows | `Unit 5: failed list refetch does not leave prior current-state or timeline rows visible` | stale prior rows are not left in the DOM under the error region | export-vs-list divergence policy |
+| `GET /ui/pnl/product-category` backend detail | read model locked | `test_product_category_detail_returns_503_when_read_model_is_locked` | endpoint fails closed with 503 instead of fabricating data | user-facing copy at page layer |
+| `GET /ui/pnl/product-category/dates` backend dates | read model locked | `test_product_category_dates_returns_503_when_read_model_is_locked` | endpoint fails closed with 503 instead of fabricating dates | user-facing copy for date-list failure |
 
 ## 12. Minimum Reconciliation Rules
 
@@ -242,8 +339,29 @@ Current evidence for this page-level contract:
 
 This contract deliberately leaves these gaps visible:
 
-- no approved `metric_id` freeze yet
-- no standalone outward `as_of_date` yet
+- detail `metric_id` expansion is implemented for decision 3C rows `MTR-PCP-004` through `MTR-PCP-012`; any additional detail field still needs a new approved matrix / dictionary / sample / test bundle
+- standalone outward `as_of_date` is intentionally not provided for this page (2026-05-11, decision 1B)
 - first sample pack is now checked in as `GS-PROD-CAT-PNL-A`
 
 These are not reasons to guess. They are the next governance gaps to close after the first sample freeze.
+
+## 15. P0 Closure Gate
+
+P0 is a closure gate, not a new feature lane.
+
+The current P0 boundary is:
+
+- P0-approved active formal metric ids are currently `MTR-PCP-001` through `MTR-PCP-012`.
+- detail `metric_id` expansion for decision 3C is implemented only for the approved row fields; further product-category fields remain implementation-required for field matrix, numbering, dictionary rows, and tests
+- standalone outward `as_of_date` is a no-field product/API decision for this page
+- stale/fallback/refresh visibility may be locked only where current tests already prove behavior
+- unresolved stale/fallback wording and timeout wording remain decision-required; decision 2A page coverage for disappeared selected dates is now frozen in the Unit 1 page test
+
+Rules for this gate:
+
+- do not add additional `MTR-*` rows for product-category fields from sample evidence alone; use a new approved matrix / dictionary / sample / test bundle
+- do not infer `as_of_date` from `report_date` or `generated_at`
+- do not treat the companion scenario probe as a second full golden matrix sample
+- do not convert decision-required cells in section 11.1 into code behavior without updating this contract and targeted tests
+
+P0 evidence can lock known stale/fallback behavior, but cannot choose unresolved product copy or API shape.

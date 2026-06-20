@@ -5,6 +5,7 @@ import {
   SHADOW,
   panelStyle,
   promotionLabel,
+  readinessStatusLabel,
   readinessSurface,
   readinessTagColor,
   toneColor,
@@ -40,6 +41,10 @@ describe("bondAnalyticsCockpitTokens", () => {
     expect(readinessTagColor("placeholder-blocked")).toBe("warning");
     expect(readinessTagColor("warning")).toBe("warning");
     expect(readinessTagColor("unknown-status")).toBe("default");
+  });
+
+  it("readinessStatusLabel keeps request errors as controlled user-facing copy", () => {
+    expect(readinessStatusLabel("request-error")).toBe("暂不可用");
   });
 
   it("readinessSurface maps status labels to surface tokens", () => {

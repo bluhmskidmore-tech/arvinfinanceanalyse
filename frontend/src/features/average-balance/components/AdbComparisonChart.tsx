@@ -5,9 +5,14 @@ const YI = 100_000_000;
 export type AdbComparisonChartRow = {
   label: string;
   spot: number;
-  avg: number;
-  deviationPct: number;
+  avg: number | null;
+  deviationPct: number | null;
 };
+
+function formatYiValue(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return (value / YI).toFixed(2);
+}
 
 function formatSignedPct(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
@@ -25,7 +30,7 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
         return [
           row.label,
           `Spot: ${(row.spot / YI).toFixed(2)} 亿元`,
-          `ADB: ${(row.avg / YI).toFixed(2)} 亿元`,
+          `ADB: ${formatYiValue(row.avg)} 亿元`,
           `偏离度: ${formatSignedPct(row.deviationPct)}`,
         ].join("<br/>");
       },
@@ -55,7 +60,7 @@ function buildComparisonOption(rows: AdbComparisonChartRow[]) {
           show: true,
           position: "top",
           formatter: ({ dataIndex }: { dataIndex: number }) =>
-            formatSignedPct(rows[dataIndex]?.deviationPct ?? 0),
+            formatSignedPct(rows[dataIndex]?.deviationPct),
           color: "#475569",
           fontSize: 11,
         },

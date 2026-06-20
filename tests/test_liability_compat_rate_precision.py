@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from backend.app.core_finance.liability_analytics_compat import normalize_interbank_rate_decimal
+from backend.app.core_finance.liability_analytics_compat import (
+    normalize_interbank_rate_decimal,
+)
 
 
 def test_percent_inputs_to_decimal_share() -> None:

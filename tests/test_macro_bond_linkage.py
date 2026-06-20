@@ -6,14 +6,19 @@ from decimal import Decimal
 
 import duckdb
 import pytest
-from backend.app.governance.settings import get_settings
-from backend.app.repositories.yield_curve_repo import ensure_yield_curve_tables
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.yield_curve_repo import ensure_yield_curve_tables
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 REPORT_DATE = date(2026, 4, 10)
+MACRO_BOND_LINKAGE_READ_HEADERS = {
+    "X-User-Id": "macro-bond-linkage-read-user",
+    "X-User-Role": "viewer",
+}
 
 
 def _core_module():
@@ -23,14 +28,38 @@ def _core_module():
     )
 
 
-def _route_client() -> TestClient:
+def _configure_macro_bond_linkage_scope_store(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "macro-bond-linkage-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    return repo_mod.UserScopeRepository(auth_dsn)
+
+
+def _route_client(tmp_path, monkeypatch, *, grant_read: bool = True) -> TestClient:
+    repo = _configure_macro_bond_linkage_scope_store(tmp_path, monkeypatch)
+    if grant_read:
+        repo.grant_scope(
+            user_id="*",
+            role=None,
+            resource="macro_bond_linkage",
+            action="read",
+        )
     route_module = load_module(
         "backend.app.api.routes.macro_bond_linkage",
         "backend/app/api/routes/macro_bond_linkage.py",
     )
     app = FastAPI()
     app.include_router(route_module.router)
-    return TestClient(app)
+    client = TestClient(app)
+    client.headers.update(MACRO_BOND_LINKAGE_READ_HEADERS)
+    return client
 
 
 def _service_module():
@@ -120,7 +149,7 @@ def _seed_macro_and_curve_inputs(
             "EMM00166458": ("中债国债到期收益率:1年", "daily", "pct"),
             "EMM00166252": ("SHIBOR:隔夜", "daily", "pct"),
             "EMM00166253": ("SHIBOR:1周", "daily", "pct"),
-            "EMM00166216": ("银行间质押式回购加权利率", "daily", "pct"),
+            "CA.DR007": ("存款类机构质押式回购加权利率:DR007", "daily", "pct"),
             "EMM00008445": ("工业增加值:当月同比", "monthly", "pct"),
             "EMM00619381": ("中国:GDP:现价:当季值", "quarterly", "cny"),
             "EMM00072301": ("CPI:当月同比", "monthly", "pct"),
@@ -152,7 +181,7 @@ def _seed_macro_and_curve_inputs(
                 "EMM00166458": 1.55 + rate_shift * 0.6,
                 "EMM00166252": 1.70 + liquidity_shift,
                 "EMM00166253": 1.75 + liquidity_shift * 0.9,
-                "EMM00166216": 1.80 + liquidity_shift * 0.85,
+                "CA.DR007": 1.80 + liquidity_shift * 0.85,
                 "EMM00008445": growth_shift,
                 "EMM00619381": 100.0 + growth_shift * 8,
                 "EMM00072301": inflation_shift,
@@ -394,6 +423,45 @@ def test_alignment_modes_differ_for_low_frequency_macro_vs_daily_yield():
     assert market_timing[0].direction == "positive"
 
 
+def test_compute_macro_bond_correlations_reuses_sorted_alignment_inputs(monkeypatch):
+    mod = _core_module()
+    start = date(2026, 1, 1)
+    macro_series = {
+        f"macro_{series_index}": [
+            (start + timedelta(days=offset), float(offset + series_index))
+            for offset in range(120)
+        ]
+        for series_index in range(3)
+    }
+    yield_series = {
+        f"treasury_{tenor}Y": [
+            (start + timedelta(days=offset), float(offset * 2 + tenor))
+            for offset in range(120)
+        ]
+        for tenor in (5, 10)
+    }
+    original_sorted = sorted
+    date_map_sort_count = 0
+
+    def counting_sorted(iterable, *args, **kwargs):
+        nonlocal date_map_sort_count
+        if isinstance(iterable, dict) and all(isinstance(item, date) for item in iterable):
+            date_map_sort_count += 1
+        return original_sorted(iterable, *args, **kwargs)
+
+    monkeypatch.setattr(mod, "sorted", counting_sorted, raising=False)
+
+    results = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=120,
+        alignment_mode="market_timing",
+    )
+
+    assert len(results) == 6
+    assert date_map_sort_count <= len(macro_series) + len(yield_series)
+
+
 def test_compute_macro_bond_correlations_is_scale_invariant_without_zscore_flag():
     mod = _core_module()
     start = date(2026, 1, 1)
@@ -569,7 +637,7 @@ def test_environment_score_uses_continuous_rate_signal_below_legacy_threshold():
         "EMM00166458": [(start, 1.55), (REPORT_DATE - timedelta(days=30), 1.60), (REPORT_DATE, 1.66)],
         "EMM00166252": [(start, 1.80), (REPORT_DATE, 1.80)],
         "EMM00166253": [(start, 1.82), (REPORT_DATE, 1.82)],
-        "EMM00166216": [(start, 1.84), (REPORT_DATE, 1.84)],
+        "CA.DR007": [(start, 1.84), (REPORT_DATE, 1.84)],
         "EMM00008445": [(start, 1.2), (REPORT_DATE, 1.2)],
         "EMM00619381": [(start, 100.0), (REPORT_DATE, 100.0)],
         "EMM00072301": [(REPORT_DATE, 2.0)],
@@ -601,7 +669,7 @@ def test_environment_score_liquidity_is_robust_to_baseline_outlier():
         "EMM00166458": [(REPORT_DATE - timedelta(days=90), 1.6), (REPORT_DATE, 1.6)],
         "EMM00166252": build_liquidity_history(1.00, 10.0, 1.40),
         "EMM00166253": build_liquidity_history(1.05, 10.5, 1.45),
-        "EMM00166216": build_liquidity_history(1.10, 11.0, 1.50),
+        "CA.DR007": build_liquidity_history(1.10, 11.0, 1.50),
         "EMM00008445": [(REPORT_DATE - timedelta(days=30), 1.2), (REPORT_DATE, 1.2)],
         "EMM00619381": [(REPORT_DATE - timedelta(days=90), 100.0), (REPORT_DATE, 100.0)],
         "EMM00072301": [(REPORT_DATE, 2.0)],
@@ -622,7 +690,7 @@ def test_environment_score_contributing_factors_include_method_metadata():
         "EMM00166458": [(start, 1.50), (REPORT_DATE - timedelta(days=30), 1.58), (REPORT_DATE, 1.66)],
         "EMM00166252": [(start, 1.70), (REPORT_DATE, 1.90)],
         "EMM00166253": [(start, 1.72), (REPORT_DATE, 1.94)],
-        "EMM00166216": [(start, 1.76), (REPORT_DATE, 1.98)],
+        "CA.DR007": [(start, 1.76), (REPORT_DATE, 1.98)],
         "EMM00008445": [(start, 1.2), (REPORT_DATE, 1.5)],
         "EMM00619381": [(start, 100.0), (REPORT_DATE, 104.0)],
         "EMM00072301": [(REPORT_DATE, 2.2)],
@@ -650,7 +718,7 @@ def test_environment_score_rising_rates():
         "EMM00166458": [(start, 1.50), (REPORT_DATE, 1.74)],
         "EMM00166252": [(start, 1.70), (REPORT_DATE - timedelta(days=1), 1.72), (REPORT_DATE, 2.10)],
         "EMM00166253": [(start, 1.72), (REPORT_DATE - timedelta(days=1), 1.75), (REPORT_DATE, 2.08)],
-        "EMM00166216": [(start, 1.76), (REPORT_DATE - timedelta(days=1), 1.80), (REPORT_DATE, 2.12)],
+        "CA.DR007": [(start, 1.76), (REPORT_DATE - timedelta(days=1), 1.80), (REPORT_DATE, 2.12)],
         "EMM00008445": [(start, 1.2), (REPORT_DATE, 1.8)],
         "EMM00619381": [(start, 100.0), (REPORT_DATE, 108.0)],
         "EMM00072301": [(REPORT_DATE, 3.2)],
@@ -675,7 +743,7 @@ def test_environment_score_falling_rates():
         "EMM00166458": [(start, 1.80), (REPORT_DATE, 1.55)],
         "EMM00166252": [(start, 1.95), (REPORT_DATE - timedelta(days=1), 1.88), (REPORT_DATE, 1.45)],
         "EMM00166253": [(start, 1.98), (REPORT_DATE - timedelta(days=1), 1.90), (REPORT_DATE, 1.48)],
-        "EMM00166216": [(start, 2.02), (REPORT_DATE - timedelta(days=1), 1.93), (REPORT_DATE, 1.50)],
+        "CA.DR007": [(start, 2.02), (REPORT_DATE - timedelta(days=1), 1.93), (REPORT_DATE, 1.50)],
         "EMM00008445": [(start, 1.8), (REPORT_DATE, 1.1)],
         "EMM00619381": [(start, 108.0), (REPORT_DATE, 101.0)],
         "EMM00072301": [(REPORT_DATE, 0.8)],
@@ -727,13 +795,37 @@ def test_target_identity_parsing_preserves_multiword_family():
     assert mod._split_target_identity("treasury") == ("treasury", None)
 
 
+def test_macro_bond_linkage_read_requires_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.macro_bond_linkage",
+        "backend/app/api/routes/macro_bond_linkage.py",
+    )
+    _configure_macro_bond_linkage_scope_store(tmp_path, monkeypatch)
+
+    def _unexpected_service_call(_report_date: date) -> dict[str, object]:
+        raise AssertionError("Macro-bond linkage service should not run without macro_bond_linkage/read.")
+
+    monkeypatch.setattr(route_module, "get_macro_bond_linkage", _unexpected_service_call)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get(
+        "/api/macro-bond-linkage/analysis",
+        params={"report_date": REPORT_DATE.isoformat()},
+        headers=MACRO_BOND_LINKAGE_READ_HEADERS,
+    )
+
+    assert response.status_code == 403, response.text
+
+
 def test_api_returns_envelope(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "macro-bond-linkage.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    client = _route_client()
+    client = _route_client(tmp_path, monkeypatch)
     response = client.get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
@@ -766,6 +858,44 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_api_uses_latest_prior_risk_tensor_when_target_date_is_missing(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-linkage-prior-risk.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    prior_date = REPORT_DATE - timedelta(days=1)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_risk_tensor_daily
+            set report_date = ?,
+                portfolio_dv01 = 15.25,
+                cs01 = 6.50,
+                total_market_value = 2000.00,
+                source_version = 'sv_prior_risk_tensor',
+                rule_version = 'rv_prior_risk_tensor'
+            where report_date = ?
+            """,
+            [prior_date.isoformat(), REPORT_DATE.isoformat()],
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    payload = _route_client(tmp_path, monkeypatch).get(
+        "/api/macro-bond-linkage/analysis",
+        params={"report_date": REPORT_DATE.isoformat()},
+    ).json()
+
+    result = payload["result"]
+    assert Decimal(result["portfolio_impact"]["estimated_rate_pnl_impact"]) != Decimal("0")
+    assert Decimal(result["portfolio_impact"]["total_estimated_impact"]) != Decimal("0")
+    assert any(prior_date.isoformat() in warning for warning in result["warnings"])
+    assert "sv_prior_risk_tensor" in payload["result_meta"]["source_version"]
+
+    get_settings.cache_clear()
+
+
 def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monkeypatch):
     """Schema → service → HTTP：相关性元数据字段在 API JSON 中可见。"""
     duckdb_path = tmp_path / "macro-bond-cross-layer.duckdb"
@@ -773,7 +903,7 @@ def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monk
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    client = _route_client()
+    client = _route_client(tmp_path, monkeypatch)
     response = client.get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
@@ -814,7 +944,7 @@ def test_api_exposes_investment_research_additive_fields(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    payload = _route_client().get(
+    payload = _route_client(tmp_path, monkeypatch).get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
     ).json()
@@ -835,7 +965,7 @@ def test_macro_bond_linkage_marks_missing_equity_axes_as_pending_signal(tmp_path
     monkeypatch.setenv("MOSS_ENABLE_TUSHARE_RESEARCH_AXES", "1")
     get_settings.cache_clear()
 
-    payload = _route_client().get(
+    payload = _route_client(tmp_path, monkeypatch).get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
     ).json()["result"]
@@ -872,7 +1002,7 @@ def test_macro_bond_linkage_emits_supported_research_views(tmp_path, monkeypatch
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    payload = _route_client().get(
+    payload = _route_client(tmp_path, monkeypatch).get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
     ).json()["result"]
@@ -1268,13 +1398,70 @@ def test_service_conservative_top_correlations_mirror_method_variant(tmp_path, m
     get_settings.cache_clear()
 
 
+def test_service_reuses_macro_components_without_reusing_request_envelope(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-linkage-components-cache.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_bond_linkage_components")
+    macro_load_count = 0
+    original_load_macro_inputs = svc._load_macro_inputs
+
+    def counting_load_macro_inputs(*args: object, **kwargs: object):
+        nonlocal macro_load_count
+        macro_load_count += 1
+        return original_load_macro_inputs(*args, **kwargs)
+
+    monkeypatch.setattr(svc, "_load_macro_inputs", counting_load_macro_inputs)
+
+    first = svc.get_macro_bond_linkage(REPORT_DATE)
+    second = svc.get_macro_bond_linkage(REPORT_DATE)
+
+    assert macro_load_count == 1
+    assert first["result"]["top_correlations"] == second["result"]["top_correlations"]
+    assert first["result_meta"]["trace_id"] != second["result_meta"]["trace_id"]
+
+    clear_runtime_cache("macro_bond_linkage_components")
+    get_settings.cache_clear()
+
+
+def test_macro_environment_context_skips_full_correlation_analysis(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-environment-context.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_environment_context")
+
+    def fail_full_correlation_analysis(*_args: object, **_kwargs: object):
+        raise AssertionError("lightweight macro context should not compute macro-bond correlations")
+
+    monkeypatch.setattr(svc, "compute_macro_bond_correlations", fail_full_correlation_analysis)
+
+    envelope = svc.get_macro_environment_context(REPORT_DATE)
+
+    assert envelope["result_meta"]["result_kind"] == "macro_bond_linkage.environment_context"
+    assert envelope["result"]["environment_score"]["composite_score"] is not None
+    assert "top_correlations" not in envelope["result"]
+
+    clear_runtime_cache("macro_environment_context")
+    get_settings.cache_clear()
+
+
 def test_api_returns_warning_when_macro_history_is_insufficient(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "macro-bond-linkage-insufficient.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=20, rising_rates=True)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    client = _route_client()
+    client = _route_client(tmp_path, monkeypatch)
     response = client.get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},

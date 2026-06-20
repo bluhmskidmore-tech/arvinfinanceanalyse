@@ -342,6 +342,11 @@ def test_ledger_import_real_pack_seven_xls_samples_import_without_errors(tmp_pat
         "ZQTZSHOW-20260314.xls",
         "ZQTZSHOW-20260317.xls",
     ]
+    missing_samples = [
+        sample_name for sample_name in sample_names if not (pack_dir / "sample_ledgers" / sample_name).is_file()
+    ]
+    if missing_samples:
+        pytest.skip(f"bank ledger pack samples are not available: {', '.join(missing_samples)}")
 
     payloads = [
         service.import_file(
@@ -441,9 +446,26 @@ def test_ledger_import_schema_registry_adds_batch_raw_and_snapshot_tables():
 
 def _configure_ledger_import_env(tmp_path, monkeypatch) -> Path:
     duckdb_path = tmp_path / "moss.duckdb"
+    auth_scope_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{auth_scope_path.as_posix()}")
     get_settings.cache_clear()
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    repo = UserScopeRepository(f"sqlite:///{auth_scope_path.as_posix()}")
+    repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="ledger.data",
+        action="import",
+    )
+    repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="ledger.data",
+        action="read",
+    )
     return duckdb_path
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import date
+from datetime import date, datetime
 
 import duckdb
 import pandas as pd
@@ -10,7 +10,29 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+MACRO_VENDOR_READ_HEADERS = {"X-User-Id": "macro-vendor-read-user", "X-User-Role": "viewer"}
+
+
+def _seed_macro_vendor_read_scope(tmp_path, monkeypatch) -> None:
+    sqlite_path = tmp_path / "macro-vendor-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(auth_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_vendor",
+        action="read",
+    )
 
 
 def _choice_series_json() -> str:
@@ -137,6 +159,120 @@ def _write_choice_macro_catalog(path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+SHIBOR_SCOPED_SERIES = [
+    ("EMM00166252", "SHIBOR:ON", 1.384),
+    ("EMM00166253", "SHIBOR:1W", 1.42),
+    ("EMM00166254", "SHIBOR:2W", 1.402),
+    ("EMM00167612", "SHIBOR:1M", 1.427),
+    ("EMM00167613", "SHIBOR:3M", 1.4144),
+    ("EMM00167614", "SHIBOR:6M", 1.4299),
+    ("EMM00167708", "SHIBOR:1Y", 1.43),
+]
+
+
+def _write_choice_shibor_scoped_catalog(path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "catalog_version": "2026-06-10.choice-funding-test.v1",
+                "vendor_name": "choice",
+                "generated_at": "2026-06-10T00:00:00Z",
+                "generated_from": "tests.fixture.choice_shibor_scoped_catalog",
+                "batches": [
+                    {
+                        "batch_id": "stable_daily",
+                        "fetch_mode": "date_slice",
+                        "fetch_granularity": "batch",
+                        "refresh_tier": "stable",
+                        "policy_note": "existing Choice macro lane",
+                        "request_options": {
+                            "IsLatest": 0,
+                            "StartDate": "__RUN_DATE__",
+                            "EndDate": "__RUN_DATE__",
+                            "Ispandas": 1,
+                            "RECVtimeout": 5,
+                        },
+                        "series": [
+                            {
+                                "series_id": "cn_existing_choice",
+                                "series_name": "Existing Choice Row",
+                                "vendor_series_code": "EDB_EXISTING",
+                                "frequency": "daily",
+                                "unit": "%",
+                                "theme": "rates",
+                                "is_core": True,
+                                "tags": ["choice", "existing"],
+                            }
+                        ],
+                    },
+                    {
+                        "batch_id": "choice_funding_shibor_latest",
+                        "fetch_mode": "latest",
+                        "fetch_granularity": "single",
+                        "refresh_tier": "fallback",
+                        "policy_note": "confirmed SHIBOR latest-only test lane",
+                        "request_options": {
+                            "IsLatest": 1,
+                            "RowIndex": 1,
+                            "Ispandas": 1,
+                            "RECVtimeout": 5,
+                        },
+                        "series": [
+                            {
+                                "series_id": series_id,
+                                "series_name": name,
+                                "vendor_series_code": series_id,
+                                "frequency": "daily",
+                                "unit": "%",
+                                "theme": "money_liquidity",
+                                "is_core": True,
+                                "tags": ["choice", "macro", "rates", "shibor", "funding"],
+                            }
+                            for series_id, name, _value in SHIBOR_SCOPED_SERIES
+                        ],
+                    },
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _choice_shibor_snapshot(
+    macro_schema_module,
+    series,
+    values_by_id: dict[str, float],
+):
+    return macro_schema_module.ChoiceMacroSnapshot(
+        vendor_name="choice",
+        vendor_version="vv_choice_shibor_20260609",
+        captured_at="2026-06-10T00:00:00Z",
+        series=[
+            macro_schema_module.ChoiceMacroPoint(
+                series_id=item.series_id,
+                series_name=item.series_name,
+                vendor_series_code=item.vendor_series_code,
+                vendor_name="choice",
+                trade_date="2026-06-09",
+                value_numeric=values_by_id[item.series_id],
+                frequency=item.frequency,
+                unit=item.unit,
+                vendor_version="vv_choice_shibor_20260609",
+            )
+            for item in series
+        ],
+        raw_payload={"series": [item.series_id for item in series]},
+    )
+
+
+def _archive_files(path):
+    if not path.exists():
+        return []
+    return sorted(item for item in path.rglob("*") if item.is_file())
 
 
 def _choice_gateway_payload() -> dict[str, object]:
@@ -305,6 +441,7 @@ def test_choice_macro_refresh_archives_raw_payload_and_materializes_duckdb(tmp_p
     repo = governance_module.GovernanceRepository(base_dir=tmp_path / "governance")
     manifests = repo.read_all(governance_module.VENDOR_SNAPSHOT_MANIFEST_STREAM)
     versions = repo.read_all(governance_module.VENDOR_VERSION_REGISTRY_STREAM)
+    assert _archive_files(tmp_path / "archive")
     assert manifests[-1]["vendor_version"] == "vv_choice_20260409T140000Z"
     assert manifests[-1]["capture_mode"] == "live"
     assert versions[-1]["vendor_version"] == "vv_choice_20260409T140000Z"
@@ -538,11 +675,92 @@ def test_choice_macro_refresh_does_not_expose_partial_vendor_lineage_when_succes
     versions = repo.read_all(governance_module.VENDOR_VERSION_REGISTRY_STREAM)
     build_runs = repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM)
 
+    assert _archive_files(tmp_path / "archive")
     assert manifests == []
     assert versions == []
     assert build_runs[-1]["status"] == "failed"
     assert build_runs[-1]["vendor_version"] == "vv_choice_20260409T140000Z"
     assert repo.read_all(governance_module.CACHE_MANIFEST_STREAM) == []
+    get_settings.cache_clear()
+
+
+def test_choice_macro_refresh_marks_archive_failure_after_duckdb_commit_as_failed_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_URL", "https://choice.example/macro")
+    monkeypatch.setenv("MOSS_CHOICE_USERNAME", "demo-user")
+    monkeypatch.setenv("MOSS_CHOICE_PASSWORD", "demo-pass")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", _choice_series_json())
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    monkeypatch.setattr(
+        task_module.VendorAdapter,
+        "fetch_macro_snapshot",
+        lambda self, series, timeout_seconds=10.0, request_options="": macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version="vv_choice_20260409T140000Z",
+            captured_at="2026-04-09T14:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id="cn_cpi_yoy",
+                    series_name="CN CPI YoY",
+                    vendor_series_code="EDB_CPI_YOY",
+                    vendor_name="choice",
+                    trade_date="2026-04-09",
+                    value_numeric=0.7,
+                    frequency="daily",
+                    unit="pct",
+                    vendor_version="vv_choice_20260409T140000Z",
+                ),
+            ],
+            raw_payload=_choice_gateway_payload(),
+        ),
+    )
+
+    def failing_archive_bytes(self, *args, **kwargs):
+        raise RuntimeError("choice archive failed")
+
+    monkeypatch.setattr(task_module.ObjectStoreRepository, "archive_bytes", failing_archive_bytes)
+
+    with pytest.raises(RuntimeError, match="choice archive failed"):
+        task_module.refresh_choice_macro_snapshot.fn(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+        )
+
+    repo = governance_module.GovernanceRepository(base_dir=tmp_path / "governance")
+    build_runs = repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM)
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=True)
+    try:
+        landed_rows = conn.execute("select count(*) from fact_choice_macro_daily").fetchone()[0]
+    finally:
+        conn.close()
+
+    assert _archive_files(tmp_path / "archive") == []
+    assert repo.read_all(governance_module.VENDOR_SNAPSHOT_MANIFEST_STREAM) == []
+    assert repo.read_all(governance_module.VENDOR_VERSION_REGISTRY_STREAM) == []
+    assert repo.read_all(governance_module.CACHE_MANIFEST_STREAM) == []
+    assert build_runs[-1]["status"] == "failed"
+    assert build_runs[-1]["vendor_version"] == "vv_choice_20260409T140000Z"
+    assert landed_rows == 1
     get_settings.cache_clear()
 
 
@@ -651,9 +869,10 @@ def test_choice_macro_latest_api_returns_real_fact_rows(tmp_path, monkeypatch):
         governance_dir=str(tmp_path / "governance"),
     )
 
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -725,9 +944,10 @@ def test_choice_macro_latest_api_aggregates_vendor_lineage_across_distinct_batch
     finally:
         conn.close()
 
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -770,9 +990,10 @@ def test_choice_macro_latest_api_returns_warning_quality_flag_when_duckdb_has_no
     finally:
         conn.close()
 
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -1454,6 +1675,347 @@ def test_choice_macro_refresh_falls_back_to_single_series_when_batch_ids_cannot_
     ]
 
 
+def test_choice_macro_refresh_skips_single_series_parameter_error_after_mixed_batch_split(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv(
+        "MOSS_CHOICE_MACRO_SERIES_JSON",
+        json.dumps(
+            [
+                {
+                    "series_id": "EMM00058124",
+                    "series_name": "中间价:美元兑人民币",
+                    "vendor_series_code": "EMM00058124",
+                    "frequency": "daily",
+                    "unit": "CNY",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "fx"],
+                },
+                {
+                    "series_id": "EM1",
+                    "series_name": "10Y中国国债-10Y美国国债",
+                    "vendor_series_code": "EM1",
+                    "frequency": "daily",
+                    "unit": "bp",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "spread"],
+                },
+            ],
+            ensure_ascii=False,
+        ),
+    )
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    observed: list[list[str]] = []
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        codes = [item.vendor_series_code for item in series]
+        observed.append(codes)
+        if len(codes) > 1 or codes == ["EM1"]:
+            raise RuntimeError("parameter error")
+        item = series[0]
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=f"vv_{item.vendor_series_code}",
+            captured_at="2026-04-11T09:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date="2026-04-11",
+                    value_numeric=1.0,
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version=f"vv_{item.vendor_series_code}",
+                )
+            ],
+            raw_payload={
+                "vendor_version": f"vv_{item.vendor_series_code}",
+                "captured_at": "2026-04-11T09:00:00Z",
+                "series": [],
+            },
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["quality_flag"] == "warning"
+    assert payload["warning_code"] == "choice_macro_partial"
+    assert payload["warnings"] == [
+        {
+            "code": "choice_series_unsupported",
+            "series_id": "EM1",
+            "vendor_series_code": "EM1",
+            "message": "parameter error",
+        }
+    ]
+    assert payload["series_count"] == 1
+    assert observed == [
+        ["EMM00058124", "EM1"],
+        ["EMM00058124"],
+        ["EM1"],
+    ]
+
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=True)
+    try:
+        rows = conn.execute(
+            "select series_id, trade_date, value_numeric from fact_choice_macro_daily order by series_id"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [("EMM00058124", "2026-04-11", 1.0)]
+    get_settings.cache_clear()
+
+
+def test_merge_choice_macro_snapshots_dedupes_vendor_versions_deterministically():
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    def make_snapshot(series_id: str, vendor_version: str, captured_at: str):
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=vendor_version,
+            captured_at=captured_at,
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=series_id,
+                    series_name=series_id,
+                    vendor_series_code=series_id,
+                    vendor_name="choice",
+                    trade_date="2026-04-11",
+                    value_numeric=1.0,
+                    frequency="daily",
+                    unit="pct",
+                    vendor_version=vendor_version,
+                )
+            ],
+            raw_payload={
+                "vendor_version": vendor_version,
+                "captured_at": captured_at,
+                "series": [],
+            },
+        )
+
+    merged = task_module.merge_choice_macro_snapshots(
+        [
+            make_snapshot("series_b", "vv_batch_b", "2026-04-11T09:00:00Z"),
+            make_snapshot("series_a1", "vv_batch_a", "2026-04-11T08:00:00Z"),
+            make_snapshot("series_a2", "vv_batch_a", "2026-04-11T10:00:00Z"),
+            make_snapshot("series_b_dup", "vv_batch_b", "2026-04-11T07:00:00Z"),
+        ]
+    )
+
+    assert merged.vendor_version == "vv_batch_a__vv_batch_b"
+    assert merged.captured_at == datetime.fromisoformat("2026-04-11T10:00:00+00:00")
+
+
+def test_choice_macro_refresh_marks_gate_supplement_failure_as_degraded_warning(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_URL", "https://choice.example/macro")
+    monkeypatch.setenv("MOSS_CHOICE_USERNAME", "demo-user")
+    monkeypatch.setenv("MOSS_CHOICE_PASSWORD", "demo-pass")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", _choice_series_json())
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    monkeypatch.setattr(
+        task_module.VendorAdapter,
+        "fetch_macro_snapshot",
+        lambda self, series, timeout_seconds=10.0, request_options="": macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version="vv_choice_20260409T140000Z",
+            captured_at="2026-04-09T14:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id="cn_cpi_yoy",
+                    series_name="CN CPI YoY",
+                    vendor_series_code="EDB_CPI_YOY",
+                    vendor_name="choice",
+                    trade_date="2026-04-09",
+                    value_numeric=0.7,
+                    frequency="daily",
+                    unit="pct",
+                    vendor_version="vv_choice_20260409T140000Z",
+                ),
+            ],
+            raw_payload=_choice_gateway_payload(),
+        ),
+    )
+
+    fake_gate_module = type(
+        "FakeGateModule",
+        (),
+        {
+            "compute_and_materialize_gate_supplement": staticmethod(
+                lambda duckdb_path, lookback_days: (_ for _ in ()).throw(RuntimeError("gate supplement failed"))
+            )
+        },
+    )()
+    monkeypatch.setitem(
+        sys.modules,
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        fake_gate_module,
+    )
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "degraded"
+    assert payload["quality_flag"] == "warning"
+    assert payload["warning_code"] == "gate_supplement_failed"
+    assert payload["gate_supplement_refresh"] == {
+        "status": "failed",
+        "quality_flag": "warning",
+        "warning_code": "gate_supplement_failed",
+        "message": "gate supplement failed",
+    }
+    get_settings.cache_clear()
+
+
+def test_choice_macro_refresh_fails_arbitrary_single_series_parameter_error_after_mixed_split(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv(
+        "MOSS_CHOICE_MACRO_SERIES_JSON",
+        json.dumps(
+            [
+                {
+                    "series_id": "EMM00058124",
+                    "series_name": "USD/CNY",
+                    "vendor_series_code": "EMM00058124",
+                    "frequency": "daily",
+                    "unit": "CNY",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "fx"],
+                },
+                {
+                    "series_id": "EMM_BAD_PARAM",
+                    "series_name": "Bad Choice parameter",
+                    "vendor_series_code": "EMM_BAD_PARAM",
+                    "frequency": "daily",
+                    "unit": "%",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "rates"],
+                },
+            ],
+            ensure_ascii=False,
+        ),
+    )
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        codes = [item.vendor_series_code for item in series]
+        if len(codes) > 1 or codes == ["EMM_BAD_PARAM"]:
+            raise RuntimeError("parameter error")
+        item = series[0]
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=f"vv_{item.vendor_series_code}",
+            captured_at="2026-04-11T09:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date="2026-04-11",
+                    value_numeric=1.0,
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version=f"vv_{item.vendor_series_code}",
+                )
+            ],
+            raw_payload={
+                "vendor_version": f"vv_{item.vendor_series_code}",
+                "captured_at": "2026-04-11T09:00:00Z",
+                "series": [],
+            },
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    with pytest.raises(RuntimeError, match="parameter error"):
+        task_module.refresh_choice_macro_snapshot.fn(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+        )
+    get_settings.cache_clear()
+
+
 def test_public_cross_asset_headline_refresh_materializes_history_and_latest_rows(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     get_settings.cache_clear()
@@ -1644,9 +2206,10 @@ def test_public_cross_asset_tushare_stock_rows_reach_latest_api_with_lineage(tmp
     assert refresh_payload["series_count"] == 4
     assert refresh_payload["row_count"] == 6
 
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -1753,6 +2316,56 @@ def test_tushare_cross_asset_loader_maps_index_daily_basic_and_weight(monkeypatc
     assert by_key[("CA.CSI300_PE", "2026-04-10")] == 14.64
     assert by_key[("CA.MEGA_CAP_WEIGHT", "2026-04-10")] == pytest.approx(18.4)
     assert by_key[("CA.MEGA_CAP_TOP5_WEIGHT", "2026-04-10")] == pytest.approx(13.7)
+
+
+def test_tushare_commodity_futures_loader_maps_copper_and_aluminum(monkeypatch):
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+
+    class _FakePro:
+        def fut_daily(self, **kwargs):
+            assert kwargs["end_date"] == "20260410"
+            if kwargs["ts_code"] == "CU.SHF":
+                return pd.DataFrame(
+                    [
+                        {"trade_date": "20260409", "close": 81000.0, "settle": 80900.0},
+                        {"trade_date": "20260410", "close": None, "settle": 81234.5},
+                    ]
+                )
+            if kwargs["ts_code"] == "AL.SHF":
+                return pd.DataFrame(
+                    [
+                        {"trade_date": "20260410", "close": 24430.0, "settle": 24410.0},
+                        {"trade_date": "20260411", "close": 24500.0, "settle": 24480.0},
+                    ]
+                )
+            raise AssertionError(kwargs["ts_code"])
+
+    class _FakeTushare:
+        def pro_api(self, token):
+            assert token == "test-token"
+            return _FakePro()
+
+    monkeypatch.setenv("MOSS_TUSHARE_TOKEN", "test-token")
+    monkeypatch.setattr(task_module, "import_tushare_pro", lambda: _FakeTushare())
+
+    rows = task_module._fetch_tushare_commodity_futures_cross_asset_history_rows(
+        duckdb_path="unused.duckdb",
+        report_date=date(2026, 4, 10),
+        lookback_days=7,
+    )
+    by_key = {(row["series_id"], row["trade_date"]): row for row in rows}
+
+    assert by_key[("CA.COPPER", "2026-04-09")]["value_numeric"] == 81000.0
+    assert by_key[("CA.COPPER", "2026-04-10")]["value_numeric"] == 81234.5
+    assert by_key[("CA.ALUMINUM", "2026-04-10")]["value_numeric"] == 24430.0
+    assert ("CA.ALUMINUM", "2026-04-11") not in by_key
+    assert by_key[("CA.COPPER", "2026-04-10")]["vendor_version"] == "vv_tushare_fut_daily_CU_SHF_20260410"
+    assert by_key[("CA.ALUMINUM", "2026-04-10")]["source_version"].startswith("sv_tushare_fut_daily_AL.SHF_")
 
 
 def test_tushare_ncd_shibor_loader_maps_required_tenors(monkeypatch):
@@ -2040,6 +2653,653 @@ def test_choice_macro_refresh_skips_isolated_catalog_batches(tmp_path, monkeypat
     assert fact_total == 3
     assert duplicate_catalog_series == []
     assert isolated_tier == ("isolated",)
+    get_settings.cache_clear()
+
+
+def test_default_choice_macro_catalog_promotes_confirmed_shibor_funding_batch(monkeypatch):
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "config/choice_macro_catalog.json")
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-06-10")
+
+    batches = task_module.load_choice_macro_batches(get_settings())
+    shibor_batch = next(
+        batch for batch in batches if batch.batch_id == "choice_funding_shibor_latest"
+    )
+    fetch_plan = task_module._build_choice_macro_fetch_plan(batches)
+    planned_shibor_ids = {
+        batch.series[0].series_id
+        for batch in fetch_plan
+        if batch.batch_id == "choice_funding_shibor_latest"
+    }
+
+    assert shibor_batch.fetch_mode == "latest"
+    assert shibor_batch.fetch_granularity == "single"
+    assert shibor_batch.refresh_tier == "fallback"
+    assert shibor_batch.request_options == "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5"
+    assert {
+        item.series_id: (item.series_name, item.frequency, item.unit, item.tags)
+        for item in shibor_batch.series
+    } == {
+        "EMM00166252": ("SHIBOR:ON", "daily", "%", ["choice", "macro", "rates", "shibor", "funding"]),
+        "EMM00166253": ("SHIBOR:1W", "daily", "%", ["choice", "macro", "rates", "shibor", "funding"]),
+        "EMM00166254": ("SHIBOR:2W", "daily", "%", ["choice", "macro", "rates", "shibor", "funding"]),
+        "EMM00167612": ("SHIBOR:1M", "daily", "%", ["choice", "macro", "rates", "shibor", "funding"]),
+        "EMM00167613": ("SHIBOR:3M", "daily", "%", ["choice", "macro", "rates", "shibor", "funding"]),
+        "EMM00167614": ("SHIBOR:6M", "daily", "%", ["choice", "macro", "rates", "shibor", "funding"]),
+        "EMM00167708": ("SHIBOR:1Y", "daily", "%", ["choice", "macro", "rates", "shibor", "funding"]),
+    }
+    assert planned_shibor_ids == set(item.series_id for item in shibor_batch.series)
+    get_settings.cache_clear()
+
+
+def test_choice_macro_scoped_batch_refresh_preserves_non_target_choice_rows(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    shibor_series = SHIBOR_SCOPED_SERIES
+    _write_choice_shibor_scoped_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-06-10")
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        task_module._ensure_tables(conn)
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+            ('cn_existing_choice', 'Existing Choice Row', '2026-06-01', 9.9, 'daily', '%',
+             'sv_existing', 'vv_existing', 'rv_existing', 'ok', 'run-existing')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_market_snapshot values
+            ('cn_existing_choice', 'Existing Choice Row', 'EDB_EXISTING', 'choice',
+             '2026-06-01', 9.9, 'daily', '%', 'sv_existing', 'vv_existing',
+             'rv_existing', 'run-existing')
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog (
+              series_id, series_name, vendor_name, vendor_version, frequency, unit,
+              vendor_series_code, batch_id, catalog_version, theme, is_core, tags_json,
+              request_options, fetch_mode, fetch_granularity, refresh_tier, policy_note
+            ) values (
+              'cn_existing_choice', 'Existing Choice Row', 'choice', 'vv_existing',
+              'daily', '%', 'EDB_EXISTING', 'stable_daily',
+              '2026-06-10.choice-funding-test.v1', 'rates', true, '["choice","existing"]',
+              'IsLatest=0,StartDate=2026-06-01,EndDate=2026-06-01,Ispandas=1,RECVtimeout=5',
+              'date_slice', 'batch', 'stable', 'existing Choice macro lane'
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into market_data_series_category values
+            ('cn_existing_choice', 'stable', 'Stable governed series', 'choice_macro',
+             'date_slice', 'batch', 'existing Choice macro lane',
+             '2026-06-10.choice-funding-test.v1', 'stable_daily',
+             '2026-06-01T00:00:00Z', 'run-existing')
+            """
+        )
+    finally:
+        conn.close()
+
+    values_by_id = {series_id: value for series_id, _name, value in shibor_series}
+    observed: list[str] = []
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        observed.extend(item.series_id for item in series)
+        return _choice_shibor_snapshot(macro_schema_module, series, values_by_id)
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    for _ in range(2):
+        payload = task_module.refresh_choice_macro_snapshot.fn(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(tmp_path / "governance"),
+            batch_ids=["choice_funding_shibor_latest"],
+        )
+        assert payload["status"] == "completed"
+        assert payload["series_count"] == 7
+
+    shibor_ids = [series_id for series_id, _name, _value in shibor_series]
+    shibor_placeholders = ", ".join(["?"] * len(shibor_ids))
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        existing_fact = conn.execute(
+            """
+            select series_id, trade_date, value_numeric
+            from fact_choice_macro_daily
+            where series_id = 'cn_existing_choice'
+            """
+        ).fetchall()
+        shibor_fact_rows = conn.execute(
+            f"""
+            select series_id, trade_date, value_numeric, unit, quality_flag
+            from fact_choice_macro_daily
+            where series_id in ({shibor_placeholders})
+            order by series_id
+            """,
+            shibor_ids,
+        ).fetchall()
+        duplicate_facts = conn.execute(
+            f"""
+            select series_id, trade_date, count(*)
+            from fact_choice_macro_daily
+            where series_id in ({shibor_placeholders})
+            group by series_id, trade_date
+            having count(*) > 1
+            """,
+            shibor_ids,
+        ).fetchall()
+        duplicate_snapshot = conn.execute(
+            f"""
+            select series_id, count(*)
+            from choice_market_snapshot
+            where series_id in ({shibor_placeholders})
+            group by series_id
+            having count(*) > 1
+            """,
+            shibor_ids,
+        ).fetchall()
+        duplicate_catalog = conn.execute(
+            f"""
+            select series_id, count(*)
+            from phase1_macro_vendor_catalog
+            where series_id in ({shibor_placeholders})
+            group by series_id
+            having count(*) > 1
+            """,
+            shibor_ids,
+        ).fetchall()
+        categories = conn.execute(
+            f"""
+            select series_id, category_key, fetch_mode, fetch_granularity, batch_id
+            from market_data_series_category
+            where series_id in ({shibor_placeholders})
+            order by series_id
+            """,
+            shibor_ids,
+        ).fetchall()
+        existing_snapshot = conn.execute(
+            """
+            select series_id, vendor_name, trade_date, value_numeric
+            from choice_market_snapshot
+            where series_id = 'cn_existing_choice'
+            """
+        ).fetchall()
+        existing_catalog = conn.execute(
+            """
+            select series_id, vendor_name, batch_id, refresh_tier
+            from phase1_macro_vendor_catalog
+            where series_id = 'cn_existing_choice'
+            """
+        ).fetchall()
+        existing_category = conn.execute(
+            """
+            select series_id, category_key, fetch_mode, fetch_granularity, batch_id
+            from market_data_series_category
+            where series_id = 'cn_existing_choice'
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert existing_fact == [("cn_existing_choice", "2026-06-01", 9.9)]
+    assert existing_snapshot == [("cn_existing_choice", "choice", "2026-06-01", 9.9)]
+    assert existing_catalog == [("cn_existing_choice", "choice", "stable_daily", "stable")]
+    assert existing_category == [
+        ("cn_existing_choice", "stable", "date_slice", "batch", "stable_daily")
+    ]
+    assert shibor_fact_rows == [
+        (series_id, "2026-06-09", value, "%", "ok")
+        for series_id, _name, value in sorted(shibor_series)
+    ]
+    assert duplicate_facts == []
+    assert duplicate_snapshot == []
+    assert duplicate_catalog == []
+    assert categories == [
+        (series_id, "fallback", "latest", "single", "choice_funding_shibor_latest")
+        for series_id, _name, _value in sorted(shibor_series)
+    ]
+    assert observed == shibor_ids * 2
+    get_settings.cache_clear()
+
+
+def test_choice_macro_scoped_refresh_skips_gate_supplement_materialization(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    shibor_series = SHIBOR_SCOPED_SERIES
+    _write_choice_shibor_scoped_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-06-10")
+
+    values_by_id = {series_id: value for series_id, _name, value in shibor_series}
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        return _choice_shibor_snapshot(macro_schema_module, series, values_by_id)
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    fake_gate_module = type(
+        "FakeGateModule",
+        (),
+        {
+            "compute_and_materialize_gate_supplement": staticmethod(
+                lambda duckdb_path, lookback_days: pytest.fail(
+                    "scoped Choice refresh must not run Livermore gate supplement"
+                )
+            )
+        },
+    )()
+    monkeypatch.setitem(
+        sys.modules,
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        fake_gate_module,
+    )
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        batch_ids=["choice_funding_shibor_latest"],
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["gate_supplement_refresh"] == {
+        "status": "skipped",
+        "reason": "scoped_refresh",
+    }
+    get_settings.cache_clear()
+
+
+def test_choice_macro_scoped_refresh_does_not_replace_full_refresh_status(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    shibor_series = SHIBOR_SCOPED_SERIES
+    _write_choice_shibor_scoped_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    macro_service_module = load_module(
+        "backend.app.services.macro_vendor_service",
+        "backend/app/services/macro_vendor_service.py",
+    )
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    repo.append(
+        governance_module.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "choice_macro_refresh:full",
+            "job_name": "choice_macro_refresh",
+            "status": "completed",
+            "cache_key": "choice_macro.latest",
+            "lock": "lock:duckdb:choice-macro",
+            "source_version": "sv_full_choice",
+            "vendor_version": "vv_full_choice",
+            "rule_version": "rv_choice_macro_thin_slice_v1",
+        },
+    )
+    repo.append(
+        governance_module.CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "choice_macro.latest",
+            "source_version": "sv_full_choice",
+            "vendor_version": "vv_full_choice",
+            "rule_version": "rv_choice_macro_thin_slice_v1",
+        },
+    )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-06-10")
+
+    values_by_id = {series_id: value for series_id, _name, value in shibor_series}
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        return _choice_shibor_snapshot(macro_schema_module, series, values_by_id)
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        batch_ids=["choice_funding_shibor_latest"],
+    )
+
+    status_payload = macro_service_module.choice_macro_refresh_status(governance_dir)
+    build_runs = repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM)
+    manifests = repo.read_all(governance_module.CACHE_MANIFEST_STREAM)
+    global_runs = [
+        row
+        for row in build_runs
+        if row["job_name"] == "choice_macro_refresh" and row["cache_key"] == "choice_macro.latest"
+    ]
+    scoped_runs = [
+        row
+        for row in build_runs
+        if row["job_name"] == "choice_macro_scoped_refresh" and row["cache_key"] == "choice_macro.scoped"
+    ]
+    global_manifests = [row for row in manifests if row["cache_key"] == "choice_macro.latest"]
+    scoped_manifests = [row for row in manifests if row["cache_key"] == "choice_macro.scoped"]
+
+    assert payload["cache_key"] == "choice_macro.scoped"
+    assert payload["cache_version"] == "batch_ids=choice_funding_shibor_latest"
+    assert status_payload["run_id"] == "choice_macro_refresh:full"
+    assert status_payload["source_version"] == "sv_full_choice"
+    assert len(global_runs) == 1
+    assert global_runs[0]["run_id"] == "choice_macro_refresh:full"
+    assert global_runs[0]["source_version"] == "sv_full_choice"
+    assert global_runs[0]["vendor_version"] == "vv_full_choice"
+    assert scoped_runs[-1]["status"] == "completed"
+    assert scoped_runs[-1]["cache_version"] == "batch_ids=choice_funding_shibor_latest"
+    assert global_manifests[-1]["source_version"] == "sv_full_choice"
+    assert global_manifests[-1]["vendor_version"] == "vv_full_choice"
+    assert scoped_manifests[-1]["cache_version"] == "batch_ids=choice_funding_shibor_latest"
+    assert scoped_manifests[-1]["source_version"] != "sv_full_choice"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_scoped_refresh_duckdb_failure_does_not_archive_payload(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    archive_dir = tmp_path / "archive"
+    governance_dir = tmp_path / "governance"
+    shibor_series = SHIBOR_SCOPED_SERIES
+    _write_choice_shibor_scoped_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-06-10")
+
+    values_by_id = {series_id: value for series_id, _name, value in shibor_series}
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        return _choice_shibor_snapshot(macro_schema_module, series, values_by_id)
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+    monkeypatch.setattr(
+        task_module.duckdb,
+        "connect",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("duckdb locked")),
+    )
+
+    with pytest.raises(RuntimeError, match="duckdb locked"):
+        task_module.refresh_choice_macro_snapshot.fn(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            batch_ids=["choice_funding_shibor_latest"],
+        )
+
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    build_runs = repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM)
+    assert _archive_files(archive_dir) == []
+    assert repo.read_all(governance_module.VENDOR_SNAPSHOT_MANIFEST_STREAM) == []
+    assert repo.read_all(governance_module.VENDOR_VERSION_REGISTRY_STREAM) == []
+    assert repo.read_all(governance_module.CACHE_MANIFEST_STREAM) == []
+    assert build_runs[-1]["status"] == "failed"
+    assert build_runs[-1]["job_name"] == "choice_macro_scoped_refresh"
+    assert build_runs[-1]["cache_key"] == "choice_macro.scoped"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_scoped_refresh_rejects_blank_scope_inputs(tmp_path, monkeypatch):
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    archive_dir = tmp_path / "archive"
+    governance_dir = tmp_path / "governance"
+    _write_choice_shibor_scoped_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+
+    monkeypatch.setattr(
+        task_module.VendorAdapter,
+        "fetch_macro_snapshot",
+        lambda *args, **kwargs: pytest.fail("blank scoped inputs must not fetch Choice data"),
+    )
+
+    with pytest.raises(ValueError, match="requires at least one non-empty"):
+        task_module.refresh_choice_macro_snapshot.fn(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(governance_dir),
+            batch_ids=["   "],
+        )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    assert _archive_files(archive_dir) == []
+    assert repo.read_all(governance_module.VENDOR_SNAPSHOT_MANIFEST_STREAM) == []
+    assert repo.read_all(governance_module.VENDOR_VERSION_REGISTRY_STREAM) == []
+    assert repo.read_all(governance_module.CACHE_MANIFEST_STREAM) == []
+    assert repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM) == []
+    get_settings.cache_clear()
+
+
+def test_choice_macro_scoped_batch_refresh_rejects_partial_vendor_results(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    archive_dir = tmp_path / "archive"
+    governance_dir = tmp_path / "governance"
+    shibor_series = SHIBOR_SCOPED_SERIES
+    missing_series_id = shibor_series[-1][0]
+    _write_choice_shibor_scoped_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-06-10")
+
+    values_by_id = {series_id: value for series_id, _name, value in shibor_series}
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        if series[0].series_id == missing_series_id:
+            raise RuntimeError("no data")
+        return _choice_shibor_snapshot(macro_schema_module, series, values_by_id)
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    with pytest.raises(RuntimeError, match=missing_series_id):
+        task_module.refresh_choice_macro_snapshot.fn(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            batch_ids=["choice_funding_shibor_latest"],
+        )
+
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        task_module._ensure_tables(conn)
+        shibor_ids = [series_id for series_id, _name, _value in shibor_series]
+        placeholders = ", ".join(["?"] * len(shibor_ids))
+        landed_rows = conn.execute(
+            f"""
+            select count(*)
+            from fact_choice_macro_daily
+            where series_id in ({placeholders})
+            """,
+            shibor_ids,
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    build_runs = repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM)
+    assert _archive_files(archive_dir) == []
+    assert repo.read_all(governance_module.VENDOR_SNAPSHOT_MANIFEST_STREAM) == []
+    assert repo.read_all(governance_module.VENDOR_VERSION_REGISTRY_STREAM) == []
+    assert repo.read_all(governance_module.CACHE_MANIFEST_STREAM) == []
+    assert build_runs[-1]["status"] == "failed"
+    assert build_runs[-1]["job_name"] == "choice_macro_scoped_refresh"
+    assert build_runs[-1]["cache_key"] == "choice_macro.scoped"
+    assert landed_rows == 0
+    get_settings.cache_clear()
+
+
+def test_choice_macro_scoped_batch_refresh_rejects_duplicate_vendor_points(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    archive_dir = tmp_path / "archive"
+    governance_dir = tmp_path / "governance"
+    shibor_series = SHIBOR_SCOPED_SERIES
+    duplicate_series_id = shibor_series[0][0]
+    _write_choice_shibor_scoped_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-06-10")
+
+    values_by_id = {series_id: value for series_id, _name, value in shibor_series}
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        snapshot = _choice_shibor_snapshot(macro_schema_module, series, values_by_id)
+        return snapshot.model_copy(
+            update={
+                "series": [*snapshot.series, snapshot.series[0].model_copy()],
+                "raw_payload": {
+                    "series": [item.series_id for item in series] + [duplicate_series_id]
+                },
+            }
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    with pytest.raises(RuntimeError, match=f"duplicate.*{duplicate_series_id}"):
+        task_module.refresh_choice_macro_snapshot.fn(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            batch_ids=["choice_funding_shibor_latest"],
+        )
+
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        task_module._ensure_tables(conn)
+        shibor_ids = [series_id for series_id, _name, _value in shibor_series]
+        placeholders = ", ".join(["?"] * len(shibor_ids))
+        landed_rows = conn.execute(
+            f"""
+            select count(*)
+            from fact_choice_macro_daily
+            where series_id in ({placeholders})
+            """,
+            shibor_ids,
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    build_runs = repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM)
+    assert _archive_files(archive_dir) == []
+    assert repo.read_all(governance_module.VENDOR_SNAPSHOT_MANIFEST_STREAM) == []
+    assert repo.read_all(governance_module.VENDOR_VERSION_REGISTRY_STREAM) == []
+    assert repo.read_all(governance_module.CACHE_MANIFEST_STREAM) == []
+    assert build_runs[-1]["status"] == "failed"
+    assert build_runs[-1]["job_name"] == "choice_macro_scoped_refresh"
+    assert build_runs[-1]["cache_key"] == "choice_macro.scoped"
+    assert landed_rows == 0
     get_settings.cache_clear()
 
 

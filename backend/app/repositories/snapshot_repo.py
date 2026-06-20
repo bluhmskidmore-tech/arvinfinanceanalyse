@@ -6,8 +6,8 @@ from decimal import Decimal
 from typing import Any
 
 import duckdb
-
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 ZQTZ_TABLE = "zqtz_bond_daily_snapshot"
 TYW_TABLE = "tyw_interbank_daily_snapshot"
@@ -24,6 +24,7 @@ def delete_zqtz_snapshots_for_batches(
     *,
     report_dates: list[object] | None = None,
 ) -> None:
+    require_repository_task_write_scope("delete_zqtz_snapshots_for_batches")
     if not ingest_batch_ids:
         return
     placeholders = ",".join(["?"] * len(ingest_batch_ids))
@@ -40,6 +41,7 @@ def delete_zqtz_snapshots_for_report_dates(
     conn: duckdb.DuckDBPyConnection,
     report_dates: list[object],
 ) -> None:
+    require_repository_task_write_scope("delete_zqtz_snapshots_for_report_dates")
     if not report_dates:
         return
     placeholders = ",".join(["?::date"] * len(report_dates))
@@ -52,6 +54,7 @@ def delete_tyw_snapshots_for_batches(
     *,
     report_dates: list[object] | None = None,
 ) -> None:
+    require_repository_task_write_scope("delete_tyw_snapshots_for_batches")
     if not ingest_batch_ids:
         return
     placeholders = ",".join(["?"] * len(ingest_batch_ids))
@@ -68,6 +71,7 @@ def delete_tyw_snapshots_for_report_dates(
     conn: duckdb.DuckDBPyConnection,
     report_dates: list[object],
 ) -> None:
+    require_repository_task_write_scope("delete_tyw_snapshots_for_report_dates")
     if not report_dates:
         return
     placeholders = ",".join(["?::date"] * len(report_dates))
@@ -88,6 +92,7 @@ def replace_zqtz_snapshot_rows(
     report_dates: list[object] | None = None,
     replace_all_for_report_dates: bool = False,
 ) -> int:
+    require_repository_task_write_scope("replace_zqtz_snapshot_rows")
     if replace_all_for_report_dates and report_dates:
         delete_zqtz_snapshots_for_report_dates(conn, list(report_dates))
     else:
@@ -126,9 +131,10 @@ def replace_zqtz_snapshot_rows(
           ingest_batch_id,
           trace_id,
           value_date,
-          customer_attribute
+          customer_attribute,
+          sub_type
         ) values (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         [
@@ -163,6 +169,7 @@ def replace_zqtz_snapshot_rows(
                 r["trace_id"],
                 _sql_value(r.get("value_date")),
                 r.get("customer_attribute") or "",
+                r.get("sub_type") or "",
             )
             for r in rows
         ],
@@ -178,6 +185,7 @@ def replace_tyw_snapshot_rows(
     report_dates: list[object] | None = None,
     replace_all_for_report_dates: bool = False,
 ) -> int:
+    require_repository_task_write_scope("replace_tyw_snapshot_rows")
     if replace_all_for_report_dates and report_dates:
         delete_tyw_snapshots_for_report_dates(conn, list(report_dates))
     else:

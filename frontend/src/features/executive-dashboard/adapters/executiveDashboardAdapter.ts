@@ -15,6 +15,8 @@ import type {
   Numeric,
   OverviewPayload,
   PnlAttributionPayload,
+  ProductCategoryMonthlyHeadlinePayload,
+  ProductCategoryYtdHeadlinePayload,
   ResultMeta,
   VerdictPayload,
   VerdictReason,
@@ -65,6 +67,26 @@ export type DashboardAdapterInput = {
   attributionError: boolean;
   verdictPayload?: VerdictPayload | null;
   snapshotFetchErrorDetail?: string;
+  domainsEffectiveDate?: Record<string, string>;
+  /** 与 overview 同源快照；缺省表示未随快照下发 */
+  productCategoryYtd?: ProductCategoryYtdHeadlinePayload | null;
+  /** 与 product-category-pnl monthly 页脚同源快照；缺省表示未随快照下发 */
+  productCategoryMonthly?: ProductCategoryMonthlyHeadlinePayload | null;
+};
+
+export type DashboardProductCategoryYtdVM = {
+  summaryPnlLabel: string;
+  summaryPnlDisplay: string;
+  summaryPnlDetail: string;
+  intermediateLabel: string;
+  intermediateDisplay: string;
+  intermediateDetail: string;
+};
+
+export type DashboardProductCategoryMonthlyVM = {
+  monthlyIncomeLabel: string;
+  monthlyIncomeDisplay: string;
+  monthlyIncomeDetail: string;
 };
 
 export type DashboardAdapterOutput = {
@@ -78,8 +100,87 @@ export type DashboardAdapterOutput = {
     state: DataSectionState;
     meta: ResultMeta | null;
   };
+  productCategoryYtd: {
+    vm: DashboardProductCategoryYtdVM | null;
+    state: DataSectionState;
+  };
+  productCategoryMonthly: {
+    vm: DashboardProductCategoryMonthlyVM | null;
+    state: DataSectionState;
+  };
   verdict: VerdictPayload | null;
+  domainsEffectiveDate: Record<string, string>;
+  datesDiverged: boolean;
 };
+
+function buildProductCategoryYtdVM(
+  headline: ProductCategoryYtdHeadlinePayload | null | undefined,
+): DashboardProductCategoryYtdVM | null {
+  if (!headline) {
+    return null;
+  }
+  const summaryPnl = headline.summary_pnl ?? headline.operating_income;
+  const summaryPnlDetail = headline.summary_pnl_detail ?? headline.operating_income_detail;
+  return {
+    summaryPnlLabel: "汇总损益",
+    summaryPnlDisplay: summaryPnl.display,
+    summaryPnlDetail: sanitizeMetricDetail(summaryPnlDetail),
+    intermediateLabel: "中间业务收入",
+    intermediateDisplay: headline.intermediate_business_income.display,
+    intermediateDetail: sanitizeMetricDetail(headline.intermediate_business_income_detail),
+  };
+}
+
+function buildProductCategoryMonthlyVM(
+  headline: ProductCategoryMonthlyHeadlinePayload | null | undefined,
+): DashboardProductCategoryMonthlyVM | null {
+  if (!headline) {
+    return null;
+  }
+  return {
+    monthlyIncomeLabel: "月度损益",
+    monthlyIncomeDisplay: headline.monthly_income.display,
+    monthlyIncomeDetail: sanitizeMetricDetail(headline.monthly_income_detail),
+  };
+}
+
+function deriveProductCategoryYtdState(input: {
+  isLoading: boolean;
+  isError: boolean;
+  fetchErrorDetail?: string;
+  headline: ProductCategoryYtdHeadlinePayload | null | undefined;
+}): DataSectionState {
+  if (input.isLoading) {
+    return { kind: "loading" };
+  }
+  if (input.isError) {
+    const secondary = reservedFetchSecondaryMessage(input.fetchErrorDetail);
+    return secondary ? { kind: "error", message: secondary } : { kind: "error" };
+  }
+  if (!input.headline) {
+    return { kind: "empty", hint: "当前快照未包含产品分类损益 ytd 摘要（可能为读模型不可用）。" };
+  }
+  return { kind: "ok" };
+}
+
+function deriveProductCategoryMonthlyState(input: {
+  isLoading: boolean;
+  isError: boolean;
+  fetchErrorDetail?: string;
+  headline: ProductCategoryMonthlyHeadlinePayload | null | undefined;
+}): DataSectionState {
+  if (input.isLoading) {
+    return { kind: "loading" };
+  }
+  if (input.isError) {
+    const secondary = reservedFetchSecondaryMessage(input.fetchErrorDetail);
+    return secondary ? { kind: "error", message: secondary } : { kind: "error" };
+  }
+  if (!input.headline) {
+    return { kind: "empty", hint: "当前快照未包含产品分类损益 monthly 摘要（可能为读模型不可用）。" };
+  }
+  return { kind: "ok" };
+}
 
 export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOutput {
   const overviewState = deriveStateFromEnvelope({
@@ -101,6 +202,28 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
   const overviewVM = buildOverviewVM(input.overviewEnv?.result);
   const attributionVM = buildAttributionVM(input.attributionEnv?.result);
 
+  const ytdHeadline = input.productCategoryYtd ?? null;
+  const productCategoryYtdState = deriveProductCategoryYtdState({
+    isLoading: input.overviewLoading,
+    isError: input.overviewError,
+    fetchErrorDetail: input.snapshotFetchErrorDetail,
+    headline: ytdHeadline,
+  });
+  const productCategoryYtdVm = buildProductCategoryYtdVM(ytdHeadline);
+  const monthlyHeadline = input.productCategoryMonthly ?? null;
+  const productCategoryMonthlyState = deriveProductCategoryMonthlyState({
+    isLoading: input.overviewLoading,
+    isError: input.overviewError,
+    fetchErrorDetail: input.snapshotFetchErrorDetail,
+    headline: monthlyHeadline,
+  });
+  const productCategoryMonthlyVm = buildProductCategoryMonthlyVM(monthlyHeadline);
+
+  const domains = input.domainsEffectiveDate ?? {};
+  const domainValues = Object.values(domains).filter((v) => typeof v === "string" && v.trim());
+  const uniqueDates = new Set(domainValues);
+  const datesDiverged = uniqueDates.size > 1;
+
   return {
     overview: {
       vm: overviewVM,
@@ -112,7 +235,17 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
       state: attributionState,
       meta: input.attributionEnv?.result_meta ?? null,
     },
+    productCategoryYtd: {
+      vm: productCategoryYtdVm,
+      state: productCategoryYtdState,
+    },
+    productCategoryMonthly: {
+      vm: productCategoryMonthlyVm,
+      state: productCategoryMonthlyState,
+    },
     verdict: sanitizeVerdict(input.verdictPayload ?? null),
+    domainsEffectiveDate: domains,
+    datesDiverged,
   };
 }
 

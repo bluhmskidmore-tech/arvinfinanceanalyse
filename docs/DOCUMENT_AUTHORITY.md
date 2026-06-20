@@ -36,6 +36,8 @@ The following docs remain useful, but they are not the repo-level current-state 
   - phase / implementation reference plan
 - `docs/page_contracts.md`
   - page-level contracts to read after repo-level current-state lookup is clear
+- `docs/plans/market-workbench-cursor-prompts.md`
+  - 市场工作台（`/market-data` 及相关路由）**Cursor 可执行外围任务**的拆分与验收提示；用于与 `PAGE-MKT-001`（`docs/page_contracts.md` §13.8）对齐执行顺序，**不**改变上文权威顺序，也不将其中措辞升格为指标定义或 formal 口径
 
 ## 冲突处理
 
@@ -106,15 +108,15 @@ repo-wide `Phase 2` 当前明确不放开的范围包括：
   - `/ui/home/alerts`
   - `/ui/home/contribution`
 - `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
-- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
+- `qdb_gl_monthly_analysis` 等仍未晋升的 analytical-only / compatibility 模块
 - 无关工作流的 `next slice`
 - broad frontend rollout
 
 当前这些排除面的运行语义应按以下方式理解：
 
 - excluded executive surfaces：显式 `503 fail-closed`
-- reserved `cube-query` public routes：显式 `503 reserved surface`
-- reserved liability-analytics compatibility public routes：显式 `503 reserved surface`
+- `cube-query` public routes 已开放为受控 query surface；当前只按已覆盖事实表与 `result_meta` 声明查询结果口径，不等同于新增页面级正式指标真值面
+- liability-analytics public routes 已开放为 analytical compatibility surface；必须显式保留 mixed-source / compat 边界，不得误写为 formal balance/PnL truth
 - retained frontend entries：placeholder / compat / hidden，不代表已晋升 live governed page
 
 ## PnL 附录（fixture 对照）

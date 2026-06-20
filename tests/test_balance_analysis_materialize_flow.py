@@ -253,6 +253,13 @@ def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_r
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
+        snap_zqtz = conn.execute(
+            """
+            select currency_code, market_value_native, market_value_cny
+            from zqtz_bond_daily_snapshot
+            where instrument_code = '240001.IB'
+            """
+        ).fetchone()
         zqtz_rows = conn.execute(
             """
             select report_date, instrument_code, invest_type_std, accounting_basis,
@@ -271,6 +278,11 @@ def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_r
         ).fetchall()
     finally:
         conn.close()
+
+    assert snap_zqtz is not None
+    assert snap_zqtz[0] == "USD"
+    assert snap_zqtz[1] == Decimal("100")
+    assert snap_zqtz[2] == Decimal("720.00000000")
 
     assert zqtz_rows == [
         ("2025-12-31", "240001.IB", "A", "FVOCI", "asset", "CNY", Decimal("720.00000000"), "sv-z-1"),
@@ -364,6 +376,11 @@ def test_balance_analysis_materialize_preserves_computed_lineage_when_write_fail
 
     monkeypatch.setattr(
         repo_mod.BalanceAnalysisRepository,
+        "replace_formal_balance_rows",
+        _fail_replace,
+    )
+    monkeypatch.setattr(
+        task_mod.BalanceAnalysisRepository,
         "replace_formal_balance_rows",
         _fail_replace,
     )
@@ -503,13 +520,13 @@ def test_balance_analysis_materialize_migrates_old_formal_zqtz_schema(tmp_path, 
     assert build_runs[-1]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
 
 
-def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exists(tmp_path):
+def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exists(tmp_path, monkeypatch):
     _repo_mod, task_mod = _load_modules()
-    fx_mod = _load_fx_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -535,33 +552,125 @@ def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exis
     finally:
         conn.close()
 
-    monkeypatch = pytest.MonkeyPatch()
+    with pytest.raises(ValueError, match="Missing formal fx rate"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
+def test_balance_analysis_materialize_accepts_same_date_non_business_day_fx_carry_forward(
+    tmp_path,
+    monkeypatch,
+):
+    repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
-        monkeypatch.setenv("MOSS_FX_MID_CSV_PATH", "")
-        monkeypatch.setenv("MOSS_FX_OFFICIAL_SOURCE_PATH", "")
-        _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
-        monkeypatch.setattr(
-            fx_mod,
-            "ChoiceClient",
-            lambda: type(
-                "FailingChoiceClient",
-                (),
-                {"edb": lambda self, codes, options="", **_kwargs: (_ for _ in ()).throw(RuntimeError("choice unavailable"))},
-            )(),
+        conn.execute("delete from fx_daily_mid")
+        conn.execute(
+            """
+            insert into fx_daily_mid (
+              trade_date, base_currency, quote_currency, mid_rate,
+              source_name, is_business_day, is_carry_forward, source_version,
+              observed_trade_date
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2025-12-31",
+                "USD",
+                "CNY",
+                Decimal("7.1"),
+                "CFETS",
+                False,
+                True,
+                "sv-fx-carry",
+                "2025-12-30",
+            ],
         )
-        monkeypatch.setattr(
-            fx_mod,
-            "AkShareVendorAdapter",
-            lambda: type("FailingAkShareVendor", (), {"fetch_fx_mid_snapshot": lambda self, **_kwargs: (_ for _ in ()).throw(RuntimeError("akshare unavailable"))})(),
-        )
-        with pytest.raises(ValueError, match="Choice failed: choice unavailable"):
-            task_mod.materialize_balance_analysis_facts.fn(
-                report_date="2025-12-31",
-                duckdb_path=str(duckdb_path),
-                governance_dir=str(governance_dir),
-            )
     finally:
-        monkeypatch.undo()
+        conn.close()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+
+    repo = repo_mod.BalanceAnalysisRepository(str(duckdb_path))
+    zqtz_cny_rows = repo.fetch_formal_zqtz_rows(
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+    tyw_cny_rows = repo.fetch_formal_tyw_rows(
+        report_date="2025-12-31",
+        position_scope="liability",
+        currency_basis="CNY",
+    )
+
+    assert zqtz_cny_rows[0]["market_value_amount"] == Decimal("710.00000000")
+    assert tyw_cny_rows[0]["principal_amount"] == Decimal("71.00000000")
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert build_runs[-1]["source_version"] == "sv-fx-carry__sv-t-1__sv-z-1"
+
+
+def test_balance_analysis_materialize_rejects_contradictory_fx_carry_forward_metadata(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("delete from fx_daily_mid")
+        conn.execute(
+            """
+            insert into fx_daily_mid (
+              trade_date, base_currency, quote_currency, mid_rate,
+              source_name, is_business_day, is_carry_forward, source_version,
+              observed_trade_date
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2025-12-31",
+                "USD",
+                "CNY",
+                Decimal("7.1"),
+                "CFETS",
+                False,
+                True,
+                "sv-fx-bad-carry",
+                "2025-12-31",
+            ],
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(ValueError, match="Invalid formal fx carry-forward metadata"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
 
 
 def test_balance_analysis_materialize_normalizes_snapshot_currency_labels_for_fx_lookup(tmp_path):

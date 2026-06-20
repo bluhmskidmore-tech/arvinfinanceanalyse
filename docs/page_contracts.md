@@ -39,6 +39,7 @@
 - `/positions`（持仓与对手方下钻）
 - `/market-data`（市场数据：宏观/利率/外汇/结构化 NCD 等，含多源与 preview）
 - `/operations-analysis`（经营分析：证据链 + 正式余额入口，Wave 1 例外与计划并存）
+- `/bond-trading-desk`（单券交易分析台，深钻路由，见 §13.9）
 
 不覆盖：
 
@@ -118,6 +119,7 @@
 - 路由：
   - 前端：`/`
   - 后端依赖：
+    - `/ui/home/snapshot`
     - `/ui/home/overview`
     - `/ui/home/summary`
     - `/ui/pnl/attribution`
@@ -151,18 +153,41 @@
 
 | section_key | 名称 | 目的 | 数据来源 |
 | --- | --- | --- | --- |
-| `overview` | 经营总览 | 先给出管理层的关键经营 KPI | `/ui/home/overview` |
-| `summary` | 全局判断 | 给出本周管理摘要 | `/ui/home/summary` |
-| `pnl_attribution` | 收益归因 | 给出管理层可读的归因段值 | `/ui/pnl/attribution` |
-| `module_snapshot` | 模块快照 | 引导进入专业工作台 | 前端静态/组合 |
+| `judgment` | 本日判断 | 基于首页快照和治理状态给出是否可判断 | `/ui/home/snapshot.result.verdict` |
+| `governance` | 治理状态 | 显示报告日、快照、质量、读链路 | `/ui/home/snapshot.result_meta` + `domains_effective_date` |
+| `overview_metrics` | 核心经营指标 | 先给出管理层的关键经营 KPI | `/ui/home/snapshot.result.overview.metrics` |
+| `product_category_headline` | 经营贡献摘要 | 展示随 snapshot 下发的产品分类损益摘要 | `/ui/home/snapshot.result.product_category_*` |
 
 #### 可选 section
 
 | section_key | 名称 | 启用条件 | 备注 |
 | --- | --- | --- | --- |
-| `risk_overview` | 风险概览 | 仅当 `/ui/risk/overview` 不返回 `503` 时 | 当前默认 excluded |
-| `alerts` | 预警中心 | 仅当 `/ui/home/alerts` 不返回 `503` 时 | 当前默认 excluded |
-| `contribution` | 团队/账户/策略贡献 | 仅当 `/ui/home/contribution` 不返回 `503` 时 | 当前默认 excluded |
+| `core_metrics` | 债券 / 同业核心指标 | 仅当补充读面报告日等于首页快照 `report_date` | `supplemental`，只能在下钻区展示 |
+| `daily_changes` | 日 / 周 / 月变动 | 仅当补充读面报告日等于首页快照 `report_date` | `supplemental`，只能在下钻区展示 |
+| `market_context` | 市场上下文 | 不作为报告日判断依据 | `supplemental`，只能在下钻区展示 |
+| `research_calendar` | 关键事件日历 | 不作为报告日判断依据 | `supplemental`，只能在下钻区展示 |
+| `risk_overview` | 风险概览 | 当前不启用 | `reserved`，不发 live 首页请求 |
+| `alerts` | 预警中心 | 当前不启用 | `reserved`，不发 live 首页请求 |
+| `contribution` | 团队/账户/策略贡献 | 当前不启用 | `reserved`，不发 live 首页请求 |
+
+#### Snapshot MVP section 状态矩阵
+
+本轮驾驶舱 MVP 使用统一 section 状态，避免把未治理读面伪装成首屏结论：
+
+| section_key | 状态 | 首屏展示 | 业务规则 |
+| --- | --- | --- | --- |
+| `judgment` | `landed` | 是 | 来自 `/ui/home/snapshot` verdict；若 mock / warning / partial，则降级为复核判断。 |
+| `governance` | `landed` | 是 | 来自 `/ui/home/snapshot.result_meta`、`domains_effective_date`、`domains_missing`。 |
+| `overview_metrics` | `landed` / `blocked` | 是 | 仅使用 snapshot overview；为空时显示空态，不得用 `core_metrics` 顶替。 |
+| `product_category_headline` | `landed` | 是 | 随 snapshot 下发；前端只展示，不重算。 |
+| `core_metrics` | `supplemental` / `blocked` | 否 | 补充读面报告日必须等于首页快照 `report_date`；不一致则 `blocked`。 |
+| `daily_changes` | `supplemental` / `blocked` | 否 | 补充读面报告日必须等于首页快照 `report_date`；不一致则 `blocked`。 |
+| `market_context` | `supplemental` | 否 | 市场/宏观数据不绑定首页严格报告日，只能作为下钻上下文。 |
+| `research_calendar` | `supplemental` | 否 | 自然日事件窗口，只能作为下钻上下文。 |
+| `risk_overview` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
+| `contribution` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
+| `alerts` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
+| 静态演示内容 | `demo` | 否 | 只能留在占位或演示区，不进入首屏判断。 |
 
 #### 禁止 section
 
@@ -172,17 +197,17 @@
 ### D. 筛选与时间语义
 
 - 页面主筛选：
-  - 当前前端固定展示 placeholder filter，不形成统一 report_date 参数入口
+  - `report_date` 日期选择器；默认不传参，由 `/ui/home/snapshot` 选择最新严格交集日期
 - `requested_report_date`：
-  - 当前 dashboard 页没有统一主动传参；由各 executive endpoint 默认行为决定
+  - 用户手动选择时传给 `/ui/home/snapshot`
 - `resolved_report_date`：
-  - 依赖各 executive endpoint 的返回
+  - `/ui/home/snapshot.result.report_date`
 - `as_of_date`：
-  - 当前未统一
+  - 本轮先使用 `domains_effective_date` 显示各核心域有效日期
 - `generated_at`：
-  - 来自各 endpoint 的 `result_meta.generated_at`
+  - 来自 `/ui/home/snapshot.result_meta.generated_at`
 - latest fallback 是否允许：
-  - 允许，但必须被业务可见
+  - strict 默认使用最新严格交集；手动开启 partial 才允许含缺域
 - latest fallback 是否必须可见：
   - 是
 
@@ -190,6 +215,7 @@
 
 | 用途 | Endpoint | Response DTO | basis | 备注 |
 | --- | --- | --- | --- | --- |
+| 首页统一快照 | `/ui/home/snapshot` | `HomeSnapshotPayload` | `analytical` | 本轮驾驶舱 MVP 的主入口；默认最新严格交集 |
 | 总览 | `/ui/home/overview` | `OverviewPayload` | `analytical` | 当前已纳入 cutover |
 | 摘要 | `/ui/home/summary` | `SummaryPayload` | `analytical` | 当前已纳入 cutover |
 | 收益归因 | `/ui/pnl/attribution` | `PnlAttributionPayload` | `analytical` | 当前已纳入 cutover |
@@ -202,9 +228,12 @@
 | 页面展示项 | `metric_id` | 来源字段 |
 | --- | --- | --- |
 | 资产规模 | `MTR-EXEC-001` | `overview.metrics[id=aum]` |
-| 年内收益 | `MTR-EXEC-002` | `overview.metrics[id=yield]` |
+| 年度损益（不扣FTP） | `MTR-EXEC-002` | `overview.metrics[id=yield]` |
 | 净息差 | `MTR-EXEC-003` | `overview.metrics[id=nim]` |
 | 组合 DV01（管理视图） | `MTR-EXEC-004` | `overview.metrics[id=dv01]` |
+| AC DV01（管理拆分） | `MTR-EXEC-004A` | `risk_overview.signals[id=dv01_ac]` |
+| OCI DV01（管理拆分） | `MTR-EXEC-004B` | `risk_overview.signals[id=dv01_oci]` |
+| TPL DV01（管理拆分） | `MTR-EXEC-004C` | `risk_overview.signals[id=dv01_tpl]` |
 | 收益归因总额 | `MTR-EXEC-101` | `pnl_attribution.total` |
 | Carry 归因 | `MTR-EXEC-102` | `pnl_attribution.segments[id=carry]` |
 | Roll-down 归因 | `MTR-EXEC-103` | `pnl_attribution.segments[id=roll]` |
@@ -215,13 +244,14 @@
 ### G. 状态合同
 
 - Loading：
-  - dashboard 可逐块 loading，不要求全页阻塞
+  - snapshot 主链 loading 时首屏显示空态和治理 loading，不用补充接口造结论
 - Empty：
-  - 已纳入 cutover 的 executive surface 不应以“空且正常”掩盖缺失；应回到 backend contract
+  - `overview_metrics` 为空时显示空态；不得使用 `core_metrics` 或 demo 数字顶替首屏 KPI
 - Stale / fallback：
   - 若已晋升 surface 出现 `fallback_mode != none` 或 `vendor_status != ok`，dashboard 必须可见
 - Error / fail-closed：
   - excluded surface 返回 `503` 时，该 section 直接不显示，不得渲染为 live 正常卡片
+  - `core_metrics` / `daily_changes` 与首页快照报告日不一致时必须阻断展示，只能提示报告日不一致
 
 ### H. 对账与黄金样本
 
@@ -237,8 +267,10 @@
 
 - 页面：
   - `frontend/src/test/DashboardPage.test.tsx`
+  - `frontend/src/features/workbench/dashboard/dashboardHomeModel.test.ts`
 - 后端：
   - `tests/test_executive_dashboard_endpoints.py`
+  - `tests/test_home_snapshot_endpoint.py`
 
 ## 6. PAGE-BALANCE-001 资产负债分析
 
@@ -652,6 +684,7 @@
   1. 当前报告日组合的 DV01/KRD/CS01/凸性是什么。
   2. 当前发行人集中度和流动性缺口是否异常。
   3. 当前风险质量标记是否正常。
+  4. 当前组合久期覆盖了哪些利率风险适用资产，哪些市值被排除在久期分母外。
 - 页面不负责回答的问题：
   - 不负责替代 excluded 的 `/ui/risk/overview`
   - 不负责补算任何风险衍生指标
@@ -664,6 +697,7 @@
 | --- | --- | --- | --- |
 | `dates` | 报告日选择 | 确定 report_date | `/api/risk/tensor/dates` |
 | `summary_kpis` | 风险摘要 | 展示 DV01、CS01、凸性、集中度、流动性缺口 | `/api/risk/tensor` |
+| `duration_scope` | 久期口径披露 | 展示利率风险适用市值、DV01、久期，以及被排除的市值/行数 | `/api/risk/tensor` |
 | `krd_chart` | KRD 图 | 展示期限桶风险 | `/api/risk/tensor` |
 | `radar` | 风险雷达 | 展示强弱对比 | `/api/risk/tensor` |
 | `result_meta` | provenance / evidence | 展示 dates/tensor meta | meta panel |
@@ -671,6 +705,8 @@
 #### 禁止 section
 
 - 前端重算 KRD / DV01 / CS01 / convexity
+- 前端为无到期日资产合成到期日或久期
+- 用 `portfolio_dv01` 回填或伪装 `regulatory_dv01`
 - 把 excluded 的 `risk-overview` 内容移花接木进来
 
 ### D. 筛选与时间语义
@@ -700,6 +736,7 @@
 | 页面展示项 | `metric_id` | 来源字段 |
 | --- | --- | --- |
 | 组合 DV01 | `MTR-RSK-001` | `portfolio_dv01` |
+| 监管口径 DV01 | `MTR-RSK-001R` | `regulatory_dv01` |
 | KRD 1Y | `MTR-RSK-002` | `krd_1y` |
 | KRD 3Y | `MTR-RSK-003` | `krd_3y` |
 | KRD 5Y | `MTR-RSK-004` | `krd_5y` |
@@ -714,8 +751,13 @@
 | 30 天流动性缺口 | `MTR-RSK-017` | `liquidity_gap_30d` |
 | 90 天流动性缺口 | `MTR-RSK-018` | `liquidity_gap_90d` |
 | 30 天流动性缺口比例 | `MTR-RSK-019` | `liquidity_gap_30d_ratio` |
+| 利率风险市值 | `MTR-RSK-021` | `rate_risk_market_value` |
+| 利率风险 DV01 | `MTR-RSK-022` | `rate_risk_dv01` |
+| 利率风险久期 | `MTR-RSK-023` | `rate_risk_modified_duration` |
 | 债券数量 | `MTR-RSK-101` | `bond_count` |
 | 风险质量标记 | `MTR-RSK-102` | `quality_flag` |
+| 久期排除行数 | `MTR-RSK-103` | `duration_excluded_count` |
+| 久期排除市值 | `MTR-RSK-104` | `duration_excluded_market_value` |
 
 ### G. 状态合同
 
@@ -733,6 +775,7 @@
 
 - 黄金样本：
   - `GS-RISK-A`
+  - `GS-RISK-WARN-B`（warning-profile）
 - 对账对象：
   - bond analytics risk summary
   - executive overview 管理视图中的 DV01
@@ -771,6 +814,7 @@
 - `MTR-EXEC-002`
 - `MTR-EXEC-003`
 - `MTR-EXEC-004`
+- `MTR-EXEC-004A/B/C` 为管理风险总览拆分项；`MTR-EXEC-004` 总量保持全量含 AC/OCI/TPL
 
 ### 状态合同
 
@@ -982,7 +1026,7 @@
 - 页面 ID：`PAGE-OPS-001`
 - 页面名称：`经营分析`
 - 路由：前端 `/operations-analysis`（`frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx`）
-- 页面状态：`mixed-source`（正式正式余额读面 + `basis=analytical` 的 source/macro/news + 仍存在的演示/本地组件混排；`WorkbenchShell` 对本路由保留 **temporary exception** 横幅）
+- 页面状态：`mixed-source`（当前首屏正式经营口径复用 product-category PnL headline；余额读面仅作为专题入口补充；`basis=analytical` 的 source/macro/news 与 FX 覆盖状态仍为证据/观察面；`WorkbenchShell` 对本路由保留 **temporary exception** 横幅）
 - 编制备注：`client.mode === "real"` 与 `"mock"` 分支影响 badge/演示语义；**不得**将 mock 与真实链路混读为同一正式结论。
 
 ### B. 页面目标
@@ -990,7 +1034,7 @@
 - 主要问题（业务）：**当前经营判断是否已有可追证的读链路支撑；若需要下钻，第一站应进哪个受治理专题页？**
 - 明确 **不负责**：
   - 不替代 `balance-analysis` 工作簿/明细真值
-  - 不替代 `pnl` / 产品分类损益正式页
+  - 不替代 `pnl` / 产品分类损益正式页；本页只复用产品分类损益正式页已批准的 headline truth
   - 不把 `source_preview` / Choice news / macro `preview` 伪装为 formal compute 主链真值
   - 不承诺 Wave 1 文档中列为「禁止首屏」的组件已从代码中物理移除（见下 **Pending**）
 
@@ -998,20 +1042,20 @@
 
 | 类别 | section_key / 组件 | 状态 | 备注 |
 | --- | --- | --- | --- |
-| 必有（代码已渲染） | `hero` / `PageHeader` + `operations-business-kpis` | live | 多卡 KPI 条带来自 balance overview + source/macro/FX/news 等查询的聚合展示 |
+| 必有（代码已渲染） | `hero` / `PageHeader` + `operations-business-kpis` | live | Current implementation primary first-screen formal PnL evidence：前三张 KPI 卡来自 `GET /ui/pnl/product-category` 的资产端、负债端、合计经营净收入；其余卡片为日期、行数、source/macro/FX/news 证据状态 |
 | 必有（代码已渲染） | `operations-conclusion-grid` 内含 `BusinessConclusion`、`RevenueCostBridge`（可测试 stub）、`QualityObservation` | **与 Wave 1 目标清单冲突** | 以代码为准作契约；收缩首屏需后续改动 |
-| 必有（代码已渲染） | `operations-contribution-grid`（`BusinessContributionTable` + `AlertList` + `CalendarList` 等） | mixed | 表格为正式 balance **summary 行**；`AlertList`/`CalendarList` 使用 `businessAnalysisWorkbenchMocks` |
+| 必有（代码已渲染） | `operations-contribution-grid`（`BusinessContributionTable` + `AlertList` + `CalendarList` 等） | mixed | 表格为 product-category detail rows；`AlertList`/`CalendarList` 使用 `businessAnalysisWorkbenchMocks`，仍是静态示例 |
 | 必有（代码已渲染） | `operations-structure-grid`（`TenorConcentrationPanel` + `ManagementOutput`） | mixed | 与 §13.5 历史「禁止区块」声明不一致；**Pending** 对齐或更新禁止清单 |
-| 必有 | `recommendation` 推导 + `ManagementOutput` 行动卡片 | live | 推导见 `recommendation` `useMemo`（`source/macro/FX/balance` 错误/空/缺失） |
-| 必有 | 专题入口 `operations-entry-balance-section` 等 | live | 正式余额速览 + `Link` 至 `/balance-analysis`、`/market-data` 等 |
-| 可选 / 运维 | PnL refresh 按钮 + `runPollingTask` + `getFormalPnlImportStatus` | operational | 非主读数真值面 |
+| 必有 | `recommendation` 推导 + `ManagementOutput` 行动卡片 | live | 推导见 `recommendation` `useMemo`（source 预览、product-category 日期/结果/行为空或失败时不得给出充分证据结论；FX 缺口只影响关注事项） |
+| 必有 | 专题入口 `operations-entry-balance-section` 等 | live | Balance overview is supplemental topic-entry evidence；只作为 `/balance-analysis` 下钻入口，不替代首屏 product-category headline |
+| 可选 / 运维 | 产品分类 PnL refresh/status | operational | 本页不承接刷新操作；刷新/调整入口归 `/product-category-pnl` truth contract |
 | 可选 | `getChoiceNewsEvents` | **analytical-only** / advisory | `result_kind` 为 news vendor 流；仅作信息 |
-| 禁止 | 将上述 advisory/preview 与 `MTR-BAL-*` 混写为无 provenance 的「正式经营结论」 | — | UI 上须可区分来源（badge / meta / 失败态） |
+| 禁止 | 将上述 advisory/preview、静态示例或 supplemental balance overview 混写为无 provenance 的「正式经营结论」 | — | UI 上须可区分来源（badge / meta / 失败态） |
 
 ### D. 时间语义
 
-- `requested_report_date`：经营页自身无独立日期控件；`balance` 部分使用 `getBalanceAnalysisDates` 的 **首个** `report_dates[0]` 拉 overview/summary（与页面「最新证据」策略一致，非用户逐日点选语义）。
-- `resolved_report_date`：以 `getBalanceAnalysisOverview` 返回的 `result.report_date` 为 balance 子系统的解析报告日；其它 endpoint 各自带 `result_meta` / 载荷内日期字段。
+- `requested_report_date`：经营页自身无独立日期控件；product-category 与 balance 部分分别使用各自 dates endpoint 的 **首个** `report_dates[0]`（与页面「最新证据」策略一致，非用户逐日点选语义）。
+- `resolved_report_date`：首屏经营口径以 `getProductCategoryPnl` 返回的 `result.report_date` 为准；balance 专题入口以 `getBalanceAnalysisOverview` 返回的 `result.report_date` 为准；其它 endpoint 各自带 `result_meta` / 载荷内日期字段。
 - `as_of_date`：本页**未**统一为单一向外字段；各区块遵循上游契约（同 §4.1 缺口声明）。
 - `generated_at`：来自各 `ApiEnvelope['result_meta'].generated_at`；多来源页须在运维/折叠区保留可核对条带（见实装中 Collapse/面板）。
 
@@ -1024,24 +1068,28 @@
 | 宏观最新 | `getChoiceMacroLatest()` → `GET /ui/macro/choice-series/latest` | Choice macro latest points + `result_meta` | **analytical** + vendor |
 | 正式汇率覆盖 | `getFxFormalStatus()` → `GET /ui/market-data/fx/formal-status` | `FxFormalStatusPayload`（rows/materialized/candidate/日期） | 正式行与缺失行表；**非**全页 formal truth |
 | 新闻 | `getChoiceNewsEvents()` | 事件列表 + `result_meta` | **analytical** |
+| 产品分类日期 | `client.getProductCategoryDates()` -> `GET /ui/pnl/product-category/dates` | `ProductCategoryDatesPayload` | `formal`（复用 product-category PnL 主链） |
+| 产品分类 PnL | `client.getProductCategoryPnl()` -> `GET /ui/pnl/product-category` | `ProductCategoryPnlPayload`，headline + detail rows | `formal`（本页首屏经营口径） |
 | 余额日期 | `getBalanceAnalysisDates()` | `BalanceAnalysisDatesPayload` | `formal`（与 balance-analysis 页同链） |
-| 余额概览 | `getBalanceAnalysisOverview()` | `BalanceAnalysisOverviewPayload` | `formal` |
-| 余额汇总行 | `getBalanceAnalysisSummary()` | summary rows | `formal` |
-| PnL 刷新 | `refreshFormalPnl` / `getFormalPnlImportStatus` | 运维轮询 payload | 非主读 value |
+| 余额概览 | `getBalanceAnalysisOverview()` | `BalanceAnalysisOverviewPayload` | `formal`；supplemental topic-entry evidence |
 
 ### F. 指标映射（`metric_id`）
 
-- 本页 **不** 引入新的 `metric_id` 绑定; 与正式余额重叠的展示项，沿用 `PAGE-BALANCE-001` 在字典中的 `MTR-BAL-*`（如总市值/成本/应计/行数等），以 `getBalanceAnalysisOverview` / `summary` 字段为准；其余为 **analytical/preview/operational 展示**，仅字段路径，**无**独立字典行。
+- 本页 does not create `MTR-OPS-*`。当前首屏正式经营净收入复用产品分类损益已批准的 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` 与 `GS-PROD-CAT-PNL-A`；与正式余额重叠的专题入口展示项仍沿用 `PAGE-BALANCE-001` 在字典中的 `MTR-BAL-*`，以 `getBalanceAnalysisOverview` 字段为准；其余为 **analytical/preview/operational 展示**，仅字段路径，**无**独立字典行。
 
 | 展示锚点 | `metric_id`（若可映射） | 来源 |
 | --- | --- | --- |
-| 总市值/摊余/应计/行数 | `MTR-BAL-001`–`MTR-BAL-103`（与 balance 页一致部分） | `BalanceAnalysisOverviewPayload` / summary rows |
-| Source/Macro/News/FX 卡计数 | 不适用（无 `metric_id`） | 各 `result` 列表长度或 envelope |
+| 资产端经营净收入 | `MTR-PCP-001` | `ProductCategoryPnlPayload.asset_total.business_net_income` |
+| 负债端经营净收入 | `MTR-PCP-002` | `ProductCategoryPnlPayload.liability_total.business_net_income` |
+| 合计经营净收入 | `MTR-PCP-003` | `ProductCategoryPnlPayload.grand_total.business_net_income` |
+| product-category detail rows | 不新增 `metric_id` | detail rows 仍按 product-category truth contract / sample truth，不在本页升格 |
+| 总市值/摊余/应计/行数 | `MTR-BAL-001`–`MTR-BAL-103`（与 balance 页一致部分） | `BalanceAnalysisOverviewPayload`；supplemental topic-entry evidence |
+| Source/Macro/News/FX 卡计数 | 不适用（无 `metric_id`）；`GAP-OPS-MACRO-FX` | 各 `result` 列表长度或 envelope |
 
 ### G. 状态：loading / empty / stale / fallback / error
 
-- **Loading**：`AsyncSection` 与多 `useQuery` 并存；`balance` 与 `source/macro` 可不同步完成。
-- **Empty**：`recommendation` 在 `sourceSummaries` 或 `macroLatest` 或 `fxFormalRows` 空时走 **Evidence chain incomplete** 分支；`balance` 无日期时走 **Await governed balance**。
+- **Loading**：`AsyncSection` 与多 `useQuery` 并存；product-category、balance 与 `source/macro` 可不同步完成。
+- **Empty**：`recommendation` 在 `sourceSummaries`、product-category 日期、product-category payload 或 detail rows 为空时走证据链不完整分支；balance 无日期只影响专题入口。
 - **Stale / fallback**：遵循各 `result_meta.fallback_mode`、`quality_flag`、`vendor_status`；`ManagementOutput` / KPI 行须能反映查询失败态（`buildStatusCardContent` 等）。
 - **Error**：`isError` 时 recommendation 与卡片文案必须可见；禁止用静态 KPI 行掩盖。
 - **Mock 模式**：`client.mode === "mock"` 时首屏仍须标注演示语义（badge）。
@@ -1049,12 +1097,12 @@
 ### H. 测试与黄金样本锚点
 
 - 测试：`frontend/src/test/OperationsAnalysisPage.test.tsx`、`navigation.test.ts`、`RouteRegistry.test.tsx`、`WorkbenchShell.test.tsx`（与 §13.5 旧表一致）
-- 黄金样本：本页**无**独立 GS；正式余额对账见 `GS-BAL-OVERVIEW-A` / balance 相关样本。
+- 黄金样本：本页**无**独立 GS；首屏 product-category headline 复用 `GS-PROD-CAT-PNL-A`；balance 专题入口对账见 `GS-BAL-OVERVIEW-A` / balance 相关样本。
 
 ### I. 显式待确认（Pending）
 
 - Wave 1 书面「禁止首屏」列表与 **当前** `OperationsAnalysisPage.tsx` 实装（仍含 `BusinessConclusion`、`TenorConcentrationPanel`、mock `AlertList`/`CalendarList` 等）的收敛策略：删组件 vs 改文档权威。
-- `requested_report_date` 与「默认最新余额日」的人机交互是否应升级为可点选，与 `PAGE-BALANCE-001` 统一。
+- `requested_report_date` 与「默认最新 product-category / balance 日期」的人机交互是否应升级为可点选，并分别与 `PAGE-PROD-CAT-PNL-001`、`PAGE-BALANCE-001` 统一。
 
 ## 13.6 PAGE-BOND-001 债券总览（债券分析驾驶舱）
 
@@ -1107,6 +1155,8 @@
 | 信用占价比等 | `RiskIndicatorsPayload.credit_ratio` 等 | 同上 |
 | 各图 tabular 数据 | `asset-structure` / `industry` / `spread` 等 items | 同上 |
 
+- `weighted_ytm` 与 `weighted_duration` 统一在债券投资范围 `asset_class_std in ('rate', 'credit')` 内按市值加权计算，排除 `other` 分类；`weighted_duration` 指市值加权修正久期，不混入现金流页麦考利久期口径。
+
 ### G. 状态与错误
 
 - **Loading**：`datesQuery` 与分块 `useQuery`；`report_date` 为空时不 enabled 子查询。
@@ -1117,7 +1167,7 @@
 ### H. 测试与黄金样本
 
 - 现有测试锚点：`frontend/src/test/BondDashboardPage.test.tsx`、`tests/test_bond_dashboard_api_contract.py`、`tests/test_bond_dashboard_headlines_contract.py`、`tests/test_bond_analytics_api.py`、`tests/test_result_meta_source_surface_followup.py`
-- 黄金样本状态：`GS-BOND-HEADLINE-A` 仅为 **candidate / blocked-by-contract-gap**（见 `docs/golden_sample_catalog.md` §5.1），目标表面为 `/api/bond-analytics/portfolio-headlines`。仓库**当前没有** `tests/golden_samples/GS-BOND-HEADLINE-A/` 目录，因此它只是后续候选样本，不是已冻结、也不是 capture-ready 包；只有在样本目录实际落地并被 `tests/test_golden_samples_capture_ready.py` 收录后，才可提升状态。Headline / 风险卡与正式 `MTR-*` 的字典级绑定见 `docs/metric_dictionary.md` **GAP-BOND-DASH-***。**本文件只记录阻塞与候选状态，不扩写未来样本字段断言。**
+- 黄金样本状态：`GS-BOND-HEADLINE-A` 现已作为 **capture-ready** 页面样本绑定到 `GET /api/bond-dashboard/headline-kpis`，样本目录位于 `tests/golden_samples/GS-BOND-HEADLINE-A/`，并已纳入 `tests/test_golden_samples_capture_ready.py`。该样本冻结的是 bond-dashboard 首屏 headline DTO 真值与空态行为；Headline / 风险卡与正式 `MTR-*` 的字典级绑定仍见 `docs/metric_dictionary.md` **GAP-BOND-DASH-***，本次样本冻结**不**自动批准新的字典级 metric 映射。
 
 ## 13.7 PAGE-POS-001 持仓
 
@@ -1175,6 +1225,61 @@
 
 - `data-testid`：`positions-page`、`positions-page-title`；`RouteRegistry` 对 `/positions` 路由
 
+## 13.9 PAGE-BOND-DESK-001 单券交易分析台
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-BOND-DESK-001`
+- 页面名称：`单券交易分析台`
+- 路由：前端 `/bond-trading-desk?bond_code=&report_date=`；**导航默认 hidden**（由重仓券/持仓深钻进入，见 `navigation.ts` `navigationVisibility: "hidden"`）
+- 页面状态：`active-read-compose`（只读拼装，无独立单券 formal endpoint）
+- 设计锚点：`docs/superpowers/specs/2026-06-10-bond-trading-desk-design.md`
+
+### B. 业务问题与不回答
+
+- **须回答**：在选定 `bond_code` 与 `report_date` 下，本券在组合中的身份、市值/久期/YTM/权重/利差（若列表命中）及持仓变动（若命中）是什么；数据从哪条只读链路拼来。
+- **不回答**：不提供买卖指令、约束红绿灯、盘口报价、相似券打分、情景压力数值；不在前端重算正式金融指标；不将组合级结论冒充单券交易建议。
+
+### C. 必有 / 禁止 section
+
+- **必有**：`bond-trading-desk-page`、`bond-trading-desk-identity`、`bond-trading-desk-conclusion`、`bond-trading-desk-metrics`、`bond-trading-desk-gaps`、`bond-trading-desk-decision-rail`、`report_date` 选择、`bond_code` 输入或 URL 同步
+- **禁止**：无 `bond_code` 时假装有单券结论；静默隐藏 `api_pending` 模块；用 mock 盘口/约束表冒充正式读面
+
+### D. 时间语义
+
+- `requested_report_date`：URL `report_date` 或 `getBondAnalyticsDates` 默认首项
+- `resolved_report_date`：各拼装请求 URL 中的 `report_date` 与各 payload 内 `report_date`
+- `bond_code`：URL `bond_code`（必填）；与 `instrument_code` / `bond_code` 字段大小写无关 trim 后匹配
+
+### E. Endpoint / DTO 表（拼装源，非单券专用）
+
+| Endpoint | 用途 | DTO |
+| --- | --- | --- |
+| `GET /api/bond-analytics/dates` | 报告日 | `BondAnalyticsDatesPayload` |
+| `GET /api/bond-analytics/top-holdings?top_n=`（≤500） | 重仓券命中 | `BondTopHoldingsPayload` / `BondTopHoldingItem` |
+| `GET /api/positions/bonds?page_size=`（≤500） | 持仓列表命中 | `BondPositionItem` |
+| `GET /api/credit-spread-analysis/detail` | 利差行命中 | `CreditSpreadDetailBondRow` |
+| `GET /api/bond-analytics/position-changes` | 变动行命中 | `BondPositionChangesPayload` |
+
+**缺口（须 UI 标注，不得前端补算）：** 单券 profile API、盘口、约束校验、相似券、情景压力、组合冲击专用 DTO。
+
+### F. 指标映射
+
+- 不新增 `metric_id`；展示字段仅透传上述 DTO 列（市值、YTM、修正久期、权重、信用利差等），未命中列显示「待返回」或空态文案。
+
+### G. 状态
+
+- **Loading**：dates 与拼装查询并行；`bond_code` 空时不 enabled 拼装查询
+- **Empty**：`bond_code` 空 → 引导输入；拼装未命中 → `bond-trading-desk-empty` 说明查找范围（top-holdings + positions 前 500）
+- **Error**：各 query 错误须在页面级 `Alert` 可见，不覆盖首屏为加载中
+- **Stale / fallback**：以各 `result_meta` 为准；拼装源不一致时结论须注明 `coverageSource`
+
+### H. 测试锚点
+
+- `frontend/src/features/bond-trading-desk/lib/bondTradingDeskPageModel.test.ts`
+- `frontend/src/test/BondTradingDeskPage.test.tsx`
+- 深钻：`TopHoldingsView` 行链至 `/bond-trading-desk?bond_code=&report_date=`
+
 ## 13.8 PAGE-MKT-001 市场数据
 
 ### A. 页面身份
@@ -1182,7 +1287,7 @@
 - 页面 ID：`PAGE-MKT-001`
 - 页面名称：`市场数据`
 - 路由：前端 `/market-data`；别名重定向见 `frontend/src/router/routes.tsx`（`/market`→`/market-data` 等，见 `RouteRegistry.test.tsx`）
-- 页面状态：`mixed-source`（**formal 片段** e.g. `fx/formal-status` + **preview/analytical** macro + vendor Choice + 结构化代理 `ncd-funding-proxy` + `api/macro-bond-linkage` 分析，与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
+- 页面状态：`mixed-source`（**formal 片段**：`GET /ui/market-data/rates`（`getMarketDataRates` / 前端 `formalRatesQuery`）驱动利率主表的 formal basis 片段；`RateQuoteTable` / `MoneyMarketTable` 在序列缺失时仅展示 `emptyReason`，不再补静态 demo 行情；`BondFuturesTable` / `BondTradeDetail` / `CreditBondTradesTable` 目前为故意保留的 `source-pending` 终端面板。**preview/analytical**：Choice 宏观目录/最新点、vendor、外汇分析 `getFxAnalytical`、结构化代理 `ncd-funding-proxy`、`api/macro-bond-linkage`、**Livermore**（`/ui/market-data/livermore/*`，门控/板块/候选/风险退出等，均为 analytical）。与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
 
 ### B. 业务问题与不回答
 
@@ -1193,7 +1298,7 @@
 
 - `market-data-page-title`、**catalog/series 统计**（`market-data-*-count` 等，见 `MarketDataPage.test.tsx`）
 - 利率/曲线：rate quote、money market、rate trend、NCD 矩阵、信用成交等 `data-testid` 以 `market-data-` 前缀
-- 外汇：`getFxAnalytical` + `getFxFormalStatus` 分组与 **formal** vs **analytical** 分栏/计数
+- 外汇：本页已挂载 `getFxAnalytical`（**analytical**）；`getFxFormalStatus` 见 §E「实现核对」（domain 具备，本页当前未独立 query）；概览 KPI 另与 `getMarketDataRates` 的 formal 片段协同展示
 - `NewsAndCalendar` / 宏观联动（`getMacroBondLinkageAnalysis` 等，**analytical/专题**)
 - 运维区：Choice refresh + `getChoiceMacroRefreshStatus`、refresh tier / policy 文案
 - 折叠说明中声明 **未暴露** 的 V1 `api/macro` 决策端点不实现（见 `MarketDataPage` 中注释性描述）
@@ -1210,11 +1315,13 @@
 | --- | --- | --- |
 | `getMacroFoundation()` | `GET /ui/preview/macro-foundation` | catalog/preview，**analytical** |
 | `getChoiceMacroLatest()` | `GET /ui/macro/choice-series/latest` | 最新点 + `recent_points` |
-| `getFxFormalStatus()` | `GET /ui/market-data/fx/formal-status` | **formal 状态表** |
+| `getFxFormalStatus()` | `GET /ui/market-data/fx/formal-status` | **formal 状态表**（domain client 具备；**本页当前未挂载 query**，见上「实现核对」） |
 | `getFxAnalytical()` | `GET /ui/market-data/fx/analytical` | **analytical** |
 | `getNcdFundingProxy()` | `GET /ui/market-data/ncd-funding-proxy` | 结构化代理 |
 | `getMacroBondLinkageAnalysis` | `GET /api/macro-bond-linkage/analysis?report_date=` | 债券-宏观联动 **analytical** 读面 |
 | `getChoiceMacroRefreshStatus` / refresh POST | vendor 运维 | 非主值 |
+
+> **实现核对（仓库当前 `MarketDataPage.tsx`）**：本页已挂载查询的上表方法为 `getMacroFoundation`、`getChoiceMacroLatest`、`getFxFormalStatus`、`getFxAnalytical`、`getNcdFundingProxy`、`getMacroBondLinkageAnalysis`、`getChoiceMacroRefreshStatus`（及刷新 POST）、`getMarketDataRates`、`getLivermoreStrategy`（Livermore 展开后 `enabled`）。
 
 ### F. 指标映射
 
@@ -1229,9 +1336,263 @@
 
 - `frontend/src/test/MarketDataPage.test.tsx`、`ApiClient.test.ts`（端点 URL 拼写）、`RouteRegistry.test.tsx`
 
+### H.1 Hero filter strip（前端读面筛选，不触发新 API）
+
+- **控件锚点**：`market-data-filter-strip`、`market-data-active-filter-summary`（`MarketDataHeroSection.tsx`）。
+- **筛选维度**（均为**前端本地过滤**，不改变 `useQuery` 参数或后端请求）：
+  - **国债 / 国开**（`curveFilter`）：过滤 `RateQuoteTable`、Market Tape、首屏终端 KPI；`both` 表示不过滤曲线品种。
+  - **来源**（`sourceFilter`）：过滤利率主表、资金表、Tape、KPI；分类规则见下。
+  - **中票 / 城投**（`creditSegment`）：仅过滤宏观深度「信用利差」Tab 的 `credit_spread` 联动槽位（`buildSpreadSlots`）；按 `MacroBondLinkageTopCorrelation.series_name` 是否包含「中票」或「城投」匹配；`both` 表示不过滤信用分段。
+- **来源分类规则**（`classifyTerminalSource` / `matchesSourceFilter`，`marketDataTerminalModel.ts`）：
+  - 优先读取 catalog `vendor_name`（`buildCatalogVendorNameMap(catalog)`，按 `series_id` 对齐）；当 `vendor_name=choice` 时归为 **Choice**。
+  - 否则读取每行/API 点上的 `source_version` 与 `vendor_version`，拼接为小写字符串；若包含子串 `choice` → **Choice**；否则 → **内部**（含 `public_*`、`fred`、`boc` 等中性 lineage）。
+  - 前端**不得**据此重算利率/利差数值，仅决定行是否展示。
+- **Fragment golden**（`GS-MKT-RATES-FRAGMENT-A`）：冻结 `GET /ui/market-data/rates` formal 片段；不关闭 `GAP-MKT-DATA` 全页缺口。回归：`marketDataRatesFragmentGolden.test.ts`、`tests/test_golden_samples_capture_ready.py`。
+- **生效摘要文案**：`buildMarketDataActiveFilterSummary` 将非默认筛选拼为 `国债 + Choice` 等形式；全部为默认时显示 `全部`。
+- **Tab 联动**：当 `creditSegment` 为 `mtn` 或 `urban` 时，页面自动切换宏观深度 Tab 至 **信用利差**（`macroDepthTab=spreads`）；改回 `both` 时不强制回切曲线 Tab。
+- **空态**：筛选后无匹配行时，利率/资金表展示 `market-data-*-filter-empty`，不补 demo 数。
+- **回归锚点**：`frontend/src/features/market-data/lib/marketDataTerminalModel.test.ts`、`frontend/src/test/MarketDataPage.test.tsx`（`updates shell filter state locally…`）。
+
+### H.2 首屏收口与延迟加载（Route A）
+
+- **Livermore**：`market-data-livermore-collapse` 默认折叠；`getLivermoreStrategy` 仅在用户展开后 `enabled`（`useMarketDataPageData({ livermoreEnabled })`）。展开前 DOM 中不应出现 `market-data-livermore-panel` 正文。
+- **宏观深度 Tab**：仅渲染当前 `macroDepthTab` 对应 panel（曲线 / 信用利差 / 压力与情景），非激活 Tab 的 `market-data-macro-tab-*` 不应挂载。
+- **查询焦点**：市场页相关 `useQuery` 设置 `refetchOnWindowFocus: false`；`staleTime` 继续沿用 `externalDataQueryOptions`（稳定 date_slice 30 分钟，其余 5 分钟）。
+- **壳层**：`WorkbenchShell` 在 `market-data` 路由隐藏市场工作台子导航网格（`isMarketDataTerminalMain`）。
+- **布局版本**：`data-layout-rev=2026-06-10g`。
+- **回归**：`MarketDataPage.test.tsx`（`defers macro-bond linkage…`、`keeps Livermore deferred…`、`renders only the active macro depth tab panel`）。
+
+### H.4 新数据源接入（Route C）
+
+- **正式外汇**：页面挂载 `getFxFormalStatus()` → `GET /ui/market-data/fx/formal-status`；`market-data-fx-formal-collapse` 默认折叠，展开后展示 `market-data-fx-formal-table`（仅后端行，前端不补算中间价）。
+- **与 analytical 分离**：`getFxAnalytical` 仍为分析观察；正式外汇状态单独进入证据轨 `FX formal` 与运维 KPI `market-data-fx-formal-materialized`。
+- **仍 source-pending**：国债期货 / 现券成交 / 信用成交无 outward contract；`market-data-source-pending-contract-note` 明示缺口，面板保持 `source-pending` 空态。
+- **布局版本**：`data-layout-rev=2026-06-10g`（首屏状态条仅保留利率口径；运维 KPI 与联动 API 懒加载）。
+- **回归**：`MarketDataPage.test.tsx`、`marketDataPageModel.test.ts`、`frontend/tests/playwright/market-data-terminal-smoke.spec.mjs`。
+
+### H.3 Blocked formal-use visibility
+
+- If the `/market-data` formal rates fragment returns `result_meta.basis=formal` but `formal_use_allowed=false`, the page must not present it as formal-ready.
+- Required user-visible copy: `formal · blocked`, `禁止作为正式口径`, and first-screen status `分析/候选`.
+- Current implementation anchors: `frontend/src/features/market-data/pages/marketDataPageModel.ts`, `frontend/src/features/market-data/pages/MarketDataPage.tsx`, `frontend/src/features/market-data/pages/MarketDataHeroSection.tsx`.
+- Regression anchors: `frontend/src/test/MarketDataPage.test.tsx` and `frontend/src/features/market-data/pages/marketDataPageModel.test.ts`.
+- This visibility rule does not add new `MTR-*` rows, approve full-page formal truth, or create a capture-ready golden sample; `GAP-MKT-DATA` remains in force.
+
 ### I. 显式待确认
 
 - 与全仓 `Phase 2` cutover 声明对齐后，本页是否拆分为「formal 子面」+「preview 子应用」的导航或强提示（当前为 **同页 mixed-source**）。
+
+### J. 实施边界与已知 GAP（文档事实，非业务指标定义）
+
+- **`GAP-MKT-DATA`**（与 `docs/metric_dictionary.md` §12.5、`docs/golden_sample_catalog.md` §5.2 一致）：市场页**尚无**本字典可冻结的**全页** formal metric dictionary / capture-ready **golden sample**；当前仅能对 `GET /ui/market-data/rates` 对应的 formal rates 片段做测试与 lineage 核对，页面契约不替代指标字典主表。
+- **显示边界**：`RateQuoteTable`、`MoneyMarketTable` 在序列缺失时展示 `emptyReason`，不再补静态 demo 行情；`BondFuturesTable`、`BondTradeDetail`、`CreditBondTradesTable` 为故意保留的 `source-pending` 面板，不渲染示例合约或成交流水（见 `docs/plans/market-workbench-cursor-prompts.md` Cursor 分工说明）。
+- **NCD 读面**：`ncd-funding-proxy` 为 **Shibor/资金利率类 proxy**（默认文案与 `payload.proxy_label` 对齐，如 Tushare Shibor funding proxy），**不是**「实际同业存单期限 × 评级」全矩阵真值；页内 `NcdMatrix` 已声明 proxy 语义。
+- **Livermore `risk_exit`**：后端 `unsupported_outputs` / `rule_readiness` / `data_gaps` 所描述的门禁为事实链依赖；实现侧依赖 **ACTIVE A 股持仓、成本/入场条、K 线历史等 supplement** 就绪后才会解除 blocked（以前端展示的后端返回为准，本文不展开公式）。
+- **`/news-events`**：若按市场工作台方案开放为路由实页，定位为 **analytical `temporary-exception`** 读面，**不是** formal metric 主链页面（与 `AGENTS.md` 占位/临时例外语义一致）。
+
+## 13.9 PAGE-MACRO-TOOLKIT-001 宏观工具
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-MACRO-TOOLKIT-001`
+- 页面名称：`宏观工具`
+- 路由：前端 `/macro-toolkit`（`frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx`）
+- 页面状态：`candidate tooling surface`。本页是宏观分析与脚本工具入口，允许展示分析/候选/运维证据，但 **不** 是正式宏观指标页，也不创建正式投资信号。
+- 页面边界锚点：`MacroToolkitContractBoundary` 必须在正常页与错误页可见，并展示 `formal_use_allowed=false` 时的 `非正式口径` 文案。
+
+### B. 业务问题与不回答
+
+- **须回答**：当前宏观工具的核心判断、证据覆盖、市场踩踏风险、M7-M16 功能结果、策略供数状态、脚本注册表与脚本运行结果是否可读、可追踪、可显式降级。
+- **不回答**：
+  - 不替代 `market-data` 的利率/宏观序列读面。
+  - 不替代 `stock-analysis` 或任何正式投资决策页。
+  - 不把脚本输出、样例策略、Choice/Tushare vendor 读面或刷新状态升格为 governed macro metric truth。
+
+### C. 必有 section / 组件
+
+| Section / component | 状态 | 备注 |
+| --- | --- | --- |
+| `macro-toolkit-tailwind-cockpit` | live | 首屏展示分析日期、投研观点、证据覆盖、能力闭环与合同边界 |
+| `DataStatusStrip` + `MacroToolkitContractBoundary` | live | 显示 `result_meta.basis`、`quality_flag`、`result_kind`、`rule_version`、`formal_use_allowed=false` |
+| 核心信号 / 市场踩踏风险 | live | 只展示后端宏观模块返回的分析结果；缺失时须显示空/失败态 |
+| 指标矩阵 / 功能结果 | live | M7-M16 的输入证据、缺失输入和降级状态须可见 |
+| 策略展示 / 策略供数闭环 | live | 显示真实链路、降级、样例数量、股票历史日期、因子快照日期与 source/version/run_id |
+| CFFEX 席位状态 / 股票数据刷新 | operational | 显式触发的刷新动作；须由后端权限与审计测试约束 |
+| 脚本注册表 / 脚本产物 / 运行结果 | operational | 只作为工具运行证据；不得作为正式指标或自动交易建议 |
+
+### D. 时间语义
+
+- `requested_report_date`：本页没有独立日期控件；核心分析由后端 `MacroToolkitAnalysisPayload.as_of_date` 与各源状态共同决定。
+- `resolved_report_date`：以各返回 payload 内的 `as_of_date`、`latest_trade_date`、`reference_date`、`factor_snapshot.as_of_date` 为准；不同区块不得被合并成一个全页日期。
+- `generated_at`：来自各 `ApiEnvelope.result_meta.generated_at`。
+- 刷新动作产生的 `run_id`、`started_at`、`finished_at` 仅用于运维追踪，不构成页面主读数日期。
+
+### E. Endpoint / DTO 表
+
+| Client 方法 / Endpoint | 用途 | DTO/Schema | 口径 |
+| --- | --- | --- | --- |
+| `getMacroToolkitAnalysis({ detail })` -> `GET /ui/macro/toolkit/analysis?detail=core\|full` | 核心/完整分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
+| `getMacroToolkitAnalysis({ detail: "full", historyLimit })` -> `GET /ui/macro/toolkit/analysis?detail=full&history_limit=430` | 完整分析下的 Crisis Score 历史序列（`score_history`） | `MacroToolkitAnalysisPayload.capability_results[crisis_score_cn].result.score_history` | analytical / tooling |
+| `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
+| `getMacroToolkitScripts()` -> `GET /ui/macro/toolkit/scripts` | 脚本注册表、源命中、产物列表 | `MacroToolkitPayload` | tooling |
+| `runMacroToolkitScript()` -> `POST /ui/macro/toolkit/scripts/{name}/run` | 显式运行选中脚本 | `MacroToolkitRunResponse` | operational |
+| `refreshMacroSourceBackfill()` -> `POST /ui/macro/toolkit/source-backfill/refresh` | Crisis Score / 宏观来源缺口补齐（按 alias 滚动回填） | `MacroToolkitSourceBackfillRefreshResponse` | operational / permission-gated |
+| `refreshCffexMemberRank()` -> `POST /ui/macro/toolkit/cffex-member-rank/refresh` | 中金所席位数据刷新 | `MacroToolkitCffexRefreshResponse` | operational / permission-gated |
+| `refreshChoiceStock()` -> `POST /ui/macro/toolkit/choice-stock/refresh` | 股票历史与因子快照刷新 | `MacroToolkitChoiceStockRefreshResponse` | operational / permission-gated |
+| `getChoiceStockRefreshStatus()` -> `GET /ui/macro/toolkit/choice-stock/refresh-status` | 刷新任务状态 | `MacroToolkitChoiceStockRefreshResponse` | operational |
+
+**分析 detail 语义**
+
+- `detail=core`：首屏快速返回；`runtime_status.deferred_sections` 可能延后策略、完整能力结果与 `data_health` 细项。
+- `detail=full`：返回完整能力结果（含 `crisis_score_cn` 组件、`score_history`）与 `data_health` 覆盖/修复项；`history_limit` 默认 430，仅对 full 生效。
+- `data_health`：来源覆盖、能力结果 complete/degraded/unavailable 计数与 repair_items；不得在前端重算 Crisis Score。
+- `source-backfill/refresh`：仅补齐缺失 alias，不改变 Crisis Score 公式权重。
+
+### F. 指标映射
+
+- 本页不新增 `MTR-MACRO-*`，不新增 `MTR-*`，也不绑定 golden sample。
+- `coverage.hit_rate`、脚本数量、策略数量、真实链路数量、股票历史行数、因子快照行数等均为页面状态/运维证据，不能写入正式指标字典。
+- 若未来要把某个宏观指标升格为正式指标，必须另行补 metric dictionary 行、单位/精度/null 规则、source lineage、sample 或明确 `pending_confirmation=true` 的 candidate 决策；本页合同不授权该升格。
+
+### G. 状态规则
+
+- **Loading**：核心分析可以先返回；`runtime_status.deferred_sections` 须让策略展示等延后区块可见。
+- **Empty**：无脚本、无策略、无指标时必须显示空态，不得补静态假数据。
+- **Stale / fallback**：遵循 `result_meta.quality_flag`、`fallback_mode`、各源最新日期与 warnings；供数闭环必须保留样例/降级/真实链路区分。
+- **Error**：分析、脚本或策略读取失败时，错误页或区块必须同时显示合同边界和失败来源。
+- **Permission**：刷新和运行入口必须依赖后端权限/授权测试；前端不单独声明授权成功。
+
+### H. 测试与验证锚点
+
+- 前端页面：`frontend/src/test/MacroToolkitPage.test.tsx`
+- 导航成熟度：`frontend/src/test/navigation.test.ts`、`tests/test_live_route_page_contract_completeness.py`
+- 后端/API/权限：`tests/test_macro_toolkit_scripts.py`
+- 债务基线：`npm run debt:audit`
+- 浏览器检查：打开 `/macro-toolkit`，核对 `非正式口径`、核心信号、市场踩踏风险、策略供数闭环、脚本注册表和运行结果可见。
+
+### I. 显式待确认
+
+- 是否未来拆分为「只读宏观观察页」与「运维脚本工具页」两个路由。
+- 是否将某些宏观序列或策略状态按 candidate metric 登记；当前合同明确不登记。
+- 是否允许脚本运行输出进入可下载报告或审计归档；当前仅作为页面运行证据显示。
+
+## 13.10 PAGE-MACRO-OBS-001 宏观观察
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-MACRO-OBS-001`
+- 页面名称：`宏观观察`
+- 路由：前端 `/macro-observation`（`frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx`，`mode="observation"`）
+- 页面状态：`candidate tooling surface`。本页只展示宏观分析与策略供数证据，不暴露脚本注册表、执行按钮或刷新动作。
+- 页面边界锚点：`macro-observation-readonly-boundary` 必须在正常页和错误页可见，并明确标出 `read-only macro observation`。
+
+### B. 业务问题与不回答
+
+- **须回答**：宏观核心判断、证据覆盖、市场踩踏风险、功能结果、策略供数状态是否可读。
+- **不回答**：
+  - 不展示脚本注册表、运行结果或任何运行/刷新入口。
+  - 不把脚本产物或运维状态升格为正式宏观指标 truth。
+
+### C. 必有 section / 组件
+
+| Section / component | 状态 | 备注 |
+| --- | --- | --- |
+| `macro-toolkit-tailwind-cockpit` | live | 首屏保留分析日期、投研观点、证据覆盖、能力闭环与合同边界 |
+| `MacroToolkitContractBoundary` | live | 仍需展示 `formal_use_allowed=false` 和 result meta |
+| `macro-observation-readonly-boundary` | live | 明确只读边界，说明刷新、脚本执行和运维注册表留在 `/macro-toolkit` |
+| 核心信号 / 市场踩踏风险 | live | 只读分析证据，不暴露运维操作 |
+| 指标矩阵 / 功能结果 | live | 保留分析结果，但不引出脚本工具尾段 |
+| 策略展示 / 策略供数闭环 | live | 保留策略证据与供数状态，不展示股票刷新控件 |
+
+### D. 时间语义
+
+- 与 `PAGE-MACRO-TOOLKIT-001` 相同，核心分析和策略供数日期仍以返回 payload 内字段为准。
+- 本页不引入独立操作日期或运行日期。
+
+### E. Endpoint / DTO 表
+
+| Client 方法 / Endpoint | 用途 | DTO/Schema | 口径 |
+| --- | --- | --- | --- |
+| `getMacroToolkitAnalysis()` -> `GET /ui/macro/toolkit/analysis?detail=core` | 核心分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
+| `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |
+
+### F. 指标映射
+
+- 本页不新增 `MTR-MACRO-*`，不新增 `MTR-*`，也不绑定 golden sample。
+- 只读观察页复用工具页的分析证据，但不继承运维动作。
+
+### G. 状态规则
+
+- **Loading**：核心分析和策略供数可先返回，脚本/运维段不渲染。
+- **Empty**：无分析时仍保留只读边界。
+- **Error**：分析失败时展示合同边界和只读边界。
+
+### H. 测试与验证锚点
+
+- 前端页面：`frontend/src/test/MacroToolkitPage.test.tsx`
+- 路由：`frontend/src/test/RouteRegistry.test.tsx`
+- 导航成熟度：`frontend/src/test/navigation.test.ts`、`tests/test_live_route_page_contract_completeness.py`
+- 债务基线：`npm run debt:audit`
+
+## 14.0 PAGE-LEDGER-PNL-001 Ledger PnL
+
+### A. Page identity
+
+- Page ID: `PAGE-LEDGER-PNL-001`
+- Primary front-end route: `/ledger-pnl`
+- Status: `active` ledger read surface
+- Primary APIs:
+  - `GET /api/ledger-pnl/dates`
+  - `GET /api/ledger-pnl/data`
+  - `GET /api/ledger-pnl/summary`
+  - `GET /api/ledger-pnl/formal-financial-indicators`
+
+### B. Primary business question
+
+- The page answers: what does the ledger/QDB analytical read chain show for the selected report date, and which formal financial indicators are still pending source confirmation?
+- The page must keep ledger/QDB analytics separate from formal financial indicator truth.
+- It must not present Excel sample values, QDB candidate values, or reconciliation probes as formal values unless a future contract explicitly returns `formal_use_allowed=true`.
+
+### C. Data chain
+
+- Frontend route `/ledger-pnl` consumes ledger PnL read APIs under `/api/ledger-pnl/*`.
+- `GET /api/ledger-pnl/formal-financial-indicators?report_month=202603` returns the frozen formal financial indicator source contract.
+- Backend route `backend/app/api/routes/ledger_pnl.py` delegates to `backend/app/services/ledger_pnl_service.py`.
+- The formal financial indicator source contract is built by `backend/app/core_finance/formal_financial_indicators.py`.
+
+### D. Formal indicator source-contract boundary
+
+| Source status | Page meaning | Display rule |
+| --- | --- | --- |
+| `formal_pending` | Excel sample has a formal indicator value, but governed production source is not connected | Show as pending; `value` must remain null |
+| `candidate_qdb_aligned` | QDB analytical value aligns to the Excel sample within display precision | Show as candidate only; `value` must remain null |
+| `needs_reconciliation` | QDB analytical value and Excel sample differ | Show reconciliation gap; `value` must remain null |
+
+- Contract envelope: `result_meta.basis=ledger`, `result_meta.formal_use_allowed=false`.
+- Contract values: every source-contract metric uses `value=null`; `system_value` is evidence only, not a formal displayed value.
+- Page copy must distinguish `excel_value`, `system_value`, and `value`.
+
+### E. Units, dates, and status
+
+- `report_date` controls ledger data/detail/summary endpoints.
+- `report_month` controls the formal financial indicator source contract.
+- `as_of_date` for the source contract is the month-end `report_date` returned by the envelope.
+- Stale/fallback/vendor degradation must remain visible through `result_meta`.
+- No-data and missing-source states must be explicit; pending formal indicators must not be rendered as zero.
+
+### F. Candidate metric bindings
+
+- Ledger summary cards have dictionary entries only as candidate display metrics; they remain `pending_confirmation=true` and must not be read as formal PnL, product-category PnL, or approved financial-indicator truth.
+- `MTR-LPN-001` -> `LedgerPnlSummaryPayload.ledger_monthly_pnl_core`
+- `MTR-LPN-002` -> `LedgerPnlSummaryPayload.ledger_monthly_pnl_all`
+- `MTR-LPN-003` -> `LedgerPnlSummaryPayload.ledger_net_assets`
+- The bound page is `PAGE-LEDGER-PNL-001`; `bound_sample_id=GS-LEDGER-PNL-SUMMARY-A` as a capture-ready candidate DTO sample. This sample does not approve formal use and `pending_confirmation=true` remains in force for `MTR-LPN-001` through `MTR-LPN-003`.
+
+### G. Tests
+
+- API/source contract: `tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py`.
+- Ledger summary/detail: `tests/test_ledger_pnl_service.py`.
+- Route/page-contract completeness: `tests/test_live_route_page_contract_completeness.py`.
 
 ## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
 
@@ -1271,7 +1632,7 @@
 - `requested_report_date`：查询参数 `report_date`
 - `resolved_report_date`：当前为 `result.report_date`
 - `generated_at`：`result_meta.generated_at`
-- `as_of_date`：当前未作为独立 outward 字段；视为显式合同缺口，不得隐式假设
+- `as_of_date`：按 2026-05-11 decision 1B 不作为独立 outward 字段；不得用 `report_date` 或 `generated_at` 替代
 - 禁止静默回落；退化必须可见（见 truth contract §10）
 
 ### E. Endpoint / DTO 与正式性边界
@@ -1286,8 +1647,8 @@
 
 ### F. 指标与字段锚点
 
-- 本页 `metric_id` 主表绑定**尚未**在 `docs/metric_dictionary.md` 中完备案；真值以 truth contract **field freeze** 为准，禁止在前端重算或推断：
-  - 头表：`result.asset_total.business_net_income`、`result.liability_total.business_net_income`、`result.grand_total.business_net_income`
+- P0 headline `metric_id` 主表绑定已经在 `docs/metric_dictionary.md` 中批准；decision 3C 已方向性批准 detail metric 扩展，但 detail 字段在矩阵/编号/字典行/测试落地前仍以 truth contract **field freeze** 为准，禁止在前端重算或推断：
+  - 头表：`MTR-PCP-001` -> `result.asset_total.business_net_income`；`MTR-PCP-002` -> `result.liability_total.business_net_income`；`MTR-PCP-003` -> `result.grand_total.business_net_income`
   - 行：`category_id`、`category_name`、`side`、`level`、`view`、`report_date`、`business_net_income`、`children` 等（truth contract §9）
 - 对账等式见 truth contract §12（含 asset+liability 与 grand_total 一致性等）。
 
@@ -1306,6 +1667,517 @@
 - 后端/流程：`tests/test_product_category_pnl_flow.py`、`tests/test_product_category_mapping_contract.py`
 - 前端：`frontend/src/test/ProductCategoryPnlPage.test.tsx` 等（见 `product-category-closure-checklist.md`）
 - capture-ready：`tests/test_golden_samples_capture_ready.py` 中 `GS-PROD-CAT-PNL-A`
+
+### F.1 Decision 3C active detail metric clarification
+
+- 2026-06-04 update: decision 3C detail metrics are active as `MTR-PCP-004`~`MTR-PCP-012`, bound only to `result.rows[].cnx_scale`, `result.rows[].cny_scale`, `result.rows[].foreign_scale`, `result.rows[].cny_ftp`, `result.rows[].foreign_ftp`, `result.rows[].cny_net`, `result.rows[].foreign_net`, `result.rows[].business_net_income`, and `result.rows[].weighted_yield`.
+- Active detail ids: `MTR-PCP-004`, `MTR-PCP-005`, `MTR-PCP-006`, `MTR-PCP-007`, `MTR-PCP-008`, `MTR-PCP-009`, `MTR-PCP-010`, `MTR-PCP-011`, `MTR-PCP-012`.
+- Row dimensions such as `category_id`, `side`, `view`, and `report_date` remain dimensions, not metrics.
+- Scenario payloads remain analytical companion probes unless a future decision explicitly promotes them.
+
+## 14.1 PAGE-AGENT-001 Agent Workbench
+
+### A. Page identity
+
+- Page ID: `PAGE-AGENT-001`
+- Primary front-end route: `/agent`
+- Status: `active`
+- Primary APIs:
+  - `POST /api/agent/runs`
+  - `GET /api/agent/runs/{run_id}`
+  - `POST /api/agent/query` for local/synchronous compatibility paths
+
+### B. Primary business question
+
+- The page answers: what can the governed MOSS agent read, explain, and trace for the current user and selected context?
+- It must preserve the boundary between analytical/read-only agent output and formal business metrics.
+- It must not present an agent answer as a formal financial result unless `result_meta.formal_use_allowed` explicitly allows it.
+
+### C. Data chain
+
+- Frontend route `frontend/src/features/agent/AgentWorkbenchPage.tsx` builds an `AgentQueryRequest`.
+- Managed runs call `POST /api/agent/runs`, then poll `GET /api/agent/runs/{run_id}`.
+- Local compatibility calls use `POST /api/agent/query`.
+- Backend route `backend/app/api/routes/agent.py` delegates to `backend/app/services/agent_run_service.py` and `backend/app/services/agent_service.py`.
+- Responses are `AgentEnvelope` payloads with `answer`, `cards`, `evidence`, `result_meta`, `next_drill`, and optional `suggested_actions`.
+
+### D. Units, dates, and status
+
+- Units are not computed in the page. Numeric cards must display the unit supplied by the returned envelope or the originating governed intent.
+- Dates use the request context and the backend `result_meta.generated_at`; page context dates remain filters, not independent truth.
+- Empty state: no answer/cards means show an empty conversation state, not synthetic financial numbers.
+- Failure state: disabled provider, rejected request, failed run, or forbidden run ownership must be visible to the user.
+- Stale/fallback state: `quality_flag != ok`, `fallback_mode != none`, or vendor degradation must remain visible through evidence/result metadata.
+
+### E. Tests
+
+- Frontend: `frontend/src/test/AgentWorkbenchPage.test.tsx`, `frontend/src/test/AgentPlaceholderPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Backend: `tests/test_agent_api_contract.py`, `tests/test_agent_enabled_path_smoke.py`, `tests/test_agent_runs_api.py`, `tests/test_agent_intent_routing.py`.
+
+## 14.2 PAGE-BAL-MOVE-001 Balance Movement Analysis
+
+### A. Page identity
+
+- Page ID: `PAGE-BAL-MOVE-001`
+- Primary front-end route: `/balance-movement-analysis`
+- Status: `active`
+- Primary APIs:
+  - `GET /ui/balance-movement-analysis/dates`
+  - `GET /ui/balance-movement-analysis`
+  - `POST /ui/balance-movement-analysis/refresh`
+
+### B. Primary business question
+
+- The page answers: what changed in asset, liability, and net balance between reporting periods, and which accounting or business dimensions explain the movement?
+- It must separate accounting basis movement, business category movement, structure migration, maturity structure, and concentration views.
+- It must not replace `PAGE-BALANCE-001` formal balance truth; it explains movement for selected report dates and currency basis.
+
+### C. Data chain
+
+- Frontend page `frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx` reads dates through `client.getBalanceMovementDates`.
+- The selected `report_date` and `currency_basis` call `client.getBalanceMovementAnalysis`.
+- Domain client `frontend/src/api/balanceMovementClient.ts` maps the UI route to the `/ui/balance-movement-analysis*` endpoints.
+- Backend route `backend/app/api/routes/accounting_asset_movement.py` returns the governed balance movement envelope and refresh entrypoint.
+
+### D. Units, dates, and status
+
+- Amount fields are displayed in yuan-derived units as provided by the backend model; page-level summaries convert to visible business units only for presentation.
+- `requested_report_date` is the selected route/query value. `resolved_report_date` is the backend result date returned by the detail payload.
+- `currency_basis` must stay visible when it affects amounts.
+- Empty state: no report dates or no rows must show an explicit no-data state.
+- Failure state: date load/detail load/refresh failure must show a user-visible error and must not backfill with demo rows.
+- Stale/fallback state: `result_meta.quality_flag`, `fallback_mode`, source/version, and refresh status remain part of the governance line.
+
+### E. Metric bindings
+
+| Page display item | `metric_id` | Source field |
+| --- | --- | --- |
+| Previous balance total | `MTR-BMV-001` | `summary.previous_balance_total` |
+| Current balance total | `MTR-BMV-002` | `summary.current_balance_total` |
+| Balance change total | `MTR-BMV-003` | `summary.balance_change_total` |
+| Reconciliation diff total | `MTR-BMV-004` | `summary.reconciliation_diff_total` |
+
+### F. Tests
+
+- Frontend: `frontend/src/test/BalanceMovementAnalysisPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Backend: `tests/test_accounting_asset_movement_api.py`, `tests/test_result_meta_on_all_ui_endpoints.py`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.3 PAGE-LIAB-ANALYTICS-001 Liability Analytics
+
+### A. Page identity
+
+- Page ID: `PAGE-LIAB-ANALYTICS-001`
+- Primary front-end route: `/liability-analytics`
+- Status: `active`
+- Primary APIs:
+  - `GET /ui/liability/risk-buckets`
+  - `GET /ui/liability/yield-metrics`
+  - `GET /ui/liability/yield-by-period`
+  - `GET /ui/liability/counterparty`
+  - `GET /ui/liability/business-context`
+  - `GET /ui/liability/cockpit-warnings`
+  - `GET /ui/liability/contribution-split`
+
+### B. Primary business question
+
+- The page answers: how are funding liabilities structured, concentrated, and priced, and what pressure do they place on NIM, liquidity, and near-term maturity risk?
+- It combines daily liability analysis with monthly average-balance views.
+- It must not treat reserved compatibility endpoints as formal truth, and it must surface any synthetic or derived section boundary.
+
+### C. Data chain
+
+- Frontend page `frontend/src/features/liability-analytics/pages/LiabilityAnalyticsPage.tsx` initializes report dates from balance-analysis dates.
+- Daily view calls liability risk, yield, counterparty, knowledge, warning, and contribution endpoints.
+- Monthly view calls liabilities monthly and liability average-balance monthly endpoints through the API client.
+- Backend route `backend/app/api/routes/liability_analytics.py` delegates to liability analytics and liability knowledge services.
+- Frontend adapters in `frontend/src/features/liability-analytics/adapters/` shape counterparty and section-state view models.
+
+### D. Units, dates, and status
+
+- Amounts are displayed as yuan-derived business units such as yi yuan after explicit frontend presentation conversion; source numeric fields remain backend-provided values.
+- Yield, liability cost, market liability cost, NIM, and spread values must preserve percent/bp semantics from backend numeric payloads.
+- `requested_report_date` is the selected report date. Monthly mode uses selected year/month and average daily balance semantics.
+- Empty state: missing report dates, missing liability rows, or missing monthly rows must show no-data states.
+- Failure state: date load, daily core query, monthly query, and knowledge-query failures must be visible and retryable where supported.
+- Stale/fallback state: quality/fallback/vendor metadata and synthetic section notes must remain visible; the page may explain derived sections but may not hide pending metric definitions.
+
+### E. Metric bindings
+
+These bindings are analytical compatibility bindings, not formal balance/PnL truth. The page must keep result metadata visible and must not hide synthetic or derived section boundaries.
+
+| Page display item | `metric_id` | Source field |
+| --- | --- | --- |
+| Daily liability total | `MTR-LIAB-001` | `counterparty.total_value` / `risk_buckets.liabilities_structure[].amount` |
+| Daily liability cost | `MTR-LIAB-002` | `yield_metrics.kpi.liability_cost` |
+| Daily NIM | `MTR-LIAB-003` | `yield_metrics.kpi.nim` |
+| One-year maturity pressure | `MTR-LIAB-004` | `risk_buckets.liabilities_term_buckets[]` <= 1Y bucket |
+| Top counterparty share | `MTR-LIAB-005` | `counterparty.top_10[0].value / counterparty.total_value` |
+| Monthly average total liabilities | `MTR-LIAB-006` | `liabilities_monthly.months[].avg_total_liabilities` |
+| Monthly average liability cost | `MTR-LIAB-007` | `liabilities_monthly.months[].avg_liability_cost` |
+
+### F. Tests
+
+- Frontend: `frontend/src/test/LiabilityAnalyticsPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`, `frontend/src/features/liability-analytics/adapters/liabilityAdapter.test.ts`.
+- Backend: `tests/test_result_meta_on_all_ui_endpoints.py` and liability analytics route/service tests where present.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.4 PAGE-CUBE-QUERY-001 Cube Query
+
+### A. Page identity
+
+- Page ID: `PAGE-CUBE-QUERY-001`
+- Primary front-end route: `/cube-query`
+- Status: `active candidate query surface`
+- Primary APIs:
+  - `POST /api/cube/query`
+  - `GET /api/cube/dimensions/{fact_table}`
+
+### B. Primary business question
+
+- The page answers: for an allowed fact table, what grouped rows result from the selected dimensions, measures, filters, and drill path?
+- It is a query tool surface. It must not create a new page-level KPI, metric definition, or formal business conclusion outside the returned `result_meta`.
+- Formal semantics apply only to backend-approved fact tables and response metadata; unsupported tables, dimensions, or measures must fail closed with visible errors.
+
+### C. Data chain
+
+- Frontend page `frontend/src/features/cube-query/pages/CubeQueryPage.tsx` builds a `CubeQueryRequest`.
+- Frontend client `frontend/src/api/cubeClient.ts` sends `POST /api/cube/query`.
+- Backend route `backend/app/api/routes/cube_query.py` delegates query execution to the analytical bridge and dimensions lookup to `CubeQueryService`.
+- The response is `CubeQueryResult` with rows, columns, summary, drill path, and `result_meta`.
+
+### D. Units, dates, and status
+
+- Units and date semantics come from the selected fact table and backend query response; the frontend must not reinterpret measure units.
+- Empty result sets must be rendered as query results or explicit no-data states, not as demo rows.
+- Invalid table, dimension, measure, filter, or unavailable storage states must surface as user-visible query errors.
+- The page must keep result metadata visible enough for operators to distinguish formal, analytical, stale, fallback, and quality states.
+
+### E. Metric bindings
+
+- None. This page is a candidate query surface and has no standalone `MTR-*` binding.
+- Any formal-use claim is scoped to the `result_meta` returned for the specific query.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/CubeQueryPage.test.tsx`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Backend: `tests/test_cube_query_api.py`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.5 PAGE-PORTFOLIO-HOME-001 Portfolio Workbench Home
+
+### A. Page identity
+
+- Page ID: `PAGE-PORTFOLIO-HOME-001`
+- Primary front-end route: `/portfolio`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+  - `frontend/src/features/workbench/module-home/usePortfolioHomeQueries.ts`
+- Primary downstream pages:
+  - `/balance-analysis`
+  - `/bond-dashboard`
+  - `/positions`
+  - `/pnl-attribution`
+
+### B. Primary business question
+
+- The page answers: what portfolio-scale, risk, structure, and PnL evidence is ready enough to decide the next drilldown?
+- It is a module home and navigation summary, not a standalone formal metric page.
+- It must not replace the formal truth on `/balance-analysis`, `/bond-dashboard`, `/positions`, or `/pnl-attribution`.
+
+### C. Data chain
+
+- `usePortfolioHomeQueries` loads existing balance, bond dashboard, risk, structure, portfolio comparison, basis, and PnL attribution read surfaces.
+- `buildModuleHomeView(... kind="portfolio")` maps those query envelopes into KPI cards, source statuses, briefings, distribution panels, and detail panels.
+- The page only displays returned fields and presentation conversions such as yuan to yi yuan; it does not create official finance calculations.
+
+### D. Units, dates, and status
+
+- Amounts follow the originating endpoint semantics and may be rendered in yi yuan only as presentation.
+- Dates are inherited from each endpoint result or result metadata; mixed dates must remain visible through source status and panel metadata.
+- Empty state: missing query data must remain a muted or warning status, not a synthetic portfolio total.
+- Failure state: failed child queries must remain visible at source or panel level.
+- Stale/fallback state: quality, fallback, and source metadata from child endpoints must not be hidden by the module home.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal-use claims remain scoped to each downstream page and API result metadata.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.6 PAGE-MARKET-HOME-001 Market Workbench Home
+
+### A. Page identity
+
+- Page ID: `PAGE-MARKET-HOME-001`
+- Primary front-end route: `/market-overview`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+  - `frontend/src/features/workbench/module-home/useMarketHomeQueries.ts`
+- Primary downstream pages:
+  - `/market-data`
+  - `/cross-asset`
+  - `/macro-toolkit`
+  - `/stock-analysis`
+  - `/news-events`
+
+### B. Primary business question
+
+- The page answers: which market data, macro, cross-asset, stock observation, or event context should be opened first today?
+- It is a market entry surface and must not promote observational or vendor-readiness signals into formal operating metrics.
+- Old `/market` bookmarks may redirect to `/market-data`; `/market-overview` remains the module home route.
+
+### C. Data chain
+
+- `useMarketHomeQueries` loads Choice macro latest data, market rate series, market catalog, and macro toolkit **full** analysis with `historyLimit: 430` (Crisis Score 历史窗口)。
+- `buildModuleHomeView(... kind="market")` maps query envelopes into market KPI cards, rate tables, macro/toolkit panels, `MarketCrisisExplainBand`（Crisis Score 解释带）、`MarketDeskIntelStrip`（含 `yield_curve_shape` 形态标签）与 source statuses。
+- The page references market data result metadata and child-page readiness instead of defining a new market metric contract.
+- 商品旁证 / 影子评估不在市场首页完整展开；仅保留研究说明链接至 `/macro-toolkit#macro-toolkit-crisis-detail`。
+
+### D. Units, dates, and status
+
+- Rate, FX, spread, and macro units come from the originating market or macro payload and their local formatters.
+- Trade dates and as-of dates must stay tied to the source row or result metadata.
+- Empty state: no rates, no catalog, or no macro toolkit result must show a missing/partial status.
+- Failure state: failed market or macro queries must be visible and must not be replaced by demo market values.
+- Stale/fallback state: vendor, fallback, catalog, and source-version status must remain visible.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal-use claims remain scoped to `/market-data` or the specific returned `result_meta`.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.7 PAGE-RISK-HOME-001 Risk Workbench Home
+
+### A. Page identity
+
+- Page ID: `PAGE-RISK-HOME-001`
+- Primary front-end route: `/risk-overview`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+- Primary downstream pages:
+  - `/risk-tensor`
+  - `/concentration-monitor`
+  - `/cashflow-projection`
+
+### B. Primary business question
+
+- The page answers: which risk-tensor, concentration, or cashflow area needs the next review?
+- It is a risk module home and must not replace `PAGE-RISK-001` formal risk tensor truth.
+- It must not estimate regulatory DV01, liquidity pressure, or concentration limits in the frontend.
+
+### C. Data chain
+
+- The module home loads risk tensor dates, selected risk tensor payload, and cashflow projection payload through the shared API client.
+- `buildModuleHomeView(... kind="risk")` maps returned tensor and cashflow fields into KPI cards, detail panels, and drilldown status.
+- Concentration remains a downstream drilldown status unless its route supplies explicit data to this module home.
+
+### D. Units, dates, and status
+
+- DV01/CS01 values must preserve the backend risk tensor field semantics and visible units.
+- Report date comes from risk tensor date/result payload; cashflow may carry its own report date.
+- Empty state: no tensor date, no tensor payload, or no cashflow payload must remain visible.
+- Failure state: risk query failures must show warning/error status and must not be replaced with frontend estimates.
+- Stale/fallback state: degraded tensor inputs, maturity gaps, fallback dates, and quality flags must remain visible.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal risk metrics remain bound to `PAGE-RISK-001`.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.8 PAGE-PERFORMANCE-HOME-001 Performance Workbench Home
+
+### A. Page identity
+
+- Page ID: `PAGE-PERFORMANCE-HOME-001`
+- Primary front-end route: `/performance`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+- Primary downstream pages:
+  - `/kpi`
+  - `/team-performance`
+  - `/pnl-by-business`
+  - `/product-category-pnl`
+
+### B. Primary business question
+
+- The page answers: which KPI, team contribution, business PnL, or product PnL surface should support the current performance review?
+- It is a performance entry surface and must not rebuild KPI scoring or team allocation formulas.
+- It must not treat temporary-exception downstream pages as formal KPI truth.
+
+### C. Data chain
+
+- The module home loads KPI owners, KPI period summary, and business PnL YTD payloads where available.
+- `buildModuleHomeView(... kind="performance")` maps returned summaries into KPI cards, source statuses, briefings, and drilldown rows.
+- Team performance and product-category details remain governed by their own pages and result metadata.
+
+### D. Units, dates, and status
+
+- KPI period labels, PnL units, and report dates must come from the originating payloads.
+- Empty state: missing KPI owner, KPI summary, or business PnL must remain visible.
+- Failure state: failed KPI/PnL queries must not be hidden behind static performance copy.
+- Stale/fallback state: downstream quality, fallback, and temporary-exception boundaries must remain visible before any performance conclusion.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal KPI, team, and PnL semantics belong to the downstream pages and source contracts.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.8.1 PAGE-PNL-BY-BUSINESS-001 Business Type PnL
+
+### A. Page identity
+
+- Page ID: `PAGE-PNL-BY-BUSINESS-001`
+- Primary front-end route: `/pnl-by-business`
+- Status: `temporary-exception with dedicated page contract`
+- Primary frontend files:
+  - `frontend/src/features/pnl/PnlByBusinessPage.tsx`
+  - `frontend/src/features/pnl/pnlByBusinessPageModel.ts`
+  - `frontend/src/api/pnlClient.ts`
+- Primary backend/API files:
+  - `backend/app/api/routes/pnl.py`
+  - `backend/app/services/pnl_service.py`
+  - `backend/app/repositories/pnl_repo.py`
+
+### B. Primary business question
+
+- The page answers: 哪类业务贡献/拖累最大，FTP 后是否仍有效，下一步该下钻哪里，数据能不能用于决策？
+- The primary analysis view is YTD/月报 ZQTZ 管理披露分类, not formal primary.
+- Formal primary is a reconciliation evidence view only; it must not be mixed with monthly/YTD business conclusions.
+- The page must not replace `/product-category-pnl`, `/ledger-pnl`, `/pnl`, or `/pnl-bridge`.
+
+### C. Data chain
+
+- Monthly analysis uses `GET /api/pnl/by-business-monthly`.
+- YTD analysis uses `GET /api/pnl/by-business-ytd`.
+- YTD FTP and annualized-yield analysis also consumes `GET /api/adb/comparison` through the existing PnL page client flow; front-end code may only resolve category rollups already defined for ZQTZ display alignment.
+- Formal reconciliation uses `GET /api/pnl/by-business`.
+- Manual adjustment audit/actions use `/api/pnl/by-business/manual-adjustments*`; they are displayed as audit/reconciliation controls and must not create a new official metric definition.
+- The front-end model may derive presentation-only insight labels from returned payload fields, but must not recalculate official PnL, balance, FTP cost, or formal yield formulas.
+
+### D. Required sections
+
+| section_key | Purpose | Data source |
+| --- | --- | --- |
+| `decision_hero` | State the selected view, report date, and current business question | page model + `result_meta` |
+| `data_status` | Keep `quality_flag`, fallback, vendor status, trace, and generated time visible | active endpoint `result_meta` |
+| `analysis_strip` | Summarize contribution, drag, share, FTP/ADB status, formal reconciliation warning, and next drilldown | page model derived from active payload fields |
+| `driver_overview` | In YTD, rank contribution, drag, yield, and ADB-vs-current-balance drivers before the large table | YTD rows + ADB comparison |
+| `main_table` | Show monthly/YTD/formal detail table with explicit units | active payload rows |
+| `monthly_breakdown` | In monthly/YTD, allow monthly reconciliation against published monthly buckets | monthly payload |
+| `drilldown` | In YTD, show FTP bridge, bond-bucket, instrument, and multidimensional drilldowns | `/api/pnl/by-business-analysis` |
+| `evidence` | Show source, lineage, and result metadata below the decision summary | `result_meta` |
+
+### E. Units, dates, and status
+
+- Amount columns displayed in the page are in `万元` unless the table header explicitly says `亿元`.
+- ADB and current balance displays are `亿元`.
+- Yield fields are displayed as `%`; formal primary `yield_pct` comes from the backend formal query and is not recomputed in the page model.
+- Monthly view date semantics use the selected report month/bucket from `/api/pnl/by-business-monthly`.
+- YTD view date semantics use selected `year` and `as_of_date` from `/api/pnl/by-business-ytd`.
+- Formal primary view uses the selected single `report_date` from `/api/pnl/by-business`.
+- Empty, loading, error, stale, fallback, and warning states must remain visible in the first screen status strip or state surfaces.
+- YTD `缺日均` confidence may only count parent rows with actual business activity; zero-PnL/zero-asset parent rows must not block FTP analysis.
+- ZQTZ parent rows whose ADB can be resolved through existing rollup children must not be counted as missing ADB.
+
+### F. Metric status and boundaries
+
+- This page has no newly approved `MTR-*` metric binding in this pass.
+- Business PnL rows reuse formal/monthly/YTD payload fields from the PnL service and remain page-level analytical display, not product-category truth.
+- Product-category truth remains governed by `PAGE-PROD-CAT-PNL-001`.
+- Ledger-account PnL truth/candidate display remains governed by `PAGE-LEDGER-PNL-001`.
+- Formal PnL overview truth remains governed by `PAGE-PNL-001`; PnL bridge truth remains governed by `PAGE-BRIDGE-001`.
+- The formal primary tab is `仅对账`; it is source evidence for tracing `fact_formal_pnl_fi`, `fact_nonstd_pnl_bridge`, and `fact_formal_zqtz_balance_daily`, not the page's primary business contribution analysis.
+
+### G. Known data-quality risks
+
+- Formal primary may return `quality_flag=warning` when `summary.untraced_pnl_row_count > 0`.
+- Current 2026-05-31 local evidence shows 148 formal FI rows untraced by balance join; page evidence surfaces the main zero-balance groups such as `T`, `A`, and `H` from existing rows where `balance_row_count = 0`.
+- Owner-approved trace rule: strict match is attempted first; if it misses, `cost_center` may be relaxed only when report date, instrument code, portfolio, currency basis, and `position_scope = asset` still match a ZQTZ balance row.
+- Formal summary may include `untraced_breakdown` as reconciliation-only evidence for remaining rows, using balance-evidence buckets such as `position_absent_before_maturity`, `matured_before_or_on_report_date`, and `never_seen_in_zqtz_asset_balance`; these buckets are not official business contribution metrics.
+- Supporting read-only diagnostic: `docs/pnl/pnl-by-business-formal-untraced-diagnostic-2026-05-31.md`.
+- Owner triage packet: `docs/pnl/pnl-by-business-formal-untraced-detail-packet-2026-05-31.md`.
+- Untraced formal rows must be treated as reconciliation follow-up, not as a reason to mix formal primary rows into monthly/YTD conclusions.
+- FTP rate remains the current page behavior until a metric contract explicitly formalizes it.
+
+### H. Tests
+
+- Frontend page/model: `frontend/src/features/pnl/pnlByBusinessPageModel.test.ts`.
+- Route smoke: `frontend/src/test/PnlRoutesSmoke.test.tsx`.
+- API contract: `tests/test_pnl_api_contract.py`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+## 14.9 PAGE-REPORTS-HOME-001 Reports And Data Home
+
+### A. Page identity
+
+- Page ID: `PAGE-REPORTS-HOME-001`
+- Primary front-end route: `/reports`
+- Status: `active module home`
+- Primary frontend files:
+  - `frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx`
+  - `frontend/src/features/workbench/module-home/moduleHomeModel.ts`
+- Primary downstream pages:
+  - `/platform-config`
+  - `/cube-query`
+  - `/reports`
+
+### B. Primary business question
+
+- The page answers: are data health, source status, self-service query, and report-planning surfaces ready to support delivery?
+- It is a governance/reporting entry surface and must not fabricate report data when a backend report interface is absent.
+- It must keep planned or unimplemented report capabilities visibly marked as planned/pending.
+
+### C. Data chain
+
+- The module home loads health status, source foundation preview, and cube dimensions where available.
+- `buildModuleHomeView(... kind="governance")` maps those payloads into data health KPIs, source rows, cube capability rows, and report planning notes.
+- Cube query semantics remain scoped to `PAGE-CUBE-QUERY-001`; platform health remains diagnostics rather than business metric approval.
+
+### D. Units, dates, and status
+
+- Health and source status fields are displayed as returned by their diagnostic endpoints.
+- Cube dimensions have no amount units; fact-table units are only known after a specific cube query.
+- Empty state: missing source, health, or cube capability must show explicit missing/planned status.
+- Failure state: failed health/source/cube reads must remain visible.
+- Stale/fallback state: diagnostics or source preview metadata must not be converted into formal data-quality approval.
+
+### E. Metric bindings
+
+- None. This module home has no standalone `MTR-*` binding.
+- Formal-use claims remain scoped to specific downstream query results and result metadata.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
 ## 15. 当前缺口
 

@@ -6,15 +6,14 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any, Literal
 
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font
-from openpyxl.worksheet.worksheet import Worksheet
-
 from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
 )
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.worksheet.worksheet import Worksheet
 
 EXPORT_WORKBOOK_TABLES = (
     ("\u503a\u5238\u6301\u4ed3", ("zqtz_balance", "bond_business_types")),
@@ -135,6 +134,8 @@ def _to_formal_zqtz_fact_row(row: dict[str, object]) -> FormalZqtzBalanceFactRow
         rule_version=str(row.get("rule_version") or ""),
         ingest_batch_id=str(row.get("ingest_batch_id") or ""),
         trace_id=str(row.get("trace_id") or ""),
+        business_type_primary=str(row.get("business_type_primary") or ""),
+        sub_type=str(row.get("sub_type") or ""),
     )
 
 
@@ -224,7 +225,7 @@ def _write_workbook_table_sheet(sheet: Worksheet, table: dict[str, Any]) -> None
             values.append(coerced)
             coerced_values.append(coerced)
         sheet.append(values)
-        for column_index, (column_key, value) in enumerate(zip(column_keys, coerced_values), start=1):
+        for column_index, (column_key, value) in enumerate(zip(column_keys, coerced_values, strict=False), start=1):
             _style_numeric_cell(sheet.cell(row=sheet.max_row, column=column_index), value, column_key=column_key)
 
     _autosize_sheet_columns(sheet)

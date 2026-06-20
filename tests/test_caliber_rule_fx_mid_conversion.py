@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -15,12 +16,12 @@ from backend.app.core_finance.calibers import (
     get_caliber_rule,
 )
 from backend.app.core_finance.calibers.rules.fx_mid_conversion import (
+    _FX_DATE_POLICY,
     DESCRIPTOR,
     InapplicableFxConversion,
-    _FX_DATE_POLICY,
     select_fx_date,
 )
-
+from backend.app.core_finance.fx_rates import FxRateUnavailableError, get_usd_cny_rate
 
 _BD = date(2024, 1, 2)
 _ASOF = date(2024, 3, 4)
@@ -160,3 +161,36 @@ def test_select_fx_date_all_nine_matrix_cells(
 
 def test_inapplicable_fx_conversion_is_value_error_subclass() -> None:
     assert issubclass(InapplicableFxConversion, ValueError)
+
+
+def test_formal_canonical_usd_cny_rate_fails_closed_when_input_rows_are_empty() -> None:
+    with pytest.raises(FxRateUnavailableError) as excinfo:
+        get_usd_cny_rate([], date(2026, 3, 31))
+
+    assert "USD/CNY" in str(excinfo.value)
+    assert "formal" in str(excinfo.value)
+
+
+def test_formal_canonical_usd_cny_rate_fails_closed_when_only_stale_rows_exist() -> None:
+    with pytest.raises(FxRateUnavailableError) as excinfo:
+        get_usd_cny_rate(
+            [(date(2026, 2, 1), "7.1100")],
+            date(2026, 3, 31),
+        )
+
+    assert "USD/CNY" in str(excinfo.value)
+    assert "formal" in str(excinfo.value)
+    assert "7.25" not in str(excinfo.value)
+
+
+def test_formal_canonical_usd_cny_rate_carries_forward_explicit_non_business_day() -> None:
+    rate, observed_date, warnings = get_usd_cny_rate(
+        [(date(2026, 2, 16), "7.1100")],
+        date(2026, 2, 18),
+        target_is_business_day=False,
+    )
+
+    assert rate == Decimal("7.1100")
+    assert observed_date == date(2026, 2, 16)
+    assert warnings
+    assert "formal" in warnings[0]

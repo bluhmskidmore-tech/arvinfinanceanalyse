@@ -7,7 +7,30 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+CASHFLOW_PROJECTION_READ_HEADERS = {
+    "X-User-Id": "cashflow-projection-read-user",
+    "X-User-Role": "viewer",
+}
+
+
+def _grant_cashflow_projection_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "cashflow-projection-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="cashflow_projection",
+        action="read",
+    )
 
 
 def _core_module():
@@ -123,7 +146,7 @@ def test_liability_cashflow_projection():
                 "position_side": "liability",
                 "maturity_date": date(2026, 1, 31),
                 "principal_amount": Decimal("365"),
-                "funding_cost_rate": Decimal("0.10"),
+                "funding_cost_rate": Decimal("10.0"),
                 "currency_code": "CNY",
             }
         ],
@@ -164,6 +187,34 @@ def test_interbank_percent_funding_rate_is_normalized():
         for event in events
     ] == [
         ("funding_income", "2026-01-31", Decimal("3.0")),
+        ("maturity", "2026-01-31", Decimal("365")),
+    ]
+
+
+def test_interbank_low_percent_funding_rate_is_normalized():
+    module = _core_module()
+
+    events = module.project_tyw_cashflows(
+        [
+            {
+                "position_id": "TYW-LOW-PCT",
+                "counterparty_name": "Bank A",
+                "position_scope": "asset",
+                "maturity_date": date(2026, 1, 31),
+                "principal_amount": Decimal("365"),
+                "funding_cost_rate": Decimal("0.8"),
+                "currency_code": "CNY",
+            }
+        ],
+        report_date=date(2026, 1, 1),
+        horizon_months=12,
+    )
+
+    assert [
+        (event.event_type, event.event_date.isoformat(), event.amount)
+        for event in events
+    ] == [
+        ("funding_income", "2026-01-31", Decimal("0.24")),
         ("maturity", "2026-01-31", Decimal("365")),
     ]
 
@@ -269,7 +320,7 @@ def test_duration_gap_calculation_uses_full_scope_term_proxy():
                 "position_scope": "asset",
                 "maturity_date": date(2026, 7, 1),
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
             {
@@ -278,7 +329,7 @@ def test_duration_gap_calculation_uses_full_scope_term_proxy():
                 "position_scope": "liability",
                 "maturity_date": date(2028, 1, 1),
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
         ],
@@ -321,7 +372,7 @@ def test_duration_gap_warns_when_missing_maturity_excludes_rows():
                 "position_scope": "liability",
                 "maturity_date": None,
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
             {
@@ -330,7 +381,7 @@ def test_duration_gap_warns_when_missing_maturity_excludes_rows():
                 "position_scope": "liability",
                 "maturity_date": date(2028, 1, 1),
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
         ],
@@ -362,7 +413,7 @@ def test_tywl_demand_positions_without_maturity_use_one_month_proxy():
                 "position_scope": "asset",
                 "maturity_date": None,
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
             {
@@ -372,7 +423,7 @@ def test_tywl_demand_positions_without_maturity_use_one_month_proxy():
                 "position_scope": "liability",
                 "maturity_date": None,
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
         ],
@@ -400,7 +451,7 @@ def test_tywl_demand_positions_without_maturity_project_into_next_month():
                 "position_scope": "asset",
                 "maturity_date": None,
                 "principal_amount": Decimal("100"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
             {
@@ -410,7 +461,7 @@ def test_tywl_demand_positions_without_maturity_project_into_next_month():
                 "position_scope": "liability",
                 "maturity_date": None,
                 "principal_amount": Decimal("80"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
             },
         ],
@@ -462,6 +513,27 @@ def test_reinvestment_risk_ratio():
     assert result.reinvestment_risk_12m == Decimal("0.25")
 
 
+def test_cashflow_projection_read_surface_requires_explicit_read_scope(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'cashflow-projection-read-scope.db').as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    route_mod = load_module(
+        "backend.app.api.routes.cashflow_projection",
+        "backend/app/api/routes/cashflow_projection.py",
+    )
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/cashflow-projection",
+        params={"report_date": "2026-01-01"},
+        headers=CASHFLOW_PROJECTION_READ_HEADERS,
+    )
+
+    assert response.status_code == 403
+
+
 def test_api_returns_envelope(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -492,9 +564,8 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
             }
         ]
 
-    def fake_fetch_tyw_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+    def fake_fetch_tyw_rows(self, *, report_date, currency_basis="CNY"):
         assert report_date == "2026-01-01"
-        assert position_scope == "all"
         assert currency_basis == "CNY"
         return [
             {
@@ -503,7 +574,7 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
                 "position_scope": "liability",
                 "maturity_date": date(2026, 3, 1),
                 "principal_amount": Decimal("80"),
-                "funding_cost_rate": Decimal("0.03"),
+                "funding_cost_rate": Decimal("3.0"),
                 "currency_code": "CNY",
                 "source_version": "sv_tyw_1",
                 "rule_version": "rv_tyw_1",
@@ -511,13 +582,13 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
+        service_mod.CashflowProjectionRepository,
         "fetch_formal_zqtz_rows",
         fake_fetch_zqtz_rows,
     )
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
-        "fetch_formal_tyw_rows",
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
         fake_fetch_tyw_rows,
     )
 
@@ -525,22 +596,54 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
         "backend.app.api.routes.cashflow_projection",
         "backend/app/api/routes/cashflow_projection.py",
     )
+    _grant_cashflow_projection_read_scope(tmp_path, monkeypatch)
     app = FastAPI()
     app.include_router(route_mod.router)
     client = TestClient(app)
     response = client.get(
         "/api/cashflow-projection",
         params={"report_date": "2026-01-01"},
+        headers=CASHFLOW_PROJECTION_READ_HEADERS,
     )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["result_meta"]["basis"] == "formal"
-    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "cashflow_projection.overview"
+    assert payload["result_meta"]["source_surface"] == "cashflow"
+    assert payload["result_meta"]["requested_report_date"] == "2026-01-01"
+    assert payload["result_meta"]["resolved_report_date"] == "2026-01-01"
+    assert payload["result_meta"]["as_of_date"] == "2026-01-01"
+    assert payload["result_meta"]["date_basis"] == "cashflow_projection_report_date"
+    assert payload["result_meta"]["filters_applied"] == {
+        "report_date": "2026-01-01",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+    }
+    assert payload["result_meta"]["tables_used"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert payload["result_meta"]["evidence_rows"] == 2
     assert payload["result"]["report_date"] == "2026-01-01"
     assert "duration_gap" in payload["result"]
+    assert payload["result"]["duration_gap"]["unit"] == "years"
+    assert payload["result"]["duration_gap"]["precision"] == 2
+    assert payload["result"]["duration_gap"]["sign_aware"] is True
+    assert payload["result"]["asset_duration"]["unit"] == "years"
+    assert payload["result"]["asset_duration"]["precision"] == 2
+    assert payload["result"]["asset_duration"]["sign_aware"] is False
+    assert payload["result"]["liability_duration"]["unit"] == "years"
+    assert payload["result"]["liability_duration"]["precision"] == 2
+    assert payload["result"]["liability_duration"]["sign_aware"] is False
+    assert payload["result"]["equity_duration"]["unit"] == "years"
+    assert payload["result"]["equity_duration"]["precision"] == 2
+    assert payload["result"]["equity_duration"]["sign_aware"] is True
+    assert payload["result"]["rate_sensitivity_1bp"]["unit"] == "yuan"
+    assert payload["result"]["reinvestment_risk_12m"]["unit"] == "pct"
     assert "monthly_buckets" in payload["result"]
     assert "top_maturing_assets_12m" in payload["result"]
     assert "computed_at" in payload["result"]
@@ -583,7 +686,7 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
             }
         ]
 
-    def fake_fetch_tyw_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+    def fake_fetch_tyw_rows(self, *, report_date, currency_basis="CNY"):
         assert report_date == "2026-01-01"
         return []
 
@@ -605,13 +708,13 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
         ]
 
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
+        service_mod.CashflowProjectionRepository,
         "fetch_formal_zqtz_rows",
         fake_fetch_zqtz_rows,
     )
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
-        "fetch_formal_tyw_rows",
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
         fake_fetch_tyw_rows,
     )
     monkeypatch.setattr(
@@ -624,12 +727,14 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
         "backend.app.api.routes.cashflow_projection",
         "backend/app/api/routes/cashflow_projection.py",
     )
+    _grant_cashflow_projection_read_scope(tmp_path, monkeypatch)
     app = FastAPI()
     app.include_router(route_mod.router)
     client = TestClient(app)
     response = client.get(
         "/api/cashflow-projection",
         params={"report_date": "2026-01-01"},
+        headers=CASHFLOW_PROJECTION_READ_HEADERS,
     )
 
     assert response.status_code == 200

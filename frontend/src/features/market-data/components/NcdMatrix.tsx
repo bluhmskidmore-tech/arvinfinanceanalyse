@@ -34,12 +34,14 @@ export function NcdMatrix({
   resultMeta,
   isLoading = false,
   isError = false,
+  showResultMeta = true,
   onRetry,
 }: {
   payload?: NcdFundingProxyPayload;
   resultMeta?: ResultMeta;
   isLoading?: boolean;
   isError?: boolean;
+  showResultMeta?: boolean;
   onRetry?: () => void;
 }) {
   const columns: ColumnsType<MatrixRow> = useMemo(
@@ -92,11 +94,13 @@ export function NcdMatrix({
           {payload?.as_of_date ? ` 截至 ${payload.as_of_date}。` : ""}
         </Typography.Text>
       </Space>
-      <LiveResultMetaStrip
-        lead="同业存单 proxy 读面"
-        meta={resultMeta}
-        testId="market-data-ncd-live-meta"
-      />
+      {showResultMeta ? (
+        <LiveResultMetaStrip
+          lead="同业存单 proxy 读面"
+          meta={resultMeta}
+          testId="market-data-ncd-live-meta"
+        />
+      ) : null}
       {payload?.warnings?.length ? (
         <div
           style={{

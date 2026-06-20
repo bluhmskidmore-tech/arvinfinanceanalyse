@@ -1,0 +1,138 @@
+{
+  "report_kind": "direct_app_mcp_gitnexus_tool_surface_snapshot",
+  "generated_at": "2026-06-10T21:25:00+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "refresh_command": "python scripts\\refresh_direct_app_mcp_gitnexus_tool_surface_snapshot.py",
+  "observation_source": "caller_supplied_tool_search_results",
+  "status": {
+    "overall": "tool_surface_unavailable_in_current_codex_app_session",
+    "fail_closed": true,
+    "direct_app_mcp_evidence_captured": false,
+    "direct_gitnexus_evidence_captured": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "writes_governance_records": false,
+    "certifies_routes": false
+  },
+  "tool_discovery": {
+    "tool": "tool_search",
+    "query": "moss metric contracts lineage evidence data catalog gitnexus MCP tools",
+    "checked_at": "2026-06-10T21:25:00+08:00",
+    "discovered_tool_count": 0,
+    "discovered_tools": [],
+    "relevant_direct_tool_count": 0
+  },
+  "focused_rechecks": [
+    {
+      "tool": "tool_search",
+      "query": "gitnexus MCP impact call path symbol repository evidence",
+      "checked_at": "2026-06-10T21:25:00+08:00",
+      "returned_tool_count": 3,
+      "returned_tools": [
+        {
+          "name": "codex_app.handoff_thread",
+          "classification": "codex_app_thread_management",
+          "relevant_direct_moss_or_gitnexus_evidence": false
+        },
+        {
+          "name": "codex_app.fork_thread",
+          "classification": "codex_app_thread_management",
+          "relevant_direct_moss_or_gitnexus_evidence": false
+        },
+        {
+          "name": "codex_app.automation_update",
+          "classification": "codex_app_automation_management",
+          "relevant_direct_moss_or_gitnexus_evidence": false
+        }
+      ],
+      "relevant_direct_tool_count": 0,
+      "interpretation": "query returned only Codex App thread or automation management tools; no direct GitNexus or MOSS evidence tools exposed"
+    },
+    {
+      "tool": "tool_search",
+      "query": "moss metric contracts lineage evidence data catalog MCP tools",
+      "checked_at": "2026-06-10T21:25:00+08:00",
+      "returned_tool_count": 0,
+      "returned_tools": [],
+      "relevant_direct_tool_count": 0,
+      "interpretation": "no direct MOSS MCP evidence tools exposed"
+    },
+    {
+      "tool": "tool_search",
+      "query": "moss-data-catalog moss-lineage-evidence moss-metric-contracts",
+      "checked_at": "2026-06-10T21:25:00+08:00",
+      "returned_tool_count": 0,
+      "returned_tools": [],
+      "relevant_direct_tool_count": 0,
+      "interpretation": "no direct MOSS MCP evidence tools exposed"
+    }
+  ],
+  "expected_direct_servers": [
+    "gitnexus",
+    "moss-metric-contracts",
+    "moss-lineage-evidence",
+    "moss-data-catalog",
+    "moss-data-quality"
+  ],
+  "detected_direct_servers": [],
+  "missing_direct_servers": [
+    "gitnexus",
+    "moss-metric-contracts",
+    "moss-lineage-evidence",
+    "moss-data-catalog",
+    "moss-data-quality"
+  ],
+  "local_registration_sources": [
+    {
+      "path": ".codex/config.toml",
+      "declares_expected_servers": true,
+      "declared_servers": [
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "moss-data-quality"
+      ],
+      "all_declared_server_count": 7
+    },
+    {
+      "path": ".mcp.json",
+      "declares_expected_servers": true,
+      "declared_servers": [
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "moss-data-quality"
+      ],
+      "all_declared_server_count": 7
+    },
+    {
+      "path": "docs/MCP_RUNBOOK.md",
+      "documents_app_surface_fallback": true,
+      "documents_fresh_session_retry": true
+    }
+  ],
+  "interpretation": {
+    "repo_configuration_status": "expected_servers_declared_locally",
+    "current_app_tool_surface_status": "direct_moss_and_gitnexus_tools_not_exposed",
+    "local_stdio_evidence_status": "fallback_only_not_direct_app_surface_evidence",
+    "closure_effect": "none"
+  },
+  "direct_evidence_gap": {
+    "gitnexus": "not_callable_as_direct_codex_app_tool_in_this_session",
+    "moss-metric-contracts": "not_callable_as_direct_codex_app_tool_in_this_session",
+    "moss-lineage-evidence": "not_callable_as_direct_codex_app_tool_in_this_session",
+    "moss-data-catalog": "not_callable_as_direct_codex_app_tool_in_this_session",
+    "moss-data-quality": "not_callable_as_direct_codex_app_tool_in_this_session"
+  },
+  "closure_gate": [
+    "start a fresh Codex App session or otherwise reload MCP registrations",
+    "repeat direct App tool discovery for MOSS MCP and GitNexus",
+    "collect direct App-surface evidence and compare it against local stdio MCP evidence",
+    "keep owner, metric, route, governance-record, and formal-use gates fail-closed until independent closure criteria pass"
+  ],
+  "boundary": "This snapshot records current direct App tool discovery only. It does not approve metrics, does not approve pages, does not certify routes, does not write governance records, does not prove live page/API execution, does not replace GitNexus impact evidence, and does not capture business-owner approval."
+}

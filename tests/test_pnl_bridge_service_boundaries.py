@@ -4,7 +4,6 @@ import ast
 import re
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE_FILE = ROOT / "backend" / "app" / "services" / "pnl_bridge_service.py"
 

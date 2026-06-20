@@ -11,6 +11,10 @@ from backend.app.repositories.choice_fx_catalog import (
     classify_fx_series_group,
     discover_formal_fx_candidates,
 )
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from backend.app.schemas.macro_vendor import (
     ChoiceMacroLatestPayload,
     ChoiceMacroLatestPoint,
@@ -30,6 +34,11 @@ RULE_VERSION = "rv_phase1_macro_vendor_v1"
 CACHE_VERSION = "cv_phase1_macro_vendor_v1"
 LIVE_RULE_VERSION = "rv_choice_macro_thin_slice_v1"
 LIVE_CACHE_VERSION = "cv_choice_macro_thin_slice_v1"
+CHOICE_MACRO_REFRESH_TIERS = {"stable", "fallback", "isolated"}
+CHOICE_MACRO_FETCH_MODES = {"date_slice", "latest"}
+CHOICE_MACRO_FETCH_GRANULARITIES = {"batch", "single"}
+CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
+CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
 
 
 def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
@@ -99,9 +108,11 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
                 vendor_version=str(vendor_version),
                 frequency=str(frequency),
                 unit=str(unit),
-                refresh_tier=_as_optional_string(category.get("refresh_tier") or refresh_tier),
-                fetch_mode=_as_optional_string(category.get("fetch_mode") or fetch_mode),
-                fetch_granularity=_as_optional_string(
+                refresh_tier=_sanitize_choice_macro_refresh_tier(
+                    category.get("refresh_tier") or refresh_tier
+                ),
+                fetch_mode=_sanitize_choice_macro_fetch_mode(category.get("fetch_mode") or fetch_mode),
+                fetch_granularity=_sanitize_choice_macro_fetch_granularity(
                     category.get("fetch_granularity") or fetch_granularity
                 ),
                 policy_note=_as_optional_string(category.get("policy_note") or policy_note),
@@ -317,6 +328,65 @@ def choice_macro_latest_envelope(
         vendor_status=_vendor_status_for_macro_latest(payload, quality_flag),
         fallback_mode=_fallback_mode_for_macro_latest(payload, quality_flag),
         result_payload=payload.model_dump(mode="json"),
+    )
+
+
+FORMAL_RATES_RULE_VERSION = "rv_market_data_rates_formal_v1"
+FORMAL_RATES_CACHE_VERSION = "cv_market_data_rates_formal_v1"
+
+
+def choice_macro_formal_envelope(duckdb_path: str) -> dict[str, object]:
+    """Formal-basis envelope: only stable-tier series for market-data page."""
+    payload = load_choice_macro_latest_payload(duckdb_path, category="stable")
+    quality_flag = _aggregate_quality_flags([item.quality_flag for item in payload.series])
+    source_version = _aggregate_lineage_value(
+        [item.source_version for item in payload.series],
+        empty_value="sv_market_data_rates_empty",
+    )
+    vendor_version = _aggregate_lineage_value(
+        [item.vendor_version for item in payload.series],
+        empty_value="vv_none",
+    )
+    return build_result_envelope(
+        basis="formal",
+        trace_id="tr_market_data_formal",
+        result_kind="market_data.rates",
+        cache_version=FORMAL_RATES_CACHE_VERSION,
+        source_version=source_version,
+        rule_version=FORMAL_RATES_RULE_VERSION,
+        quality_flag=quality_flag,
+        vendor_version=vendor_version,
+        vendor_status=_vendor_status_for_macro_latest(payload, quality_flag),
+        fallback_mode=_fallback_mode_for_macro_latest(payload, quality_flag),
+        result_payload=payload.model_dump(mode="json"),
+        source_surface="market_data",
+    )
+
+
+def macro_foundation_formal_envelope(duckdb_path: str) -> dict[str, object]:
+    """Formal-basis envelope for the macro catalog (stable entries)."""
+    payload = load_macro_vendor_payload(duckdb_path)
+    source_version = _load_macro_vendor_source_version(
+        duckdb_path,
+        series_ids=[item.series_id for item in payload.series],
+    )
+    vendor_version = _aggregate_lineage_value(
+        [item.vendor_version for item in payload.series],
+        empty_value="vv_none",
+    )
+    return build_result_envelope(
+        basis="formal",
+        trace_id="tr_market_data_catalog_formal",
+        result_kind="market_data.catalog",
+        cache_version=CACHE_VERSION,
+        source_version=source_version,
+        rule_version=RULE_VERSION,
+        quality_flag=_quality_flag_for_presence(payload.series),
+        vendor_version=vendor_version,
+        vendor_status=_vendor_status_for_presence(payload.series),
+        fallback_mode="none",
+        result_payload=payload.model_dump(mode="json"),
+        source_surface="market_data",
     )
 
 
@@ -551,6 +621,7 @@ def _resolve_fx_analytical_latest_row(rows: list[dict[str, object]]) -> dict[str
             for row in rows
         ],
         target_date,
+        allow_stale_fallback=True,
     )
     quality_flag = "warning" if warnings else str(latest["quality_flag"])
     return {
@@ -594,6 +665,32 @@ def fx_analytical_envelope(duckdb_path: str) -> dict[str, object]:
         fallback_mode="latest_snapshot" if any(point.refresh_tier == "fallback" for point in points) else "none",
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def choice_macro_refresh_status(governance_path: str | Path, *, run_id: str = "") -> dict[str, object]:
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name")) == CHOICE_MACRO_REFRESH_JOB_NAME
+        and str(record.get("cache_key")) == CHOICE_MACRO_REFRESH_CACHE_KEY
+    ]
+    if run_id:
+        records = [record for record in records if str(record.get("run_id")) == run_id]
+        if not records:
+            raise ValueError(f"Unknown choice macro refresh run_id={run_id}")
+    if not records:
+        return {
+            "status": "idle",
+            "job_name": CHOICE_MACRO_REFRESH_JOB_NAME,
+            "cache_key": CHOICE_MACRO_REFRESH_CACHE_KEY,
+            "trigger_mode": "idle",
+        }
+    latest = records[-1]
+    status = str(latest.get("status", "unknown"))
+    return {
+        **latest,
+        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
+    }
 
 
 def _load_latest_fx_mid_rows(
@@ -807,9 +904,11 @@ def _load_choice_macro_catalog_map(
         category = category_by_series.get(str(series_id), {})
         catalog_by_series[str(series_id)] = {
             "vendor_name": _as_optional_string(vendor_name),
-            "refresh_tier": _as_optional_string(category.get("refresh_tier") or refresh_tier),
-            "fetch_mode": _as_optional_string(category.get("fetch_mode") or fetch_mode),
-            "fetch_granularity": _as_optional_string(
+            "refresh_tier": _sanitize_choice_macro_refresh_tier(
+                category.get("refresh_tier") or refresh_tier
+            ),
+            "fetch_mode": _sanitize_choice_macro_fetch_mode(category.get("fetch_mode") or fetch_mode),
+            "fetch_granularity": _sanitize_choice_macro_fetch_granularity(
                 category.get("fetch_granularity") or fetch_granularity
             ),
             "policy_note": _as_optional_string(category.get("policy_note") or policy_note),
@@ -849,9 +948,9 @@ def _load_market_data_category_map(
     category_by_series: dict[str, dict[str, object]] = {}
     for series_id, refresh_tier, fetch_mode, fetch_granularity, policy_note in rows:
         category_by_series[str(series_id)] = {
-            "refresh_tier": _as_optional_string(refresh_tier),
-            "fetch_mode": _as_optional_string(fetch_mode),
-            "fetch_granularity": _as_optional_string(fetch_granularity),
+            "refresh_tier": _sanitize_choice_macro_refresh_tier(refresh_tier),
+            "fetch_mode": _sanitize_choice_macro_fetch_mode(fetch_mode),
+            "fetch_granularity": _sanitize_choice_macro_fetch_granularity(fetch_granularity),
             "policy_note": _as_optional_string(policy_note),
         }
     return category_by_series
@@ -915,3 +1014,22 @@ def _as_optional_string(value: object) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _sanitize_choice_macro_refresh_tier(value: object) -> str | None:
+    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_REFRESH_TIERS)
+
+
+def _sanitize_choice_macro_fetch_mode(value: object) -> str | None:
+    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_FETCH_MODES)
+
+
+def _sanitize_choice_macro_fetch_granularity(value: object) -> str | None:
+    return _sanitize_choice_macro_literal(value, CHOICE_MACRO_FETCH_GRANULARITIES)
+
+
+def _sanitize_choice_macro_literal(value: object, allowed_values: set[str]) -> str | None:
+    text = _as_optional_string(value)
+    if text is None:
+        return None
+    return text if text in allowed_values else None

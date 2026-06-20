@@ -18,6 +18,7 @@ from backend.app.core_finance.config.classification_rules import (
     _match_invest_type_by_substring,
     infer_invest_type,
 )
+
 # Pre-migration inline `_H_LABELS` from balance_analysis (before W-balance-2026-04-21).
 # Includes 发行类债劵 (劵) so regressions if canonical drops that variant are caught.
 # This snapshot is intentionally hardcoded — `field_normalization._H_LABELS` was

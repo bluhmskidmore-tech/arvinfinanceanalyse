@@ -1,0 +1,198 @@
+{
+  "result_meta": {
+    "trace_id": "tr_market_data_rates_gs_a",
+    "basis": "formal",
+    "result_kind": "market_data.rates",
+    "formal_use_allowed": true,
+    "amount_currency_basis": null,
+    "amount_currency_basis_note": null,
+    "source_version": "sv_market_data_rates_gs_a__sv_public_funding",
+    "vendor_version": "vv_choice_macro_gs_a__vv_public_repo",
+    "rule_version": "rv_market_data_rates_formal_v1",
+    "cache_version": "cv_market_data_rates_formal_v1",
+    "cache_key": null,
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "requested_report_date": null,
+    "resolved_report_date": null,
+    "scenario_flag": false,
+    "as_of_date": null,
+    "date_basis": null,
+    "fallback_date": null,
+    "generated_at": "2026-06-10T00:00:00Z",
+    "filters_applied": {},
+    "tables_used": [],
+    "evidence_rows": null,
+    "next_drill": [],
+    "source_surface": "market_data"
+  },
+  "result": {
+    "read_target": "duckdb",
+    "series": [
+      {
+        "series_id": "EMM00166462",
+        "series_name": "中债国债到期收益率:5年",
+        "trade_date": "2026-04-10",
+        "value_numeric": 1.58,
+        "frequency": "daily",
+        "unit": "%",
+        "source_version": "sv_market_data_rates_gs_a",
+        "vendor_version": "vv_choice_macro_gs_a",
+        "vendor_name": "choice",
+        "refresh_tier": null,
+        "fetch_mode": null,
+        "fetch_granularity": null,
+        "policy_note": null,
+        "quality_flag": "ok",
+        "latest_change": null,
+        "recent_points": [
+          {
+            "trade_date": "2026-04-10",
+            "value_numeric": 1.58,
+            "source_version": "sv_market_data_rates_gs_a",
+            "vendor_version": "vv_choice_macro_gs_a",
+            "quality_flag": "ok"
+          }
+        ]
+      },
+      {
+        "series_id": "EMM00166466",
+        "series_name": "中债国债到期收益率:10年",
+        "trade_date": "2026-04-10",
+        "value_numeric": 1.71,
+        "frequency": "daily",
+        "unit": "%",
+        "source_version": "sv_market_data_rates_gs_a",
+        "vendor_version": "vv_choice_macro_gs_a",
+        "vendor_name": "choice",
+        "refresh_tier": null,
+        "fetch_mode": null,
+        "fetch_granularity": null,
+        "policy_note": null,
+        "quality_flag": "ok",
+        "latest_change": -0.010000000000000009,
+        "recent_points": [
+          {
+            "trade_date": "2026-04-10",
+            "value_numeric": 1.71,
+            "source_version": "sv_market_data_rates_gs_a",
+            "vendor_version": "vv_choice_macro_gs_a",
+            "quality_flag": "ok"
+          },
+          {
+            "trade_date": "2026-04-09",
+            "value_numeric": 1.72,
+            "source_version": "sv_market_data_rates_gs_a",
+            "vendor_version": "vv_choice_macro_gs_a",
+            "quality_flag": "ok"
+          }
+        ]
+      },
+      {
+        "series_id": "EMM00166498",
+        "series_name": "中债国开债到期收益率:5年",
+        "trade_date": "2026-04-10",
+        "value_numeric": 2.05,
+        "frequency": "daily",
+        "unit": "%",
+        "source_version": "sv_market_data_rates_gs_a",
+        "vendor_version": "vv_choice_macro_gs_a",
+        "vendor_name": "choice",
+        "refresh_tier": null,
+        "fetch_mode": null,
+        "fetch_granularity": null,
+        "policy_note": null,
+        "quality_flag": "ok",
+        "latest_change": null,
+        "recent_points": [
+          {
+            "trade_date": "2026-04-10",
+            "value_numeric": 2.05,
+            "source_version": "sv_market_data_rates_gs_a",
+            "vendor_version": "vv_choice_macro_gs_a",
+            "quality_flag": "ok"
+          }
+        ]
+      },
+      {
+        "series_id": "EMM00166502",
+        "series_name": "中债国开债到期收益率:10年",
+        "trade_date": "2026-04-10",
+        "value_numeric": 2.18,
+        "frequency": "daily",
+        "unit": "%",
+        "source_version": "sv_market_data_rates_gs_a",
+        "vendor_version": "vv_choice_macro_gs_a",
+        "vendor_name": "choice",
+        "refresh_tier": null,
+        "fetch_mode": null,
+        "fetch_granularity": null,
+        "policy_note": null,
+        "quality_flag": "ok",
+        "latest_change": null,
+        "recent_points": [
+          {
+            "trade_date": "2026-04-10",
+            "value_numeric": 2.18,
+            "source_version": "sv_market_data_rates_gs_a",
+            "vendor_version": "vv_choice_macro_gs_a",
+            "quality_flag": "ok"
+          }
+        ]
+      },
+      {
+        "series_id": "M001",
+        "series_name": "公开市场7天逆回购利率",
+        "trade_date": "2026-04-10",
+        "value_numeric": 1.75,
+        "frequency": "daily",
+        "unit": "%",
+        "source_version": "sv_market_data_rates_gs_a",
+        "vendor_version": "vv_choice_macro_gs_a",
+        "vendor_name": "choice",
+        "refresh_tier": null,
+        "fetch_mode": null,
+        "fetch_granularity": null,
+        "policy_note": null,
+        "quality_flag": "ok",
+        "latest_change": null,
+        "recent_points": [
+          {
+            "trade_date": "2026-04-10",
+            "value_numeric": 1.75,
+            "source_version": "sv_market_data_rates_gs_a",
+            "vendor_version": "vv_choice_macro_gs_a",
+            "quality_flag": "ok"
+          }
+        ]
+      },
+      {
+        "series_id": "M002",
+        "series_name": "DR007",
+        "trade_date": "2026-04-10",
+        "value_numeric": 1.83,
+        "frequency": "daily",
+        "unit": "%",
+        "source_version": "sv_public_funding",
+        "vendor_version": "vv_public_repo",
+        "vendor_name": "choice",
+        "refresh_tier": null,
+        "fetch_mode": null,
+        "fetch_granularity": null,
+        "policy_note": null,
+        "quality_flag": "ok",
+        "latest_change": null,
+        "recent_points": [
+          {
+            "trade_date": "2026-04-10",
+            "value_numeric": 1.83,
+            "source_version": "sv_public_funding",
+            "vendor_version": "vv_public_repo",
+            "quality_flag": "ok"
+          }
+        ]
+      }
+    ]
+  }
+}

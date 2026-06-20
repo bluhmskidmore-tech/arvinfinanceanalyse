@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-import getpass
 import os
 from dataclasses import dataclass
+from threading import Lock
 from typing import Annotated
-
-from fastapi import Header
 
 from backend.app.governance.settings import Settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
+from fastapi import Header
+
+DEFAULT_AUTH_USER_ID = "anonymous"
+DEFAULT_AUTH_ROLE = "viewer"
+ROLE_HEADER_TRUST_ENV = "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST"
+_USER_SCOPE_REPO_CACHE: dict[tuple[object, str], UserScopeRepository] = {}
+_USER_SCOPE_REPO_CACHE_LOCK = Lock()
 
 
 @dataclass(frozen=True)
 class AuthContext:
-    user_id: str = "phase1-dev-user"
-    role: str = "admin"
+    user_id: str = DEFAULT_AUTH_USER_ID
+    role: str = DEFAULT_AUTH_ROLE
     identity_source: str = "fallback"
 
 
@@ -24,30 +29,25 @@ def get_auth_context(
 ) -> AuthContext:
     header_user_id = (x_user_id or "").strip()
     env_user_id = os.environ.get("MOSS_USER_ID", "").strip()
-    system_user_id = (
-        os.environ.get("USERNAME", "").strip()
-        or os.environ.get("USER", "").strip()
-        or _safe_getpass_user()
-    )
 
-    if header_user_id:
+    if _header_trust_enabled() and header_user_id:
         user_id = header_user_id
         identity_source = "header"
     elif env_user_id:
         user_id = env_user_id
         identity_source = "env"
-    elif system_user_id:
-        user_id = system_user_id
-        identity_source = "system"
     else:
-        user_id = AuthContext().user_id
+        user_id = DEFAULT_AUTH_USER_ID
         identity_source = "fallback"
 
-    role = (
-        (x_user_role or "").strip()
-        or os.environ.get("MOSS_USER_ROLE", "").strip()
-        or AuthContext().role
-    )
+    header_user_role = (x_user_role or "").strip()
+    env_user_role = os.environ.get("MOSS_USER_ROLE", "").strip()
+
+    if _header_trust_enabled() and header_user_role:
+        role = header_user_role
+    else:
+        role = env_user_role or DEFAULT_AUTH_ROLE
+
     return AuthContext(user_id=user_id, role=role, identity_source=identity_source)
 
 
@@ -61,7 +61,7 @@ def ensure_user_allowed(
     scope_value: str | None = None,
 ) -> None:
     try:
-        repo = UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn)
+        repo = _get_user_scope_repository(settings.governance_sql_dsn or settings.postgres_dsn)
         if repo.has_permission(
             user_id=auth.user_id,
             role=auth.role,
@@ -76,8 +76,45 @@ def ensure_user_allowed(
     raise PermissionError(f"User is not allowed to {action} {resource}.")
 
 
-def _safe_getpass_user() -> str:
-    try:
-        return str(getpass.getuser() or "").strip()
-    except Exception:
-        return ""
+def _get_user_scope_repository(dsn: str) -> UserScopeRepository:
+    repo_cls = UserScopeRepository
+    key = (repo_cls, str(dsn or "").strip())
+    with _USER_SCOPE_REPO_CACHE_LOCK:
+        cached = _USER_SCOPE_REPO_CACHE.get(key)
+        if cached is not None:
+            return cached
+
+    repo = repo_cls(key[1])
+
+    with _USER_SCOPE_REPO_CACHE_LOCK:
+        return _USER_SCOPE_REPO_CACHE.setdefault(key, repo)
+
+
+def _header_trust_enabled() -> bool:
+    return os.environ.get(ROLE_HEADER_TRUST_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def validate_auth_startup_guardrails(settings: Settings) -> None:
+    environment = str(settings.environment).strip().lower()
+    if environment == "development":
+        return
+
+    if _header_trust_enabled():
+        raise RuntimeError(
+            f"{environment} environment cannot trust X-User-Id/X-User-Role headers "
+            f"via {ROLE_HEADER_TRUST_ENV}; only development can enable this trust switch"
+        )
+    if os.environ.get("MOSS_USER_ID", "").strip() or os.environ.get("MOSS_USER_ROLE", "").strip():
+        raise RuntimeError(
+            f"{environment} environment cannot use MOSS_USER_ID/MOSS_USER_ROLE as an identity source; "
+            "configure a verified gateway, session, token, or API-key identity provider instead"
+        )
+    cors_origins = [origin.strip() for origin in str(settings.cors_origins or "").split(",") if origin.strip()]
+    if "*" in cors_origins:
+        raise RuntimeError(
+            f"{environment} environment cannot use wildcard CORS origins with credentialed API responses"
+        )
+
+
+def _role_header_trust_enabled() -> bool:
+    return _header_trust_enabled()

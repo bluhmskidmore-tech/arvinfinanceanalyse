@@ -1,0 +1,603 @@
+import { useQuery } from "@tanstack/react-query";
+import { Alert, Button, Drawer, Segmented, Typography } from "antd";
+import type { EChartsOption } from "echarts";
+import { useMemo, useState } from "react";
+
+import { useApiClient } from "../../../api/client";
+import type { LivermoreStockDetailCandle } from "../../../api/contracts";
+import { BaseChart } from "../../../components/charts/BaseChart";
+import { designTokens } from "../../../theme/designSystem";
+import { localizeStrategyPanelErrorDetail } from "../lib/stockAnalysisPageModel";
+import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
+import "./StockDetailDrawer.css";
+
+const { Text } = Typography;
+
+const LOOKBACK_CHOICES = [30, 60, 120] as const;
+
+function isFiniteNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function buildCandleVolumeOption(candles: LivermoreStockDetailCandle[]): EChartsOption {
+  const dates = candles.map((c) => c.trade_date);
+  const ohlc: [number, number, number, number][] = candles.map((c) => {
+    const o = c.open_value ?? 0;
+    const cl = c.close_value ?? 0;
+    const lo = c.low_value ?? 0;
+    const hi = c.high_value ?? 0;
+    return [o, cl, lo, hi];
+  });
+  const volumes = candles.map((c) => c.volume ?? 0);
+  const up = designTokens.color.semantic.up;
+  const down = designTokens.color.semantic.down;
+  const muted = designTokens.color.neutral[600];
+  const gridLine = designTokens.color.neutral[200];
+
+  return {
+    backgroundColor: "transparent",
+    animation: false,
+    textStyle: { color: muted, fontSize: 11 },
+    axisPointer: { link: [{ xAxisIndex: "all" }] },
+    grid: [
+      { left: 52, right: 16, top: 28, height: "56%" },
+      { left: 52, right: 16, top: "72%", height: "20%" },
+    ],
+    xAxis: [
+      { type: "category", data: dates, gridIndex: 0, axisLabel: { show: false }, boundaryGap: true },
+      { type: "category", data: dates, gridIndex: 1, boundaryGap: true },
+    ],
+    yAxis: [
+      {
+        type: "value",
+        gridIndex: 0,
+        scale: true,
+        splitLine: { lineStyle: { color: gridLine, type: "dashed" } },
+      },
+      {
+        type: "value",
+        gridIndex: 1,
+        scale: true,
+        splitLine: { lineStyle: { color: gridLine, type: "dashed" } },
+      },
+    ],
+    series: [
+      {
+        type: "candlestick",
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: ohlc,
+        itemStyle: {
+          color: down,
+          color0: up,
+          borderColor: down,
+          borderColor0: up,
+        },
+      },
+      {
+        type: "bar",
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: volumes,
+        itemStyle: { color: designTokens.color.neutral[400] },
+      },
+    ],
+  };
+}
+
+function formatPePb(value: number | null): string {
+  if (!isFiniteNumber(value)) return "待补";
+  return value.toFixed(2);
+}
+
+function formatRoe(value: number | null): string {
+  if (!isFiniteNumber(value)) return "待补";
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function formatDividendYield(value: number | null): string {
+  if (!isFiniteNumber(value)) return "待补";
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+const stockDetailMetaPendingLabel = "待确认";
+const stockDetailMetaQualityLabels: Record<string, string> = {
+  ok: "正常",
+  warning: "需复核",
+  stale: "陈旧",
+  missing: "缺失",
+  error: "异常",
+  pending: stockDetailMetaPendingLabel,
+};
+const stockDetailMetaVendorLabels: Record<string, string> = {
+  ok: "正常",
+  degraded: "降级",
+  vendor_stale: "供数陈旧",
+  vendor_unavailable: "通道不可用",
+  error: "异常",
+  pending: stockDetailMetaPendingLabel,
+};
+
+function stockDetailMetaLabel(value: string | null | undefined, labels: Record<string, string>) {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return labels[normalized] ?? stockDetailMetaPendingLabel;
+}
+
+function rawStockDetailErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error == null) return "";
+  return String(error);
+}
+
+function stockDetailSubqueryErrorDescription(error: unknown, fallbackDescription: string): string {
+  const message = rawStockDetailErrorMessage(error);
+  const normalized = message.trim().toLowerCase().replace(/\s+/g, " ");
+  if (normalized.includes("source_table") || normalized.includes("source table")) {
+    return `${fallbackDescription} ${localizeStrategyPanelErrorDetail(message)}`;
+  }
+  return fallbackDescription;
+}
+
+export type StockDetailDrawerProps = {
+  stockCode: string | null;
+  stockName?: string;
+  asOfDate?: string;
+  reviewContext?: {
+    sourceLabel: string;
+    sectorName?: string;
+    reviewRank?: number;
+    distanceToBreakoutPct?: string;
+    livermoreRank?: number | null;
+    meanReversionRank?: number | null;
+    factorScreenRank?: number | null;
+    hybridFusionRank?: number | null;
+  } | null;
+  onClose: () => void;
+};
+
+function formatChoiceNewsReceivedAt(iso: string): string {
+  const t = iso.trim();
+  if (t.length >= 16) return t.slice(0, 16).replace("T", " ");
+  return t || "—";
+}
+
+function truncateChoiceNewsText(text: string | null, maxLen: number): string {
+  if (text == null || text === "") return "—";
+  const s = text.trim();
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, maxLen)}…`;
+}
+
+const choiceNewsContentTypeLabels: Record<string, string> = {
+  announcement: "公告",
+  research: "研报",
+  research_report: "研报",
+  sectornews: "行业新闻",
+  stocknews: "个股新闻",
+};
+
+function choiceNewsTopicLabel(topicCode: string | null | undefined, contentType: string | null | undefined): string {
+  const normalizedContentType = contentType?.trim().toLowerCase();
+  if (normalizedContentType && choiceNewsContentTypeLabels[normalizedContentType]) {
+    return choiceNewsContentTypeLabels[normalizedContentType];
+  }
+
+  const value = topicCode?.trim();
+  if (!value) return "事件分类待确认";
+  if (isTechnicalChoiceNewsCode(contentType) || isTechnicalChoiceNewsCode(value)) return "事件分类待确认";
+  if (/^[A-Z0-9_]+$/.test(value) || value.includes("_")) return "事件分类待确认";
+  return value;
+}
+
+function isTechnicalChoiceNewsCode(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (!normalized) return false;
+  return (
+    normalized.includes("externalvendor") ||
+    normalized.includes("vendorstatus") ||
+    normalized.includes("sourcetable") ||
+    normalized.includes("choicestock")
+  );
+}
+
+function formatCandidateHistoryReturn(value: number | null | undefined): string {
+  if (!isFiniteNumber(value)) return "—";
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function candidateHistoryRowClass(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "pending") return "stock-detail-drawer__history-row--pending";
+  if (normalized === "partial_halt") return "stock-detail-drawer__history-row--halt";
+  return "";
+}
+
+function candidateHistoryDataStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    complete: "已成熟",
+    partial_halt: "部分停牌",
+    pending: "待成熟",
+  };
+  const normalized = status.trim().toLowerCase();
+  return labels[normalized] ?? "状态待确认";
+}
+
+const candidateHistorySignalLabels: Record<string, string> = {
+  livermore: "趋势突破",
+  hybrid_fusion: "融合策略",
+  stock_candidate: "趋势突破",
+  factor_screen: "多因子",
+  theme_breakout: "题材突变",
+  mean_reversion: "超跌反弹",
+};
+
+function candidateHistorySignalLabel(value: string | null | undefined): string {
+  const key = value?.trim() || "stock_candidate";
+  const normalized = key.toLowerCase().replace(/[\s-]+/g, "_");
+  const compact = normalized.replace(/_/g, "");
+  if (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    normalized.includes("source_table") ||
+    compact.includes("externalvendor") ||
+    compact.includes("vendor") ||
+    compact.includes("sourcetable") ||
+    compact.includes("choicestock")
+  ) {
+    return "策略待确认";
+  }
+  return candidateHistorySignalLabels[normalized] ?? "策略待确认";
+}
+
+export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContext, onClose }: StockDetailDrawerProps) {
+  const client = useApiClient();
+  const [lookback, setLookback] = useState<number>(60);
+  const [drawerLayoutReady, setDrawerLayoutReady] = useState(false);
+
+  const open = stockCode != null && stockCode.trim() !== "";
+  const stockCodeForQuery = stockCode?.trim() || undefined;
+
+  const detailQuery = useQuery({
+    queryKey: ["stock-analysis", "livermore-stock-detail", stockCode, asOfDate ?? null, lookback] as const,
+    queryFn: () =>
+      client.getLivermoreStockDetail({
+        stockCode: stockCode ?? "",
+        asOfDate,
+        lookback,
+      }),
+    enabled: open,
+  });
+
+  const choiceNewsQuery = useQuery({
+    queryKey: ["stock-analysis", "choice-news-latest", stockCodeForQuery ?? "__none", open ? 10 : 0] as const,
+    queryFn: () =>
+      client.getChoiceNewsEvents({
+        limit: 10,
+        offset: 0,
+        stockCode: stockCodeForQuery,
+      }),
+    enabled: open,
+  });
+
+  const candidateHistoryAsOfDate = detailQuery.data?.result?.as_of_date ?? null;
+  const candidateHistoryQuery = useQuery({
+    queryKey: ["stock-analysis", "livermore-candidate-history", stockCode, candidateHistoryAsOfDate, 10] as const,
+    queryFn: () =>
+      client.getLivermoreCandidateHistory({
+        stockCode: stockCodeForQuery,
+        snapshotTo: candidateHistoryAsOfDate ?? undefined,
+        limit: 10,
+      }),
+    enabled: open && candidateHistoryAsOfDate != null,
+  });
+
+  const chartOption = useMemo(() => {
+    const candles = detailQuery.data?.result?.candles ?? [];
+    if (!candles.length) return { series: [] } as EChartsOption;
+    return buildCandleVolumeOption(candles);
+  }, [detailQuery.data?.result?.candles]);
+
+  const factor = detailQuery.data?.result?.factor;
+  const meta =
+    detailQuery.data?.result == null
+      ? null
+      : (detailQuery.data.result_meta ?? {
+          source_version: stockDetailMetaPendingLabel,
+          rule_version: stockDetailMetaPendingLabel,
+          quality_flag: "pending",
+          vendor_status: "pending",
+        });
+  const resolvedAsOfDate = detailQuery.data?.result?.as_of_date ?? "日期待补";
+  const requestedAsOfDate = detailQuery.data?.result?.requested_as_of_date ?? asOfDate ?? null;
+  const showRequestedAsOfDate = requestedAsOfDate != null && requestedAsOfDate !== resolvedAsOfDate;
+
+  return (
+    <Drawer
+      title="个股复核"
+      placement="right"
+      width={720}
+      open={open}
+      onClose={onClose}
+      afterOpenChange={setDrawerLayoutReady}
+      destroyOnClose
+      className="stock-detail-drawer"
+      data-testid="stock-detail-drawer"
+      extra={
+        <Button type="default" onClick={onClose} aria-label="关闭抽屉">
+          关闭
+        </Button>
+      }
+    >
+      {open ? (
+        <div className="stock-detail-drawer__body" style={stockAnalysisPageCssVars}>
+          <header className="stock-detail-drawer__header">
+            <div>
+              <Text strong className="stock-detail-drawer__tabular">
+                {stockCode}
+              </Text>
+              {stockName ? (
+                <Text type="secondary" className="stock-detail-drawer__name">
+                  {" "}
+                  {stockName}
+                </Text>
+              ) : null}
+              <div className="stock-detail-drawer__meta-line">
+                <Text type="secondary">截至日 {resolvedAsOfDate}</Text>
+                {showRequestedAsOfDate ? <Text type="secondary">请求日期 {requestedAsOfDate}</Text> : null}
+              </div>
+              {reviewContext ? (
+                <div className="stock-detail-drawer__review-context" data-testid="stock-detail-review-context">
+                  <span>{reviewContext.sourceLabel}</span>
+                  {reviewContext.reviewRank != null ? <span>#{reviewContext.reviewRank}</span> : null}
+                  {reviewContext.sectorName ? <span>{reviewContext.sectorName}</span> : null}
+                  {reviewContext.distanceToBreakoutPct ? (
+                    <span>距观察位 {reviewContext.distanceToBreakoutPct}</span>
+                  ) : null}
+                </div>
+              ) : null}
+              {reviewContext &&
+              (reviewContext.livermoreRank != null ||
+                reviewContext.meanReversionRank != null ||
+                reviewContext.factorScreenRank != null ||
+                reviewContext.hybridFusionRank != null) ? (
+                <div
+                  className="stock-detail-drawer__strategy-ranks"
+                  data-testid="stock-detail-strategy-ranks"
+                  aria-label="多策略命中"
+                >
+                  <span className="stock-detail-drawer__strategy-ranks-label">策略命中</span>
+                  {reviewContext.livermoreRank != null ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge">
+                      趋势 #{reviewContext.livermoreRank}
+                    </span>
+                  ) : null}
+                  {reviewContext.hybridFusionRank != null ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge">
+                      融合策略 #{reviewContext.hybridFusionRank}
+                    </span>
+                  ) : null}
+                  {reviewContext.meanReversionRank != null ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge">
+                      超跌反弹 #{reviewContext.meanReversionRank}
+                    </span>
+                  ) : null}
+                  {reviewContext.factorScreenRank != null ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge">
+                      多因子 #{reviewContext.factorScreenRank}
+                    </span>
+                  ) : null}
+                  {[
+                    reviewContext.livermoreRank,
+                    reviewContext.hybridFusionRank,
+                    reviewContext.meanReversionRank,
+                    reviewContext.factorScreenRank,
+                  ].filter((v) => v != null).length >= 2 ? (
+                    <span className="stock-detail-drawer__strategy-ranks-badge stock-detail-drawer__strategy-ranks-badge--consensus">
+                      共振
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="stock-detail-drawer__lookback">
+              <Text type="secondary">回看交易日</Text>
+              <Segmented
+                size="small"
+                value={lookback}
+                onChange={(v) => setLookback(Number(v))}
+                options={LOOKBACK_CHOICES.map((n) => ({ label: String(n), value: n }))}
+              />
+            </div>
+          </header>
+
+          {detailQuery.isError ? (
+            <Alert
+              type="error"
+              showIcon
+              message="个股复核数据暂不可用"
+              description="请稍后重试，或切换到其他标的复核。"
+              data-testid="stock-detail-error"
+            />
+          ) : null}
+
+          {detailQuery.isLoading && !detailQuery.isError ? (
+            <p className="stock-detail-drawer__loading">加载中…</p>
+          ) : null}
+
+          {!detailQuery.isError ? (
+            <section className="stock-detail-drawer__chart" aria-label="K 线与成交量" data-testid="stock-detail-chart">
+              <Text strong>价格与成交量（复核）</Text>
+              {drawerLayoutReady ? (
+                <BaseChart option={chartOption} height={360} loading={detailQuery.isLoading} />
+              ) : (
+                <p className="stock-detail-drawer__loading">图表布局准备中…</p>
+              )}
+            </section>
+          ) : null}
+
+          {!detailQuery.isError ? (
+            <section className="stock-detail-drawer__factors" data-testid="stock-detail-factors">
+              <Text strong>因子快照</Text>
+              <div className="stock-detail-drawer__factor-grid">
+                <div data-testid="stock-detail-factor-pe">
+                  <div className="stock-detail-drawer__factor-label">PE</div>
+                  <div className="stock-detail-drawer__factor-value stock-detail-drawer__tabular">
+                    {formatPePb(factor?.pe ?? null)}
+                  </div>
+                </div>
+                <div data-testid="stock-detail-factor-pb">
+                  <div className="stock-detail-drawer__factor-label">PB</div>
+                  <div className="stock-detail-drawer__factor-value stock-detail-drawer__tabular">
+                    {formatPePb(factor?.pb ?? null)}
+                  </div>
+                </div>
+                <div data-testid="stock-detail-factor-roe">
+                  <div className="stock-detail-drawer__factor-label">ROE</div>
+                  <div className="stock-detail-drawer__factor-value stock-detail-drawer__tabular">
+                    {formatRoe(factor?.roe ?? null)}
+                  </div>
+                </div>
+                <div data-testid="stock-detail-factor-dividend">
+                  <div className="stock-detail-drawer__factor-label">股息率</div>
+                  <div className="stock-detail-drawer__factor-value stock-detail-drawer__tabular">
+                    {formatDividendYield(factor?.dividend_yield ?? null)}
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {!detailQuery.isError ? (
+            <section className="stock-detail-drawer__candidate-history" data-testid="stock-detail-candidate-history" aria-label="入选历史">
+              <Text strong>入选历史</Text>
+              <p className="stock-detail-drawer__candidate-history-note">
+                价格回报 · 快照累计
+              </p>
+              {candidateHistoryQuery.isLoading ? (
+                <p className="stock-detail-drawer__candidate-history-loading" data-testid="stock-detail-candidate-history-loading">
+                  入选历史加载中…
+                </p>
+              ) : null}
+              {candidateHistoryQuery.isError ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="入选历史暂不可用"
+                  description={stockDetailSubqueryErrorDescription(
+                    candidateHistoryQuery.error,
+                    "图表与因子仍可继续查看。",
+                  )}
+                  data-testid="stock-detail-candidate-history-error"
+                />
+              ) : null}
+              {candidateHistoryQuery.isSuccess && (candidateHistoryQuery.data?.result?.items?.length ?? 0) === 0 ? (
+                <p className="stock-detail-drawer__candidate-history-empty" data-testid="stock-detail-candidate-history-empty">
+                  暂无入选快照记录（服务端尚未累积或未跑任务）
+                </p>
+              ) : null}
+              {candidateHistoryQuery.isSuccess && (candidateHistoryQuery.data?.result?.items?.length ?? 0) > 0 ? (
+                <div className="stock-detail-drawer__history-table-wrap">
+                  <table className="stock-detail-drawer__history-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">入选日</th>
+                        <th scope="col">策略</th>
+                        <th scope="col">排名</th>
+                        <th scope="col">入选收盘</th>
+                        <th scope="col">T+1</th>
+                        <th scope="col">T+5</th>
+                        <th scope="col">T+20</th>
+                        <th scope="col">状态</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(candidateHistoryQuery.data?.result?.items ?? []).map((row) => (
+                        <tr
+                          key={`${row.snapshot_as_of_date}-${row.candidate_rank}-${row.stock_code}`}
+                          className={candidateHistoryRowClass(row.data_status)}
+                          data-testid={`stock-detail-candidate-history-row-${row.snapshot_as_of_date}-${row.candidate_rank}`}
+                        >
+                          <td className="stock-detail-drawer__tabular">{row.snapshot_as_of_date}</td>
+                          <td>{candidateHistorySignalLabel(row.signal_kind)}</td>
+                          <td className="stock-detail-drawer__tabular">{row.candidate_rank}</td>
+                          <td className="stock-detail-drawer__tabular">{row.selection_close ?? "—"}</td>
+                          <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_1d ?? null)}</td>
+                          <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_5d ?? null)}</td>
+                          <td className="stock-detail-drawer__tabular">{formatCandidateHistoryReturn(row.return_20d ?? null)}</td>
+                          <td>{candidateHistoryDataStatusLabel(row.data_status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {!detailQuery.isError ? (
+            <section className="stock-detail-drawer__market-events" aria-label="市场最近事件" data-testid="stock-detail-market-events">
+              <Text strong>市场最近事件</Text>
+              <div
+                className="stock-detail-drawer__market-events-banner"
+                role="note"
+                data-testid="stock-detail-market-events-banner"
+              >
+                市场事件 · 公告财报待补
+              </div>
+              {choiceNewsQuery.isLoading ? (
+                <p className="stock-detail-drawer__market-events-loading" data-testid="stock-detail-market-events-loading">
+                  市场事件加载中…
+                </p>
+              ) : null}
+              {choiceNewsQuery.isError ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="市场事件暂不可用"
+                  description={stockDetailSubqueryErrorDescription(
+                    choiceNewsQuery.error,
+                    "个股复核数据不受影响，可稍后刷新市场事件。",
+                  )}
+                  data-testid="stock-detail-market-events-error"
+                />
+              ) : null}
+              {choiceNewsQuery.isSuccess && !choiceNewsQuery.data?.result?.events?.length ? (
+                <p className="stock-detail-drawer__market-events-empty" data-testid="stock-detail-market-events-empty">
+                  暂无与该股票代码匹配的市场事件，公告财报仍待补。
+                </p>
+              ) : null}
+              {choiceNewsQuery.isSuccess && (choiceNewsQuery.data?.result?.events?.length ?? 0) > 0 ? (
+                <ul className="stock-detail-drawer__market-events-list" data-testid="stock-detail-market-events-list">
+                  {(choiceNewsQuery.data?.result?.events ?? []).map((ev) => (
+                    <li key={ev.event_key} className="stock-detail-drawer__market-events-item">
+                      <span className="stock-detail-drawer__market-events-time stock-detail-drawer__tabular">
+                        {formatChoiceNewsReceivedAt(ev.received_at)}
+                      </span>
+                      <span className="stock-detail-drawer__market-events-topic">
+                        {choiceNewsTopicLabel(ev.topic_code, ev.content_type)}
+                      </span>
+                      <span className="stock-detail-drawer__market-events-text">
+                        {truncateChoiceNewsText(ev.payload_text, 100)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
+          ) : null}
+
+          {!detailQuery.isError && meta ? (
+            <footer className="stock-detail-drawer__footer-meta" data-testid="stock-detail-footer-meta">
+              <Text type="secondary">
+                来源版本 {meta.source_version ?? stockDetailMetaPendingLabel} · 规则版本{" "}
+                {meta.rule_version ?? stockDetailMetaPendingLabel} · 质量{" "}
+                {stockDetailMetaLabel(meta.quality_flag, stockDetailMetaQualityLabels)} · 供数状态{" "}
+                {stockDetailMetaLabel(meta.vendor_status, stockDetailMetaVendorLabels)}
+              </Text>
+            </footer>
+          ) : null}
+        </div>
+      ) : null}
+    </Drawer>
+  );
+}

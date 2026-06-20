@@ -1,0 +1,254 @@
+{
+  "catalog_version": "2026-06-10.choice-funding-confirmed.v1",
+  "vendor_name": "choice",
+  "generated_from": ".codex-tmp/choice-funding-probe-latest-2026-06-10.json",
+  "probe_as_of_date": "2026-06-10",
+  "probe_mode": "latest",
+  "write_performed": false,
+  "selection_policy": {
+    "include": [
+      "Choice EDB latest probe returned error_code=0.",
+      "Series has a non-null latest value.",
+      "Series supports a concrete macro/funding use case already present in MOSS."
+    ],
+    "exclude_from_first_batch": [
+      "Stopped or stale series whose latest_date is older than 2025-01-01.",
+      "Broad money-supply or social-financing balances that are macro context rather than first-batch funding-condition indicators.",
+      "Series with unknown unit that require business-owner unit confirmation before display."
+    ]
+  },
+  "landing_targets": [
+    "fact_choice_macro_daily",
+    "choice_market_snapshot"
+  ],
+  "candidate_groups": [
+    {
+      "group_id": "shibor_short_end",
+      "priority": "P0",
+      "business_use": "Money-market liquidity and short-end rate context for macro toolkit, bond analytics, and NCD proxy validation.",
+      "probe_result": "confirmed_latest_value",
+      "series": [
+        {
+          "series_id": "EMM00166252",
+          "series_name": "SHIBOR:ON",
+          "vendor_series_code": "EMM00166252",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 1.384,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_for_landing"
+        },
+        {
+          "series_id": "EMM00166253",
+          "series_name": "SHIBOR:1W",
+          "vendor_series_code": "EMM00166253",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 1.42,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_for_landing"
+        },
+        {
+          "series_id": "EMM00166254",
+          "series_name": "SHIBOR:2W",
+          "vendor_series_code": "EMM00166254",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 1.402,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_for_landing"
+        }
+      ]
+    },
+    {
+      "group_id": "shibor_curve",
+      "priority": "P0",
+      "business_use": "Short funding curve and NCD proxy validation.",
+      "probe_result": "confirmed_latest_value",
+      "series": [
+        {
+          "series_id": "EMM00167612",
+          "series_name": "SHIBOR:1M",
+          "vendor_series_code": "EMM00167612",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 1.427,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_for_landing"
+        },
+        {
+          "series_id": "EMM00167613",
+          "series_name": "SHIBOR:3M",
+          "vendor_series_code": "EMM00167613",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 1.4144,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_for_landing"
+        },
+        {
+          "series_id": "EMM00167614",
+          "series_name": "SHIBOR:6M",
+          "vendor_series_code": "EMM00167614",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 1.4299,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_for_landing"
+        },
+        {
+          "series_id": "EMM00167708",
+          "series_name": "SHIBOR:1Y",
+          "vendor_series_code": "EMM00167708",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 1.43,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_for_landing"
+        }
+      ]
+    },
+    {
+      "group_id": "lpr_swap_curve",
+      "priority": "P1",
+      "business_use": "Policy-rate expectation proxy; useful for macro toolkit and rate-view context after curve semantics are confirmed.",
+      "probe_result": "confirmed_latest_value",
+      "series": [
+        {
+          "series_id": "EMM01474568",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:6M",
+          "vendor_series_code": "EMM01474568",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 3.0,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_after_curve_semantics_confirmed"
+        },
+        {
+          "series_id": "EMM01474569",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:9M",
+          "vendor_series_code": "EMM01474569",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 2.98,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_after_curve_semantics_confirmed"
+        },
+        {
+          "series_id": "EMM01474570",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:1Y",
+          "vendor_series_code": "EMM01474570",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 2.96,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_after_curve_semantics_confirmed"
+        },
+        {
+          "series_id": "EMM01474571",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:2Y",
+          "vendor_series_code": "EMM01474571",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 2.95,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_after_curve_semantics_confirmed"
+        },
+        {
+          "series_id": "EMM01474572",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:3Y",
+          "vendor_series_code": "EMM01474572",
+          "frequency": "daily",
+          "unit": "%",
+          "latest_date": "2026-06-09",
+          "latest_value": 2.95,
+          "fetch_mode": "latest",
+          "first_batch_action": "candidate_after_curve_semantics_confirmed"
+        }
+      ]
+    },
+    {
+      "group_id": "policy_operations",
+      "priority": "P1",
+      "business_use": "Open-market-operation amount/rate context; useful for policy liquidity narrative after date-slice behavior is confirmed.",
+      "probe_result": "confirmed_latest_value",
+      "series": [
+        {
+          "series_id": "EMM00088134",
+          "series_name": "公开市场操作:逆回购:14天:中标利率",
+          "vendor_series_code": "EMM00088134",
+          "frequency": "event_or_irregular",
+          "unit": "%",
+          "latest_date": "2025-01-27",
+          "latest_value": 1.65,
+          "fetch_mode": "latest",
+          "first_batch_action": "context_only_stale_check_required"
+        },
+        {
+          "series_id": "EMM01589039",
+          "series_name": "逆回购:7天:到期量:周",
+          "vendor_series_code": "EMM01589039",
+          "frequency": "weekly",
+          "unit": "亿元",
+          "latest_date": "2026-06-05",
+          "latest_value": 2262.0,
+          "fetch_mode": "latest",
+          "first_batch_action": "context_only_unit_confirmation_required"
+        },
+        {
+          "series_id": "EMM02217203",
+          "series_name": "中国:买断式逆回购:操作量",
+          "vendor_series_code": "EMM02217203",
+          "frequency": "monthly_or_event",
+          "unit": "亿元",
+          "latest_date": "2026-06-01",
+          "latest_value": 5000.0,
+          "fetch_mode": "latest",
+          "first_batch_action": "context_only_unit_confirmation_required"
+        }
+      ]
+    }
+  ],
+  "excluded_probe_hits": [
+    {
+      "series_id": "EMM01089843",
+      "series_name": "逆回购利率:63天:月",
+      "latest_date": "2018-03-01",
+      "reason": "stale_or_discontinued"
+    },
+    {
+      "series_id": "EMM01089841",
+      "series_name": "逆回购利率:14天:月",
+      "latest_date": "2025-01-01",
+      "reason": "stale_context_only"
+    },
+    {
+      "series_id": "EMM00087084",
+      "series_name": "M1:同比",
+      "latest_date": "2026-04-01",
+      "reason": "broad_money_supply_not_first_batch_funding_condition"
+    },
+    {
+      "series_id": "EMM00191806",
+      "series_name": "社会融资总量余额",
+      "latest_date": "2026-04-01",
+      "reason": "broad_credit_context_not_first_batch_funding_condition"
+    }
+  ],
+  "next_steps": [
+    "Land only SHIBOR short-end and SHIBOR curve series first, because units, daily cadence, latest dates, and MOSS use cases are clear.",
+    "Keep LPR swap and policy-operation series as context-only until curve semantics and units are confirmed by page contract or owner review.",
+    "Do not use same-day date_slice for latest-only series without a fallback/latest lane; the 2026-06-09 and 2026-06-10 date_slice probes returned no data."
+  ]
+}

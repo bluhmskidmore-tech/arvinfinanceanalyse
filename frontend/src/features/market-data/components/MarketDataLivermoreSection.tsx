@@ -1,0 +1,77 @@
+import { useState } from "react";
+import { Collapse } from "antd";
+
+import { PageSectionLead } from "../../../components/page/PagePrimitives";
+import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
+import { LivermoreStrategyPanel } from "./LivermoreStrategyPanel";
+
+type MarketDataLivermoreSectionProps = {
+  model: LivermoreStrategyModel | null;
+  isLoading: boolean;
+  isError: boolean;
+  fetchErrorDetail: string | null;
+  onRetry: () => void;
+  onRefreshGateSupplement?: () => Promise<{ status: string; computed_rows: number; message?: string }>;
+  onExpandedChange: (expanded: boolean) => void;
+};
+
+function livermoreCollapseLabel(model: LivermoreStrategyModel | null, isLoading: boolean): string {
+  if (isLoading) {
+    return "Livermore 趋势门控（加载中…）";
+  }
+  if (model?.marketGate.state) {
+    return `Livermore 趋势门控 · 门控 ${model.marketGate.state}（点击展开）`;
+  }
+  return "Livermore 趋势门控（A股防守策略，点击展开）";
+}
+
+export function MarketDataLivermoreSection({
+  model,
+  isLoading,
+  isError,
+  fetchErrorDetail,
+  onRetry,
+  onRefreshGateSupplement,
+  onExpandedChange,
+}: MarketDataLivermoreSectionProps) {
+  const [activeKeys, setActiveKeys] = useState<string[]>([]);
+  const expanded = activeKeys.includes("livermore");
+
+  return (
+    <section className="market-data-section-block" data-testid="market-data-livermore-section">
+      <PageSectionLead
+        eyebrow="A 股防守策略"
+        title="Livermore 趋势门控"
+        description="后端返回门控、就绪度与诊断结果；前端只做类型化展示，不补算业务规则。默认折叠，展开后加载完整面板。"
+      />
+      <Collapse
+        className="market-data-livermore-collapse"
+        data-testid="market-data-livermore-collapse"
+        bordered={false}
+        activeKey={activeKeys}
+        onChange={(keys) => {
+          const nextKeys = Array.isArray(keys) ? keys : [keys];
+          const nextExpanded = nextKeys.includes("livermore");
+          setActiveKeys(nextKeys);
+          onExpandedChange(nextExpanded);
+        }}
+        items={[
+          {
+            key: "livermore",
+            label: livermoreCollapseLabel(model, isLoading && expanded),
+            children: expanded ? (
+              <LivermoreStrategyPanel
+                model={model}
+                isLoading={isLoading}
+                isError={isError}
+                fetchErrorDetail={fetchErrorDetail}
+                onRetry={() => void onRetry()}
+                onRefreshGateSupplement={onRefreshGateSupplement}
+              />
+            ) : null,
+          },
+        ]}
+      />
+    </section>
+  );
+}

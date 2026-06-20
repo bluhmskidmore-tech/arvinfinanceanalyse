@@ -8,7 +8,11 @@ import pytest
 from pydantic import ValidationError
 
 from backend.app.schemas.ingest import IngestManifestRow, IngestRunSummary
-from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord, MaterializeBuildPayload
+from backend.app.schemas.materialize import (
+    CacheBuildRunRecord,
+    CacheManifestRecord,
+    MaterializeBuildPayload,
+)
 
 
 def test_ingest_manifest_row_accepts_path_and_nullable_optionals() -> None:

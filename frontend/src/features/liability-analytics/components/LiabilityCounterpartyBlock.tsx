@@ -30,10 +30,15 @@ function truncateName(value: string, max = 10): string {
   return value.length > max ? `${value.slice(0, max)}...` : value;
 }
 
+function rawYuanForChart(value: Numeric | null | undefined): number {
+  return numericYuanRaw(value) ?? 0;
+}
+
 function bankNonBankFromByType(rows: LiabilityTypeRow[]): { name: string; value: number }[] {
-  const bank = numericYuanRaw(rows.find((row) => row.name === "Bank")?.value);
+  const bankRow = rows.find((row) => row.name === "Bank");
+  const bank = rawYuanForChart(bankRow?.value);
   const nonBank = rows.reduce(
-    (sum, row) => (row.name === "Bank" ? sum : sum + numericYuanRaw(row.value)),
+    (sum, row) => (row.name === "Bank" ? sum : sum + rawYuanForChart(row.value)),
     0,
   );
   return [
@@ -62,7 +67,7 @@ export function LiabilityCounterpartyBlock({
   errorText: string | null;
 }) {
   const ranked = useMemo(
-    () => [...counterpartyRows].sort((a, b) => numericYuanRaw(b.value) - numericYuanRaw(a.value)),
+    () => [...counterpartyRows].sort((a, b) => rawYuanForChart(b.value) - rawYuanForChart(a.value)),
     [counterpartyRows],
   );
 
@@ -74,7 +79,9 @@ export function LiabilityCounterpartyBlock({
   }, [barRankingRows, ranked]);
 
   const { top10Share, hhiTimes10000 } = useMemo(() => {
-    const weights = counterpartyRows.map((row) => numericYuanRaw(row.value));
+    const weights = counterpartyRows
+      .map((row) => numericYuanRaw(row.value))
+      .filter((value): value is number => value !== null && Number.isFinite(value));
     return concentrationMetrics(weights);
   }, [counterpartyRows]);
 
@@ -124,8 +131,11 @@ export function LiabilityCounterpartyBlock({
         formatter: (params: unknown) => {
           const point = params as { name: string; value: number };
           const total = numericYuanRaw(totalValue);
-          const pct = total > 0 ? (point.value / total) * 100 : 0;
-          return `${point.name}<br/>余额：${(point.value / 1e8).toFixed(2)} 亿<br/>占比：${pct.toFixed(2)}%`;
+          const pct =
+            total !== null && Number.isFinite(total) && total > 0
+              ? `${((point.value / total) * 100).toFixed(2)}%`
+              : "—";
+          return `${point.name}<br/>余额：${(point.value / 1e8).toFixed(2)} 亿<br/>占比：${pct}`;
         },
       },
       series: [

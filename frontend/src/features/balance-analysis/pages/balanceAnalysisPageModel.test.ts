@@ -2,20 +2,33 @@ import { describe, expect, it } from "vitest";
 
 import type {
   BalanceAnalysisBasisBreakdownPayload,
+  BalanceAnalysisDecisionItemsPayload,
+  BalanceAnalysisOverviewPayload,
   BalanceAnalysisWorkbookPayload,
   BalanceMovementPayload,
+  ResultMeta,
 } from "../../../api/contracts";
 import {
   BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT,
+  buildBalanceAnalysisPageModel,
+  buildBalanceAnalysisPageReadModel,
+  buildBalanceCockpitViewModel,
+  buildBalanceHeadlineCards,
   buildBalanceStageRealDataModel,
   buildBalanceReconciliationLinkModel,
   distributionChartBarWidthPercent,
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
+  formatBalanceBusinessTextDisplay,
+  formatBalanceEvidenceKindDisplay,
   formatBalanceGridThousandsValue,
+  formatBalanceDecisionWorkflowStatusDisplay,
+  formatBalanceGovernedSeverityDisplay,
   formatBalanceOverviewNumber,
   formatBalanceScopeTotalAmountToYi,
   formatBalanceWorkbookCellDisplay,
+  formatBalanceWorkbookMetricTwoDecimals,
+  formatBalanceWorkbookOperationalSectionKeyDisplay,
   formatBalanceWorkbookWanAmountDisplay,
   formatBalanceWorkbookWanTextDisplay,
   gapChartBarWidthPercent,
@@ -24,6 +37,10 @@ import {
   parseBalanceChartMagnitude,
   summarizeBalanceAmountsByPositionScope,
 } from "./balanceAnalysisPageModel";
+import {
+  PORTFOLIO_CROSS_PAGE_EXPECTED,
+  portfolioCrossPageBalanceOverview,
+} from "../../../test/portfolioCrossPageGoldenSample";
 
 describe("balanceAnalysisPageModel", () => {
   describe("display formatters", () => {
@@ -96,8 +113,302 @@ describe("balanceAnalysisPageModel", () => {
       expect(formatBalanceWorkbookWanTextDisplay("No numeric amount here.")).toBe("No numeric amount here.");
     });
 
+    it("translates governed workbook labels for business-facing UI", () => {
+      expect(formatBalanceBusinessTextDisplay("Negative gap in 3-6 months")).toBe(
+        "3-6个月负缺口",
+      );
+      expect(formatBalanceBusinessTextDisplay("repo-1 maturity")).toBe("回购-1 到期");
+      expect(formatBalanceBusinessTextDisplay("Cashflow Calendar")).toBe("现金流日历");
+      expect(formatBalanceBusinessTextDisplay("Gap dropped to -25000 wan yuan.")).toBe(
+        "缺口降至 -2.50 亿元",
+      );
+      expect(formatBalanceBusinessTextDisplay("bond_maturity")).toBe("债券到期");
+      expect(formatBalanceBusinessTextDisplay("internal_governed_schedule")).toBe("内部治理日历");
+      expect(formatBalanceBusinessTextDisplay("Top rating bucket share reached 0.7573.")).toBe(
+        "最高评级桶占比达到 75.73%",
+      );
+      expect(formatBalanceBusinessTextDisplay("top1_concentration")).toBe("最大单一发行人占比");
+      expect(formatBalanceBusinessTextDisplay("interbank_liability_ratio")).toBe("同业负债占比");
+      expect(formatBalanceBusinessTextDisplay("review")).toBe("需复核");
+      expect(formatBalanceBusinessTextDisplay("asset")).toBe("资产");
+      expect(formatBalanceBusinessTextDisplay("CNY")).toBe("人民币");
+    });
+
+    it("translates evidence result kinds for business-facing UI", () => {
+      expect(formatBalanceEvidenceKindDisplay("balance-analysis.decision-items")).toBe("治理队列");
+      expect(formatBalanceEvidenceKindDisplay("balance-analysis.advanced-attribution")).toBe("高阶归因");
+      expect(formatBalanceEvidenceKindDisplay("unknown.kind")).toBe("unknown.kind");
+    });
+
     it("rewrites 万元 (Chinese) amounts in workbook notes the same as wan yuan", () => {
       expect(formatBalanceWorkbookWanTextDisplay("观测峰值 99.00 万元。")).toBe("观测峰值 0.01 亿元。");
+    });
+
+    it("formats issuance-style workbook metrics to two decimal places (zh-CN)", () => {
+      expect(formatBalanceWorkbookMetricTwoDecimals(null)).toBe("—");
+      const rateRaw = "1.636938618874038072093965168";
+      expect(formatBalanceWorkbookMetricTwoDecimals(rateRaw)).toBe(
+        Number(rateRaw).toLocaleString("zh-CN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      );
+      const termRaw = "0.5008068564920967983834593446";
+      expect(formatBalanceWorkbookMetricTwoDecimals(termRaw)).toBe(
+        Number(termRaw).toLocaleString("zh-CN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      );
+      expect(formatBalanceWorkbookMetricTwoDecimals("not-a-number")).toBe("not-a-number");
+    });
+
+    it("maps governed severity, workflow status, and workbook section keys for Chinese operators", () => {
+      expect(formatBalanceGovernedSeverityDisplay("high")).toBe("高");
+      expect(formatBalanceGovernedSeverityDisplay("medium")).toBe("中");
+      expect(formatBalanceGovernedSeverityDisplay("low")).toBe("低");
+      expect(formatBalanceDecisionWorkflowStatusDisplay("pending")).toBe("待处理");
+      expect(formatBalanceDecisionWorkflowStatusDisplay("confirmed")).toBe("已确认");
+      expect(formatBalanceDecisionWorkflowStatusDisplay("dismissed")).toBe("已忽略");
+      expect(formatBalanceWorkbookOperationalSectionKeyDisplay("maturity_gap")).toBe("期限缺口分析");
+      expect(formatBalanceWorkbookOperationalSectionKeyDisplay("rating_analysis")).toBe("信用评级分析");
+      expect(formatBalanceWorkbookOperationalSectionKeyDisplay("issuance_business_types")).toBe(
+        "发行类分析",
+      );
+    });
+  });
+
+  describe("page read model", () => {
+    function meta(overrides: Partial<ResultMeta> = {}): ResultMeta {
+      return {
+        trace_id: "tr_balance_analysis_overview_2026-04-30",
+        basis: "formal",
+        result_kind: "balance-analysis.overview",
+        formal_use_allowed: true,
+        source_version: "sv_balance",
+        vendor_version: "vv_none",
+        rule_version: "rv_balance",
+        cache_version: "cv_balance",
+        quality_flag: "ok",
+        vendor_status: "ok",
+        fallback_mode: "none",
+        scenario_flag: false,
+        as_of_date: "2026-04-30",
+        generated_at: "2026-05-01T04:00:00Z",
+        ...overrides,
+      };
+    }
+
+    function overview(
+      overrides: Partial<BalanceAnalysisOverviewPayload> = {},
+    ): BalanceAnalysisOverviewPayload {
+      return {
+        report_date: "2026-04-30",
+        position_scope: "all",
+        currency_basis: "CNY",
+        detail_row_count: 4857,
+        summary_row_count: 6,
+        total_market_value_amount: "370809915353.12964",
+        total_amortized_cost_amount: "351233000000.00",
+        total_accrued_interest_amount: "812345678.90",
+        asset_total_market_value_amount: "370809915353.12964",
+        liability_total_market_value_amount: "184159000000.00",
+        asset_total_amortized_cost_amount: "350000000000.00",
+        liability_total_amortized_cost_amount: "180000000000.00",
+        asset_total_accrued_interest_amount: "700000000.00",
+        liability_total_accrued_interest_amount: "112345678.90",
+        ...overrides,
+      };
+    }
+
+    function decisionItems(
+      rows: BalanceAnalysisDecisionItemsPayload["rows"] = [],
+    ): BalanceAnalysisDecisionItemsPayload {
+      return {
+        report_date: "2026-04-30",
+        position_scope: "all",
+        currency_basis: "CNY",
+        columns: [],
+        rows,
+      };
+    }
+
+    it("summarizes formal status, dates, filters, and the contracted KPI strip", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "real",
+        requestedReportDate: "2026-04-30",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "CNY",
+        overview: overview(),
+        summary: { total_rows: 17 } as never,
+        decisionItems: decisionItems([
+          {
+            decision_key: "risk-gap",
+            title: "期限缺口",
+            action_label: "复核",
+            severity: "high",
+            reason: "Negative gap",
+            source_section: "maturity_gap",
+            rule_id: "bal-gap",
+            rule_version: "rv_balance",
+            latest_status: {
+              decision_key: "risk-gap",
+              status: "pending",
+              updated_at: null,
+              updated_by: null,
+            },
+          },
+        ]),
+        metaSections: [
+          { key: "overview", title: "正式概览", meta: meta() },
+          { key: "workbook", title: "工作簿", meta: meta({ result_kind: "balance-analysis.workbook" }) },
+        ],
+      });
+
+      expect(model.resolvedReportDate).toBe("2026-04-30");
+      expect(model.dateStatus).toBe("matched");
+      expect(model.sourceBadge.label).toBe("正式业务读面");
+      expect(model.filterLine).toBe("头寸范围 全头寸 · 币种口径 人民币");
+      expect(model.kpis.map((item) => item.key)).toEqual([
+        "total-market-value",
+        "total-amortized-cost",
+        "total-accrued-interest",
+        "detail-row-count",
+        "summary-row-count",
+        "decision-item-count",
+      ]);
+      expect(model.kpis[0]).toMatchObject({ label: "总市值", value: "3,708.10", unit: "亿元" });
+      expect(model.kpis[5]).toMatchObject({ label: "治理动作", value: "1", unit: "项" });
+      expect(model.evidenceCards).toHaveLength(2);
+      expect(model.stateSurfaces).toContainEqual(
+        expect.objectContaining({ variant: "neutral", title: "报告日已匹配" }),
+      );
+    });
+
+    it("keeps the shared portfolio golden sample balance values aligned with the source page model", () => {
+      const cards = buildBalanceHeadlineCards({
+        overview: portfolioCrossPageBalanceOverview(),
+        positionScope: "all",
+      });
+
+      expect(cards.find((card) => card.key === "asset-market-value")).toMatchObject({
+        value: PORTFOLIO_CROSS_PAGE_EXPECTED.balanceAssetYi,
+      });
+      expect(cards.find((card) => card.key === "liability-market-value")).toMatchObject({
+        value: PORTFOLIO_CROSS_PAGE_EXPECTED.balanceLiabilityYi,
+      });
+    });
+
+    it("does not present an unavailable report date as a formal business read surface", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "real",
+        requestedReportDate: "",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "CNY",
+        overview: null,
+        summary: null,
+        decisionItems: null,
+        metaSections: [],
+      });
+
+      expect(model.dateStatus).toBe("pending");
+      expect(model.sourceBadge.label).toBe("等待业务读面");
+      expect(model.statusBadges).toContainEqual(
+        expect.objectContaining({ key: "date", label: "报告日待定" }),
+      );
+    });
+
+    it("surfaces mock, stale, fallback, and report-date mismatch states without hiding evidence", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "mock",
+        requestedReportDate: "2026-04-30",
+        selectedPositionScope: "asset",
+        selectedCurrencyBasis: "native",
+        overview: overview({ report_date: "2026-03-31", position_scope: "asset", currency_basis: "native" }),
+        decisionItems: decisionItems(),
+        metaSections: [
+          {
+            key: "overview",
+            title: "正式概览",
+            meta: meta({
+              quality_flag: "stale",
+              fallback_mode: "latest_snapshot",
+              as_of_date: "2026-03-31",
+            }),
+          },
+        ],
+      });
+
+      expect(model.sourceBadge.label).toBe("本地演示数据");
+      expect(model.dateStatus).toBe("mismatch");
+      expect(model.stateSurfaces.map((item) => item.variant)).toEqual([
+        "mock",
+        "fallback-date",
+        "stale",
+        "fallback-date",
+      ]);
+      expect(model.evidenceCards[0]).toMatchObject({
+        qualityLabel: "陈旧",
+        fallbackLabel: "最新快照降级",
+        asOfDate: "2026-03-31",
+      });
+    });
+
+    it("builds the page-level view model without leaking API envelopes into display components", () => {
+      const model = buildBalanceAnalysisPageModel({
+        clientMode: "real",
+        selectedReportDate: "2026-04-30",
+        positionScope: "all",
+        currencyBasis: "CNY",
+        overview: overview(),
+        summary: { total_rows: 17 } as never,
+        decisionItems: decisionItems(),
+        workbook: {
+          report_date: "2026-04-30",
+          position_scope: "all",
+          currency_basis: "CNY",
+          cards: [
+            { key: "bond_assets_excluding_issue", label: "债券资产", value: "2000000" },
+            { key: "interbank_assets", label: "同业资产", value: "1000000" },
+            { key: "issuance_liabilities", label: "发行类负债", value: "500000" },
+          ],
+          tables: [],
+          operational_sections: [],
+        },
+        summaryRows: [
+          {
+            source_family: "combined",
+            position_scope: "asset",
+            currency_basis: "CNY",
+            row_count: 1,
+            market_value_amount: "10000000000",
+            amortized_cost_amount: "10000000000",
+            accrued_interest_amount: "0",
+          },
+        ],
+        decisionRows: [],
+        workbookDecisionRows: [
+          {
+            title: "Workbook decision",
+            action_label: "Review",
+            severity: "medium",
+            reason: "Review reason",
+            source_section: "maturity_gap",
+            rule_id: "rule-1",
+            rule_version: "v1",
+          },
+        ],
+        metaSections: [{ key: "overview", title: "正式概览", meta: meta() }],
+      });
+
+      expect(model.readModel.resolvedReportDate).toBe("2026-04-30");
+      expect(model.headlineAmountCards.map((card) => card.key)).toContain("asset-market-value");
+      expect(model.balanceWorkbenchMetrics.find((metric) => metric.key === "asset-market-value")).toMatchObject({
+        key: "asset-market-value",
+        label: "资产市值合计",
+      });
+      expect(model.stageModel.hasRealData).toBe(true);
+      expect(model.stageModel.contribution.watchItems[0].title).toBe("Workbook decision");
     });
   });
 
@@ -174,6 +485,57 @@ describe("balanceAnalysisPageModel", () => {
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "marketValueAmount")).toBe("1,845.73");
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "amortizedCostAmount")).toBe("1,852.22");
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "accruedInterestAmount")).toBe("0.14");
+    });
+  });
+
+  describe("BalanceAnalysisPage headline cards", () => {
+    it("uses governed overview totals and preserves missing, zero, and invalid states", () => {
+      const cards = buildBalanceHeadlineCards({
+        positionScope: "all",
+        overview: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          detail_row_count: 0,
+          summary_row_count: 3,
+          total_market_value_amount: "542645000000.00",
+          total_amortized_cost_amount: "536721326400.35",
+          total_accrued_interest_amount: "225646779.07",
+          asset_total_market_value_amount: null,
+          liability_total_market_value_amount: "0",
+          asset_total_amortized_cost_amount: "NOT_A_NUMERIC_KPI",
+          liability_total_amortized_cost_amount: "185222389626.26",
+          asset_total_accrued_interest_amount: "211650408.23",
+          liability_total_accrued_interest_amount: "13996370.84",
+        } as unknown as BalanceAnalysisOverviewPayload,
+      });
+
+      expect(cards.find((card) => card.key === "asset-market-value")).toMatchObject({
+        label: "资产市值合计",
+        value: "—",
+        unit: "亿元",
+        state: "missing",
+      });
+      expect(cards.find((card) => card.key === "liability-market-value")).toMatchObject({
+        label: "负债市值合计",
+        value: "0.00",
+        unit: "亿元",
+        state: "zero",
+      });
+      expect(cards.find((card) => card.key === "asset-amortized-cost")).toMatchObject({
+        label: "资产摊余成本合计",
+        value: "NOT_A_NUMERIC_KPI",
+        unit: "亿元",
+        state: "invalid",
+      });
+      expect(cards.find((card) => card.key === "summary-rows")).toMatchObject({
+        value: "3",
+        state: "value",
+      });
+      expect(cards.find((card) => card.key === "detail-rows")).toMatchObject({
+        value: "0",
+        state: "zero",
+      });
     });
   });
 
@@ -470,7 +832,7 @@ describe("balanceAnalysisPageModel", () => {
       );
       expect(model.contribution.watchItems[0]).toMatchObject({
         level: "danger",
-        title: "Review 3-6 month gap",
+        title: "复核 3-6个月缺口",
       });
       expect(model.contribution.watchItems[0].detail).toContain("-2.50 亿元");
       expect(model.bottom.maturityCategories).toEqual(["已到期/逾期", "3-6个月", "1-2年"]);
@@ -483,14 +845,14 @@ describe("balanceAnalysisPageModel", () => {
       );
       expect(model.bottom.calendarItems[0]).toMatchObject({
         date: "2026-03-05",
-        event: "repo-1 maturity",
-        amount: "maturity_gap",
+        event: "回购-1 到期",
+        amount: "期限缺口分析",
         level: "high",
       });
       expect(model.bottom.calendarItems[1]).toMatchObject({
         date: "2026-03-08",
-        event: "asset-1 maturity",
-        amount: "maturity_gap",
+        event: "asset-1 到期",
+        amount: "期限缺口分析",
         level: "medium",
       });
     });
@@ -561,5 +923,73 @@ describe("balanceAnalysisPageModel", () => {
       expect(model.summary.content).toContain("40.00");
       expect(model.summary.content).not.toContain("workbook");
     });
+  });
+
+  it("builds cockpit KPI row from governed overview and workbook cards", () => {
+    const overviewPayload: BalanceAnalysisOverviewPayload = {
+      report_date: "2026-04-30",
+      position_scope: "all",
+      currency_basis: "CNY",
+      detail_row_count: 2,
+      summary_row_count: 2,
+      total_market_value_amount: "30000000000",
+      total_amortized_cost_amount: "28000000000",
+      total_accrued_interest_amount: "100000000",
+      asset_total_market_value_amount: "20000000000",
+      liability_total_market_value_amount: "10000000000",
+      asset_total_amortized_cost_amount: "18000000000",
+      liability_total_amortized_cost_amount: "10000000000",
+      asset_total_accrued_interest_amount: "80000000",
+      liability_total_accrued_interest_amount: "20000000",
+    };
+    const workbookPayload: BalanceAnalysisWorkbookPayload = {
+      report_date: "2026-04-30",
+      position_scope: "all",
+      currency_basis: "CNY",
+      cards: [{ key: "net_position", label: "净头寸", value: "1200000" }],
+      tables: [
+        {
+          key: "maturity_gap",
+          title: "期限缺口",
+          section_kind: "table",
+          columns: [{ key: "bucket", label: "桶" }, { key: "gap_amount", label: "缺口" }],
+          rows: [
+            { bucket: "1-2年", gap_amount: "1000000", full_scope_gap_amount: "1000000" },
+            { bucket: "3-5年", gap_amount: "-500000", full_scope_gap_amount: "-500000" },
+          ],
+        },
+      ],
+      operational_sections: [],
+    };
+    const stageModel = buildBalanceStageRealDataModel({
+      overview: overviewPayload,
+      workbook: workbookPayload,
+    });
+    const cockpit = buildBalanceCockpitViewModel({
+      overview: overviewPayload,
+      workbook: workbookPayload,
+      stageModel,
+      decisionCount: 2,
+      topRiskTitle: "1-2年期限桶负缺口",
+    });
+
+    expect(cockpit.scaleKpis.map((item) => item.label)).toEqual([
+      "资产市值",
+      "负债市值",
+      "净头寸",
+      "总市值",
+      "摊余成本",
+      "应计利息",
+      "缺口覆盖率",
+    ]);
+    expect(cockpit.opsKpis.map((item) => item.label)).toEqual([
+      "汇总行数",
+      "明细行数",
+      "治理待办",
+    ]);
+    expect(cockpit.scaleKpis.find((item) => item.key === "gap-coverage")?.value).toBe("50.0");
+    expect(cockpit.opsKpis.find((item) => item.key === "summary-rows")?.value).toBe("2");
+    expect(cockpit.opsKpis.find((item) => item.key === "governance-queue")?.value).toBe("2");
+    expect(cockpit.judgementLine).toContain("1-2年期限桶负缺口");
   });
 });

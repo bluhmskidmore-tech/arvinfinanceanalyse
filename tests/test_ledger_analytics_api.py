@@ -6,10 +6,12 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_ledger_import_flow import (
     _configure_ledger_import_env,
@@ -17,6 +19,74 @@ from tests.test_ledger_import_flow import (
     _ledger_row_values,
     _pack_sample,
 )
+
+LEDGER_READ_HEADERS = {"X-User-Id": "ledger-read-user", "X-User-Role": "viewer"}
+
+
+def test_ledger_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
+    route_mod = load_module(
+        "backend.app.api.routes.ledger",
+        "backend/app/api/routes/ledger.py",
+    )
+
+    class _StubImportService:
+        def __init__(self, _duckdb_path):
+            pass
+
+        def list_imports(self):
+            return {"data": {"items": []}, "metadata": {"no_data": True}}
+
+    class _StubAnalyticsService:
+        def __init__(self, _duckdb_path):
+            pass
+
+        def dates(self):
+            return {"data": {"items": []}, "metadata": {"no_data": True}}
+
+        def dashboard(self, **_kwargs):
+            return {"data": {}, "metadata": {}}
+
+        def positions(self, **_kwargs):
+            return {"data": {"items": []}, "metadata": {"no_data": True}}
+
+        def export_positions(self, **_kwargs):
+            return "ledger.xlsx", b"xlsx", {}
+
+    class _StubImportModule:
+        LedgerImportService = _StubImportService
+
+    class _StubAnalyticsModule:
+        XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        LedgerAnalyticsService = _StubAnalyticsService
+
+        @staticmethod
+        def normalize_requested_date(*, as_of_date=None):
+            return as_of_date
+
+        @staticmethod
+        def normalize_filters(**kwargs):
+            return kwargs
+
+    monkeypatch.setattr(route_mod, "_svc", lambda: _StubImportModule)
+    monkeypatch.setattr(route_mod, "_analytics_svc", lambda: _StubAnalyticsModule)
+    sqlite_path = tmp_path / "ledger-read-denied.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    for path, params in (
+        ("/api/ledger/imports", {}),
+        ("/api/ledger/dates", {}),
+        ("/api/ledger/dashboard", {"as_of_date": "2026-03-17"}),
+        ("/api/ledger/positions", {"as_of_date": "2026-03-17"}),
+        ("/api/ledger/export/positions", {"as_of_date": "2026-03-17"}),
+    ):
+        response = client.get(path, params=params or None, headers=LEDGER_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
 
 
 def test_fastapi_application_registers_ledger_analytics_routes(tmp_path, monkeypatch):
@@ -114,6 +184,42 @@ def test_ledger_dates_dashboard_positions_and_export_use_imported_snapshot(tmp_p
         "direction": "ASSET",
         "portfolio": None,
     }
+    get_settings.cache_clear()
+
+
+def test_ledger_get_read_surfaces_open_duckdb_read_only(tmp_path, monkeypatch):
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    _import_two_position_fixture(duckdb_path)
+    original_connect = duckdb.connect
+    observed_read_modes: list[bool | None] = []
+
+    def guarded_connect(database=":memory:", *args, **kwargs):
+        read_only = kwargs.get("read_only")
+        if read_only is None and args and isinstance(args[0], bool):
+            read_only = args[0]
+        if str(database) == str(duckdb_path):
+            observed_read_modes.append(read_only)
+            if read_only is False:
+                raise RuntimeError("ledger GET read surfaces must open DuckDB read-only")
+        return original_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(duckdb, "connect", guarded_connect)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    requests = (
+        ("/api/ledger/imports", {}),
+        ("/api/ledger/dates", {}),
+        ("/api/ledger/dashboard", {"as_of_date": "2026-03-17"}),
+        ("/api/ledger/positions", {"as_of_date": "2026-03-17", "page": 1, "page_size": 10}),
+        ("/api/ledger/export/positions", {"as_of_date": "2026-03-17"}),
+    )
+
+    for path, params in requests:
+        response = client.get(path, params=params or None)
+        assert response.status_code == 200, f"{path}: {response.status_code} {response.text}"
+
+    assert observed_read_modes
+    assert set(observed_read_modes) == {True}
     get_settings.cache_clear()
 
 

@@ -6,7 +6,6 @@ from openpyxl import Workbook, load_workbook
 
 from tests.helpers import ROOT, load_module
 
-
 LEDGER_HEADERS = [
     "组合科目代码",
     "组合科目名称",

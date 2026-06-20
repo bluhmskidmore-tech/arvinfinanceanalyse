@@ -1,0 +1,787 @@
+﻿.moduleHome {
+  --mh-page-bg: var(--ib-paper);
+  --mh-card: var(--ib-surface);
+  --mh-card-soft: var(--ib-paper);
+  --mh-surface-muted: var(--ib-surface-muted);
+  --mh-line: var(--ib-hairline);
+  --mh-line-soft: var(--ib-hairline);
+  --mh-line-strong: var(--ib-hairline);
+  --mh-ink: var(--ib-ink);
+  --mh-ink-2: var(--ib-ink-secondary);
+  --mh-muted: var(--ib-ink-muted);
+  --mh-muted-2: var(--ib-ink-muted);
+  --mh-blue: var(--ib-accent);
+  --mh-blue-2: #2f68b8;
+  --mh-blue-deep: var(--ib-accent);
+  --mh-blue-soft: var(--ib-accent-surface);
+  --mh-green: var(--ib-up);
+  --mh-green-soft: var(--ib-paper);
+  --mh-amber: var(--ib-warn);
+  --mh-amber-soft: #fbf6ea;
+  --mh-red: var(--ib-down);
+  --mh-red-soft: #fbf1f0;
+  --mh-space-1: 8px;
+  --mh-space-2: 12px;
+  --mh-space-3: 16px;
+  --mh-space-4: 24px;
+  --mh-radius: 10px;
+  --mh-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --mh-shadow-hover: 0 2px 4px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(15, 23, 42, 0.1);
+  --mh-font-sans: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --mh-font-mono: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas,
+    monospace;
+  font-family: var(--mh-font-sans);
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  color: var(--mh-ink);
+  display: grid;
+  gap: var(--mh-space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.num {
+  font-family: var(--mh-font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: -0.01em;
+}
+
+.topbar,
+.card,
+.railCard,
+.kpi {
+  background: var(--mh-card);
+  border: 1px solid var(--mh-line-soft);
+  border-radius: var(--mh-radius);
+  box-shadow: var(--mh-shadow-card);
+  transition: box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.topbar:hover,
+.card:hover,
+.railCard:hover {
+  border-color: rgba(24, 80, 161, 0.28);
+  box-shadow: var(--mh-shadow-hover);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--mh-space-3);
+  align-items: flex-start;
+  padding: var(--mh-space-2) var(--mh-space-3);
+  background: var(--ib-surface);
+  border-color: rgba(24, 80, 161, 0.12);
+}
+
+.decisionBand {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.58fr);
+  gap: var(--mh-space-3);
+  align-items: stretch;
+  padding: var(--mh-space-3);
+  border: 1px solid rgba(24, 80, 161, 0.14);
+  border-radius: var(--mh-radius);
+  background: var(--ib-surface);
+  box-shadow: var(--mh-shadow-card);
+}
+
+.decisionMain {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.decisionKicker {
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.decisionConclusion {
+  color: var(--mh-ink);
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.decisionDetail {
+  color: var(--mh-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.decisionFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mh-space-1);
+  align-content: stretch;
+  min-width: 0;
+}
+
+.decisionFact {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: var(--ib-radius);
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(228, 233, 240, 0.9);
+}
+
+.decisionFact span {
+  color: var(--mh-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.decisionFact strong {
+  font-size: 12px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.titleBlock {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.titleBar {
+  width: 4px;
+  height: 24px;
+  border-radius: 2px;
+  background: var(--ib-surface);
+  flex: 0 0 auto;
+}
+
+.title {
+  margin: 0;
+  color: var(--mh-blue-deep);
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.question {
+  margin: 0;
+  color: var(--mh-ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+  font-weight: 650;
+}
+
+.summary {
+  margin: 0;
+  color: var(--mh-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.topMeta {
+  display: grid;
+  gap: var(--mh-space-1);
+  justify-items: end;
+  min-width: 0;
+  max-width: min(420px, 42vw);
+}
+
+.credibilityStrip {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mh-space-1);
+  flex-wrap: wrap;
+}
+
+.credibilityLabel {
+  color: var(--mh-muted-2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  max-width: 100%;
+  padding: 0 10px;
+  border-radius: var(--ib-radius);
+  border: 1px solid rgba(228, 233, 240, 0.9);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--mh-ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.pillOk {
+  color: var(--mh-green);
+  background: var(--mh-green-soft);
+  border-color: #cdeee2;
+}
+
+.pillWatch {
+  color: var(--mh-amber);
+  background: var(--mh-amber-soft);
+  border-color: #efd8a8;
+}
+
+.pillError {
+  color: var(--mh-red);
+  background: var(--mh-red-soft);
+  border-color: #efcbc9;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: var(--mh-space-3);
+  align-items: start;
+}
+
+.main {
+  display: grid;
+  gap: var(--mh-space-3);
+  min-width: 0;
+}
+
+.rail {
+  display: grid;
+  gap: var(--mh-space-2);
+  min-width: 0;
+}
+
+.kpiStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--mh-space-2);
+}
+
+.kpiStripDense {
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.kpi {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-height: 104px;
+  padding: 11px 12px 10px;
+  min-width: 0;
+}
+
+.kpiLabel,
+.briefEvidence,
+.statusDetail,
+.dataNote li,
+.drillDesc,
+.railLead {
+  color: var(--mh-muted);
+}
+
+.kpiLabel {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--mh-ink-2);
+}
+
+.kpiValue {
+  color: var(--mh-ink);
+  font-size: 17px;
+  font-weight: 850;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.kpiDetail {
+  color: var(--mh-muted);
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.statusStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--mh-space-2);
+}
+
+.statusItem {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--ib-radius);
+  background: var(--mh-card-soft);
+  border: none;
+  box-shadow: none;
+  display: grid;
+  gap: 5px;
+}
+
+.statusTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mh-space-1);
+}
+
+.statusLabel {
+  color: var(--mh-ink-2);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.statusValue {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.statusDetail {
+  font-size: 10.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.card {
+  padding: var(--mh-space-3);
+  display: grid;
+  gap: var(--mh-space-2);
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mh-space-2);
+  color: var(--mh-blue-deep);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.sectionTitle > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mh-space-1);
+}
+
+.sectionTitle > span:first-child::before {
+  content: "";
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--ib-surface);
+}
+
+.sectionMeta {
+  color: var(--mh-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.briefGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--mh-space-2);
+}
+
+.brief {
+  display: grid;
+  gap: var(--mh-space-1);
+  min-width: 0;
+  padding: var(--mh-space-2);
+  border-radius: var(--ib-radius);
+  background: var(--mh-surface-muted);
+  border: none;
+  box-shadow: none;
+}
+
+.briefTitle {
+  color: var(--mh-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.briefConclusion {
+  color: var(--mh-blue-deep);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.briefEvidence {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.distributionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mh-space-2);
+}
+
+.distributionPanel {
+  display: grid;
+  gap: var(--mh-space-1);
+  min-width: 0;
+  padding: var(--mh-space-2);
+  border-radius: var(--ib-radius);
+  background: var(--mh-card-soft);
+}
+
+.distributionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mh-space-1);
+}
+
+.distributionTitle {
+  color: var(--mh-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.distributionState {
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.distributionMeta {
+  color: var(--mh-muted-2);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.distributionList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.distributionRow {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.distributionRowTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.distributionLabel {
+  color: var(--mh-ink-2);
+  font-size: 11px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.distributionValue,
+.distributionShare {
+  color: var(--mh-ink);
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.distributionShare {
+  min-width: 52px;
+  text-align: right;
+  color: var(--mh-muted);
+}
+
+.distBarTrack {
+  height: 6px;
+  border-radius: var(--ib-radius);
+  background: var(--mh-surface-muted);
+  overflow: hidden;
+}
+
+.distBarFill {
+  height: 100%;
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  min-width: 2px;
+}
+
+.distributionEmpty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mh-space-2);
+}
+
+.detailPanel {
+  display: grid;
+  gap: var(--mh-space-1);
+  min-width: 0;
+  padding: var(--mh-space-2);
+  border-radius: var(--ib-radius);
+  background: var(--mh-card-soft);
+}
+
+.detailHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mh-space-1);
+}
+
+.detailTitle {
+  color: var(--mh-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.detailState {
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.detailMeta {
+  color: var(--mh-muted-2);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.detailList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.detailRow {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.detailRowTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.detailLabel {
+  color: var(--mh-ink-2);
+  font-size: 11px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.detailValue {
+  color: var(--mh-ink);
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.detailDate {
+  min-width: 72px;
+  text-align: right;
+  color: var(--mh-muted);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.detailSource {
+  color: var(--mh-muted-2);
+  font-size: 9.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.detailEmpty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.railCard {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.railLead {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.drillList {
+  display: grid;
+  gap: var(--mh-space-1);
+}
+
+.drill {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--ib-radius);
+  border: none;
+  background: var(--mh-card-soft);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: none;
+  transition: background 120ms ease;
+}
+
+.drill:hover {
+  background: var(--mh-blue-soft);
+}
+
+.drillHead {
+  display: flex;
+  gap: var(--mh-space-1);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.drillTitle {
+  color: var(--mh-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.drillBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: var(--ib-radius);
+  border: 1px solid var(--mh-line);
+  background: var(--ib-surface);
+  color: var(--mh-blue-deep);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.drillDesc {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.dataNote {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 7px;
+}
+
+.dataNote li {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.toneOk {
+  color: var(--mh-green);
+}
+
+.toneWatch {
+  color: var(--mh-amber);
+}
+
+.toneError {
+  color: var(--mh-red);
+}
+
+.toneMuted {
+  color: var(--mh-muted);
+}
+
+/* Portfolio 首页视觉：复用 dashboard-home/dashboardHome.module.css + portfolioHome.module.css */
+
+@media (min-width: 1600px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .decisionBand {
+    grid-template-columns: 1fr;
+  }
+
+  .rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topMeta {
+    justify-items: start;
+    max-width: none;
+  }
+
+  .credibilityStrip {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .kpiStrip,
+  .statusStrip,
+  .briefGrid,
+  .distributionGrid,
+  .structureSplit,
+  .detailGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .decisionFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .kpiStrip,
+  .statusStrip,
+  .briefGrid,
+  .distributionGrid,
+  .structureSplit,
+  .detailGrid,
+  .rail {
+    grid-template-columns: 1fr;
+  }
+}

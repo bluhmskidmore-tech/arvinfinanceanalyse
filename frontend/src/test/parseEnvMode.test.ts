@@ -38,12 +38,12 @@ describe("createApiClient · parseEnvMode", () => {
   });
 
   describe("dev / test mode (PROD=false) · unset VITE_DATA_SOURCE", () => {
-    it('defaults to "mock" with console.warn', () => {
+    it('defaults to "real" with console.warn', () => {
       vi.stubEnv("VITE_DATA_SOURCE", "");
       vi.stubEnv("PROD", false);
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       const client = createApiClient();
-      expect(client.mode).toBe("mock");
+      expect(client.mode).toBe("real");
       expect(warnSpy).toHaveBeenCalled();
     });
   });
@@ -74,10 +74,10 @@ describe("createApiClient · parseEnvMode", () => {
       expect(() => createApiClient()).not.toThrow();
     });
 
-    it("does NOT throw when explicitly set to mock", () => {
+    it("throws when explicitly set to mock", () => {
       vi.stubEnv("VITE_DATA_SOURCE", "mock");
       vi.stubEnv("PROD", true);
-      expect(() => createApiClient()).not.toThrow();
+      expect(() => createApiClient()).toThrow(/mock/i);
     });
   });
 

@@ -1,5 +1,6 @@
 import { Button, Card, Spin } from "antd";
 import type { CSSProperties, ReactNode } from "react";
+import "./SectionCard.css";
 
 export type SectionCardProps = {
   title: string;
@@ -25,13 +26,14 @@ export function SectionCard({
   if (error) {
     return (
       <Card
+        className="section-card"
         title={title}
         extra={extra}
         style={style}
         styles={{ body: { padding: noPadding ? 0 : undefined } }}
       >
-        <div style={{ display: "grid", gap: 12 }}>
-          <span style={{ color: "#a14a14" }}>区块加载失败。</span>
+        <div className="section-card__error">
+          <span className="section-card__error-text">区块加载失败。</span>
           {onRetry ? (
             <Button type="default" onClick={onRetry}>
               重试
@@ -44,6 +46,7 @@ export function SectionCard({
 
   return (
     <Card
+      className="section-card"
       title={title}
       extra={extra}
       style={style}

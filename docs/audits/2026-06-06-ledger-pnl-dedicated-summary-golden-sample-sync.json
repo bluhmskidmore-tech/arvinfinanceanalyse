@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "artifact": "ledger-pnl-dedicated-summary-golden-sample-sync",
+  "created_date": "2026-06-06",
+  "page": {
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "page_slug": "ledger-pnl",
+    "page_name": "Ledger PnL",
+    "route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary"
+  },
+  "dedicated_summary_golden_sample": {
+    "sample_id": "GS-LEDGER-PNL-SUMMARY-A",
+    "status": "captured-awaiting-approval",
+    "sample_type": "capture-ready",
+    "artifact_dir": "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A",
+    "files": [
+      "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A/request.json",
+      "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A/response.json",
+      "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A/assertions.md",
+      "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A/approval.md"
+    ],
+    "preferred_report_date": "2026-04-30",
+    "source_endpoint": "GET /api/ledger-pnl/summary",
+    "approval_captured": false
+  },
+  "candidate_metric_bindings": [
+    {
+      "metric_id": "MTR-LPN-001",
+      "payload_field": "LedgerPnlSummaryPayload.ledger_monthly_pnl_core",
+      "status": "candidate",
+      "pending_confirmation": true,
+      "bound_page_id": "PAGE-LEDGER-PNL-001",
+      "bound_sample_id": "GS-LEDGER-PNL-SUMMARY-A"
+    },
+    {
+      "metric_id": "MTR-LPN-002",
+      "payload_field": "LedgerPnlSummaryPayload.ledger_monthly_pnl_all",
+      "status": "candidate",
+      "pending_confirmation": true,
+      "bound_page_id": "PAGE-LEDGER-PNL-001",
+      "bound_sample_id": "GS-LEDGER-PNL-SUMMARY-A"
+    },
+    {
+      "metric_id": "MTR-LPN-003",
+      "payload_field": "LedgerPnlSummaryPayload.ledger_net_assets",
+      "status": "candidate",
+      "pending_confirmation": true,
+      "bound_page_id": "PAGE-LEDGER-PNL-001",
+      "bound_sample_id": "GS-LEDGER-PNL-SUMMARY-A"
+    }
+  ],
+  "readiness_snapshot": {
+    "command": "python scripts/codex_page_readiness.py --page-slug ledger-pnl",
+    "overall_status": "static-pass",
+    "approval_status": "candidate_or_pending",
+    "formal_use_allowed": false,
+    "golden_sample_boundary_detail": "page_dto_only",
+    "golden_samples": [
+      "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A"
+    ],
+    "business_owner_approval_captured": false
+  },
+  "remaining_blockers": [
+    "written_direct_page_api_governance_record",
+    "supporting_expanded_lineage",
+    "catalog_date_review",
+    "manual_audit_review",
+    "business_owner_approval",
+    "golden_sample_review",
+    "ui_api_payload_review",
+    "live_smoke_evidence_review",
+    "verification_commands_rerun",
+    "candidate_boundary_acceptance"
+  ],
+  "evidence_scope": {
+    "writes_governance_records": false,
+    "checks_record_existence": false,
+    "validates_required_fields": false,
+    "proves_page_execution": false,
+    "approves_metric_or_page": false,
+    "approves_formal_use": false,
+    "captures_business_owner_approval": false,
+    "records_boundary_evidence": true
+  },
+  "supersedes_current_missing_sample_wording": [
+    "docs/audits/2026-06-05-ledger-pnl-governance-closure-status.json",
+    "docs/audits/2026-06-05-ledger-pnl-source-anchor-golden-boundary.json"
+  ],
+  "retained_boundaries": [
+    "Keep PAGE-LEDGER-PNL-001 as evidence-pending.",
+    "Keep MTR-LPN-001 through MTR-LPN-003 as candidate metrics with pending_confirmation=true.",
+    "Keep formal_use_allowed=false.",
+    "Keep closure_approved=false.",
+    "Do not treat GS-LEDGER-PNL-SUMMARY-A as business-owner approval or formal-use certification.",
+    "Do not use Ledger PnL summary DTO evidence to replace formal PnL, product-category PnL, PnL bridge, or formal financial indicator truth.",
+    "Do not write governance records from this artifact."
+  ]
+}

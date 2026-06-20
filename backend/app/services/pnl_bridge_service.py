@@ -103,8 +103,18 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         if prior_date
         else []
     )
-    fx_current = balance_repo.resolve_fx_mid_rates_map(report_date=report_date)
-    fx_prior = balance_repo.resolve_fx_mid_rates_map(report_date=prior_date) if prior_date else None
+    fx_current = balance_repo.resolve_formal_fx_mid_rates_map(
+        report_date=report_date,
+        base_currencies=_bridge_fx_base_currencies(pnl_fi_rows, current_balance_rows),
+    )
+    fx_prior = (
+        balance_repo.resolve_formal_fx_mid_rates_map(
+            report_date=prior_date,
+            base_currencies=_bridge_fx_base_currencies(pnl_fi_rows, prior_balance_rows),
+        )
+        if prior_date
+        else None
+    )
     required_curve_types = required_curve_types_for_pnl_bridge(
         pnl_fi_rows=pnl_fi_rows,
         balance_rows_current=current_balance_rows,
@@ -254,6 +264,33 @@ def _build_summary(rows: list[PnlBridgeRow]) -> PnlBridgeSummarySchema:
         total_residual=sum((row.residual for row in rows), ZERO),
         quality_flag=worst_quality,
     )
+
+
+def _bridge_fx_base_currencies(
+    pnl_fi_rows: list[dict[str, object]],
+    balance_rows: list[dict[str, object]],
+) -> set[str]:
+    balance_lookup = {
+        (
+            str(row.get("instrument_code") or ""),
+            str(row.get("portfolio_name") or ""),
+            str(row.get("cost_center") or ""),
+            str(row.get("accounting_basis") or ""),
+        ): str(row.get("currency_code") or row.get("currency_basis") or "").upper().strip()
+        for row in balance_rows
+    }
+    required: set[str] = set()
+    for row in pnl_fi_rows:
+        key = (
+            str(row.get("instrument_code") or ""),
+            str(row.get("portfolio_name") or ""),
+            str(row.get("cost_center") or ""),
+            str(row.get("accounting_basis") or ""),
+        )
+        base = balance_lookup.get(key) or str(row.get("currency_basis") or "").upper().strip()
+        if base and base not in {"CNY", "CNX", "RMB"}:
+            required.add(base)
+    return required
 
 
 def _build_warnings(

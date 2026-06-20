@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import asdict
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
-import uuid
+from decimal import ROUND_HALF_UP, Decimal
 
 from backend.app.core_finance.credit_spread_analysis import (
     BondSpreadRow,
