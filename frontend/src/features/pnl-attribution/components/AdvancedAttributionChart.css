@@ -1,0 +1,250 @@
+.advanced-attribution-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.advanced-attribution-chart__metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.advanced-attribution-chart__metric-card,
+.advanced-attribution-chart__panel {
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+}
+
+.advanced-attribution-chart__metric-card {
+  padding: 16px;
+}
+
+.advanced-attribution-chart__panel {
+  padding: 20px;
+}
+
+.advanced-attribution-chart__metric-card[data-tone="profit"] {
+  border-color: color-mix(in srgb, var(--ib-up) 24%, var(--ib-hairline));
+  background: color-mix(in srgb, var(--ib-up) 7%, var(--ib-surface));
+}
+
+.advanced-attribution-chart__metric-card[data-tone="info"] {
+  border-color: color-mix(in srgb, var(--ib-accent) 22%, var(--ib-hairline));
+  background: color-mix(in srgb, var(--ib-accent) 7%, var(--ib-surface));
+}
+
+.advanced-attribution-chart__metric-card[data-tone="neutral"] {
+  border-color: var(--ib-hairline);
+  background: var(--ib-surface-muted);
+}
+
+.advanced-attribution-chart__metric-card[data-tone="warning"] {
+  border-color: color-mix(in srgb, var(--ib-warn) 24%, var(--ib-hairline));
+  background: color-mix(in srgb, var(--ib-warn) 7%, var(--ib-surface));
+}
+
+.advanced-attribution-chart__metric-card[data-tone="loss"] {
+  border-color: color-mix(in srgb, var(--ib-down) 22%, var(--ib-hairline));
+  background: color-mix(in srgb, var(--ib-down) 6%, var(--ib-surface));
+}
+
+.advanced-attribution-chart__metric-label {
+  color: var(--ib-ink-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.advanced-attribution-chart__metric-card[data-tone="profit"] .advanced-attribution-chart__metric-label {
+  color: var(--ib-up);
+}
+
+.advanced-attribution-chart__metric-card[data-tone="info"] .advanced-attribution-chart__metric-label,
+.advanced-attribution-chart__metric-value[data-direction="info"] {
+  color: var(--ib-accent);
+}
+
+.advanced-attribution-chart__metric-card[data-tone="warning"] .advanced-attribution-chart__metric-label,
+.advanced-attribution-chart__metric-value[data-direction="warning"] {
+  color: var(--ib-warn);
+}
+
+.advanced-attribution-chart__metric-card[data-tone="loss"] .advanced-attribution-chart__metric-label {
+  color: var(--ib-down);
+}
+
+.advanced-attribution-chart__metric-value {
+  margin-top: 4px;
+  color: var(--ib-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.advanced-attribution-chart__metric-value[data-size="medium"] {
+  font-size: 18px;
+}
+
+.advanced-attribution-chart__metric-value[data-direction="positive"] {
+  color: var(--ib-up);
+}
+
+.advanced-attribution-chart__metric-value[data-direction="negative"] {
+  color: var(--ib-down);
+}
+
+.advanced-attribution-chart__metric-value[data-direction="neutral"] {
+  color: var(--ib-ink);
+}
+
+.advanced-attribution-chart__metric-note {
+  margin-top: 4px;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+}
+
+.advanced-attribution-chart__metric-card[data-tone="profit"] .advanced-attribution-chart__metric-note {
+  color: var(--ib-up);
+}
+
+.advanced-attribution-chart__section-title {
+  margin: 0 0 12px;
+  color: var(--ib-ink);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.advanced-attribution-chart__section-title--compact {
+  margin-bottom: 8px;
+}
+
+.advanced-attribution-chart__section-copy {
+  margin: 0;
+  color: var(--ib-ink-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.advanced-attribution-chart__section-meta {
+  margin: 12px 0 0;
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+}
+
+.advanced-attribution-chart__curve-note {
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface-muted);
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+}
+
+.advanced-attribution-chart__curve-highlight {
+  margin-left: 12px;
+  color: var(--ib-accent);
+}
+
+.advanced-attribution-chart__chart {
+  height: 280px;
+}
+
+.advanced-attribution-chart__chart--carry {
+  height: 300px;
+}
+
+.advanced-attribution-chart__chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.advanced-attribution-chart__table-wrap {
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.advanced-attribution-chart__table-wrap--bounded {
+  max-height: 220px;
+}
+
+.advanced-attribution-chart__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.advanced-attribution-chart__table thead {
+  background: var(--ib-surface);
+}
+
+.advanced-attribution-chart__table--sticky thead {
+  position: sticky;
+  top: 0;
+}
+
+.advanced-attribution-chart__table tr {
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.advanced-attribution-chart__table th,
+.advanced-attribution-chart__table td {
+  padding: 8px;
+}
+
+.advanced-attribution-chart__table th {
+  border-bottom: 1px solid var(--ib-rule-strong);
+  color: var(--ib-ink-muted);
+  font-size: var(--ib-kicker-font-size);
+  font-weight: 600;
+  letter-spacing: var(--ib-kicker-letter-spacing);
+}
+
+.advanced-attribution-chart__table tbody tr:hover td {
+  background: var(--ib-surface-muted);
+}
+
+.advanced-attribution-chart__table-left {
+  font-weight: 500;
+  text-align: left;
+}
+
+.advanced-attribution-chart__table-num {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.advanced-attribution-chart__table-num[data-direction="positive"] {
+  color: var(--ib-up);
+}
+
+.advanced-attribution-chart__table-num[data-direction="negative"] {
+  color: var(--ib-down);
+}
+
+.advanced-attribution-chart__table-num[data-direction="info"] {
+  color: var(--ib-accent);
+}
+
+.advanced-attribution-chart__table-num[data-direction="warning"] {
+  color: var(--ib-warn);
+}
+
+.advanced-attribution-chart__table-num[data-direction="neutral"] {
+  color: var(--ib-ink);
+}
+
+.advanced-attribution-chart__table-num--strong {
+  font-weight: 650;
+}
+
+.advanced-attribution-chart__caliber-note {
+  margin: 8px 0 0;
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}

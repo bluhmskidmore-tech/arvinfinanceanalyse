@@ -22,7 +22,7 @@ export const workbenchTheme: ThemeConfig = {
     colorBgContainer: shellTokens.colorBgSurface,
     colorBgElevated: shellTokens.colorBgCanvas,
     colorFillAlter: shellTokens.colorBgMuted,
-    borderRadius: shellTokens.radiusCard,
+    borderRadius: 2,
     wireframe: false,
     fontSize: designTokens.fontSize[13],
     fontSizeHeading1: designTokens.fontSize[30],
@@ -32,8 +32,8 @@ export const workbenchTheme: ThemeConfig = {
     fontSizeHeading5: designTokens.fontSize[16],
     fontFamily: designTokens.fontFamily.sans,
     lineHeight: designTokens.lineHeight.normal,
-    boxShadow: shellTokens.shadowCard,
-    boxShadowSecondary: designTokens.shadow.popover,
+    boxShadow: "none",
+    boxShadowSecondary: shellTokens.shadowCard,
     padding: designTokens.space[3],
     paddingLG: designTokens.space[4],
     paddingSM: designTokens.space[2],
@@ -45,28 +45,28 @@ export const workbenchTheme: ThemeConfig = {
   },
   components: {
     Button: {
-      borderRadius: designTokens.radius.sm,
+      borderRadius: 2,
       paddingInline: designTokens.space[4],
       paddingBlock: designTokens.space[2],
       fontWeight: 600,
       primaryShadow: "none",
     },
     Input: {
-      borderRadius: designTokens.radius.sm,
+      borderRadius: 2,
       paddingBlock: designTokens.space[2],
       paddingInline: designTokens.space[3],
     },
     Select: {
-      borderRadius: designTokens.radius.sm,
+      borderRadius: 2,
     },
     Card: {
-      borderRadiusLG: shellTokens.radiusCard,
+      borderRadiusLG: 2,
       paddingLG: designTokens.card.padding,
       headerBg: "transparent",
-      boxShadow: shellTokens.shadowCard,
+      boxShadow: "none",
     },
     Table: {
-      borderRadius: designTokens.radius.sm,
+      borderRadius: 2,
       cellPaddingBlock: Math.round((designTokens.density.tableRowCompact - designTokens.fontSize[13] * 1.35) / 2),
       cellPaddingInline: designTokens.space[3],
       cellFontSize: designTokens.fontSize[13],
@@ -86,7 +86,7 @@ export const workbenchTheme: ThemeConfig = {
       itemSelectedColor: shellTokens.colorAccent,
     },
     Modal: {
-      boxShadow: designTokens.shadow.modal,
+      boxShadow: shellTokens.shadowPanel,
     },
     Tooltip: {
       colorBgSpotlight: designTokens.color.neutral[800],

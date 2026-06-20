@@ -1,4 +1,6 @@
 import { render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
@@ -14,6 +16,15 @@ import type {
 } from "../api/contracts";
 import type { DataSectionState } from "../components/DataSection.types";
 import { AdvancedAttributionChart } from "../features/pnl-attribution/components/AdvancedAttributionChart";
+
+const advancedChartSourcePath = resolve(
+  process.cwd(),
+  "src/features/pnl-attribution/components/AdvancedAttributionChart.tsx",
+);
+const advancedChartCssPath = resolve(
+  process.cwd(),
+  "src/features/pnl-attribution/components/AdvancedAttributionChart.css",
+);
 
 function n(raw: number | null, unit: Numeric["unit"] = "yuan"): Numeric {
   return {
@@ -36,6 +47,22 @@ function pct(raw: number | null, display: string): Numeric {
 }
 
 describe("AdvancedAttributionChart", () => {
+  it("keeps component-level style debt from regressing", () => {
+    const source = readFileSync(advancedChartSourcePath, "utf8");
+    const stylesheet = readFileSync(advancedChartCssPath, "utf8");
+    const inlineStylePattern = new RegExp("\\bstyle\\s*=");
+    const hardcodedHexPattern = /#[0-9a-fA-F]{3,8}\b/;
+    const privateShadowPattern = /boxShadow\s*:|box-shadow\s*:\s*(?!none\b|var\()/;
+
+    expect(source).not.toMatch(inlineStylePattern);
+    expect(source).not.toMatch(hardcodedHexPattern);
+    expect(source).not.toMatch(/rgba\(/);
+    expect(source).not.toMatch(privateShadowPattern);
+    expect(stylesheet).not.toMatch(hardcodedHexPattern);
+    expect(stylesheet).not.toMatch(/rgba\(/);
+    expect(stylesheet).not.toMatch(privateShadowPattern);
+  });
+
   it("renders annualized static return without multiplying it twice", () => {
     const carryData: CarryRollDownPayload = {
       report_date: "2026-03-31",

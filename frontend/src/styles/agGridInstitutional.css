@@ -9,3 +9,31 @@
   --ag-font-family: var(--moss-font-sans);
   --ag-font-size: 12px;
 }
+
+.moss-ag-grid {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  border-radius: var(--ib-radius);
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+}
+
+.moss-ag-grid__cell--numeric,
+.moss-ag-grid .ag-right-aligned-cell {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--moss-font-mono);
+  text-align: right;
+}
+
+.moss-ag-grid__header--numeric .ag-header-cell-label {
+  justify-content: flex-end;
+}
+
+.moss-ag-grid .ag-overlay-no-rows-center,
+.moss-ag-grid .ag-overlay-loading-center,
+.moss-ag-grid__overlay-text {
+  color: var(--ib-ink-muted);
+  font-family: var(--moss-font-sans);
+  font-size: 12px;
+}

@@ -174,9 +174,10 @@ export function BatchPasteModal({
 
   return (
     <Modal
+      rootClassName="kpi-modal-v2 kpi-modal-v2--batch"
       title={
-        <span>
-          <InboxOutlined style={{ marginRight: 8 }} />
+        <span className="kpi-modal-v2__title-inline">
+          <InboxOutlined className="kpi-modal-v2__title-icon" />
           批量导入
         </span>
       }
@@ -199,16 +200,16 @@ export function BatchPasteModal({
         </Button>,
       ]}
     >
-      <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+      <Paragraph type="secondary" className="kpi-modal-v2__subtitle">
         {owner.owner_name} · {asOfDate}
       </Paragraph>
       <Alert
         type="info"
         showIcon
-        style={{ marginBottom: 16 }}
+        className="kpi-modal-v2__alert kpi-modal-v2__alert--intro"
         message="使用说明"
         description={
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <ul className="kpi-modal-v2__help-list">
             <li>从 Excel 复制后粘贴到文本框</li>
             <li>
               格式：<Text code>指标代码 [Tab] 实际值 [Tab] 序时进度</Text>（序时进度可选）
@@ -217,19 +218,19 @@ export function BatchPasteModal({
           </ul>
         }
       />
-      <div style={{ marginBottom: 8 }}>
+      <div className="kpi-modal-v2__field-label">
         <Text strong>粘贴数据</Text>
       </div>
       <Input.TextArea
+        className="kpi-modal-v2__paste-area"
         value={pasteText}
         onChange={(e) => setPasteText(e.target.value)}
         placeholder="从 Excel 粘贴…"
         rows={6}
-        style={{ fontFamily: "monospace", marginBottom: 8 }}
       />
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+      <div className="kpi-modal-v2__toolbar">
         <Text type="secondary">当前共 {metrics.length} 个指标</Text>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="kpi-modal-v2__toolbar-actions">
           <Button onClick={handleClear}>清空</Button>
           <Button type="primary" onClick={handleParse}>
             解析
@@ -238,7 +239,7 @@ export function BatchPasteModal({
       </div>
       {parsedRows.length > 0 ? (
         <>
-          <div style={{ marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+          <div className="kpi-modal-v2__preview-header">
             <Text strong>预览</Text>
             <Text>
               <Text type="success">有效 {stats.valid}</Text>
@@ -248,6 +249,7 @@ export function BatchPasteModal({
             </Text>
           </div>
           <Table
+            className="kpi-modal-v2__table"
             size="small"
             pagination={false}
             scroll={{ y: 220 }}
@@ -292,10 +294,10 @@ export function BatchPasteModal({
             <Alert
               type="error"
               showIcon
-              style={{ marginTop: 12 }}
+              className="kpi-modal-v2__alert"
               message="以下行将被跳过"
               description={
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <ul className="kpi-modal-v2__help-list">
                   {parsedRows
                     .filter((r) => r.status === "invalid")
                     .slice(0, 5)
@@ -315,7 +317,7 @@ export function BatchPasteModal({
         <Alert
           type={importResult.failed === 0 ? "success" : "warning"}
           showIcon
-          style={{ marginTop: 16 }}
+          className="kpi-modal-v2__alert"
           message="导入结果"
           description={
             <>
@@ -323,7 +325,7 @@ export function BatchPasteModal({
                 成功 {importResult.success} 条，失败 {importResult.failed} 条
               </div>
               {importResult.errors.length > 0 ? (
-                <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                <ul className="kpi-modal-v2__help-list kpi-modal-v2__help-list--stacked">
                   {importResult.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}

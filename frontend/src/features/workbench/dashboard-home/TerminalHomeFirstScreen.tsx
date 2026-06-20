@@ -6,6 +6,7 @@ import {
   type HomeDataStateKind,
 } from "./dashboardHomeFirstScreenTypes";
 import { HomeSparkline } from "./HomeSparkline";
+import { ibTokens } from "../../../theme/designSystem";
 import styles from "./dashboardHomeShell.module.css";
 
 type TerminalHomeFirstScreenProps = {
@@ -31,9 +32,14 @@ function stateClass(kind: HomeDataStateKind): string {
 }
 
 function DataStateBadge({ kind }: { kind: HomeDataStateKind }) {
+  const label = STATE_COPY[kind];
+  const isReady = kind === "ready";
   return (
-    <span className={`${styles.dhTerminalState} ${stateClass(kind)}`}>
-      {STATE_COPY[kind]}
+    <span
+      className={`${styles.dhTerminalState} ${stateClass(kind)}`}
+      {...(isReady ? { "aria-label": label, title: label } : {})}
+    >
+      {isReady ? <span className={styles.dhVisuallyHidden}>{label}</span> : label}
     </span>
   );
 }
@@ -48,10 +54,24 @@ function EmptyRiskSurface() {
   );
 }
 
-function sparkStroke(tone: DashboardHomeFirstScreenView["terminalKpis"][number]["deltaTone"]): string {
-  if (tone === "up" || tone === "warn") return "#b94743";
-  if (tone === "down") return "#1f7a55";
-  return "#1850a1";
+function sparkStroke(_tone: DashboardHomeFirstScreenView["terminalKpis"][number]["deltaTone"]): string {
+  return ibTokens.color.railText;
+}
+
+/* 把尾部单位（亿/万/元/%/bp/pp）包进弱化 span；不改变 textContent。 */
+const TRAILING_UNIT_RE = /^(.*?)(亿|万|元|%|bp|pp)$/;
+
+function ValueWithUnit({ text }: { text: string }) {
+  const match = TRAILING_UNIT_RE.exec(text);
+  if (!match) {
+    return <>{text}</>;
+  }
+  return (
+    <>
+      {match[1]}
+      <span className={styles.dhUnit}>{match[2]}</span>
+    </>
+  );
 }
 
 function TerminalKpiStrip({ view }: { view: DashboardHomeFirstScreenView }) {
@@ -66,10 +86,6 @@ function TerminalKpiStrip({ view }: { view: DashboardHomeFirstScreenView }) {
           </p>
         </div>
         <dl className={styles.dhReportMeta}>
-          <div>
-            <dt>报告日</dt>
-            <dd className={styles.dhNum}>{view.reportDate}</dd>
-          </div>
           <div>
             <dt>关键指标</dt>
             <dd className={styles.dhNum}>{view.terminalKpis.length}</dd>
@@ -106,7 +122,7 @@ function TerminalKpiStrip({ view }: { view: DashboardHomeFirstScreenView }) {
                   data-label="较前日"
                   className={`${styles.dhMetricDeltaCell} ${resolveDeltaClass(kpi.deltaTone, styles)}`}
                 >
-                  {kpi.delta}
+                  <ValueWithUnit text={kpi.delta} />
                 </td>
                 <td data-label="状态">
                   <DataStateBadge kind={kpi.state} />
@@ -143,8 +159,9 @@ function RiskStrip({ items }: { items: DashboardHomeFirstScreenView["keyRiskStri
           {items.map((item) => (
             <div key={item.id} className={styles.dhTerminalRiskCell}>
               <span>{item.label}</span>
-              <b className={styles.dhNum}>{item.value}</b>
-              <em className={resolveDeltaClass(item.deltaTone, styles)}>{item.delta}</em>
+              <b className={styles.dhNum}>
+                <ValueWithUnit text={item.value} />
+              </b>
             </div>
           ))}
         </div>

@@ -8256,3 +8256,63 @@
 .crossAssetSecondaryRow {
   min-height: 0;
 }
+
+/* 2026-06-16 anchor alignment: keep the market home on the IB light page rhythm. */
+.marketTopbar {
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.marketCockpitCohesion.marketInstitutionalCockpit {
+  --market-desk-bg: var(--ib-surface);
+  --market-desk-border: var(--ib-hairline);
+  --market-desk-radius: var(--ib-radius);
+  --market-desk-shadow: none;
+
+  gap: 12px;
+  padding: 10px;
+  border-color: var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-paper);
+  box-shadow: none;
+}
+
+.marketInstitutionalCockpit.marketCockpitCohesion .marketPrimaryStack,
+.marketInstitutionalCockpit.marketCockpitCohesion .marketThreeColDepth {
+  gap: 12px;
+}
+
+.marketCockpitCohesion .marketKpiBox {
+  gap: 8px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.marketCockpitCohesion .marketDeskPanel,
+.marketCockpitCohesion .marketThesisHero,
+.marketCockpitCohesion .marketKpiTile,
+.marketCockpitCohesion .marketCurveSpreadBand,
+.marketCockpitCohesion .marketCurveSpreadCard,
+.marketCockpitCohesion .marketDeskIntelStrip,
+.marketCockpitCohesion .marketMosaicPanel,
+.marketCockpitCohesion .marketCrisisExplainBand,
+.marketCockpitCohesion .marketActionBand,
+.marketCockpitCohesion .actionQueue,
+.marketCockpitCohesion .decisionMatrix {
+  border-radius: var(--ib-radius);
+  box-shadow: none;
+}
+
+.marketCockpitCohesion .macroTickerBar,
+.marketCockpitCohesion .marketAuditFooter {
+  border-color: var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.marketDeskIntelStrip {
+  gap: 12px;
+  padding: 12px;
+}

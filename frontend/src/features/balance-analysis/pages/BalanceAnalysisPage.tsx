@@ -1,12 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { Collapse } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
-import "../../../lib/agGridSetup";
-import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
-import "../../../styles/agGridInstitutional.css";
 import "./BalanceAnalysisPage.css";
 
 import { useApiClient } from "../../../api/client";
@@ -31,6 +26,7 @@ import {
   PageStateSurface,
 } from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
+import { MossAgGrid } from "../../../components/grid";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
 import BalanceAnalysisCockpit from "../cockpit/BalanceAnalysisCockpit";
@@ -39,10 +35,7 @@ import dhStyles from "../../workbench/dashboard-home/dashboardHome.module.css";
 import type { BalanceStateSentinel } from "../components/BalanceAnalysisWorkbenchLayout";
 import { useBalanceAnalysisData } from "../hooks/useBalanceAnalysisData";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import {
-  actionButtonStyle,
-  tableShellStyle,
-} from "./BalanceAnalysisPage.styles";
+import { actionButtonStyle } from "./BalanceAnalysisPage.styles";
 import {
   buildBalanceAnalysisPageModel,
   buildBalanceCockpitViewModel,
@@ -328,20 +321,6 @@ function formatInvestAccountingDisplay(data: {
   const parts = [investType, accountingBasis].filter((part) => part && part !== "—");
   return parts.length > 0 ? parts.join(" / ") : "—";
 }
-
-const balanceAnalysisGridDefaultColDef: ColDef = {
-  sortable: true,
-  filter: true,
-  resizable: true,
-  flex: 1,
-  minWidth: 100,
-  cellStyle: (params) =>
-    params.colDef?.cellClass === "ag-right-aligned-cell" ? { ...tabularNumsStyle } : undefined,
-};
-
-const balanceAnalysisGridLocaleText = {
-  noRowsToShow: "暂无数据",
-};
 
 const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
   {
@@ -709,9 +688,7 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
                 data-testid={`balance-analysis-maturity-gap-bar-${table.key}-${index}`}
                 style={{
                   width,
-                  background: positive
-                    ? `linear-gradient(90deg, ${designTokens.color.info[300]} 0%, ${designTokens.color.info[600]} 100%)`
-                    : `linear-gradient(90deg, ${designTokens.color.warning[300]} 0%, ${designTokens.color.warning[400]} 100%)`,
+                  background: positive ? "var(--ib-accent)" : "var(--ib-warn)",
                 }}
                 className="balance-analysis-mini-bar-fill"
               />
@@ -851,7 +828,7 @@ function renderWorkbookPrimaryPanel(table: BalanceAnalysisWorkbookTable) {
     return renderDistributionPanel(table, {
       labelKey: "bond_type",
       valueKey: "balance_amount",
-      color: `linear-gradient(90deg, ${designTokens.color.info[300]} 0%, ${designTokens.color.info[600]} 100%)`,
+      color: "var(--ib-accent)",
     });
   }
   if (table.key === "rating_analysis") {
@@ -870,7 +847,7 @@ function renderIndustryPanel(table: BalanceAnalysisWorkbookTable) {
   return renderDistributionPanel(table, {
     labelKey: "industry_name",
     valueKey: "balance_amount",
-    color: `linear-gradient(90deg, ${designTokens.color.success[200]} 0%, ${designTokens.color.success[500]} 100%)`,
+    color: "var(--ib-accent)",
   });
 }
 
@@ -1815,20 +1792,13 @@ export default function BalanceAnalysisPage() {
             ]);
           }}
         >
-          <div
-            className="ag-theme-alpine"
+          <MossAgGrid<BalanceAnalysisTableRow>
             data-testid="balance-analysis-summary-table"
-            style={{ ...tableShellStyle, height: 360, width: "100%", padding: 0 }}
-          >
-            <AgGridReact<BalanceAnalysisTableRow>
-              theme="legacy"
-              rowData={summaryTable?.rows ?? []}
-              columnDefs={balanceSummaryColDefs}
-              defaultColDef={balanceAnalysisGridDefaultColDef}
-              localeText={balanceAnalysisGridLocaleText}
-              getRowId={(p) => getBalanceSummaryGridRowId(p.data)}
-            />
-          </div>
+            height={360}
+            rowData={summaryTable?.rows ?? []}
+            columnDefs={balanceSummaryColDefs}
+            getRowId={(p) => getBalanceSummaryGridRowId(p.data)}
+          />
           <div
             style={{
               display: "flex",
@@ -1867,20 +1837,13 @@ export default function BalanceAnalysisPage() {
                 <div className="balance-analysis-detail-drilldown__eyebrow">
                   明细底稿返回的汇总切片
                 </div>
-                <div
-                  className="ag-theme-alpine"
+                <MossAgGrid<BalanceAnalysisSummaryGridRow>
                   data-testid="balance-analysis-detail-summary-grid"
-                  style={{ ...tableShellStyle, height: 200, width: "100%" }}
-                >
-                  <AgGridReact<BalanceAnalysisSummaryGridRow>
-                    theme="legacy"
-                    rowData={detailSummaryGridRows}
-                    columnDefs={balanceDetailSummaryColDefs}
-                    defaultColDef={balanceAnalysisGridDefaultColDef}
-                    localeText={balanceAnalysisGridLocaleText}
-                    getRowId={(p) => p.data.__gridId}
-                  />
-                </div>
+                  height={200}
+                  rowData={detailSummaryGridRows}
+                  columnDefs={balanceDetailSummaryColDefs}
+                  getRowId={(p) => p.data.__gridId}
+                />
               </div>
             ) : null}
             {deferredAnalysisQueriesPending ? null : detailQuery.isError ? (
@@ -1890,20 +1853,14 @@ export default function BalanceAnalysisPage() {
             ) : detailQuery.isLoading ? (
               <div className="balance-analysis-detail-drilldown__loading">明细下钻加载中…</div>
             ) : (
-              <div
-                className="ag-theme-alpine"
+              <MossAgGrid<BalanceAnalysisDetailGridRow>
                 data-testid="balance-analysis-table"
-                style={{ ...tableShellStyle, height: 320, width: "100%", padding: 0, marginTop: 8 }}
-              >
-                <AgGridReact<BalanceAnalysisDetailGridRow>
-                  theme="legacy"
-                  rowData={detailGridRows}
-                  columnDefs={balanceDetailColDefs}
-                  defaultColDef={balanceAnalysisGridDefaultColDef}
-                  localeText={balanceAnalysisGridLocaleText}
-                  getRowId={(p) => p.data.__gridId}
-                />
-              </div>
+                className="balance-analysis-detail-grid"
+                height={320}
+                rowData={detailGridRows}
+                columnDefs={balanceDetailColDefs}
+                getRowId={(p) => p.data.__gridId}
+              />
             )}
           </div>
         </AsyncSection>
@@ -1937,22 +1894,15 @@ export default function BalanceAnalysisPage() {
             onRetry={() => void basisBreakdownQuery.refetch()}
             noPadding
           >
-            <div
-              className="ag-theme-alpine"
+            <MossAgGrid<BalanceAnalysisBasisBreakdownRow>
               data-testid="balance-analysis-basis-breakdown-grid"
-              style={{ ...tableShellStyle, height: 240, width: "100%" }}
-            >
-              <AgGridReact<BalanceAnalysisBasisBreakdownRow>
-                theme="legacy"
-                rowData={basisBreakdownQuery.data?.result.rows ?? []}
-                columnDefs={balanceBasisBreakdownColDefs}
-                defaultColDef={balanceAnalysisGridDefaultColDef}
-                localeText={balanceAnalysisGridLocaleText}
-                getRowId={(p) =>
-                  `${p.data.source_family}-${p.data.invest_type_std}-${p.data.accounting_basis}-${p.data.position_scope}-${p.data.currency_basis}`
-                }
-              />
-            </div>
+              height={240}
+              rowData={basisBreakdownQuery.data?.result.rows ?? []}
+              columnDefs={balanceBasisBreakdownColDefs}
+              getRowId={(p) =>
+                `${p.data.source_family}-${p.data.invest_type_std}-${p.data.accounting_basis}-${p.data.position_scope}-${p.data.currency_basis}`
+              }
+            />
           </SectionCard>
           <SectionCard
             title="高阶归因"
@@ -2127,10 +2077,11 @@ export default function BalanceAnalysisPage() {
                     data-testid="balance-analysis-decision-error"
                     style={{
                       marginBottom: 12,
-                      borderRadius: 12,
-                      border: `1px solid ${designTokens.color.warning[200]}`,
-                      background: designTokens.color.warning[50],
-                      color: designTokens.color.warning[700],
+                      borderRadius: 2,
+                      border: "1px solid var(--ib-hairline)",
+                      borderLeft: "2px solid var(--ib-warn)",
+                      background: "var(--ib-paper)",
+                      color: "var(--ib-ink)",
                       padding: 12,
                       fontSize: 13,
                     }}
@@ -2383,21 +2334,14 @@ export default function BalanceAnalysisPage() {
                   <div className="balance-analysis-workbook-secondary-grid__title">
                     {formatBalanceBusinessTextDisplay(table.title)}
                   </div>
-                  <div
-                    className="ag-theme-alpine"
-                    style={{ ...tableShellStyle, height: 280, width: "100%", padding: 0 }}
-                  >
-                    <AgGridReact
-                      theme="legacy"
-                      rowData={table.rows.map((row, index) =>
-                        Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),
-                      )}
-                      columnDefs={buildWorkbookGridColumnDefs(table.columns)}
-                      defaultColDef={balanceAnalysisGridDefaultColDef}
-                      localeText={balanceAnalysisGridLocaleText}
-                      getRowId={(p) => String((p.data as { __gridId: string }).__gridId)}
-                    />
-                  </div>
+                  <MossAgGrid
+                    height={280}
+                    rowData={table.rows.map((row, index) =>
+                      Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),
+                    )}
+                    columnDefs={buildWorkbookGridColumnDefs(table.columns)}
+                    getRowId={(p) => String((p.data as { __gridId: string }).__gridId)}
+                  />
                 </div>
               ))}
             </div>

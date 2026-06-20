@@ -1,3 +1,98 @@
+.balance-movement-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--moss-space-4);
+  margin-bottom: 18px;
+  padding: var(--moss-space-5);
+  border: 1px solid var(--ib-hairline);
+  border-top: 2px solid var(--ib-accent);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: var(--ib-shadow);
+}
+
+.balance-movement-page-header__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-2);
+  align-items: center;
+}
+
+.balance-movement-page-header__title {
+  margin: 0;
+  color: var(--ib-ink);
+  font-family: var(--ib-serif);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.balance-movement-page-header__subtitle {
+  margin: var(--moss-space-2) 0 0;
+  color: var(--ib-ink-secondary);
+  font-size: 14px;
+}
+
+.balance-movement-page-header__chips {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.balance-movement-page-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0;
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.balance-movement-page-chip__dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ib-accent);
+}
+
+.balance-movement-page-chip[data-tone="ok"] .balance-movement-page-chip__dot {
+  background: var(--ib-up);
+}
+
+.balance-movement-filter-bar {
+  margin-bottom: var(--moss-space-4);
+}
+
+.balance-movement-filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.balance-movement-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--moss-space-3);
+  margin-bottom: 18px;
+}
+
+.balance-movement-summary-card {
+  display: grid;
+  gap: 6px;
+  padding: var(--moss-space-4);
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: var(--ib-shadow);
+}
+
+.balance-movement-summary-card__label {
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+}
+
 .balance-movement-conclusion {
   display: grid;
   gap: var(--moss-space-3);
@@ -89,7 +184,7 @@
   margin: -4px 0 18px;
   padding: 12px;
   border: 1px solid #d7dfea;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -141,7 +236,7 @@
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: rgba(255, 255, 255, 0.72);
 }
 
@@ -168,7 +263,7 @@
   margin: -4px 0 18px;
   padding: 12px;
   border: 1px solid #d7dfea;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -204,7 +299,7 @@
   margin-bottom: 18px;
   padding: 16px;
   border: 1px solid #cfd9e6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
 }
 
@@ -232,7 +327,7 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
   color: inherit;
   text-decoration: none;
@@ -276,7 +371,7 @@
   margin-bottom: 18px;
   padding: 16px;
   border: 1px solid #d7dfea;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
 }
 
@@ -290,7 +385,7 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -346,7 +441,7 @@
   margin-bottom: 18px;
   padding: 16px;
   border: 1px solid #d7dfea;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
 }
 
@@ -410,7 +505,7 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -463,7 +558,7 @@
   width: fit-content;
   max-width: 100%;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--ib-radius, 2px);
   background: #eef2f7;
   color: #475569;
   font-size: 11px;
@@ -563,7 +658,7 @@
 .balance-movement-evidence-drawer__header button {
   padding: 6px 10px;
   border: 1px solid #cfd9e6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
   color: #10284a;
   font-size: 12px;
@@ -585,7 +680,7 @@
 .balance-movement-evidence-drawer__list div {
   padding: 10px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -776,7 +871,7 @@
   justify-content: center;
   min-width: 48px;
   padding: var(--moss-space-1) var(--moss-space-2);
-  border-radius: 999px;
+  border-radius: var(--ib-radius, 2px);
   font-size: 12px;
   font-weight: 700;
 }
@@ -807,7 +902,7 @@
   margin-bottom: 22px;
   padding: 20px;
   border: 1px solid #cfd9e6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
 }
 
@@ -844,7 +939,7 @@
 .balance-movement-zqtz-detail-page__table-wrap {
   overflow-x: auto;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
 }
 
 .balance-movement-zqtz-detail-page__table {
@@ -918,7 +1013,7 @@
 .balance-movement-structure-shift {
   min-width: 0;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -954,7 +1049,7 @@
   place-items: center;
   width: 24px;
   height: 24px;
-  border-radius: 999px;
+  border-radius: var(--ib-radius, 2px);
   background: #e6edf5;
   color: #26364a;
   font-size: 12px;
@@ -1011,7 +1106,7 @@
 .balance-movement-structure-shift__track span {
   display: block;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--ib-radius, 2px);
 }
 
 .balance-movement-structure-shift__previous {
@@ -1030,9 +1125,9 @@
 .balance-movement-matrix-scroll {
   margin-top: 4px;
   border: 1px solid #e2e6ec;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
-  box-shadow: 0 10px 24px rgba(22, 35, 46, 0.05);
+  box-shadow: var(--ib-shadow);
 }
 
 .balance-movement-matrix-unit-hint {
@@ -1049,7 +1144,7 @@
   margin-bottom: 18px;
   padding: 18px 18px 8px;
   border: 1px solid #d7dfea;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
 }
 
@@ -1110,11 +1205,12 @@
   z-index: 1;
   height: 40px;
   padding: 10px 12px;
-  border-bottom: 1px solid #d1d5db;
-  background: linear-gradient(180deg, #e8f1fb 0%, #dceaf7 100%);
-  color: #1850a1;
-  font-size: 12px;
+  border-bottom: 1px solid var(--ib-rule-strong);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: var(--ib-kicker-letter-spacing, 0.08em);
   letter-spacing: 0;
   line-height: 1.2;
   text-align: center;
@@ -1220,7 +1316,7 @@
   font-weight: 500;
 }
 
-/* 与「总览」浅色机构台一致的月度矩阵，取代历史黑底报表簿风格 */
+/* Monthly matrix aligned with the light institutional overview style. */
 .balance-movement-report-matrix--monthly {
   min-width: 1280px;
   font-size: 13px;
@@ -1231,11 +1327,57 @@
   font-weight: 700;
 }
 
-/* 明细表数值列：与 tableCellStyle 一致，用 class 避免增加全仓 TSX style 计数 */
-.balance-movement-detail-table__num {
+/* Detail table cells moved out of TSX inline styles. */
+.balance-movement-detail-table-wrap {
+  overflow-x: auto;
+}
+
+.balance-movement-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.balance-movement-detail-table thead tr {
+  border-bottom: 1px solid var(--ib-hairline);
+  text-align: left;
+}
+
+.balance-movement-detail-table__cell,
+.balance-movement-detail-table__label-cell,
+.balance-movement-detail-table__num,
+.balance-movement-detail-table__status {
   padding: 12px 8px;
-  border-bottom: 1px solid #edf1f6;
+  border-bottom: 1px solid var(--ib-hairline);
+}
+
+.balance-movement-detail-table__cell,
+.balance-movement-detail-table__num,
+.balance-movement-detail-table__status {
   text-align: right;
+}
+
+.balance-movement-detail-table__label-cell,
+.balance-movement-detail-table__status {
+  font-weight: 700;
+}
+
+.balance-movement-detail-table__label-cell {
+  text-align: left;
+}
+
+.balance-movement-detail-table__status--matched {
+  color: var(--ib-up);
+}
+
+.balance-movement-detail-table__status--review {
+  color: var(--ib-warn);
+}
+
+.balance-movement-accounting-controls {
+  margin-top: 14px;
+  color: var(--ib-ink-muted);
+  font-size: 12px;
 }
 
 .balance-movement-share-evolution-table__title {
@@ -1324,7 +1466,7 @@
   margin-bottom: 18px;
   padding: 16px;
   border: 1px solid #d7dfea;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
 }
 
@@ -1352,7 +1494,7 @@
 
 .balance-movement-derived-panel__header > strong {
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   color: #14532d;
   background: #dcfce7;
   font-size: 13px;
@@ -1380,7 +1522,7 @@
 .balance-movement-derived-card {
   padding: 12px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -1420,7 +1562,7 @@
   gap: 6px;
   padding: 12px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
 }
 
@@ -1510,7 +1652,7 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -1554,7 +1696,7 @@
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   border: 1px solid #edf1f6;
 }
 
@@ -1608,7 +1750,7 @@
   min-width: 0;
   padding: 12px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #fbfcfe;
 }
 
@@ -1660,10 +1802,8 @@
   grid-column: 1 / -1;
   padding: 14px;
   border: 1px solid #edf1f6;
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(248, 250, 252, 0.92), #ffffff 46%),
-    #ffffff;
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
 }
 
 .balance-movement-business-summary__top-moves-header {
@@ -1710,7 +1850,7 @@
 .balance-movement-top-moves-panel {
   min-width: 0;
   border: 1px solid #e6edf5;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   background: #ffffff;
   overflow-x: auto;
   overflow-y: hidden;
@@ -1871,7 +2011,7 @@
   line-height: 1.45;
   color: #26364a;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   border: 1px solid #d7dfea;
   background: #f8fafc;
 }
@@ -1895,7 +2035,7 @@
 .balance-movement-governance-line {
   margin-top: 10px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--ib-radius, 2px);
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   font-size: 11px;
