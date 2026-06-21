@@ -1676,6 +1676,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                 "positive_count": 1,
                 "non_positive_count": 1,
                 "avg_return": -0.04,
+                "median_return": -0.04,
                 "win_rate": 0.5,
             },
             "return_5d": {
@@ -1684,6 +1685,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                 "positive_count": 1,
                 "non_positive_count": 0,
                 "avg_return": 0.03,
+                "median_return": 0.03,
                 "win_rate": 1.0,
             },
             "return_10d": {
@@ -1692,6 +1694,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                 "positive_count": 0,
                 "non_positive_count": 0,
                 "avg_return": None,
+                "median_return": None,
                 "win_rate": None,
             },
             "return_20d": {
@@ -1700,6 +1703,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                 "positive_count": 1,
                 "non_positive_count": 0,
                 "avg_return": 0.04,
+                "median_return": 0.04,
                 "win_rate": 1.0,
             },
         },
@@ -1712,6 +1716,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.02,
+                    "median_return": 0.02,
                     "win_rate": 1.0,
                 },
                 "return_5d": {
@@ -1720,6 +1725,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.03,
+                    "median_return": 0.03,
                     "win_rate": 1.0,
                 },
                 "return_10d": {
@@ -1728,6 +1734,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
                 "return_20d": {
@@ -1736,6 +1743,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.04,
+                    "median_return": 0.04,
                     "win_rate": 1.0,
                 },
             },
@@ -1746,6 +1754,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     "positive_count": 0,
                     "non_positive_count": 1,
                     "avg_return": -0.1,
+                    "median_return": -0.1,
                     "win_rate": 0.0,
                 },
                 "return_5d": {
@@ -1754,6 +1763,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
                 "return_10d": {
@@ -1762,6 +1772,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
                 "return_20d": {
@@ -1770,6 +1781,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
             },
@@ -2275,6 +2287,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.02,
+                    "median_return": 0.02,
                     "win_rate": 1.0,
                 },
                 "return_5d": {
@@ -2283,6 +2296,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.1,
+                    "median_return": 0.1,
                     "win_rate": 1.0,
                 },
                 "return_10d": {
@@ -2291,6 +2305,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
                 "return_20d": {
@@ -2299,6 +2314,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.2,
+                    "median_return": 0.2,
                     "win_rate": 1.0,
                 },
             }
@@ -2313,6 +2329,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
             "positive_count": 1,
             "non_positive_count": 1,
             "avg_return": 0.005,
+            "median_return": 0.005,
             "win_rate": 0.5,
         },
         "return_5d": {
@@ -2321,6 +2338,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
             "positive_count": 1,
             "non_positive_count": 0,
             "avg_return": 0.1,
+            "median_return": 0.1,
             "win_rate": 1.0,
         },
         "return_10d": {
@@ -2329,6 +2347,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
             "positive_count": 0,
             "non_positive_count": 0,
             "avg_return": None,
+            "median_return": None,
             "win_rate": None,
         },
         "return_20d": {
@@ -2337,6 +2356,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
             "positive_count": 1,
             "non_positive_count": 0,
             "avg_return": 0.2,
+            "median_return": 0.2,
             "win_rate": 1.0,
         },
     }
@@ -2348,6 +2368,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                 "positive_count": 1,
                 "non_positive_count": 1,
                 "avg_return": 0.005,
+                "median_return": 0.005,
                 "win_rate": 0.5,
             },
             "return_5d": {
@@ -2356,6 +2377,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                 "positive_count": 1,
                 "non_positive_count": 0,
                 "avg_return": 0.1,
+                "median_return": 0.1,
                 "win_rate": 1.0,
             },
             "return_10d": {
@@ -2364,6 +2386,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                 "positive_count": 0,
                 "non_positive_count": 0,
                 "avg_return": None,
+                "median_return": None,
                 "win_rate": None,
             },
             "return_20d": {
@@ -2372,6 +2395,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                 "positive_count": 1,
                 "non_positive_count": 0,
                 "avg_return": 0.2,
+                "median_return": 0.2,
                 "win_rate": 1.0,
             },
         }
@@ -2385,6 +2409,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.02,
+                    "median_return": 0.02,
                     "win_rate": 1.0,
                 },
                 "return_5d": {
@@ -2393,6 +2418,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.1,
+                    "median_return": 0.1,
                     "win_rate": 1.0,
                 },
                 "return_10d": {
@@ -2401,6 +2427,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
                 "return_20d": {
@@ -2409,6 +2436,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 1,
                     "non_positive_count": 0,
                     "avg_return": 0.2,
+                    "median_return": 0.2,
                     "win_rate": 1.0,
                 },
             }
@@ -2421,6 +2449,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 0,
                     "non_positive_count": 1,
                     "avg_return": -0.01,
+                    "median_return": -0.01,
                     "win_rate": 0.0,
                 },
                 "return_5d": {
@@ -2429,6 +2458,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
                 "return_10d": {
@@ -2437,6 +2467,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
                 "return_20d": {
@@ -2445,6 +2476,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "positive_count": 0,
                     "non_positive_count": 0,
                     "avg_return": None,
+                    "median_return": None,
                     "win_rate": None,
                 },
             }
@@ -2591,6 +2623,7 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
             "positive_count": 1,
             "non_positive_count": 1,
             "avg_return": 0.005,
+            "median_return": 0.005,
             "win_rate": 0.5,
         },
         "return_5d": {
@@ -2599,6 +2632,7 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
             "positive_count": 1,
             "non_positive_count": 0,
             "avg_return": 0.1,
+            "median_return": 0.1,
             "win_rate": 1.0,
         },
         "return_10d": {
@@ -2607,6 +2641,7 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
             "positive_count": 0,
             "non_positive_count": 0,
             "avg_return": None,
+            "median_return": None,
             "win_rate": None,
         },
         "return_20d": {
@@ -2615,6 +2650,7 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
             "positive_count": 0,
             "non_positive_count": 0,
             "avg_return": None,
+            "median_return": None,
             "win_rate": None,
         },
     }
@@ -2947,14 +2983,38 @@ def test_strategy_score_service_ranks_current_market_state_by_t5_score(tmp_path)
     db_path = tmp_path / "strategy-score.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
+        factor_rows = [
+            (
+                "2026-05-01" if index <= 15 else "2026-05-02",
+                f"000{index:03d}.SZ",
+                f"Factor {index}",
+                "factor_screen",
+                0.01,
+                0.025,
+                0.03,
+                '{"market_state":"HOT"}',
+            )
+            for index in range(1, 31)
+        ]
+        trend_rows = [
+            (
+                "2026-05-01" if index <= 15 else "2026-05-02",
+                f"300{index:03d}.SZ",
+                f"Trend {index}",
+                "stock_candidate",
+                0.01,
+                0.018 if index <= 16 else -0.002,
+                0.02,
+                '{"market_state":"HOT"}',
+            )
+            for index in range(1, 31)
+        ]
         _insert_strategy_score_rows(
             conn,
             [
-                ("2026-05-01", "000001.SZ", "Factor A", "factor_screen", 0.01, 0.02, 0.03, '{"market_state":"HOT"}'),
-                ("2026-05-02", "000002.SZ", "Factor B", "factor_screen", 0.00, 0.01, 0.02, '{"market_state":"HOT"}'),
-                ("2026-05-01", "000003.SZ", "Trend A", "stock_candidate", 0.01, 0.10, 0.01, '{"market_state":"HOT"}'),
-                ("2026-05-02", "000004.SZ", "Trend B", "stock_candidate", 0.01, -0.02, 0.01, '{"market_state":"HOT"}'),
-                ("2026-05-01", "000005.SZ", "Theme A", "theme_breakout", 0.01, 0.20, 0.01, '{"market_state":"HOT"}'),
+                *factor_rows,
+                *trend_rows,
+                ("2026-05-01", "000999.SZ", "Theme A", "theme_breakout", 0.01, 0.20, 0.21, '{"market_state":"HOT"}'),
             ],
         )
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
@@ -2974,24 +3034,28 @@ def test_strategy_score_service_ranks_current_market_state_by_t5_score(tmp_path)
     body = envelope["result"]
     assert isinstance(body, dict)
     assert body["primary_horizon"] == "return_5d"
-    assert body["min_sample"] == 2
+    assert body["min_sample"] == 30
+    assert body["review_thresholds"]["mature_min_sample"] == 30
+    assert body["review_thresholds"]["official_t5_avg_return_band"] == {"lower": 0.012, "upper": 0.024}
     assert body["current_market_state"] == "HOT"
     current_rows = body["current_market_state_rows"]
     assert [row["signal_kind"] for row in current_rows] == ["factor_screen", "stock_candidate", "theme_breakout"]
     assert current_rows[0]["strategy_label"] == "多因子"
     assert current_rows[0]["sample_status"] == "sufficient"
     assert current_rows[0]["priority_rank"] == 1
-    assert current_rows[0]["priority_score"] == 101.5
+    assert current_rows[0]["priority_score"] == 102.5
     assert current_rows[0]["priority_label"] == "优先复核"
     assert current_rows[0]["stats"]["return_5d"] == {
-        "available_count": 2,
+        "available_count": 30,
         "missing_count": 0,
-        "positive_count": 2,
+        "positive_count": 30,
         "non_positive_count": 0,
-        "avg_return": 0.015,
+        "avg_return": 0.025,
+        "median_return": 0.025,
         "win_rate": 1.0,
     }
-    assert current_rows[1]["priority_score"] == 54.0
+    assert current_rows[1]["priority_label"] == "降权观察"
+    assert current_rows[1]["priority_rank"] is None
     assert current_rows[2]["sample_status"] == "insufficient"
     assert current_rows[2]["priority_score"] is None
     assert "样本不足" in current_rows[2]["reason"]
@@ -3011,25 +3075,16 @@ def test_strategy_score_service_labels_hybrid_fusion_rows(tmp_path) -> None:
             conn,
             [
                 (
-                    "2026-05-01",
-                    "000011.SZ",
-                    "Hybrid A",
+                    "2026-05-01" if index <= 15 else "2026-05-02",
+                    f"000{index + 10:03d}.SZ",
+                    f"Hybrid {index}",
                     "hybrid_fusion",
                     0.01,
                     0.03,
-                    0.05,
-                    '{"market_state":"HOT","fusion_score":0.81}',
-                ),
-                (
-                    "2026-05-02",
-                    "000012.SZ",
-                    "Hybrid B",
-                    "hybrid_fusion",
-                    0.00,
-                    0.02,
                     0.04,
-                    '{"market_state":"HOT","fusion_score":0.79}',
-                ),
+                    '{"market_state":"HOT","fusion_score":0.81}',
+                )
+                for index in range(1, 31)
             ],
         )
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
@@ -3050,6 +3105,7 @@ def test_strategy_score_service_labels_hybrid_fusion_rows(tmp_path) -> None:
     hybrid = next(row for row in body["current_market_state_rows"] if row["signal_kind"] == "hybrid_fusion")
     assert hybrid["strategy_label"] == "融合策略"
     assert hybrid["sample_status"] == "sufficient"
+    assert hybrid["priority_label"] == "优先复核"
 
 
 def test_strategy_score_service_accepts_return_10d_primary_horizon(tmp_path) -> None:
@@ -3089,37 +3145,22 @@ def test_strategy_score_service_accepts_return_10d_primary_horizon(tmp_path) -> 
             """,
             [
                 (
-                    "2026-05-01",
-                    "000001.SZ",
-                    "Trend A",
-                    1,
+                    "2026-05-01" if index <= 15 else "2026-05-02",
+                    f"{index:06d}.SZ",
+                    f"Trend {index}",
+                    index,
                     "2026-05-02",
                     "2026-05-08",
                     "2026-05-15",
                     "2026-05-29",
                     0.01,
                     0.02,
-                    0.11,
+                    0.11 if index <= 15 else 0.03,
                     0.03,
-                    "r1",
+                    f"r{index}",
                     '{"market_state":"HOT"}',
-                ),
-                (
-                    "2026-05-02",
-                    "000002.SZ",
-                    "Trend B",
-                    2,
-                    "2026-05-03",
-                    "2026-05-09",
-                    "2026-05-16",
-                    "2026-05-30",
-                    0.01,
-                    -0.01,
-                    0.03,
-                    0.02,
-                    "r2",
-                    '{"market_state":"HOT"}',
-                ),
+                )
+                for index in range(1, 31)
             ],
         )
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
@@ -3139,18 +3180,20 @@ def test_strategy_score_service_accepts_return_10d_primary_horizon(tmp_path) -> 
     body = envelope["result"]
     assert isinstance(body, dict)
     assert body["primary_horizon"] == "return_10d"
+    assert body["min_sample"] == 30
     row = body["current_market_state_rows"][0]
     assert row["signal_kind"] == "stock_candidate"
     assert row["stats"]["return_10d"] == {
-        "available_count": 2,
+        "available_count": 30,
         "missing_count": 0,
-        "positive_count": 2,
+        "positive_count": 30,
         "non_positive_count": 0,
         "avg_return": 0.07,
+        "median_return": 0.07,
         "win_rate": 1.0,
     }
-    assert row["priority_score"] == 107.0
-    assert "T+10" in row["reason"]
+    assert row["priority_score"] == 102.0
+    assert "T+5" in row["reason"]
 
 
 def test_strategy_score_splits_stock_candidate_entry_allowed_scope(tmp_path) -> None:
@@ -3233,7 +3276,7 @@ def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk
                 -0.03,
                 '{"market_state":"OVERHEAT"}',
             )
-            for index in range(1, 3)
+            for index in range(1, 31)
         ]
         _insert_strategy_score_rows(conn, factor_rows + trend_rows)
         conn.executemany(
@@ -3315,17 +3358,17 @@ def test_strategy_score_service_reports_overheat_rank_scope_and_long_window_risk
     assert maturity["worst_snapshot"]["win_rate"] == 1.0
     tail_bucket = next(bucket for bucket in factor_diagnostics["rank_buckets"] if bucket["label"] == "11-20")
     assert tail_bucket["included_in_priority"] is False
-    assert tail_bucket["priority_label"] == "降权观察"
+    assert tail_bucket["priority_label"] == "样本不足"
     assert tail_bucket["stats"]["return_5d"]["available_count"] == 10
     assert tail_bucket["stats"]["return_5d"]["avg_return"] == -0.02
-    assert "rank > 10" in tail_bucket["reason"]
+    assert "样本不足" in tail_bucket["reason"]
 
     trend = next(row for row in rows if row["signal_kind"] == "stock_candidate")
     risk_flags = trend["diagnostics"]["risk_flags"]
-    assert risk_flags[0]["kind"] == "long_window_risk"
+    assert risk_flags[0]["kind"] == "long_window_median_worse"
     assert risk_flags[0]["horizon"] == "return_20d"
     assert "T+20" in risk_flags[0]["reason"]
-    assert risk_flags[0]["stats"]["avg_return"] == -0.03
+    assert risk_flags[0]["stats"]["median_return"] == -0.03
 
 
 def test_strategy_score_service_keeps_old_rows_as_unknown_and_reports_current_state_insufficient(tmp_path) -> None:
@@ -3389,7 +3432,7 @@ def test_strategy_optimization_service_reports_t5_recommendations_and_rank_slice
                 "factor_screen",
                 0.01,
                 0.04 if index <= 10 else 0.05 if index <= 20 else -0.02,
-                None,
+                0.045,
                 '{"market_state":"HOT"}',
             )
             for index in range(1, 31)
@@ -3413,7 +3456,7 @@ def test_strategy_optimization_service_reports_t5_recommendations_and_rank_slice
     body = envelope["result"]
     assert isinstance(body, dict)
     assert body["primary_horizon"] == "return_5d"
-    assert body["min_sample"] == 10
+    assert body["min_sample"] == 30
 
     factor = next(row for row in body["strategy_summaries"] if row["signal_kind"] == "factor_screen")
     assert factor["recommendation"]["action"] == "promote"
@@ -3423,11 +3466,57 @@ def test_strategy_optimization_service_reports_t5_recommendations_and_rank_slice
 
     weak_slice = next(row for row in body["slices"] if row["slice_key"] == "factor_screen:rank:21-30")
     assert weak_slice["label"] == "rank 21-30"
-    assert weak_slice["recommendation"]["action"] == "downgrade"
-    assert weak_slice["recommendation"]["priority_label"] == "降权观察"
+    assert weak_slice["recommendation"]["action"] == "pending_more_history"
+    assert weak_slice["recommendation"]["priority_label"] == "样本不足"
     assert weak_slice["stats"]["return_5d"]["available_count"] == 10
     assert weak_slice["stats"]["return_5d"]["avg_return"] == -0.02
 
+
+def test_strategy_optimization_downgrades_when_t20_median_worsens(tmp_path) -> None:
+    from backend.app.services.livermore_candidate_history_service import (
+        livermore_candidate_history_strategy_optimization_envelope,
+    )
+
+    db_path = tmp_path / "strategy-optimization-t20-worse.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                (
+                    "2026-05-01",
+                    f"{index:06d}.SZ",
+                    f"Factor {index}",
+                    "factor_screen",
+                    0.01,
+                    0.03,
+                    0.01,
+                    '{"market_state":"HOT"}',
+                )
+                for index in range(1, 31)
+            ],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_strategy_optimization_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        current_market_state="HOT",
+        min_sample=30,
+        primary_horizon="return_5d",
+    )
+
+    body = envelope["result"]
+    factor = next(row for row in body["strategy_summaries"] if row["signal_kind"] == "factor_screen")
+    assert factor["recommendation"]["action"] == "downgrade"
+    assert factor["recommendation"]["priority_label"] == "降权观察"
+    assert factor["recommendation"]["available_count"] == 30
+    assert factor["recommendation"]["median_return"] == 0.03
+    assert factor["recommendation"]["t20_median_return"] == 0.01
+    assert "T+20" in factor["recommendation"]["reason"]
 
 def test_strategy_optimization_marks_sample_insufficient_without_false_promote(tmp_path) -> None:
     from backend.app.services.livermore_candidate_history_service import (

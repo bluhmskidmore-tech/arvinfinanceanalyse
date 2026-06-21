@@ -2215,30 +2215,33 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
       await delay();
       const state = options?.currentMarketState?.trim() || "WARM";
       const primaryHorizon = options?.primaryHorizon ?? "return_5d";
-      const minSample = options?.minSample ?? 20;
+      const minSample = Math.max(options?.minSample ?? 30, 30);
       const stats = {
         return_1d: {
-          available_count: 24,
+          available_count: 30,
           missing_count: 0,
-          positive_count: 13,
-          non_positive_count: 11,
+          positive_count: 17,
+          non_positive_count: 13,
           avg_return: 0.008,
-          win_rate: 0.541667,
+          median_return: 0.006,
+          win_rate: 0.566667,
         },
         return_5d: {
-          available_count: 24,
+          available_count: 30,
           missing_count: 0,
-          positive_count: 14,
-          non_positive_count: 10,
+          positive_count: 18,
+          non_positive_count: 12,
           avg_return: 0.024,
+          median_return: 0.024,
           win_rate: 0.6,
         },
         return_20d: {
-          available_count: 20,
-          missing_count: 4,
-          positive_count: 12,
-          non_positive_count: 8,
+          available_count: 30,
+          missing_count: 0,
+          positive_count: 18,
+          non_positive_count: 12,
           avg_return: 0.031,
+          median_return: 0.026,
           win_rate: 0.6,
         },
       };
@@ -2303,7 +2306,7 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           snapshot_from: options?.snapshotFrom?.trim() ?? null,
           snapshot_to: options?.snapshotTo?.trim() ?? "2026-04-29",
           primary_horizon: primaryHorizon,
-          min_sample: options?.minSample ?? 20,
+          min_sample: Math.max(options?.minSample ?? 30, 30),
           current_market_state: state,
           strategy_summaries: [],
           slices: [],

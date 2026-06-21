@@ -180,7 +180,7 @@ export function StockAnalysisRiskExitSection({
         </div>
       ) : null}
       <StockAnalysisRiskExitRows
-        rows={rows}
+        rows={unsupportedOutput ? [] : rows}
         unsupported={Boolean(unsupportedOutput)}
         onOpenRiskDetail={onOpenRiskDetail}
       />

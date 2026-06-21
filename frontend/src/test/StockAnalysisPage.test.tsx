@@ -1349,7 +1349,7 @@ describe("StockAnalysisPage", () => {
     expect(apiEvidence).toHaveTextContent("后端表");
     expect(apiEvidence).toHaveTextContent("证据行");
     expect(apiEvidence).toHaveTextContent("规则版本");
-    expect(apiEvidence).toHaveTextContent("Trace");
+    expect(apiEvidence).toHaveTextContent("链路");
     expect(apiEvidence).toHaveTextContent("2 张");
     expect(apiEvidence).toHaveTextContent("12,345");
     expect(apiEvidence).toHaveTextContent("rv_custom_stock_v1");
@@ -1415,6 +1415,92 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByTestId("stock-analysis-events-panel-summary")).toBeInTheDocument();
   });
 
+  it("shows first-screen workbench data digest and non-blocking slow evidence slots", async () => {
+    const client = stockClient({
+      strategy: buildStrategyPayload({
+        factor_screen_candidates: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_factor_screen_candidates_v2",
+          market_state: "WARM",
+          input_stock_count: 1,
+          candidate_count: 1,
+          coverage_note: "ok",
+          items: [
+            {
+              rank: 1,
+              stock_code: "600000.SH",
+              stock_name: "浦发银行",
+              sector_code: "801780",
+              sector_name: "银行",
+              industry: "银行",
+              score: 0.82,
+              pe: 5.2,
+              pb: 0.6,
+              roe: 0.12,
+              gross_margin: 0.31,
+              three_month_return: 0.08,
+              twelve_month_return: 0.18,
+              dividend_yield: 0.04,
+            },
+          ],
+        },
+        hybrid_fusion_candidates: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_hybrid_fusion_candidates_v3",
+          market_state: "WARM",
+          observation_only: true,
+          candidate_count: 1,
+          items: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "平安银行",
+              sector_code: "801780",
+              sector_name: "银行",
+              fusion_score: 0.8,
+              cycle_score: 0.7,
+              lifecourt_proxy_score: 0.6,
+              attention_score: 0.5,
+              price_confirm_score: 0.4,
+              crowding_penalty: 0.1,
+              confidence: "medium",
+              reason: "Observation-only fusion candidate.",
+              evidence: {},
+            },
+          ],
+        },
+      }),
+    });
+    const candidateHistorySpy = vi
+      .spyOn(client, "getLivermoreCandidateHistory")
+      .mockImplementation(() => new Promise<ApiEnvelope<LivermoreCandidateHistoryPayload>>(() => undefined));
+    const strategyScoreSpy = vi
+      .spyOn(client, "getLivermoreStrategyScore")
+      .mockImplementation(() => new Promise<ApiEnvelope<LivermoreStrategyScorePayload>>(() => undefined));
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const digest = await screen.findByTestId("stock-analysis-workbench-digest");
+    expect(within(digest).getByTestId("stock-analysis-workbench-fact-candidate-depth")).toHaveTextContent("1 / 1");
+    expect(within(digest).getByTestId("stock-analysis-workbench-fact-factor-candidates")).toHaveTextContent(
+      "strategy.result.factor_screen_candidates.items",
+    );
+    expect(within(digest).getByTestId("stock-analysis-workbench-fact-hybrid-candidates")).toHaveTextContent(
+      "rv_hybrid_fusion_candidates_v3",
+    );
+    expect(within(digest).getAllByText(/来源：/).length).toBeGreaterThanOrEqual(8);
+    expect(digest).not.toHaveTextContent("position_size_hint");
+
+    await screen.findByTestId("stock-analysis-first-screen-analytics");
+    await userEvent.click(screen.getByRole("tab", { name: "策略优先级" }));
+
+    await waitFor(() => expect(candidateHistorySpy).toHaveBeenCalled());
+    await waitFor(() => expect(strategyScoreSpy).toHaveBeenCalled());
+    expect(screen.getByTestId("stock-analysis-workbench-fact-candidate-history")).toHaveTextContent("读取中");
+    expect(screen.getByTestId("stock-analysis-workbench-fact-candidate-history")).toHaveTextContent("首屏不阻塞");
+    expect(screen.getByTestId("stock-analysis-workbench-fact-strategy-score")).toHaveTextContent("读取中");
+  });
+
   it("keeps first-screen content limited to decision, KPI, review summary, and trust rail", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
@@ -1425,6 +1511,15 @@ describe("StockAnalysisPage", () => {
     expect(within(firstScreenMain).getByTestId("stock-analysis-tailwind-cockpit")).toBeInTheDocument();
     expect(within(firstScreenMain).getByTestId("stock-analysis-kpi-section")).toBeInTheDocument();
     expect(within(firstScreenMain).getByTestId("stock-analysis-review-queue")).toBeInTheDocument();
+    const closurePanel = within(firstScreenMain).getByTestId("stock-analysis-observation-closure-panel");
+    expect(closurePanel).toHaveTextContent("观测闭环总控");
+    expect(closurePanel).toHaveTextContent("正式用途：否");
+    expect(closurePanel).toHaveTextContent("代码侧证据读取覆盖");
+    expect(within(closurePanel).getByTestId("stock-analysis-observation-closure-reasons")).toBeInTheDocument();
+    expect(within(closurePanel).getByTestId("stock-analysis-observation-closure-actions")).toBeInTheDocument();
+    expect(closurePanel).not.toHaveTextContent("闭环完成");
+    expect(closurePanel).not.toHaveTextContent("正式通过");
+    expect(closurePanel).not.toHaveTextContent("策略通过");
     const firstScreenRail = within(firstScreen).getByTestId("stock-analysis-first-screen-rail");
     expect(firstScreenRail).toBeInTheDocument();
     const diagnosticsEntry = within(firstScreenRail).getByTestId("stock-analysis-home-rail-diagnostic-entry");

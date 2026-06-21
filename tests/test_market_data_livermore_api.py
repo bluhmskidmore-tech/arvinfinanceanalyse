@@ -453,6 +453,63 @@ def test_livermore_read_surface_allows_development_without_explicit_read_scope(t
     assert response.json()["result_meta"]["result_kind"] == "market_data.livermore"
 
 
+def test_livermore_workbench_summary_keeps_missing_distinct_from_empty() -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
+
+    summary = route_module._livermore_workbench_summary(
+        {
+            "as_of_date": "2026-04-29",
+            "requested_as_of_date": None,
+            "strategy_name": "Livermore A-Share Defended Trend",
+            "basis": "analytical",
+            "market_gate": {},
+            "rule_readiness": [],
+            "module_states": [{"key": "market_gate"}],
+            "factor_screen_candidates": {"items": []},
+            "data_gaps": [],
+        },
+        summary_kind="strategy",
+    )
+
+    assert summary["factor_screen_candidate_count"] == 0
+    assert summary["hybrid_fusion_candidate_count"] is None
+    assert summary["rule_readiness_count"] == 0
+    assert summary["data_gap_count"] == 0
+    assert summary["diagnostic_count"] is None
+    assert summary["market_gate_present"] is False
+
+
+def test_livermore_workbench_summary_appends_result_without_replacing_meta() -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
+
+    meta = {"result_kind": "market_data.livermore.candidate_history"}
+    envelope = {
+        "result_meta": meta,
+        "result": {
+            "snapshot_from": "2026-05-01",
+            "snapshot_to": "2026-05-13",
+            "limit": 500,
+            "summary": {},
+            "backtest_window_summary": {"status": "valid"},
+            "items": [],
+        },
+    }
+
+    out = route_module._with_livermore_workbench_summary(envelope, summary_kind="candidate_history")
+
+    assert out["result_meta"] is meta
+    assert out["result"]["workbench_summary"] == {
+        "kind": "candidate_history",
+        "item_count": 0,
+        "summary_present": False,
+        "backtest_window_summary_present": True,
+        "snapshot_from": "2026-05-01",
+        "snapshot_to": "2026-05-13",
+        "stock_code_present": False,
+        "limit": 500,
+    }
+
+
 def test_livermore_signal_confluence_loader_reraises_nested_missing_dependency(monkeypatch) -> None:
     from backend.app.api.routes import market_data_livermore as route_module
 

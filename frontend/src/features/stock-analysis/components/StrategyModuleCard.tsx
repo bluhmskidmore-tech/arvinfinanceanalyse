@@ -80,6 +80,9 @@ export function StrategyModuleCard({
           role="status"
           aria-label="加载中"
         >
+          <p className="stock-analysis-strategy-module-card__loading-label">
+            {summary?.headline && summary.headline !== "加载中…" ? summary.headline : "正在核验证据"}
+          </p>
           <div className="stock-analysis-strategy-module-card__loading-skeleton" aria-hidden="true">
             <span />
             <span />

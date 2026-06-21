@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartOutlined,
@@ -15,9 +15,12 @@ import dayjs from "dayjs";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  BacktestWindowSummary,
   LivermoreCandidateHistoryPortfolioBacktestPayload,
   LivermoreCycleProxyBacktestPayload,
   LivermoreSignalConfluencePayload,
+  LivermoreStrategyPayload,
+  ResultMeta,
 } from "../../../api/contracts";
 import ReactECharts from "../../../lib/echarts";
 import { AnalysisGrid, DataStatusStrip } from "../../../components/page/PagePrimitives";
@@ -38,6 +41,7 @@ import {
   buildSectorViewRows,
   buildStockAnalysisEventMonitorRows,
   buildStockAnalysisEvidenceStatus,
+  buildStockEndpointEvidenceItems,
   buildStockAnalysisKpiStrip,
   buildStockSectorOverviewState,
   buildSectorHeavyweightPreview,
@@ -48,6 +52,8 @@ import {
   buildEventsMonitoringPanelSummary,
   buildMarketPriorityPanelSummary,
   buildObservationPoolsPanelSummary,
+  buildObservationClosureSummary,
+  buildWorkbenchDataDigest,
   buildStrategyBacktestPanelSummary,
   buildStrategyOptimizationPanelSummary,
   buildThemeBreakoutPanelSummary,
@@ -66,7 +72,13 @@ import {
   mergeStockClosedLoopMeta,
   pickStockFreshnessMeta,
 } from "../lib/stockAnalysisPageModel";
-import type { StockCandidateReviewQueueItem, StockSectorRow } from "../lib/stockAnalysisPageModel";
+import type {
+  StockCandidateReviewQueueItem,
+  StockEndpointEvidenceQueryState,
+  StockObservationClosureReasonInput,
+  StockSectorRow,
+  WorkbenchSlowState,
+} from "../lib/stockAnalysisPageModel";
 import {
   buildSectorStrengthOption,
   sectorViewTabs,
@@ -107,39 +119,24 @@ import {
 } from "../lib/stockAnalysisPageLabels";
 import {
   backtestStatsText,
-  buildStrategyBacktestMarketStateRows,
   buildStrategyBacktestRows,
   formatBacktestSignedPercent,
   resolveStrategyBacktestSampleCount,
   strategyBacktestHorizonLabels,
-  strategyBacktestHorizonShortLabels,
   strategyBacktestHorizons,
   strategyDisplayLabel,
 } from "../lib/stockAnalysisBacktestModel";
 import {
-  buildStrategyMaturityCandidates,
-  buildStrategyMaturityWindow,
-  buildStrategyPriorityHeadline,
   formatPriorityScore,
   resolvePanelQueryState,
-  resolveStrategyMaturityRow,
-  strategyCandidateReturnText,
-  strategyMaturityHorizonText,
-  strategyMaturityRemainingText,
-  strategyPriorityDiagnosticLabels,
   strategyPriorityReasonLabel,
-  strategyPriorityScopeLabel,
   strategyPriorityStatusLabel,
-  strategyPrioritySummaryReason,
 } from "../lib/stockAnalysisPriorityModel";
 import {
   buildStrategyOptimizationRows,
   strategyOptimizationDateWeightedText,
   strategyOptimizationPrimaryStats,
   strategyOptimizationReasonLabel,
-  strategyOptimizationSliceLabel,
-  strategyOptimizationSlicePair,
-  type StrategyOptimizationSlice,
 } from "../lib/stockAnalysisOptimizationModel";
 import {
   formatSectorSeriesCumPctChange,
@@ -194,6 +191,7 @@ import {
   type StockAnalysisLedgerCell,
 } from "../components/StockAnalysisReviewLedgerFirstScreen";
 import { StockAnalysisStrategyLensSection } from "../components/StockAnalysisStrategyLensSection";
+import { StockAnalysisStrategyReviewCards } from "../components/StockAnalysisStrategyReviewCards";
 import { StockAnalysisThemeBreakoutPanel } from "../components/StockAnalysisThemeBreakoutPanel";
 import { StockAnalysisObservationPreview } from "../components/StockAnalysisObservationPreview";
 import { CompactStatusTile, StatusIcon } from "../components/StockAnalysisStatusPrimitives";
@@ -220,6 +218,33 @@ function confidenceTone(label: string): "positive" | "neutral" | "warning" {
   if (normalized === "高" || normalized === "high") return "positive";
   if (normalized === "低" || normalized === "low") return "warning";
   return "neutral";
+}
+
+type SlowEvidenceQuery = {
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  isSuccess: boolean;
+};
+
+function useSlowEvidenceState(query: SlowEvidenceQuery, timeoutMs = 8000): WorkbenchSlowState {
+  const [isSlow, setIsSlow] = useState(false);
+
+  useEffect(() => {
+    if (!query.isLoading && !query.isFetching) {
+      setIsSlow(false);
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setIsSlow(true), timeoutMs);
+    return () => window.clearTimeout(timer);
+  }, [query.isLoading, query.isFetching, timeoutMs]);
+
+  if (query.isError) return "error";
+  if (query.isSuccess) return "success";
+  if (isSlow) return "slow";
+  if (query.isLoading || query.isFetching) return "loading";
+  return "idle";
 }
 
 function readinessLabel(key: string): string {
@@ -250,16 +275,99 @@ function formatApiCount(value: number | null | undefined, fallback = "待确认"
 
 function supportedOutputLabel(key: string): string {
   const labels: Record<string, string> = {
-    market_gate: "market_gate",
-    sector_rank: "sector_rank",
-    stock_candidates: "stock_candidates",
-    mean_reversion_candidates: "mean_reversion_candidates",
-    factor_screen_candidates: "factor_screen_candidates",
-    theme_breakout: "theme_breakout",
-    hybrid_fusion: "hybrid_fusion",
-    risk_exit: "risk_exit",
+    market_gate: "市场门控",
+    sector_rank: "板块强弱",
+    stock_candidates: "趋势候选",
+    mean_reversion_candidates: "均值回归",
+    factor_screen_candidates: "多因子",
+    theme_breakout: "题材突破",
+    hybrid_fusion: "融合观察",
+    risk_exit: "风险退出",
   };
   return labels[key] ?? "输出待确认";
+}
+
+function endpointQueryState({
+  enabled,
+  isLoading,
+  isFetching,
+  isError,
+  hasData,
+}: {
+  enabled: boolean;
+  isLoading: boolean;
+  isFetching?: boolean;
+  isError: boolean;
+  hasData: boolean;
+}): StockEndpointEvidenceQueryState {
+  if (isError) return "error";
+  if (hasData) return "success";
+  if (!enabled) return "idle";
+  if (isLoading || isFetching) return "loading";
+  return "idle";
+}
+
+function activeStrategyDiagnosticCount(payload: LivermoreStrategyPayload | null): number | null {
+  if (!payload) return null;
+  return payload.diagnostics.filter((item) => item.severity !== "info").length;
+}
+
+function activeDataGapCount(payload: LivermoreStrategyPayload | null): number | null {
+  if (!payload) return null;
+  return payload.data_gaps.filter((item) => item.status !== "ready").length;
+}
+
+function confluenceDiagnosticCount(payload: LivermoreSignalConfluencePayload | null): number | null {
+  if (!payload) return null;
+  return payload.diagnostics.filter((item) => {
+    if (typeof item === "string") return item.trim().length > 0;
+    return (item.severity ?? "warning") !== "info";
+  }).length;
+}
+
+function replayEvidenceMissingCount(payload: LivermoreSignalConfluencePayload | null): number | null {
+  if (!payload?.replay_evidence) return payload ? 0 : null;
+  return payload.replay_evidence.status === "available" ? 0 : 1;
+}
+
+function backtestWindowPendingDateCount(window: BacktestWindowSummary | null | undefined): number | null {
+  if (!window) return null;
+  return window.replay_dates_pending > 0 ? window.replay_dates_pending : 0;
+}
+
+function backtestWindowUnsupportedDateCount(window: BacktestWindowSummary | null | undefined): number | null {
+  if (!window) return null;
+  return window.replay_dates_unsupported > 0 ? window.replay_dates_unsupported : 0;
+}
+
+function pushFallbackReason(
+  reasons: StockObservationClosureReasonInput[],
+  {
+    endpointId,
+    endpointLabel,
+    meta,
+  }: {
+    endpointId: string;
+    endpointLabel: string;
+    meta?: ResultMeta | null;
+  },
+) {
+  const fallback = meta?.fallback_mode;
+  if (!fallback || fallback === "none") return;
+  reasons.push({
+    key: `${endpointId}:fallback:${fallback}`,
+    endpointId,
+    endpointLabel,
+    kind: "fallback",
+    fieldPath: `${endpointId}.result_meta.fallback_mode`,
+    displayText: `${endpointLabel}声明${stockSupplyFallbackLabel(fallback)}`,
+    rawValueLabel: fallback,
+  });
+}
+
+function confluenceDiagnosticText(item: LivermoreSignalConfluencePayload["diagnostics"][number]): string {
+  if (typeof item === "string") return item;
+  return item.message ?? item.code ?? "信号闭环诊断待复核";
 }
 
 export default function StockAnalysisPage() {
@@ -746,19 +854,7 @@ export default function StockAnalysisPage() {
     () => buildStrategyOptimizationRows(strategyOptimizationPayload),
     [strategyOptimizationPayload],
   );
-  const strategyOptimizationSlices = useMemo(
-    () => strategyOptimizationSlicePair(strategyOptimizationPayload),
-    [strategyOptimizationPayload],
-  );
   const strategyPriorityRows = strategyScorePayload?.current_market_state_rows ?? EMPTY_STRATEGY_PRIORITY_ROWS;
-  const strategyPriorityHeadline = buildStrategyPriorityHeadline(strategyPriorityRows);
-  const strategyPriorityReason = strategyPrioritySummaryReason(strategyPriorityRows);
-  const strategyMaturityRow = resolveStrategyMaturityRow(strategyPriorityRows);
-  const strategyMaturityWindow = buildStrategyMaturityWindow(strategyMaturityRow);
-  const strategyMaturity = strategyMaturityWindow.maturity;
-  const strategyMaturitySnapshots = strategyMaturityWindow.snapshots;
-  const strategyMaturityDetailSnapshotFrom = strategyMaturityWindow.snapshotFrom;
-  const strategyMaturityDetailSnapshotTo = strategyMaturityWindow.snapshotTo;
   const strategyBacktestSnapshotFrom = analyticsAsOf ? dayjs(analyticsAsOf).subtract(10, "day").format("YYYY-MM-DD") : null;
 
   const strategyBacktestQuery = useQuery({
@@ -774,16 +870,12 @@ export default function StockAnalysisPage() {
         snapshotTo: analyticsAsOf ?? undefined,
         limit: 500,
       }),
-    enabled: Boolean(analyticsAsOf && strategyBacktestSection.seen),
+    enabled: Boolean(analyticsAsOf && (strategyBacktestSection.seen || firstScreenAnalyticsRequested)),
     ...stockAnalysisReadQueryOptions,
   });
 
   const strategyBacktestPayload = strategyBacktestQuery.data?.result ?? null;
   const strategyBacktestRows = useMemo(() => buildStrategyBacktestRows(strategyBacktestPayload), [strategyBacktestPayload]);
-  const strategyBacktestMarketStateRows = useMemo(
-    () => buildStrategyBacktestMarketStateRows(strategyBacktestPayload),
-    [strategyBacktestPayload],
-  );
   const strategyBacktestSampleCount = useMemo(
     () => resolveStrategyBacktestSampleCount(strategyBacktestPayload),
     [strategyBacktestPayload],
@@ -819,36 +911,443 @@ export default function StockAnalysisPage() {
   });
   const candidateHistoryPortfolioBacktestPayload: LivermoreCandidateHistoryPortfolioBacktestPayload | null =
     candidateHistoryPortfolioBacktestQuery.data?.result ?? null;
-  const strategyMaturityDetailQuery = useQuery({
-    queryKey: [
-      "stock-analysis",
-      "livermore-candidate-history-maturity-detail",
-      strategyMaturityRow?.signal_kind ?? "__none",
-      strategyMaturityDetailSnapshotFrom ?? "__none",
-      strategyMaturityDetailSnapshotTo ?? "__none",
-    ] as const,
-    queryFn: () =>
-      client.getLivermoreCandidateHistory({
-        snapshotFrom: strategyMaturityDetailSnapshotFrom ?? undefined,
-        snapshotTo: strategyMaturityDetailSnapshotTo ?? undefined,
-        limit: 500,
-      }),
-    enabled: Boolean(
-      strategyPrioritySection.seen &&
-        strategyMaturityRow &&
-        strategyMaturityDetailSnapshotFrom &&
-        strategyMaturityDetailSnapshotTo,
-    ),
-    ...stockAnalysisReadQueryOptions,
-  });
-  const strategyMaturityCandidateRows = useMemo(
+
+  const candidateHistorySlowState = useSlowEvidenceState(strategyBacktestQuery);
+  const strategyScoreSlowState = useSlowEvidenceState(strategyScoreQuery);
+  const workbenchDigest = useMemo(
     () =>
-      buildStrategyMaturityCandidates(
-        strategyMaturityDetailQuery.data?.result ?? null,
-        strategyMaturityRow,
-        strategyMaturitySnapshots,
-      ),
-    [strategyMaturityDetailQuery.data, strategyMaturityRow, strategyMaturitySnapshots],
+      buildWorkbenchDataDigest({
+        main: strategyPayload,
+        signalConfluence: confluencePayload,
+        candidateHistory: strategyBacktestPayload,
+        strategyScore: strategyScorePayload,
+        strategyOptimization: strategyOptimizationPayload,
+        cycleProxyBacktest: cycleProxyBacktestPayload,
+        portfolioBacktest: candidateHistoryPortfolioBacktestPayload,
+        sectorRankSeries: sectorRankSeriesQuery.data?.result ?? null,
+        candidateHistoryState: candidateHistorySlowState,
+        strategyScoreState: strategyScoreSlowState,
+      }),
+    [
+      candidateHistoryPortfolioBacktestPayload,
+      candidateHistorySlowState,
+      confluencePayload,
+      cycleProxyBacktestPayload,
+      sectorRankSeriesQuery.data?.result,
+      strategyBacktestPayload,
+      strategyOptimizationPayload,
+      strategyPayload,
+      strategyScorePayload,
+      strategyScoreSlowState,
+    ],
+  );
+
+  const endpointEvidenceItems = useMemo(() => {
+    const sectorSeriesPayload = sectorRankSeriesQuery.data?.result ?? null;
+    const strategyBacktestMissingInputCount =
+      strategyBacktestWindow?.date_reasons.filter((item) => item.reason_code.startsWith("missing_")).length ?? null;
+
+    return buildStockEndpointEvidenceItems([
+      {
+        key: "strategy",
+        label: "主策略快照",
+        queryState: endpointQueryState({
+          enabled: true,
+          isLoading: strategyQuery.isLoading,
+          isFetching: strategyQuery.isFetching,
+          isError: strategyQuery.isError,
+          hasData: Boolean(strategyQuery.data),
+        }),
+        meta: strategyQuery.data?.result_meta,
+        asOfDate: strategyPayload?.as_of_date,
+        warningCount: activeStrategyDiagnosticCount(strategyPayload),
+        unsupportedCount: strategyPayload?.unsupported_outputs.length ?? null,
+        missingInputCount: activeDataGapCount(strategyPayload),
+      },
+      {
+        key: "signal-confluence",
+        label: "信号闭环",
+        queryState: endpointQueryState({
+          enabled: Boolean(strategyPayload?.as_of_date),
+          isLoading: confluenceQuery.isLoading,
+          isFetching: confluenceQuery.isFetching,
+          isError: confluenceQuery.isError,
+          hasData: Boolean(confluenceQuery.data),
+        }),
+        meta: confluenceQuery.data?.result_meta,
+        asOfDate: confluencePayload?.as_of_date ?? strategyPayload?.as_of_date,
+        warningCount: confluenceDiagnosticCount(confluencePayload),
+        missingInputCount: replayEvidenceMissingCount(confluencePayload),
+        unsupportedCount: 0,
+      },
+      {
+        key: "sector-series",
+        label: "板块支撑序列",
+        queryState: endpointQueryState({
+          enabled: Boolean((sectorSeriesExpanded || shouldLoadSectorSeriesFallback) && analyticsAsOf),
+          isLoading: sectorRankSeriesQuery.isLoading,
+          isFetching: sectorRankSeriesQuery.isFetching,
+          isError: sectorRankSeriesQuery.isError,
+          hasData: Boolean(sectorRankSeriesQuery.data),
+        }),
+        meta: sectorRankSeriesQuery.data?.result_meta,
+        asOfDate: sectorSeriesPayload?.as_of_date ?? analyticsAsOf,
+        warningCount: sectorSeriesPayload ? sectorSeriesPayload.unsupported_notes.length : null,
+        missingInputCount: sectorSeriesPayload?.state === "missing" ? 1 : 0,
+        unsupportedCount: 0,
+      },
+      {
+        key: "strategy-score",
+        label: "优先级评分",
+        queryState: endpointQueryState({
+          enabled: Boolean(analyticsAsOf && (strategyPrioritySection.seen || firstScreenAnalyticsRequested)),
+          isLoading: strategyScoreQuery.isLoading,
+          isFetching: strategyScoreQuery.isFetching,
+          isError: strategyScoreQuery.isError,
+          hasData: Boolean(strategyScoreQuery.data),
+        }),
+        meta: strategyScoreQuery.data?.result_meta,
+        asOfDate: strategyScorePayload?.as_of_date ?? analyticsAsOf,
+        snapshotFrom: strategyScorePayload?.snapshot_from,
+        snapshotTo: strategyScorePayload?.snapshot_to,
+        warningCount: strategyScorePayload
+          ? strategyScorePayload.rows.filter((row) => row.sample_status !== "sufficient").length
+          : null,
+        missingInputCount: backtestWindowPendingDateCount(strategyScorePayload?.backtest_window_summary),
+        unsupportedCount: backtestWindowUnsupportedDateCount(strategyScorePayload?.backtest_window_summary),
+      },
+      {
+        key: "candidate-history",
+        label: "策略回溯窗口",
+        queryState: endpointQueryState({
+          enabled: Boolean(analyticsAsOf && (strategyBacktestSection.seen || firstScreenAnalyticsRequested)),
+          isLoading: strategyBacktestQuery.isLoading,
+          isFetching: strategyBacktestQuery.isFetching,
+          isError: strategyBacktestQuery.isError,
+          hasData: Boolean(strategyBacktestQuery.data),
+        }),
+        meta: strategyBacktestQuery.data?.result_meta,
+        snapshotFrom: strategyBacktestPayload?.snapshot_from ?? strategyBacktestSnapshotFrom,
+        snapshotTo: strategyBacktestPayload?.snapshot_to ?? analyticsAsOf,
+        warningCount: backtestWindowPendingDateCount(strategyBacktestWindow),
+        unsupportedCount: backtestWindowUnsupportedDateCount(strategyBacktestWindow),
+        missingInputCount: strategyBacktestMissingInputCount,
+      },
+      {
+        key: "strategy-optimization",
+        label: "策略优化",
+        queryState: endpointQueryState({
+          enabled: Boolean(analyticsAsOf && (strategyOptimizationSection.seen || firstScreenAnalyticsRequested)),
+          isLoading: strategyOptimizationQuery.isLoading,
+          isFetching: strategyOptimizationQuery.isFetching,
+          isError: strategyOptimizationQuery.isError,
+          hasData: Boolean(strategyOptimizationQuery.data),
+        }),
+        meta: strategyOptimizationQuery.data?.result_meta,
+        asOfDate: strategyOptimizationPayload?.as_of_date ?? analyticsAsOf,
+        snapshotFrom: strategyOptimizationPayload?.snapshot_from,
+        snapshotTo: strategyOptimizationPayload?.snapshot_to,
+        warningCount: strategyOptimizationPayload?.sample_maturity?.insufficient_count ?? null,
+        missingInputCount: strategyOptimizationPayload?.pending_summary.pending_rows ?? null,
+        unsupportedCount: backtestWindowUnsupportedDateCount(strategyOptimizationPayload?.backtest_window_summary),
+      },
+      {
+        key: "cycle-proxy",
+        label: "周期代理回溯",
+        queryState: endpointQueryState({
+          enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+          isLoading: cycleProxyBacktestQuery.isLoading,
+          isFetching: cycleProxyBacktestQuery.isFetching,
+          isError: cycleProxyBacktestQuery.isError,
+          hasData: Boolean(cycleProxyBacktestQuery.data),
+        }),
+        meta: cycleProxyBacktestQuery.data?.result_meta,
+        snapshotFrom: cycleProxyBacktestPayload?.snapshot_from,
+        snapshotTo: cycleProxyBacktestPayload?.snapshot_to ?? analyticsAsOf,
+        warningCount: cycleProxyBacktestPayload?.warnings.length ?? null,
+        missingInputCount: cycleProxyBacktestPayload?.missing_full_strategy_inputs.length ?? null,
+        unsupportedCount: cycleProxyBacktestPayload?.status === "unsupported" ? 1 : 0,
+      },
+      {
+        key: "portfolio-proxy",
+        label: "组合代理回溯",
+        queryState: endpointQueryState({
+          enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+          isLoading: candidateHistoryPortfolioBacktestQuery.isLoading,
+          isFetching: candidateHistoryPortfolioBacktestQuery.isFetching,
+          isError: candidateHistoryPortfolioBacktestQuery.isError,
+          hasData: Boolean(candidateHistoryPortfolioBacktestQuery.data),
+        }),
+        meta: candidateHistoryPortfolioBacktestQuery.data?.result_meta,
+        snapshotFrom: candidateHistoryPortfolioBacktestPayload?.snapshot_from,
+        snapshotTo: candidateHistoryPortfolioBacktestPayload?.snapshot_to ?? analyticsAsOf,
+        warningCount: candidateHistoryPortfolioBacktestPayload?.warnings.length ?? null,
+        missingInputCount: candidateHistoryPortfolioBacktestPayload?.missing_full_strategy_inputs.length ?? null,
+        unsupportedCount: candidateHistoryPortfolioBacktestPayload?.status === "unsupported" ? 1 : 0,
+      },
+    ]);
+  }, [
+    analyticsAsOf,
+    candidateHistoryPortfolioBacktestPayload,
+    candidateHistoryPortfolioBacktestQuery.data,
+    candidateHistoryPortfolioBacktestQuery.isError,
+    candidateHistoryPortfolioBacktestQuery.isFetching,
+    candidateHistoryPortfolioBacktestQuery.isLoading,
+    confluencePayload,
+    confluenceQuery.data,
+    confluenceQuery.isError,
+    confluenceQuery.isFetching,
+    confluenceQuery.isLoading,
+    cycleFrameworkSection.seen,
+    cycleProxyBacktestPayload,
+    cycleProxyBacktestQuery.data,
+    cycleProxyBacktestQuery.isError,
+    cycleProxyBacktestQuery.isFetching,
+    cycleProxyBacktestQuery.isLoading,
+    cycleRotationFramework,
+    firstScreenAnalyticsRequested,
+    sectorRankSeriesQuery.data,
+    sectorRankSeriesQuery.isError,
+    sectorRankSeriesQuery.isFetching,
+    sectorRankSeriesQuery.isLoading,
+    sectorSeriesExpanded,
+    shouldLoadSectorSeriesFallback,
+    strategyBacktestPayload,
+    strategyBacktestQuery.data,
+    strategyBacktestQuery.isError,
+    strategyBacktestQuery.isFetching,
+    strategyBacktestQuery.isLoading,
+    strategyBacktestSection.seen,
+    strategyBacktestSnapshotFrom,
+    strategyBacktestWindow,
+    strategyOptimizationPayload,
+    strategyOptimizationQuery.data,
+    strategyOptimizationQuery.isError,
+    strategyOptimizationQuery.isFetching,
+    strategyOptimizationQuery.isLoading,
+    strategyOptimizationSection.seen,
+    strategyPayload,
+    strategyPrioritySection.seen,
+    strategyQuery.data,
+    strategyQuery.isError,
+    strategyQuery.isFetching,
+    strategyQuery.isLoading,
+    strategyScorePayload,
+    strategyScoreQuery.data,
+    strategyScoreQuery.isError,
+    strategyScoreQuery.isFetching,
+    strategyScoreQuery.isLoading,
+  ]);
+
+  const observationClosureReasonInputs = useMemo(() => {
+    const reasons: StockObservationClosureReasonInput[] = [];
+    const addReason = (reason: StockObservationClosureReasonInput | null | undefined) => {
+      if (reason) reasons.push(reason);
+    };
+    const addListReasons = ({
+      endpointId,
+      endpointLabel,
+      kind,
+      fieldRoot,
+      values,
+      textForValue,
+    }: {
+      endpointId: string;
+      endpointLabel: string;
+      kind: StockObservationClosureReasonInput["kind"];
+      fieldRoot: string;
+      values: unknown[] | null | undefined;
+      textForValue: (value: unknown, index: number) => string;
+    }) => {
+      values?.forEach((value, index) => {
+        addReason({
+          key: `${endpointId}:${kind}:${fieldRoot}:${index}`,
+          endpointId,
+          endpointLabel,
+          kind,
+          fieldPath: `${fieldRoot}.${index}`,
+          displayText: textForValue(value, index),
+        });
+      });
+    };
+
+    pushFallbackReason(reasons, {
+      endpointId: "strategy",
+      endpointLabel: "主策略快照",
+      meta: strategyQuery.data?.result_meta,
+    });
+    pushFallbackReason(reasons, {
+      endpointId: "signal-confluence",
+      endpointLabel: "信号闭环",
+      meta: confluenceQuery.data?.result_meta,
+    });
+    pushFallbackReason(reasons, {
+      endpointId: "sector-series",
+      endpointLabel: "板块支撑序列",
+      meta: sectorRankSeriesQuery.data?.result_meta,
+    });
+    pushFallbackReason(reasons, {
+      endpointId: "strategy-score",
+      endpointLabel: "优先级评分",
+      meta: strategyScoreQuery.data?.result_meta,
+    });
+    pushFallbackReason(reasons, {
+      endpointId: "candidate-history",
+      endpointLabel: "策略回溯窗口",
+      meta: strategyBacktestQuery.data?.result_meta,
+    });
+    pushFallbackReason(reasons, {
+      endpointId: "strategy-optimization",
+      endpointLabel: "策略优化",
+      meta: strategyOptimizationQuery.data?.result_meta,
+    });
+    pushFallbackReason(reasons, {
+      endpointId: "cycle-proxy",
+      endpointLabel: "周期代理回溯",
+      meta: cycleProxyBacktestQuery.data?.result_meta,
+    });
+    pushFallbackReason(reasons, {
+      endpointId: "portfolio-proxy",
+      endpointLabel: "组合代理回溯",
+      meta: candidateHistoryPortfolioBacktestQuery.data?.result_meta,
+    });
+
+    addListReasons({
+      endpointId: "strategy",
+      endpointLabel: "主策略快照",
+      kind: "data-gap",
+      fieldRoot: "main.result.data_gaps",
+      values: strategyPayload?.data_gaps.filter((item) => item.status !== "ready"),
+      textForValue: (value) => {
+        const gap = value as NonNullable<LivermoreStrategyPayload["data_gaps"]>[number];
+        return `${dataGapFamilyLabel(gap.input_family)}：${localizeStockBackendText(gap.evidence, gap.input_family)}`;
+      },
+    });
+    addListReasons({
+      endpointId: "strategy",
+      endpointLabel: "主策略快照",
+      kind: "diagnostic",
+      fieldRoot: "main.result.diagnostics",
+      values: strategyPayload?.diagnostics.filter((item) => item.severity !== "info"),
+      textForValue: (value) => {
+        const diagnostic = value as NonNullable<LivermoreStrategyPayload["diagnostics"]>[number];
+        return localizeStockBackendText(diagnostic.message, diagnostic.input_family);
+      },
+    });
+    addListReasons({
+      endpointId: "strategy",
+      endpointLabel: "主策略快照",
+      kind: "unsupported",
+      fieldRoot: "main.result.unsupported_outputs",
+      values: strategyPayload?.unsupported_outputs,
+      textForValue: (value) => {
+        const output = value as NonNullable<LivermoreStrategyPayload["unsupported_outputs"]>[number];
+        return `${dataGapFamilyLabel(output.key)}：${localizeStockBackendText(output.reason, output.key)}`;
+      },
+    });
+    addListReasons({
+      endpointId: "signal-confluence",
+      endpointLabel: "信号闭环",
+      kind: "diagnostic",
+      fieldRoot: "signalConfluence.result.diagnostics",
+      values: confluencePayload?.diagnostics,
+      textForValue: (value) =>
+        localizeStockBackendText(
+          confluenceDiagnosticText(value as LivermoreSignalConfluencePayload["diagnostics"][number]),
+          "signal_confluence",
+        ),
+    });
+    addListReasons({
+      endpointId: "sector-series",
+      endpointLabel: "板块支撑序列",
+      kind: "unsupported",
+      fieldRoot: "sectorRankSeries.result.unsupported_notes",
+      values: sectorRankSeriesQuery.data?.result?.unsupported_notes,
+      textForValue: (value) => localizeStockBackendText(String(value), "sector_rank"),
+    });
+    addListReasons({
+      endpointId: "cycle-proxy",
+      endpointLabel: "周期代理回溯",
+      kind: "warning",
+      fieldRoot: "cycleProxyBacktest.result.warnings",
+      values: cycleProxyBacktestPayload?.warnings,
+      textForValue: (value) => localizeStockBackendText(String(value), "cycle_proxy_backtest"),
+    });
+    addListReasons({
+      endpointId: "cycle-proxy",
+      endpointLabel: "周期代理回溯",
+      kind: "missing-input",
+      fieldRoot: "cycleProxyBacktest.result.missing_full_strategy_inputs",
+      values: cycleProxyBacktestPayload?.missing_full_strategy_inputs,
+      textForValue: (value) => `缺完整策略输入：${dataGapFamilyLabel(String(value))}`,
+    });
+    addListReasons({
+      endpointId: "portfolio-proxy",
+      endpointLabel: "组合代理回溯",
+      kind: "warning",
+      fieldRoot: "portfolioBacktest.result.warnings",
+      values: candidateHistoryPortfolioBacktestPayload?.warnings,
+      textForValue: (value) => localizeStockBackendText(String(value), "portfolio_proxy_backtest"),
+    });
+    addListReasons({
+      endpointId: "portfolio-proxy",
+      endpointLabel: "组合代理回溯",
+      kind: "missing-input",
+      fieldRoot: "portfolioBacktest.result.missing_full_strategy_inputs",
+      values: candidateHistoryPortfolioBacktestPayload?.missing_full_strategy_inputs,
+      textForValue: (value) => `缺完整策略输入：${dataGapFamilyLabel(String(value))}`,
+    });
+    if ((strategyOptimizationPayload?.pending_summary.pending_rows ?? 0) > 0) {
+      addReason({
+        key: "strategy-optimization:pending-summary",
+        endpointId: "strategy-optimization",
+        endpointLabel: "策略优化",
+        kind: "missing-input",
+        fieldPath: "strategyOptimization.result.pending_summary",
+        displayText: `优化待处理 ${strategyOptimizationPayload?.pending_summary.pending_rows ?? 0} 行`,
+      });
+    }
+    if ((strategyOptimizationPayload?.sample_maturity?.insufficient_count ?? 0) > 0) {
+      addReason({
+        key: "strategy-optimization:sample-maturity",
+        endpointId: "strategy-optimization",
+        endpointLabel: "策略优化",
+        kind: "warning",
+        fieldPath: "strategyOptimization.result.sample_maturity",
+        displayText: `样本成熟度不足 ${strategyOptimizationPayload?.sample_maturity?.insufficient_count ?? 0} 项`,
+      });
+    }
+    return reasons;
+  }, [
+    candidateHistoryPortfolioBacktestPayload,
+    candidateHistoryPortfolioBacktestQuery.data?.result_meta,
+    confluencePayload,
+    confluenceQuery.data?.result_meta,
+    cycleProxyBacktestPayload,
+    cycleProxyBacktestQuery.data?.result_meta,
+    sectorRankSeriesQuery.data?.result,
+    sectorRankSeriesQuery.data?.result_meta,
+    strategyBacktestQuery.data?.result_meta,
+    strategyOptimizationPayload,
+    strategyOptimizationQuery.data?.result_meta,
+    strategyPayload,
+    strategyQuery.data?.result_meta,
+    strategyScoreQuery.data?.result_meta,
+  ]);
+
+  const observationClosureSummary = useMemo(
+    () =>
+      buildObservationClosureSummary({
+        endpointItems: endpointEvidenceItems,
+        reasonInputs: observationClosureReasonInputs,
+        formalUseAllowed: strategyQuery.data?.result_meta?.formal_use_allowed ?? false,
+        approvalStatus: "gap_or_observational",
+      }),
+    [
+      endpointEvidenceItems,
+      observationClosureReasonInputs,
+      strategyQuery.data?.result_meta?.formal_use_allowed,
+    ],
   );
 
   const strategyBacktestDateRangeLabel =
@@ -1090,7 +1589,7 @@ export default function StockAnalysisPage() {
     detail: "A股观察证据仅用于复核，不生成交易指令",
   } as const;
   const resultMeta = strategyQuery.data?.result_meta;
-  const sourceVersion = resultMeta?.source_version ?? "livermore / choice_stock";
+  const sourceVersion = resultMeta?.source_version ?? "来源待返回";
   const sourceVersionSummary = sourceVersion.length > 36 ? "来源明细" : sourceVersion;
   const sourceGateTone = stockSourceGateTone({
     isError: strategyQuery.isError,
@@ -1116,7 +1615,7 @@ export default function StockAnalysisPage() {
       key: "tables",
       label: "后端表",
       value: resultMeta?.tables_used?.length ? `${resultMeta.tables_used.length} 张` : "待返回",
-      detail: resultMeta?.tables_used?.slice(0, 4).join(" / ") ?? "tables_used 待返回",
+      detail: resultMeta?.tables_used?.slice(0, 4).join(" / ") ?? "后端表待返回",
     },
     {
       key: "evidence",
@@ -1125,19 +1624,19 @@ export default function StockAnalysisPage() {
         typeof resultMeta?.evidence_rows === "number"
           ? resultMeta.evidence_rows.toLocaleString("zh-CN")
           : "待返回",
-      detail: "result_meta.evidence_rows",
+      detail: "接口元信息记录的证据行数",
     },
     {
       key: "rule",
       label: "规则版本",
       value: compactText(resultMeta?.rule_version ?? "规则待返回", 24),
-      detail: resultMeta?.rule_version ?? "rule_version 待返回",
+      detail: resultMeta?.rule_version ?? "规则版本待返回",
     },
     {
       key: "trace",
-      label: "Trace",
-      value: compactText(resultMeta?.trace_id ?? "trace 待返回", 18),
-      detail: resultMeta?.trace_id ?? "trace_id 待返回",
+      label: "链路",
+      value: compactText(resultMeta?.trace_id ?? "链路待返回", 18),
+      detail: resultMeta?.trace_id ?? "链路待返回",
     },
   ];
   const apiAccurateReadinessItems = (strategyPayload?.rule_readiness ?? []).slice(0, 4).map((item) => {
@@ -1167,7 +1666,7 @@ export default function StockAnalysisPage() {
       detail = `输入 ${formatApiCount(stockInputCount)} · ${asOfDetail}`;
     } else if (item.key === "risk_exit") {
       metric = riskExitUnsupported
-        ? "退出规则 blocked"
+        ? "退出规则阻断"
         : `触发 ${formatApiCount(strategyPayload?.risk_exit?.signal_count ?? riskTriggeredCount, "0")} / 观察 ${formatApiCount(
             strategyPayload?.risk_exit?.watch_items?.length ?? riskWatchCount,
             "0",
@@ -1272,8 +1771,8 @@ export default function StockAnalysisPage() {
     {
       key: "risk",
       label: "风险退出",
-      value: riskExitUnsupported ? "blocked" : riskTriggeredCount > 0 ? `触发 ${riskTriggeredCount}` : "未触发",
-      detail: riskExitUnsupported ? "positions 等缺失" : riskWatchCount > 0 ? `观察 ${riskWatchCount}` : "边界待确认",
+      value: riskExitUnsupported ? "阻断" : riskTriggeredCount > 0 ? `触发 ${riskTriggeredCount}` : "未触发",
+      detail: riskExitUnsupported ? "持仓等缺失" : riskWatchCount > 0 ? `观察 ${riskWatchCount}` : "边界待确认",
       tone: riskExitUnsupported || riskTriggeredCount > 0 ? "negative" : riskWatchCount > 0 ? "warning" : "positive",
     },
     {
@@ -1283,7 +1782,7 @@ export default function StockAnalysisPage() {
         typeof resultMeta?.evidence_rows === "number"
           ? resultMeta.evidence_rows.toLocaleString("zh-CN")
           : "待返回",
-      detail: "result_meta.evidence_rows",
+      detail: "接口元信息记录的证据行数",
       tone: "neutral",
     },
   ];
@@ -1292,7 +1791,7 @@ export default function StockAnalysisPage() {
       key: "tables",
       label: "后端表",
       value: backendTableCount > 0 ? `${backendTableCount} 张` : "待返回",
-      detail: resultMeta?.tables_used?.slice(0, 4).join(" / ") ?? "tables_used 待返回",
+      detail: resultMeta?.tables_used?.slice(0, 4).join(" / ") ?? "后端表待返回",
     },
     {
       key: "evidence",
@@ -1309,13 +1808,13 @@ export default function StockAnalysisPage() {
       key: "rule",
       label: "规则版本",
       value: compactText(resultMeta?.rule_version ?? "规则待返回", 24),
-      detail: resultMeta?.rule_version ?? "rule_version 待返回",
+      detail: resultMeta?.rule_version ?? "规则版本待返回",
     },
     {
       key: "trace",
-      label: "Trace",
-      value: compactText(resultMeta?.trace_id ?? "trace 待返回", 18),
-      detail: resultMeta?.trace_id ?? "trace_id 待返回",
+      label: "链路",
+      value: compactText(resultMeta?.trace_id ?? "链路待返回", 18),
+      detail: resultMeta?.trace_id ?? "链路待返回",
     },
   ];
   const apiLedgerRailRows = [
@@ -1338,7 +1837,7 @@ export default function StockAnalysisPage() {
     {
       label: "下一步",
       value: queueNextActionLabel,
-      detail: riskExitUnsupported ? "风险退出 blocked" : queueNextActionFullLabel,
+      detail: riskExitUnsupported ? "风险退出阻断" : queueNextActionFullLabel,
     },
   ];
   const apiDecisionSupplementItems = [
@@ -1388,13 +1887,13 @@ export default function StockAnalysisPage() {
       })),
   ];
   const queueReportHeadline = queueLeadCandidate
-    ? `${queueGateStatusLabel}下的 ${queueVisibleCount} 个观察候选；风险退出${riskExitUnsupported ? "仍为 blocked" : "未触发"}。`
+    ? `${queueGateStatusLabel}下的 ${queueVisibleCount} 个观察候选；风险退出${riskExitUnsupported ? "仍为阻断" : "未触发"}。`
     : queueFiltersActive && queueTotalCount > 0
       ? "筛选后暂无候选；请调整行业、搜索或证据条件。"
       : "复核队列暂无候选；等待证据闭环。";
   const queueReportLead = queueFiltersActive
     ? `当前显示 ${queueVisibleCount} / ${queueTotalCount} 个候选；排名、证据、边界和复核入口集中在同一张表内。`
-    : "候选来自 hybrid_fusion / factor_screen；当前页面只做复核与证据追踪，不表达交易建议。";
+    : "候选来自融合观察与多因子观察池；当前页面只做复核与证据追踪，不表达交易建议。";
   const decisionMemoTiles = [
     {
       key: "gate",
@@ -1614,6 +2113,8 @@ export default function StockAnalysisPage() {
                   sourceGateLabel={sourceGateStatusLabel}
                   sourceGateDetail={sourceGateDetailLabel}
                   sourceVersion={sourceVersion}
+                  digest={workbenchDigest}
+                  closureSummary={observationClosureSummary}
                   railContent={
                     <StockAnalysisEvidenceLedgerRail
                       asOfLabel={decisionSummary?.asOfLabel ?? analyticsAsOf ?? "—"}
@@ -1629,6 +2130,7 @@ export default function StockAnalysisPage() {
                       basisLabel={strategyBasisLabel}
                       qualityLabel={backendSupplyOverview?.qualityLabel ?? "正常"}
                       updatedAtLabel={backendSupplyOverview?.asOfLabel ?? decisionSummary?.asOfLabel ?? analyticsAsOf ?? "—"}
+                      endpointItems={endpointEvidenceItems}
                       diagnosticsOpen={boundaryDiagnosticsOpen}
                       onOpenDiagnostics={() => setBoundaryDiagnosticsOpen(true)}
                       onCloseDiagnostics={() => setBoundaryDiagnosticsOpen(false)}
@@ -3717,463 +4219,42 @@ export default function StockAnalysisPage() {
                         </div>
               </StrategyModuleCard>
 
-              <StrategyModuleCard
-                id="market-priority"
-                title="当前市场策略优先级"
-                subtitle="T+5 排序"
-                badgeLabel={
-                  marketPriorityPanelSummary.badgeLabel ??
-                  (strategyScorePayload?.primary_horizon === "return_1d"
-                    ? "T+1"
-                    : strategyScorePayload?.primary_horizon === "return_20d"
-                      ? "T+20"
-                      : "T+5")
-                }
-                summary={marketPriorityPanelSummary}
-                summaryTestId="stock-analysis-market-priority-panel-summary"
-                expanded={isStrategyCardExpanded("market-priority")}
-                onToggleExpand={() => toggleStrategyCard("market-priority")}
-                mountDetail
-                sectionRef={strategyPrioritySection.ref}
-                sectionTestId="stock-analysis-market-priority-summary"
-              >
-                {strategyScoreQuery.isLoading ? (
-                  <p className="stock-analysis-page__empty">当前市场策略优先级加载中。</p>
-                ) : null}
-                {strategyScoreQuery.isError ? (
-                  <p className="stock-analysis-page__notice">
-                    当前市场策略优先级暂不可用：{strategyPanelErrorMessage(strategyScoreQuery.error)}
-                  </p>
-                ) : null}
-                {!strategyScoreQuery.isLoading && !strategyScoreQuery.isError ? (
-                  <>
-                    <div
-                      className="stock-analysis-page__filter-status"
-                      data-testid="stock-analysis-market-priority-current"
-                    >
-                      <span>
-                        {localizeMarketDataStatus(
-                          strategyScorePayload?.current_market_state ?? currentMarketState,
-                        )}
-                      </span>
-                      <strong>{strategyPriorityHeadline}</strong>
-                      <small>
-                        {strategyPriorityReason} · 阈值 {strategyScorePayload?.min_sample ?? 20} · 只读排序
-                      </small>
-                    </div>
-                    {strategyPriorityRows.length > 0 ? (
-                      <div className="stock-analysis-page__table-wrap">
-                        <table className="stock-analysis-page__table stock-analysis-page__table--dense">
-                          <thead>
-                            <tr>
-                              <th scope="col">策略</th>
-                              <th scope="col">状态</th>
-                              <th className="stock-analysis-page__table-number" scope="col">
-                                评分
-                              </th>
-                              {strategyBacktestHorizons.map((horizon) => (
-                                <th scope="col" key={horizon}>
-                                  {strategyBacktestHorizonLabels[horizon]}
-                                </th>
-                              ))}
-                              <th scope="col">原因</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {strategyPriorityRows.map((row) => {
-                              const diagnosticLabels = strategyPriorityDiagnosticLabels(row);
-                              return (
-                                <tr
-                                  key={`${row.market_state}:${row.signal_kind}`}
-                                  data-testid={`stock-analysis-market-priority-row-${row.market_state}-${row.signal_kind}`}
-                                >
-                                  <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
-                                  <td>{strategyPriorityStatusLabel(row.priority_label)}</td>
-                                  <td className="stock-analysis-page__table-number" data-testid="stock-analysis-market-priority-score">
-                                    {formatPriorityScore(row.priority_score)}
-                                  </td>
-                                  {strategyBacktestHorizons.map((horizon) => (
-                                    <td className="stock-analysis-page__table-number" key={horizon}>
-                                      {backtestStatsText(row.stats[horizon])}
-                                    </td>
-                                  ))}
-                                  <td>
-                                    <span>{strategyPriorityReasonLabel(row)}</span>
-                                    {diagnosticLabels.length > 0 ? (
-                                      <div className="stock-analysis-page__strategy-diagnostic-tags">
-                                        {diagnosticLabels.map((label) => (
-                                          <span key={label}>{label}</span>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="stock-analysis-page__empty">样本不足</p>
-                    )}
-                    {strategyMaturityRow && strategyMaturity && strategyMaturitySnapshots.length > 0 ? (
-                      <div data-testid="stock-analysis-candidate-maturity">
-                        <div className="stock-analysis-page__filter-status">
-                          <span>当前候选成熟进度</span>
-                          <strong>
-                            {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
-                            {strategyMaturityRow.diagnostics?.priority_scope_label
-                              ? ` / ${strategyPriorityScopeLabel(strategyMaturityRow.diagnostics.priority_scope_label)}`
-                              : ""}
-                          </strong>
-                          <small>
-                            {strategyMaturityRemainingText(strategyMaturity)}，
-                            {localizeStockBackendText(strategyMaturity.reason, strategyMaturityRow.signal_kind)}
-                          </small>
-                        </div>
-                        <div className="stock-analysis-page__table-wrap">
-                          <table className="stock-analysis-page__table stock-analysis-page__table--dense">
-                            <thead>
-                              <tr>
-                                <th scope="col">快照</th>
-                                <th className="stock-analysis-page__table-number" scope="col">
-                                  候选
-                                </th>
-                                {strategyBacktestHorizons.map((horizon) => (
-                                  <th scope="col" key={horizon}>
-                                    {strategyBacktestHorizonShortLabels[horizon]}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {strategyMaturitySnapshots.map((snapshot) => (
-                                <tr key={snapshot.snapshot_as_of_date}>
-                                  <td>{snapshot.snapshot_as_of_date}</td>
-                                  <td className="stock-analysis-page__table-number">{snapshot.candidate_count}</td>
-                                  {strategyBacktestHorizons.map((horizon) => (
-                                    <td key={horizon}>{strategyMaturityHorizonText(snapshot, horizon)}</td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        <div className="stock-analysis-page__filter-status">
-                          <span>候选明细</span>
-                          <strong>
-                            {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
-                          </strong>
-                          <small>快照明细 · 按排名</small>
-                        </div>
-                        {strategyMaturityDetailQuery.isLoading ? (
-                          <p className="stock-analysis-page__empty">候选明细加载中。</p>
-                        ) : null}
-                        {strategyMaturityDetailQuery.isError ? (
-                          <p className="stock-analysis-page__notice">
-                            候选明细暂不可用：{strategyPanelErrorMessage(strategyMaturityDetailQuery.error)}
-                          </p>
-                        ) : null}
-                        {!strategyMaturityDetailQuery.isLoading && !strategyMaturityDetailQuery.isError ? (
-                          strategyMaturityCandidateRows.length > 0 ? (
-                            <div className="stock-analysis-page__table-wrap">
-                              <table className="stock-analysis-page__table stock-analysis-page__table--dense">
-                                <thead>
-                                  <tr>
-                                    <th scope="col">快照</th>
-                                    <th scope="col">排名</th>
-                                    <th scope="col">候选</th>
-                                    <th scope="col">板块</th>
-                                    <th className="stock-analysis-page__table-number" scope="col">
-                                      T+1
-                                    </th>
-                                    <th className="stock-analysis-page__table-number" scope="col">
-                                      T+5
-                                    </th>
-                                    <th className="stock-analysis-page__table-number" scope="col">
-                                      T+20
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {strategyMaturityCandidateRows.map((candidate) => (
-                                    <tr key={`${candidate.snapshot_as_of_date}:${candidate.stock_code}:${candidate.candidate_rank}`}>
-                                      <td>{candidate.snapshot_as_of_date}</td>
-                                      <td>#{candidate.candidate_rank}</td>
-                                      <td>
-                                        <span>{candidate.stock_name ?? candidate.stock_code}</span>
-                                        <small> {candidate.stock_code}</small>
-                                      </td>
-                                      <td>{candidate.sector_name ?? "-"}</td>
-                                      <td className="stock-analysis-page__table-number">
-                                        {strategyCandidateReturnText(candidate.return_1d)}
-                                      </td>
-                                      <td className="stock-analysis-page__table-number">
-                                        {strategyCandidateReturnText(candidate.return_5d)}
-                                      </td>
-                                      <td className="stock-analysis-page__table-number">
-                                        {strategyCandidateReturnText(candidate.return_20d)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <p className="stock-analysis-page__empty">当前可见快照暂无候选明细。</p>
-                          )
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-              </StrategyModuleCard>
-
-              <StrategyModuleCard
-                id="strategy-backtest"
-                title="策略回溯表现"
-                subtitle="回溯胜率"
-                badgeLabel={strategyBacktestPanelSummary.badgeLabel ?? strategyBacktestDateRangeLabel}
-                summary={strategyBacktestPanelSummary}
-                summaryTestId="stock-analysis-strategy-backtest-panel-summary"
-                expanded={isStrategyCardExpanded("strategy-backtest")}
-                onToggleExpand={() => toggleStrategyCard("strategy-backtest")}
-                mountDetail
-                sectionRef={strategyBacktestSection.ref}
-                sectionTestId="stock-analysis-strategy-backtest"
-              >
-                {strategyBacktestQuery.isLoading ? (
-                  <p className="stock-analysis-page__empty">策略回溯表现加载中。</p>
-                ) : null}
-                {strategyBacktestQuery.isError ? (
-                  <p className="stock-analysis-page__notice">
-                    策略回溯表现暂不可用：{strategyPanelErrorMessage(strategyBacktestQuery.error)}
-                  </p>
-                ) : null}
-                {!strategyBacktestQuery.isLoading && !strategyBacktestQuery.isError ? (
-                  <>
-                    <div className="stock-analysis-page__filter-status">
-                      <span>有效样本</span>
-                      <strong>{strategyBacktestSampleCount} 条</strong>
-                      <small>
-                        完成日期 {strategyBacktestWindow?.replay_dates_completed ?? 0} / 待成熟{" "}
-                        {strategyBacktestWindow?.replay_dates_pending ?? 0} / 不支持{" "}
-                        {strategyBacktestWindow?.replay_dates_unsupported ?? 0}
-                      </small>
-                    </div>
-                    <div className="stock-analysis-page__table-wrap">
-                      <table className="stock-analysis-page__table stock-analysis-page__table--dense">
-                        <thead>
-                          <tr>
-                            <th scope="col">策略</th>
-                            <th scope="col">入选数</th>
-                            {strategyBacktestHorizons.map((horizon) => (
-                              <th scope="col" key={horizon}>
-                                {strategyBacktestHorizonLabels[horizon]}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {strategyBacktestRows.map((row) => (
-                            <tr key={row.kind} data-testid={`stock-analysis-strategy-backtest-${row.kind}`}>
-                              <td>{row.label}</td>
-                              <td className="stock-analysis-page__table-number">{row.count}</td>
-                              {strategyBacktestHorizons.map((horizon) => (
-                                <td className="stock-analysis-page__table-number" key={horizon}>
-                                  {row.stats[horizon]}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {strategyBacktestMarketStateRows.length > 0 ? (
-                      <div data-testid="stock-analysis-strategy-backtest-market-state">
-                        <p className="stock-analysis-page__footnote">市场状态分段</p>
-                        <div className="stock-analysis-page__table-wrap">
-                          <table className="stock-analysis-page__table stock-analysis-page__table--dense">
-                            <thead>
-                              <tr>
-                                <th scope="col">市场状态</th>
-                                <th scope="col">策略</th>
-                                {strategyBacktestHorizons.map((horizon) => (
-                                  <th scope="col" key={horizon}>
-                                    {strategyBacktestHorizonLabels[horizon]}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {strategyBacktestMarketStateRows.map((row) => (
-                                <tr
-                                  key={`${row.marketState}:${row.kind}`}
-                                  data-testid={`stock-analysis-strategy-backtest-market-state-${row.marketState}-${row.kind}`}
-                                >
-                                  <td>{localizeMarketDataStatus(row.marketState)}</td>
-                                  <td>{row.label}</td>
-                                  {strategyBacktestHorizons.map((horizon) => (
-                                    <td className="stock-analysis-page__table-number" key={horizon}>
-                                      {row.stats[horizon]}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-              </StrategyModuleCard>
-
-              <StrategyModuleCard
-                id="strategy-optimization"
-                title="优化诊断"
-                subtitle="切片 T+5"
-                badgeLabel={
-                  strategyOptimizationPanelSummary.badgeLabel ??
-                  (strategyOptimizationPayload?.primary_horizon === "return_1d"
-                    ? "T+1"
-                    : strategyOptimizationPayload?.primary_horizon === "return_10d"
-                      ? "T+10"
-                      : strategyOptimizationPayload?.primary_horizon === "return_20d"
-                        ? "T+20"
-                        : "T+5")
-                }
-                summary={strategyOptimizationPanelSummary}
-                summaryTestId="stock-analysis-strategy-optimization-panel-summary"
-                expanded={isStrategyCardExpanded("strategy-optimization")}
-                onToggleExpand={() => toggleStrategyCard("strategy-optimization")}
-                mountDetail
-                sectionRef={strategyOptimizationSection.ref}
-                sectionTestId="stock-analysis-strategy-optimization"
-              >
-                {strategyOptimizationQuery.isLoading ? (
-                  <p className="stock-analysis-page__empty">优化诊断加载中。</p>
-                ) : null}
-                {strategyOptimizationQuery.isError ? (
-                  <p className="stock-analysis-page__notice">
-                    优化诊断暂不可用：{strategyPanelErrorMessage(strategyOptimizationQuery.error)}
-                  </p>
-                ) : null}
-                {!strategyOptimizationQuery.isLoading && !strategyOptimizationQuery.isError ? (
-                  <>
-                    <div className="stock-analysis-page__filter-status">
-                      <span>当前最新日期收益</span>
-                      <strong>
-                        {(strategyOptimizationPayload?.pending_summary.pending_rows ?? 0) > 0
-                          ? "待成熟"
-                          : "已成熟"}
-                      </strong>
-                      <small>
-                        {localizeStockBackendText(
-                          strategyOptimizationPayload?.pending_summary.message ?? "T+5 收益成熟状态待补。",
-                        )}
-                      </small>
-                    </div>
-                    <p className="stock-analysis-page__footnote">
-                      复核排序 · 不改规则
-                    </p>
-                    <div className="stock-analysis-page__filter-status">
-                      <span>三策略 T+5 排名</span>
-                      <strong>{strategyOptimizationRows.length} 组</strong>
-                      <small>阈值 {strategyOptimizationPayload?.min_sample ?? 20} · 收益/胜率/成熟度</small>
-                    </div>
-                    {strategyOptimizationRows.length > 0 ? (
-                      <div className="stock-analysis-page__table-wrap">
-                        <table className="stock-analysis-page__table stock-analysis-page__table--dense">
-                          <thead>
-                            <tr>
-                              <th scope="col">策略</th>
-                              <th scope="col">复核状态</th>
-                              <th scope="col">T+5 收益</th>
-                              <th scope="col">按日等权</th>
-                              <th scope="col">原因</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {strategyOptimizationRows.map((row) => (
-                              <tr key={row.summary_key}>
-                                <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
-                                <td>{strategyPriorityStatusLabel(row.recommendation.priority_label)}</td>
-                                <td className="stock-analysis-page__table-number">
-                                  {backtestStatsText(strategyOptimizationPrimaryStats(row, strategyOptimizationPayload))}
-                                </td>
-                                <td className="stock-analysis-page__table-number">
-                                  {strategyOptimizationDateWeightedText(row, strategyOptimizationPayload)}
-                                </td>
-                                <td>{strategyOptimizationReasonLabel(row)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="stock-analysis-page__empty">优化诊断样本不足。</p>
-                    )}
-                    <div className="stock-analysis-page__filter-status">
-                      <span>各策略最强/最弱切片</span>
-                      <strong>
-                        {strategyOptimizationSlices.strongest
-                          ? strategyOptimizationSliceLabel(strategyOptimizationSlices.strongest)
-                          : "最强待补"}{" "}
-                        /{" "}
-                        {strategyOptimizationSlices.weakest
-                          ? strategyOptimizationSliceLabel(strategyOptimizationSlices.weakest)
-                          : "最弱待补"}
-                      </strong>
-                      <small>
-                        {strategyOptimizationSlices.weakest
-                          ? `${strategyDisplayLabel(
-                              strategyOptimizationSlices.weakest.strategy_label,
-                              strategyOptimizationSlices.weakest.signal_kind,
-                            )} ${strategyOptimizationSliceLabel(
-                              strategyOptimizationSlices.weakest,
-                            )}：${strategyPriorityStatusLabel(
-                              strategyOptimizationSlices.weakest.recommendation.priority_label,
-                            )}`
-                          : "切片样本不足，暂不做降权判断。"}
-                      </small>
-                    </div>
-                    {strategyOptimizationSlices.strongest || strategyOptimizationSlices.weakest ? (
-                      <div className="stock-analysis-page__table-wrap">
-                        <table className="stock-analysis-page__table stock-analysis-page__table--dense">
-                          <thead>
-                            <tr>
-                              <th scope="col">切片</th>
-                              <th scope="col">策略</th>
-                              <th scope="col">复核状态</th>
-                              <th scope="col">T+5 收益</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {([
-                              ["最强", strategyOptimizationSlices.strongest],
-                              ["最弱", strategyOptimizationSlices.weakest],
-                            ] as Array<[string, StrategyOptimizationSlice | null]>).map(([label, slice]) =>
-                              slice ? (
-                                <tr key={`${label}:${slice.slice_key}`}>
-                                  <td>
-                                    {label}：{strategyOptimizationSliceLabel(slice)}
-                                  </td>
-                                  <td>{strategyDisplayLabel(slice.strategy_label, slice.signal_kind)}</td>
-                                  <td>{strategyPriorityStatusLabel(slice.recommendation.priority_label)}</td>
-                                  <td className="stock-analysis-page__table-number">
-                                    {backtestStatsText(strategyOptimizationPrimaryStats(slice, strategyOptimizationPayload))}
-                                  </td>
-                                </tr>
-                              ) : null,
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-              </StrategyModuleCard>
+                            <StockAnalysisStrategyReviewCards
+                client={client}
+                analyticsAsOf={analyticsAsOf}
+                currentMarketState={currentMarketState}
+                strategyPrioritySeen={strategyPrioritySection.seen}
+                strategyScorePayload={strategyScorePayload}
+                strategyScoreLoading={strategyScoreQuery.isLoading}
+                strategyScoreError={strategyScoreQuery.isError}
+                strategyScoreErrorValue={strategyScoreQuery.error}
+                strategyPriorityRows={strategyPriorityRows}
+                marketPriorityPanelSummary={marketPriorityPanelSummary}
+                marketPriorityExpanded={isStrategyCardExpanded("market-priority")}
+                onToggleMarketPriority={() => toggleStrategyCard("market-priority")}
+                marketPrioritySectionRef={strategyPrioritySection.ref}
+                strategyBacktestPayload={strategyBacktestPayload}
+                strategyBacktestRows={strategyBacktestRows}
+                strategyBacktestSampleCount={strategyBacktestSampleCount}
+                strategyBacktestWindow={strategyBacktestWindow}
+                strategyBacktestDateRangeLabel={strategyBacktestDateRangeLabel}
+                strategyBacktestLoading={strategyBacktestQuery.isLoading}
+                strategyBacktestError={strategyBacktestQuery.isError}
+                strategyBacktestErrorValue={strategyBacktestQuery.error}
+                strategyBacktestPanelSummary={strategyBacktestPanelSummary}
+                strategyBacktestExpanded={isStrategyCardExpanded("strategy-backtest")}
+                onToggleStrategyBacktest={() => toggleStrategyCard("strategy-backtest")}
+                strategyBacktestSectionRef={strategyBacktestSection.ref}
+                strategyOptimizationPayload={strategyOptimizationPayload}
+                strategyOptimizationRows={strategyOptimizationRows}
+                strategyOptimizationLoading={strategyOptimizationQuery.isLoading}
+                strategyOptimizationError={strategyOptimizationQuery.isError}
+                strategyOptimizationErrorValue={strategyOptimizationQuery.error}
+                strategyOptimizationPanelSummary={strategyOptimizationPanelSummary}
+                strategyOptimizationExpanded={isStrategyCardExpanded("strategy-optimization")}
+                onToggleStrategyOptimization={() => toggleStrategyCard("strategy-optimization")}
+                strategyOptimizationSectionRef={strategyOptimizationSection.ref}
+              />
 
               <StrategyModuleCard
                 id="observation-pools"

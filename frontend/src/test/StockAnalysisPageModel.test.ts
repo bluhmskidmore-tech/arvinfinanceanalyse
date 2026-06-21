@@ -2,8 +2,10 @@
 
 import type {
   ConfluenceReplayStatus,
+  LivermoreCandidateHistoryPayload,
   LivermoreModuleState,
   LivermoreOutputKey,
+  LivermoreSectorRankSeriesPayload,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyOptimizationPayload,
   LivermoreStrategyScorePayload,
@@ -36,6 +38,9 @@ import {
   buildSectorViewRows,
   buildStockAnalysisEventMonitorRows,
   buildStockAnalysisKpiStrip,
+  buildWorkbenchDataDigest,
+  buildObservationClosureSummary,
+  buildStockEndpointEvidenceItems,
   buildStrategyLensItems,
   buildThemeBreakoutCards,
   buildThemeLeaderPreviewItems,
@@ -613,6 +618,184 @@ describe("stockAnalysisPageModel", () => {
     expect(ruleRow?.statusLabel).toBe("待补");
     expect(ruleRow?.tone).toBe("warning");
     expect(ruleRow?.statusLabel).not.toBe(strategyPayload.sector_rank?.formula_version);
+  });
+
+  it("marks healthy endpoint evidence as connected without inventing warnings", () => {
+    const rows = buildStockEndpointEvidenceItems([
+      {
+        key: "strategy",
+        label: "主策略快照",
+        queryState: "success",
+        meta: {
+          trace_id: "trace-stock-20260429",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          resolved_report_date: "2026-04-29",
+        },
+        asOfDate: "2026-04-29",
+        warningCount: 0,
+        unsupportedCount: 0,
+        missingInputCount: 0,
+      },
+    ]);
+
+    expect(rows[0]).toMatchObject({
+      statusLabel: "接通",
+      tone: "positive",
+      dateLabel: "日期：2026-04-29",
+      issueLabel: "无新增提示",
+      metaLabel: "质量正常 / 供数正常",
+      traceLabel: "链路：trace-stock-20260429",
+    });
+  });
+
+  it("keeps fallback and endpoint business gaps in review state", () => {
+    const rows = buildStockEndpointEvidenceItems([
+      {
+        key: "history",
+        label: "策略回溯窗口",
+        queryState: "success",
+        meta: {
+          trace_id: "trace-history",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+        },
+        snapshotFrom: "2026-04-20",
+        snapshotTo: "2026-04-29",
+        warningCount: 2,
+        unsupportedCount: 1,
+        missingInputCount: 3,
+      },
+    ]);
+
+    expect(rows[0].statusLabel).toBe("需复核");
+    expect(rows[0].tone).toBe("warning");
+    expect(rows[0].dateLabel).toBe("窗口：2026-04-20 至 2026-04-29");
+    expect(rows[0].issueLabel).toBe("提示 2 / 阻断 1 / 缺输入 3");
+    expect(rows[0].metaLabel).toBe("质量需复核 / 供数正常 / 回退快照");
+  });
+
+  it("does not present idle, failed, or meta-missing endpoints as ready", () => {
+    const rows = buildStockEndpointEvidenceItems([
+      {
+        key: "score",
+        label: "优先级评分",
+        queryState: "idle",
+      },
+      {
+        key: "confluence",
+        label: "信号闭环",
+        queryState: "error",
+        meta: {
+          trace_id: "trace-confluence",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      },
+      {
+        key: "sector-series",
+        label: "板块支撑序列",
+        queryState: "success",
+        asOfDate: "2026-04-29",
+        warningCount: 0,
+        unsupportedCount: 0,
+        missingInputCount: 0,
+      },
+    ]);
+
+    expect(rows[0]).toMatchObject({
+      statusLabel: "待触发",
+      tone: "neutral",
+      dateLabel: "日期待补",
+      traceLabel: "链路待补",
+    });
+    expect(rows[1]).toMatchObject({
+      statusLabel: "读取失败",
+      tone: "negative",
+    });
+    expect(rows[2]).toMatchObject({
+      statusLabel: "证据待补",
+      tone: "warning",
+      metaLabel: "接口元信息待补",
+    });
+    expect(rows[2].detail).not.toContain("result_meta");
+  });
+
+  it("builds an observation closure summary without implying formal completion", () => {
+    const endpoints = buildStockEndpointEvidenceItems([
+      {
+        key: "strategy",
+        label: "主策略快照",
+        queryState: "success",
+        meta: {
+          trace_id: "trace-strategy",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+        warningCount: 0,
+        unsupportedCount: 0,
+        missingInputCount: 0,
+      },
+      {
+        key: "history",
+        label: "策略回溯窗口",
+        queryState: "success",
+        meta: {
+          trace_id: "trace-history",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+        },
+        warningCount: 1,
+        unsupportedCount: 0,
+        missingInputCount: 0,
+      },
+      {
+        key: "sector-series",
+        label: "板块支撑序列",
+        queryState: "error",
+      },
+      {
+        key: "optimization",
+        label: "策略优化",
+        queryState: "success",
+      },
+    ]);
+    const summary = buildObservationClosureSummary({
+      endpointItems: endpoints,
+      formalUseAllowed: false,
+      approvalStatus: "gap_or_observational",
+      reasonInputs: [
+        {
+          endpointId: "history",
+          endpointLabel: "策略回溯窗口",
+          kind: "fallback",
+          fieldPath: "history.result_meta.fallback_mode",
+          displayText: "策略回溯窗口声明 fallback_mode：latest_snapshot",
+          rawValueLabel: "latest_snapshot",
+        },
+      ],
+    });
+
+    expect(summary.endpointTotal).toBe(4);
+    expect(summary.endpointLoadedCount).toBe(3);
+    expect(summary.endpointErrorCount).toBe(1);
+    expect(summary.metaMissingCount).toBe(1);
+    expect(summary.formalUseAllowed).toBe(false);
+    expect(summary.detail).toContain("正式用途：否");
+    expect(summary.detail).toContain("gap_or_observational");
+    expect(summary.headline).toBe("代码侧证据读取覆盖 3/4");
+    expect(summary.headline).not.toContain("闭环完成");
+    expect(summary.unresolvedReasons.map((item) => item.kind)).toEqual([
+      "query-error",
+      "meta-missing",
+      "fallback",
+    ]);
+    expect(summary.nextEvidenceActions.map((item) => item.actionText).join(" ")).toContain("回退状态");
   });
 
   it("summarizes cycle macro layer landed state and macro gaps", () => {
@@ -3357,6 +3540,26 @@ describe("stockAnalysisPageModel", () => {
       "factor_screen",
     );
     const coverage = localizeStockBackendText("factor_snapshot 无数据", "factor_screen_candidates");
+    const hybridPaused = localizeStockBackendText(
+      "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+      "hybrid_fusion",
+    );
+    const trendPaused = localizeStockBackendText(
+      "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+      "stock_candidates",
+    );
+    const meanPaused = localizeStockBackendText(
+      "Mean reversion watchlist is paused when the defended-trend candidate bundle already covers overheated tape.",
+      "mean_reversion_candidates",
+    );
+    const replayUnsupported = localizeStockBackendText(
+      "daily_limit_flags absent; Livermore strategy replay unsupported for 2026-05-29.",
+      "candidate_history",
+    );
+    const sectorFormula = localizeStockBackendText(
+      "Sector rank currently uses the provisional percentile formula over pctchange, turn, and amplitude.",
+      "sector_rank",
+    );
 
     expect(insufficient).toBe("样本不足 T+5 6/20");
     expect(insufficient).not.toContain("Current market sample");
@@ -3368,6 +3571,17 @@ describe("stockAnalysisPageModel", () => {
     expect(optimization).not.toContain("priority review ranking");
     expect(coverage).toBe("因子快照无数据。");
     expect(coverage).not.toContain("factor_snapshot");
+    expect(hybridPaused).toContain("融合策略");
+    expect(hybridPaused).not.toContain("Hybrid fusion");
+    expect(trendPaused).toContain("趋势突破策略");
+    expect(trendPaused).not.toContain("Stock candidate policy");
+    expect(meanPaused).toContain("超跌反弹观察池");
+    expect(meanPaused).not.toContain("Mean reversion watchlist");
+    expect(replayUnsupported).toBe("涨停封单标记缺失；2026-05-29 回放不可用。");
+    expect(replayUnsupported).not.toContain("daily_limit_flags");
+    expect(sectorFormula).toBe("板块强弱仍使用涨跌幅、换手率与振幅的临时分位公式，需按观测口径复核。");
+    expect(sectorFormula).not.toContain("Sector rank");
+    expect(sectorFormula).not.toContain("pctchange");
   });
 
   it("localizes choice stock coverage and limit-up quality backend warnings", () => {
@@ -3408,6 +3622,230 @@ describe("stockAnalysisPageModel", () => {
         "risk_exit",
       ),
     ).toBe("风险退出已接入持仓快照与收盘历史。");
+  });
+
+  it("builds a first-screen workbench digest from real returned fields", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      factor_screen_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_factor_screen_candidates_v2",
+        market_state: "WARM",
+        input_stock_count: 1,
+        candidate_count: 1,
+        coverage_note: "ok",
+        items: [
+          {
+            rank: 1,
+            stock_code: "600000.SH",
+            stock_name: "浦发银行",
+            sector_code: "801780",
+            sector_name: "银行",
+            industry: "银行",
+            score: 0.82,
+            pe: 5.2,
+            pb: 0.6,
+            roe: 0.12,
+            gross_margin: 0.31,
+            three_month_return: 0.08,
+            twelve_month_return: 0.18,
+            dividend_yield: 0.04,
+          },
+        ],
+      },
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_hybrid_fusion_candidates_v3",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 1,
+        items: [
+          {
+            rank: 1,
+            stock_code: "000001.SZ",
+            stock_name: "平安银行",
+            sector_code: "801780",
+            sector_name: "银行",
+            fusion_score: 0.8,
+            cycle_score: 0.7,
+            lifecourt_proxy_score: 0.6,
+            attention_score: 0.5,
+            price_confirm_score: 0.4,
+            crowding_penalty: 0.1,
+            confidence: "medium",
+            reason: "Observation-only fusion candidate.",
+            evidence: {},
+          },
+        ],
+      },
+    };
+    const sectorSeries: LivermoreSectorRankSeriesPayload = {
+      basis: "analytical",
+      state: "ok",
+      as_of_date: "2026-04-29",
+      window_days: 20,
+      top_k: 10,
+      sector_code_filter: null,
+      formula_version: "rv_sector_series_v1",
+      series: [
+        {
+          trade_date: "2026-04-29",
+          sector_code: "801780",
+          sector_name: "银行",
+          score: 0.91,
+          rank: 1,
+          avg_pctchange: 0.02,
+          avg_turn: 0.03,
+          avg_amplitude: 0.04,
+          constituent_count: 12,
+          cum_pctchange_window: 0.08,
+        },
+      ],
+      unsupported_notes: [],
+    };
+
+    const digest = buildWorkbenchDataDigest({
+      main: payload,
+      signalConfluence: {
+        ...confluencePayload,
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: "available",
+          lineage_status: "complete",
+        },
+        replay_evidence: {
+          status: "available",
+          snapshot_as_of_date: "2026-04-29",
+          row_count: 7,
+          matched_entry_count: 1,
+          sample_items: [{ stock_code: "000001.SZ", candidate_rank: 1 }],
+        },
+      },
+      sectorRankSeries: sectorSeries,
+    });
+
+    expect(digest.primaryFacts.find((fact) => fact.id === "candidate-depth")).toMatchObject({
+      value: "1 / 1",
+      tone: "read",
+    });
+    expect(digest.candidateFacts.find((fact) => fact.id === "factor-candidates")).toMatchObject({
+      value: "1 只",
+      sourcePath: "strategy.result.factor_screen_candidates.items",
+    });
+    expect(digest.evidenceFacts.find((fact) => fact.id === "sector-series")).toMatchObject({
+      value: "1 条",
+      tone: "read",
+    });
+    expect(digest.evidenceFacts.find((fact) => fact.id === "replay-evidence")).toMatchObject({
+      value: "7 行",
+      tone: "read",
+    });
+    expect(JSON.stringify(digest)).not.toContain("position_size_hint");
+  });
+
+  it("keeps missing candidate data distinct from real empty candidate arrays", () => {
+    const missingDigest = buildWorkbenchDataDigest({
+      main: {
+        ...strategyPayload,
+        factor_screen_candidates: undefined,
+      },
+    });
+    expect(missingDigest.candidateFacts.find((fact) => fact.id === "factor-candidates")).toMatchObject({
+      value: "未返回",
+      tone: "missing",
+    });
+
+    const emptyDigest = buildWorkbenchDataDigest({
+      main: {
+        ...strategyPayload,
+        factor_screen_candidates: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_factor_screen_candidates_v2",
+          market_state: "WARM",
+          input_stock_count: 1,
+          candidate_count: 0,
+          coverage_note: "ok",
+          items: [],
+        },
+      },
+    });
+    expect(emptyDigest.candidateFacts.find((fact) => fact.id === "factor-candidates")).toMatchObject({
+      value: "0 只",
+      tone: "empty",
+    });
+  });
+
+  it("summarizes slow evidence slots without calling them no data", () => {
+    const loadingDigest = buildWorkbenchDataDigest({
+      main: strategyPayload,
+      candidateHistoryState: "loading",
+      strategyScoreState: "slow",
+    });
+    expect(loadingDigest.slowFacts.find((fact) => fact.id === "candidate-history")).toMatchObject({
+      value: "读取中",
+      tone: "slow",
+    });
+    expect(loadingDigest.slowFacts.find((fact) => fact.id === "candidate-history")?.subValue).toContain("首屏不阻塞");
+    expect(loadingDigest.slowFacts.find((fact) => fact.id === "strategy-score")).toMatchObject({
+      value: "读取较慢",
+      tone: "slow",
+    });
+
+    const candidateHistory: LivermoreCandidateHistoryPayload = {
+      stock_code: null,
+      snapshot_from: "2026-05-01",
+      snapshot_to: "2026-05-13",
+      limit: 500,
+      summary: null,
+      backtest_window_summary: null,
+      items: [
+        {
+          snapshot_as_of_date: "2026-05-13",
+          stock_code: "000001.SZ",
+          stock_name: "平安银行",
+          signal_kind: "factor_screen",
+          candidate_rank: 1,
+          sector_code: "801780",
+          sector_name: "银行",
+          selection_close: 10,
+          forward_trade_date_1d: null,
+          forward_trade_date_5d: null,
+          forward_trade_date_20d: null,
+          return_1d: null,
+          return_5d: null,
+          return_20d: null,
+          data_status: "pending",
+        },
+      ],
+    };
+    const successDigest = buildWorkbenchDataDigest({
+      main: strategyPayload,
+      candidateHistory,
+      strategyScore: {
+        as_of_date: "2026-05-13",
+        snapshot_from: "2026-05-01",
+        snapshot_to: "2026-05-13",
+        primary_horizon: "return_5d",
+        min_sample: 30,
+        current_market_state: "WARM",
+        backtest_window_summary: null,
+        rows: [],
+        current_market_state_rows: [],
+        stock_candidate_state_scopes: { WARM: {} },
+      },
+      candidateHistoryState: "success",
+      strategyScoreState: "success",
+    });
+
+    expect(successDigest.slowFacts.find((fact) => fact.id === "candidate-history")).toMatchObject({
+      value: "1 行",
+      tone: "read",
+    });
+    expect(successDigest.slowFacts.find((fact) => fact.id === "strategy-score")).toMatchObject({
+      value: "0 / 0",
+      tone: "empty",
+    });
   });
 
 });

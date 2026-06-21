@@ -275,10 +275,13 @@ def livermore_strategy(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return livermore_strategy_envelope_from_catalog(
-        duckdb_path=str(settings.duckdb_path),
-        as_of_date=as_of_date,
-        choice_stock_catalog_file=settings.choice_stock_catalog_file,
+    return _with_livermore_workbench_summary(
+        livermore_strategy_envelope_from_catalog(
+            duckdb_path=str(settings.duckdb_path),
+            as_of_date=as_of_date,
+            choice_stock_catalog_file=settings.choice_stock_catalog_file,
+        ),
+        summary_kind="strategy",
     )
 
 
@@ -337,58 +340,61 @@ def livermore_signal_confluence(
         as_of_date=resolved_as_of_date,
         replay_summary=replay_summary,
     )
-    return build_result_envelope(
-        basis="analytical",
-        trace_id=f"tr_livermore_signal_confluence_{date.today().strftime('%Y%m%d')}",
-        result_kind=LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND,
-        cache_version=LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION,
-        source_version=_combine_lineage(
-            [
-                _meta_source_version(livermore_meta),
-                _meta_source_version(macro_meta),
-                _meta_source_version(adversarial_meta_for_envelope),
-            ],
-            empty_value="sv_livermore_signal_confluence_empty",
+    return _with_livermore_workbench_summary(
+        build_result_envelope(
+            basis="analytical",
+            trace_id=f"tr_livermore_signal_confluence_{date.today().strftime('%Y%m%d')}",
+            result_kind=LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND,
+            cache_version=LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION,
+            source_version=_combine_lineage(
+                [
+                    _meta_source_version(livermore_meta),
+                    _meta_source_version(macro_meta),
+                    _meta_source_version(adversarial_meta_for_envelope),
+                ],
+                empty_value="sv_livermore_signal_confluence_empty",
+            ),
+            rule_version=LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION,
+            quality_flag=_merge_quality_flag(
+                _meta_quality_flag(livermore_meta),
+                _meta_quality_flag(macro_meta),
+                _meta_quality_flag(adversarial_meta_for_envelope),
+            ),
+            vendor_version=_combine_lineage(
+                [
+                    _meta_vendor_version(livermore_meta),
+                    _meta_vendor_version(macro_meta),
+                    _meta_vendor_version(adversarial_meta_for_envelope),
+                ],
+                empty_value="vv_none",
+            ),
+            vendor_status=_merge_vendor_status(
+                _meta_vendor_status(livermore_meta),
+                _meta_vendor_status(macro_meta),
+                _meta_vendor_status(adversarial_meta_for_envelope),
+            ),
+            fallback_mode=_merge_fallback_mode(
+                _meta_fallback_mode(livermore_meta),
+                _meta_fallback_mode(macro_meta),
+                _meta_fallback_mode(adversarial_meta_for_envelope),
+            ),
+            filters_applied={
+                "requested_as_of_date": _optional_text(as_of_date),
+                "as_of_date": resolved_as_of_date,
+            },
+            tables_used=_combine_tables(
+                _meta_tables_used(livermore_meta),
+                _meta_tables_used(macro_meta),
+                _meta_tables_used(adversarial_meta_for_envelope),
+            ),
+            evidence_rows=(
+                _safe_int(_meta_evidence_rows(livermore_meta))
+                + _safe_int(_meta_evidence_rows(macro_meta))
+                + _safe_int(_meta_evidence_rows(adversarial_meta_for_envelope))
+            ),
+            result_payload=result_payload,
         ),
-        rule_version=LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION,
-        quality_flag=_merge_quality_flag(
-            _meta_quality_flag(livermore_meta),
-            _meta_quality_flag(macro_meta),
-            _meta_quality_flag(adversarial_meta_for_envelope),
-        ),
-        vendor_version=_combine_lineage(
-            [
-                _meta_vendor_version(livermore_meta),
-                _meta_vendor_version(macro_meta),
-                _meta_vendor_version(adversarial_meta_for_envelope),
-            ],
-            empty_value="vv_none",
-        ),
-        vendor_status=_merge_vendor_status(
-            _meta_vendor_status(livermore_meta),
-            _meta_vendor_status(macro_meta),
-            _meta_vendor_status(adversarial_meta_for_envelope),
-        ),
-        fallback_mode=_merge_fallback_mode(
-            _meta_fallback_mode(livermore_meta),
-            _meta_fallback_mode(macro_meta),
-            _meta_fallback_mode(adversarial_meta_for_envelope),
-        ),
-        filters_applied={
-            "requested_as_of_date": _optional_text(as_of_date),
-            "as_of_date": resolved_as_of_date,
-        },
-        tables_used=_combine_tables(
-            _meta_tables_used(livermore_meta),
-            _meta_tables_used(macro_meta),
-            _meta_tables_used(adversarial_meta_for_envelope),
-        ),
-        evidence_rows=(
-            _safe_int(_meta_evidence_rows(livermore_meta))
-            + _safe_int(_meta_evidence_rows(macro_meta))
-            + _safe_int(_meta_evidence_rows(adversarial_meta_for_envelope))
-        ),
-        result_payload=result_payload,
+        summary_kind="signal_confluence",
     )
 
 
@@ -581,12 +587,15 @@ def livermore_candidate_history(
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/candidate-history",
-        lambda: livermore_candidate_history_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            stock_code=stock_code,
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
-            limit=limit,
+        lambda: _with_livermore_workbench_summary(
+            livermore_candidate_history_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                stock_code=stock_code,
+                snapshot_from=snapshot_from,
+                snapshot_to=snapshot_to,
+                limit=limit,
+            ),
+            summary_kind="candidate_history",
         ),
     )
 
@@ -597,7 +606,7 @@ def livermore_strategy_score(
     snapshot_from: str | None = Query(default=None),
     snapshot_to: str | None = Query(default=None),
     current_market_state: str | None = Query(default=None, max_length=32),
-    min_sample: int = Query(default=20, ge=1, le=10000),
+    min_sample: int = Query(default=30, ge=1, le=10000),
     primary_horizon: str = Query(default="return_5d"),
 ) -> dict[str, object]:
     for label, value in (("snapshot_from", snapshot_from), ("snapshot_to", snapshot_to)):
@@ -621,13 +630,16 @@ def livermore_strategy_score(
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/strategy-score",
-        lambda: livermore_candidate_history_strategy_score_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
-            current_market_state=current_market_state,
-            min_sample=min_sample,
-            primary_horizon=primary_horizon,
+        lambda: _with_livermore_workbench_summary(
+            livermore_candidate_history_strategy_score_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                snapshot_from=snapshot_from,
+                snapshot_to=snapshot_to,
+                current_market_state=current_market_state,
+                min_sample=min_sample,
+                primary_horizon=primary_horizon,
+            ),
+            summary_kind="strategy_score",
         ),
     )
 
@@ -638,7 +650,7 @@ def livermore_strategy_optimization(
     snapshot_from: str | None = Query(default=None),
     snapshot_to: str | None = Query(default=None),
     current_market_state: str | None = Query(default=None, max_length=32),
-    min_sample: int = Query(default=20, ge=1, le=10000),
+    min_sample: int = Query(default=30, ge=1, le=10000),
     primary_horizon: str = Query(default="return_5d"),
 ) -> dict[str, object]:
     _validate_snapshot_window(snapshot_from=snapshot_from, snapshot_to=snapshot_to)
@@ -648,13 +660,16 @@ def livermore_strategy_optimization(
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/strategy-optimization",
-        lambda: livermore_candidate_history_strategy_optimization_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
-            current_market_state=current_market_state,
-            min_sample=min_sample,
-            primary_horizon=primary_horizon,
+        lambda: _with_livermore_workbench_summary(
+            livermore_candidate_history_strategy_optimization_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                snapshot_from=snapshot_from,
+                snapshot_to=snapshot_to,
+                current_market_state=current_market_state,
+                min_sample=min_sample,
+                primary_horizon=primary_horizon,
+            ),
+            summary_kind="strategy_optimization",
         ),
     )
 
@@ -671,10 +686,13 @@ def livermore_cycle_proxy_backtest(
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/cycle-proxy-backtest",
-        lambda: livermore_candidate_history_cycle_proxy_backtest_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
+        lambda: _with_livermore_workbench_summary(
+            livermore_candidate_history_cycle_proxy_backtest_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                snapshot_from=snapshot_from,
+                snapshot_to=snapshot_to,
+            ),
+            summary_kind="cycle_proxy_backtest",
         ),
     )
 
@@ -691,10 +709,13 @@ def livermore_candidate_history_portfolio_backtest(
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/candidate-history-portfolio-backtest",
-        lambda: livermore_candidate_history_portfolio_backtest_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
+        lambda: _with_livermore_workbench_summary(
+            livermore_candidate_history_portfolio_backtest_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                snapshot_from=snapshot_from,
+                snapshot_to=snapshot_to,
+            ),
+            summary_kind="candidate_history_portfolio_backtest",
         ),
     )
 
@@ -725,6 +746,215 @@ def _mapping(value: object) -> dict[str, object]:
     if isinstance(value, dict):
         return value
     return {}
+
+
+def _count_array(value: object) -> int | None:
+    if isinstance(value, list):
+        return len(value)
+    return None
+
+
+def _count_mapping(value: object) -> int | None:
+    if isinstance(value, dict):
+        return len(value)
+    return None
+
+
+def _count_array_or_mapping(value: object) -> int | None:
+    if isinstance(value, (list, dict)):
+        return len(value)
+    return None
+
+
+def _present(value: object) -> bool:
+    return value not in (None, "", [], {})
+
+
+def _optional_count(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(parsed, 0)
+
+
+def _item_count(value: object) -> int | None:
+    mapping = _mapping(value)
+    if "items" in mapping:
+        return _count_array(mapping.get("items"))
+    return _count_array_or_mapping(value)
+
+
+def _livermore_workbench_strategy_summary(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "kind": "strategy",
+        "as_of_date": result.get("as_of_date") if _present(result.get("as_of_date")) else None,
+        "requested_as_of_date": (
+            result.get("requested_as_of_date") if _present(result.get("requested_as_of_date")) else None
+        ),
+        "strategy_name": result.get("strategy_name") if _present(result.get("strategy_name")) else None,
+        "basis": result.get("basis") if _present(result.get("basis")) else None,
+        "market_gate_present": _present(result.get("market_gate")),
+        "rule_readiness_count": _count_array(result.get("rule_readiness")),
+        "module_state_count": _count_array(result.get("module_states")),
+        "factor_screen_candidate_count": _item_count(result.get("factor_screen_candidates")),
+        "hybrid_fusion_candidate_count": _item_count(result.get("hybrid_fusion_candidates")),
+        "sector_rank_count": _item_count(result.get("sector_rank")),
+        "data_gap_count": _count_array(result.get("data_gaps")),
+        "diagnostic_count": _count_array(result.get("diagnostics")),
+        "supported_output_count": _count_array(result.get("supported_outputs")),
+        "unsupported_output_count": _count_array(result.get("unsupported_outputs")),
+        "risk_exit_present": _present(result.get("risk_exit")),
+    }
+
+
+def _livermore_workbench_signal_summary(result: dict[str, object]) -> dict[str, object]:
+    replay = _mapping(result.get("replay_evidence"))
+    return {
+        "kind": "signal_confluence",
+        "as_of_date": result.get("as_of_date") if _present(result.get("as_of_date")) else None,
+        "macro_context_present": _present(result.get("macro_context")),
+        "adversarial_context_present": _present(result.get("adversarial_context")),
+        "strategy_context_present": _present(result.get("strategy_context")),
+        "closed_loop_state_present": _present(result.get("closed_loop_state")),
+        "entry_observation_count": _count_array(result.get("entry_observations")),
+        "exit_observation_count": _count_array(result.get("exit_observations")),
+        "replay_evidence_present": _present(result.get("replay_evidence")),
+        "replay_evidence_row_count": _optional_count(replay.get("row_count")) if replay else None,
+        "replay_evidence_sample_count": _count_array(replay.get("sample_items")) if replay else None,
+        "diagnostic_count": _count_array(result.get("diagnostics")),
+        "position_size_hint_present": _present(result.get("position_size_hint")),
+    }
+
+
+def _livermore_workbench_candidate_history_summary(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "kind": "candidate_history",
+        "item_count": _count_array(result.get("items")),
+        "summary_present": _present(result.get("summary")),
+        "backtest_window_summary_present": _present(result.get("backtest_window_summary")),
+        "snapshot_from": result.get("snapshot_from") if _present(result.get("snapshot_from")) else None,
+        "snapshot_to": result.get("snapshot_to") if _present(result.get("snapshot_to")) else None,
+        "stock_code_present": _present(result.get("stock_code")),
+        "limit": _optional_count(result.get("limit")),
+    }
+
+
+def _livermore_workbench_strategy_score_summary(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "kind": "strategy_score",
+        "row_count": _count_array(result.get("rows")),
+        "current_market_state_row_count": _count_array(result.get("current_market_state_rows")),
+        "scope_count": _count_array_or_mapping(result.get("stock_candidate_state_scopes")),
+        "review_thresholds_present": _present(result.get("review_thresholds")),
+        "snapshot_from": result.get("snapshot_from") if _present(result.get("snapshot_from")) else None,
+        "snapshot_to": result.get("snapshot_to") if _present(result.get("snapshot_to")) else None,
+        "primary_horizon": result.get("primary_horizon") if _present(result.get("primary_horizon")) else None,
+        "min_sample": _optional_count(result.get("min_sample")),
+        "backtest_window_summary_present": _present(result.get("backtest_window_summary")),
+    }
+
+
+def _livermore_workbench_strategy_optimization_summary(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "kind": "strategy_optimization",
+        "strategy_summary_count": _count_array(result.get("strategy_summaries")),
+        "slice_count": _count_array(result.get("slices")),
+        "optimization_review_item_count": _count_array(result.get("recommendations")),
+        "pending_summary_present": _present(result.get("pending_summary")),
+        "sample_maturity_present": _present(result.get("sample_maturity")),
+        "review_thresholds_present": _present(result.get("review_thresholds")),
+        "snapshot_from": result.get("snapshot_from") if _present(result.get("snapshot_from")) else None,
+        "snapshot_to": result.get("snapshot_to") if _present(result.get("snapshot_to")) else None,
+    }
+
+
+def _livermore_workbench_cycle_proxy_summary(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "kind": "cycle_proxy_backtest",
+        "status": result.get("status") if _present(result.get("status")) else None,
+        "full_strategy_status": (
+            result.get("full_strategy_status") if _present(result.get("full_strategy_status")) else None
+        ),
+        "proxy_signal_kind": result.get("proxy_signal_kind") if _present(result.get("proxy_signal_kind")) else None,
+        "proxy_rule_present": _present(result.get("proxy_rule")),
+        "summary_present": _present(result.get("summary")),
+        "nav_series_count": _count_array(result.get("nav_series")),
+        "warning_count": _count_array(result.get("warnings")),
+        "missing_input_count": _count_array(result.get("missing_full_strategy_inputs")),
+        "snapshot_from": result.get("snapshot_from") if _present(result.get("snapshot_from")) else None,
+        "snapshot_to": result.get("snapshot_to") if _present(result.get("snapshot_to")) else None,
+    }
+
+
+def _livermore_workbench_portfolio_summary(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "kind": "candidate_history_portfolio_backtest",
+        "status": result.get("status") if _present(result.get("status")) else None,
+        "full_strategy_status": (
+            result.get("full_strategy_status") if _present(result.get("full_strategy_status")) else None
+        ),
+        "signal_kind": result.get("signal_kind") if _present(result.get("signal_kind")) else None,
+        "rebalance_rule_present": _present(result.get("rebalance_rule")),
+        "weighting_rule_present": _present(result.get("weighting_rule")),
+        "summary_present": _present(result.get("summary")),
+        "nav_series_count": _count_array(result.get("nav_series")),
+        "rebalance_log_count": _count_array(result.get("rebalance_log")),
+        "warning_count": _count_array(result.get("warnings")),
+        "missing_input_count": _count_array(result.get("missing_full_strategy_inputs")),
+        "snapshot_from": result.get("snapshot_from") if _present(result.get("snapshot_from")) else None,
+        "snapshot_to": result.get("snapshot_to") if _present(result.get("snapshot_to")) else None,
+    }
+
+
+def _livermore_workbench_sector_series_summary(result: dict[str, object]) -> dict[str, object]:
+    return {
+        "kind": "sector_rank_series",
+        "state": result.get("state") if _present(result.get("state")) else None,
+        "as_of_date": result.get("as_of_date") if _present(result.get("as_of_date")) else None,
+        "series_count": _count_array(result.get("series")),
+        "top_k": _optional_count(result.get("top_k")),
+        "window_days": _optional_count(result.get("window_days")),
+        "formula_version": result.get("formula_version") if _present(result.get("formula_version")) else None,
+        "unsupported_note_count": _count_array(result.get("unsupported_notes")),
+    }
+
+
+def _livermore_workbench_summary(result: dict[str, object], *, summary_kind: str) -> dict[str, object]:
+    if summary_kind == "strategy":
+        return _livermore_workbench_strategy_summary(result)
+    if summary_kind == "signal_confluence":
+        return _livermore_workbench_signal_summary(result)
+    if summary_kind == "candidate_history":
+        return _livermore_workbench_candidate_history_summary(result)
+    if summary_kind == "strategy_score":
+        return _livermore_workbench_strategy_score_summary(result)
+    if summary_kind == "strategy_optimization":
+        return _livermore_workbench_strategy_optimization_summary(result)
+    if summary_kind == "cycle_proxy_backtest":
+        return _livermore_workbench_cycle_proxy_summary(result)
+    if summary_kind == "candidate_history_portfolio_backtest":
+        return _livermore_workbench_portfolio_summary(result)
+    if summary_kind == "sector_rank_series":
+        return _livermore_workbench_sector_series_summary(result)
+    return {
+        "kind": summary_kind,
+        "field_count": _count_mapping(result),
+    }
+
+
+def _with_livermore_workbench_summary(
+    envelope: dict[str, object],
+    *,
+    summary_kind: str,
+) -> dict[str, object]:
+    result_value = envelope.get("result")
+    if not isinstance(result_value, dict):
+        return envelope
+    result_value["workbench_summary"] = _livermore_workbench_summary(result_value, summary_kind=summary_kind)
+    return envelope
 
 
 def _list_of_mappings(value: object) -> list[dict[str, object]]:
@@ -874,11 +1104,14 @@ def livermore_sector_rank_series(
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/sector-rank-series",
-        lambda: livermore_sector_rank_series_envelope(
-            duckdb_path=str(settings.duckdb_path),
-            as_of_date=parsed_as_of,
-            window_days=window_days,
-            sector_code=sector_code,
-            top_k=top_k,
+        lambda: _with_livermore_workbench_summary(
+            livermore_sector_rank_series_envelope(
+                duckdb_path=str(settings.duckdb_path),
+                as_of_date=parsed_as_of,
+                window_days=window_days,
+                sector_code=sector_code,
+                top_k=top_k,
+            ),
+            summary_kind="sector_rank_series",
         ),
     )

@@ -1985,6 +1985,7 @@ export type LivermoreCycleProxyBacktestPayload = {
   warnings: string[];
   summary: LivermoreCycleProxyBacktestSummary | null;
   nav_series: LivermoreCycleProxyBacktestNavPoint[];
+  workbench_summary?: Record<string, unknown>;
 };
 
 export type LivermoreCandidateHistoryPortfolioBacktestNavPoint = {
@@ -2030,6 +2031,7 @@ export type LivermoreCandidateHistoryPortfolioBacktestPayload = {
   summary: LivermoreCandidateHistoryPortfolioBacktestSummary | null;
   nav_series: LivermoreCandidateHistoryPortfolioBacktestNavPoint[];
   rebalance_log: LivermoreCandidateHistoryPortfolioBacktestRebalance[];
+  workbench_summary?: Record<string, unknown>;
 };
 
 export type LivermoreStrategyPayload = {
@@ -2052,6 +2054,7 @@ export type LivermoreStrategyPayload = {
   theme_breakout?: LivermoreThemeBreakoutPayload;
   hybrid_fusion_candidates?: HybridFusionCandidatesPayload;
   risk_exit?: LivermoreRiskExitPayload;
+  workbench_summary?: Record<string, unknown>;
 };
 
 export type LivermoreStockDetailCandle = {
@@ -2108,6 +2111,7 @@ export type LivermoreSectorRankSeriesPayload = {
   formula_version: string;
   series: LivermoreSectorRankSeriesPoint[];
   unsupported_notes: string[];
+  workbench_summary?: Record<string, unknown>;
 };
 
 export type LivermoreCandidateHistoryRow = {
@@ -2193,6 +2197,7 @@ export type LivermoreCandidateHistoryHorizonStats = {
   positive_count: number;
   non_positive_count: number;
   avg_return: number | null;
+  median_return?: number | null;
   win_rate: number | null;
 };
 
@@ -2240,6 +2245,7 @@ export type LivermoreCandidateHistoryPayload = {
   summary?: LivermoreCandidateHistoryLegacySummary | null;
   backtest_window_summary?: BacktestWindowSummary | null;
   items: LivermoreCandidateHistoryRow[];
+  workbench_summary?: Record<string, unknown>;
 };
 
 export type LivermoreStrategyScoreSampleStatus = "sufficient" | "insufficient" | string;
@@ -2271,6 +2277,7 @@ export type LivermoreStrategyScoreSnapshotStat = {
   positive_count: number;
   non_positive_count: number;
   avg_return: number | null;
+  median_return?: number | null;
   win_rate: number | null;
 };
 
@@ -2323,10 +2330,13 @@ export type LivermoreStrategyScorePayload = {
   snapshot_to: string | null;
   primary_horizon: LivermoreCandidateHistoryHorizonKey;
   min_sample: number;
+  review_thresholds?: Record<string, unknown>;
   current_market_state: string | null;
   backtest_window_summary?: BacktestWindowSummary | null;
   rows: LivermoreStrategyScoreRow[];
   current_market_state_rows: LivermoreStrategyScoreRow[];
+  stock_candidate_state_scopes?: Record<string, unknown> | unknown[];
+  workbench_summary?: Record<string, unknown>;
 };
 
 export type LivermoreStrategyOptimizationHorizonKey =
@@ -2345,9 +2355,12 @@ export type LivermoreStrategyOptimizationRecommendation = {
   priority_label: "优先复核" | "降权观察" | "继续观察" | "样本不足" | string;
   reason: string;
   primary_horizon: LivermoreStrategyOptimizationHorizonKey;
+  review_horizon?: LivermoreStrategyOptimizationHorizonKey;
   available_count: number;
   min_sample: number;
   avg_return: number | null;
+  median_return?: number | null;
+  t20_median_return?: number | null;
   win_rate: number | null;
   score: number | null;
 };
@@ -2416,6 +2429,7 @@ export type LivermoreStrategyOptimizationPayload = {
   snapshot_to: string | null;
   primary_horizon: LivermoreStrategyOptimizationHorizonKey;
   min_sample: number;
+  review_thresholds?: Record<string, unknown>;
   current_market_state: string | null;
   backtest_window_summary?: BacktestWindowSummary | null;
   strategy_summaries: LivermoreStrategyOptimizationSummary[];
@@ -2430,6 +2444,7 @@ export type LivermoreStrategyOptimizationPayload = {
   >;
   pending_summary: LivermoreStrategyOptimizationPendingSummary;
   sample_maturity?: LivermoreStrategyOptimizationSampleMaturity | null;
+  workbench_summary?: Record<string, unknown>;
 };
 
 export type ConfluenceReplayBlockedDate = {
@@ -2565,6 +2580,7 @@ export type LivermoreSignalConfluencePayload = {
   replay_evidence?: LivermoreSignalConfluenceReplayEvidence | null;
   diagnostics: LivermoreSignalConfluenceDiagnostic[];
   disclaimer: string;
+  workbench_summary?: Record<string, unknown>;
 };
 
 export type LivermorePositionSnapshotPayload = {

@@ -196,6 +196,63 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
     )
 
 
+def test_candidate_history_envelope_builds_backtest_window_once_when_history_exists(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "candidate-history-window-once.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        ensure_livermore_candidate_history_schema(conn)
+        conn.execute(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date,
+              stock_code,
+              stock_name,
+              candidate_rank,
+              data_status,
+              formula_version,
+              source_version,
+              vendor_version,
+              rule_version,
+              run_id,
+              signal_kind
+            ) values ('2026-05-29', '000001.SZ', '平安银行', 1, 'complete', 'fv1', 'sv1', 'vv1', 'rv1', 'run1', 'stock_candidate')
+            """
+        )
+    finally:
+        conn.close()
+
+    calls: list[dict[str, object]] = []
+
+    def fake_backtest_window_summary(**kwargs):
+        calls.append(dict(kwargs))
+        return service._empty_backtest_window_summary(
+            snapshot_from=kwargs["snapshot_from"],
+            snapshot_to=kwargs["snapshot_to"],
+        )
+
+    monkeypatch.setattr(
+        service,
+        "livermore_candidate_history_backtest_window_summary",
+        fake_backtest_window_summary,
+    )
+
+    envelope = service.livermore_candidate_history_envelope(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-31",
+        limit=20,
+    )
+
+    result = envelope["result"]
+    assert isinstance(result, dict)
+    assert result["items"]
+    assert len(calls) == 1
+
+
 def test_strategy_score_reuses_loaded_window_rows_for_backtest_summary(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "strategy-score-single-load.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
@@ -435,6 +492,7 @@ def test_horizon_stats_reads_return_fields_once_per_row() -> None:
         "positive_count": 1,
         "non_positive_count": 1,
         "avg_return": -0.005,
+        "median_return": -0.005,
         "win_rate": 0.5,
     }
     assert stats["return_5d"]["available_count"] == 2

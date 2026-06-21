@@ -9,6 +9,7 @@ import {
   SA_SHELL_REVIEW_RAIL,
   SA_SHELL_REVIEW_RAIL_HEAD,
 } from "../lib/stockAnalysisPageChrome";
+import type { StockEndpointEvidenceItem } from "../lib/stockAnalysisPageModel";
 
 type ClosedLoopRailProps = ComponentProps<typeof StockAnalysisClosedLoopSummaryRail>;
 type RiskExitProps = ComponentProps<typeof StockAnalysisRiskExitSection>;
@@ -28,6 +29,7 @@ type StockAnalysisEvidenceLedgerRailProps = {
   basisLabel: string;
   qualityLabel: string;
   updatedAtLabel: string;
+  endpointItems: StockEndpointEvidenceItem[];
   diagnosticsOpen: boolean;
   onOpenDiagnostics: () => void;
   onCloseDiagnostics: () => void;
@@ -61,6 +63,7 @@ export function StockAnalysisEvidenceLedgerRail({
   basisLabel,
   qualityLabel,
   updatedAtLabel,
+  endpointItems,
   diagnosticsOpen,
   onOpenDiagnostics,
   onCloseDiagnostics,
@@ -112,7 +115,7 @@ export function StockAnalysisEvidenceLedgerRail({
           </div>
           <div>
             <dt>风险退出</dt>
-            <dd>{riskExitUnsupported ? "blocked" : riskTriggeredCount > 0 ? `触发 ${riskTriggeredCount}` : `触发 0，观察 ${riskWatchCount}`}</dd>
+            <dd>{riskExitUnsupported ? "阻断" : riskTriggeredCount > 0 ? `触发 ${riskTriggeredCount}` : `触发 0，观察 ${riskWatchCount}`}</dd>
           </div>
           <div>
             <dt>下一步</dt>
@@ -127,6 +130,37 @@ export function StockAnalysisEvidenceLedgerRail({
           <p>更新时间：{updatedAtLabel}</p>
           <p className="stock-analysis-page__home-rail-data-status">数据已更新 · 复核读数</p>
         </div>
+        {endpointItems.length > 0 ? (
+          <section
+            className="stock-analysis-page__endpoint-evidence"
+            data-testid="stock-analysis-endpoint-evidence-rail"
+            aria-label="接口证据状态"
+          >
+            <div className="stock-analysis-page__endpoint-evidence-head">
+              <h3>接口证据</h3>
+              <span>{endpointItems.length} 条链路</span>
+            </div>
+            <ul>
+              {endpointItems.map((item) => (
+                <li
+                  key={item.key}
+                  data-tone={item.tone}
+                  data-testid={`stock-analysis-endpoint-evidence-${item.key}`}
+                >
+                  <div>
+                    <span>{item.label}</span>
+                    <strong>{item.statusLabel}</strong>
+                  </div>
+                  <p>{item.detail}</p>
+                  <small>{item.dateLabel}</small>
+                  <small>{item.issueLabel}</small>
+                  <small>{item.metaLabel}</small>
+                  <small>{item.traceLabel}</small>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <button
           type="button"
           className="stock-analysis-page__home-rail-diagnostic-entry"

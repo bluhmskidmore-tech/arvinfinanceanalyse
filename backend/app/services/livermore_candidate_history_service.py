@@ -51,6 +51,12 @@ _HORIZON_LABELS = {
     "return_10d": "T+10",
     "return_20d": "T+20",
 }
+_STRATEGY_REVIEW_HORIZON = "return_5d"
+_STRATEGY_REVIEW_LONG_HORIZON = "return_20d"
+_STRATEGY_REVIEW_MIN_T5_SAMPLE = 30
+_STRATEGY_REVIEW_MIN_T5_WIN_RATE = 0.5
+_STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR = 0.012
+_STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_TARGET = 0.024
 _ENTRY_ALLOWED_STATES = {"WARM", "HOT"}
 _COMPLETION_HORIZONS = ("return_1d", "return_5d", "return_20d")
 _CYCLE_PROXY_SIGNAL_KIND = "stock_candidate"
@@ -132,31 +138,34 @@ def livermore_candidate_history_envelope(
     """Read persisted candidate history slice; DuckDB SELECT only (API read-only)."""
     trimmed_code = stock_code.strip().upper() if stock_code else None
     trimmed_code = trimmed_code if trimmed_code else None
+    normalized_snapshot_from = snapshot_from.strip() if snapshot_from else None
+    normalized_snapshot_to = snapshot_to.strip() if snapshot_to else None
 
-    result_payload_empty: dict[str, object] = {
-        "items": [],
-        "summary": _build_summary([]),
-        "backtest_window_summary": livermore_candidate_history_backtest_window_summary(
-            duckdb_path=duckdb_path,
-            stock_code=trimmed_code,
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
-        ),
-        "stock_code": trimmed_code,
-        "snapshot_from": snapshot_from.strip() if snapshot_from else None,
-        "snapshot_to": snapshot_to.strip() if snapshot_to else None,
-        "limit": limit,
-    }
+    def build_empty_payload() -> dict[str, object]:
+        return {
+            "items": [],
+            "summary": _build_summary([]),
+            "backtest_window_summary": livermore_candidate_history_backtest_window_summary(
+                duckdb_path=duckdb_path,
+                stock_code=trimmed_code,
+                snapshot_from=normalized_snapshot_from,
+                snapshot_to=normalized_snapshot_to,
+            ),
+            "stock_code": trimmed_code,
+            "snapshot_from": normalized_snapshot_from,
+            "snapshot_to": normalized_snapshot_to,
+            "limit": limit,
+        }
 
     path = Path(duckdb_path)
     if not path.is_file():
-        return _wrap_empty_envelope(payload=result_payload_empty)
+        return _wrap_empty_envelope(payload=build_empty_payload())
 
     conn = duckdb.connect(str(path), read_only=True)
     try:
         tables = {r[0] for r in conn.execute("show tables").fetchall()}
         if TABLE_HIST not in tables:
-            return _wrap_empty_envelope(payload=dict(result_payload_empty))
+            return _wrap_empty_envelope(payload=build_empty_payload())
         available_columns = _available_columns(conn)
 
         where_clauses: list[str] = []
@@ -164,12 +173,12 @@ def livermore_candidate_history_envelope(
         if trimmed_code:
             where_clauses.append("stock_code = ?")
             bindings.append(trimmed_code)
-        if snapshot_from and snapshot_from.strip():
+        if normalized_snapshot_from:
             where_clauses.append("snapshot_as_of_date >= ?")
-            bindings.append(snapshot_from.strip()[:10])
-        if snapshot_to and snapshot_to.strip():
+            bindings.append(normalized_snapshot_from[:10])
+        if normalized_snapshot_to:
             where_clauses.append("snapshot_as_of_date <= ?")
-            bindings.append(snapshot_to.strip()[:10])
+            bindings.append(normalized_snapshot_to[:10])
         sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
         bindings.append(limit)
 
@@ -194,16 +203,16 @@ def livermore_candidate_history_envelope(
     backtest_window_summary = livermore_candidate_history_backtest_window_summary(
         duckdb_path=duckdb_path,
         stock_code=trimmed_code,
-        snapshot_from=snapshot_from,
-        snapshot_to=snapshot_to,
+        snapshot_from=normalized_snapshot_from,
+        snapshot_to=normalized_snapshot_to,
     )
     result_payload = {
         "items": items,
         "summary": _build_summary(items, backtest_window_summary=backtest_window_summary),
         "backtest_window_summary": backtest_window_summary,
         "stock_code": trimmed_code,
-        "snapshot_from": snapshot_from.strip() if snapshot_from else None,
-        "snapshot_to": snapshot_to.strip() if snapshot_to else None,
+        "snapshot_from": normalized_snapshot_from,
+        "snapshot_to": normalized_snapshot_to,
         "limit": limit,
     }
 
@@ -1119,6 +1128,16 @@ def _build_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any
     }
 
 
+def _median_float(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return round(ordered[midpoint], 6)
+    return round((ordered[midpoint - 1] + ordered[midpoint]) / 2, 6)
+
+
 def _horizon_stat_from_values(values: list[float], *, item_count: int) -> dict[str, Any]:
     positive_count = sum(1 for value in values if value > 0)
     return {
@@ -1127,6 +1146,7 @@ def _horizon_stat_from_values(values: list[float], *, item_count: int) -> dict[s
         "positive_count": positive_count,
         "non_positive_count": len(values) - positive_count,
         "avg_return": round(sum(values) / len(values), 6) if values else None,
+        "median_return": _median_float(values),
         "win_rate": round(positive_count / len(values), 6) if values else None,
     }
 
@@ -1192,7 +1212,7 @@ def _build_strategy_score_payload(
     primary_horizon: str,
     backtest_window_summary: dict[str, Any],
 ) -> dict[str, Any]:
-    effective_min_sample = max(1, int(min_sample))
+    effective_min_sample = max(_STRATEGY_REVIEW_MIN_T5_SAMPLE, int(min_sample))
     grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for item in items:
         market_state = _market_state_from_signal_evidence(item)
@@ -1232,9 +1252,9 @@ def _build_strategy_score_payload(
             {
                 **row,
                 "reason": _current_state_insufficient_reason(
-                    row["stats"][primary_horizon]["available_count"],
+                    row["stats"][_STRATEGY_REVIEW_HORIZON]["available_count"],
                     min_sample=effective_min_sample,
-                    primary_horizon=primary_horizon,
+                    primary_horizon=_STRATEGY_REVIEW_HORIZON,
                 ),
             }
             for row in current_rows
@@ -1246,6 +1266,7 @@ def _build_strategy_score_payload(
         "snapshot_to": snapshot_to,
         "primary_horizon": primary_horizon,
         "min_sample": effective_min_sample,
+        "review_thresholds": _strategy_review_thresholds(effective_min_sample),
         "current_market_state": normalized_current_state,
         "backtest_window_summary": backtest_window_summary,
         "rows": _sort_strategy_score_rows(rows),
@@ -1264,7 +1285,7 @@ def _build_strategy_optimization_payload(
     primary_horizon: str,
     backtest_window_summary: dict[str, Any],
 ) -> dict[str, Any]:
-    effective_min_sample = max(1, int(min_sample))
+    effective_min_sample = max(_STRATEGY_REVIEW_MIN_T5_SAMPLE, int(min_sample))
     normalized_current_state = _normalized_text(current_market_state) or None
     grouped: dict[str, list[dict[str, Any]]] = {}
     for item in items:
@@ -1306,6 +1327,7 @@ def _build_strategy_optimization_payload(
         "snapshot_to": snapshot_to,
         "primary_horizon": primary_horizon,
         "min_sample": effective_min_sample,
+        "review_thresholds": _strategy_review_thresholds(effective_min_sample),
         "current_market_state": normalized_current_state,
         "backtest_window_summary": backtest_window_summary,
         "strategy_summaries": strategy_summaries,
@@ -1831,7 +1853,7 @@ def _strategy_optimization_summary(
 ) -> dict[str, Any]:
     stats = _build_horizon_stats(items)
     recommendation = _optimization_recommendation(
-        primary_stats=stats[primary_horizon],
+        stats=stats,
         min_sample=min_sample,
         primary_horizon=primary_horizon,
     )
@@ -2098,7 +2120,7 @@ def _strategy_optimization_slice(
 ) -> dict[str, Any]:
     stats = _build_horizon_stats(items)
     recommendation = _optimization_recommendation(
-        primary_stats=stats[primary_horizon],
+        stats=stats,
         min_sample=min_sample,
         primary_horizon=primary_horizon,
     )
@@ -2118,52 +2140,24 @@ def _strategy_optimization_slice(
 
 def _optimization_recommendation(
     *,
-    primary_stats: dict[str, Any],
+    stats: dict[str, dict[str, Any]],
     min_sample: int,
     primary_horizon: str,
 ) -> dict[str, Any]:
-    available_count = int(primary_stats.get("available_count") or 0)
-    avg_return = primary_stats.get("avg_return")
-    win_rate = primary_stats.get("win_rate")
-    score = _optimization_score(avg_return=avg_return, win_rate=win_rate)
-    horizon_label = _HORIZON_LABELS[primary_horizon]
-    if available_count < min_sample or avg_return is None or win_rate is None:
-        return {
-            "action": "pending_more_history",
-            "priority_label": "样本不足",
-            "reason": f"{horizon_label} 可用样本 {available_count}/{min_sample}，样本不足，只展示不作为调参依据。",
-            "primary_horizon": primary_horizon,
-            "available_count": available_count,
-            "min_sample": min_sample,
-            "avg_return": avg_return,
-            "win_rate": win_rate,
-            "score": score,
-        }
-
-    avg = float(avg_return)
-    win = float(win_rate)
-    if avg > 0 and win >= 0.5:
-        action = "promote"
-        priority_label = "优先复核"
-        reason = f"{horizon_label} 样本 {available_count}，均值 {avg * 100:+.2f}%，胜率 {win * 100:.1f}%，优先复核排序。"
-    elif avg <= 0 or win < 0.45:
-        action = "downgrade"
-        priority_label = "降权观察"
-        reason = f"{horizon_label} 样本 {available_count}，均值 {avg * 100:+.2f}%，胜率 {win * 100:.1f}%，降权观察。"
-    else:
-        action = "observe"
-        priority_label = "继续观察"
-        reason = f"{horizon_label} 样本 {available_count}，均值 {avg * 100:+.2f}%，胜率 {win * 100:.1f}%，信号不够强。"
+    review = _strategy_review_gate(stats=stats, min_sample=min_sample)
     return {
-        "action": action,
-        "priority_label": priority_label,
-        "reason": reason,
+        "action": review["action"],
+        "priority_label": review["priority_label"],
+        "reason": review["reason"],
         "primary_horizon": primary_horizon,
-        "available_count": available_count,
-        "min_sample": min_sample,
-        "avg_return": avg_return,
-        "win_rate": win_rate,
-        "score": score,
+        "review_horizon": _STRATEGY_REVIEW_HORIZON,
+        "available_count": review["available_count"],
+        "min_sample": review["min_sample"],
+        "avg_return": review["avg_return"],
+        "median_return": review["median_return"],
+        "t20_median_return": review["t20_median_return"],
+        "win_rate": review["win_rate"],
+        "score": review["score"],
     }
 
 
@@ -2174,6 +2168,113 @@ def _optimization_score(*, avg_return: Any, win_rate: Any) -> float | None:
         return round(float(win_rate) * 100 + float(avg_return) * 100, 4)
     except (TypeError, ValueError):
         return None
+
+
+def _strategy_review_thresholds(min_sample: int) -> dict[str, Any]:
+    return {
+        "review_horizon": _STRATEGY_REVIEW_HORIZON,
+        "mature_min_sample": max(_STRATEGY_REVIEW_MIN_T5_SAMPLE, int(min_sample)),
+        "min_t5_win_rate": _STRATEGY_REVIEW_MIN_T5_WIN_RATE,
+        "official_t5_avg_return_band": {
+            "lower": _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR,
+            "upper": _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_TARGET,
+        },
+        "long_horizon": _STRATEGY_REVIEW_LONG_HORIZON,
+        "long_horizon_median_rule": "not_below_t5_median",
+    }
+
+
+def _strategy_review_gate(*, stats: dict[str, dict[str, Any]], min_sample: int) -> dict[str, Any]:
+    required_sample = max(_STRATEGY_REVIEW_MIN_T5_SAMPLE, int(min_sample))
+    t5_stats = stats.get(_STRATEGY_REVIEW_HORIZON) or {}
+    t20_stats = stats.get(_STRATEGY_REVIEW_LONG_HORIZON) or {}
+    available_count = int(t5_stats.get("available_count") or 0)
+    avg_return = _float_value(t5_stats.get("avg_return"))
+    win_rate = _float_value(t5_stats.get("win_rate"))
+    median_return = _float_value(t5_stats.get("median_return"))
+    t20_median_return = _float_value(t20_stats.get("median_return"))
+    score = _optimization_score(avg_return=avg_return, win_rate=win_rate)
+
+    if available_count < required_sample or avg_return is None or win_rate is None:
+        return {
+            "action": "pending_more_history",
+            "priority_label": "样本不足",
+            "sample_status": "insufficient",
+            "reason": _sample_insufficient_reason(
+                available_count,
+                min_sample=required_sample,
+                primary_horizon=_STRATEGY_REVIEW_HORIZON,
+            ),
+            "available_count": available_count,
+            "min_sample": required_sample,
+            "avg_return": avg_return,
+            "median_return": median_return,
+            "t20_median_return": t20_median_return,
+            "win_rate": win_rate,
+            "score": score,
+            "passed": False,
+        }
+
+    issues: list[str] = []
+    metric_failed = False
+    if win_rate < _STRATEGY_REVIEW_MIN_T5_WIN_RATE:
+        metric_failed = True
+        issues.append(f"T+5 胜率低于 {_STRATEGY_REVIEW_MIN_T5_WIN_RATE * 100:.0f}%")
+    if avg_return < _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR:
+        metric_failed = True
+        issues.append("T+5 均值低于 official 1.20%-2.40% 区间下沿")
+
+    long_window_pending = t20_median_return is None
+    long_window_worse = median_return is not None and t20_median_return is not None and t20_median_return < median_return
+    if long_window_pending:
+        issues.append("T+20 中位数待成熟")
+    elif long_window_worse:
+        issues.append("T+20 中位数低于 T+5 中位数")
+
+    if metric_failed or long_window_worse:
+        action = "downgrade"
+        priority_label = "降权观察"
+    elif long_window_pending:
+        action = "observe"
+        priority_label = "继续观察"
+    else:
+        action = "promote"
+        priority_label = "优先复核"
+
+    base_reason = (
+        f"T+5 成熟样本 {available_count}/{required_sample}，胜率 {win_rate * 100:.1f}% ，"
+        f"均值 {avg_return * 100:+.2f}%（official 1.20%-2.40%），"
+        f"中位数 {_format_optional_percent(median_return)}，"
+        f"T+20 中位数 {_format_optional_percent(t20_median_return)}，评分 {score:.2f}。"
+    )
+    if action == "promote":
+        reason = base_reason + "通过 T+5 成熟样本、胜率、official 下沿和 T+20 中位数不恶化门槛，仅用于优先复核排序。"
+    elif action == "observe":
+        reason = base_reason + "；".join(issues) + "，继续观察。"
+    else:
+        reason = base_reason + "；".join(issues) + "，降权观察。"
+
+    return {
+        "action": action,
+        "priority_label": priority_label,
+        "sample_status": "sufficient",
+        "reason": reason,
+        "available_count": available_count,
+        "min_sample": required_sample,
+        "avg_return": avg_return,
+        "median_return": median_return,
+        "t20_median_return": t20_median_return,
+        "win_rate": win_rate,
+        "score": score,
+        "passed": action == "promote",
+    }
+
+
+def _format_optional_percent(value: Any) -> str:
+    numeric = _float_value(value)
+    if numeric is None:
+        return "待成熟"
+    return f"{numeric * 100:+.2f}%"
 
 
 def _build_date_weighted_horizon_stats(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -2476,9 +2577,8 @@ def _strategy_score_row(
         min_sample=min_sample,
         primary_horizon=primary_horizon,
     )
-    primary_stats = stats[primary_horizon]
-    available_count = int(primary_stats["available_count"])
-    if available_count < min_sample:
+    review = _strategy_review_gate(stats=stats, min_sample=min_sample)
+    if review["sample_status"] == "insufficient":
         return {
             "market_state": market_state,
             "signal_kind": signal_kind,
@@ -2487,35 +2587,20 @@ def _strategy_score_row(
             "priority_score": None,
             "priority_rank": None,
             "priority_label": "样本不足",
-            "reason": _sample_insufficient_reason(
-                available_count,
-                min_sample=min_sample,
-                primary_horizon=primary_horizon,
-            ),
+            "reason": review["reason"],
             "stats": stats,
             "diagnostics": diagnostics,
         }
 
-    win_rate = float(primary_stats["win_rate"])
-    avg_return = float(primary_stats["avg_return"])
-    priority_score = round(win_rate * 100 + avg_return * 100, 2)
-    priority_label = "降权观察" if win_rate < 0.5 or avg_return <= 0 else "优先复核"
     return {
         "market_state": market_state,
         "signal_kind": signal_kind,
         "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
         "sample_status": "sufficient",
-        "priority_score": priority_score,
+        "priority_score": review["score"],
         "priority_rank": None,
-        "priority_label": priority_label,
-        "reason": _score_reason(
-            available_count=available_count,
-            win_rate=win_rate,
-            avg_return=avg_return,
-            priority_score=priority_score,
-            priority_label=priority_label,
-            primary_horizon=primary_horizon,
-        ),
+        "priority_label": review["priority_label"],
+        "reason": review["reason"],
         "stats": stats,
         "diagnostics": diagnostics,
     }
@@ -2537,7 +2622,7 @@ def _empty_strategy_score_row(
         "priority_score": None,
         "priority_rank": None,
         "priority_label": "样本不足",
-        "reason": _sample_insufficient_reason(0, min_sample=min_sample, primary_horizon=primary_horizon),
+        "reason": _sample_insufficient_reason(0, min_sample=min_sample, primary_horizon=_STRATEGY_REVIEW_HORIZON),
         "stats": stats,
         "diagnostics": _empty_strategy_score_diagnostics(),
     }
@@ -2551,7 +2636,7 @@ def _rank_strategy_score_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]
     for state_rows in rows_by_state.values():
         rank = 1
         for row in _sort_strategy_score_rows(state_rows):
-            if row["sample_status"] == "sufficient":
+            if row["sample_status"] == "sufficient" and row.get("priority_label") == "优先复核":
                 row = {**row, "priority_rank": rank}
                 rank += 1
             ranked_rows.append(row)
@@ -2612,9 +2697,9 @@ def _strategy_score_diagnostics(
         diagnostics["priority_scope"] = "rank<=10"
         diagnostics["priority_scope_label"] = "前10名优先复核"
         diagnostics["priority_scope_stats"] = _build_horizon_stats(priority_scope_items)
-        diagnostics["maturity"] = _maturity_diagnostics(priority_scope_items, primary_horizon=primary_horizon)
+        diagnostics["maturity"] = _maturity_diagnostics(priority_scope_items, primary_horizon=_STRATEGY_REVIEW_HORIZON)
     else:
-        diagnostics["maturity"] = _maturity_diagnostics(items, primary_horizon=primary_horizon)
+        diagnostics["maturity"] = _maturity_diagnostics(items, primary_horizon=_STRATEGY_REVIEW_HORIZON)
     diagnostics["risk_flags"] = _strategy_score_risk_flags(
         market_state=market_state,
         signal_kind=signal_kind,
@@ -2642,23 +2727,19 @@ def _rank_bucket_diagnostics(
         if not bucket_items:
             continue
         bucket_stats = _build_horizon_stats(bucket_items)
-        primary_stats = bucket_stats[primary_horizon]
-        available_count = int(primary_stats["available_count"])
+        review = _strategy_review_gate(stats=bucket_stats, min_sample=min_sample)
         priority_label, included_in_priority, reason = _rank_bucket_priority(
             market_state=market_state,
             signal_kind=signal_kind,
             rank_from=rank_from,
-            available_count=available_count,
-            primary_stats=primary_stats,
-            min_sample=min_sample,
-            primary_horizon=primary_horizon,
+            review=review,
         )
         buckets.append(
             {
                 "label": label,
                 "rank_from": rank_from,
                 "rank_to": rank_to,
-                "sample_status": "sufficient" if available_count >= min_sample else "insufficient",
+                "sample_status": review["sample_status"],
                 "priority_label": priority_label,
                 "included_in_priority": included_in_priority,
                 "reason": reason,
@@ -2681,39 +2762,22 @@ def _rank_bucket_priority(
     market_state: str,
     signal_kind: str,
     rank_from: int,
-    available_count: int,
-    primary_stats: dict[str, Any],
-    min_sample: int,
-    primary_horizon: str,
+    review: dict[str, Any],
 ) -> tuple[str, bool, str]:
-    if available_count < min_sample:
-        return (
-            "样本不足",
-            False,
-            _sample_insufficient_reason(
-                available_count,
-                min_sample=min_sample,
-                primary_horizon=primary_horizon,
-            ),
-        )
+    if review["sample_status"] == "insufficient":
+        return (str(review["priority_label"]), False, str(review["reason"]))
     if market_state == "OVERHEAT" and signal_kind == "factor_screen" and rank_from > 10:
         return (
             "降权观察",
             False,
             "OVERHEAT 状态下 rank > 10 的多因子候选降权观察；优先复核仅覆盖前10名。",
         )
-    win_rate = float(primary_stats["win_rate"])
-    avg_return = float(primary_stats["avg_return"])
-    if win_rate < 0.5 or avg_return <= 0:
-        return (
-            "降权观察",
-            False,
-            f"{_HORIZON_LABELS[primary_horizon]} 胜率低于 50% 或均值不为正，降权观察。",
-        )
+    if review["action"] != "promote":
+        return (str(review["priority_label"]), False, str(review["reason"]))
     return (
         "优先复核",
         True,
-        f"{_HORIZON_LABELS[primary_horizon]} 样本满足阈值且均值为正，仅用于优先复核排序。",
+        str(review["reason"]),
     )
 
 
@@ -2726,22 +2790,23 @@ def _strategy_score_risk_flags(
 ) -> list[dict[str, Any]]:
     if market_state != "OVERHEAT" or signal_kind != "stock_candidate":
         return []
-    t20_stats = stats["return_20d"]
+    t5_stats = stats[_STRATEGY_REVIEW_HORIZON]
+    t20_stats = stats[_STRATEGY_REVIEW_LONG_HORIZON]
     available_count = int(t20_stats["available_count"])
     if available_count < min_sample:
         return []
-    win_rate = t20_stats["win_rate"]
-    avg_return = t20_stats["avg_return"]
-    if win_rate is None or avg_return is None or (float(win_rate) >= 0.5 and float(avg_return) > 0):
+    t5_median = _float_value(t5_stats.get("median_return"))
+    t20_median = _float_value(t20_stats.get("median_return"))
+    if t5_median is None or t20_median is None or t20_median >= t5_median:
         return []
     return [
         {
-            "kind": "long_window_risk",
-            "label": "长窗口风险",
-            "horizon": "return_20d",
+            "kind": "long_window_median_worse",
+            "label": "长窗口中位数恶化",
+            "horizon": _STRATEGY_REVIEW_LONG_HORIZON,
             "reason": (
-                f"T+20 样本 {available_count}，胜率 {float(win_rate) * 100:.1f}%，"
-                f"均值 {float(avg_return) * 100:+.2f}%，仅按短窗口复核。"
+                f"T+20 样本 {available_count}，中位数 {t20_median * 100:+.2f}% "
+                f"低于 T+5 中位数 {t5_median * 100:+.2f}%，仅按短窗口复核。"
             ),
             "stats": t20_stats,
         }
@@ -2851,6 +2916,7 @@ def _snapshot_maturity_stat(
         "positive_count": stat["positive_count"],
         "non_positive_count": stat["non_positive_count"],
         "avg_return": stat["avg_return"],
+        "median_return": stat["median_return"],
         "win_rate": stat["win_rate"],
     }
 
@@ -2883,6 +2949,7 @@ def _empty_horizon_stats_by_key() -> dict[str, dict[str, Any]]:
             "positive_count": 0,
             "non_positive_count": 0,
             "avg_return": None,
+            "median_return": None,
             "win_rate": None,
         }
         for key in _HORIZON_LABELS
@@ -2925,6 +2992,7 @@ def _horizon_stat(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
         "positive_count": positive_count,
         "non_positive_count": len(values) - positive_count,
         "avg_return": round(sum(values) / len(values), 6) if values else None,
+        "median_return": _median_float(values),
         "win_rate": round(positive_count / len(values), 6) if values else None,
     }
 

@@ -34,6 +34,7 @@ const routeModulePreloaders = {
   "product-category-pnl-audit": () =>
     import("../features/product-category-pnl/pages/ProductCategoryAdjustmentAuditPage"),
   "risk-tensor": () => import("../features/risk-tensor/RiskTensorPage"),
+  "risk-overview": () => import("../features/workbench/module-home/ModuleWorkbenchHomePage"),
   "team-performance": () => import("../features/team-performance/TeamPerformancePage"),
 } as const;
 

@@ -1,4 +1,9 @@
 import type { ReactNode } from "react";
+import type {
+  StockObservationClosureSummary,
+  WorkbenchDataDigest,
+  WorkbenchFact,
+} from "../lib/stockAnalysisPageModel";
 
 export type StockAnalysisLedgerMetric = {
   label: string;
@@ -60,8 +65,58 @@ type StockAnalysisReviewLedgerFirstScreenProps = {
   sourceGateLabel?: string;
   sourceGateDetail?: string;
   sourceVersion?: string;
+  digest?: WorkbenchDataDigest;
+  closureSummary?: StockObservationClosureSummary;
   railContent?: ReactNode;
 };
+
+function StockWorkbenchFactGrid({
+  title,
+  facts,
+}: {
+  title: string;
+  facts: WorkbenchFact[];
+}) {
+  if (facts.length === 0) return null;
+  return (
+    <section className="stock-analysis-page__workbench-digest-section">
+      <h3>{title}</h3>
+      <div className="stock-analysis-page__workbench-fact-grid">
+        {facts.map((fact) => (
+          <article
+            className="stock-analysis-page__workbench-fact"
+            data-testid={`stock-analysis-workbench-fact-${fact.id}`}
+            data-tone={fact.tone}
+            data-primary={fact.isPrimary ? "true" : "false"}
+            key={fact.id}
+          >
+            <span>{fact.label}</span>
+            <strong>{fact.value}</strong>
+            {fact.subValue ? <small>{fact.subValue}</small> : null}
+            <em title={fact.sourcePath}>来源：{fact.sourcePath}</em>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function StockWorkbenchDigest({ digest }: { digest: WorkbenchDataDigest }) {
+  return (
+    <section
+      className="stock-analysis-page__workbench-digest"
+      data-testid="stock-analysis-workbench-digest"
+      aria-label="首屏供数摘要"
+    >
+      <StockWorkbenchFactGrid title="核心口径" facts={digest.primaryFacts} />
+      <StockWorkbenchFactGrid
+        title="候选与证据"
+        facts={[...digest.candidateFacts, ...digest.evidenceFacts]}
+      />
+      <StockWorkbenchFactGrid title="慢接口补证" facts={digest.slowFacts} />
+    </section>
+  );
+}
 
 export function StockAnalysisReviewLedgerFirstScreen({
   asOfLabel,
@@ -81,6 +136,8 @@ export function StockAnalysisReviewLedgerFirstScreen({
   sourceGateLabel = "来源核验",
   sourceGateDetail = "质量 需复核 回退快照",
   sourceVersion,
+  digest,
+  closureSummary,
   railContent,
 }: StockAnalysisReviewLedgerFirstScreenProps) {
   const legacyMarketContextIds = [
@@ -158,6 +215,84 @@ export function StockAnalysisReviewLedgerFirstScreen({
               ))}
             </dl>
           </div>
+
+          {digest ? <StockWorkbenchDigest digest={digest} /> : null}
+
+          {closureSummary ? (
+            <section
+              className="stock-analysis-page__observation-closure"
+              data-testid="stock-analysis-observation-closure-panel"
+              data-tone={closureSummary.tone}
+              aria-label="观测闭环总控"
+            >
+              <div className="stock-analysis-page__observation-closure-head">
+                <div>
+                  <span>观测闭环总控</span>
+                  <h2>{closureSummary.headline}</h2>
+                  <p>{closureSummary.detail}</p>
+                </div>
+                <strong>正式用途：{closureSummary.formalUseAllowed ? "是" : "否"}</strong>
+              </div>
+              <dl className="stock-analysis-page__observation-closure-metrics">
+                <div>
+                  <dt>接口链路</dt>
+                  <dd>{`${closureSummary.endpointLoadedCount}/${closureSummary.endpointTotal}`}</dd>
+                </div>
+                <div>
+                  <dt>待复核项</dt>
+                  <dd>{closureSummary.unresolvedReasons.length}</dd>
+                </div>
+                <div>
+                  <dt>读取失败</dt>
+                  <dd>{closureSummary.endpointErrorCount}</dd>
+                </div>
+                <div>
+                  <dt>元信息缺口</dt>
+                  <dd>{closureSummary.metaMissingCount}</dd>
+                </div>
+              </dl>
+              <div className="stock-analysis-page__observation-closure-grid">
+                <div>
+                  <h3>未闭环原因</h3>
+                  <ul data-testid="stock-analysis-observation-closure-reasons">
+                    {closureSummary.unresolvedReasons.slice(0, 5).map((reason) => (
+                      <li key={reason.key} data-tone={reason.tone}>
+                        <span>{reason.endpointLabel}</span>
+                        <strong>{reason.displayText}</strong>
+                        <small title={reason.fieldPath}>字段来源已记录</small>
+                      </li>
+                    ))}
+                    {closureSummary.unresolvedReasons.length === 0 ? (
+                      <li data-tone="neutral">
+                        <span>证据项</span>
+                        <strong>暂无新增待复核项</strong>
+                        <small>仍保留观测边界，不代表正式通过</small>
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>
+                <div>
+                  <h3>下一步证据动作</h3>
+                  <ul data-testid="stock-analysis-observation-closure-actions">
+                    {closureSummary.nextEvidenceActions.slice(0, 5).map((action) => (
+                      <li key={action.key}>
+                        <span>{action.source}</span>
+                        <strong>{action.actionText}</strong>
+                        <small title={action.fieldPath}>证据字段已定位</small>
+                      </li>
+                    ))}
+                    {closureSummary.nextEvidenceActions.length === 0 ? (
+                      <li>
+                        <span>治理</span>
+                        <strong>等待业务 owner 审批与人工复核</strong>
+                        <small>{closureSummary.approvalStatus}</small>
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           <div className="stock-analysis-page__api-ledger-condition-grid" data-testid="stock-analysis-market-context-strip">
             {conditionCells.map((item, index) => (

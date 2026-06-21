@@ -6,9 +6,11 @@ from typing import Any, cast
 import pytest
 
 from backend.app.core_finance.livermore_stock_candidates import (
+    EXP3C_SHADOW_STOCK_CANDIDATE_POLICY,
     FORMULA_VERSION,
     StockCandidateSnapshot,
     compute_stock_candidates,
+    diagnose_stock_candidate_filters,
 )
 
 
@@ -598,3 +600,66 @@ def test_stock_candidates_exp3b_policy_keeps_entry_only_stricter_gate_and_sorts_
     assert exp3b_overheat.payload["selection_policy"] == "exp3b"
     assert exp3b_overheat.payload["candidate_count"] == 0
     assert exp3b_overheat.payload["items"] == []
+
+
+def test_stock_candidates_exp3c_shadow_keeps_official_policy_unchanged() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    shadow_only = _snapshot(
+        stock_code="600869.SH",
+        stock_name="Shadow Only",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=1.0),
+        open_value=22.0,
+        high_value=21.905,
+        low_value=20.65,
+    )
+
+    official = compute_stock_candidates(
+        as_of_date="2026-06-12",
+        market_state="HOT",
+        snapshots=[shadow_only],
+        policy_name="exp3b",
+    )
+    shadow = compute_stock_candidates(
+        as_of_date="2026-06-12",
+        market_state="HOT",
+        snapshots=[shadow_only],
+        policy_name=EXP3C_SHADOW_STOCK_CANDIDATE_POLICY,
+    )
+
+    assert official.payload["candidate_count"] == 0
+    assert shadow.payload["selection_policy"] == "exp3c_shadow"
+    assert shadow.payload["candidate_count"] == 1
+
+
+def test_diagnose_stock_candidate_filters_reports_first_zero_output_blocker() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    weak_close = _snapshot(
+        stock_code="600869.SH",
+        stock_name="Weak Close",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=closes,
+        turnover_history=_turnover_history(baseline=0.5, current=2.5),
+        open_value=22.0,
+        high_value=22.05,
+        low_value=21.0,
+    )
+
+    diagnostic = diagnose_stock_candidate_filters(
+        as_of_date="2026-06-12",
+        market_state="HOT",
+        snapshots=[weak_close],
+        policy_name="exp3b",
+    )
+
+    assert diagnostic["status"] == "ready"
+    assert diagnostic["selection_policy"] == "exp3b"
+    assert diagnostic["final_candidate_count"] == 0
+    assert any(row["step"] == "close_strength>=0.99" and row["pass"] == 0 for row in diagnostic["funnel"])
+    assert diagnostic["near_misses"][0]["stock_code"] == "600869.SH"
+    assert "close_strength" in diagnostic["near_misses"][0]["fail_reasons"]
