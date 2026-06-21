@@ -8468,10 +8468,6 @@
   font-weight: 780 !important;
 }
 
-[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-nav"] {
-  display: none !important;
-}
-
 [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] [data-testid="market-workbench-topbar"] {
   grid-template-columns: max-content minmax(0, 1fr) !important;
   gap: 12px 24px;
@@ -10600,10 +10596,6 @@
 
 /* Layout reset loop: make the review queue a real workbench, not a left-column appendix. */
 .stock-analysis-page__uses-home-shell [data-testid="stock-analysis-page-purpose"] {
-  display: none !important;
-}
-
-[data-testid="market-workbench-frame"][data-page-key="stock-analysis"] section:has([data-testid="market-workbench-nav"]) {
   display: none !important;
 }
 

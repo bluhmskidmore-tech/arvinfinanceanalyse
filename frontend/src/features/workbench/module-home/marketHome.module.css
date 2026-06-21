@@ -7928,15 +7928,24 @@
 
 /* Three-column depth zone: full signal cards + dense cross-asset rows */
 .marketThreeColDepth .marketMosaicPanel {
-  height: auto;
-  align-self: start;
+  height: 100%;
+  align-self: stretch;
 }
 
 .marketThreeColDepth > .marketAnalysisCurveWrap,
 .marketThreeColDepth > .depthPanelShell,
 .marketThreeColDepth > .crossAssetPanelShell,
 .marketThreeColDepth > .macroSectionCompactShell {
-  height: auto;
+  grid-area: auto;
+  grid-column: auto;
+  grid-row: auto;
+  height: 100%;
+}
+
+@media (min-width: 1081px) and (max-width: 1439px) {
+  .marketThreeColDepth > .macroSectionCompactShell {
+    grid-column: 1 / -1;
+  }
 }
 
 .macroLeadDepthCompact {

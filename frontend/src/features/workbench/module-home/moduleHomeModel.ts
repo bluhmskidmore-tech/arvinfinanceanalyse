@@ -3210,7 +3210,9 @@ const RISK_KRD_FIELDS: ReadonlyArray<{ key: keyof RiskTensorPayload; label: stri
   { key: "krd_30y", label: "KRD 30Y" },
 ];
 
-const RISK_ACCOUNTING_DV01_FIELDS: ReadonlyArray<{ key: keyof RiskTensorPayload; label: string }> = [
+type RiskAccountingDv01FieldKey = "ac_dv01" | "oci_dv01" | "tpl_dv01" | "other_dv01";
+
+const RISK_ACCOUNTING_DV01_FIELDS: ReadonlyArray<{ key: RiskAccountingDv01FieldKey; label: string }> = [
   { key: "ac_dv01", label: "AC DV01（摊余成本）" },
   { key: "oci_dv01", label: "OCI DV01（其他综合收益）" },
   { key: "tpl_dv01", label: "TPL DV01（交易性）" },
@@ -3364,8 +3366,9 @@ function buildRiskTensorDetailSections(tensor: RiskTensorPayload): ModuleHomeDet
   );
 
   const accountingRows: ModuleHomeDetailRow[] = [];
+  const accountingDv01 = tensor as Partial<Record<RiskAccountingDv01FieldKey, RiskTensorDisplayValue>>;
   for (const field of RISK_ACCOUNTING_DV01_FIELDS) {
-    const value = tensor[field.key] as RiskTensorDisplayValue;
+    const value = accountingDv01[field.key];
     if (!shouldShowAccountingDv01Split(value)) {
       continue;
     }

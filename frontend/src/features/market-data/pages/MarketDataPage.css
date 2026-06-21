@@ -32,8 +32,7 @@
   padding: 6px 8px;
 }
 
-section[data-page-key="market-data"] > header[data-testid="market-workbench-topbar"],
-section[data-page-key="market-data"] > section[data-density] {
+section[data-page-key="market-data"] > header[data-testid="market-workbench-topbar"] {
   display: none;
 }
 

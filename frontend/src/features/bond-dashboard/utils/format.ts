@@ -33,6 +33,16 @@ export function formatRatePercent(value: NumericLike, digits = 2): string {
   });
 }
 
+/** Governed bp field -> plain bp number display for callers that add the unit. */
+export function formatBp(value: NumericLike, digits = 1): string {
+  const raw = nativeToNumber(value);
+  if (raw === null) return "—";
+  return raw.toLocaleString("zh-CN", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 /** Governed DV01 yuan field -> wan-yuan display. */
 export function formatDv01Wan(value: NumericLike, digits = 2): string {
   const raw = nativeToNumber(value);

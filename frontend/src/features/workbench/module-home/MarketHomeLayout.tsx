@@ -480,37 +480,12 @@ export default function MarketHomeLayout({
                 runtimePanel={macroRuntimePanel}
               />
             </section>
-            <section className={marketStyles.marketBottomNavSection} data-testid="module-home-drilldowns">
-              <nav aria-label="市场模块快捷导航" className={marketStyles.marketBottomNavBar} data-testid="module-home-market-bottom-nav" tabIndex={0}>
-                {config.drilldowns.map((item) => {
-                  const isCurrentHome = item.key === "market-overview";
-                  return (
-                    <Link
-                      key={item.key}
-                      to={item.path}
-                      aria-current={isCurrentHome ? "page" : undefined}
-                      className={`${marketStyles.marketBottomNavItem} ${isCurrentHome ? marketStyles.marketBottomNavItemCurrent : ""}`}
-                      data-testid={`module-home-drill-${item.key}`}
-                      title={item.description}
-                    >
-                      <span aria-hidden="true" className={marketStyles.marketBottomNavIcon}>{marketDrillIconLabel(item.key)}</span>
-                      <b>{item.label}</b>
-                      <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
-                    </Link>
-                  );
-                })}
-              </nav>
-              {view.dataNote.lines.length > 0 ? (
-                <p className={marketStyles.marketBottomNavNote} data-testid="module-home-data-note">{view.dataNote.lines.join(" ")}</p>
-              ) : null}
-            </section>
           </div>
         ),
       },
     ],
     [
       auditTabItems,
-      config.drilldowns,
       formalTradeDate,
       isMarketTerminalDefaultEmpty,
       keyRatePanel,
@@ -533,6 +508,33 @@ export default function MarketHomeLayout({
       catalogPanel,
       formalPanel,
     ],
+  );
+
+  const marketModuleDrilldowns = (
+    <section className={marketStyles.marketBottomNavSection} data-testid="module-home-drilldowns">
+      <nav aria-label="市场模块快捷导航" className={marketStyles.marketBottomNavBar} data-testid="module-home-market-bottom-nav" tabIndex={0}>
+        {config.drilldowns.map((item) => {
+          const isCurrentHome = item.key === "market-overview";
+          return (
+            <Link
+              key={item.key}
+              to={item.path}
+              aria-current={isCurrentHome ? "page" : undefined}
+              className={`${marketStyles.marketBottomNavItem} ${isCurrentHome ? marketStyles.marketBottomNavItemCurrent : ""}`}
+              data-testid={`module-home-drill-${item.key}`}
+              title={item.description}
+            >
+              <span aria-hidden="true" className={marketStyles.marketBottomNavIcon}>{marketDrillIconLabel(item.key)}</span>
+              <b>{item.label}</b>
+              <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
+            </Link>
+          );
+        })}
+      </nav>
+      {view.dataNote.lines.length > 0 ? (
+        <p className={marketStyles.marketBottomNavNote} data-testid="module-home-data-note">{view.dataNote.lines.join(" ")}</p>
+      ) : null}
+    </section>
   );
 
   return (
@@ -645,6 +647,7 @@ export default function MarketHomeLayout({
             termSpreadRows={termSpreadRows}
           />
           <MarketDeskIntelStrip intel={view.marketDeskIntel} />
+          {marketModuleDrilldowns}
           <section className={marketStyles.marketThreeColDepth} data-testid="module-home-market-analysis-grid">
             {yieldCurvePanel ? (
               <MarketDepthPanel
