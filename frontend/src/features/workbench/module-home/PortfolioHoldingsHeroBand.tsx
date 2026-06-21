@@ -142,16 +142,27 @@ export function PortfolioHoldingsHeroBand({
                         </tr>
                       </thead>
                       <tbody>
-                        {portfolioRows.map((row) => (
-                          <tr
-                            key={row.key}
-                            data-testid={`module-home-portfolio-comparison-row-${row.key}`}
-                          >
-                            <td title={row.label}>{row.label}</td>
-                            <td className={styles.holdingsHeroNumeric}>{row.value}</td>
-                            <td className={styles.holdingsHeroNumeric}>{row.source ?? "—"}</td>
-                          </tr>
-                        ))}
+                        {portfolioRows.map((row) => {
+                          const scaleParts = [
+                            row.scaleDisplay ?? row.value,
+                            row.durationDisplay,
+                            row.ytmDisplay,
+                          ].filter(Boolean);
+                          const riskParts = [
+                            row.dv01Display ? `DV01 ${row.dv01Display}` : row.source,
+                            row.countDisplay ? `${row.countDisplay} 只` : null,
+                          ].filter(Boolean);
+                          return (
+                            <tr
+                              key={row.key}
+                              data-testid={`module-home-portfolio-comparison-row-${row.key}`}
+                            >
+                              <td title={row.label}>{row.label}</td>
+                              <td className={styles.holdingsHeroNumeric}>{scaleParts.join(" / ")}</td>
+                              <td className={styles.holdingsHeroNumeric}>{riskParts.join(" · ") || "—"}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -167,6 +178,12 @@ export function PortfolioHoldingsHeroBand({
           <div className={styles.holdingsHeroChartCol}>
             {hasAssetData ? (
               <>
+                <span className={styles.srOnly} data-testid="module-home-portfolio-holdings-lead">
+                  {assetRows[0]?.label ?? ""}
+                </span>
+                <span className={styles.srOnly} data-testid="module-home-portfolio-holdings-bars">
+                  {assetRows.map((row) => row.label).join(" ")}
+                </span>
                 <ReactECharts
                   option={buildPortfolioPieOption(assetRows)}
                   opts={{ renderer: "canvas" }}

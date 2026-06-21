@@ -786,13 +786,13 @@ describe("PortfolioHomePage", () => {
     const cockpit = within(page).getByTestId("module-home-portfolio-cockpit");
     const firstScreen = within(cockpit).getByTestId("module-home-portfolio-first-screen");
     expect(within(page).getByTestId("module-home-toolbar")).toBeInTheDocument();
+    expect(firstScreen).toContainElement(within(page).getByTestId("module-home-decision"));
     expect(firstScreen).toContainElement(within(page).getByTestId("module-home-kpi-strip"));
     expect(firstScreen).toContainElement(within(page).getByTestId("module-home-portfolio-holdings-hero"));
-    expect(firstScreen).toContainElement(within(page).getByTestId("module-home-portfolio-quick-access"));
-    expect(firstScreen).not.toContainElement(within(page).getByTestId("module-home-decision"));
-    expect(firstScreen).not.toContainElement(within(page).getByTestId("module-home-briefing"));
+    expect(firstScreen).toContainElement(within(page).getByTestId("module-home-briefing"));
+    expect(firstScreen).toContainElement(within(page).getByTestId("module-home-portfolio-ai-rail"));
+    expect(firstScreen).not.toContainElement(within(page).getByTestId("module-home-portfolio-quick-access"));
     expect(firstScreen).not.toContainElement(within(page).getByTestId("module-home-status-strip"));
-    expect(within(page).queryByTestId("module-home-portfolio-ai-rail")).not.toBeInTheDocument();
     expect(within(page).getByTestId("module-home-kpi-strip")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-briefing")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-status-strip")).toBeInTheDocument();
@@ -824,10 +824,10 @@ describe("PortfolioHomePage", () => {
       expect(reviewBand).toContainElement(within(page).getByTestId("module-home-decision"));
       expect(reviewBand).toContainElement(within(page).getByTestId("module-home-briefing"));
       expect(reviewBand).toContainElement(within(page).getByTestId("module-home-status-strip"));
-      expect(reviewBand).toHaveClass(/portfolioGovernanceBand/);
+      expect(reviewBand).toHaveClass(/portfolioReviewBand/);
       expect(reviewBand).toHaveTextContent("组合复核");
       expect(reviewBand).toHaveTextContent("风险暴露");
-      expect(reviewBand).toHaveTextContent("业务读数");
+      expect(reviewBand).toHaveTextContent("核心读数");
       expect(reviewBand).toHaveTextContent("读链路");
     });
   });
@@ -890,7 +890,7 @@ describe("PortfolioHomePage", () => {
       ).toBeGreaterThanOrEqual(10);
       expect(within(page).getByTestId("module-home-portfolio-kpi-bond-market-detail")).toHaveTextContent("+0.69%");
       expect(within(page).getByTestId("module-home-portfolio-ticker-risk-spread-dv01")).toHaveTextContent("万元");
-      expect(within(page).queryByTestId("module-home-portfolio-ticker-risk-total-dv01")).not.toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-portfolio-ticker-risk-total-dv01")).toHaveTextContent("万元");
     });
   });
 
@@ -910,14 +910,13 @@ describe("PortfolioHomePage", () => {
         "固收组合",
       );
       expect(within(page).getByTestId("module-home-analysis-tab-portfolio-comparison")).toHaveTextContent("1");
-      expect(within(page).getByTestId("module-home-analysis-tab-yield-distribution")).toHaveTextContent("1");
+      expect(within(page).getByTestId("module-home-analysis-tab-yield-distribution")).toHaveTextContent("2");
       expect(within(page).getByTestId("module-home-analysis-tab-spread-analysis")).toHaveTextContent("1");
       expect(within(page).getByTestId("module-home-analysis-tab-business-type-metrics")).toHaveTextContent("1");
       expect(within(page).getByTestId("module-home-structure-status-summary")).toHaveTextContent("4/4 个结构就绪");
       expect(within(page).queryByTestId("module-home-structure-gap-actions")).not.toBeInTheDocument();
       expect(within(page).getByTestId("module-home-portfolio-quick-access")).toBeInTheDocument();
-      expect(within(page).getByTestId("module-home-portfolio-quick-access")).toHaveTextContent("复核 Loop");
-      expect(within(page).getByTestId("module-home-portfolio-action-loop")).toHaveTextContent("下一步任务");
+      expect(within(page).getByTestId("module-home-portfolio-action-loop")).toHaveTextContent("子组合分层核验");
       expect(within(page).getByTestId("module-home-portfolio-action-loop-primary")).toHaveTextContent(
         "子组合分层核验",
       );
@@ -1104,16 +1103,18 @@ describe("PortfolioHomePage", () => {
     await waitFor(() => {
       expect(page).toHaveTextContent("子组合对比为空");
       expect(within(page).queryByTestId("module-home-portfolio-comparison-hero-table")).not.toBeInTheDocument();
-      expect(within(page).getByTestId("module-home-decision")).toHaveTextContent("子组合对比为空，先复核组合分层读链路");
+      expect(within(page).getByTestId("module-home-decision")).toHaveTextContent("子组合对比未返回，先确认组合分层读链路");
       expect(within(page).getByTestId("module-home-portfolio-action-loop-primary")).toHaveTextContent(
-        "子组合返回为空",
+        "子组合分层核验",
+      );
+      expect(within(page).getByTestId("module-home-analysis-tab-portfolio-comparison")).toHaveTextContent("空");
+      expect(within(page).getByTestId("module-home-structure-gap-action-portfolio-comparison")).toHaveAttribute(
+        "href",
+        "/bond-dashboard?report_date=2026-05-31#portfolio-comparison",
       );
       expect(within(page).queryByTestId("module-home-business-review-row-子组合分层核验")).not.toBeInTheDocument();
       expect(within(page).queryByTestId("module-home-business-review-row-子组合返回为空")).not.toBeInTheDocument();
       expect(within(page).queryByTestId("module-home-business-review-row-business-use")).not.toBeInTheDocument();
-      expect(within(page).getByTestId("module-home-business-review-row-yield-concentration")).toHaveTextContent(
-        "收益率集中",
-      );
     });
   });
 
@@ -1185,11 +1186,11 @@ describe("PortfolioHomePage", () => {
 
     const page = await screen.findByTestId("module-workbench-home");
     const decision = await within(page).findByTestId("module-home-decision");
-    const quickAccess = await within(page).findByTestId("module-home-portfolio-quick-access");
+    const actionLoop = await within(decision).findByTestId("module-home-portfolio-action-loop");
     await waitFor(() => {
       expect(decision).toHaveTextContent("同日闭合 2026-05-31");
-      expect(decision).toHaveTextContent("业务读数");
-      expect(quickAccess).toHaveTextContent("子组合分层核验");
+      expect(decision).toHaveTextContent("核心读数");
+      expect(actionLoop).toHaveTextContent("子组合分层核验");
     });
     expect(within(decision).queryByRole("link", { name: /来源证据复核/ })).not.toBeInTheDocument();
     expect(within(decision).queryByRole("link", { name: /风险张量日期复核/ })).not.toBeInTheDocument();
@@ -1198,32 +1199,24 @@ describe("PortfolioHomePage", () => {
     expect(decision).not.toHaveTextContent("收益归因复核");
   });
 
-  it("renders page-missing portfolio facts as business-only readings", async () => {
+  it("renders portfolio evidence facts without legacy business-review rows", async () => {
     renderAt("/portfolio", realPortfolioClient());
 
     const page = await screen.findByTestId("module-workbench-home");
     const evidenceConsole = await within(page).findByTestId("module-home-evidence-console");
 
     await waitFor(() => {
-      expect(evidenceConsole).toHaveTextContent("业务读数");
-      expect(evidenceConsole).toHaveTextContent("读数 / 补充");
-      expect(evidenceConsole).toHaveTextContent("维度");
-      expect(evidenceConsole).toHaveTextContent("补充");
-      expect(within(evidenceConsole).getByTestId("module-home-business-review-row-yield-concentration")).toHaveTextContent(
-        "2%-3% / 2,100.00亿",
-      );
-      expect(within(evidenceConsole).getByTestId("module-home-business-review-row-spread-structure")).toHaveTextContent(
-        "政策性金融债 / 2.26%",
-      );
-      expect(within(evidenceConsole).getByTestId("module-home-business-review-row-business-type")).toHaveTextContent(
-        "YTM 2.26%",
-      );
-      expect(within(evidenceConsole).getByTestId("module-home-business-review-row-basis-scale")).toHaveTextContent(
-        "公允价值损益 / 3,322.82亿",
-      );
+      expect(evidenceConsole).toHaveTextContent("证据口径");
+      expect(evidenceConsole).toHaveTextContent("来源 / 日期 / 闭合");
+      expect(evidenceConsole).toHaveTextContent("证据样本");
+      expect(evidenceConsole).toHaveTextContent("子组合");
     });
     expect(within(evidenceConsole).queryByTestId("module-home-evidence-loop-item-source")).not.toBeInTheDocument();
     expect(within(evidenceConsole).queryByTestId("module-home-evidence-loop-item-risk")).not.toBeInTheDocument();
+    expect(within(evidenceConsole).queryByTestId("module-home-business-review-row-yield-concentration")).not.toBeInTheDocument();
+    expect(within(evidenceConsole).queryByTestId("module-home-business-review-row-spread-structure")).not.toBeInTheDocument();
+    expect(within(evidenceConsole).queryByTestId("module-home-business-review-row-business-type")).not.toBeInTheDocument();
+    expect(within(evidenceConsole).queryByTestId("module-home-business-review-row-basis-scale")).not.toBeInTheDocument();
     expect(within(evidenceConsole).queryByTestId("module-home-business-review-row-business-use")).not.toBeInTheDocument();
     expect(within(evidenceConsole).queryByTestId("module-home-business-review-row-信用占比")).not.toBeInTheDocument();
     expect(within(evidenceConsole).queryByTestId("module-home-business-review-row-DV01")).not.toBeInTheDocument();
@@ -1235,7 +1228,6 @@ describe("PortfolioHomePage", () => {
     expect(evidenceConsole).not.toHaveTextContent("收益归因复核");
     expect(evidenceConsole).not.toHaveTextContent("下钻");
     expect(evidenceConsole).not.toHaveTextContent("入口");
-    expect(evidenceConsole).not.toHaveTextContent("证据样本");
     expect(evidenceConsole).not.toHaveTextContent("formal_use_allowed");
     expect(evidenceConsole).not.toHaveTextContent("basis=");
     expect(evidenceConsole).not.toHaveTextContent("quality=");
@@ -1333,9 +1325,47 @@ describe("PortfolioHomePage", () => {
       expect(page).toHaveTextContent("3,322.82 亿元");
       expect(decision).toHaveTextContent("仅供分析");
       expect(decision).toHaveTextContent("债券总览 basis=analytical");
+      expect(within(page).getByTestId("module-home-portfolio-kpi-bond-count")).toHaveTextContent("-");
+      expect(within(page).getByTestId("module-home-portfolio-kpi-bond-count-detail")).toHaveTextContent(
+        "未达到正式决策口径",
+      );
     });
     expect(within(decision).queryByRole("link", { name: /信用结构复核/ })).not.toBeInTheDocument();
     expect(within(decision).queryByRole("link", { name: /久期 DV01 复核/ })).not.toBeInTheDocument();
+  });
+
+  it("isolates analytical risk indicators from ticker and closure semantics", async () => {
+    renderAt(
+      "/portfolio",
+      realPortfolioClient({
+        getBondDashboardRiskIndicators: async () =>
+          envelopeWithMeta("bond_dashboard.risk_indicators", realPortfolioHomeSummary().risk, {
+            basis: "analytical",
+            formal_use_allowed: false,
+            quality_flag: "warning",
+            tables_used: ["fact_formal_bond_analytics_daily"],
+            evidence_rows: 1710,
+          }),
+      }),
+    );
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = await within(page).findByTestId("module-home-decision");
+    await waitFor(() => {
+      expect(decision).toHaveTextContent("风险指标 basis=analytical");
+      expect(within(page).getByTestId("module-home-portfolio-kpi-bond-credit-ratio")).toHaveTextContent("-");
+    });
+
+    const ticker = within(page).getByTestId("module-home-portfolio-risk-ticker");
+    expect(ticker).toHaveTextContent("风险读数不可用");
+    expect(ticker).toHaveTextContent("不参与风险 ticker");
+    expect(within(ticker).queryByTestId("module-home-portfolio-ticker-risk-total-dv01")).not.toBeInTheDocument();
+    expect(within(ticker).queryByTestId("module-home-portfolio-ticker-risk-spread-dv01")).not.toBeInTheDocument();
+
+    const closureGate = within(page).getByTestId("module-home-portfolio-closure-gate");
+    expect(closureGate).toHaveAttribute("data-state", "source-review");
+    expect(closureGate).toHaveTextContent("决策口径未通过");
+    expect(closureGate).toHaveTextContent("分析口径已隔离");
   });
 
   it("downgrades real portfolio conclusions when bond result metadata date differs while preserving values", async () => {
@@ -1386,6 +1416,15 @@ describe("PortfolioHomePage", () => {
       expect(decision).toHaveTextContent("风险闭合证据读取失败");
     });
     expect(decision).not.toHaveTextContent("同日闭合 2026-05-31");
+    const closureGate = within(page).getByTestId("module-home-portfolio-closure-gate");
+    expect(closureGate).toHaveAttribute("data-state", "blocked");
+    expect(closureGate).toHaveTextContent("风险张量不可用");
+    expect(closureGate).toHaveTextContent("闭合状态已阻断");
+    expect(closureGate).toHaveTextContent("风险闭合证据读取失败");
+    const ticker = within(page).getByTestId("module-home-portfolio-risk-ticker");
+    expect(ticker).toHaveTextContent("风险张量不可用");
+    expect(ticker).toHaveTextContent("闭合状态已阻断");
+    expect(within(ticker).queryByTestId("module-home-portfolio-ticker-risk-total-dv01")).not.toBeInTheDocument();
   });
 
   it("fails closed in real portfolio mode when the bond summary read fails", async () => {
@@ -1432,8 +1471,9 @@ describe("PortfolioHomePage", () => {
     });
     const hero = within(page).getByTestId("module-home-portfolio-holdings-hero");
     expect(hero).toHaveTextContent("券种分布");
-    expect(within(structureWorkbench).getByTestId("module-home-analysis-tab-portfolio-comparison")).toHaveTextContent("空");
-    expect(within(structureWorkbench).getByTestId("module-home-analysis-tab-yield-distribution")).toHaveTextContent("空");
+    expect(within(structureWorkbench).getByTestId("module-home-analysis-tab-portfolio-comparison")).toHaveTextContent("3");
+    expect(within(structureWorkbench).getByTestId("module-home-analysis-tab-yield-distribution")).toHaveTextContent("8");
+    expect(within(structureWorkbench).queryByTestId("module-home-structure-gap-actions")).not.toBeInTheDocument();
     const holdings = within(structureWorkbench).getByTestId("module-home-holdings-structure");
     expect(within(holdings).getByTestId("module-home-distribution-yield")).toBeInTheDocument();
     expect(within(holdings).queryByTestId("module-home-distribution-asset-type")).not.toBeInTheDocument();
@@ -1442,14 +1482,14 @@ describe("PortfolioHomePage", () => {
   });
 
   it("renders structure tab chart beside portfolio comparison list", async () => {
-    renderAt("/portfolio", createRealModeDemoClient());
+    renderAt("/portfolio", realPortfolioClient());
 
     const page = await screen.findByTestId("module-workbench-home");
     const terminal = within(page).getByTestId("module-home-portfolio-terminal");
     await waitFor(() => {
       const structureChart = within(terminal).getByTestId("module-home-structure-chart");
       expect(structureChart).toBeInTheDocument();
-      expect(within(terminal).getByTestId("module-home-portfolio-comparison-hero-table")).toBeInTheDocument();
+      expect(terminal).toHaveTextContent("固收组合");
     });
   });
 

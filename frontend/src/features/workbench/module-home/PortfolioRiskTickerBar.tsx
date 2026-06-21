@@ -8,6 +8,9 @@ const TICKER_LIMIT = 7;
 
 type PortfolioRiskTickerBarProps = {
   riskPanel?: ModuleHomeDetailPanel;
+  unavailable?: boolean;
+  unavailableTitle?: string;
+  unavailableDetail?: string;
 };
 
 function tickerChangeClass(detail: string | undefined, sparkline: readonly number[] | undefined) {
@@ -17,17 +20,30 @@ function tickerChangeClass(detail: string | undefined, sparkline: readonly numbe
   return styles.portfolioRiskTickerChangeNeutral;
 }
 
-export function PortfolioRiskTickerBar({ riskPanel }: PortfolioRiskTickerBarProps) {
+export function PortfolioRiskTickerBar({
+  riskPanel,
+  unavailable = false,
+  unavailableTitle,
+  unavailableDetail,
+}: PortfolioRiskTickerBarProps) {
   const rows = riskPanel?.rows.slice(0, TICKER_LIMIT) ?? [];
 
-  if (rows.length === 0) {
+  if (unavailable || rows.length === 0) {
     return (
       <section
-        className={styles.portfolioRiskTickerBar}
+        className={`${styles.portfolioRiskTickerBar} ${unavailable ? styles.portfolioRiskTickerUnavailable : ""}`}
         data-testid="module-home-portfolio-risk-ticker"
         aria-label="组合风险指标条"
       >
-        <p className={styles.portfolioRiskTickerEmpty}>风险指标待返回</p>
+        <div className={styles.portfolioRiskTickerHead}>
+          <span>Key Risks</span>
+          <strong>{unavailable ? unavailableTitle ?? "风险读数不可用" : "风险读数待返回"}</strong>
+        </div>
+        <p className={styles.portfolioRiskTickerEmpty}>
+          {unavailable
+            ? unavailableDetail ?? "风险链路未通过正式闭合校验，不构成实时风险判断。"
+            : "风险指标待返回"}
+        </p>
       </section>
     );
   }

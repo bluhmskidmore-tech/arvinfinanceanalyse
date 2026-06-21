@@ -331,6 +331,15 @@ export function buildPortfolioDecision(args: {
       },
     ],
     actions,
+    readiness: {
+      decisionReady: args.readiness.decisionReady,
+      riskClosureReady: args.readiness.riskClosureReady,
+      blockingReasons: args.readiness.blockingReasons,
+      warningReasons: args.readiness.warningReasons,
+      sourceFacts: args.readiness.sourceFacts,
+      sourceDates: args.readiness.sourceDates,
+      riskClosureFact: args.readiness.riskClosureFact,
+    },
   };
 }
 

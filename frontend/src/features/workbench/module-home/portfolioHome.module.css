@@ -120,7 +120,7 @@
 }
 
 .datePill strong {
-  color: var(--ib-surface);
+  color: var(--dh-blue-deep, var(--ib-accent));
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -444,6 +444,81 @@
   min-width: 0;
 }
 
+.portfolioReviewBand,
+.portfolioStructureWorkbench,
+.portfolioClosureBand {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.closureGate {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 11px 12px;
+  border-color: var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+  box-shadow: none;
+}
+
+.closureGateBlocked {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: var(--moss-color-warning-50);
+}
+
+.closureGateHead {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.closureGateHead span {
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 10.5px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.closureGateHead strong {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.closureGateDetail {
+  margin: 0;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.closureGateBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.closureGateBadges span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 7px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 10px;
+  font-weight: 820;
+}
+
 .sectionBlock {
   display: grid;
   gap: var(--dh-space-2, 12px);
@@ -455,6 +530,160 @@
   border: 0;
   border-radius: var(--ib-radius) 0 0 5px;
   box-shadow: none;
+}
+
+.holdingsAnalysisBand {
+  min-width: 0;
+  padding: 10px 0 0;
+}
+
+.terminalCard {
+  gap: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border-color: var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.terminalCard > .sectionHead {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  background: var(--dh-card-soft, var(--ib-paper));
+}
+
+.structureStatusBar {
+  margin: 8px 10px 0;
+  padding: 7px 9px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.structureGapActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 10px 0;
+}
+
+.structureGapAction {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: var(--ib-radius);
+  background: var(--moss-color-warning-50);
+  color: var(--dh-amber, var(--ib-warn));
+  font-size: 10.5px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.structureGapAction:hover {
+  border-color: rgba(162, 102, 2, 0.34);
+  text-decoration: none;
+}
+
+.structureTabLabel {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.structureTabBadge {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: var(--ib-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 10px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.quickAccessBlock {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.quickAccessGrid,
+.drillGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.quickAccessCard,
+.drillCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 54px;
+  padding: 9px 10px;
+  border-color: var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  color: var(--dh-ink, var(--ib-ink));
+  text-decoration: none;
+  box-shadow: none;
+}
+
+.quickAccessCard:hover,
+.drillCard:hover {
+  border-color: rgba(24, 80, 161, 0.28);
+  background: var(--moss-color-primary-50);
+  text-decoration: none;
+}
+
+.quickAccessCard span,
+.drillCard span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--ib-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+  color: var(--dh-blue-deep, var(--ib-accent));
+  font-size: 14px;
+}
+
+.quickAccessCard b,
+.drillCard b {
+  overflow: hidden;
+  color: var(--dh-ink, var(--ib-ink));
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quickAccessCard em,
+.drillCard em {
+  justify-self: end;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.drillCardCurrent {
+  border-color: rgba(24, 80, 161, 0.34);
+  background: var(--moss-color-primary-50);
+}
+
+.drillCardCurrent em {
+  color: var(--dh-blue-deep, var(--ib-accent));
 }
 
 .drilldownBlock {
@@ -773,6 +1002,55 @@
   letter-spacing: 0.01em;
 }
 
+.decisionTitle {
+  margin: 0;
+  color: var(--dh-ink, var(--ib-ink));
+  font-size: 18px;
+  font-weight: 880;
+  line-height: 1.18;
+}
+
+.decisionDetail {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.42;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.decisionReadinessBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+}
+
+.decisionReadinessBar span {
+  overflow: hidden;
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 10.5px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decisionReadinessBar strong {
+  color: var(--dh-blue-deep, var(--ib-accent));
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .terminalStatus {
   display: inline-flex;
   align-items: center;
@@ -846,6 +1124,100 @@
   grid-column: 1 / -1;
   min-height: 0;
   overflow: hidden;
+}
+
+.evidenceFactList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+  background: rgba(32, 48, 74, 0.1);
+}
+
+.decisionActionQueue {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 9px 9px;
+  border-top: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  background: var(--dh-card-soft, var(--ib-paper));
+}
+
+.decisionActionLabel {
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.decisionActionList {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.decisionAction {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.decisionAction:hover {
+  border-color: rgba(24, 80, 161, 0.28);
+  background: var(--moss-color-primary-50);
+  text-decoration: none;
+}
+
+.decisionActionDot {
+  width: 8px;
+  height: 24px;
+  border-radius: var(--ib-radius);
+  background: currentColor;
+}
+
+.decisionActionText {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.decisionActionText strong,
+.decisionActionText small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decisionActionText strong {
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.decisionActionText small {
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.decisionActionTarget {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--dh-blue-deep, var(--ib-accent));
+  font-size: 10.5px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .evidenceLoop {
@@ -1055,6 +1427,13 @@
   min-width: 0;
 }
 
+.portfolioKpiSparkline {
+  flex: 0 0 56px;
+  width: 56px;
+  min-width: 48px;
+  max-width: 64px;
+}
+
 .portfolioKpiMetricPanel {
   margin-bottom: 0;
 }
@@ -1066,11 +1445,9 @@
 }
 
 .kpiGridTape {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(24, 80, 161, 0.28) transparent;
+  min-width: 0;
+  overflow: visible;
+  padding-bottom: 0;
 }
 
 .kpiGridTape::-webkit-scrollbar {
@@ -1087,8 +1464,13 @@
   padding: 8px 10px;
   border: 1px solid rgba(114, 147, 190, 0.28);
   border-radius: var(--ib-radius);
-  background: var(--ib-surface);
+  background: var(--dh-card-soft, var(--ib-paper));
   box-shadow: none;
+}
+
+.portfolioRiskTickerUnavailable {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: var(--moss-color-warning-50);
 }
 
 .portfolioRiskTickerHead {
@@ -1108,30 +1490,32 @@
 }
 
 .portfolioRiskTickerHead strong {
-  color: rgba(226, 239, 255, 0.86);
+  color: var(--dh-blue-deep, var(--ib-accent));
   font-size: 11px;
   font-weight: 800;
 }
 
 .portfolioRiskTickerTrack {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
   gap: 1px;
   min-width: 0;
-  overflow-x: auto;
-  background: rgba(114, 147, 190, 0.18);
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--dh-line-soft, var(--ib-hairline));
 }
 
 .portfolioRiskTickerCell {
   display: grid;
   gap: 2px;
-  min-width: 108px;
+  min-width: 0;
   padding: 8px 10px;
-  background: rgba(8, 18, 32, 0.92);
+  background: var(--ib-surface);
 }
 
 .portfolioRiskTickerLabel {
-  color: rgba(190, 208, 234, 0.78);
+  color: var(--dh-muted, var(--ib-ink-muted));
   font-size: 10.5px;
   font-weight: 800;
   line-height: 1.2;
@@ -1146,14 +1530,14 @@
 }
 
 .portfolioRiskTickerValue {
-  color: var(--ib-paper);
+  color: var(--dh-ink, var(--ib-ink));
   font-size: 13px;
   font-weight: 850;
   line-height: 1.1;
 }
 
 .portfolioRiskTickerChange {
-  color: rgba(190, 208, 234, 0.62);
+  color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 10px;
   font-weight: 700;
   font-style: normal;
@@ -1161,21 +1545,23 @@
 }
 
 .portfolioRiskTickerChangeNeutral {
-  color: rgba(190, 208, 234, 0.62);
+  color: var(--dh-muted-2, var(--ib-ink-muted));
 }
 
 .portfolioRiskTickerEmpty {
   margin: 0;
-  color: rgba(190, 208, 234, 0.72);
+  color: var(--dh-muted-2, var(--ib-ink-muted));
   font-size: 11px;
+  font-weight: 750;
+  line-height: 1.45;
 }
 
 .kpiGrid {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(148px, 168px);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 1fr));
   gap: 8px;
-  width: max(100%, 100%);
+  min-width: 0;
+  width: 100%;
 }
 
 .kpiCard {
@@ -1278,7 +1664,7 @@
 .kpiCard:nth-child(-n + 2) .kpiValue {
   color: var(--ib-accent);
   margin-top: 12px;
-  font-size: 30px;
+  font-size: 26px;
 }
 
 .kpiCard:nth-child(-n + 2) .kpiValue small {
@@ -1286,7 +1672,7 @@
 }
 
 .kpiCard:nth-child(n + 3) {
-  grid-column: span 2;
+  grid-column: auto;
 }
 
 .kpiValue.toneOk {
@@ -2287,6 +2673,236 @@
   font-weight: 700;
 }
 
+.holdingsHeroBand {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  box-shadow: none;
+}
+
+.holdingsHeroBand[data-tone="watch"] {
+  border-color: var(--moss-color-warning-200);
+}
+
+.holdingsHeroBand[data-tone="error"] {
+  border-color: var(--moss-color-danger-200);
+}
+
+.holdingsHeroHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.holdingsHeroHead > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 280px);
+}
+
+.holdingsHeroKicker {
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.holdingsHeroHead strong {
+  color: var(--dh-ink, var(--ib-ink));
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.holdingsHeroMeta {
+  margin: 0;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.holdingsHeroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.holdingsSectionLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+  color: var(--dh-blue-deep, var(--ib-accent));
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.holdingsSectionLink:hover {
+  border-color: rgba(24, 80, 161, 0.28);
+  background: var(--moss-color-primary-50);
+  text-decoration: none;
+}
+
+.holdingsHeroBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(196px, 240px);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.holdingsHeroTableStack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.holdingsHeroTableBlock {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+}
+
+.holdingsHeroTableTitle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  color: var(--dh-ink, var(--ib-ink));
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.holdingsHeroTableState {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: var(--ib-radius);
+  background: var(--moss-color-warning-50);
+  color: var(--dh-amber, var(--ib-warn));
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.holdingsHeroTableWrap {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  scrollbar-width: thin;
+}
+
+.holdingsHeroTable {
+  width: 100%;
+  min-width: 360px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.holdingsHeroTable th,
+.holdingsHeroTable td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  color: var(--dh-ink, var(--ib-ink));
+  font-size: 11px;
+  line-height: 1.35;
+  vertical-align: middle;
+}
+
+.holdingsHeroTable th {
+  color: var(--dh-muted, var(--ib-ink-muted));
+  font-weight: 850;
+  text-align: left;
+  background: var(--moss-color-neutral-50);
+}
+
+.holdingsHeroTable td {
+  font-weight: 700;
+}
+
+.holdingsHeroTable td:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingsHeroTable td:first-child > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingsHeroTable td:first-child:has(.holdingsHeroDot) {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+}
+
+.holdingsHeroTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.holdingsHeroNumeric {
+  color: var(--dh-blue-deep, var(--ib-accent));
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.holdingsHeroChartCol {
+  position: relative;
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  min-height: 220px;
+  padding: 8px;
+  border: 1px solid var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: linear-gradient(180deg, var(--ib-surface), var(--dh-card-soft, var(--ib-paper)));
+}
+
+.holdingsHeroEmpty,
+.holdingsHeroTableEmpty,
+.holdingsHeroChartEmpty {
+  margin: 0;
+  color: var(--dh-muted-2, var(--ib-ink-muted));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.holdingsHeroEmpty {
+  padding: 12px;
+  border: 1px dashed var(--dh-line-soft, var(--ib-hairline));
+  border-radius: var(--ib-radius);
+  background: var(--dh-card-soft, var(--ib-paper));
+}
+
 .holdingsHeroSplit {
   width: 100%;
   max-width: 100%;
@@ -2573,8 +3189,8 @@
 }
 
 .holdingsGridSecondary {
-  --dist-chart-height: 150px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  --dist-chart-height: 206px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .holdingsGridSecondary > .distPanel {
@@ -2885,6 +3501,10 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
     width: 100%;
   }
+
+  .kpiCard:nth-child(-n + 2) .kpiValue {
+    font-size: 30px;
+  }
 }
 
 @media (max-width: 1400px) {
@@ -2972,6 +3592,16 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .holdingsHeroBody,
+  .holdingsHeroTableStack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .holdingsHeroChartCol {
+    width: min(260px, 100%);
+    justify-self: center;
+  }
+
   .distBody {
     grid-template-columns: minmax(188px, 220px) minmax(0, 1fr);
     gap: 14px;
@@ -3052,6 +3682,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .holdingsHeroActions {
+    justify-content: flex-start;
+  }
+
   .distBody {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
@@ -3090,6 +3724,14 @@
 }
 
 @media (max-width: 680px) {
+  .holdingsHeroBand {
+    padding: 10px;
+  }
+
+  .holdingsHeroTable {
+    min-width: 320px;
+  }
+
   .distBody {
     grid-template-columns: minmax(0, 1fr);
   }

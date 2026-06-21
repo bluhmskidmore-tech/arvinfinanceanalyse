@@ -1,4 +1,6 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -132,6 +134,27 @@ function renderPortfolio(client: ApiClient) {
 }
 
 describe("Portfolio home cross-page consistency", () => {
+  it("defines every portfolio layout CSS hook used by the page component", () => {
+    const component = readFileSync(
+      resolve(process.cwd(), "src/features/workbench/module-home/PortfolioHomeLayout.tsx"),
+      "utf8",
+    );
+    const css = readFileSync(
+      resolve(process.cwd(), "src/features/workbench/module-home/portfolioHome.module.css"),
+      "utf8",
+    );
+
+    const referencedSelectors = Array.from(component.matchAll(/styles\.([A-Za-z0-9_]+)/g))
+      .map((match) => match[1])
+      .filter((selector, index, selectors) => selectors.indexOf(selector) === index);
+
+    const missingSelectors = referencedSelectors.filter(
+      (selector) => !new RegExp(`\\.${selector}(?=[\\s\\{\\.#,:>\\[])`).test(css),
+    );
+
+    expect(missingSelectors).toEqual([]);
+  });
+
   it("uses one report date across portfolio source pages and keeps risk closure date-only", async () => {
     const base = portfolioClient();
     const getBalanceAnalysisOverview = vi.fn<ApiClient["getBalanceAnalysisOverview"]>((options) =>
@@ -263,5 +286,38 @@ describe("Portfolio home cross-page consistency", () => {
     for (const term of FALSE_CLOSURE_TERMS) {
       expect(firstScreenText).not.toContain(term);
     }
+  });
+
+  it("keeps decision evidence before portfolio metrics and renders no undefined CSS classes", async () => {
+    renderPortfolio(portfolioClient());
+
+    const page = await screen.findByTestId("module-workbench-home", {}, { timeout: ROUTE_RENDER_TIMEOUT_MS });
+    const firstScreen = within(page).getByTestId("module-home-portfolio-first-screen");
+
+    await within(firstScreen).findByTestId("module-home-decision");
+
+    const orderedSections = Array.from(
+      firstScreen.querySelectorAll(
+        [
+          '[data-testid="module-home-decision"]',
+          '[data-testid="module-home-kpi-strip"]',
+          '[data-testid="module-home-portfolio-risk-ticker"]',
+          '[data-testid="module-home-portfolio-holdings-hero"]',
+        ].join(", "),
+      ),
+    ).map((node) => node.getAttribute("data-testid"));
+
+    expect(orderedSections).toEqual([
+      "module-home-decision",
+      "module-home-kpi-strip",
+      "module-home-portfolio-risk-ticker",
+      "module-home-portfolio-holdings-hero",
+    ]);
+
+    const undefinedClassNodes = Array.from(page.querySelectorAll("[class]"))
+      .filter((node) => (node.getAttribute("class") ?? "").includes("undefined"))
+      .map((node) => node.getAttribute("data-testid") ?? node.tagName.toLowerCase());
+
+    expect(undefinedClassNodes).toEqual([]);
   });
 });

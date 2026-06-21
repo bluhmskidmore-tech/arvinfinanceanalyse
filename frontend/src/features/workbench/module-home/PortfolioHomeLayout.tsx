@@ -34,6 +34,10 @@ const ANALYSIS_TABS = [
   { key: "business-type-metrics", label: "业务类型" },
 ] as const;
 
+type PortfolioStructureTab = (typeof ANALYSIS_TABS)[number] & {
+  panel?: ModuleHomeDetailPanel;
+};
+
 const DRILL_ICON_MAP: Record<string, ReactNode> = {
   dashboard: <LightIcon name="appstore" />,
   analysis: <LightIcon name="bar-chart" />,
@@ -291,6 +295,30 @@ function SectionHead({ label, title }: { label: string; title: string }) {
   );
 }
 
+function structureTabBadge(panel: ModuleHomeDetailPanel | undefined) {
+  return panel && panel.rows.length > 0 ? String(panel.rows.length) : "空";
+}
+
+function structureStatusSummary(tabs: PortfolioStructureTab[]) {
+  const emptyTabs = tabs.filter((tab) => !tab.panel || tab.panel.rows.length === 0);
+  if (emptyTabs.length === 0) {
+    return `${tabs.length}/${tabs.length} 个结构就绪`;
+  }
+  return `${emptyTabs.length} 个结构为空：${emptyTabs.map((tab) => tab.label).join("、")}`;
+}
+
+function StructureTabLabel({ tab }: { tab: PortfolioStructureTab }) {
+  return (
+    <span
+      className={styles.structureTabLabel}
+      data-testid={`module-home-analysis-tab-${tab.key}`}
+    >
+      <span>{tab.label}</span>
+      <small className={styles.structureTabBadge}>{structureTabBadge(tab.panel)}</small>
+    </span>
+  );
+}
+
 function splitDecisionFacts(facts: PortfolioDecisionFact[]) {
   return {
     exposure: facts.slice(0, 6),
@@ -423,9 +451,17 @@ function DecisionPanel({ view }: { view: ModuleHomeView }) {
         {actions.length > 0 ? (
           <div className={styles.decisionActionQueue}>
             <span className={styles.decisionActionLabel}>待复核</span>
-            <div className={styles.decisionActionList}>
-              {actions.map((action) => (
-                <Link className={styles.decisionAction} to={action.path} key={action.title}>
+            <div
+              className={styles.decisionActionList}
+              data-testid="module-home-portfolio-action-loop"
+            >
+              {actions.map((action, index) => (
+                <Link
+                  className={styles.decisionAction}
+                  to={action.path}
+                  key={action.title}
+                  data-testid={index === 0 ? "module-home-portfolio-action-loop-primary" : undefined}
+                >
                   <span className={`${styles.decisionActionDot} ${toneClass(action.tone)}`} />
                   <span className={styles.decisionActionText}>
                     <strong className={toneClass(action.tone)}>{action.title}</strong>
@@ -440,6 +476,70 @@ function DecisionPanel({ view }: { view: ModuleHomeView }) {
             </div>
           </div>
         ) : null}
+      </div>
+    </section>
+  );
+}
+
+function hasAnalyticalOnlySource(decision: ModuleHomeView["decision"]) {
+  const readiness = decision?.readiness;
+  return Boolean(
+    readiness?.sourceFacts.some(
+      (fact) =>
+        fact.includes("basis=analytical") ||
+        fact.includes("formal_use_allowed=false") ||
+        fact.includes("quality=warning"),
+    ) ||
+      readiness?.blockingReasons.some(
+        (reason) =>
+          reason.includes("basis=analytical") ||
+          reason.includes("formal_use_allowed=false") ||
+          reason.includes("quality=warning"),
+      ),
+  );
+}
+
+function PortfolioClosureGate({ decision }: { decision: ModuleHomeView["decision"] }) {
+  if (!decision?.readiness) {
+    return null;
+  }
+
+  const { readiness } = decision;
+  const riskBlocked = !readiness.riskClosureReady;
+  const sourceBlocked = !readiness.decisionReady;
+  const analyticalOnly = hasAnalyticalOnlySource(decision);
+  const gateTone: ModuleHomeTone = riskBlocked || sourceBlocked ? "watch" : "ok";
+  const gateTitle = riskBlocked
+    ? "风险张量不可用"
+    : sourceBlocked
+      ? "决策口径未通过"
+      : "风险闭合同日可用";
+  const gateDetail = riskBlocked
+    ? readiness.riskClosureFact
+    : sourceBlocked
+      ? readiness.blockingReasons.join("；") || "来源证据未达到决策级口径。"
+      : `同日闭合 ${readiness.sourceDates}`;
+  const badges = [
+    riskBlocked ? "闭合状态已阻断" : "风险张量已闭合",
+    analyticalOnly ? "分析口径已隔离" : "正式口径",
+    "不使用前端补数",
+  ];
+
+  return (
+    <section
+      className={`${dhStyles.dhCard} ${styles.closureGate} ${riskBlocked ? styles.closureGateBlocked : ""}`}
+      data-testid="module-home-portfolio-closure-gate"
+      data-state={riskBlocked ? "blocked" : sourceBlocked ? "source-review" : "ready"}
+    >
+      <div className={styles.closureGateHead}>
+        <span>闭合状态</span>
+        <strong className={toneClass(gateTone)}>{gateTitle}</strong>
+      </div>
+      <p className={styles.closureGateDetail}>{compactActionEvidence(gateDetail)}</p>
+      <div className={styles.closureGateBadges}>
+        {badges.map((badge) => (
+          <span key={badge}>{badge}</span>
+        ))}
       </div>
     </section>
   );
@@ -461,14 +561,31 @@ export default function PortfolioHomeLayout({
   const portfolioComparisonPanel = panelByKey(view.detailPanels, "portfolio-comparison");
   const secondaryDistributionPanels =
     view.distributionPanels?.filter((panel) => panel.key !== "asset-type") ?? [];
+  const readiness = view.decision?.readiness;
+  const riskClosureBlocked = Boolean(readiness && !readiness.riskClosureReady);
+  const analyticalOnlySource = hasAnalyticalOnlySource(view.decision);
+  const riskTickerUnavailable = riskClosureBlocked || riskPanel?.tone !== "ok";
+  const riskTickerUnavailableTitle = riskClosureBlocked ? "风险张量不可用" : "风险读数不可用";
+  const riskTickerUnavailableDetail = riskClosureBlocked
+    ? `${readiness?.riskClosureFact ?? "风险闭合证据未返回"}，闭合状态已阻断。`
+    : riskPanel?.stateDetail;
+
+  const structureTabs = useMemo<PortfolioStructureTab[]>(() => {
+    const map = new Map(view.detailPanels?.map((panel) => [panel.key, panel]) ?? []);
+    return ANALYSIS_TABS.map((tab) => ({
+      ...tab,
+      panel: map.get(tab.key),
+    }));
+  }, [view.detailPanels]);
+
+  const structureGapTabs = structureTabs.filter((tab) => !tab.panel || tab.panel.rows.length === 0);
 
   const tabItems = useMemo(() => {
-    const map = new Map(view.detailPanels?.map((panel) => [panel.key, panel]) ?? []);
-    return ANALYSIS_TABS.map((tab) => {
-      const panel = map.get(tab.key);
+    return structureTabs.map((tab) => {
+      const panel = tab.panel;
       return {
         key: tab.key,
-        label: tab.label,
+        label: <StructureTabLabel tab={tab} />,
         children: panel ? (
           <PortfolioStructureTabPanel panel={panel} />
         ) : (
@@ -478,7 +595,7 @@ export default function PortfolioHomeLayout({
         ),
       };
     });
-  }, [view.detailPanels]);
+  }, [structureTabs]);
 
   return (
     <>
@@ -511,215 +628,250 @@ export default function PortfolioHomeLayout({
 
       <main className={`${dhStyles.dhMain} ${styles.portfolioPageMain}`}>
         <section data-testid="module-home-portfolio-cockpit" className={styles.portfolioCockpit}>
-          <section data-testid="module-home-portfolio-first-screen" className={styles.portfolioPrimaryGrid}>
-            <div className={styles.portfolioPrimaryColumn}>
-              <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
-                <SectionHead label="指标" title="核心指标" />
-                <div className={styles.kpiGridTape}>
-                <div className={styles.kpiGrid}>
-                  {view.kpis.map((item) => {
-                    const value = splitKpiValue(item.value);
-                    const changeDirection = resolveMarketChangeDirection(item.detail, item.sparkline);
-                    return (
-                      <article
-                        className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi} ${styles.kpiCard}`}
-                        data-tone={item.tone}
-                        key={item.key}
-                        data-testid={`module-home-portfolio-kpi-${item.key}`}
-                      >
-                        <div className={dhStyles.dhTerminalKpiTop}>
-                          <span className={styles.kpiLabel}>{item.label}</span>
-                        </div>
-                        <div className={styles.portfolioKpiValueRow}>
-                          <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>
-                            <span>{value.number}</span>
-                            {value.unit ? (
-                              <>
-                                {" "}
-                                <small>{value.unit}</small>
-                              </>
+          <section data-testid="module-home-portfolio-review-band" className={styles.portfolioReviewBand}>
+            <section data-testid="module-home-portfolio-first-screen" className={styles.portfolioPrimaryGrid}>
+              <div className={styles.portfolioPrimaryColumn}>
+                <DecisionPanel view={view} />
+
+                <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
+                  <SectionHead label="指标" title="核心指标" />
+                  <div className={styles.kpiGridTape}>
+                  <div className={styles.kpiGrid}>
+                    {view.kpis.map((item) => {
+                      const value = splitKpiValue(item.value);
+                      const changeDirection = resolveMarketChangeDirection(item.detail, item.sparkline);
+                      return (
+                        <article
+                          className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi} ${styles.kpiCard}`}
+                          data-tone={item.tone}
+                          key={item.key}
+                          data-testid={`module-home-portfolio-kpi-${item.key}`}
+                        >
+                          <div className={dhStyles.dhTerminalKpiTop}>
+                            <span className={styles.kpiLabel}>{item.label}</span>
+                          </div>
+                          <div className={styles.portfolioKpiValueRow}>
+                            <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>
+                              <span>{value.number}</span>
+                              {value.unit ? (
+                                <>
+                                  {" "}
+                                  <small>{value.unit}</small>
+                                </>
+                              ) : null}
+                            </div>
+                            {item.sparkline && item.sparkline.length >= 2 ? (
+                              <MarketHomeKpiSparkline
+                                values={item.sparkline}
+                                tone={item.tone}
+                                changeDirection={changeDirection}
+                                className={styles.portfolioKpiSparkline}
+                              />
                             ) : null}
                           </div>
-                          {item.sparkline && item.sparkline.length >= 2 ? (
-                            <MarketHomeKpiSparkline
-                              values={item.sparkline}
-                              tone={item.tone}
-                              changeDirection={changeDirection}
-                              className={styles.portfolioKpiSparkline}
-                            />
-                          ) : null}
-                        </div>
-                        <div
-                          className={`${styles.kpiDetail} ${marketChangePresentation(
-                            item.detail,
-                            item.sparkline,
-                            PORTFOLIO_KPI_CHANGE_CLASSES,
-                          ).className}`}
-                          data-testid={`module-home-portfolio-kpi-${item.key}-detail`}
-                          data-change={changeDirection ?? "flat"}
-                        >
-                          {item.detail}
-                        </div>
+                          <div
+                            className={`${styles.kpiDetail} ${marketChangePresentation(
+                              item.detail,
+                              item.sparkline,
+                              PORTFOLIO_KPI_CHANGE_CLASSES,
+                            ).className}`}
+                            data-testid={`module-home-portfolio-kpi-${item.key}-detail`}
+                            data-change={changeDirection ?? "flat"}
+                          >
+                            {item.detail}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  </div>
+                </section>
+
+                <PortfolioRiskTickerBar
+                  riskPanel={riskPanel}
+                  unavailable={riskTickerUnavailable}
+                  unavailableTitle={riskTickerUnavailableTitle}
+                  unavailableDetail={compactActionEvidence(riskTickerUnavailableDetail ?? "")}
+                />
+
+                <PortfolioHoldingsHeroBand
+                  panel={assetTypePanel}
+                  portfolioComparisonPanel={portfolioComparisonPanel}
+                />
+
+                <PortfolioChartSnapshot panels={secondaryDistributionPanels} />
+
+                <section data-testid="module-home-briefing" className={styles.sectionBlock}>
+                  <SectionHead label="组合" title="组合摘要" />
+                  <div className={styles.briefGrid}>
+                    {view.briefings.map((item, index) => (
+                      <article
+                        className={`${dhStyles.dhCard} ${briefCardClass(item.tone, index === 0)}`}
+                        key={item.title}
+                      >
+                        <span className={styles.briefTitle}>{item.title}</span>
+                        <strong className={`${styles.briefConclusion} ${toneClass(item.tone)}`}>
+                          {item.conclusion}
+                        </strong>
+                        <span className={styles.briefEvidence}>{item.evidence}</span>
                       </article>
-                    );
-                  })}
-                </div>
-                </div>
-              </section>
+                    ))}
+                  </div>
+                </section>
+              </div>
 
-              <PortfolioRiskTickerBar riskPanel={riskPanel} />
+              <PortfolioAiDecisionRail view={view} />
+            </section>
 
-              <PortfolioHoldingsHeroBand
-                panel={assetTypePanel}
-                portfolioComparisonPanel={portfolioComparisonPanel}
-              />
+            <section
+              data-testid="module-home-status-strip"
+              className={`${dhStyles.dhCard} ${dhStyles.dhTerminalRiskStrip} ${styles.statusStrip} ${styles.sectionBlock}`}
+            >
+              <div className={styles.sectionHead}>
+                <span>来源链路</span>
+                <strong>读链路状态</strong>
+                <span className={styles.statusScope}>{view.sourceScope}</span>
+              </div>
+              <div className={styles.statusGrid}>
+                {view.statuses.map((item) => (
+                  <div className={styles.statusCell} key={item.key}>
+                    <span>{item.label}</span>
+                    <b className={toneClass(item.tone)}>{item.value}</b>
+                    <em>{item.detail}</em>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </section>
 
-              <DecisionPanel view={view} />
+          <section data-testid="module-home-portfolio-structure-workbench" className={styles.portfolioStructureWorkbench}>
+          {secondaryDistributionPanels.length > 0 ? (
+            <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
+              <div className={styles.sectionHead}>
+                <span>持仓</span>
+                <strong>结构分布</strong>
+                <Link className={styles.holdingsSectionLink} to="/positions">
+                  持仓透视
+                </Link>
+              </div>
+              <div className={`${styles.holdingsGrid} ${styles.holdingsGridSecondary}`}>
+                {secondaryDistributionPanels.map((panel) => (
+                  <DistributionPanelCard panel={panel} key={panel.key} />
+                ))}
+              </div>
+            </section>
+          ) : !view.distributionPanels?.length ? (
+            <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
+              <div className={styles.sectionHead}>
+                <span>持仓</span>
+                <strong>持仓结构</strong>
+              </div>
+              <p className={`${styles.dataNote} ${styles.toneWatch}`}>
+                当前无可用正式持仓结构读数；样例明细不展示为组合事实。
+              </p>
+            </section>
+          ) : null}
 
-              <PortfolioChartSnapshot panels={secondaryDistributionPanels} />
-
-              <section data-testid="module-home-briefing" className={styles.sectionBlock}>
-                <SectionHead label="组合" title="组合摘要" />
-                <div className={styles.briefGrid}>
-                  {view.briefings.map((item, index) => (
-                    <article
-                      className={`${dhStyles.dhCard} ${briefCardClass(item.tone, index === 0)}`}
-                      key={item.title}
-                    >
-                      <span className={styles.briefTitle}>{item.title}</span>
-                      <strong className={`${styles.briefConclusion} ${toneClass(item.tone)}`}>
-                        {item.conclusion}
-                      </strong>
-                      <span className={styles.briefEvidence}>{item.evidence}</span>
-                    </article>
-                  ))}
-                </div>
-              </section>
+          <section
+            data-testid="module-home-portfolio-terminal"
+            className={`${dhStyles.dhCard} ${styles.terminalCard} ${styles.sectionBlock}`}
+          >
+            <SectionHead label="结构" title="结构拆解" />
+            <div
+              className={styles.structureStatusBar}
+              data-testid="module-home-structure-status-summary"
+            >
+              {structureStatusSummary(structureTabs)}
             </div>
+            {structureGapTabs.length > 0 ? (
+              <div className={styles.structureGapActions} data-testid="module-home-structure-gap-actions">
+                {structureGapTabs.map((tab) => (
+                  <Link
+                    key={tab.key}
+                    className={styles.structureGapAction}
+                    to={`/bond-dashboard?report_date=${encodeURIComponent(bondReportDate || "-")}#${tab.key}`}
+                    data-testid={`module-home-structure-gap-action-${tab.key}`}
+                  >
+                    {tab.label}为空 · 复核 {tab.key}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+            <Tabs items={tabItems} />
+          </section>
+          </section>
 
-            <PortfolioAiDecisionRail view={view} />
+          <section data-testid="module-home-portfolio-closure-band" className={styles.portfolioClosureBand}>
+          <PortfolioClosureGate decision={view.decision} />
+          <section className={`${styles.sectionBlock} ${styles.riskAttributionBlock}`}>
+            <SectionHead
+              label="归因"
+              title={riskClosureBlocked || analyticalOnlySource ? "分析读数与归因" : "风险与归因"}
+            />
+            <div className={styles.detailGrid}>
+              {riskPanel ? (
+                <DetailPanelCard panel={riskPanel} testId={detailPanelTestId(riskPanel.key)} />
+              ) : null}
+              {pnlPanel ? (
+                <DetailPanelCard panel={pnlPanel} testId={detailPanelTestId(pnlPanel.key)} />
+              ) : null}
+              {basisPanel ? (
+                <DetailPanelCard panel={basisPanel} testId={detailPanelTestId(basisPanel.key)} />
+              ) : null}
+            </div>
           </section>
 
           <section
-            data-testid="module-home-status-strip"
-            className={`${dhStyles.dhCard} ${dhStyles.dhTerminalRiskStrip} ${styles.statusStrip} ${styles.sectionBlock}`}
+            data-testid="module-home-portfolio-quick-access"
+            className={`${styles.sectionBlock} ${styles.quickAccessBlock}`}
           >
-            <div className={styles.sectionHead}>
-              <span>来源链路</span>
-              <strong>读链路状态</strong>
-              <span className={styles.statusScope}>{view.sourceScope}</span>
-            </div>
-            <div className={styles.statusGrid}>
-              {view.statuses.map((item) => (
-                <div className={styles.statusCell} key={item.key}>
-                  <span>{item.label}</span>
-                  <b className={toneClass(item.tone)}>{item.value}</b>
-                  <em>{item.detail}</em>
-                </div>
-              ))}
-            </div>
-          </section>
-
-        {secondaryDistributionPanels.length > 0 ? (
-          <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
-            <div className={styles.sectionHead}>
-              <span>持仓</span>
-              <strong>结构分布</strong>
-              <Link className={styles.holdingsSectionLink} to="/positions">
-                持仓透视
-              </Link>
-            </div>
-            <div className={`${styles.holdingsGrid} ${styles.holdingsGridSecondary}`}>
-              {secondaryDistributionPanels.map((panel) => (
-                <DistributionPanelCard panel={panel} key={panel.key} />
-              ))}
-            </div>
-          </section>
-        ) : !view.distributionPanels?.length ? (
-          <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
-            <div className={styles.sectionHead}>
-              <span>持仓</span>
-              <strong>持仓结构</strong>
-            </div>
-            <p className={`${styles.dataNote} ${styles.toneWatch}`}>
-              当前无可用正式持仓结构读数；样例明细不展示为组合事实。
-            </p>
-          </section>
-        ) : null}
-
-        <section
-          data-testid="module-home-portfolio-terminal"
-          className={`${dhStyles.dhCard} ${styles.terminalCard} ${styles.sectionBlock}`}
-        >
-          <SectionHead label="结构" title="结构拆解" />
-          <Tabs items={tabItems} />
-        </section>
-
-        <section className={`${styles.sectionBlock} ${styles.riskAttributionBlock}`}>
-          <SectionHead label="归因" title="风险与归因" />
-          <div className={styles.detailGrid}>
-            {riskPanel ? (
-              <DetailPanelCard panel={riskPanel} testId={detailPanelTestId(riskPanel.key)} />
-            ) : null}
-            {pnlPanel ? (
-              <DetailPanelCard panel={pnlPanel} testId={detailPanelTestId(pnlPanel.key)} />
-            ) : null}
-            {basisPanel ? (
-              <DetailPanelCard panel={basisPanel} testId={detailPanelTestId(basisPanel.key)} />
-            ) : null}
-          </div>
-        </section>
-
-        <section
-          data-testid="module-home-portfolio-quick-access"
-          className={`${styles.sectionBlock} ${styles.quickAccessBlock}`}
-        >
-          <SectionHead label="快捷" title="分析入口" />
-          <div className={styles.quickAccessGrid}>
-            {PORTFOLIO_QUICK_ACCESS_TILES.map((tile) => (
-              <Link
-                key={tile.key}
-                to={tile.path}
-                className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.quickAccessCard}`}
-                title={tile.description}
-                data-testid={`module-home-portfolio-quick-${tile.key}`}
-              >
-                <span>{tile.icon}</span>
-                <b>{tile.label}</b>
-                <em>{tile.badge}</em>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section data-testid="module-home-drilldowns" className={`${styles.sectionBlock} ${styles.drilldownBlock}`}>
-          <SectionHead label="明细" title="全部分组入口" />
-          <div className={styles.drillGrid}>
-            {config.drilldowns.map((item) => {
-              const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <LightIcon name="arrow-right" />;
-              const isCurrentHome = item.key === "portfolio-home";
-              return (
+            <SectionHead label="快捷" title="分析入口" />
+            <div className={styles.quickAccessGrid}>
+              {PORTFOLIO_QUICK_ACCESS_TILES.map((tile) => (
                 <Link
-                  key={item.key}
-                  to={item.path}
-                  aria-current={isCurrentHome ? "page" : undefined}
-                  className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.drillCard} ${
-                    isCurrentHome ? styles.drillCardCurrent : ""
-                  }`}
-                  title={item.description}
+                  key={tile.key}
+                  to={tile.path}
+                  className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.quickAccessCard}`}
+                  title={tile.description}
+                  data-testid={`module-home-portfolio-quick-${tile.key}`}
                 >
-                  <span>{icon}</span>
-                  <b>{item.label}</b>
-                  <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
+                  <span>{tile.icon}</span>
+                  <b>{tile.label}</b>
+                  <em>{tile.badge}</em>
                 </Link>
-              );
-            })}
-          </div>
-          {view.dataNote.lines.length > 0 ? (
-            <p className={styles.dataNote} data-testid="module-home-data-note">
-              {compactActionEvidence(view.dataNote.lines.join(" "))}
-            </p>
-          ) : null}
+              ))}
+            </div>
+          </section>
+
+          <section data-testid="module-home-drilldowns" className={`${styles.sectionBlock} ${styles.drilldownBlock}`}>
+            <SectionHead label="明细" title="全部分组入口" />
+            <div className={styles.drillGrid}>
+              {config.drilldowns.map((item) => {
+                const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <LightIcon name="arrow-right" />;
+                const isCurrentHome = item.key === "portfolio-home";
+                return (
+                  <Link
+                    key={item.key}
+                    to={item.path}
+                    aria-current={isCurrentHome ? "page" : undefined}
+                    className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.drillCard} ${
+                      isCurrentHome ? styles.drillCardCurrent : ""
+                    }`}
+                    title={item.description}
+                  >
+                    <span>{icon}</span>
+                    <b>{item.label}</b>
+                    <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
+                  </Link>
+                );
+              })}
+            </div>
+            {view.dataNote.lines.length > 0 ? (
+              <p className={styles.dataNote} data-testid="module-home-data-note">
+                {compactActionEvidence(view.dataNote.lines.join(" "))}
+              </p>
+            ) : null}
+          </section>
         </section>
         </section>
       </main>
