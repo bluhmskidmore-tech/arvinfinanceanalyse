@@ -530,6 +530,9 @@ def _build_vendor_payload(
         "factor_screen_formula_version": _mapping(payload.get("factor_screen_candidates")).get("formula_version"),
         "theme_breakout_formula_version": _mapping(payload.get("theme_breakout")).get("formula_version"),
         "mean_reversion_formula_version": _mapping(payload.get("mean_reversion_candidates")).get("formula_version"),
+        "uptrend_momentum_formula_version": _mapping(payload.get("uptrend_momentum_candidates")).get(
+            "formula_version"
+        ),
         "hybrid_fusion_formula_version": _mapping(payload.get("hybrid_fusion_candidates")).get("formula_version"),
     }
 
@@ -774,12 +777,60 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                     }
                 )
 
+    uptrend_raw = payload.get("uptrend_momentum_candidates")
+    if isinstance(uptrend_raw, dict):
+        raw_items = uptrend_raw.get("items")
+        if isinstance(raw_items, list):
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                item = cast(dict[str, object], raw)
+                rank = _safe_int(item.get("rank"), default=1)
+                rows.append(
+                    {
+                        "signal_kind": "uptrend_momentum",
+                        "rank": rank,
+                        "stock_code": item.get("stock_code"),
+                        "stock_name": item.get("stock_name"),
+                        "sector_code": item.get("sector_code"),
+                        "sector_name": item.get("sector_name"),
+                        "strength_pctchange": item.get("pctchange"),
+                        "strength_turn": item.get("amount_ratio", item.get("turn")),
+                        "strength_amplitude": item.get("amplitude"),
+                        "ma20": item.get("ma20"),
+                        "ma60": item.get("ma60"),
+                        "ma120": item.get("ma120"),
+                        "market_state": market_state,
+                        "signal_evidence": {
+                            "signal_kind": "uptrend_momentum",
+                            "market_state": market_state,
+                            "rank": rank,
+                            "stock_code": item.get("stock_code"),
+                            "sector_code": item.get("sector_code"),
+                            "score": item.get("score"),
+                            "close": item.get("close"),
+                            "return_20d": item.get("return_20d"),
+                            "return_60d": item.get("return_60d"),
+                            "return_120d": item.get("return_120d"),
+                            "ma20": item.get("ma20"),
+                            "ma60": item.get("ma60"),
+                            "ma120": item.get("ma120"),
+                            "amount_ratio": item.get("amount_ratio"),
+                            "close_to_ma20": item.get("close_to_ma20"),
+                            "pctchange": item.get("pctchange"),
+                            "turn": item.get("turn"),
+                            "amplitude": item.get("amplitude"),
+                        },
+                    }
+                )
+
     signal_order = {
         "hybrid_fusion": 0,
         "stock_candidate": 1,
-        "theme_breakout": 2,
-        "factor_screen": 3,
-        "mean_reversion": 4,
+        "uptrend_momentum": 2,
+        "theme_breakout": 3,
+        "factor_screen": 4,
+        "mean_reversion": 5,
     }
     return sorted(
         rows,

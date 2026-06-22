@@ -657,12 +657,6 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
         message: "Limit-up quality inputs are unavailable; the market gate is capped at the trend-only slice.",
         input_family: "limit_up_quality",
       },
-      {
-        severity: "warning",
-        code: "LIVERMORE_SECTOR_RANK_PROVISIONAL_FORMULA",
-        message: "Sector rank currently uses the provisional percentile formula over pctchange, turn, and amplitude.",
-        input_family: "sector_strength",
-      },
     ],
     data_gaps: [
       {
@@ -686,8 +680,16 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
     module_states: buildMockLivermoreModuleStates(resolvedDate),
     sector_rank: {
       as_of_date: resolvedDate,
-      formula_version: "rv_livermore_sector_rank_provisional_v1",
-      is_provisional: true,
+      formula_version: "rv_livermore_sector_strength_observation_v1",
+      is_provisional: false,
+      formula_status: "signed_off",
+      formula_note:
+        "Daily sector strength observation rank is a signed-off analytical formula: 50% pctchange percentile, 30% turn percentile, and 20% amplitude percentile; it supports review prioritization and sector filtering, not trading instructions; multi-day momentum persistence, sector money flow, and crowding are not part of this version.",
+      formula_component_weights: {
+        pctchange_percentile: 0.5,
+        turn_percentile: 0.3,
+        amplitude_percentile: 0.2,
+      },
       sector_count: 3,
       excluded_constituent_count: 0,
       excluded_sector_count: 0,

@@ -1140,14 +1140,7 @@ describe("MarketDataPage", () => {
             missing_inputs: ["positions", "entry_cost", "bars_since_entry"],
           },
         ],
-        diagnostics: [
-          {
-            severity: "warning" as const,
-            code: "LIVERMORE_SECTOR_RANK_PROVISIONAL_FORMULA",
-            message: "Sector rank currently uses the provisional percentile formula over pctchange, turn, and amplitude.",
-            input_family: "sector_strength",
-          },
-        ],
+        diagnostics: [],
         data_gaps: [
           {
             input_family: "breadth",
@@ -1173,8 +1166,9 @@ describe("MarketDataPage", () => {
         module_states: readyLivermoreModuleStates(),
         sector_rank: {
           as_of_date: "2026-04-29",
-          formula_version: "rv_livermore_sector_rank_provisional_v1",
-          is_provisional: true,
+          formula_version: "rv_livermore_sector_strength_observation_v1",
+          is_provisional: false,
+          formula_status: "signed_off",
           sector_count: 3,
           excluded_constituent_count: 0,
           excluded_sector_count: 0,

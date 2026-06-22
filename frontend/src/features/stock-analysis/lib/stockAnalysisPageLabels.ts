@@ -1,5 +1,6 @@
 import type { LivermoreStrategyPayload, ResultMeta } from "../../../api/contracts";
 import {
+  isActionableLivermoreUnsupportedOutput,
   localizeMarketDataStatus,
   localizeStockBackendText,
   localizeStockDataFamily,
@@ -274,6 +275,7 @@ export function buildBackendSupplyOverview(
   const readinessRows = payload.rule_readiness ?? [];
   const dataGaps = payload.data_gaps ?? [];
   const unsupportedOutputs = payload.unsupported_outputs ?? [];
+  const actionableUnsupportedOutputs = unsupportedOutputs.filter(isActionableLivermoreUnsupportedOutput);
   const supportedOutputs = payload.supported_outputs ?? [];
   const readyRuleCount = readinessRows.filter((row) => row.status === "ready").length;
   const notReadyGaps = dataGaps.filter((row) => row.status !== "ready");
@@ -298,8 +300,8 @@ export function buildBackendSupplyOverview(
     dataGapValueLabel: `${notReadyGaps.length}`,
     supportedLabel: `可用 ${supportedOutputs.length}`,
     supportedValueLabel: `${supportedOutputs.length}`,
-    unsupportedLabel: `阻断 ${unsupportedOutputs.length}`,
-    unsupportedValueLabel: `${unsupportedOutputs.length}`,
+    unsupportedLabel: `阻断 ${actionableUnsupportedOutputs.length}`,
+    unsupportedValueLabel: `${actionableUnsupportedOutputs.length}`,
     sectorSupplyLabel: `板块 ${sectorCount}`,
     sectorSupplyValueLabel: `${sectorCount}`,
     candidateSupplyLabel: `候选 ${candidateCount}`,

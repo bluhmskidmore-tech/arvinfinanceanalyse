@@ -1624,6 +1624,9 @@ export type LivermoreSectorRankPayload = {
   as_of_date: string;
   formula_version: string;
   is_provisional: boolean;
+  formula_status?: "review_pending" | "signed_off" | string;
+  formula_note?: string | null;
+  formula_component_weights?: Record<string, number>;
   sector_count: number;
   excluded_constituent_count: number;
   excluded_sector_count: number;

@@ -72,10 +72,12 @@ const strategyPayload: LivermoreStrategyPayload = {
       reason: "theme inputs missing",
     },
   ],
+  module_states: [],
   sector_rank: {
     as_of_date: "2026-04-29",
-    formula_version: "rv_livermore_sector_rank_provisional_v1",
-    is_provisional: true,
+    formula_version: "rv_livermore_sector_strength_observation_v1",
+    is_provisional: false,
+    formula_status: "signed_off",
     sector_count: 2,
     excluded_constituent_count: 0,
     excluded_sector_count: 0,
@@ -213,5 +215,35 @@ describe("stockAnalysisPageLabels", () => {
     expect(overview.basisLabel).toBe("分析口径");
     expect(overview.readinessRows).toBe(strategyPayload.rule_readiness);
     expect(overview.dataGapRows).toBe(strategyPayload.data_gaps);
+  });
+
+  it("keeps known policy pauses out of backend supply blocker counts", () => {
+    const overview = buildBackendSupplyOverview({
+      ...strategyPayload,
+      unsupported_outputs: [
+        {
+          key: "stock_candidates",
+          reason: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+        },
+        {
+          key: "mean_reversion_candidates",
+          reason:
+            "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT because the defended-trend candidate bundle already covers overheated tape.",
+        },
+        {
+          key: "theme_breakout",
+          reason: "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.",
+        },
+        {
+          key: "hybrid_fusion",
+          reason:
+            "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+        },
+      ],
+    });
+
+    expect(overview.unsupportedLabel).toBe("阻断 0");
+    expect(overview.unsupportedValueLabel).toBe("0");
+    expect(overview.unsupportedOutputs).toHaveLength(4);
   });
 });

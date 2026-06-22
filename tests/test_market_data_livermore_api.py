@@ -479,6 +479,69 @@ def test_livermore_workbench_summary_keeps_missing_distinct_from_empty() -> None
     assert summary["market_gate_present"] is False
 
 
+def test_livermore_workbench_summary_counts_only_actionable_boundary_items() -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
+
+    summary = route_module._livermore_workbench_summary(
+        {
+            "as_of_date": "2026-06-18",
+            "requested_as_of_date": "2026-06-18",
+            "strategy_name": "Livermore A-Share Defended Trend",
+            "basis": "analytical",
+            "market_gate": {"state": "OVERHEAT"},
+            "data_gaps": [
+                {
+                    "input_family": "breadth",
+                    "status": "ready",
+                    "evidence": "5-day breadth 0.6000 landed.",
+                },
+                {
+                    "input_family": "position_snapshot",
+                    "status": "missing",
+                    "evidence": "position snapshot not landed",
+                },
+            ],
+            "diagnostics": [
+                {
+                    "severity": "info",
+                    "code": "LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY",
+                    "message": "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+                    "input_family": "stock_candidate_policy",
+                },
+                {
+                    "severity": "warning",
+                    "code": "LIVERMORE_SECTOR_RANK_PROVISIONAL_FORMULA",
+                    "message": "Sector rank currently uses the provisional percentile formula.",
+                    "input_family": "sector_strength",
+                },
+            ],
+            "unsupported_outputs": [
+                {
+                    "key": "stock_candidates",
+                    "reason": "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+                },
+                {
+                    "key": "mean_reversion_candidates",
+                    "reason": "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT.",
+                },
+                {
+                    "key": "risk_exit",
+                    "reason": "position snapshot not landed",
+                },
+            ],
+        },
+        summary_kind="strategy",
+    )
+
+    assert summary["data_gap_count"] == 1
+    assert summary["diagnostic_count"] == 1
+    assert summary["unsupported_output_count"] == 1
+    assert summary["actionable_boundary_count"] == 3
+    assert summary["total_data_gap_count"] == 2
+    assert summary["total_diagnostic_count"] == 2
+    assert summary["total_unsupported_output_count"] == 3
+
+
 def test_livermore_workbench_summary_appends_result_without_replacing_meta() -> None:
     from backend.app.api.routes import market_data_livermore as route_module
 
@@ -633,6 +696,7 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
     assert "Choice stock catalog is missing" in unsupported_by_key["sector_rank"]["reason"]
     assert "Choice stock catalog is missing" in unsupported_by_key["stock_candidates"]["reason"]
+    assert "Choice stock catalog is missing" in unsupported_by_key["uptrend_momentum_candidates"]["reason"]
     assert "Choice stock catalog is missing" in unsupported_by_key["mean_reversion_candidates"]["reason"]
     assert "choice_stock_factor_snapshot" in unsupported_by_key["factor_screen_candidates"]["reason"]
     assert "Choice stock catalog is missing" in unsupported_by_key["theme_breakout"]["reason"]
@@ -642,6 +706,7 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert unsupported_keys == {
         "sector_rank",
         "stock_candidates",
+        "uptrend_momentum_candidates",
         "mean_reversion_candidates",
         "factor_screen_candidates",
         "theme_breakout",
@@ -1170,6 +1235,129 @@ def test_livermore_strategy_default_execution_skips_inactive_exp3b_stock_candida
     assert "exp3b" in outputs.stock_candidate_block_reason
     assert "OVERHEAT" in outputs.stock_candidate_block_reason
 
+    market_gate = {"state": "OVERHEAT"}
+    cycle_evidence = service._CycleInputEvidence(
+        price_spread_ready=True,
+        price_spread_evidence="price spread ready",
+        pmi_ready=True,
+        pmi_evidence="PMI ready",
+        credit_impulse_ready=True,
+        credit_impulse_evidence="credit impulse ready",
+        macro_score_ready=True,
+        macro_score_evidence="macro score ready",
+        turnover_persistence_ready=True,
+        turnover_persistence_evidence="turnover ready",
+        valuation_percentile_history_ready=True,
+        valuation_percentile_history_evidence="valuation ready",
+    )
+    supplement = service.MarketGateSupplement(
+        trade_date=date(2026, 5, 13),
+        breadth_5d=0.6,
+        limit_up_quality_ok=True,
+    )
+
+    gaps = service._build_data_gaps(
+        market_gate=market_gate,
+        history_count=65,
+        resolved_as_of_date="2026-05-13",
+        stock_readiness=_ready_choice_stock_readiness(),
+        stock_outputs=outputs,
+        cycle_input_evidence=cycle_evidence,
+        supplement=supplement,
+        latest_trade_date=date(2026, 5, 13),
+    )
+    assert "stock_candidate_policy" not in {row["input_family"] for row in gaps}
+
+    diagnostics = service._build_diagnostics(
+        requested_as_of_date=None,
+        resolved_as_of_date="2026-05-13",
+        market_gate=market_gate,
+        history_count=65,
+        stock_readiness=_ready_choice_stock_readiness(),
+        stock_outputs=outputs,
+        supplement=supplement,
+        latest_trade_date=date(2026, 5, 13),
+    )
+    diag_by_code = {row["code"]: row for row in diagnostics}
+    assert "LIVERMORE_STOCK_PIVOT_BLOCKED" not in diag_by_code
+    assert diag_by_code["LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY"]["severity"] == "info"
+
+    missing_inputs = service._stock_missing_inputs(
+        market_state="OVERHEAT",
+        stock_readiness=_ready_choice_stock_readiness(),
+        stock_outputs=outputs,
+    )
+    assert "stock_candidate_policy" not in missing_inputs
+
+
+def test_livermore_strategy_loads_uptrend_momentum_candidates_when_stock_inputs_ready(monkeypatch) -> None:
+    from backend.app.services import market_data_livermore_service as service
+
+    called: list[str] = []
+    ready_coverage = SimpleNamespace(
+        full_coverage=True,
+        status="ready",
+        message="ready",
+        completed_request_items=[],
+        missing_request_items=[],
+    )
+
+    monkeypatch.setattr(service, "load_choice_stock_materialization_coverage", lambda **_kwargs: ready_coverage)
+    monkeypatch.setattr(service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(service, "compute_sector_rank", lambda **_kwargs: SimpleNamespace(ready=False, payload={}))
+    monkeypatch.setattr(service, "_load_mean_reversion_snapshots", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        service,
+        "_load_factor_screen_rows",
+        lambda **_kwargs: service._FactorScreenLoadResult(
+            rows=[],
+            snapshot_as_of_date=None,
+            tables_used=[],
+            unavailable_reason="factor rows unavailable in unit test.",
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_load_theme_breakout_snapshots",
+        lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
+    )
+    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
+    monkeypatch.setattr(service, "_load_uptrend_momentum_snapshots", lambda **_kwargs: ["snapshot"], raising=False)
+
+    def fake_compute_uptrend(**kwargs):
+        called.append(kwargs["market_state"])
+        return SimpleNamespace(
+            payload={
+                "as_of_date": kwargs["as_of_date"],
+                "formula_version": "rv_uptrend_momentum_candidates_v1",
+                "market_state": kwargs["market_state"],
+                "candidate_count": 1,
+                "items": [{"rank": 1, "stock_code": "000001.SZ", "stock_name": "Trend A"}],
+            }
+        )
+
+    monkeypatch.setattr(service, "compute_uptrend_momentum_candidates", fake_compute_uptrend, raising=False)
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-06-18",
+        market_state="HOT",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    assert called == ["HOT"]
+    assert outputs.uptrend_momentum_payload is not None
+    assert outputs.uptrend_momentum_payload["candidate_count"] == 1
+
+    supported, unsupported = service._build_supported_outputs(
+        "HOT",
+        stock_readiness=_ready_choice_stock_readiness(),
+        stock_outputs=outputs,
+    )
+    assert "uptrend_momentum_candidates" in supported
+    assert "uptrend_momentum_candidates" not in {row["key"] for row in unsupported}
+
 
 def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candidates_in_warm(
     monkeypatch,
@@ -1535,6 +1723,7 @@ def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enr
         "market_gate",
         "sector_rank",
         "stock_candidates",
+        "uptrend_momentum_candidates",
         "mean_reversion_candidates",
         "factor_screen_candidates",
         "theme_breakout",

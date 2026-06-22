@@ -1094,11 +1094,12 @@ def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_n
     assert evidence["evidence_state"]["intraday_movement"]["state"] == "matched_rows"
 
 
-def test_task_materializes_factor_and_mean_reversion_signal_rows(monkeypatch, tmp_path) -> None:
+def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "other-strategies.duckdb"
     snap = date(2026, 5, 1)
     factor_stock = "000001.SZ"
     reversion_stock = "000002.SZ"
+    uptrend_stock = "000003.SZ"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
         _minimal_observation_schema(conn)
@@ -1109,6 +1110,8 @@ def test_task_materializes_factor_and_mean_reversion_signal_rows(monkeypatch, tm
                 ((snap + timedelta(days=1)).isoformat(), factor_stock, 11.0),
                 (snap.isoformat(), reversion_stock, 20.0),
                 ((snap + timedelta(days=1)).isoformat(), reversion_stock, 18.0),
+                (snap.isoformat(), uptrend_stock, 30.0),
+                ((snap + timedelta(days=1)).isoformat(), uptrend_stock, 33.0),
             ],
         )
     finally:
@@ -1151,6 +1154,30 @@ def test_task_materializes_factor_and_mean_reversion_signal_rows(monkeypatch, tm
                 }
             ]
         }
+        payload["uptrend_momentum_candidates"] = {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": uptrend_stock,
+                    "stock_name": "Trend C",
+                    "sector_code": "S3",
+                    "sector_name": "Trend",
+                    "score": 1.25,
+                    "close": 30.0,
+                    "return_20d": 0.08,
+                    "return_60d": 0.18,
+                    "return_120d": 0.32,
+                    "ma20": 28.4,
+                    "ma60": 25.2,
+                    "ma120": 21.1,
+                    "amount_ratio": 1.4,
+                    "close_to_ma20": 0.056338,
+                    "pctchange": 0.025,
+                    "turn": 1.7,
+                    "amplitude": 3.5,
+                }
+            ]
+        }
         return payload, meta
 
     monkeypatch.setattr(
@@ -1160,7 +1187,7 @@ def test_task_materializes_factor_and_mean_reversion_signal_rows(monkeypatch, tm
 
     out = materialize_livermore_candidate_history(str(db_path))
 
-    assert out["row_count"] == 2
+    assert out["row_count"] == 3
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
         rows = conn.execute(
@@ -1175,7 +1202,7 @@ def test_task_materializes_factor_and_mean_reversion_signal_rows(monkeypatch, tm
         conn.close()
 
     by_kind = {row[0]: row for row in rows}
-    assert set(by_kind) == {"factor_screen", "mean_reversion"}
+    assert set(by_kind) == {"factor_screen", "mean_reversion", "uptrend_momentum"}
     assert by_kind["factor_screen"][1:4] == (factor_stock, "Factor A", 1)
     assert json.loads(by_kind["factor_screen"][7])["score"] == 3.2
     assert abs(float(by_kind["factor_screen"][8]) - 0.1) < 1e-12
@@ -1183,6 +1210,13 @@ def test_task_materializes_factor_and_mean_reversion_signal_rows(monkeypatch, tm
     assert by_kind["mean_reversion"][4:7] == (-0.22, 2.4, 0.72)
     assert json.loads(by_kind["mean_reversion"][7])["drawdown_60d"] == -0.31
     assert abs(float(by_kind["mean_reversion"][8]) - -0.1) < 1e-12
+    assert by_kind["uptrend_momentum"][1:4] == (uptrend_stock, "Trend C", 1)
+    assert by_kind["uptrend_momentum"][4:7] == (0.025, 1.4, None)
+    uptrend_evidence = json.loads(by_kind["uptrend_momentum"][7])
+    assert uptrend_evidence["return_60d"] == 0.18
+    assert uptrend_evidence["ma20"] == 28.4
+    assert uptrend_evidence["close_to_ma20"] == 0.056338
+    assert abs(float(by_kind["uptrend_momentum"][8]) - 0.1) < 1e-12
 
 
 def test_task_materializes_hybrid_fusion_signal_rows_with_core_scores(monkeypatch, tmp_path) -> None:

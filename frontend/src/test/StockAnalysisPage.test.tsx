@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -19,6 +19,8 @@ import type {
   LivermoreStrategyPayload,
 } from "../api/contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
+import { StockAnalysisReviewLedgerFirstScreen } from "../features/stock-analysis/components/StockAnalysisReviewLedgerFirstScreen";
+import type { WorkbenchDataDigest } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
@@ -209,8 +211,9 @@ function buildStrategyPayload(
     unsupported_outputs: [],
     sector_rank: {
       as_of_date: "2026-04-29",
-      formula_version: "rv_livermore_sector_rank_provisional_v1",
-      is_provisional: true,
+      formula_version: "rv_livermore_sector_strength_observation_v1",
+      is_provisional: false,
+      formula_status: "signed_off",
       sector_count: 2,
       excluded_constituent_count: 0,
       excluded_sector_count: 0,
@@ -1304,6 +1307,99 @@ async function requestStockAnalysisAsOfDate(
 }
 
 describe("StockAnalysisPage", () => {
+  it("renders first-screen fact cards with Chinese group labels and optional interaction state", async () => {
+    const digest: WorkbenchDataDigest = {
+      primaryFacts: [
+        {
+          id: "candidate-depth",
+          label: "候选深度",
+          value: "1 / 1",
+          subValue: "已落表",
+          sourcePath: "strategy.result.stock_candidates.items",
+          tone: "read",
+          isPrimary: true,
+        },
+      ],
+      candidateFacts: [
+        {
+          id: "factor-candidates",
+          label: "多因子候选",
+          value: "3",
+          sourcePath: "strategy.result.factor_screen_candidates.items",
+          tone: "warning",
+        },
+      ],
+      evidenceFacts: [
+        {
+          id: "hybrid-candidates",
+          label: "融合候选",
+          value: "rv_hybrid_fusion_candidates_v3",
+          sourcePath: "strategy.result.hybrid_fusion_candidates.formula_version",
+          tone: "read",
+        },
+      ],
+      slowFacts: [
+        {
+          id: "strategy-score",
+          label: "优先级补证",
+          value: "读取中",
+          subValue: "首屏不阻塞",
+          sourcePath: "strategy_score.status",
+          tone: "slow",
+        },
+      ],
+    };
+
+    const baseProps = {
+      asOfLabel: "2026-04-29",
+      kicker: "复核工作台",
+      headline: "首屏供数",
+      lead: "供数事实卡片",
+      metrics: [],
+      conditionCells: [],
+      sourceCells: [],
+      railRows: [],
+      digest,
+    };
+
+    const { unmount } = render(<StockAnalysisReviewLedgerFirstScreen {...baseProps} />);
+    const digestRegion = screen.getByLabelText("首屏供数摘要");
+    expect(within(digestRegion).getByText("核心口径")).toBeInTheDocument();
+    expect(within(digestRegion).getByText("候选与证据")).toBeInTheDocument();
+    expect(within(digestRegion).getByText("慢接口补证")).toBeInTheDocument();
+    const staticFact = screen.getByTestId("stock-analysis-workbench-fact-candidate-depth");
+    expect(staticFact.tagName).toBe("ARTICLE");
+    expect(staticFact).toHaveTextContent("来源：strategy.result.stock_candidates.items");
+    expect(staticFact).toHaveAttribute("data-tone", "read");
+    expect(staticFact).toHaveAttribute("data-primary", "true");
+    expect(staticFact).toHaveAttribute("data-active", "false");
+    unmount();
+
+    const onFactSelect = vi.fn();
+    render(
+      <StockAnalysisReviewLedgerFirstScreen
+        {...baseProps}
+        onFactSelect={onFactSelect}
+        activeFactId="factor-candidates"
+        factControlsId="stock-analysis-fact-evidence-panel"
+      />,
+    );
+
+    const activeFact = screen.getByTestId("stock-analysis-workbench-fact-factor-candidates");
+    const interactiveDigest = screen.getByLabelText("首屏供数摘要");
+    expect(within(interactiveDigest).queryByRole("listbox")).not.toBeInTheDocument();
+    expect(within(interactiveDigest).getByRole("button", { name: /多因子候选/ })).toBe(activeFact);
+    expect(activeFact.tagName).toBe("BUTTON");
+    expect(activeFact).toHaveAttribute("aria-current", "true");
+    expect(activeFact).not.toHaveAttribute("aria-selected");
+    expect(activeFact).not.toHaveAttribute("aria-pressed");
+    expect(activeFact).toHaveAttribute("aria-controls", "stock-analysis-fact-evidence-panel");
+    expect(activeFact).toHaveAttribute("data-active", "true");
+    expect(activeFact).toHaveTextContent("来源：strategy.result.factor_screen_candidates.items");
+    await userEvent.click(activeFact);
+    expect(onFactSelect).toHaveBeenCalledWith(digest.candidateFacts[0]);
+  });
+
   it("shows a dashboard skeleton while the stock analysis payload is loading", async () => {
     const client = {
       ...stockClient(),
@@ -1501,6 +1597,64 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByTestId("stock-analysis-workbench-fact-strategy-score")).toHaveTextContent("读取中");
   });
 
+  it("links first-screen fact cards to endpoint evidence and diagnostics", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const replayFact = await screen.findByTestId("stock-analysis-workbench-fact-replay-evidence");
+    await user.click(replayFact);
+
+    expect(replayFact).toHaveAttribute("data-active", "true");
+    expect(await screen.findByTestId("stock-analysis-endpoint-evidence-signal-confluence")).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+
+    const candidateHistoryEndpoint = await screen.findByTestId(
+      "stock-analysis-endpoint-evidence-candidate-history",
+    );
+    await user.click(within(candidateHistoryEndpoint).getByRole("button"));
+    expect(candidateHistoryEndpoint).toHaveAttribute("data-active", "true");
+    expect(replayFact).toHaveAttribute("data-active", "false");
+    expect(candidateHistoryEndpoint).not.toHaveAttribute("aria-current");
+    expect(within(candidateHistoryEndpoint).getByRole("button")).toHaveAttribute("aria-current", "true");
+    expect(screen.getByTestId("stock-analysis-endpoint-evidence-signal-confluence")).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+
+    const representativeFactMappings = [
+      ["candidate-history", "candidate-history"],
+      ["strategy-score", "strategy-score"],
+      ["sector-series", "sector-series"],
+      ["proxy-backtest", "cycle-proxy"],
+      ["proxy-warnings", "portfolio-proxy"],
+      ["optimization-depth", "strategy-optimization"],
+    ] as const;
+
+    for (const [factId, endpointKey] of representativeFactMappings) {
+      const fact = screen.getByTestId(`stock-analysis-workbench-fact-${factId}`);
+      const endpoint = screen.getByTestId(`stock-analysis-endpoint-evidence-${endpointKey}`);
+
+      await user.click(fact);
+
+      expect(fact).toHaveAttribute("data-active", "true");
+      expect(endpoint).toHaveAttribute("data-active", "true");
+      expect(within(endpoint).getByRole("button")).toHaveAttribute("aria-current", "true");
+    }
+
+    const firstScreen = await screen.findByTestId("stock-analysis-first-screen-workbench");
+    const diagnosticsEntry = within(firstScreen).getByTestId("stock-analysis-home-rail-diagnostic-entry");
+    expect(diagnosticsEntry).toHaveAttribute("aria-expanded", "false");
+
+    const openIssuesFact = screen.getByTestId("stock-analysis-workbench-fact-open-issues");
+    await user.click(openIssuesFact);
+
+    expect(openIssuesFact).toHaveAttribute("data-active", "true");
+    expect(screen.getByTestId("stock-analysis-endpoint-evidence-strategy")).toHaveAttribute("data-active", "true");
+    expect(diagnosticsEntry).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("keeps first-screen content limited to decision, KPI, review summary, and trust rail", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
@@ -1540,6 +1694,69 @@ describe("StockAnalysisPage", () => {
     expect(within(deepZone).getByTestId("stock-analysis-theme-leaders-first-screen")).toBeInTheDocument();
     expect(within(deepZone).getByTestId("stock-analysis-sector-heavyweights-first-screen")).toBeInTheDocument();
     expect(within(deepZone).getByTestId("stock-analysis-sector-strength-panel")).toBeInTheDocument();
+  });
+
+  it("keeps policy pauses out of first-screen missing evidence reasons", async () => {
+    const base = buildStrategyPayload();
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          market_gate: {
+            ...base.market_gate,
+            state: "OVERHEAT",
+            exposure: 0.8,
+          },
+          diagnostics: [
+            {
+              severity: "info",
+              code: "LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY",
+              message: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+              input_family: "stock_candidate_policy",
+            },
+          ],
+          data_gaps: [
+            {
+              input_family: "breadth",
+              status: "ready",
+              evidence: "5-day breadth 0.6000 landed.",
+            },
+          ],
+          unsupported_outputs: [
+            {
+              key: "stock_candidates",
+              reason: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+            },
+            {
+              key: "mean_reversion_candidates",
+              reason:
+                "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT because the defended-trend candidate bundle already covers overheated tape.",
+            },
+            {
+              key: "theme_breakout",
+              reason: "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.",
+            },
+            {
+              key: "hybrid_fusion",
+              reason:
+                "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+            },
+          ],
+          supported_outputs: ["market_gate", "sector_rank", "factor_screen_candidates", "risk_exit"],
+          stock_candidates: undefined,
+          mean_reversion_candidates: undefined,
+          theme_breakout: undefined,
+          hybrid_fusion_candidates: undefined,
+        }),
+      }),
+    });
+
+    const closurePanel = await screen.findByTestId("stock-analysis-observation-closure-panel");
+    const reasonList = within(closurePanel).getByTestId("stock-analysis-observation-closure-reasons");
+
+    expect(closurePanel).toHaveTextContent("待复核项 0");
+    expect(reasonList).toHaveTextContent("暂无新增待复核项");
+    expect(reasonList).not.toHaveTextContent("趋势突破策略");
+    expect(reasonList).not.toHaveTextContent("融合策略");
   });
 
   it("renders the first screen as a decision memo with four decision status tiles", async () => {
@@ -1712,6 +1929,9 @@ describe("StockAnalysisPage", () => {
     expect(densityCss).toContain(".stock-analysis-page__source-gate-strip");
     expect(densityCss).toContain('.stock-analysis-page__source-gate-strip[data-tone="watch"]');
     expect(densityCss).toContain('.stock-analysis-page__source-gate-strip[data-tone="negative"]');
+    expect(css).toContain('.stock-analysis-page__endpoint-evidence li[data-active="true"][data-tone="positive"]');
+    expect(css).toContain('.stock-analysis-page__endpoint-evidence li[data-active="true"][data-tone="warning"]');
+    expect(css).toContain('.stock-analysis-page__endpoint-evidence li[data-active="true"][data-tone="negative"]');
     expect(densityCss).toMatch(
       /@media \(max-width:\s*720px\)[\s\S]*?\.stock-analysis-page__market-context-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
     );
@@ -1774,8 +1994,9 @@ describe("StockAnalysisPage", () => {
     const emptyStrategy = buildStrategyPayload({
       sector_rank: {
         as_of_date: "2026-04-29",
-        formula_version: "rv_livermore_sector_rank_provisional_v1",
-        is_provisional: true,
+        formula_version: "rv_livermore_sector_strength_observation_v1",
+        is_provisional: false,
+        formula_status: "signed_off",
         sector_count: 0,
         excluded_constituent_count: 0,
         excluded_sector_count: 0,

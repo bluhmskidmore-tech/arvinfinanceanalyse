@@ -68,6 +68,7 @@ import {
   localizeImplementationStage,
   localizeMarketDataStatus,
   localizeThemeRadarBadge,
+  isActionableLivermoreUnsupportedOutput,
   isStockModulePrimaryExcluded,
   mergeStockClosedLoopMeta,
   pickStockFreshnessMeta,
@@ -77,6 +78,7 @@ import type {
   StockEndpointEvidenceQueryState,
   StockObservationClosureReasonInput,
   StockSectorRow,
+  WorkbenchFact,
   WorkbenchSlowState,
 } from "../lib/stockAnalysisPageModel";
 import {
@@ -206,6 +208,28 @@ import "./StockAnalysisPage.css";
 
 const { Text } = Typography;
 
+const STOCK_ANALYSIS_ENDPOINT_EVIDENCE_RAIL_ID = "stock-analysis-endpoint-evidence-rail";
+
+const WORKBENCH_FACT_ENDPOINT_MAP: Record<string, string> = {
+  "data-date": "strategy",
+  "strategy-basis": "strategy",
+  "candidate-depth": "strategy",
+  "factor-candidates": "strategy",
+  "hybrid-candidates": "strategy",
+  "module-states": "strategy",
+  "gate-readiness": "strategy",
+  "open-issues": "strategy",
+  "signal-context": "signal-confluence",
+  "replay-evidence": "signal-confluence",
+  "sector-rank": "sector-series",
+  "sector-series": "sector-series",
+  "optimization-depth": "strategy-optimization",
+  "candidate-history": "candidate-history",
+  "strategy-score": "strategy-score",
+  "proxy-backtest": "cycle-proxy",
+  "proxy-warnings": "portfolio-proxy",
+};
+
 function candidateEvidenceValue(card: StockCandidateReviewQueueItem, key: string, fallback = "待补"): string {
   const value =
     card.rawFields.find((field) => field.key === key)?.value ??
@@ -317,12 +341,14 @@ function activeDataGapCount(payload: LivermoreStrategyPayload | null): number | 
   return payload.data_gaps.filter((item) => item.status !== "ready").length;
 }
 
+function activeUnsupportedOutputCount(payload: LivermoreStrategyPayload | null): number | null {
+  if (!payload) return null;
+  return payload.unsupported_outputs.filter(isActionableLivermoreUnsupportedOutput).length;
+}
+
 function confluenceDiagnosticCount(payload: LivermoreSignalConfluencePayload | null): number | null {
   if (!payload) return null;
-  return payload.diagnostics.filter((item) => {
-    if (typeof item === "string") return item.trim().length > 0;
-    return (item.severity ?? "warning") !== "info";
-  }).length;
+  return payload.diagnostics.filter(isActionableConfluenceDiagnostic).length;
 }
 
 function replayEvidenceMissingCount(payload: LivermoreSignalConfluencePayload | null): number | null {
@@ -370,6 +396,20 @@ function confluenceDiagnosticText(item: LivermoreSignalConfluencePayload["diagno
   return item.message ?? item.code ?? "信号闭环诊断待复核";
 }
 
+function isActionableConfluenceDiagnostic(item: LivermoreSignalConfluencePayload["diagnostics"][number]): boolean {
+  const message = confluenceDiagnosticText(item).trim().toLowerCase();
+  if (!message) return false;
+  if (message.includes("no stock candidates available for observation")) return false;
+  if (
+    message.includes("observation-only output") &&
+    message.includes("does not generate trading instructions")
+  ) {
+    return false;
+  }
+  if (typeof item === "string") return true;
+  return (item.severity ?? "warning") !== "info";
+}
+
 export default function StockAnalysisPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
@@ -379,6 +419,8 @@ export default function StockAnalysisPage() {
   const [queueSearchText, setQueueSearchText] = useState("");
   const [completeEvidenceOnly, setCompleteEvidenceOnly] = useState(false);
   const [boundaryDiagnosticsOpen, setBoundaryDiagnosticsOpen] = useState(false);
+  const [activeWorkbenchFactId, setActiveWorkbenchFactId] = useState<string | null>(null);
+  const [focusedEndpointKey, setFocusedEndpointKey] = useState<string | null>(null);
   const {
     sectorFilterSectorCode,
     sectorView,
@@ -961,7 +1003,7 @@ export default function StockAnalysisPage() {
         meta: strategyQuery.data?.result_meta,
         asOfDate: strategyPayload?.as_of_date,
         warningCount: activeStrategyDiagnosticCount(strategyPayload),
-        unsupportedCount: strategyPayload?.unsupported_outputs.length ?? null,
+        unsupportedCount: activeUnsupportedOutputCount(strategyPayload),
         missingInputCount: activeDataGapCount(strategyPayload),
       },
       {
@@ -1139,6 +1181,25 @@ export default function StockAnalysisPage() {
     strategyScoreQuery.isLoading,
   ]);
 
+  const handleWorkbenchFactSelect = (fact: WorkbenchFact) => {
+    setActiveWorkbenchFactId(fact.id);
+
+    const endpointKey = WORKBENCH_FACT_ENDPOINT_MAP[fact.id];
+    const endpointExists = endpointKey
+      ? endpointEvidenceItems.some((item) => item.key === endpointKey)
+      : false;
+    setFocusedEndpointKey(endpointExists ? endpointKey : null);
+
+    if (fact.id === "open-issues") {
+      setBoundaryDiagnosticsOpen(true);
+    }
+  };
+
+  const handleEndpointSelect = (key: string) => {
+    setFocusedEndpointKey(key);
+    setActiveWorkbenchFactId(null);
+  };
+
   const observationClosureReasonInputs = useMemo(() => {
     const reasons: StockObservationClosureReasonInput[] = [];
     const addReason = (reason: StockObservationClosureReasonInput | null | undefined) => {
@@ -1239,7 +1300,7 @@ export default function StockAnalysisPage() {
       endpointLabel: "主策略快照",
       kind: "unsupported",
       fieldRoot: "main.result.unsupported_outputs",
-      values: strategyPayload?.unsupported_outputs,
+      values: strategyPayload?.unsupported_outputs.filter(isActionableLivermoreUnsupportedOutput),
       textForValue: (value) => {
         const output = value as NonNullable<LivermoreStrategyPayload["unsupported_outputs"]>[number];
         return `${dataGapFamilyLabel(output.key)}：${localizeStockBackendText(output.reason, output.key)}`;
@@ -1250,7 +1311,7 @@ export default function StockAnalysisPage() {
       endpointLabel: "信号闭环",
       kind: "diagnostic",
       fieldRoot: "signalConfluence.result.diagnostics",
-      values: confluencePayload?.diagnostics,
+      values: confluencePayload?.diagnostics.filter(isActionableConfluenceDiagnostic),
       textForValue: (value) =>
         localizeStockBackendText(
           confluenceDiagnosticText(value as LivermoreSignalConfluencePayload["diagnostics"][number]),
@@ -1699,7 +1760,7 @@ export default function StockAnalysisPage() {
   const backendTableCount = resultMeta?.tables_used?.length ?? 0;
   const dataGapCount = strategyPayload?.data_gaps?.filter((gap) => gap.status !== "ready").length ?? 0;
   const supportedOutputCount = apiSupportedOutputs.length;
-  const unsupportedOutputCount = strategyPayload?.unsupported_outputs?.length ?? 0;
+  const unsupportedOutputCount = activeUnsupportedOutputCount(strategyPayload) ?? 0;
   const queueLeadCandidate = queueVisibleCandidates[0] ?? null;
   const queueLeadEvidenceCount = queueLeadCandidate
     ? queueLeadCandidate.primaryEvidence.length + queueLeadCandidate.supportingEvidence.length
@@ -1714,9 +1775,12 @@ export default function StockAnalysisPage() {
   const queueNextActionFullLabel = queueLeadCandidate ? queueNextReviewAction : railNextActionFullLabel;
   const queueGateLabel = backendSupplyOverview?.gateLabel ?? decisionSummary?.gateLabel ?? "门控待确认";
   const queueGateStatusLabel = queueGateLabel.startsWith("门控") ? queueGateLabel : `门控 ${queueGateLabel}`;
-  const queueLoopStatusLabel = closedLoopSummary?.referenceRating.label
-    ? `闭环${closedLoopSummary.referenceRating.label}`
-    : "闭环待补";
+  const observationClosureIssueCount = observationClosureSummary.unresolvedReasons.length;
+  const observationClosureLabel = observationClosureIssueCount > 0 ? "待复核" : "只读";
+  const observationClosureDetail =
+    observationClosureIssueCount > 0 ? `${observationClosureIssueCount} 项待复核` : "无新增待复核项";
+  const observationClosureTone = observationClosureIssueCount > 0 ? "warning" : "positive";
+  const queueLoopStatusLabel = `闭环${observationClosureLabel}`;
   const queueDataStatusLabel = strategyQuery.isError
     ? "数据异常"
     : strategyQuery.isLoading
@@ -1866,7 +1930,7 @@ export default function StockAnalysisPage() {
     {
       label: "闭环",
       value: "供数闭环",
-      detail: closedLoopSummary?.referenceRating.label ?? "待确认",
+      detail: observationClosureLabel,
     },
   ];
   const apiSupplyStatusRows = [
@@ -1909,9 +1973,9 @@ export default function StockAnalysisPage() {
       testId: "stock-analysis-decision-closed-loop-tile",
       icon: <ClockCircleOutlined />,
       label: "闭环",
-      value: closedLoopSummary?.referenceRating.label ?? "待确认",
-      detail: closedLoopSummary?.summaryLabel ?? "闭环待确认",
-      tone: closedLoopSummary?.referenceRating.tone ?? "neutral",
+      value: observationClosureLabel,
+      detail: observationClosureDetail,
+      tone: observationClosureTone,
     },
     {
       key: "boundary",
@@ -2010,7 +2074,7 @@ export default function StockAnalysisPage() {
       gateStatusLabel={queueGateStatusLabel}
       gateStatusTone={boundaryRailIssueCount > 0 ? "warning" : "positive"}
       loopStatusLabel={queueLoopStatusLabel}
-      loopStatusTone={closedLoopSummary?.referenceRating.tone === "positive" ? "positive" : "warning"}
+      loopStatusTone={observationClosureTone}
       completeEvidenceOnly={completeEvidenceOnly}
       agentDrawerOpen={agentDrawerOpen}
       generatedAt={strategyQuery.data?.result_meta?.generated_at}
@@ -2114,6 +2178,9 @@ export default function StockAnalysisPage() {
                   sourceGateDetail={sourceGateDetailLabel}
                   sourceVersion={sourceVersion}
                   digest={workbenchDigest}
+                  onFactSelect={handleWorkbenchFactSelect}
+                  activeFactId={activeWorkbenchFactId}
+                  factControlsId={STOCK_ANALYSIS_ENDPOINT_EVIDENCE_RAIL_ID}
                   closureSummary={observationClosureSummary}
                   railContent={
                     <StockAnalysisEvidenceLedgerRail
@@ -2131,6 +2198,8 @@ export default function StockAnalysisPage() {
                       qualityLabel={backendSupplyOverview?.qualityLabel ?? "正常"}
                       updatedAtLabel={backendSupplyOverview?.asOfLabel ?? decisionSummary?.asOfLabel ?? analyticsAsOf ?? "—"}
                       endpointItems={endpointEvidenceItems}
+                      focusedEndpointKey={focusedEndpointKey}
+                      onEndpointSelect={handleEndpointSelect}
                       diagnosticsOpen={boundaryDiagnosticsOpen}
                       onOpenDiagnostics={() => setBoundaryDiagnosticsOpen(true)}
                       onCloseDiagnostics={() => setBoundaryDiagnosticsOpen(false)}

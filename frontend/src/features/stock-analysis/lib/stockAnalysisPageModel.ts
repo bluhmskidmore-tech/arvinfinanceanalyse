@@ -553,9 +553,9 @@ export function buildWorkbenchDataDigest({
   const sectorRankCount = countArrayValue(main?.sector_rank?.items);
   const moduleStateCount = countArrayValue(main?.module_states);
   const ruleReadinessCount = countArrayValue(main?.rule_readiness);
-  const dataGapCount = countArrayValue(main?.data_gaps);
-  const diagnosticCount = countArrayValue(main?.diagnostics);
-  const unsupportedCount = countArrayValue(main?.unsupported_outputs);
+  const dataGapCount = main ? activeDataGaps(main).length : null;
+  const diagnosticCount = main ? actionableDiagnostics(main).length : null;
+  const unsupportedCount = main ? actionableUnsupportedOutputs(main).length : null;
   const supportedCount = countArrayValue(main?.supported_outputs);
   const signalContextCount = signalConfluence
     ? [
@@ -654,7 +654,7 @@ export function buildWorkbenchDataDigest({
       id: "sector-rank",
       label: "行业排名",
       value: digestCountLabel(sectorRankCount, "个"),
-      subValue: main?.sector_rank?.formula_version,
+      subValue: sectorRankFormulaGovernanceLabel(main?.sector_rank),
       sourcePath: "strategy.result.sector_rank.items",
       tone: countTone(sectorRankCount),
     }),
@@ -1460,6 +1460,9 @@ export function localizeStockBackendText(
   if (lower.includes("observation-only output") && lower.includes("does not generate trading instructions")) {
     return "仅输出观察结果，不生成交易指令。";
   }
+  if (lower.includes("no stock candidates available for observation")) {
+    return "当前门控下暂无趋势候选进入观察。";
+  }
   if (lower.includes("breadth inputs are unavailable")) {
     return "市场宽度输入不可用。";
   }
@@ -1509,6 +1512,18 @@ export function localizeStockBackendText(
     (lower.includes("position snapshot") && (lower.includes("active a-share") || lower.includes("missing")))
   ) {
     return "持仓快照缺失，暂无可执行风险退出样本。";
+  }
+  if (
+    lower.includes("daily sector strength observation rank is a signed-off analytical formula") &&
+    lower.includes("not trading instructions")
+  ) {
+    return "板块强弱观察排名已按 50% 涨跌幅分位、30% 换手率分位、20% 振幅分位签核；用于复核优先级与行业过滤，不构成交易指令；多日动量、板块资金流与拥挤度不包含在当前版本内。";
+  }
+  if (
+    lower.includes("daily sector score is an analytical observation formula") &&
+    lower.includes("metric-definition sign-off")
+  ) {
+    return "板块强弱为分析观察公式，仍待指标定义签核；多日动量持续性与板块资金流不包含在当前公式内。";
   }
   if (lower.includes("pending")) {
     const pendingLabel =
@@ -1668,9 +1683,52 @@ export function buildInlineMetaSegments(
 
 function countBoundaryItems(payload: LivermoreStrategyPayload): number {
   return (
-    payload.diagnostics.filter((item) => item.severity !== "info").length +
-    payload.data_gaps.filter((gap) => gap.status !== "ready").length +
-    payload.unsupported_outputs.length
+    actionableDiagnostics(payload).length +
+    activeDataGaps(payload).length +
+    actionableUnsupportedOutputs(payload).length
+  );
+}
+
+function sectorRankFormulaGovernanceLabel(
+  sectorRank: LivermoreStrategyPayload["sector_rank"] | null | undefined,
+): string | undefined {
+  if (!sectorRank) return undefined;
+  const status = String(sectorRank.formula_status ?? "").trim().toLowerCase();
+  const statusLabel =
+    status === "signed_off"
+      ? "规则已签核"
+      : status === "review_pending" || sectorRank.is_provisional
+        ? "规则待签核"
+        : "规则待确认";
+  const formulaVersion = sectorRank.formula_version || "公式版本待补";
+  return `${statusLabel} / ${formulaVersion}`;
+}
+
+export function isActionableLivermoreUnsupportedOutput(
+  output: LivermoreStrategyPayload["unsupported_outputs"][number],
+): boolean {
+  return !isKnownLivermorePolicyPause(output.reason);
+}
+
+function activeDataGaps(payload: LivermoreStrategyPayload) {
+  return payload.data_gaps.filter((gap) => gap.status !== "ready");
+}
+
+function actionableDiagnostics(payload: LivermoreStrategyPayload) {
+  return payload.diagnostics.filter((item) => item.severity !== "info");
+}
+
+function actionableUnsupportedOutputs(payload: LivermoreStrategyPayload) {
+  return payload.unsupported_outputs.filter(isActionableLivermoreUnsupportedOutput);
+}
+
+function isKnownLivermorePolicyPause(reason: string | null | undefined): boolean {
+  const lower = (reason ?? "").trim().toLowerCase();
+  return (
+    (lower.includes("stock candidate policy") && lower.includes("inactive in overheat")) ||
+    lower.includes("mean reversion watchlist is paused") ||
+    (lower.includes("theme breakout execution is paused") && lower.includes("overheat")) ||
+    (lower.includes("hybrid fusion is observation-only") && lower.includes("warm/hot"))
   );
 }
 
@@ -1753,9 +1811,9 @@ export function buildDataBoundarySummary(
   payload: LivermoreStrategyPayload,
   meta: StockViewModelMeta = {},
 ): StockDataBoundarySummary {
-  const diagnostics = payload.diagnostics.filter((item) => item.severity !== "info");
-  const dataGaps = payload.data_gaps.filter((gap) => gap.status !== "ready");
-  const unsupported = payload.unsupported_outputs;
+  const diagnostics = actionableDiagnostics(payload);
+  const dataGaps = activeDataGaps(payload);
+  const unsupported = actionableUnsupportedOutputs(payload);
   const topMessages = [
     ...diagnostics.map((item) => localizeStockBackendText(item.message, item.input_family)),
     ...dataGaps.map(
@@ -2286,15 +2344,25 @@ export function buildStrategyLensItems(
 ): StockStrategyLensItem[] {
   type StrategyOutputKey = LivermoreStrategyPayload["unsupported_outputs"][number]["key"];
 
-  const unsupportedReason = (key: StrategyOutputKey) =>
-    payload.unsupported_outputs.find((output) => output.key === key)?.reason;
+  const unsupportedOutput = (key: StrategyOutputKey) => payload.unsupported_outputs.find((output) => output.key === key);
+  const unsupportedReason = (key: StrategyOutputKey) => unsupportedOutput(key)?.reason;
   const localizedReason = (key: StrategyOutputKey) =>
     localizeStockBackendText(unsupportedReason(key), key);
   const shortReason = (key: StrategyOutputKey) => shortStrategyBlockerLabel(localizedReason(key));
   const outputState = (key: StrategyOutputKey, candidateCount: number, exists: boolean) => {
+    const output = unsupportedOutput(key);
+    const policyPaused = output ? !isActionableLivermoreUnsupportedOutput(output) : false;
     if (isStockModulePrimaryExcluded(payload, key)) {
+      if (policyPaused) {
+        return {
+          state: "paused" as const,
+          tone: "neutral" as const,
+          statusLabel: "策略暂停",
+          statusDetail: shortReason(key),
+        };
+      }
       return {
-        state: "blocked" as const,
+        state: "paused" as const,
         tone: "warning" as const,
         statusLabel: "证据区",
         statusDetail: stockModulePrimaryReason(payload, key),
@@ -2310,6 +2378,14 @@ export function buildStrategyLensItems(
       };
     }
     if (reason) {
+      if (policyPaused) {
+        return {
+          state: "paused" as const,
+          tone: "neutral" as const,
+          statusLabel: "策略暂停",
+          statusDetail: shortReason(key),
+        };
+      }
       return {
         state: "blocked" as const,
         tone: "warning" as const,
@@ -2909,7 +2985,7 @@ export function buildStockAnalysisEventMonitorRows(
     rows.push({
       key: `unsupported:${item.key}`,
       source: "unsupported",
-      level: "warning",
+      level: isActionableLivermoreUnsupportedOutput(item) ? "warning" : "info",
       event: `${localizeStockDataFamily(item.key)}阻断`,
       impact: item.key,
       detail: localizeStockBackendText(item.reason, item.key),
@@ -3312,6 +3388,10 @@ export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): strin
   }
   if (payload.sector_rank?.formula_version) {
     notes.push(`板块强弱公式：${payload.sector_rank.formula_version}`);
+    notes.push(`板块强弱规则状态：${sectorRankFormulaGovernanceLabel(payload.sector_rank)}`);
+    if (payload.sector_rank.formula_note) {
+      notes.push(`板块强弱说明：${localizeStockBackendText(payload.sector_rank.formula_note, "sector_strength")}`);
+    }
   }
   if (payload.stock_candidates?.formula_version) {
     notes.push(`趋势候选公式：${payload.stock_candidates.formula_version}`);

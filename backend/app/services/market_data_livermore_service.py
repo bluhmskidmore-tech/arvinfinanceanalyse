@@ -56,6 +56,10 @@ from backend.app.core_finance.mean_reversion_candidates import (
     MeanReversionSnapshot,
     compute_mean_reversion_candidates,
 )
+from backend.app.core_finance.uptrend_momentum_candidates import (
+    UptrendMomentumSnapshot,
+    compute_uptrend_momentum_candidates,
+)
 from backend.app.repositories.choice_stock_adapter import (
     ChoiceStockReadiness,
     choice_stock_optional_input_status,
@@ -100,6 +104,7 @@ LIVERMORE_OUTPUT_KEYS: tuple[str, ...] = (
     "market_gate",
     "sector_rank",
     "stock_candidates",
+    "uptrend_momentum_candidates",
     "mean_reversion_candidates",
     "factor_screen_candidates",
     "theme_breakout",
@@ -301,6 +306,8 @@ def _load_livermore_strategy_payload_uncached(
         payload["sector_rank"] = stock_outputs.sector_rank_payload
     if stock_outputs.stock_candidates_payload is not None:
         payload["stock_candidates"] = stock_outputs.stock_candidates_payload
+    if stock_outputs.uptrend_momentum_payload is not None:
+        payload["uptrend_momentum_candidates"] = stock_outputs.uptrend_momentum_payload
     if stock_outputs.mean_reversion_payload is not None:
         payload["mean_reversion_candidates"] = stock_outputs.mean_reversion_payload
     if stock_outputs.factor_screen_payload is not None:
@@ -684,6 +691,7 @@ class _ChoiceStockOutputs:
     stock_coverage: ChoiceStockMaterializationCoverage | None
     sector_rank_payload: dict[str, object] | None
     stock_candidates_payload: dict[str, object] | None
+    uptrend_momentum_payload: dict[str, object] | None
     mean_reversion_payload: dict[str, object] | None
     factor_screen_payload: dict[str, object] | None
     factor_screen_block_reason: str
@@ -777,6 +785,7 @@ def _load_choice_stock_outputs(
             stock_coverage=None,
             sector_rank_payload=None,
             stock_candidates_payload=None,
+            uptrend_momentum_payload=None,
             mean_reversion_payload=None,
             factor_screen_payload=None,
             factor_screen_block_reason="choice_stock_factor_snapshot is unavailable because no resolved as_of_date is available.",
@@ -870,6 +879,28 @@ def _load_choice_stock_outputs(
                     include_universe=backfill_mode,
                     policy_name=resolved_stock_candidate_policy,
                 ).payload
+
+    uptrend_momentum_payload: dict[str, object] | None = None
+    if stock_coverage.full_coverage and market_state in {"WARM", "HOT", "OVERHEAT"}:
+        uptrend_snapshots = _load_uptrend_momentum_snapshots(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+        )
+        if uptrend_snapshots:
+            uptrend_result = compute_uptrend_momentum_candidates(
+                as_of_date=as_of_date,
+                market_state=market_state,
+                snapshots=uptrend_snapshots,
+            )
+            evidence_rows += len(uptrend_snapshots)
+            uptrend_momentum_payload = uptrend_result.payload
+            tables_used.extend(
+                [
+                    "choice_stock_daily_observation",
+                    "choice_stock_universe",
+                    "choice_stock_sector_membership",
+                ]
+            )
 
     mean_reversion_payload: dict[str, object] | None = None
     if stock_coverage.full_coverage and market_state in {"OFF", "WARM"}:
@@ -994,6 +1025,7 @@ def _load_choice_stock_outputs(
         stock_coverage=stock_coverage,
         sector_rank_payload=sector_rank_payload,
         stock_candidates_payload=stock_candidates_payload,
+        uptrend_momentum_payload=uptrend_momentum_payload,
         mean_reversion_payload=mean_reversion_payload,
         factor_screen_payload=factor_screen_payload,
         factor_screen_block_reason=factor_screen_block_reason,
@@ -1481,6 +1513,123 @@ def _load_mean_reversion_snapshots(
                 volume=row[7],
                 close_history=closes,
                 volume_history=vols,
+            )
+        )
+    return snapshots
+
+
+def _load_uptrend_momentum_snapshots(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+) -> list[UptrendMomentumSnapshot]:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return []
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return []
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        required_tables = {
+            "choice_stock_universe",
+            "choice_stock_sector_membership",
+            "choice_stock_daily_observation",
+        }
+        if not required_tables.issubset(tables):
+            return []
+        universe_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_universe",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        membership_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_sector_membership",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        if universe_snapshot_date is None or membership_snapshot_date is None:
+            return []
+        current_rows = conn.execute(
+            """
+            select
+              daily.stock_code,
+              coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
+              coalesce(nullif(trim(membership.sw2021code), ''), '') as sector_code,
+              coalesce(nullif(trim(membership.sw2021), ''), '') as sector_name,
+              daily.close_value,
+              daily.pctchange,
+              daily.turn,
+              daily.amplitude
+            from choice_stock_daily_observation daily
+            left join choice_stock_universe universe
+              on universe.stock_code = daily.stock_code
+             and universe.as_of_date = ?
+            left join choice_stock_sector_membership membership
+              on membership.stock_code = daily.stock_code
+             and membership.as_of_date = ?
+            where cast(daily.trade_date as date) = cast(? as date)
+              and trim(coalesce(daily.tradestatus, '')) = 'Trading'
+            """,
+            [universe_snapshot_date, membership_snapshot_date, as_of_date],
+        ).fetchall()
+        stock_codes = [str(row[0] or "") for row in current_rows if row[0]]
+        if not stock_codes:
+            return []
+        placeholders = ",".join("?" for _ in stock_codes)
+        history_rows = conn.execute(
+            f"""
+            select stock_code, close_value, amount
+            from choice_stock_daily_observation
+            where stock_code in ({placeholders})
+              and cast(trade_date as date) <= cast(? as date)
+              and trim(coalesce(tradestatus, '')) = 'Trading'
+            order by stock_code asc, cast(trade_date as date) asc
+            """,
+            [*stock_codes, as_of_date],
+        ).fetchall()
+    except duckdb.Error:
+        return []
+    finally:
+        conn.close()
+
+    history_by_code: dict[str, dict[str, list[object]]] = {}
+    for row in history_rows:
+        code = str(row[0] or "")
+        if not code:
+            continue
+        bucket = history_by_code.setdefault(code, {"close": [], "amount": []})
+        bucket["close"].append(row[1])
+        bucket["amount"].append(row[2])
+
+    snapshots: list[UptrendMomentumSnapshot] = []
+    for row in current_rows:
+        code = str(row[0] or "")
+        if not code:
+            continue
+        bucket = history_by_code.get(code, {"close": [], "amount": []})
+        closes = bucket["close"]
+        amounts = bucket["amount"]
+        if len(closes) > 130:
+            closes = closes[-130:]
+            amounts = amounts[-130:]
+        if len(closes) != len(amounts):
+            continue
+        snapshots.append(
+            UptrendMomentumSnapshot(
+                stock_code=code,
+                stock_name=str(row[1] or code),
+                sector_code=str(row[2] or ""),
+                sector_name=str(row[3] or ""),
+                close_value=row[4],
+                pctchange=row[5],
+                turn=row[6],
+                amplitude=row[7],
+                close_history=closes,
+                amount_history=amounts,
             )
         )
     return snapshots
@@ -2321,6 +2470,30 @@ def _mean_reversion_unavailable_reason(
     )
 
 
+def _uptrend_momentum_unavailable_reason(
+    *,
+    market_state: str,
+    stock_readiness: ChoiceStockReadiness,
+    stock_outputs: _ChoiceStockOutputs,
+) -> str:
+    if market_state in {"OFF", "NO_DATA", "PENDING_DATA", "STALE"}:
+        return "Uptrend momentum watchlist is paused unless the market gate is WARM, HOT, or OVERHEAT."
+    if not stock_readiness.ready:
+        return _choice_stock_dependency_summary(
+            stock_readiness=stock_readiness,
+            families=["stock_universe", "stock_ohlcv", "stock_status"],
+            ready_summary="",
+        )
+    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
+        return "Choice stock catalog is confirmed, but uptrend momentum daily inputs are not materialized yet."
+    if not stock_outputs.stock_coverage.full_coverage:
+        return stock_outputs.stock_coverage.message
+    return (
+        "Uptrend momentum inputs are landed, but no Trading-status A-share rows produced "
+        "watchlist snapshots for this as_of_date."
+    )
+
+
 def _build_supported_outputs(
     state: str,
     *,
@@ -2352,6 +2525,19 @@ def _build_supported_outputs(
         supported.append("stock_candidates")
     else:
         unsupported.append({"key": "stock_candidates", "reason": stock_reason})
+    if stock_outputs.uptrend_momentum_payload is not None:
+        supported.append("uptrend_momentum_candidates")
+    else:
+        unsupported.append(
+            {
+                "key": "uptrend_momentum_candidates",
+                "reason": _uptrend_momentum_unavailable_reason(
+                    market_state=state,
+                    stock_readiness=stock_readiness,
+                    stock_outputs=stock_outputs,
+                ),
+            }
+        )
     if stock_outputs.mean_reversion_payload is not None:
         supported.append("mean_reversion_candidates")
     else:
@@ -2502,6 +2688,8 @@ def _module_payload(*, key: str, stock_outputs: _ChoiceStockOutputs) -> dict[str
         return stock_outputs.sector_rank_payload
     if key == "stock_candidates":
         return stock_outputs.stock_candidates_payload
+    if key == "uptrend_momentum_candidates":
+        return stock_outputs.uptrend_momentum_payload
     if key == "mean_reversion_candidates":
         return stock_outputs.mean_reversion_payload
     if key == "factor_screen_candidates":
@@ -3213,7 +3401,9 @@ def _build_data_gaps(
                 "evidence": _sector_unavailable_reason(stock_readiness=stock_readiness, stock_outputs=stock_outputs),
             }
         )
-    if stock_outputs.stock_candidates_payload is None:
+    if stock_outputs.stock_candidates_payload is None and not _is_stock_candidate_policy_inactive_reason(
+        stock_outputs.stock_candidate_block_reason
+    ):
         gaps.append(
             {
                 "input_family": _stock_unavailable_input_family(stock_outputs),
@@ -3372,14 +3562,16 @@ def _build_diagnostics(
             }
         )
     else:
-        diagnostics.append(
-            {
-                "severity": "warning",
-                "code": "LIVERMORE_SECTOR_RANK_PROVISIONAL_FORMULA",
-                "message": "Sector rank currently uses the provisional percentile formula over pctchange, turn, and amplitude.",
-                "input_family": "sector_strength",
-            }
-        )
+        sector_formula_status = str(stock_outputs.sector_rank_payload.get("formula_status") or "").lower()
+        if sector_formula_status != "signed_off":
+            diagnostics.append(
+                {
+                    "severity": "warning",
+                    "code": "LIVERMORE_SECTOR_RANK_PROVISIONAL_FORMULA",
+                    "message": "Sector rank currently uses the provisional percentile formula over pctchange, turn, and amplitude.",
+                    "input_family": "sector_strength",
+                }
+            )
     if stock_outputs.stock_candidates_payload is None:
         stock_reason = _stock_unavailable_reason(
             market_state=state,
@@ -3387,15 +3579,20 @@ def _build_diagnostics(
             stock_outputs=stock_outputs,
         )
         if stock_reason:
+            policy_paused = _is_stock_candidate_policy_inactive_reason(stock_outputs.stock_candidate_block_reason)
             diagnostics.append(
                 {
-                    "severity": "warning",
+                    "severity": "info" if policy_paused else "warning",
                     "code": (
                         "LIVERMORE_STOCK_INPUTS_MISSING"
                         if not stock_readiness.ready
                         or stock_outputs.stock_coverage is None
                         or not stock_outputs.stock_coverage.full_coverage
-                        else "LIVERMORE_STOCK_PIVOT_BLOCKED"
+                        else (
+                            "LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY"
+                            if policy_paused
+                            else "LIVERMORE_STOCK_PIVOT_BLOCKED"
+                        )
                     ),
                     "message": stock_reason,
                     "input_family": _stock_unavailable_input_family(stock_outputs),
@@ -3715,9 +3912,11 @@ def _stock_missing_inputs(
         )
     elif stock_outputs.stock_coverage is not None and not stock_outputs.stock_coverage.full_coverage:
         missing_inputs.extend(_missing_families_from_request_items(stock_outputs.stock_coverage.missing_request_items))
-    if _is_stock_candidate_policy_inactive_reason(stock_outputs.stock_candidate_block_reason):
-        missing_inputs.append(STOCK_CANDIDATE_POLICY_INACTIVE_INPUT_FAMILY)
-    elif stock_outputs.stock_candidate_block_reason and "limit_ratio" not in missing_inputs:
+    if (
+        stock_outputs.stock_candidate_block_reason
+        and not _is_stock_candidate_policy_inactive_reason(stock_outputs.stock_candidate_block_reason)
+        and "limit_ratio" not in missing_inputs
+    ):
         missing_inputs.append("limit_ratio")
     if stock_outputs.sector_rank_payload is None and "sector_rank" not in missing_inputs:
         missing_inputs.append("sector_rank")

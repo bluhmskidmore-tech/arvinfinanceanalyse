@@ -30,6 +30,8 @@ type StockAnalysisEvidenceLedgerRailProps = {
   qualityLabel: string;
   updatedAtLabel: string;
   endpointItems: StockEndpointEvidenceItem[];
+  focusedEndpointKey?: string | null;
+  onEndpointSelect?: (key: string) => void;
   diagnosticsOpen: boolean;
   onOpenDiagnostics: () => void;
   onCloseDiagnostics: () => void;
@@ -64,6 +66,8 @@ export function StockAnalysisEvidenceLedgerRail({
   qualityLabel,
   updatedAtLabel,
   endpointItems,
+  focusedEndpointKey,
+  onEndpointSelect,
   diagnosticsOpen,
   onOpenDiagnostics,
   onCloseDiagnostics,
@@ -132,6 +136,7 @@ export function StockAnalysisEvidenceLedgerRail({
         </div>
         {endpointItems.length > 0 ? (
           <section
+            id="stock-analysis-endpoint-evidence-rail"
             className="stock-analysis-page__endpoint-evidence"
             data-testid="stock-analysis-endpoint-evidence-rail"
             aria-label="接口证据状态"
@@ -141,23 +146,33 @@ export function StockAnalysisEvidenceLedgerRail({
               <span>{endpointItems.length} 条链路</span>
             </div>
             <ul>
-              {endpointItems.map((item) => (
-                <li
-                  key={item.key}
-                  data-tone={item.tone}
-                  data-testid={`stock-analysis-endpoint-evidence-${item.key}`}
-                >
-                  <div>
-                    <span>{item.label}</span>
-                    <strong>{item.statusLabel}</strong>
-                  </div>
-                  <p>{item.detail}</p>
-                  <small>{item.dateLabel}</small>
-                  <small>{item.issueLabel}</small>
-                  <small>{item.metaLabel}</small>
-                  <small>{item.traceLabel}</small>
-                </li>
-              ))}
+              {endpointItems.map((item) => {
+                const isFocused = focusedEndpointKey === item.key;
+                return (
+                  <li
+                    key={item.key}
+                    data-tone={item.tone}
+                    data-active={isFocused ? "true" : "false"}
+                    data-testid={`stock-analysis-endpoint-evidence-${item.key}`}
+                  >
+                    <button
+                      type="button"
+                      aria-current={isFocused ? "true" : undefined}
+                      onClick={() => onEndpointSelect?.(item.key)}
+                    >
+                      <div>
+                        <span>{item.label}</span>
+                        <strong>{item.statusLabel}</strong>
+                      </div>
+                      <p>{item.detail}</p>
+                      <small>{item.dateLabel}</small>
+                      <small>{item.issueLabel}</small>
+                      <small>{item.metaLabel}</small>
+                      <small>{item.traceLabel}</small>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         ) : null}

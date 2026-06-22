@@ -787,7 +787,45 @@ def _item_count(value: object) -> int | None:
     return _count_array_or_mapping(value)
 
 
+def _active_data_gap_count(value: object) -> int | None:
+    if not isinstance(value, list):
+        return None
+    return sum(1 for item in value if not (isinstance(item, dict) and str(item.get("status") or "").lower() == "ready"))
+
+
+def _active_diagnostic_count(value: object) -> int | None:
+    if not isinstance(value, list):
+        return None
+    return sum(1 for item in value if not (isinstance(item, dict) and str(item.get("severity") or "").lower() == "info"))
+
+
+def _actionable_unsupported_output_count(value: object) -> int | None:
+    if not isinstance(value, list):
+        return None
+    return sum(1 for item in value if not (isinstance(item, dict) and _is_known_livermore_policy_pause(item.get("reason"))))
+
+
+def _is_known_livermore_policy_pause(reason: object) -> bool:
+    lower = str(reason or "").strip().lower()
+    return (
+        ("stock candidate policy" in lower and "inactive in overheat" in lower)
+        or "mean reversion watchlist is paused" in lower
+        or ("theme breakout execution is paused" in lower and "overheat" in lower)
+        or ("hybrid fusion is observation-only" in lower and "warm/hot" in lower)
+    )
+
+
+def _sum_optional_counts(*values: int | None) -> int | None:
+    present = [value for value in values if value is not None]
+    if not present:
+        return None
+    return sum(present)
+
+
 def _livermore_workbench_strategy_summary(result: dict[str, object]) -> dict[str, object]:
+    data_gap_count = _active_data_gap_count(result.get("data_gaps"))
+    diagnostic_count = _active_diagnostic_count(result.get("diagnostics"))
+    unsupported_output_count = _actionable_unsupported_output_count(result.get("unsupported_outputs"))
     return {
         "kind": "strategy",
         "as_of_date": result.get("as_of_date") if _present(result.get("as_of_date")) else None,
@@ -802,10 +840,14 @@ def _livermore_workbench_strategy_summary(result: dict[str, object]) -> dict[str
         "factor_screen_candidate_count": _item_count(result.get("factor_screen_candidates")),
         "hybrid_fusion_candidate_count": _item_count(result.get("hybrid_fusion_candidates")),
         "sector_rank_count": _item_count(result.get("sector_rank")),
-        "data_gap_count": _count_array(result.get("data_gaps")),
-        "diagnostic_count": _count_array(result.get("diagnostics")),
+        "data_gap_count": data_gap_count,
+        "diagnostic_count": diagnostic_count,
         "supported_output_count": _count_array(result.get("supported_outputs")),
-        "unsupported_output_count": _count_array(result.get("unsupported_outputs")),
+        "unsupported_output_count": unsupported_output_count,
+        "actionable_boundary_count": _sum_optional_counts(data_gap_count, diagnostic_count, unsupported_output_count),
+        "total_data_gap_count": _count_array(result.get("data_gaps")),
+        "total_diagnostic_count": _count_array(result.get("diagnostics")),
+        "total_unsupported_output_count": _count_array(result.get("unsupported_outputs")),
         "risk_exit_present": _present(result.get("risk_exit")),
     }
 

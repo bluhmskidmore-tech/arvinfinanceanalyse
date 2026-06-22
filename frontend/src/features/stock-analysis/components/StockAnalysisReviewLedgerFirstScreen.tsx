@@ -66,54 +66,156 @@ type StockAnalysisReviewLedgerFirstScreenProps = {
   sourceGateDetail?: string;
   sourceVersion?: string;
   digest?: WorkbenchDataDigest;
+  onFactSelect?: (fact: WorkbenchFact) => void;
+  activeFactId?: string | null;
+  factControlsId?: string;
   closureSummary?: StockObservationClosureSummary;
   railContent?: ReactNode;
 };
 
+function StockWorkbenchFactCard({
+  fact,
+  onFactSelect,
+  activeFactId,
+  factControlsId,
+}: {
+  fact: WorkbenchFact;
+  onFactSelect?: (fact: WorkbenchFact) => void;
+  activeFactId?: string | null;
+  factControlsId?: string;
+}) {
+  const isInteractive = typeof onFactSelect === "function";
+  const isActive = isInteractive && activeFactId === fact.id;
+  const className = `stock-analysis-page__workbench-fact${
+    isInteractive ? " stock-analysis-page__workbench-fact--interactive" : ""
+  }`;
+
+  const content = (
+    <>
+      <span>{fact.label}</span>
+      <strong>{fact.value}</strong>
+      {fact.subValue ? <small>{fact.subValue}</small> : null}
+      <em title={fact.sourcePath}>来源：{fact.sourcePath}</em>
+    </>
+  );
+
+  if (isInteractive) {
+    return (
+      <button
+        type="button"
+        className={className}
+        data-testid={`stock-analysis-workbench-fact-${fact.id}`}
+        data-tone={fact.tone}
+        data-primary={fact.isPrimary ? "true" : "false"}
+        data-active={isActive ? "true" : "false"}
+        aria-current={isActive ? "true" : undefined}
+        aria-controls={factControlsId}
+        onClick={() => onFactSelect(fact)}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <article
+      className={className}
+      data-testid={`stock-analysis-workbench-fact-${fact.id}`}
+      data-tone={fact.tone}
+      data-primary={fact.isPrimary ? "true" : "false"}
+      data-active="false"
+    >
+      {content}
+    </article>
+  );
+}
+
 function StockWorkbenchFactGrid({
   title,
+  eyebrow,
   facts,
+  layout = "default",
+  onFactSelect,
+  activeFactId,
+  factControlsId,
 }: {
   title: string;
+  eyebrow?: string;
   facts: WorkbenchFact[];
+  layout?: "primary" | "secondary" | "slow" | "default";
+  onFactSelect?: (fact: WorkbenchFact) => void;
+  activeFactId?: string | null;
+  factControlsId?: string;
 }) {
   if (facts.length === 0) return null;
   return (
-    <section className="stock-analysis-page__workbench-digest-section">
-      <h3>{title}</h3>
-      <div className="stock-analysis-page__workbench-fact-grid">
+    <section className="stock-analysis-page__workbench-digest-section" data-layout={layout}>
+      <div className="stock-analysis-page__workbench-digest-section-head">
+        <h3>{title}</h3>
+        {eyebrow ? <p>{eyebrow}</p> : null}
+      </div>
+      <div
+        className="stock-analysis-page__workbench-fact-grid"
+        data-layout={layout}
+      >
         {facts.map((fact) => (
-          <article
-            className="stock-analysis-page__workbench-fact"
-            data-testid={`stock-analysis-workbench-fact-${fact.id}`}
-            data-tone={fact.tone}
-            data-primary={fact.isPrimary ? "true" : "false"}
+          <StockWorkbenchFactCard
             key={fact.id}
-          >
-            <span>{fact.label}</span>
-            <strong>{fact.value}</strong>
-            {fact.subValue ? <small>{fact.subValue}</small> : null}
-            <em title={fact.sourcePath}>来源：{fact.sourcePath}</em>
-          </article>
+            fact={fact}
+            onFactSelect={onFactSelect}
+            activeFactId={activeFactId}
+            factControlsId={factControlsId}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function StockWorkbenchDigest({ digest }: { digest: WorkbenchDataDigest }) {
+function StockWorkbenchDigest({
+  digest,
+  onFactSelect,
+  activeFactId,
+  factControlsId,
+}: {
+  digest: WorkbenchDataDigest;
+  onFactSelect?: (fact: WorkbenchFact) => void;
+  activeFactId?: string | null;
+  factControlsId?: string;
+}) {
   return (
     <section
       className="stock-analysis-page__workbench-digest"
       data-testid="stock-analysis-workbench-digest"
       aria-label="首屏供数摘要"
     >
-      <StockWorkbenchFactGrid title="核心口径" facts={digest.primaryFacts} />
+      <StockWorkbenchFactGrid
+        title="核心口径"
+        eyebrow="Primary facts"
+        facts={digest.primaryFacts}
+        layout="primary"
+        onFactSelect={onFactSelect}
+        activeFactId={activeFactId}
+        factControlsId={factControlsId}
+      />
       <StockWorkbenchFactGrid
         title="候选与证据"
+        eyebrow="Candidate and endpoint evidence"
         facts={[...digest.candidateFacts, ...digest.evidenceFacts]}
+        layout="secondary"
+        onFactSelect={onFactSelect}
+        activeFactId={activeFactId}
+        factControlsId={factControlsId}
       />
-      <StockWorkbenchFactGrid title="慢接口补证" facts={digest.slowFacts} />
+      <StockWorkbenchFactGrid
+        title="慢接口补证"
+        eyebrow="Non-blocking evidence"
+        facts={digest.slowFacts}
+        layout="slow"
+        onFactSelect={onFactSelect}
+        activeFactId={activeFactId}
+        factControlsId={factControlsId}
+      />
     </section>
   );
 }
@@ -137,6 +239,9 @@ export function StockAnalysisReviewLedgerFirstScreen({
   sourceGateDetail = "质量 需复核 回退快照",
   sourceVersion,
   digest,
+  onFactSelect,
+  activeFactId,
+  factControlsId,
   closureSummary,
   railContent,
 }: StockAnalysisReviewLedgerFirstScreenProps) {
@@ -216,7 +321,14 @@ export function StockAnalysisReviewLedgerFirstScreen({
             </dl>
           </div>
 
-          {digest ? <StockWorkbenchDigest digest={digest} /> : null}
+          {digest ? (
+            <StockWorkbenchDigest
+              digest={digest}
+              onFactSelect={onFactSelect}
+              activeFactId={activeFactId}
+              factControlsId={factControlsId}
+            />
+          ) : null}
 
           {closureSummary ? (
             <section

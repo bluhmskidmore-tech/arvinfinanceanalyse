@@ -161,8 +161,16 @@ const strategyPayload: LivermoreStrategyPayload = {
   module_states: readyModuleStates(),
   sector_rank: {
     as_of_date: "2026-04-29",
-    formula_version: "rv_livermore_sector_rank_provisional_v1",
-    is_provisional: true,
+    formula_version: "rv_livermore_sector_strength_observation_v1",
+    is_provisional: false,
+    formula_status: "signed_off",
+    formula_note:
+      "Daily sector strength observation rank is a signed-off analytical formula: 50% pctchange percentile, 30% turn percentile, and 20% amplitude percentile; it supports review prioritization and sector filtering, not trading instructions; multi-day momentum persistence, sector money flow, and crowding are not part of this version.",
+    formula_component_weights: {
+      pctchange_percentile: 0.5,
+      turn_percentile: 0.3,
+      amplitude_percentile: 0.2,
+    },
     sector_count: 2,
     excluded_constituent_count: 0,
     excluded_sector_count: 0,
@@ -2169,12 +2177,16 @@ describe("stockAnalysisPageModel", () => {
     expect(notes.join(" ")).toContain("口径：分析口径（非交易）");
     expect(notes.join(" ")).toContain("策略：Livermore A-Share Defended Trend");
     expect(notes.join(" ")).toContain("数据日期：2026-04-29");
-    expect(notes.join(" ")).toContain("板块强弱公式：rv_livermore_sector_rank_provisional_v1");
+    expect(notes.join(" ")).toContain("板块强弱公式：rv_livermore_sector_strength_observation_v1");
+    expect(notes.join(" ")).toContain("板块强弱规则状态：规则已签核 / rv_livermore_sector_strength_observation_v1");
+    expect(notes.join(" ")).toContain(
+      "板块强弱说明：板块强弱观察排名已按 50% 涨跌幅分位、30% 换手率分位、20% 振幅分位签核；用于复核优先级与行业过滤，不构成交易指令；多日动量、板块资金流与拥挤度不包含在当前版本内。",
+    );
     expect(notes.join(" ")).toContain("可用输出：市场门控、板块强弱、趋势候选、风险退出");
     expect(notes.join(" ")).toContain("预警 市场宽度诊断：市场宽度输入不可用。");
     expect(notes.join(" ")).toContain("市场宽度 缺数据：5日市场宽度输入未落地。");
     expect(notes.join(" ")).not.toContain("LIVERMORE_BREADTH_MISSING");
-    expect(notes.join(" ")).toContain("rv_livermore_sector_rank_provisional_v1");
+    expect(notes.join(" ")).toContain("rv_livermore_sector_strength_observation_v1");
     expect(notes.join(" ")).not.toContain("basis:");
     expect(notes.join(" ")).not.toContain("as_of_date:");
     expect(notes.join(" ")).not.toContain("sector_rank formula");
@@ -2269,6 +2281,70 @@ describe("stockAnalysisPageModel", () => {
     expect(items.find((item) => item.key === "livermore")?.state).toBe("blocked");
     expect(items.find((item) => item.key === "livermore")?.statusDetail).toContain("物化输入覆盖不完整");
     expect(items.find((item) => item.key === "mean_reversion")?.state).toBe("blocked");
+  });
+
+  it("shows known market-state strategy pauses without counting them as blocked", () => {
+    const policyPauseUnsupportedOutputs: LivermoreStrategyPayload["unsupported_outputs"] = [
+      {
+        key: "stock_candidates",
+        reason: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+      },
+      {
+        key: "mean_reversion_candidates",
+        reason:
+          "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT because the defended-trend candidate bundle already covers overheated tape.",
+      },
+      {
+        key: "hybrid_fusion",
+        reason:
+          "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+      },
+    ];
+    const policyPauseReason = (key: string) =>
+      policyPauseUnsupportedOutputs.find((output) => output.key === key)?.reason ?? "";
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      market_gate: {
+        ...strategyPayload.market_gate,
+        state: "OVERHEAT",
+      },
+      supported_outputs: ["market_gate", "sector_rank", "factor_screen_candidates", "risk_exit"],
+      unsupported_outputs: policyPauseUnsupportedOutputs,
+      module_states: readyModuleStates().map((item) =>
+        ["stock_candidates", "mean_reversion_candidates", "hybrid_fusion"].includes(item.key)
+          ? {
+              ...item,
+              state: "unsupported",
+              render_mode: "evidence_only",
+              excludes_from_primary: true,
+              reasons: [policyPauseReason(item.key)],
+            }
+          : item,
+      ),
+      stock_candidates: undefined,
+      mean_reversion_candidates: undefined,
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-06-18",
+        formula_version: "rv_hybrid_fusion_candidates_v3",
+        market_state: "OVERHEAT",
+        observation_only: true,
+        candidate_count: 0,
+        coverage_note:
+          "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+        items: [],
+      },
+    };
+
+    const items = buildStrategyLensItems(payload, buildConsensusSummary(payload));
+
+    expect(items.find((item) => item.key === "livermore")).toMatchObject({
+      state: "paused",
+      tone: "neutral",
+      statusLabel: "策略暂停",
+    });
+    expect(items.find((item) => item.key === "mean_reversion")?.state).toBe("paused");
+    expect(items.find((item) => item.key === "hybrid")?.state).toBe("paused");
+    expect(items.filter((item) => item.state === "blocked")).toHaveLength(0);
   });
 
   it("keeps evidence-only hybrid candidates out of the primary review queue", () => {
@@ -2411,7 +2487,7 @@ describe("stockAnalysisPageModel", () => {
     const factor = buildStrategyLensItems(payload, buildConsensusSummary(payload)).find((item) => item.key === "factor");
 
     expect(factor).toMatchObject({
-      state: "blocked",
+      state: "paused",
       tone: "warning",
     });
     expect(factor?.statusLabel).not.toBe("0 候选");
@@ -2731,6 +2807,65 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.topMessages.join(" ")).toContain("5日市场宽度输入未落地");
     expect(summary.topMessages.join(" ")).toContain("持仓快照未落地");
     expect(summary.topMessages.join(" ")).not.toContain("position snapshot");
+  });
+
+  it("keeps ready inputs and policy pauses out of actionable boundary counts", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      diagnostics: [
+        {
+          severity: "info",
+          code: "LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY",
+          message: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+          input_family: "stock_candidate_policy",
+        },
+      ],
+      data_gaps: [
+        {
+          input_family: "breadth",
+          status: "ready",
+          evidence: "5-day breadth 0.6000 landed.",
+        },
+      ],
+      unsupported_outputs: [
+        {
+          key: "stock_candidates",
+          reason: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+        },
+        {
+          key: "mean_reversion_candidates",
+          reason:
+            "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT because the defended-trend candidate bundle already covers overheated tape.",
+        },
+        {
+          key: "theme_breakout",
+          reason: "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.",
+        },
+        {
+          key: "hybrid_fusion",
+          reason:
+            "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+        },
+        {
+          key: "risk_exit",
+          reason: "position snapshot not landed",
+        },
+      ],
+    };
+
+    const summary = buildDataBoundarySummary(payload, { quality_flag: "ok", vendor_status: "ok" });
+    expect(summary.boundaryCount).toBe(1);
+    expect(summary.diagnosticsCount).toBe(0);
+    expect(summary.dataGapCount).toBe(0);
+    expect(summary.unsupportedCount).toBe(1);
+    expect(summary.topMessages.join(" ")).toContain("持仓快照未落地");
+    expect(summary.topMessages.join(" ")).not.toContain("趋势突破策略");
+
+    const digest = buildWorkbenchDataDigest({ main: payload });
+    expect(digest.primaryFacts.find((fact) => fact.id === "open-issues")).toMatchObject({
+      value: "1 项",
+      tone: "warning",
+    });
   });
 
   it("keeps unknown data gap statuses out of the boundary summary", () => {
@@ -3612,6 +3747,20 @@ describe("stockAnalysisPageModel", () => {
     ).toBe("板块排名已接入 Choice 板块输入。");
     expect(
       localizeStockBackendText(
+        "Daily sector strength observation rank is a signed-off analytical formula: 50% pctchange percentile, 30% turn percentile, and 20% amplitude percentile; it supports review prioritization and sector filtering, not trading instructions; multi-day momentum persistence, sector money flow, and crowding are not part of this version.",
+        "sector_strength",
+      ),
+    ).toBe(
+      "板块强弱观察排名已按 50% 涨跌幅分位、30% 换手率分位、20% 振幅分位签核；用于复核优先级与行业过滤，不构成交易指令；多日动量、板块资金流与拥挤度不包含在当前版本内。",
+    );
+    expect(
+      localizeStockBackendText(
+        "Daily sector score is an analytical observation formula pending metric-definition sign-off; multi-day momentum persistence and sector money flow are not part of this formula.",
+        "sector_strength",
+      ),
+    ).toBe("板块强弱为分析观察公式，仍待指标定义签核；多日动量持续性与板块资金流不包含在当前公式内。");
+    expect(
+      localizeStockBackendText(
         "candidate screening is available for landed Choice stock inputs.",
         "stock_pivot",
       ),
@@ -3732,6 +3881,9 @@ describe("stockAnalysisPageModel", () => {
     expect(digest.candidateFacts.find((fact) => fact.id === "factor-candidates")).toMatchObject({
       value: "1 只",
       sourcePath: "strategy.result.factor_screen_candidates.items",
+    });
+    expect(digest.candidateFacts.find((fact) => fact.id === "sector-rank")).toMatchObject({
+      subValue: "规则已签核 / rv_livermore_sector_strength_observation_v1",
     });
     expect(digest.evidenceFacts.find((fact) => fact.id === "sector-series")).toMatchObject({
       value: "1 条",
