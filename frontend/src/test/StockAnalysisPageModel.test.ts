@@ -68,6 +68,8 @@ const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
   "market_gate",
   "sector_rank",
   "stock_candidates",
+  "uptrend_momentum_candidates",
+  "fresh_trend_watchlist",
   "mean_reversion_candidates",
   "factor_screen_candidates",
   "theme_breakout",
@@ -156,7 +158,14 @@ const strategyPayload: LivermoreStrategyPayload = {
       evidence: "5-day breadth input family is not landed.",
     },
   ],
-  supported_outputs: ["market_gate", "sector_rank", "stock_candidates", "risk_exit"],
+  supported_outputs: [
+    "market_gate",
+    "sector_rank",
+    "stock_candidates",
+    "uptrend_momentum_candidates",
+    "fresh_trend_watchlist",
+    "risk_exit",
+  ],
   unsupported_outputs: [],
   module_states: readyModuleStates(),
   sector_rank: {
@@ -232,6 +241,72 @@ const strategyPayload: LivermoreStrategyPayload = {
         twelve_month_return: 0.24,
         factor_score: 0.4812,
         factor_overlay_rank: 1,
+      },
+    ],
+  },
+  uptrend_momentum_candidates: {
+    as_of_date: "2026-04-29",
+    formula_version: "rv_uptrend_momentum_candidates_v1",
+    market_state: "WARM",
+    observation_only: true,
+    input_stock_count: 1,
+    candidate_count: 1,
+    excluded_stock_count: 0,
+    insufficient_history_count: 0,
+    items: [
+      {
+        rank: 1,
+        stock_code: "000001.SZ",
+        stock_name: "Alpha",
+        sector_code: "801001",
+        sector_name: "AI",
+        close: 21.9,
+        ma20: 21.05,
+        ma60: 19.05,
+        ma120: 16.05,
+        return_20d: 0.12,
+        return_60d: 0.26,
+        return_120d: 0.48,
+        close_to_ma20: 0.04,
+        amount_ratio: 1.3,
+        pctchange: 3.2,
+        turn: 4.8,
+        amplitude: 3.1,
+        score: 0.88,
+      },
+    ],
+  },
+  fresh_trend_watchlist: {
+    as_of_date: "2026-04-29",
+    formula_version: "rv_fresh_trend_watchlist_candidates_v1",
+    market_state: "WARM",
+    observation_only: true,
+    input_stock_count: 1,
+    candidate_count: 1,
+    excluded_stock_count: 0,
+    insufficient_history_count: 0,
+    items: [
+      {
+        rank: 1,
+        stock_code: "000001.SZ",
+        stock_name: "Alpha",
+        sector_code: "801001",
+        sector_name: "AI",
+        concepts: ["AI hardware"],
+        close: 21.9,
+        ma20: 21.05,
+        ma60: 19.05,
+        ma120: 16.05,
+        return_20d: 0.12,
+        return_60d: 0.26,
+        return_120d: 0.48,
+        close_to_ma20: 0.04,
+        amount_ratio: 1.3,
+        pctchange: 3.2,
+        turn: 4.8,
+        amplitude: 3.1,
+        hlimitedays: 0,
+        score: 0.88,
       },
     ],
   },
@@ -1073,6 +1148,7 @@ describe("stockAnalysisPageModel", () => {
           candidate_count: 0,
           items: [],
         },
+        fresh_trend_watchlist: undefined,
         unsupported_outputs: [
           {
             key: "stock_candidates",
@@ -2182,7 +2258,7 @@ describe("stockAnalysisPageModel", () => {
     expect(notes.join(" ")).toContain(
       "板块强弱说明：板块强弱观察排名已按 50% 涨跌幅分位、30% 换手率分位、20% 振幅分位签核；用于复核优先级与行业过滤，不构成交易指令；多日动量、板块资金流与拥挤度不包含在当前版本内。",
     );
-    expect(notes.join(" ")).toContain("可用输出：市场门控、板块强弱、趋势候选、风险退出");
+    expect(notes.join(" ")).toContain("可用输出：市场门控、板块强弱、趋势候选、上升趋势、新趋势观察、风险退出");
     expect(notes.join(" ")).toContain("预警 市场宽度诊断：市场宽度输入不可用。");
     expect(notes.join(" ")).toContain("市场宽度 缺数据：5日市场宽度输入未落地。");
     expect(notes.join(" ")).not.toContain("LIVERMORE_BREADTH_MISSING");
@@ -2274,7 +2350,7 @@ describe("stockAnalysisPageModel", () => {
 
     const items = buildStrategyLensItems(payload, buildConsensusSummary(payload));
 
-    expect(items.map((item) => item.label)).toEqual(["融合策略", "趋势突破", "多因子", "超跌反弹"]);
+    expect(items.map((item) => item.label)).toEqual(["融合策略", "趋势突破", "新趋势观察", "多因子", "超跌反弹"]);
     expect(items.find((item) => item.key === "hybrid")?.state).toBe("ready");
     expect(items.find((item) => item.key === "hybrid")?.candidates[0]?.metricLabel).toBe("融合分 0.910");
     expect(items.find((item) => item.key === "factor")?.value).toBe("1");
@@ -2838,6 +2914,10 @@ describe("stockAnalysisPageModel", () => {
             "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT because the defended-trend candidate bundle already covers overheated tape.",
         },
         {
+          key: "uptrend_momentum_candidates",
+          reason: "Uptrend momentum watchlist is paused unless the market gate is WARM or HOT.",
+        },
+        {
           key: "theme_breakout",
           reason: "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.",
         },
@@ -2865,6 +2945,98 @@ describe("stockAnalysisPageModel", () => {
     expect(digest.primaryFacts.find((fact) => fact.id === "open-issues")).toMatchObject({
       value: "1 项",
       tone: "warning",
+    });
+  });
+
+  it("keeps the live OVERHEAT fresh-trend closure synchronized", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      market_gate: {
+        ...strategyPayload.market_gate,
+        state: "OVERHEAT",
+      },
+      diagnostics: [
+        {
+          severity: "info",
+          code: "LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY",
+          message: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+          input_family: "stock_candidate_policy",
+        },
+      ],
+      data_gaps: [
+        {
+          input_family: "breadth",
+          status: "ready",
+          evidence: "5-day breadth 0.6000 landed.",
+        },
+      ],
+      supported_outputs: ["market_gate", "sector_rank", "fresh_trend_watchlist", "factor_screen_candidates", "risk_exit"],
+      unsupported_outputs: [
+        {
+          key: "stock_candidates",
+          reason: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+        },
+        {
+          key: "uptrend_momentum_candidates",
+          reason: "Uptrend momentum watchlist is paused unless the market gate is WARM or HOT.",
+        },
+        {
+          key: "mean_reversion_candidates",
+          reason: "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT.",
+        },
+        {
+          key: "theme_breakout",
+          reason: "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.",
+        },
+        {
+          key: "hybrid_fusion",
+          reason: "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+        },
+      ],
+      stock_candidates: undefined,
+      uptrend_momentum_candidates: undefined,
+      fresh_trend_watchlist: {
+        ...strategyPayload.fresh_trend_watchlist!,
+        market_state: "OVERHEAT",
+        candidate_count: 20,
+      },
+      factor_screen_candidates: {
+        as_of_date: "2026-06-18",
+        factor_snapshot_as_of_date: "2026-06-18",
+        formula_version: "rv_factor_screen_candidates_v2",
+        market_state: "OVERHEAT",
+        observation_only: true,
+        input_stock_count: 1542,
+        candidate_count: 30,
+        coverage_note: "factor snapshot landed",
+        items: [],
+      },
+    };
+
+    const summary = buildDataBoundarySummary(payload, { quality_flag: "ok", vendor_status: "ok" });
+    expect(summary.boundaryCount).toBe(0);
+    expect(summary.unsupportedCount).toBe(0);
+
+    const notes = buildDataBoundaryNotes(payload).join(" ");
+    expect(notes).toContain("可用输出：市场门控、板块强弱、新趋势观察、多因子、风险退出");
+    expect(notes).toContain("上升趋势 阻断：上升趋势策略在过热门控下暂停");
+    expect(notes).not.toContain("fresh_trend_watchlist");
+    expect(notes).not.toContain("uptrend_momentum_candidates");
+
+    const queue = buildCandidateReviewQueue(payload);
+    expect(queue[0].headline).toContain("新趋势观察");
+    expect(queue[0].primaryEvidence.map((item) => item.key)).toEqual([
+      "return_20d",
+      "return_60d",
+      "return_120d",
+    ]);
+    expect(queue[0].boundaryEvidence.join(" ")).toContain("不构成趋势突破交易指令");
+
+    const lensItems = buildStrategyLensItems(payload, buildConsensusSummary(payload));
+    expect(lensItems.find((item) => item.key === "fresh_trend")).toMatchObject({
+      label: "新趋势观察",
+      state: "ready",
+      value: "20",
     });
   });
 

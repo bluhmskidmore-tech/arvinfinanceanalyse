@@ -1533,6 +1533,8 @@ export type LivermoreOutputKey =
   | "market_gate"
   | "sector_rank"
   | "stock_candidates"
+  | "uptrend_momentum_candidates"
+  | "fresh_trend_watchlist"
   | "mean_reversion_candidates"
   | "factor_screen_candidates"
   | "theme_breakout"
@@ -1833,6 +1835,74 @@ export type MeanReversionCandidatesPayload = {
   items: MeanReversionCandidateItem[];
 };
 
+export type UptrendMomentumCandidateItem = {
+  rank: number;
+  stock_code: string;
+  stock_name: string;
+  sector_code: string;
+  sector_name: string;
+  close: number;
+  ma20: number;
+  ma60: number;
+  ma120: number;
+  return_20d: number;
+  return_60d: number;
+  return_120d: number;
+  close_to_ma20: number;
+  amount_ratio: number;
+  pctchange: number | null;
+  turn: number | null;
+  amplitude: number | null;
+  score: number;
+};
+
+export type UptrendMomentumCandidatesPayload = {
+  as_of_date: string;
+  formula_version: string;
+  market_state: LivermoreMarketGateState;
+  observation_only?: boolean;
+  input_stock_count: number;
+  candidate_count: number;
+  excluded_stock_count: number;
+  insufficient_history_count: number;
+  items: UptrendMomentumCandidateItem[];
+};
+
+export type FreshTrendWatchlistCandidateItem = {
+  rank: number;
+  stock_code: string;
+  stock_name: string;
+  sector_code: string;
+  sector_name: string;
+  concepts: string[];
+  close: number;
+  ma20: number;
+  ma60: number;
+  ma120: number;
+  return_20d: number;
+  return_60d: number;
+  return_120d: number;
+  close_to_ma20: number;
+  amount_ratio: number;
+  pctchange: number | null;
+  turn: number | null;
+  amplitude: number | null;
+  hlimitedays: number | null;
+  score: number;
+};
+
+export type FreshTrendWatchlistPayload = {
+  as_of_date: string;
+  formula_version: string;
+  market_state: LivermoreMarketGateState;
+  observation_only?: boolean;
+  input_stock_count: number;
+  candidate_count: number;
+  excluded_stock_count: number;
+  insufficient_history_count: number;
+  items: FreshTrendWatchlistCandidateItem[];
+};
+
 export type FactorScreenCandidateItem = {
   rank: number;
   stock_code: string;
@@ -2052,6 +2122,8 @@ export type LivermoreStrategyPayload = {
   cycle_rotation_framework?: LivermoreCycleRotationFramework;
   sector_rank?: LivermoreSectorRankPayload;
   stock_candidates?: LivermoreStockCandidatesPayload;
+  uptrend_momentum_candidates?: UptrendMomentumCandidatesPayload;
+  fresh_trend_watchlist?: FreshTrendWatchlistPayload;
   mean_reversion_candidates?: MeanReversionCandidatesPayload;
   factor_screen_candidates?: FactorScreenCandidatesPayload;
   theme_breakout?: LivermoreThemeBreakoutPayload;

@@ -20,6 +20,10 @@ from backend.app.core_finance.cycle_macro_score import (
 from backend.app.core_finance.factor_screen_candidates import (
     compute_factor_screen_candidates,
 )
+from backend.app.core_finance.fresh_trend_watchlist_candidates import (
+    FreshTrendWatchlistSnapshot,
+    compute_fresh_trend_watchlist_candidates,
+)
 from backend.app.core_finance.hybrid_fusion_candidates import (
     compute_hybrid_fusion_candidates,
 )
@@ -105,6 +109,7 @@ LIVERMORE_OUTPUT_KEYS: tuple[str, ...] = (
     "sector_rank",
     "stock_candidates",
     "uptrend_momentum_candidates",
+    "fresh_trend_watchlist",
     "mean_reversion_candidates",
     "factor_screen_candidates",
     "theme_breakout",
@@ -308,6 +313,8 @@ def _load_livermore_strategy_payload_uncached(
         payload["stock_candidates"] = stock_outputs.stock_candidates_payload
     if stock_outputs.uptrend_momentum_payload is not None:
         payload["uptrend_momentum_candidates"] = stock_outputs.uptrend_momentum_payload
+    if stock_outputs.fresh_trend_watchlist_payload is not None:
+        payload["fresh_trend_watchlist"] = stock_outputs.fresh_trend_watchlist_payload
     if stock_outputs.mean_reversion_payload is not None:
         payload["mean_reversion_candidates"] = stock_outputs.mean_reversion_payload
     if stock_outputs.factor_screen_payload is not None:
@@ -692,6 +699,7 @@ class _ChoiceStockOutputs:
     sector_rank_payload: dict[str, object] | None
     stock_candidates_payload: dict[str, object] | None
     uptrend_momentum_payload: dict[str, object] | None
+    fresh_trend_watchlist_payload: dict[str, object] | None
     mean_reversion_payload: dict[str, object] | None
     factor_screen_payload: dict[str, object] | None
     factor_screen_block_reason: str
@@ -705,6 +713,12 @@ class _ChoiceStockOutputs:
     source_versions: list[str]
     vendor_versions: list[str]
     evidence_rows: int
+
+
+@dataclass(frozen=True)
+class _FreshTrendWatchlistLoadResult:
+    snapshots: list[FreshTrendWatchlistSnapshot]
+    tables_used: list[str]
 
 
 @dataclass(frozen=True)
@@ -786,6 +800,7 @@ def _load_choice_stock_outputs(
             sector_rank_payload=None,
             stock_candidates_payload=None,
             uptrend_momentum_payload=None,
+            fresh_trend_watchlist_payload=None,
             mean_reversion_payload=None,
             factor_screen_payload=None,
             factor_screen_block_reason="choice_stock_factor_snapshot is unavailable because no resolved as_of_date is available.",
@@ -881,7 +896,7 @@ def _load_choice_stock_outputs(
                 ).payload
 
     uptrend_momentum_payload: dict[str, object] | None = None
-    if stock_coverage.full_coverage and market_state in {"WARM", "HOT", "OVERHEAT"}:
+    if stock_coverage.full_coverage and market_state in {"WARM", "HOT"}:
         uptrend_snapshots = _load_uptrend_momentum_snapshots(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
@@ -901,6 +916,22 @@ def _load_choice_stock_outputs(
                     "choice_stock_sector_membership",
                 ]
             )
+
+    fresh_trend_watchlist_payload: dict[str, object] | None = None
+    if stock_coverage.full_coverage and market_state in {"WARM", "HOT", "OVERHEAT"}:
+        fresh_trend_load = _load_fresh_trend_watchlist_snapshots(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+        )
+        if fresh_trend_load.snapshots:
+            fresh_trend_result = compute_fresh_trend_watchlist_candidates(
+                as_of_date=as_of_date,
+                market_state=market_state,
+                snapshots=fresh_trend_load.snapshots,
+            )
+            evidence_rows += len(fresh_trend_load.snapshots)
+            fresh_trend_watchlist_payload = fresh_trend_result.payload
+            tables_used.extend(fresh_trend_load.tables_used)
 
     mean_reversion_payload: dict[str, object] | None = None
     if stock_coverage.full_coverage and market_state in {"OFF", "WARM"}:
@@ -1026,6 +1057,7 @@ def _load_choice_stock_outputs(
         sector_rank_payload=sector_rank_payload,
         stock_candidates_payload=stock_candidates_payload,
         uptrend_momentum_payload=uptrend_momentum_payload,
+        fresh_trend_watchlist_payload=fresh_trend_watchlist_payload,
         mean_reversion_payload=mean_reversion_payload,
         factor_screen_payload=factor_screen_payload,
         factor_screen_block_reason=factor_screen_block_reason,
@@ -1633,6 +1665,181 @@ def _load_uptrend_momentum_snapshots(
             )
         )
     return snapshots
+
+
+def _load_fresh_trend_watchlist_snapshots(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+) -> _FreshTrendWatchlistLoadResult:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        required_tables = {
+            "choice_stock_universe",
+            "choice_stock_sector_membership",
+            "choice_stock_daily_observation",
+        }
+        if not required_tables.issubset(tables):
+            return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
+        tables_used = [
+            "choice_stock_daily_observation",
+            "choice_stock_universe",
+            "choice_stock_sector_membership",
+        ]
+        universe_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_universe",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        membership_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_sector_membership",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        if universe_snapshot_date is None or membership_snapshot_date is None:
+            return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
+        current_rows = conn.execute(
+            """
+            select
+              daily.stock_code,
+              coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
+              coalesce(nullif(trim(membership.sw2021code), ''), '') as sector_code,
+              coalesce(nullif(trim(membership.sw2021), ''), '') as sector_name,
+              daily.close_value,
+              daily.pctchange,
+              daily.turn,
+              daily.amplitude
+            from choice_stock_daily_observation daily
+            left join choice_stock_universe universe
+              on universe.stock_code = daily.stock_code
+             and universe.as_of_date = ?
+            left join choice_stock_sector_membership membership
+              on membership.stock_code = daily.stock_code
+             and membership.as_of_date = ?
+            where cast(daily.trade_date as date) = cast(? as date)
+              and trim(coalesce(daily.tradestatus, '')) = 'Trading'
+            """,
+            [universe_snapshot_date, membership_snapshot_date, as_of_date],
+        ).fetchall()
+        stock_codes = [str(row[0] or "") for row in current_rows if row[0]]
+        if not stock_codes:
+            return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
+        placeholders = ",".join("?" for _ in stock_codes)
+        history_rows = conn.execute(
+            f"""
+            select stock_code, close_value, amount
+            from choice_stock_daily_observation
+            where stock_code in ({placeholders})
+              and cast(trade_date as date) <= cast(? as date)
+              and trim(coalesce(tradestatus, '')) = 'Trading'
+            order by stock_code asc, cast(trade_date as date) asc
+            """,
+            [*stock_codes, as_of_date],
+        ).fetchall()
+        concept_rows: list[tuple[object, object]] = []
+        if "choice_stock_concept_membership" in tables:
+            concept_snapshot_date = _latest_table_date_on_or_before(
+                conn,
+                table_name="choice_stock_concept_membership",
+                column_name="as_of_date",
+                as_of_date=as_of_date,
+            )
+            if concept_snapshot_date is not None:
+                concept_rows = conn.execute(
+                    f"""
+                    select stock_code, concept_name
+                    from choice_stock_concept_membership
+                    where stock_code in ({placeholders})
+                      and as_of_date = ?
+                    order by stock_code asc, concept_name asc
+                    """,
+                    [*stock_codes, concept_snapshot_date],
+                ).fetchall()
+                tables_used.append("choice_stock_concept_membership")
+        limit_rows: list[tuple[object, object]] = []
+        if "choice_stock_limit_quality" in tables:
+            limit_snapshot_date = _latest_table_date_on_or_before(
+                conn,
+                table_name="choice_stock_limit_quality",
+                column_name="as_of_date",
+                as_of_date=as_of_date,
+            )
+            if limit_snapshot_date is not None:
+                limit_rows = conn.execute(
+                    f"""
+                    select stock_code, hlimitedays
+                    from choice_stock_limit_quality
+                    where stock_code in ({placeholders})
+                      and as_of_date = ?
+                    """,
+                    [*stock_codes, limit_snapshot_date],
+                ).fetchall()
+                tables_used.append("choice_stock_limit_quality")
+    except duckdb.Error:
+        return _FreshTrendWatchlistLoadResult(snapshots=[], tables_used=[])
+    finally:
+        conn.close()
+
+    history_by_code: dict[str, dict[str, list[object]]] = {}
+    for row in history_rows:
+        code = str(row[0] or "")
+        if not code:
+            continue
+        bucket = history_by_code.setdefault(code, {"close": [], "amount": []})
+        bucket["close"].append(row[1])
+        bucket["amount"].append(row[2])
+
+    concepts_by_code: dict[str, list[object]] = {}
+    for code_raw, concept_name in concept_rows:
+        code = str(code_raw or "")
+        if not code:
+            continue
+        concepts_by_code.setdefault(code, []).append(concept_name)
+
+    hlimitedays_by_code = {str(code or ""): hlimitedays for code, hlimitedays in limit_rows if code}
+
+    snapshots: list[FreshTrendWatchlistSnapshot] = []
+    for row in current_rows:
+        code = str(row[0] or "")
+        if not code:
+            continue
+        bucket = history_by_code.get(code, {"close": [], "amount": []})
+        closes = bucket["close"]
+        amounts = bucket["amount"]
+        if len(closes) > 130:
+            closes = closes[-130:]
+            amounts = amounts[-130:]
+        if len(closes) != len(amounts):
+            continue
+        snapshots.append(
+            FreshTrendWatchlistSnapshot(
+                stock_code=code,
+                stock_name=str(row[1] or code),
+                sector_code=str(row[2] or ""),
+                sector_name=str(row[3] or ""),
+                concepts=concepts_by_code.get(code, []),
+                close_value=row[4],
+                pctchange=row[5],
+                turn=row[6],
+                amplitude=row[7],
+                hlimitedays=hlimitedays_by_code.get(code),
+                close_history=closes,
+                amount_history=amounts,
+            )
+        )
+    return _FreshTrendWatchlistLoadResult(
+        snapshots=snapshots,
+        tables_used=_unique_preserving_order(tables_used),
+    )
 
 
 def _load_factor_screen_rows(
@@ -2476,8 +2683,8 @@ def _uptrend_momentum_unavailable_reason(
     stock_readiness: ChoiceStockReadiness,
     stock_outputs: _ChoiceStockOutputs,
 ) -> str:
-    if market_state in {"OFF", "NO_DATA", "PENDING_DATA", "STALE"}:
-        return "Uptrend momentum watchlist is paused unless the market gate is WARM, HOT, or OVERHEAT."
+    if market_state not in {"WARM", "HOT"}:
+        return "Uptrend momentum watchlist is paused unless the market gate is WARM or HOT."
     if not stock_readiness.ready:
         return _choice_stock_dependency_summary(
             stock_readiness=stock_readiness,
@@ -2491,6 +2698,30 @@ def _uptrend_momentum_unavailable_reason(
     return (
         "Uptrend momentum inputs are landed, but no Trading-status A-share rows produced "
         "watchlist snapshots for this as_of_date."
+    )
+
+
+def _fresh_trend_watchlist_unavailable_reason(
+    *,
+    market_state: str,
+    stock_readiness: ChoiceStockReadiness,
+    stock_outputs: _ChoiceStockOutputs,
+) -> str:
+    if market_state not in {"WARM", "HOT", "OVERHEAT"}:
+        return "Fresh trend watchlist is observation-only and runs only when the market gate is WARM, HOT, or OVERHEAT."
+    if not stock_readiness.ready:
+        return _choice_stock_dependency_summary(
+            stock_readiness=stock_readiness,
+            families=["stock_universe", "stock_ohlcv", "stock_status", "sector_membership"],
+            ready_summary="",
+        )
+    if stock_outputs.stock_coverage is None or stock_outputs.stock_coverage.status == "not_materialized":
+        return "Choice stock catalog is confirmed, but fresh trend daily inputs are not materialized yet."
+    if not stock_outputs.stock_coverage.full_coverage:
+        return stock_outputs.stock_coverage.message
+    return (
+        "Fresh trend inputs are landed, but no growth-board Trading rows passed "
+        "the new-trend and old-economy exclusion filters for this as_of_date."
     )
 
 
@@ -2532,6 +2763,19 @@ def _build_supported_outputs(
             {
                 "key": "uptrend_momentum_candidates",
                 "reason": _uptrend_momentum_unavailable_reason(
+                    market_state=state,
+                    stock_readiness=stock_readiness,
+                    stock_outputs=stock_outputs,
+                ),
+            }
+        )
+    if stock_outputs.fresh_trend_watchlist_payload is not None:
+        supported.append("fresh_trend_watchlist")
+    else:
+        unsupported.append(
+            {
+                "key": "fresh_trend_watchlist",
+                "reason": _fresh_trend_watchlist_unavailable_reason(
                     market_state=state,
                     stock_readiness=stock_readiness,
                     stock_outputs=stock_outputs,
@@ -2690,6 +2934,8 @@ def _module_payload(*, key: str, stock_outputs: _ChoiceStockOutputs) -> dict[str
         return stock_outputs.stock_candidates_payload
     if key == "uptrend_momentum_candidates":
         return stock_outputs.uptrend_momentum_payload
+    if key == "fresh_trend_watchlist":
+        return stock_outputs.fresh_trend_watchlist_payload
     if key == "mean_reversion_candidates":
         return stock_outputs.mean_reversion_payload
     if key == "factor_screen_candidates":

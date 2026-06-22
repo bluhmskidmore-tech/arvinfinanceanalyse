@@ -33,6 +33,19 @@ Governance audit packet: `docs/pnl/stock-analysis-governance-audit-packet.md`
 7. Run `python scripts/check_stock_analysis_business_owner_approval.py`.
 8. Run `scripts/codex-verify-page.ps1 -PageSlug stock-analysis -Run`.
 
+## 2026-06-22 Evidence Review Addendum
+
+Before filling the approval template, the owner must explicitly review the refreshed 2026-06-22 evidence:
+
+- Live API evidence for `GET /ui/market-data/livermore?as_of_date=2026-06-18`.
+- `active_data_gaps=0`, `active_diagnostics=0`, `actionable_unsupported_outputs=0`, and `workbench_summary.actionable_boundary_count=0`.
+- `sector_rank.formula_status=signed_off`, `sector_rank.formula_version=rv_livermore_sector_strength_observation_v1`, and `sector_rank.is_provisional=false`.
+- `supported_outputs=market_gate,sector_rank,fresh_trend_watchlist,factor_screen_candidates,risk_exit`.
+- `uptrend_momentum_candidates` is policy-paused under `market_state=OVERHEAT`; `fresh_trend_watchlist.candidate_count=20`; `factor_screen_candidates.candidate_count=30`.
+- Remaining policy pauses under `market_state=OVERHEAT`, including uptrend momentum, are observational availability states, not trading instructions.
+- `scripts/codex_page_readiness.py --page-slug stock-analysis` reports `static-pass`, but still keeps `formal_use_allowed=false`.
+- `scripts/check_stock_analysis_business_owner_approval.py --require-captured` must continue to fail until the approval template is completed and signed.
+
 ## Approval Template Fill Rules
 
 Only edit `docs/pnl/stock-analysis-business-owner-approval-template.md`.

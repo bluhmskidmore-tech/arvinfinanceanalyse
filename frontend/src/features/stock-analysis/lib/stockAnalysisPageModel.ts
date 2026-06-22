@@ -16,6 +16,7 @@ import type {
   LivermoreStrategyPayload,
   LivermoreStrategyScorePayload,
   HybridFusionCandidateItem,
+  FreshTrendWatchlistCandidateItem,
   LivermoreThemeBreakoutReviewItem,
   LivermoreThemeEvidenceInputState,
   LivermoreThemeBreakoutItem,
@@ -1023,6 +1024,10 @@ function sortedHybridFusionItems(payload: LivermoreStrategyPayload) {
   return [...(payload.hybrid_fusion_candidates?.items ?? [])].sort((left, right) => left.rank - right.rank);
 }
 
+function sortedFreshTrendWatchlistItems(payload: LivermoreStrategyPayload): FreshTrendWatchlistCandidateItem[] {
+  return [...(payload.fresh_trend_watchlist?.items ?? [])].sort((left, right) => left.rank - right.rank);
+}
+
 function sortedThemeBreakoutItems(payload: LivermoreStrategyPayload): LivermoreThemeBreakoutItem[] {
   return [...(payload.theme_breakout?.items ?? [])].sort((left, right) => left.rank - right.rank);
 }
@@ -1192,6 +1197,65 @@ function buildHybridFusionEvidenceCards(
   });
 }
 
+function buildFreshTrendEvidenceCards(
+  payload: LivermoreStrategyPayload,
+): StockCandidateEvidenceCard[] {
+  const formula = payload.fresh_trend_watchlist?.formula_version ?? "fresh_trend_watchlist";
+  return sortedFreshTrendWatchlistItems(payload).map((item) => {
+    const concepts = item.concepts.length > 0 ? item.concepts.slice(0, 3).join(" / ") : "题材待补";
+    const evidenceBullets: StockCandidateEvidenceBullet[] = [
+      { key: "return_20d", label: "20日动量", value: formatRatioAsPercent(item.return_20d, 1) },
+      { key: "return_60d", label: "60日动量", value: formatRatioAsPercent(item.return_60d, 1) },
+      { key: "return_120d", label: "120日动量", value: formatRatioAsPercent(item.return_120d, 1) },
+      { key: "ma20_distance", label: "MA20距离", value: formatRatioAsPercent(item.close_to_ma20, 1) },
+      { key: "amount_ratio", label: "量能", value: `${formatNumber(item.amount_ratio, 2)}x` },
+      {
+        key: "turn_amplitude",
+        label: "换手/振幅",
+        value: `换手 ${formatNumber(item.turn, 2)}% / 振幅 ${formatNumber(item.amplitude, 2)}%`,
+      },
+      { key: "concepts", label: "题材线索", value: concepts },
+      { key: "formula_version", label: "公式版本", value: formula },
+    ];
+    const evidence = evidenceBullets.map((bullet) => `${bullet.label}：${bullet.value}`);
+
+    return {
+      rank: item.rank,
+      stockCode: item.stock_code,
+      stockName: item.stock_name,
+      sectorCode: item.sector_code,
+      sectorName: item.sector_name,
+      headline: `新趋势观察 #${item.rank} · ${item.stock_name}`,
+      pattern: "突破",
+      patternNote: "新趋势观察池为只读候选，需人工复核行业、题材和风险退出证据。",
+      distanceToBreakoutPct: `MA20 ${formatRatioAsPercent(item.close_to_ma20, 1)}`,
+      evidenceBullets,
+      evidence,
+      counterEvidence: [
+        "过热门控下仅作观察补充，不构成趋势突破交易指令。",
+        "涨停连板、公告/新闻与盘中成交顺序仍需人工复核。",
+      ],
+      invalidationRules: [
+        "回落至 MA20 下方或量能失真时降级观察。",
+        "旧经济行业、ST/停牌或数据质量异常时不得继续解释为新趋势。",
+      ],
+      rawFields: [
+        { key: "close", label: "收盘", value: formatNumber(item.close, 4) },
+        { key: "ma20", label: "20日均线", value: formatNumber(item.ma20, 4) },
+        { key: "ma60", label: "60日均线", value: formatNumber(item.ma60, 4) },
+        { key: "ma120", label: "120日均线", value: formatNumber(item.ma120, 4) },
+        { key: "return_20d", label: "20日收益", value: formatNumber(item.return_20d, 6) },
+        { key: "return_60d", label: "60日收益", value: formatNumber(item.return_60d, 6) },
+        { key: "return_120d", label: "120日收益", value: formatNumber(item.return_120d, 6) },
+        { key: "close_to_ma20", label: "MA20距离", value: formatNumber(item.close_to_ma20, 6) },
+        { key: "amount_ratio", label: "量比", value: formatNumber(item.amount_ratio, 6) },
+        { key: "hlimitedays", label: "连板天数", value: item.hlimitedays == null ? "待补" : String(item.hlimitedays) },
+        { key: "score", label: "观察分", value: formatNumber(item.score, 6) },
+      ],
+    };
+  });
+}
+
 function mapGateStateToTone(state: LivermoreMarketGateState): "进攻" | "中性" | "防御" {
   if (state === "HOT" || state === "WARM") return "进攻";
   if (
@@ -1305,6 +1369,9 @@ export function localizeStockDataFamily(inputFamily: string | null | undefined):
     stock_universe: "股票池",
     stock_candidates: "趋势候选",
     stock_candidate: "趋势候选",
+    uptrend_momentum_candidates: "上升趋势",
+    uptrend_momentum: "上升趋势",
+    fresh_trend_watchlist: "新趋势观察",
     mean_reversion_candidates: "超跌池",
     factor_screen_candidates: "多因子",
     factor_screen: "多因子",
@@ -1446,6 +1513,9 @@ export function localizeStockBackendText(
   }
   if (lower.includes("stock candidate policy") && lower.includes("inactive in overheat")) {
     return "趋势突破策略在过热门控下暂停；仅在偏热/温和门控下进入候选。";
+  }
+  if (lower.includes("uptrend momentum watchlist is paused") && lower.includes("warm or hot")) {
+    return "上升趋势策略在过热门控下暂停；仅在温和/偏热门控下进入候选。";
   }
   if (lower.includes("mean reversion watchlist is paused") && lower.includes("overheat")) {
     return "超跌反弹观察池在过热门控下暂停；当前由防守趋势候选覆盖。";
@@ -1728,7 +1798,8 @@ function isKnownLivermorePolicyPause(reason: string | null | undefined): boolean
     (lower.includes("stock candidate policy") && lower.includes("inactive in overheat")) ||
     lower.includes("mean reversion watchlist is paused") ||
     (lower.includes("theme breakout execution is paused") && lower.includes("overheat")) ||
-    (lower.includes("hybrid fusion is observation-only") && lower.includes("warm/hot"))
+    (lower.includes("hybrid fusion is observation-only") && lower.includes("warm/hot")) ||
+    (lower.includes("uptrend momentum watchlist is paused") && lower.includes("warm or hot"))
   );
 }
 
@@ -2113,6 +2184,7 @@ function sectorHeavyweightSourceLabel(source: string) {
   const labels: Record<string, string> = {
     theme_breakout: "题材强势",
     livermore: "趋势候选",
+    fresh_trend_watchlist: "新趋势观察",
     factor_screen: "多因子",
     hybrid_fusion: "融合策略",
     mean_reversion: "超跌反弹",
@@ -2199,6 +2271,25 @@ export function buildSectorHeavyweightPreview(
       factorScoreValue: null,
       rankScore: 500 - stock.rank + (closeStrengthValue ?? 0) * 20 + (turnValue ?? 0),
       source: "livermore",
+    });
+  }
+
+  for (const stock of payload.fresh_trend_watchlist?.items ?? []) {
+    const pctChangeValue = finiteNumber(stock.pctchange);
+    const turnValue = finiteNumber(stock.turn);
+    const closeToMa20Value = finiteNumber(stock.close_to_ma20);
+    const scoreValue = finiteNumber(stock.score);
+    upsert({
+      stockCode: stock.stock_code,
+      stockName: stock.stock_name,
+      sectorCode: stock.sector_code,
+      sectorName: stock.sector_name,
+      pctChangeValue,
+      turnValue,
+      closeStrengthValue: closeToMa20Value,
+      factorScoreValue: scoreValue,
+      rankScore: 360 - stock.rank + (scoreValue ?? 0) * 10 + (pctChangeValue ?? 0),
+      source: "fresh_trend_watchlist",
     });
   }
 
@@ -2411,11 +2502,13 @@ export function buildStrategyLensItems(
 
   const stockPayload = payload.stock_candidates;
   const hybridPayload = payload.hybrid_fusion_candidates;
+  const freshTrendPayload = payload.fresh_trend_watchlist;
   const factorPayload = payload.factor_screen_candidates;
   const meanReversionPayload = payload.mean_reversion_candidates;
   const strategyCandidateCounts = {
     hybrid: hybridPayload?.candidate_count ?? 0,
     livermore: stockPayload?.candidate_count ?? 0,
+    fresh_trend: freshTrendPayload?.candidate_count ?? 0,
     factor: factorPayload?.candidate_count ?? 0,
     mean_reversion: meanReversionPayload?.candidate_count ?? 0,
   };
@@ -2445,6 +2538,7 @@ export function buildStrategyLensItems(
   const strategyStatuses = {
     hybrid: outputState("hybrid_fusion", strategyCandidateCounts.hybrid, Boolean(hybridPayload)),
     livermore: outputState("stock_candidates", strategyCandidateCounts.livermore, Boolean(stockPayload)),
+    fresh_trend: outputState("fresh_trend_watchlist", strategyCandidateCounts.fresh_trend, Boolean(freshTrendPayload)),
     factor: outputState("factor_screen_candidates", strategyCandidateCounts.factor, Boolean(factorPayload)),
     mean_reversion: meanReversionStatus,
   };
@@ -2452,6 +2546,7 @@ export function buildStrategyLensItems(
     1,
     strategyCandidateCounts.hybrid,
     strategyCandidateCounts.livermore,
+    strategyCandidateCounts.fresh_trend,
     strategyCandidateCounts.factor,
     strategyCandidateCounts.mean_reversion,
   );
@@ -2482,6 +2577,15 @@ export function buildStrategyLensItems(
       sectorName: item.sector_name || item.industry,
       metricLabel: `因子分 ${formatNumber(item.score, 3)}`,
     })) ?? [];
+  const freshTrendCandidates =
+    freshTrendPayload?.items.slice(0, 3).map((item) => ({
+      key: item.stock_code,
+      rankLabel: `#${item.rank}`,
+      stockCode: item.stock_code,
+      stockName: item.stock_name,
+      sectorName: item.sector_name,
+      metricLabel: `20日动量 ${formatRatioAsPercent(item.return_20d, 1)}`,
+    })) ?? [];
   const meanReversionCandidates =
     meanReversionPayload?.items.slice(0, 3).map((item) => ({
       key: item.stock_code,
@@ -2504,6 +2608,9 @@ export function buildStrategyLensItems(
   const factorDetail = factorPayload?.coverage_note
     ? shortStrategyCoverageLabel(factorPayload.coverage_note, "factor_screen_candidates", "因子覆盖已返回")
     : strategyStatuses.factor.statusDetail;
+  const freshTrendDetail = freshTrendPayload?.observation_only
+    ? "只读观察池，补充过热门控下的新趋势复核。"
+    : strategyStatuses.fresh_trend.statusDetail;
   const meanReversionDetail =
     strategyStatuses.mean_reversion.state === "blocked"
       ? strategyStatuses.mean_reversion.statusDetail
@@ -2572,6 +2679,37 @@ export function buildStrategyLensItems(
       candidates: livermoreCandidates,
       scrollTarget: "stock-analysis-review-queue",
       progress: clampRatio(strategyCandidateCounts.livermore / strategyMax),
+    },
+    {
+      key: "fresh_trend",
+      label: "新趋势观察",
+      subtitle: "成长观察",
+      value: String(strategyCandidateCounts.fresh_trend),
+      unitLabel: "候选",
+      detail: freshTrendDetail,
+      tone: strategyStatuses.fresh_trend.tone,
+      state: strategyStatuses.fresh_trend.state,
+      statusLabel: strategyStatuses.fresh_trend.statusLabel,
+      statusDetail: strategyStatuses.fresh_trend.statusDetail,
+      blockerLabel: strategyBlockerLabel(strategyStatuses.fresh_trend.state, strategyStatuses.fresh_trend.statusDetail),
+      focusLabel: strategyFocusLabel({
+        label: "新趋势观察",
+        state: strategyStatuses.fresh_trend.state,
+        candidates: freshTrendCandidates,
+        fallback: "复核成长板、均线结构、量能和题材线索是否同向。",
+      }),
+      actionLabel: "查看观察池",
+      candidateCountLabel: strategyCandidateCountLabel(strategyCandidateCounts.fresh_trend),
+      dateLabel: freshTrendPayload?.as_of_date ?? payload.as_of_date ?? "日期待补",
+      formulaLabel: freshTrendPayload?.formula_version ?? "公式待补",
+      evidence: [
+        { key: "input", label: "输入", value: freshTrendPayload ? `${freshTrendPayload.input_stock_count} 只` : "待补" },
+        { key: "gate", label: "门控", value: localizeMarketDataStatus(freshTrendPayload?.market_state ?? payload.market_gate.state) },
+        { key: "mode", label: "口径", value: freshTrendPayload?.observation_only ? "只读观察" : "复核候选" },
+      ],
+      candidates: freshTrendCandidates,
+      scrollTarget: "stock-analysis-review-queue",
+      progress: clampRatio(strategyCandidateCounts.fresh_trend / strategyMax),
     },
     {
       key: "factor",
@@ -3728,12 +3866,12 @@ export function buildCandidateEvidenceCards(
     ? []
     : buildHybridFusionEvidenceCards(payload);
   if (hybridCards.length > 0) return hybridCards;
-  if (isStockModulePrimaryExcluded(payload, "stock_candidates")) return [];
-
-  return sortedCandidateItems(payload).map((item) => {
-    const pattern = deriveCandidatePattern(item);
-    const patternNote = "UI 辅助归类标签，不构成正式结论";
-    const distanceToBreakoutPct = formatDistanceToBreakoutPct(item);
+  const stockCards = isStockModulePrimaryExcluded(payload, "stock_candidates")
+    ? []
+    : sortedCandidateItems(payload).map((item) => {
+      const pattern = deriveCandidatePattern(item);
+      const patternNote = "UI 辅助归类标签，不构成正式结论";
+      const distanceToBreakoutPct = formatDistanceToBreakoutPct(item);
 
     const evidenceBullets: StockCandidateEvidenceBullet[] = [
       {
@@ -3831,6 +3969,11 @@ export function buildCandidateEvidenceCards(
       ],
     };
   });
+  if (stockCards.length > 0) return stockCards;
+  const freshCards = isStockModulePrimaryExcluded(payload, "fresh_trend_watchlist")
+    ? []
+    : buildFreshTrendEvidenceCards(payload);
+  return freshCards;
 }
 
 function localizeRiskExitReason(reason: string | null | undefined): string {

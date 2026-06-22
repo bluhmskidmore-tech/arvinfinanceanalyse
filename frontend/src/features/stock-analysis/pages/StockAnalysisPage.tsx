@@ -302,6 +302,8 @@ function supportedOutputLabel(key: string): string {
     market_gate: "市场门控",
     sector_rank: "板块强弱",
     stock_candidates: "趋势候选",
+    uptrend_momentum_candidates: "上升趋势",
+    fresh_trend_watchlist: "新趋势观察",
     mean_reversion_candidates: "均值回归",
     factor_screen_candidates: "多因子",
     theme_breakout: "题材突破",

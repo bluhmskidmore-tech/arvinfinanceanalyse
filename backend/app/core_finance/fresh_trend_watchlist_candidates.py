@@ -6,49 +6,85 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_uptrend_momentum_candidates_v1"
-ACTIVE_MARKET_STATES = frozenset({"WARM", "HOT"})
+FORMULA_VERSION = "rv_fresh_trend_watchlist_candidates_v1"
+ACTIVE_MARKET_STATES = frozenset({"WARM", "HOT", "OVERHEAT"})
+GROWTH_BOARD_PREFIXES = ("300", "301", "688", "002")
 MIN_HISTORY_BARS = 121
 MIN_AMOUNT_BARS = 21
-MAX_RANKED = 30
+MAX_RANKED = 20
 MAX_CANDIDATES_PER_SECTOR = 3
-MAX_CLOSE_TO_MA20 = 0.20
-MIN_AMOUNT_RATIO = 0.80
-MAX_AMOUNT_RATIO = 3.00
+MIN_RETURN_20D = 0.08
+MAX_RETURN_20D = 0.90
+MIN_RETURN_60D = 0.18
+MAX_RETURN_60D = 1.60
+MIN_RETURN_120D = 0.30
+MAX_RETURN_120D = 3.20
+MAX_CLOSE_TO_MA20 = 0.25
+MAX_CLOSE_EXTENSION_FOR_PENALTY = 0.16
+MIN_AMOUNT_RATIO = 0.70
+MAX_AMOUNT_RATIO = 3.50
 MAX_DAILY_RETURN = 0.095
-MAX_RETURN_20D = 1.00
-MAX_RETURN_60D = 1.50
-MAX_RETURN_120D = 3.00
+MAX_LIMIT_UP_STREAK = 2
+OLD_ECONOMY_SECTOR_KEYWORDS = (
+    "bank",
+    "broker",
+    "finance",
+    "real estate",
+    "coal",
+    "oil",
+    "steel",
+    "construction",
+    "building",
+    "utility",
+    "transport",
+    "retail",
+    "textile",
+    "home appliance",
+    "银行",
+    "非银",
+    "房地产",
+    "煤炭",
+    "石油",
+    "钢铁",
+    "建筑",
+    "公用",
+    "交通",
+    "商贸",
+    "纺织",
+    "家用电器",
+)
 
 
 @dataclass(frozen=True)
-class UptrendMomentumSnapshot:
+class FreshTrendWatchlistSnapshot:
     stock_code: str
     stock_name: str
     sector_code: str
     sector_name: str
+    concepts: Sequence[object]
     close_value: object
     pctchange: object
     turn: object
     amplitude: object
+    hlimitedays: object
     close_history: Sequence[object]
     amount_history: Sequence[object]
 
 
 @dataclass(frozen=True)
-class UptrendMomentumResult:
+class FreshTrendWatchlistResult:
     payload: dict[str, object]
 
 
-def compute_uptrend_momentum_candidates(
+def compute_fresh_trend_watchlist_candidates(
     *,
     as_of_date: str,
     market_state: str,
-    snapshots: list[UptrendMomentumSnapshot],
-) -> UptrendMomentumResult:
+    snapshots: list[FreshTrendWatchlistSnapshot],
+) -> FreshTrendWatchlistResult:
     raw_state = market_state.strip()
     if raw_state not in ACTIVE_MARKET_STATES:
-        return UptrendMomentumResult(
+        return FreshTrendWatchlistResult(
             payload=_build_payload(
                 as_of_date=as_of_date,
                 market_state=raw_state or market_state,
@@ -62,7 +98,6 @@ def compute_uptrend_momentum_candidates(
     items_accum: list[dict[str, object]] = []
     excluded_stock_count = 0
     insufficient_history_count = 0
-
     for snapshot in snapshots:
         row = _candidate_row(snapshot)
         if row is None:
@@ -82,8 +117,7 @@ def compute_uptrend_momentum_candidates(
         ranked.append(enriched)
 
     excluded_stock_count += max(0, len(ordered) - len(truncated))
-
-    return UptrendMomentumResult(
+    return FreshTrendWatchlistResult(
         payload=_build_payload(
             as_of_date=as_of_date,
             market_state=raw_state,
@@ -117,8 +151,12 @@ def _build_payload(
     }
 
 
-def _candidate_row(snapshot: UptrendMomentumSnapshot) -> dict[str, object] | None:
+def _candidate_row(snapshot: FreshTrendWatchlistSnapshot) -> dict[str, object] | None:
     if _is_st_name(snapshot.stock_name):
+        return None
+    if not _is_growth_board(snapshot.stock_code):
+        return None
+    if _is_old_economy_sector(snapshot.sector_name):
         return None
 
     closes = _float_series(snapshot.close_history)
@@ -141,9 +179,11 @@ def _candidate_row(snapshot: UptrendMomentumSnapshot) -> dict[str, object] | Non
     return_20d = _window_return(close_price, closes, 20)
     return_60d = _window_return(close_price, closes, 60)
     return_120d = _window_return(close_price, closes, 120)
-    if return_20d <= 0 or return_60d <= 0 or return_120d <= 0:
+    if not (MIN_RETURN_20D <= return_20d <= MAX_RETURN_20D):
         return None
-    if return_20d > MAX_RETURN_20D or return_60d > MAX_RETURN_60D or return_120d > MAX_RETURN_120D:
+    if not (MIN_RETURN_60D <= return_60d <= MAX_RETURN_60D):
+        return None
+    if not (MIN_RETURN_120D <= return_120d <= MAX_RETURN_120D):
         return None
 
     close_to_ma20 = close_price / ma20 - 1.0
@@ -166,15 +206,21 @@ def _candidate_row(snapshot: UptrendMomentumSnapshot) -> dict[str, object] | Non
     if not (MIN_AMOUNT_RATIO <= amount_ratio <= MAX_AMOUNT_RATIO):
         return None
 
+    hlimitedays = _valid_float(snapshot.hlimitedays)
+    if hlimitedays is not None and hlimitedays > MAX_LIMIT_UP_STREAK:
+        return None
+
     pctchange = _valid_float(snapshot.pctchange)
     turn = _valid_float(snapshot.turn)
     amplitude = _valid_float(snapshot.amplitude)
     score = (
-        return_20d * 0.35
-        + return_60d * 0.30
-        + return_120d * 0.15
-        + min(amount_ratio / 2.0, 1.0) * 0.10
-        + max(0.0, 1.0 - close_to_ma20 / MAX_CLOSE_TO_MA20) * 0.10
+        return_20d * 0.40
+        + return_60d * 0.28
+        + return_120d * 0.14
+        + min(amount_ratio, 2.5) * 0.08
+        + min((turn or 0.0) / 10.0, 1.0) * 0.06
+        + _board_bonus(snapshot.stock_code)
+        - max(close_to_ma20 - MAX_CLOSE_EXTENSION_FOR_PENALTY, 0.0) * 0.30
     )
 
     return {
@@ -182,6 +228,7 @@ def _candidate_row(snapshot: UptrendMomentumSnapshot) -> dict[str, object] | Non
         "stock_name": snapshot.stock_name,
         "sector_code": snapshot.sector_code,
         "sector_name": snapshot.sector_name,
+        "concepts": _clean_concepts(snapshot.concepts),
         "close": round(close_price, 6),
         "ma20": round(ma20, 6),
         "ma60": round(ma60, 6),
@@ -194,6 +241,7 @@ def _candidate_row(snapshot: UptrendMomentumSnapshot) -> dict[str, object] | Non
         "pctchange": round(pctchange, 6) if pctchange is not None else None,
         "turn": round(turn, 6) if turn is not None else None,
         "amplitude": round(amplitude, 6) if amplitude is not None else None,
+        "hlimitedays": int(hlimitedays) if hlimitedays is not None else None,
         "score": round(score, 6),
     }
 
@@ -222,12 +270,48 @@ def _mean_tail(values: list[float], n: int) -> float:
     return sum(values[-n:]) / float(n)
 
 
-def _is_insufficient_history(snapshot: UptrendMomentumSnapshot) -> bool:
+def _is_insufficient_history(snapshot: FreshTrendWatchlistSnapshot) -> bool:
     closes = _float_series(snapshot.close_history)
     amounts = _float_series(snapshot.amount_history)
     if closes is None or amounts is None:
         return True
     return len(closes) < MIN_HISTORY_BARS or len(amounts) < MIN_AMOUNT_BARS
+
+
+def _is_growth_board(stock_code: str) -> bool:
+    normalized = stock_code.strip().upper()
+    return normalized.startswith(GROWTH_BOARD_PREFIXES)
+
+
+def _board_bonus(stock_code: str) -> float:
+    normalized = stock_code.strip().upper()
+    if normalized.startswith(("300", "301", "688")):
+        return 0.10
+    if normalized.startswith("002"):
+        return 0.04
+    return 0.0
+
+
+def _is_old_economy_sector(sector_name: str) -> bool:
+    normalized = sector_name.strip().lower()
+    return any(keyword in normalized for keyword in OLD_ECONOMY_SECTOR_KEYWORDS)
+
+
+def _is_st_name(stock_name: str) -> bool:
+    normalized = stock_name.strip().upper()
+    return normalized.startswith("ST") or normalized.startswith("*ST")
+
+
+def _clean_concepts(values: Sequence[object]) -> list[str]:
+    concepts: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        concepts.append(text)
+        seen.add(text)
+    return concepts
 
 
 def _float_series(values: Sequence[object]) -> list[float] | None:
@@ -248,8 +332,3 @@ def _valid_float(value: object) -> float | None:
     except ValueError:
         return None
     return number if math.isfinite(number) else None
-
-
-def _is_st_name(stock_name: str) -> bool:
-    normalized = stock_name.strip().upper()
-    return normalized.startswith("ST") or normalized.startswith("*ST")

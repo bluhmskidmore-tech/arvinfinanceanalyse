@@ -812,6 +812,7 @@ def _is_known_livermore_policy_pause(reason: object) -> bool:
         or "mean reversion watchlist is paused" in lower
         or ("theme breakout execution is paused" in lower and "overheat" in lower)
         or ("hybrid fusion is observation-only" in lower and "warm/hot" in lower)
+        or ("uptrend momentum watchlist is paused" in lower and "warm or hot" in lower)
     )
 
 

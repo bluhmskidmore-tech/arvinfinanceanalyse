@@ -47,6 +47,56 @@ Out of scope:
 Governance record write status: `not_requested`
 Governance validation status: `direct_records_ready_for_audit_review`
 
+## 2026-06-22 Technical Evidence Refresh
+
+Refresh scope: `/stock-analysis` observational Livermore DTO and visible review surface.
+Baseline implementation evidence commit: `a71a0da55` (`Close Livermore stock analysis supply loop`).
+Current working-tree refresh: adds the `fresh_trend_watchlist` observational output closure and the `uptrend_momentum_candidates` OVERHEAT policy-pause boundary; final commit hash is pending.
+Review status: `technical_evidence_refreshed_owner_approval_pending`.
+
+Live API evidence for `GET /ui/market-data/livermore?as_of_date=2026-06-18`:
+
+- `as_of_date=2026-06-18`
+- `market_state=OVERHEAT`
+- `supported_outputs=market_gate,sector_rank,fresh_trend_watchlist,factor_screen_candidates,risk_exit`
+- `unsupported_outputs=stock_candidates,uptrend_momentum_candidates,mean_reversion_candidates,theme_breakout,hybrid_fusion`
+- `active_data_gaps=0`
+- `active_diagnostics=0`
+- `actionable_unsupported_outputs=0`
+- `workbench_summary.actionable_boundary_count=0`
+- `workbench_summary.diagnostic_count=0`
+- `workbench_summary.total_diagnostic_count=1`, with the remaining diagnostic limited to `info:LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY`
+- `uptrend_momentum_candidates` is policy-paused under `market_state=OVERHEAT`; it is not counted as an actionable unsupported output.
+- `fresh_trend_watchlist.candidate_count=20`; it is an observation-only growth-board watchlist and is not a trading instruction.
+- `factor_screen_candidates.candidate_count=30`
+- `sector_rank.formula_status=signed_off`
+- `sector_rank.formula_version=rv_livermore_sector_strength_observation_v1`
+- `sector_rank.is_provisional=false`
+
+Command evidence captured on 2026-06-22:
+
+- `.venv\Scripts\python.exe scripts\codex_page_readiness.py --page-slug stock-analysis` -> `overall_status=static-pass`, `formal_use_allowed=false`, `business_owner_approval_captured=false`, `catalog_date_evidence=4/4 table date samples`, `direct_governance_record_ready=1 ready direct record(s)`, and `business_owner_approval_status=pending`.
+- `.venv\Scripts\python.exe scripts\check_stock_analysis_business_owner_approval.py` -> exit `0`, `approval_status=pending`, `business_owner_approval_captured=false`, `approval_action_item_count=11`.
+- `.venv\Scripts\python.exe scripts\check_stock_analysis_business_owner_approval.py --require-captured` -> exit `1` as expected while owner approval remains pending.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\codex-verify-page.ps1 -PageSlug stock-analysis -DryRun` -> verification plan expands the MCP contract tests, backend Livermore tests, frontend Stock Analysis tests, browser a11y smoke, typecheck, debt audit, and production build.
+
+Post-refresh checks captured on 2026-06-22:
+
+- `.venv\Scripts\python.exe -m pytest tests/test_market_data_livermore_api.py backend/tests/core_finance/test_fresh_trend_watchlist_candidates.py -q` -> `55 passed`.
+- `npm run test -- src/test/StockAnalysisPageModel.test.ts` -> `84 passed`.
+- `npm run test -- src/test/StockAnalysisPageModel.test.ts src/test/StockAnalysisPage.test.tsx src/test/StockAnalysisPageLabels.test.ts src/test/MarketDataPage.test.tsx` -> `226 passed`.
+- `npm run typecheck` -> passed.
+- `npm run debt:audit` -> passed.
+- `npm run lint` -> `0 errors`, with `5` pre-existing warnings.
+- `npm run build` -> passed.
+- Headless browser smoke for `http://localhost:5888/stock-analysis` confirmed page text contains `新趋势观察`, `过热`, and a clear-boundary label.
+
+Previously executed implementation checks tied to commit `a71a0da55`:
+
+- `.venv\Scripts\python.exe -m pytest backend/tests/core_finance/test_uptrend_momentum_candidates.py tests/test_livermore_sector_rank.py tests/test_market_data_livermore_api.py tests/test_market_data_livermore_candidate_history.py` -> `106 passed`.
+
+This refresh updates technical review evidence only. It does not capture business-owner approval, approve page closure, promote PAGE-STOCK or MTR-STOCK contracts, authorize trading instructions, or enable formal use.
+
 ## Configured Table Anchors
 
 - `livermore_position_snapshot`
@@ -70,8 +120,12 @@ Deferred MCP app tools for moss-metric-contracts, moss-lineage-evidence, moss-da
 
 ## Reviewer Checklist
 
+- Review the 2026-06-22 technical evidence refresh and confirm it remains observational.
 - Confirm GS-STOCK-ANALYSIS-OBS-A remains scoped to GET /ui/market-data/livermore DTO evidence.
 - Review as_of_date, requested_as_of_date, fallback/stale/no-data states, supported_outputs, unsupported_outputs, rule_readiness, and data_gaps before signature.
+- Review the signed-off sector-strength observation formula and confirm it remains a review-prioritization/filtering formula, not a trading signal.
+- Review the `fresh_trend_watchlist` observational output and confirm it remains a review watchlist, not a trading signal.
+- Review the policy-paused outputs and confirm they are not counted as actionable gaps while `market_state=OVERHEAT`.
 - Review Livermore, Choice stock, candidate-history, and gate-supplement table/date evidence before signature.
 - Review direct page/API governance records before signature; current packet does not write them.
 - Complete and sign docs/pnl/stock-analysis-business-owner-approval-template.md before any closure claim.

@@ -538,6 +538,8 @@ const MOCK_LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
   "market_gate",
   "sector_rank",
   "stock_candidates",
+  "uptrend_momentum_candidates",
+  "fresh_trend_watchlist",
   "mean_reversion_candidates",
   "factor_screen_candidates",
   "theme_breakout",
@@ -545,32 +547,72 @@ const MOCK_LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
   "risk_exit",
 ];
 
-function buildMockLivermoreModuleStates(asOfDate: string): LivermoreModuleState[] {
+function buildMockLivermoreModuleStates(
+  asOfDate: string,
+  supportedOutputs: LivermoreOutputKey[] = MOCK_LIVERMORE_OUTPUT_KEYS,
+  unsupportedOutputs: LivermoreStrategyPayload["unsupported_outputs"] = [],
+): LivermoreModuleState[] {
+  const supported = new Set(supportedOutputs);
+  const unsupportedReasonByKey = new Map(unsupportedOutputs.map((output) => [output.key, output.reason]));
   return MOCK_LIVERMORE_OUTPUT_KEYS.map((key) => ({
     key,
-    state: "ready",
-    render_mode: "primary",
-    source_date: asOfDate,
-    lag_days: 0,
+    state: unsupportedReasonByKey.has(key) ? "unsupported" : supported.has(key) ? "ready" : "blocked",
+    render_mode: unsupportedReasonByKey.has(key) || !supported.has(key) ? "evidence_only" : "primary",
+    source_date: unsupportedReasonByKey.has(key) || !supported.has(key) ? null : asOfDate,
+    lag_days: unsupportedReasonByKey.has(key) || !supported.has(key) ? null : 0,
     threshold_days: null,
-    reasons: [],
-    evidence_scope: "primary",
-    excludes_from_primary: false,
+    reasons: unsupportedReasonByKey.has(key)
+      ? [unsupportedReasonByKey.get(key)!]
+      : supported.has(key)
+        ? []
+        : ["Mock Livermore output has no representative payload."],
+    evidence_scope: unsupportedReasonByKey.has(key) || !supported.has(key) ? "detail" : "primary",
+    excludes_from_primary: unsupportedReasonByKey.has(key) || !supported.has(key),
   }));
 }
 
 function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategyPayload {
   const resolvedDate = asOfDate?.trim() || "2026-04-29";
+  const supportedOutputs: LivermoreOutputKey[] = [
+    "market_gate",
+    "sector_rank",
+    "fresh_trend_watchlist",
+    "factor_screen_candidates",
+    "risk_exit",
+  ];
+  const unsupportedOutputs: LivermoreStrategyPayload["unsupported_outputs"] = [
+    {
+      key: "stock_candidates",
+      reason: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+    },
+    {
+      key: "uptrend_momentum_candidates",
+      reason: "Uptrend momentum watchlist is paused unless the market gate is WARM or HOT.",
+    },
+    {
+      key: "mean_reversion_candidates",
+      reason: "Mean reversion watchlist is paused when the market gate is HOT or OVERHEAT because the defended-trend candidate bundle already covers overheated tape.",
+    },
+    {
+      key: "theme_breakout",
+      reason: "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.",
+    },
+    {
+      key: "hybrid_fusion",
+      reason: "Hybrid fusion is observation-only and only emits candidates in WARM/HOT market states; current state is OVERHEAT.",
+    },
+  ];
+
   return {
     as_of_date: resolvedDate,
     requested_as_of_date: asOfDate?.trim() || null,
     strategy_name: "Livermore A-Share Defended Trend",
     basis: "analytical",
     market_gate: {
-      state: "WARM",
-      exposure: 0.4,
-      passed_conditions: 2,
-      available_conditions: 2,
+      state: "OVERHEAT",
+      exposure: 1,
+      passed_conditions: 4,
+      available_conditions: 4,
       required_conditions: 4,
       conditions: [
         {
@@ -590,15 +632,15 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
         {
           key: "breadth_5d_positive",
           label: "5-day breadth > 0",
-          status: "missing",
-          evidence: "Breadth inputs are not landed for the Phase 1 slice.",
+          status: "pass",
+          evidence: "5-day breadth is positive in the mock OVERHEAT closure.",
           source_series_id: null,
         },
         {
           key: "limit_up_quality_positive",
           label: "Limit-up seal/break quality positive",
-          status: "missing",
-          evidence: "Limit-up quality inputs are not landed for the Phase 1 slice.",
+          status: "pass",
+          evidence: "Limit-up quality is positive in the mock OVERHEAT closure.",
           source_series_id: null,
         },
       ],
@@ -607,10 +649,10 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
       {
         key: "market_gate",
         title: "Market gate",
-        status: "partial",
-        summary: "Trend-only market gate is available; breadth and limit-up quality remain missing.",
+        status: "ready",
+        summary: "All mock market gate inputs are landed for the resolved trade date.",
         required_inputs: ["broad_index_history", "breadth", "limit_up_quality"],
-        missing_inputs: ["breadth", "limit_up_quality"],
+        missing_inputs: [],
       },
       {
         key: "sector_rank",
@@ -623,8 +665,8 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
       {
         key: "stock_pivot",
         title: "Stock pivot filters",
-        status: "ready",
-        summary: "Stock pivot candidate screening is available for landed Choice stock inputs.",
+        status: "blocked",
+        summary: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
         required_inputs: [
           "stock_universe",
           "stock_ohlcv",
@@ -646,38 +688,27 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
     ],
     diagnostics: [
       {
-        severity: "warning",
-        code: "LIVERMORE_BREADTH_MISSING",
-        message: "Breadth inputs are unavailable; the market gate is capped at the trend-only slice.",
-        input_family: "breadth",
-      },
-      {
-        severity: "warning",
-        code: "LIVERMORE_LIMIT_UP_QUALITY_MISSING",
-        message: "Limit-up quality inputs are unavailable; the market gate is capped at the trend-only slice.",
-        input_family: "limit_up_quality",
+        severity: "info",
+        code: "LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY",
+        message: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
+        input_family: "stock_candidate_policy",
       },
     ],
     data_gaps: [
       {
         input_family: "breadth",
-        status: "missing",
-        evidence: "5-day breadth input family is not landed in DuckDB for this slice.",
+        status: "ready",
+        evidence: "5-day breadth input family is landed for the mock OVERHEAT closure.",
       },
       {
         input_family: "limit_up_quality",
-        status: "missing",
-        evidence: "Limit-up seal/break quality input family is not landed in DuckDB for this slice.",
+        status: "ready",
+        evidence: "Limit-up seal/break quality input family is landed for the mock OVERHEAT closure.",
       },
     ],
-    supported_outputs: ["market_gate", "sector_rank", "stock_candidates", "risk_exit"],
-    unsupported_outputs: [
-      {
-        key: "theme_breakout",
-        reason: "concept membership table pending",
-      },
-    ],
-    module_states: buildMockLivermoreModuleStates(resolvedDate),
+    supported_outputs: supportedOutputs,
+    unsupported_outputs: unsupportedOutputs,
+    module_states: buildMockLivermoreModuleStates(resolvedDate, supportedOutputs, unsupportedOutputs),
     sector_rank: {
       as_of_date: resolvedDate,
       formula_version: "rv_livermore_sector_strength_observation_v1",
@@ -738,10 +769,11 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
         },
       ],
     },
-    stock_candidates: {
+    fresh_trend_watchlist: {
       as_of_date: resolvedDate,
-      formula_version: "rv_livermore_stock_candidates_bundle_v7",
-      market_state: "WARM",
+      formula_version: "rv_fresh_trend_watchlist_candidates_v1",
+      market_state: "OVERHEAT",
+      observation_only: true,
       input_stock_count: 4,
       candidate_count: 2,
       excluded_stock_count: 2,
@@ -753,33 +785,76 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
           stock_name: "Alpha",
           sector_code: "801001",
           sector_name: "AI",
-          sector_rank: 1,
+          concepts: ["Chiplet", "AI hardware"],
           close: 21.9,
-          breakout_level: 21.8,
-          ema10: 20.6,
           ma20: 21.05,
           ma60: 19.05,
           ma120: 16.05,
-          close_strength: 0.833333,
-          gap_norm: -0.114679,
-          abnormal_turnover: 1.386294,
+          return_20d: 0.18,
+          return_60d: 0.34,
+          return_120d: 0.68,
+          close_to_ma20: 0.04,
+          amount_ratio: 1.32,
+          pctchange: 3.2,
+          turn: 4.8,
+          amplitude: 3.1,
+          hlimitedays: 0,
+          score: 0.91,
         },
         {
           rank: 2,
           stock_code: "000002.SZ",
           stock_name: "Beta",
           sector_code: "801002",
-          sector_name: "Bank",
-          sector_rank: 2,
+          sector_name: "Advanced Manufacturing",
+          concepts: ["Robot", "Industrial AI"],
           close: 19.52,
-          breakout_level: 19.44,
-          ema10: 18.88,
           ma20: 18.76,
           ma60: 17.16,
           ma120: 14.76,
-          close_strength: 0.78125,
-          gap_norm: -0.098,
-          abnormal_turnover: 1.417067,
+          return_20d: 0.14,
+          return_60d: 0.28,
+          return_120d: 0.52,
+          close_to_ma20: 0.041,
+          amount_ratio: 1.28,
+          pctchange: 2.4,
+          turn: 3.6,
+          amplitude: 2.8,
+          hlimitedays: 0,
+          score: 0.83,
+        },
+      ],
+    },
+    factor_screen_candidates: {
+      as_of_date: resolvedDate,
+      factor_snapshot_as_of_date: resolvedDate,
+      formula_version: "rv_factor_screen_candidates_v2",
+      market_state: "OVERHEAT",
+      observation_only: true,
+      input_stock_count: 2,
+      coverage_count: 2,
+      coverage_denominator: 2,
+      coverage_denominator_as_of_date: resolvedDate,
+      coverage_ratio: 1,
+      coverage_threshold: 0.8,
+      candidate_count: 1,
+      coverage_note: "Mock factor snapshot coverage is complete.",
+      items: [
+        {
+          rank: 1,
+          stock_code: "000001.SZ",
+          stock_name: "Alpha",
+          sector_code: "801001",
+          sector_name: "AI",
+          industry: "AI",
+          score: 0.91,
+          pe: 12.4,
+          pb: 1.8,
+          roe: 0.18,
+          gross_margin: 0.32,
+          three_month_return: 0.11,
+          twelve_month_return: 0.24,
+          dividend_yield: 0.02,
         },
       ],
     },
