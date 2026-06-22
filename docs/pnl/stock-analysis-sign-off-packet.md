@@ -22,7 +22,7 @@ This packet is a review anchor for the Stock Analysis observational lane. It doe
 
 ## 2026-06-22 Evidence Refresh
 
-Latest technical review evidence was refreshed from baseline commit `a71a0da55` (`Close Livermore stock analysis supply loop`) plus current working-tree output-closure changes; final commit hash is pending.
+Latest technical review evidence was refreshed from baseline commit `a71a0da55` (`Close Livermore stock analysis supply loop`) plus committed output-closure refresh `7f67fdc39` (`Close Stock Analysis Livermore output loop`).
 
 - `/ui/market-data/livermore?as_of_date=2026-06-18` returns `active_data_gaps=0`, `active_diagnostics=0`, `actionable_unsupported_outputs=0`, and `workbench_summary.actionable_boundary_count=0`.
 - The live DTO reports `supported_outputs=market_gate,sector_rank,fresh_trend_watchlist,factor_screen_candidates,risk_exit`.
@@ -45,4 +45,5 @@ This refresh is a sign-off evidence update only. It does not approve closure, fo
 - UI/API payload evidence, including stale, fallback, no-data, unsupported, rule_readiness, and data_gaps states
 - 2026-06-22 refreshed live API evidence and verification command evidence
 - Browser smoke evidence for `/stock-analysis`
+- Owner QA checklist `docs/pnl/stock-analysis-owner-qa-checklist.md`
 - Business owner approval template completion

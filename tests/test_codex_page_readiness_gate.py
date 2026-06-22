@@ -1192,6 +1192,7 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
     assert "docs/pnl/stock-analysis-governance-audit-packet.md" in report["contract_docs"]
     assert "docs/pnl/stock-analysis-business-owner-approval-template.md" in report["contract_docs"]
     assert "docs/pnl/stock-analysis-owner-signoff-runbook.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-owner-qa-checklist.md" in report["contract_docs"]
     assert any("owner-review evidence while preserving formal_use_allowed=false" in item for item in report["truth_chain"])
     assert any("observational sign-off evidence only" in item for item in report["truth_chain"])
     assert any("review-only audit evidence" in item for item in report["truth_chain"])
@@ -1201,6 +1202,7 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
         in item
         for item in report["truth_chain"]
     )
+    assert any("owner-qa-checklist.md lists the owner page checks" in item for item in report["truth_chain"])
     assert "codex-page-smoke.ps1 -PageSlug stock-analysis" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug stock-analysis -Run" in report["required_commands"][1]
     assert report["approval_status_commands"] == [

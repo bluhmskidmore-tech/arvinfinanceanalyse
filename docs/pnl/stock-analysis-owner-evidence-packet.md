@@ -51,7 +51,7 @@ Governance validation status: `direct_records_ready_for_audit_review`
 
 Refresh scope: `/stock-analysis` observational Livermore DTO and visible review surface.
 Baseline implementation evidence commit: `a71a0da55` (`Close Livermore stock analysis supply loop`).
-Current working-tree refresh: adds the `fresh_trend_watchlist` observational output closure and the `uptrend_momentum_candidates` OVERHEAT policy-pause boundary; final commit hash is pending.
+Current technical refresh commit: `7f67fdc39` (`Close Stock Analysis Livermore output loop`) adds the `fresh_trend_watchlist` observational output closure and the `uptrend_momentum_candidates` OVERHEAT policy-pause boundary.
 Review status: `technical_evidence_refreshed_owner_approval_pending`.
 
 Live API evidence for `GET /ui/market-data/livermore?as_of_date=2026-06-18`:
@@ -111,6 +111,7 @@ This refresh updates technical review evidence only. It does not capture busines
 - governance_audit_packet: `docs/pnl/stock-analysis-governance-audit-packet.md`
 - approval_template: `docs/pnl/stock-analysis-business-owner-approval-template.md`
 - owner_signoff_runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`
+- owner_qa_checklist: `docs/pnl/stock-analysis-owner-qa-checklist.md`
 - golden_sample: `tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A`
 - readiness_command: `python scripts/codex_page_readiness.py --page-slug stock-analysis`
 
@@ -121,6 +122,7 @@ Deferred MCP app tools for moss-metric-contracts, moss-lineage-evidence, moss-da
 ## Reviewer Checklist
 
 - Review the 2026-06-22 technical evidence refresh and confirm it remains observational.
+- Review `docs/pnl/stock-analysis-owner-qa-checklist.md` before completing the approval template.
 - Confirm GS-STOCK-ANALYSIS-OBS-A remains scoped to GET /ui/market-data/livermore DTO evidence.
 - Review as_of_date, requested_as_of_date, fallback/stale/no-data states, supported_outputs, unsupported_outputs, rule_readiness, and data_gaps before signature.
 - Review the signed-off sector-strength observation formula and confirm it remains a review-prioritization/filtering formula, not a trading signal.

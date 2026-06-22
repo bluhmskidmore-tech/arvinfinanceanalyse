@@ -2187,6 +2187,7 @@ def test_stock_analysis_trace_bundle_preserves_observational_livermore_boundarie
         assert "docs/pnl/stock-analysis-governance-audit-packet.md" in payload["contract_docs"]
         assert "docs/pnl/stock-analysis-business-owner-approval-template.md" in payload["contract_docs"]
         assert "docs/pnl/stock-analysis-owner-signoff-runbook.md" in payload["contract_docs"]
+        assert "docs/pnl/stock-analysis-owner-qa-checklist.md" in payload["contract_docs"]
         assert any("temporary-exception" in item for item in payload["truth_chain"])
         assert any("observation-only" in item for item in payload["truth_chain"])
         assert any("risk_exit" in item and "backend-owned" in item for item in payload["truth_chain"])
@@ -2200,6 +2201,7 @@ def test_stock_analysis_trace_bundle_preserves_observational_livermore_boundarie
             in item
             for item in payload["truth_chain"]
         )
+        assert any("stock-analysis-owner-qa-checklist.md lists the owner page checks" in item for item in payload["truth_chain"])
         assert any("GS-STOCK-ANALYSIS-OBS-A" in item for item in payload["verification_focus"])
         assert any("no PAGE-STOCK" in item for item in payload["verification_focus"])
         assert any("trading instructions" in item for item in payload["guardrails"])

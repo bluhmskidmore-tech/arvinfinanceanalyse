@@ -14,6 +14,7 @@ SIGNOFF_PACKET = ROOT / "docs" / "pnl" / "stock-analysis-sign-off-packet.md"
 GOVERNANCE_AUDIT_PACKET = ROOT / "docs" / "pnl" / "stock-analysis-governance-audit-packet.md"
 OWNER_EVIDENCE_PACKET = ROOT / "docs" / "pnl" / "stock-analysis-owner-evidence-packet.md"
 OWNER_SIGNOFF_RUNBOOK = ROOT / "docs" / "pnl" / "stock-analysis-owner-signoff-runbook.md"
+OWNER_QA_CHECKLIST = ROOT / "docs" / "pnl" / "stock-analysis-owner-qa-checklist.md"
 
 
 def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
@@ -74,6 +75,9 @@ def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary()
     assert packet["evidence_anchors"]["owner_signoff_runbook"] == (
         "docs/pnl/stock-analysis-owner-signoff-runbook.md"
     )
+    assert packet["evidence_anchors"]["owner_qa_checklist"] == (
+        "docs/pnl/stock-analysis-owner-qa-checklist.md"
+    )
 
 
 def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path) -> None:
@@ -111,6 +115,7 @@ def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path
     assert "This packet does not approve page closure" in text
     assert "- `certification_effect=none`" in text
     assert "- owner_signoff_runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`" in text
+    assert "- owner_qa_checklist: `docs/pnl/stock-analysis-owner-qa-checklist.md`" in text
     assert "No-trading-instruction boundary accepted: `yes` (`pending`)" in text
 
 
@@ -118,6 +123,7 @@ def test_stock_analysis_owner_evidence_packet_surfaces_owner_runbook_anchor() ->
     owner_packet = OWNER_EVIDENCE_PACKET.read_text(encoding="utf-8")
 
     assert "- owner_signoff_runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`" in owner_packet
+    assert "- owner_qa_checklist: `docs/pnl/stock-analysis-owner-qa-checklist.md`" in owner_packet
 
 
 def test_stock_analysis_signoff_and_audit_packets_surface_no_certification_scope() -> None:
@@ -143,6 +149,7 @@ def test_stock_analysis_owner_signoff_runbook_preserves_observational_boundary()
     assert "`docs/pnl/stock-analysis-owner-evidence-packet.md`" in text
     assert "`docs/pnl/stock-analysis-sign-off-packet.md`" in text
     assert "`docs/pnl/stock-analysis-governance-audit-packet.md`" in text
+    assert "`docs/pnl/stock-analysis-owner-qa-checklist.md`" in text
     assert "Keep `formal_use_allowed=false`." in text
     assert "Keep `closure_approved=false`." in text
     assert "Keep `certification_effect=none`." in text
@@ -159,3 +166,19 @@ def test_stock_analysis_owner_signoff_runbook_preserves_observational_boundary()
     assert "python scripts/codex_page_readiness.py --page-slug stock-analysis" in text
     assert "python scripts/check_stock_analysis_business_owner_approval.py --require-captured" in text
     assert "scripts/codex-verify-page.ps1 -PageSlug stock-analysis -Run" in text
+
+
+def test_stock_analysis_owner_qa_checklist_preserves_unsigned_boundary() -> None:
+    text = OWNER_QA_CHECKLIST.read_text(encoding="utf-8")
+
+    assert "# Stock Analysis Owner QA Checklist" in text
+    assert "`GAP-STOCK-ANALYSIS-PAGE`" in text
+    assert "`7f67fdc39`" in text
+    assert "`formal_use_allowed=false`" in text
+    assert "`closure_approved=false`" in text
+    assert "`market_state=OVERHEAT`" in text
+    assert "`fresh_trend_watchlist.candidate_count=20`" in text
+    assert "`factor_screen_candidates.candidate_count=30`" in text
+    assert "`GS-STOCK-ANALYSIS-OBS-A`" in text
+    assert "no trading instruction" in text.lower()
+    assert "`certification_effect=none`" in text

@@ -8,6 +8,7 @@ Owner approval template: `docs/pnl/stock-analysis-business-owner-approval-templa
 Owner evidence packet: `docs/pnl/stock-analysis-owner-evidence-packet.md`
 Sign-off packet: `docs/pnl/stock-analysis-sign-off-packet.md`
 Governance audit packet: `docs/pnl/stock-analysis-governance-audit-packet.md`
+Owner QA checklist: `docs/pnl/stock-analysis-owner-qa-checklist.md`
 
 ## Boundary
 
@@ -27,17 +28,19 @@ Governance audit packet: `docs/pnl/stock-analysis-governance-audit-packet.md`
 1. Review `docs/pnl/stock-analysis-owner-evidence-packet.md`.
 2. Review `docs/pnl/stock-analysis-sign-off-packet.md`.
 3. Review `docs/pnl/stock-analysis-governance-audit-packet.md`.
-4. Review `docs/audits/2026-06-06-stock-analysis-gate-i-lane.md`.
-5. Review `tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A`.
-6. Run `python scripts/codex_page_readiness.py --page-slug stock-analysis`.
-7. Run `python scripts/check_stock_analysis_business_owner_approval.py`.
-8. Run `scripts/codex-verify-page.ps1 -PageSlug stock-analysis -Run`.
+4. Review `docs/pnl/stock-analysis-owner-qa-checklist.md`.
+5. Review `docs/audits/2026-06-06-stock-analysis-gate-i-lane.md`.
+6. Review `tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A`.
+7. Run `python scripts/codex_page_readiness.py --page-slug stock-analysis`.
+8. Run `python scripts/check_stock_analysis_business_owner_approval.py`.
+9. Run `scripts/codex-verify-page.ps1 -PageSlug stock-analysis -Run`.
 
 ## 2026-06-22 Evidence Review Addendum
 
 Before filling the approval template, the owner must explicitly review the refreshed 2026-06-22 evidence:
 
 - Live API evidence for `GET /ui/market-data/livermore?as_of_date=2026-06-18`.
+- Technical refresh commit `7f67fdc39` (`Close Stock Analysis Livermore output loop`).
 - `active_data_gaps=0`, `active_diagnostics=0`, `actionable_unsupported_outputs=0`, and `workbench_summary.actionable_boundary_count=0`.
 - `sector_rank.formula_status=signed_off`, `sector_rank.formula_version=rv_livermore_sector_strength_observation_v1`, and `sector_rank.is_provisional=false`.
 - `supported_outputs=market_gate,sector_rank,fresh_trend_watchlist,factor_screen_candidates,risk_exit`.

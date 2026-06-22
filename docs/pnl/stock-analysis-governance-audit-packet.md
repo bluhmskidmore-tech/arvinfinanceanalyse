@@ -22,7 +22,7 @@ This packet records the audit lane for the Stock Analysis observational route. I
 
 ## 2026-06-22 Governance Evidence Refresh
 
-Latest refresh source: baseline commit `a71a0da55` (`Close Livermore stock analysis supply loop`) plus current working-tree output-closure changes, live API, and local governance-check commands on 2026-06-22; final commit hash is pending.
+Latest refresh source: baseline commit `a71a0da55` (`Close Livermore stock analysis supply loop`) plus committed output-closure refresh `7f67fdc39` (`Close Stock Analysis Livermore output loop`), live API, and local governance-check commands on 2026-06-22.
 
 Static readiness evidence:
 
@@ -52,5 +52,6 @@ Approval evidence:
 - Direct page/API governance record review
 - Catalog/date review for Livermore, Choice stock, candidate-history, and gate-supplement anchors
 - Golden sample review for `GS-STOCK-ANALYSIS-OBS-A`
+- Owner QA checklist review in `docs/pnl/stock-analysis-owner-qa-checklist.md`
 - Manual audit of no-trading-instruction language in the UI
 - Verification command rerun before any owner signature

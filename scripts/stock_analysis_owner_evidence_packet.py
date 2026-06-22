@@ -31,6 +31,7 @@ OUT_OF_SCOPE_SURFACES = [
 ]
 
 REVIEWER_CHECKLIST = [
+    "Review docs/pnl/stock-analysis-owner-qa-checklist.md before completing the approval template.",
     "Confirm GS-STOCK-ANALYSIS-OBS-A remains scoped to GET /ui/market-data/livermore DTO evidence.",
     "Review as_of_date, requested_as_of_date, fallback/stale/no-data states, supported_outputs, unsupported_outputs, rule_readiness, and data_gaps before signature.",
     "Review Livermore, Choice stock, candidate-history, and gate-supplement table/date evidence before signature.",
@@ -110,6 +111,7 @@ def build_packet(
             "governance_audit_packet": "docs/pnl/stock-analysis-governance-audit-packet.md",
             "approval_template": "docs/pnl/stock-analysis-business-owner-approval-template.md",
             "owner_signoff_runbook": "docs/pnl/stock-analysis-owner-signoff-runbook.md",
+            "owner_qa_checklist": "docs/pnl/stock-analysis-owner-qa-checklist.md",
             "golden_sample": "tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A",
             "readiness_command": "python scripts/codex_page_readiness.py --page-slug stock-analysis",
         },
