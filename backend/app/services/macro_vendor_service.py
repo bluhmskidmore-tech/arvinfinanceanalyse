@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -10,6 +10,13 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_fx_catalog import (
     classify_fx_series_group,
     discover_formal_fx_candidates,
+)
+from backend.app.repositories.cffex_member_rank_repo import (
+    RULE_VERSION as CFFEX_MEMBER_RANK_RULE_VERSION,
+    TABLE_NAME as CFFEX_MEMBER_RANK_TABLE,
+    VIEW_NAME as CFFEX_MEMBER_RANK_VIEW,
+    normalize_cffex_contract,
+    normalize_trade_date,
 )
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -333,6 +340,11 @@ def choice_macro_latest_envelope(
 
 FORMAL_RATES_RULE_VERSION = "rv_market_data_rates_formal_v1"
 FORMAL_RATES_CACHE_VERSION = "cv_market_data_rates_formal_v1"
+TUSHARE_SUPPLEMENT_RULE_VERSION = "rv_market_data_tushare_supplement_v1"
+TUSHARE_SUPPLEMENT_CACHE_VERSION = "cv_market_data_tushare_supplement_v1"
+BOND_FUTURES_RANKINGS_CACHE_VERSION = "cv_market_data_bond_futures_rankings_v1"
+COVERAGE_SUMMARY_RULE_VERSION = "rv_market_data_coverage_summary_v1"
+COVERAGE_SUMMARY_CACHE_VERSION = "cv_market_data_coverage_summary_v1"
 
 
 def choice_macro_formal_envelope(duckdb_path: str) -> dict[str, object]:
@@ -388,6 +400,840 @@ def macro_foundation_formal_envelope(duckdb_path: str) -> dict[str, object]:
         result_payload=payload.model_dump(mode="json"),
         source_surface="market_data",
     )
+
+
+def tushare_supplement_envelope(
+    duckdb_path: str,
+    *,
+    money_supply_limit: int = 12,
+    eco_cal_limit: int = 30,
+) -> dict[str, object]:
+    payload, source_versions, vendor_versions, latest_date, warnings, tables_used = _load_tushare_supplement_payload(
+        duckdb_path,
+        money_supply_limit=money_supply_limit,
+        eco_cal_limit=eco_cal_limit,
+    )
+    row_count = len(payload["money_supply_rows"]) + len(payload["eco_cal_rows"])
+    quality_flag = "ok" if row_count > 0 and not warnings else "warning"
+    return build_result_envelope(
+        basis="analytical",
+        trace_id="tr_market_data_tushare_supplement",
+        result_kind="market_data.tushare_supplement",
+        cache_version=TUSHARE_SUPPLEMENT_CACHE_VERSION,
+        source_version=_aggregate_lineage_value(source_versions, empty_value="sv_tushare_supplement_empty"),
+        rule_version=TUSHARE_SUPPLEMENT_RULE_VERSION,
+        quality_flag=quality_flag,
+        vendor_version=_aggregate_lineage_value(vendor_versions, empty_value="vv_none"),
+        vendor_status="ok" if row_count > 0 else "vendor_unavailable",
+        fallback_mode="none",
+        result_payload=payload,
+        tables_used=tables_used,
+        evidence_rows=row_count,
+        source_surface="market_data",
+        as_of_date=latest_date,
+        resolved_report_date=latest_date,
+    )
+
+
+def market_data_bond_futures_rankings_envelope(
+    duckdb_path: str,
+    *,
+    contract: str = "T.CFE",
+    trade_date: str | None = None,
+    limit: int = 10,
+) -> dict[str, object]:
+    payload, source_versions, vendor_versions, latest_date, warnings, tables_used = (
+        _load_bond_futures_rankings_payload(
+            duckdb_path,
+            contract=contract,
+            trade_date=trade_date,
+            limit=limit,
+        )
+    )
+    row_count = len(payload["rows"])
+    quality_flag = "ok" if row_count > 0 and not warnings else "warning"
+    return build_result_envelope(
+        basis="analytical",
+        trace_id="tr_market_data_bond_futures_rankings",
+        result_kind="market_data.bond_futures_rankings",
+        cache_version=BOND_FUTURES_RANKINGS_CACHE_VERSION,
+        source_version=_aggregate_lineage_value(source_versions, empty_value="sv_cffex_member_rank_empty"),
+        rule_version=CFFEX_MEMBER_RANK_RULE_VERSION,
+        quality_flag=quality_flag,
+        vendor_version=_aggregate_lineage_value(vendor_versions, empty_value="vv_none"),
+        vendor_status="ok" if row_count > 0 else "vendor_unavailable",
+        fallback_mode="none",
+        result_payload=payload,
+        filters_applied={
+            "contract": payload["contract"],
+            "trade_date": payload["requested_trade_date"],
+            "limit": max(0, min(int(limit), 100)),
+        },
+        tables_used=tables_used,
+        evidence_rows=row_count,
+        source_surface="market_data",
+        as_of_date=latest_date,
+        resolved_report_date=latest_date,
+    )
+
+
+def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]:
+    formal_rates = choice_macro_formal_envelope(duckdb_path)
+    macro_latest = choice_macro_latest_envelope(duckdb_path)
+    fx_formal = fx_formal_status_envelope(duckdb_path)
+    fx_analytical = fx_analytical_envelope(duckdb_path)
+    bond_futures = market_data_bond_futures_rankings_envelope(
+        duckdb_path,
+        contract="T.CFE",
+        limit=10,
+    )
+    tushare = tushare_supplement_envelope(
+        duckdb_path,
+        money_supply_limit=12,
+        eco_cal_limit=30,
+    )
+
+    formal_rate_rows = formal_rates["result"].get("series", [])
+    macro_latest_rows = macro_latest["result"].get("series", [])
+    fx_formal_result = fx_formal["result"]
+    fx_formal_rows = fx_formal_result.get("rows", [])
+    fx_analytical_groups = fx_analytical["result"].get("groups", [])
+    fx_analytical_series_count = sum(len(group.get("series", [])) for group in fx_analytical_groups)
+    bond_rows = bond_futures["result"].get("rows", [])
+    tushare_result = tushare["result"]
+    tushare_row_count = len(tushare_result.get("money_supply_rows", [])) + len(
+        tushare_result.get("eco_cal_rows", [])
+    )
+
+    sections = [
+        _coverage_section(
+            key="formal_rates",
+            label="Formal rates fragment",
+            status="ready" if formal_rate_rows else "empty",
+            basis="formal",
+            formal_use_allowed=True,
+            meta=formal_rates["result_meta"],
+            series_count=len(formal_rate_rows),
+            latest_trade_date=_latest_choice_series_date(formal_rate_rows),
+            source_pending=False,
+            proxy_only=False,
+            message=f"Stable rate series returned by the formal market-data rates fragment: {len(formal_rate_rows)}.",
+        ),
+        _coverage_section(
+            key="macro_latest",
+            label="Macro latest observations",
+            status="warning" if macro_latest_rows else "empty",
+            basis="analytical",
+            formal_use_allowed=False,
+            meta=macro_latest["result_meta"],
+            series_count=len(macro_latest_rows),
+            latest_trade_date=_latest_choice_series_date(macro_latest_rows),
+            source_pending=False,
+            proxy_only=False,
+            message="Analytical Choice macro latest snapshot is for observation only.",
+        ),
+        _coverage_section(
+            key="fx_formal",
+            label="FX formal status",
+            status=_fx_formal_coverage_status(fx_formal_result),
+            basis="formal",
+            formal_use_allowed=bool(fx_formal["result_meta"].get("formal_use_allowed")),
+            meta=fx_formal["result_meta"],
+            row_count=int(fx_formal_result.get("materialized_count") or 0),
+            series_count=int(fx_formal_result.get("candidate_count") or 0),
+            latest_trade_date=_string_or_none(fx_formal_result.get("latest_trade_date")),
+            source_pending=False,
+            proxy_only=False,
+            message="Formal FX candidate and materialization status.",
+        ),
+        _coverage_section(
+            key="fx_analytical",
+            label="FX analytical groups",
+            status="warning" if fx_analytical_series_count > 0 else "empty",
+            basis="analytical",
+            formal_use_allowed=False,
+            meta=fx_analytical["result_meta"],
+            row_count=fx_analytical_series_count,
+            group_count=len(fx_analytical_groups),
+            latest_trade_date=_result_meta_date(fx_analytical["result_meta"]),
+            source_pending=False,
+            proxy_only=False,
+            message="Analytical FX groups remain observation-only.",
+        ),
+        {
+            "key": "ncd_proxy",
+            "label": "NCD funding proxy",
+            "status": "proxy_only",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "quality_flag": "warning",
+            "fallback_mode": "none",
+            "vendor_status": "ok",
+            "row_count": None,
+            "series_count": None,
+            "group_count": None,
+            "latest_trade_date": None,
+            "as_of_date": None,
+            "source_pending": False,
+            "proxy_only": True,
+            "message": "NCD remains proxy-only until the formal tenor-rating matrix contract lands.",
+        },
+        _coverage_section(
+            key="bond_futures",
+            label="Bond futures rankings",
+            status="ready" if bond_rows else "source_pending",
+            basis="analytical",
+            formal_use_allowed=False,
+            meta=bond_futures["result_meta"],
+            row_count=len(bond_rows),
+            latest_trade_date=_string_or_none(bond_futures["result"].get("as_of_date")),
+            source_pending=not bool(bond_rows),
+            proxy_only=False,
+            message=(
+                "CFFEX member-rank rows are available from landed Choice/Tushare data."
+                if bond_rows
+                else "CFFEX member-rank rows are not available for the requested contract."
+            ),
+        ),
+        _coverage_section(
+            key="tushare_supplement",
+            label="Tushare supplement",
+            status="ready" if tushare_row_count else "source_pending",
+            basis="analytical",
+            formal_use_allowed=False,
+            meta=tushare["result_meta"],
+            row_count=tushare_row_count,
+            latest_trade_date=_result_meta_date(tushare["result_meta"]),
+            source_pending=tushare_row_count == 0,
+            proxy_only=False,
+            message="Tushare money supply and economic calendar supplement.",
+        ),
+        _source_pending_coverage_section("cash_bond_trades", "Cash bond trades"),
+        _source_pending_coverage_section("credit_trades", "Credit trades"),
+    ]
+    source_pending_count = sum(1 for section in sections if section["source_pending"])
+    proxy_only_count = sum(1 for section in sections if section["proxy_only"])
+    analytical_warning_count = sum(
+        1
+        for section in sections
+        if section["basis"] == "analytical"
+        and section["status"] in {"warning", "empty", "stale", "deferred"}
+        and not section["source_pending"]
+    )
+    as_of_date = _latest_coverage_date(sections)
+    generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    payload = {
+        "read_target": "duckdb",
+        "as_of_date": as_of_date,
+        "generated_at": generated_at,
+        "headline": {
+            "readiness_label": (
+                f"{len(sections) - source_pending_count}/{len(sections)} sections readable; "
+                f"{source_pending_count} source gaps; {proxy_only_count} proxy-only"
+            ),
+            "formal_fragment_ready": bool(formal_rate_rows),
+            "formal_use_allowed": False,
+            "analytical_warning_count": analytical_warning_count,
+            "source_pending_count": source_pending_count,
+            "proxy_only_count": proxy_only_count,
+        },
+        "sections": sections,
+        "actions": _coverage_actions(sections),
+    }
+    source_versions = [
+        _meta_text(envelope, "source_version")
+        for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, bond_futures, tushare)
+    ]
+    vendor_versions = [
+        _meta_text(envelope, "vendor_version")
+        for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, bond_futures, tushare)
+    ]
+    tables_used: list[str] = []
+    for envelope in (formal_rates, macro_latest, fx_formal, fx_analytical, bond_futures, tushare):
+        tables_used.extend(str(item) for item in envelope.get("result_meta", {}).get("tables_used", []))
+
+    return build_result_envelope(
+        basis="analytical",
+        trace_id="tr_market_data_coverage_summary",
+        result_kind="market_data.coverage_summary",
+        cache_version=COVERAGE_SUMMARY_CACHE_VERSION,
+        source_version=_aggregate_lineage_value(source_versions, empty_value="sv_market_data_coverage_empty"),
+        rule_version=COVERAGE_SUMMARY_RULE_VERSION,
+        quality_flag="warning" if source_pending_count or proxy_only_count else "ok",
+        vendor_version=_aggregate_lineage_value(vendor_versions, empty_value="vv_none"),
+        vendor_status="ok",
+        fallback_mode="none",
+        result_payload=payload,
+        tables_used=sorted(set(tables_used)),
+        evidence_rows=sum(_coverage_evidence_count(section) for section in sections),
+        source_surface="market_data",
+        as_of_date=as_of_date,
+        resolved_report_date=as_of_date,
+        generated_at=generated_at,
+    )
+
+
+def _load_tushare_supplement_payload(
+    duckdb_path: str,
+    *,
+    money_supply_limit: int,
+    eco_cal_limit: int,
+) -> tuple[dict[str, object], list[str], list[str], str | None, list[str], list[str]]:
+    money_limit = max(0, min(int(money_supply_limit), 120))
+    eco_limit = max(0, min(int(eco_cal_limit), 300))
+    payload: dict[str, object] = {
+        "money_supply_rows": [],
+        "eco_cal_rows": [],
+        "warnings": [],
+    }
+    source_versions: list[str] = []
+    vendor_versions: list[str] = []
+    latest_dates: list[str] = []
+    warnings: list[str] = []
+    tables_used: list[str] = []
+
+    duckdb_file = Path(duckdb_path)
+    if not duckdb_file.exists():
+        warnings.append("DuckDB file is not available for Tushare supplement.")
+        payload["warnings"] = warnings
+        return payload, source_versions, vendor_versions, None, warnings, tables_used
+
+    try:
+        conn = duckdb.connect(str(duckdb_file), read_only=True)
+    except duckdb.Error as exc:
+        warnings.append(f"DuckDB read failed for Tushare supplement: {exc}")
+        payload["warnings"] = warnings
+        return payload, source_versions, vendor_versions, None, warnings, tables_used
+
+    try:
+        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        money_rows, money_source_versions, money_vendor_versions, money_latest, money_tables, money_warnings = (
+            _load_tushare_money_supply_rows(conn, tables, limit=money_limit)
+        )
+        eco_rows, eco_source_versions, eco_vendor_versions, eco_latest, eco_tables, eco_warnings = (
+            _load_tushare_eco_calendar_rows(conn, tables, limit=eco_limit)
+        )
+    finally:
+        conn.close()
+
+    payload["money_supply_rows"] = money_rows
+    payload["eco_cal_rows"] = eco_rows
+    source_versions.extend(money_source_versions)
+    source_versions.extend(eco_source_versions)
+    vendor_versions.extend(money_vendor_versions)
+    vendor_versions.extend(eco_vendor_versions)
+    if money_latest:
+        latest_dates.append(money_latest)
+    if eco_latest:
+        latest_dates.append(eco_latest)
+    tables_used.extend(money_tables)
+    tables_used.extend(eco_tables)
+    warnings.extend(money_warnings)
+    warnings.extend(eco_warnings)
+    payload["warnings"] = warnings
+    latest_date = max(latest_dates) if latest_dates else None
+    return payload, source_versions, vendor_versions, latest_date, warnings, tables_used
+
+
+def _load_tushare_money_supply_rows(
+    conn: duckdb.DuckDBPyConnection,
+    tables: set[str],
+    *,
+    limit: int,
+) -> tuple[list[dict[str, object]], list[str], list[str], str | None, list[str], list[str]]:
+    if limit <= 0:
+        return [], [], [], None, [], []
+    if "std_tushare_money_supply_monthly" in tables:
+        rows, source_versions, vendor_versions, latest = _load_tushare_money_supply_table(conn, limit=limit)
+        return rows, source_versions, vendor_versions, latest, ["std_tushare_money_supply_monthly"], []
+    if "std_external_macro_daily" in tables:
+        rows, source_versions, vendor_versions, latest = _load_tushare_money_supply_external_macro(conn, limit=limit)
+        warnings = [] if rows else ["Tushare money supply rows are not materialized."]
+        return rows, source_versions, vendor_versions, latest, ["std_external_macro_daily"], warnings
+    return [], [], [], None, [], ["Tushare money supply table is not materialized."]
+
+
+def _load_tushare_money_supply_table(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    limit: int,
+) -> tuple[list[dict[str, object]], list[str], list[str], str | None]:
+    columns = _duckdb_table_columns(conn, "std_tushare_money_supply_monthly")
+    select_columns = [
+        _column_or_null("month", columns),
+        _column_or_null("m0", columns),
+        _column_or_null("m0_yoy", columns),
+        _column_or_null("m0_mom", columns),
+        _column_or_null("m1", columns),
+        _column_or_null("m1_yoy", columns),
+        _column_or_null("m1_mom", columns),
+        _column_or_null("m2", columns),
+        _column_or_null("m2_yoy", columns),
+        _column_or_null("m2_mom", columns),
+        _column_or_null("source_version", columns),
+        _column_or_null("vendor_version", columns),
+    ]
+    raw_rows = conn.execute(
+        f"""
+        select {", ".join(select_columns)}
+        from std_tushare_money_supply_monthly
+        order by month desc
+        limit {limit}
+        """
+    ).fetchall()
+    rows: list[dict[str, object]] = []
+    source_versions: list[str] = []
+    vendor_versions: list[str] = []
+    for raw in raw_rows:
+        month = _string_or_empty(raw[0])
+        if not month:
+            continue
+        rows.append(
+            {
+                "month": month,
+                "m0": _float_or_none(raw[1]),
+                "m0_yoy": _float_or_none(raw[2]),
+                "m0_mom": _float_or_none(raw[3]),
+                "m1": _float_or_none(raw[4]),
+                "m1_yoy": _float_or_none(raw[5]),
+                "m1_mom": _float_or_none(raw[6]),
+                "m2": _float_or_none(raw[7]),
+                "m2_yoy": _float_or_none(raw[8]),
+                "m2_mom": _float_or_none(raw[9]),
+            }
+        )
+        if raw[10]:
+            source_versions.append(str(raw[10]))
+        if raw[11]:
+            vendor_versions.append(str(raw[11]))
+    latest = max((str(row["month"]) for row in rows), default=None)
+    return rows, source_versions, vendor_versions, latest
+
+
+def _load_tushare_money_supply_external_macro(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    limit: int,
+) -> tuple[list[dict[str, object]], list[str], list[str], str | None]:
+    raw_rows = conn.execute(
+        f"""
+        select trade_date, value_numeric, source_version, vendor_version
+        from std_external_macro_daily
+        where series_id = 'tushare.macro.cn_money.monthly'
+        order by trade_date desc
+        limit {limit}
+        """
+    ).fetchall()
+    rows: list[dict[str, object]] = []
+    source_versions: list[str] = []
+    vendor_versions: list[str] = []
+    for trade_date, value_numeric, source_version, vendor_version in raw_rows:
+        month = _string_or_empty(trade_date)
+        if not month:
+            continue
+        rows.append(
+            {
+                "month": month,
+                "m0": None,
+                "m0_yoy": None,
+                "m0_mom": None,
+                "m1": None,
+                "m1_yoy": None,
+                "m1_mom": None,
+                "m2": None,
+                "m2_yoy": _float_or_none(value_numeric),
+                "m2_mom": None,
+            }
+        )
+        if source_version:
+            source_versions.append(str(source_version))
+        if vendor_version:
+            vendor_versions.append(str(vendor_version))
+    latest = max((str(row["month"]) for row in rows), default=None)
+    return rows, source_versions, vendor_versions, latest
+
+
+def _load_tushare_eco_calendar_rows(
+    conn: duckdb.DuckDBPyConnection,
+    tables: set[str],
+    *,
+    limit: int,
+) -> tuple[list[dict[str, object]], list[str], list[str], str | None, list[str], list[str]]:
+    if limit <= 0:
+        return [], [], [], None, [], []
+    if "std_tushare_eco_cal_event" not in tables:
+        return [], [], [], None, [], ["Tushare economic calendar table is not materialized."]
+    columns = _duckdb_table_columns(conn, "std_tushare_eco_cal_event")
+    select_columns = [
+        _column_or_null("event_id", columns),
+        _column_or_null("event_date", columns),
+        _column_or_null("event_time", columns),
+        _column_or_null("currency", columns),
+        _column_or_null("country", columns),
+        _column_or_null("event", columns),
+        _column_or_null("value", columns),
+        _column_or_null("pre_value", columns),
+        _column_or_null("fore_value", columns),
+        _column_or_null("source_version", columns),
+        _column_or_null("vendor_version", columns),
+    ]
+    raw_rows = conn.execute(
+        f"""
+        select {", ".join(select_columns)}
+        from std_tushare_eco_cal_event
+        order by event_date desc, event_time desc nulls last
+        limit {limit}
+        """
+    ).fetchall()
+    rows: list[dict[str, object]] = []
+    source_versions: list[str] = []
+    vendor_versions: list[str] = []
+    for index, raw in enumerate(raw_rows):
+        event_date = _string_or_empty(raw[1])
+        if not event_date:
+            continue
+        rows.append(
+            {
+                "event_id": _string_or_empty(raw[0]) or f"{event_date}-{index}",
+                "event_date": event_date,
+                "event_time": _string_or_none(raw[2]),
+                "currency": _string_or_none(raw[3]),
+                "country": _string_or_none(raw[4]),
+                "event": _string_or_empty(raw[5]),
+                "value": _string_or_none(raw[6]),
+                "pre_value": _string_or_none(raw[7]),
+                "fore_value": _string_or_none(raw[8]),
+            }
+        )
+        if raw[9]:
+            source_versions.append(str(raw[9]))
+        if raw[10]:
+            vendor_versions.append(str(raw[10]))
+    latest = max((str(row["event_date"]) for row in rows), default=None)
+    return rows, source_versions, vendor_versions, latest, ["std_tushare_eco_cal_event"], []
+
+
+def _load_bond_futures_rankings_payload(
+    duckdb_path: str,
+    *,
+    contract: str,
+    trade_date: str | None,
+    limit: int,
+) -> tuple[dict[str, object], list[str], list[str], str | None, list[str], list[str]]:
+    normalized_contract = normalize_cffex_contract(contract)
+    requested_trade_date = normalize_trade_date(trade_date) if trade_date else None
+    row_limit = max(0, min(int(limit), 100))
+    payload: dict[str, object] = {
+        "read_target": "duckdb",
+        "as_of_date": None,
+        "requested_trade_date": requested_trade_date,
+        "contract": normalized_contract,
+        "rows": [],
+        "warnings": [],
+    }
+    source_versions: list[str] = []
+    vendor_versions: list[str] = []
+    warnings: list[str] = []
+
+    duckdb_file = Path(duckdb_path)
+    if row_limit <= 0:
+        payload["warnings"] = ["Bond futures ranking row limit is zero."]
+        return payload, source_versions, vendor_versions, None, payload["warnings"], []
+    if not duckdb_file.exists():
+        warnings.append("DuckDB file is not available for CFFEX member rankings.")
+        payload["warnings"] = warnings
+        return payload, source_versions, vendor_versions, None, warnings, []
+
+    try:
+        conn = duckdb.connect(str(duckdb_file), read_only=True)
+    except duckdb.Error as exc:
+        warnings.append(f"DuckDB is not readable for CFFEX member rankings: {exc}")
+        payload["warnings"] = warnings
+        return payload, source_versions, vendor_versions, None, warnings, []
+
+    try:
+        tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
+        if CFFEX_MEMBER_RANK_TABLE not in tables:
+            warnings.append("CFFEX member-rank table is not materialized.")
+            payload["warnings"] = warnings
+            return payload, source_versions, vendor_versions, None, warnings, []
+        source_relation = CFFEX_MEMBER_RANK_VIEW if CFFEX_MEMBER_RANK_VIEW in tables else CFFEX_MEMBER_RANK_TABLE
+        resolved_trade_date = requested_trade_date or _latest_bond_futures_trade_date(
+            conn,
+            source_relation=source_relation,
+            contract=normalized_contract,
+        )
+        payload["as_of_date"] = resolved_trade_date
+        tables_used = [CFFEX_MEMBER_RANK_TABLE]
+        if source_relation == CFFEX_MEMBER_RANK_VIEW:
+            tables_used.append(CFFEX_MEMBER_RANK_VIEW)
+        if not resolved_trade_date:
+            warnings.append(f"No CFFEX member-rank trade date is available for {normalized_contract}.")
+            payload["warnings"] = warnings
+            return payload, source_versions, vendor_versions, None, warnings, tables_used
+
+        raw_rows = conn.execute(
+            f"""
+            select
+              trade_date,
+              contract,
+              product_code,
+              exchange,
+              member_name,
+              source_vendor,
+              source_row_no,
+              volume,
+              volume_change,
+              long_holding,
+              long_change,
+              short_holding,
+              short_change,
+              source_version,
+              vendor_version,
+              rule_version
+            from {source_relation}
+            where trade_date = ? and contract = ?
+            order by source_row_no nulls last, member_name
+            limit {row_limit}
+            """,
+            [resolved_trade_date, normalized_contract],
+        ).fetchall()
+    except duckdb.Error as exc:
+        warnings.append(f"CFFEX member-rank query failed: {exc}")
+        payload["warnings"] = warnings
+        return payload, source_versions, vendor_versions, None, warnings, []
+    finally:
+        conn.close()
+
+    rows: list[dict[str, object]] = []
+    for raw in raw_rows:
+        rows.append(
+            {
+                "trade_date": _string_or_empty(raw[0]),
+                "contract": _string_or_empty(raw[1]),
+                "product_code": _string_or_empty(raw[2]),
+                "exchange": _string_or_empty(raw[3]),
+                "member_name": _string_or_empty(raw[4]),
+                "source_vendor": _string_or_empty(raw[5]),
+                "source_row_no": int(raw[6]) if raw[6] is not None else None,
+                "volume": _float_or_none(raw[7]),
+                "volume_change": _float_or_none(raw[8]),
+                "long_holding": _float_or_none(raw[9]),
+                "long_change": _float_or_none(raw[10]),
+                "short_holding": _float_or_none(raw[11]),
+                "short_change": _float_or_none(raw[12]),
+                "source_version": _string_or_none(raw[13]),
+                "vendor_version": _string_or_none(raw[14]),
+                "rule_version": _string_or_none(raw[15]) or CFFEX_MEMBER_RANK_RULE_VERSION,
+            }
+        )
+        if raw[13]:
+            source_versions.append(str(raw[13]))
+        if raw[14]:
+            vendor_versions.append(str(raw[14]))
+    if not rows:
+        warnings.append(
+            f"CFFEX member-rank table has no rows for {normalized_contract} on {payload['as_of_date']}."
+        )
+    payload["rows"] = rows
+    payload["warnings"] = warnings
+    return payload, source_versions, vendor_versions, payload["as_of_date"], warnings, tables_used
+
+
+def _latest_bond_futures_trade_date(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    source_relation: str,
+    contract: str,
+) -> str | None:
+    value = conn.execute(
+        f"select max(trade_date) from {source_relation} where contract = ?",
+        [contract],
+    ).fetchone()[0]
+    return _string_or_none(value)
+
+
+def _coverage_section(
+    *,
+    key: str,
+    label: str,
+    status: str,
+    basis: str,
+    formal_use_allowed: bool,
+    meta: dict[str, object],
+    source_pending: bool,
+    proxy_only: bool,
+    message: str,
+    row_count: int | None = None,
+    series_count: int | None = None,
+    group_count: int | None = None,
+    latest_trade_date: str | None = None,
+    as_of_date: str | None = None,
+) -> dict[str, object]:
+    return {
+        "key": key,
+        "label": label,
+        "status": status,
+        "basis": basis,
+        "formal_use_allowed": formal_use_allowed,
+        "quality_flag": _coverage_quality_flag(meta),
+        "fallback_mode": _coverage_fallback_mode(meta),
+        "vendor_status": _coverage_vendor_status(meta),
+        "row_count": row_count,
+        "series_count": series_count,
+        "group_count": group_count,
+        "latest_trade_date": latest_trade_date,
+        "as_of_date": as_of_date,
+        "source_pending": source_pending,
+        "proxy_only": proxy_only,
+        "message": message,
+    }
+
+
+def _source_pending_coverage_section(key: str, label: str) -> dict[str, object]:
+    return {
+        "key": key,
+        "label": label,
+        "status": "source_pending",
+        "basis": "analytical",
+        "formal_use_allowed": False,
+        "quality_flag": "warning",
+        "fallback_mode": "none",
+        "vendor_status": "vendor_unavailable",
+        "row_count": None,
+        "series_count": None,
+        "group_count": None,
+        "latest_trade_date": None,
+        "as_of_date": None,
+        "source_pending": True,
+        "proxy_only": False,
+        "message": f"{label} contract is still source-pending.",
+    }
+
+
+def _coverage_quality_flag(meta: dict[str, object]) -> str:
+    value = str(meta.get("quality_flag") or "warning")
+    return value if value in {"ok", "warning", "error", "stale"} else "warning"
+
+
+def _coverage_fallback_mode(meta: dict[str, object]) -> str:
+    value = str(meta.get("fallback_mode") or "none")
+    return value if value in {"none", "latest_snapshot"} else "none"
+
+
+def _coverage_vendor_status(meta: dict[str, object]) -> str:
+    value = str(meta.get("vendor_status") or "ok")
+    return value if value in {"ok", "vendor_stale", "vendor_unavailable"} else "ok"
+
+
+def _fx_formal_coverage_status(result: dict[str, object]) -> str:
+    candidate_count = int(result.get("candidate_count") or 0)
+    materialized_count = int(result.get("materialized_count") or 0)
+    if candidate_count > 0 and materialized_count == candidate_count:
+        return "ready"
+    if materialized_count > 0:
+        return "warning"
+    return "empty"
+
+
+def _latest_choice_series_date(rows: object) -> str | None:
+    if not isinstance(rows, list):
+        return None
+    dates = [
+        str(row.get("trade_date") or "")
+        for row in rows
+        if isinstance(row, dict) and str(row.get("trade_date") or "").strip()
+    ]
+    return max(dates) if dates else None
+
+
+def _result_meta_date(meta: dict[str, object]) -> str | None:
+    for key in ("as_of_date", "resolved_report_date", "fallback_date", "generated_at"):
+        value = _string_or_none(meta.get(key))
+        if value:
+            return value[:10]
+    return None
+
+
+def _latest_coverage_date(sections: list[dict[str, object]]) -> str | None:
+    dates = []
+    for section in sections:
+        for key in ("latest_trade_date", "as_of_date"):
+            value = _string_or_none(section.get(key))
+            if value:
+                dates.append(value[:10])
+    return max(dates) if dates else None
+
+
+def _coverage_actions(sections: list[dict[str, object]]) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
+    for section in sections:
+        if section["source_pending"]:
+            actions.append(
+                {
+                    "key": str(section["key"]),
+                    "label": f"{section['label']} remains source-pending.",
+                    "severity": "warning",
+                    "target_anchor": "market-data-source-pending-deck",
+                }
+            )
+        elif section["proxy_only"]:
+            actions.append(
+                {
+                    "key": str(section["key"]),
+                    "label": f"{section['label']} is proxy-only.",
+                    "severity": "warning",
+                    "target_anchor": "market-data-liquidity-deck",
+                }
+            )
+    return actions
+
+
+def _coverage_evidence_count(section: dict[str, object]) -> int:
+    for key in ("row_count", "series_count", "group_count"):
+        value = section.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+    return 0
+
+
+def _meta_text(envelope: dict[str, object], key: str) -> str:
+    meta = envelope.get("result_meta", {})
+    if not isinstance(meta, dict):
+        return ""
+    return str(meta.get(key) or "")
+
+
+def _duckdb_table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()}
+
+
+def _column_or_null(column_name: str, columns: set[str]) -> str:
+    if column_name in columns:
+        return column_name
+    return f"NULL as {column_name}"
+
+
+def _float_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _string_or_empty(value: object) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        return str(value.isoformat())
+    return str(value)
+
+
+def _string_or_none(value: object) -> str | None:
+    text = _string_or_empty(value).strip()
+    return text or None
 
 
 def load_fx_formal_status_payload(duckdb_path: str) -> FxFormalStatusPayload:

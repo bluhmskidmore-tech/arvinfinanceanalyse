@@ -1,28 +1,46 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Collapse, Select, Spin } from "antd";
+import { Collapse, Select } from "antd";
 import { useApiClient } from "../../../api/client";
+import { LightIcon } from "../../../components/LightIcon";
+import {
+  DataQualityPill,
+  DataSourceBadge,
+  DiagnosticDisclosure,
+  SystemAccessBadge,
+} from "../../../components/StatusPill";
+import type { DataQualityStatus } from "../../../components/StatusContract";
 import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy";
-import type { ResearchCalendarEvent } from "../../../api/contracts";
 import { nonCancellingRefetchOptions } from "../../../app/externalDataRefreshPolicy";
 import { PageSectionLead, type PageSectionLeadProps } from "../../../components/page/PagePrimitives";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type {
   ChoiceMacroLatestPoint,
   ChoiceMacroRecentPoint,
+  ChoiceNewsEventsPayload,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
+  LivermoreCandidateHistoryPayload,
+  LivermoreCandidateHistoryPortfolioBacktestPayload,
+  LivermoreCycleProxyBacktestPayload,
+  LivermoreSectorRankSeriesPayload,
+  LivermoreSignalConfluencePayload,
+  LivermoreStrategyOptimizationPayload,
+  LivermoreStrategyScorePayload,
+  MacroVendorPayload,
   MarketDataCoverageSection,
   MarketDataCoverageSummaryPayload,
+  NcdFundingProxyPayload,
+  ResearchCalendarEvent,
   ResultMeta,
+  TushareSupplementPayload,
 } from "../../../api/contracts";
+import type { MacroToolkitAnalysisPayload } from "../../../api/macroToolkitClient";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { BondFuturesTable } from "../components/BondFuturesTable";
 import { BondTradeDetail } from "../components/BondTradeDetail";
 import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
-import { LiveResultMetaStrip } from "../components/LiveResultMetaStrip";
 import { MarketDataDeskBridgeBand } from "../components/MarketDataDeskBridgeBand";
-import { MarketDataEvidenceRailSection } from "../components/MarketDataEvidenceRailSection";
 import { MarketDataExtendedTerminalSection } from "../components/MarketDataExtendedTerminalSection";
 import { MarketDataFxFormalSection } from "../components/MarketDataFxFormalSection";
 import { MarketDataFxSeriesDeck } from "../components/MarketDataFxSeriesDeck";
@@ -34,10 +52,12 @@ import { MarketDataLivermoreSection } from "../components/MarketDataLivermoreSec
 import { MarketTerminalTicker } from "../components/MarketTerminalTicker";
 import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
-import { NewsAndCalendar, type NewsAndCalendarCalendarState } from "../components/NewsAndCalendar";
+import {
+  type NewsAndCalendarCalendarState,
+  type NewsAndCalendarNewsState,
+} from "../components/NewsAndCalendar";
 import { MarketDataSeriesCategoryCard } from "../components/MarketDataSeriesCategoryCard";
 import { MarketDataTushareSupplementSection } from "../components/MarketDataTushareSupplementSection";
-import { RateQuoteTable } from "../components/RateQuoteTable";
 import {
   marketCatalogRefreshTier,
   marketSeriesRefreshTier,
@@ -55,20 +75,16 @@ import {
   type MarketTerminalTickerItem,
 } from "../lib/marketDataTerminalModel";
 import { useMarketDataPageData } from "../hooks/useMarketDataPageData";
-import {
-  MarketDataHeroSection,
-  MarketPipelineKpiStrip,
-  type MarketOverviewMetric,
-} from "./MarketDataHeroSection";
+import { type MarketOverviewMetric, MarketPipelineKpiStrip } from "./MarketDataHeroSection";
 import { MarketDataMacroDepthTabs } from "./MarketDataMacroDepthTabs";
+import { MarketDataSeriesTimeChart } from "../components/MarketDataSeriesTimeChart";
 import { MarketDataTermStructureChart } from "../components/MarketDataTermStructureChart";
-import { buildSpreadSlots, buildBridgeKpiMetrics, buildMarketDataBasisChipLabel, buildTerminalKpiMetricsFromTickerItems, formatMarketWorkbenchSourceSummary, pickRailHighlightMetric } from "./marketDataPageModel";
+import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
+import { buildSpreadSlots, buildBridgeKpiMetrics, buildMarketDataBasisChipLabel, buildTerminalKpiMetricsFromTickerItems, formatMarketWorkbenchSourceSummary } from "./marketDataPageModel";
+import { buildMarketDataTapeCockpitModel } from "./marketDataTapeCockpitModel";
+import { useLazyMount } from "../lib/useLazyMount";
 import { MarketWorkbenchFrame } from "../../workbench/market-shell";
-import { InstitutionalKpiTile } from "../../workbench/shared/InstitutionalKpiTile";
 import "./MarketDataPage.css";
-
-/** 首屏不展示宏观读面蓝条（与 Bridge / Rail 去重）。 */
-const MARKET_DATA_SHOW_OVERVIEW_META_STRIP = false;
 
 /** 外汇分析观察区块顶部元数据蓝条（本区块·外汇分析）；默认隐藏。 */
 const _MARKET_DATA_SHOW_FX_ANALYSIS_META_STRIP = false;
@@ -88,14 +104,6 @@ const marketDataSectionLeadStyle: CSSProperties = {
   marginTop: 0,
   marginBottom: s[2],
 };
-
-function MarketSectionBlock({ children }: { children: ReactNode }) {
-  return <div className="market-data-section-block">{children}</div>;
-}
-
-function _MarketSectionInnerBlock({ children }: { children: ReactNode }) {
-  return <div className="market-data-section-inner-block">{children}</div>;
-}
 
 function MarketSectionLead({
   flushTop: _flushTop = false,
@@ -140,9 +148,9 @@ function seriesFetchModeLabel(point: { fetch_mode?: string | null; fetch_granula
 
 function refreshTierLabel(tier: string) {
   const labels: Record<string, string> = {
-    stable: "稳定",
-    fallback: "降级",
-    isolated: "隔离",
+    stable: "数据正常",
+    fallback: "数据延迟",
+    isolated: "单点观察",
   };
   return labels[tier] ?? tier;
 }
@@ -237,114 +245,49 @@ function _renderSeriesCards(
 }
 
 function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined): string {
-  if (value === "ok") return "正常";
-  if (value === "warning") return "预警";
-  if (value === "error") return "错误";
-  if (value === "stale") return "陈旧";
-  return value ?? "待定";
+  if (value === "ok") return "数据正常";
+  if (value === "warning" || value === "missing") return "部分缺失";
+  if (value === "error") return "不可用";
+  if (value === "stale") return "数据延迟";
+  return "部分缺失";
 }
 
 function coverageStatusLabel(status: MarketDataCoverageSection["status"]): string {
   const labels: Record<MarketDataCoverageSection["status"], string> = {
-    ready: "就绪",
-    empty: "无数据",
-    warning: "预警",
-    stale: "陈旧",
-    error: "错误",
-    source_pending: "待接入",
-    proxy_only: "代理口径",
-    deferred: "暂缓",
+    ready: "数据正常",
+    empty: "部分缺失",
+    warning: "部分缺失",
+    stale: "数据延迟",
+    error: "不可用",
+    source_pending: "未接入",
+    proxy_only: "代理数据",
+    deferred: "接入中",
   };
   return labels[status];
 }
 
-function coverageSectionCount(section: MarketDataCoverageSection): string {
-  const count = section.series_count ?? section.row_count ?? section.group_count;
-  return typeof count === "number" ? String(count) : "无";
-}
-
-function coverageSectionCountNumber(section: MarketDataCoverageSection): number {
-  const count = section.series_count ?? section.row_count ?? section.group_count;
-  return typeof count === "number" ? count : 1;
-}
-
-function coverageLatestDate(section: MarketDataCoverageSection | null | undefined): string {
-  return section?.latest_trade_date ?? section?.as_of_date ?? "--";
+function dataQualityStatusForReadiness(label: string): DataQualityStatus {
+  if (label.includes("正常")) return "fresh";
+  if (label.includes("延迟")) return "stale";
+  if (label.includes("不可用") || label.includes("异常")) return "unavailable";
+  return "partial";
 }
 
 function marketDataBasisLabel(value: string | null | undefined): string {
   const normalized = value ?? "";
-  if (normalized.includes("formal")) return normalized.includes("blocked") ? "正式禁用" : "正式";
-  if (normalized.includes("analytical")) return "分析";
-  if (normalized.includes("mock")) return "回放";
-  if (normalized.includes("source-pending")) return "待接入";
+  if (normalized.includes("formal")) return normalized.includes("blocked") ? "暂不可正式使用" : "正式可用";
+  if (normalized.includes("analytical")) return "仅分析使用";
+  if (normalized.includes("proxy")) return "代理数据";
+  if (normalized.includes("mock")) return "演示数据";
+  if (normalized.includes("source-pending")) return "未接入";
   if (normalized === "unknown" || normalized === "pending") return "待确认";
   return normalized || "--";
 }
 
-function marketDataStatusLabel(value: string | null | undefined): string {
-  const labels: Record<string, string> = {
-    ready: "就绪",
-    empty: "无数据",
-    warning: "预警",
-    stale: "陈旧",
-    error: "错误",
-    source_pending: "待接入",
-    "source-pending": "待接入",
-    proxy_only: "代理口径",
-    "proxy-only": "代理口径",
-    deferred: "暂缓",
-    pending: "待接入",
-    formal: "正式",
-    analytical: "分析",
-    ok: "正常",
-    unknown: "待确认",
-    vendor_unavailable: "供应商未接入",
-  };
-  return labels[value ?? ""] ?? value ?? "--";
-}
-
-function marketDataBooleanLabel(value: boolean): string {
-  return value ? "是" : "否";
-}
-
-function marketDataFallbackLabel(value: string | null | undefined): string {
-  if (value === "unknown") return "待确认";
-  if (!value || value === "none") return "无";
-  if (value === "latest_snapshot") return "最新快照";
-  return value;
-}
-
 function marketDataSourceLabel(value: string | null | undefined): string {
   if (!value || value === "unknown") return "待确认";
-  if (value === "source-pending" || value === "source_pending") return "待接入";
+  if (value === "source-pending" || value === "source_pending") return "未接入";
   return value;
-}
-
-function marketDataSectionLabel(section: MarketDataCoverageSection): string {
-  const labels: Record<string, string> = {
-    formal_rates: "正式利率",
-    macro_catalog: "宏观目录",
-    macro_latest: "宏观最新",
-    fx_formal: "外汇正式",
-    fx_analytical: "外汇分析",
-    ncd_proxy: "存单代理",
-    bond_futures: "国债期货",
-    cash_bond_trades: "现券成交",
-    credit_trades: "信用成交",
-    macro_linkage: "宏观联动",
-    livermore: "利弗莫尔信号",
-  };
-  return labels[section.key] ?? section.label;
-}
-
-function marketDataSeriesNameLabel(name: string): string {
-  const labels: Record<string, string> = {
-    "China 10Y government bond yield": "中国10年期国债收益率",
-    "China 1Y government bond yield": "中国1年期国债收益率",
-    "China 10Y policy bank yield": "中国10年期国开债收益率",
-  };
-  return labels[name] ?? name;
 }
 
 function marketDataEvidenceLineLabel(line: string): string {
@@ -359,35 +302,39 @@ function marketDataEvidenceLineLabel(line: string): string {
     .replaceAll("basis=", "口径=")
     .replaceAll("formal_use_allowed=", "允许正式使用=")
     .replaceAll("quality=", "质量=")
-    .replaceAll("fallback=", "降级=")
+    .replaceAll("fallback=", "数据状态=")
     .replaceAll("vendor_status=", "供应商=")
-    .replaceAll("source=", "来源=")
+    .replaceAll("source=", "来源版本=")
     .replace(/=formal\b/g, "=正式")
     .replace(/=analytical\b/g, "=分析")
-    .replace(/=pending\b/g, "=待接入")
+    .replace(/=pending\b/g, "=未接入")
     .replace(/=false\b/g, "=否")
     .replace(/=true\b/g, "=是")
-    .replace(/=ok\b/g, "=正常")
-    .replace(/=warning\b/g, "=预警")
-    .replace(/=stale\b/g, "=陈旧")
-    .replace(/=error\b/g, "=错误")
-    .replace(/=none\b/g, "=无")
-    .replace(/=latest_snapshot\b/g, "=最新快照");
-}
-
-function coverageQualityLabel(section: MarketDataCoverageSection): string {
-  if (section.status === "source_pending") return "待接入";
-  if (section.status === "proxy_only") return "代理口径";
-  if (section.status === "deferred") return "暂缓";
-  return resultMetaQualityLabel(section.quality_flag);
+    .replace(/=ok\b/g, "=数据正常")
+    .replace(/=warning\b/g, "=部分缺失")
+    .replace(/=stale\b/g, "=数据延迟")
+    .replace(/=error\b/g, "=不可用")
+    .replace(/=none\b/g, "=数据正常")
+    .replace(/=latest_snapshot\b/g, "=数据延迟");
 }
 
 function coverageActionLabel(section: MarketDataCoverageSection): string {
   if (section.source_pending) return "接入数据源";
   if (section.proxy_only) return "确认正式口径";
   if (section.status === "deferred") return "按需展开";
-  if (section.fallback_mode !== "none") return "查看降级";
+  if (section.fallback_mode !== "none") return "查看数据延迟";
   return "查看详情";
+}
+
+function endpointCoverageStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    live: "已接入",
+    loading: "接入中",
+    error: "技术异常",
+    "not read": "未接入",
+    "source-pending": "未接入",
+  };
+  return labels[status] ?? status;
 }
 
 function coverageFallbackMode(value: ResultMeta["fallback_mode"] | undefined): "none" | "latest_snapshot" {
@@ -425,13 +372,6 @@ const MARKET_DATA_LEDGER_TABS = [
   { key: "evidence", label: "证据口径", targetId: "market-data-evidence-gate" },
 ] as const;
 
-function calendarKindLabel(kind: ResearchCalendarEvent["kind"]) {
-  if (kind === "supply") return "供给";
-  if (kind === "auction") return "招标";
-  if (kind === "macro") return "宏观";
-  return "内部";
-}
-
 function MarketDataLedgerPageTabs({
   activeTab,
   onTabChange,
@@ -460,295 +400,6 @@ function MarketDataLedgerPageTabs({
   );
 }
 
-function MarketDataLedgerEventsCard({
-  calendarState,
-}: {
-  calendarState: NewsAndCalendarCalendarState;
-}) {
-  const calendarRows = useMemo(() => {
-    const rows = calendarState.rows;
-    return [...rows]
-      .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title))
-      .slice(0, 5);
-  }, [calendarState.rows]);
-
-  return (
-    <article className="market-data-support-card market-data-support-card--wide" data-testid="market-data-ledger-events-card">
-      <header>
-        <strong>最新重要事件</strong>
-        <a href="#market-data-news-calendar">查看经济日历</a>
-      </header>
-      {calendarState.isLoading ? (
-        <div className="market-data-ledger-events-loading">
-          <Spin size="small" />
-        </div>
-      ) : calendarState.isError ? (
-        <p className="market-data-ledger-events-empty">供给与招标日历加载失败。</p>
-      ) : calendarRows.length === 0 ? (
-        <p className="market-data-ledger-events-empty">当前日历区间无供给/招标事件。</p>
-      ) : (
-        <ul data-testid="market-data-ledger-events-list" className="market-data-ledger-events-list">
-          {calendarRows.map((event) => (
-            <li key={event.id}>
-              <span>{event.date}</span>
-              <strong>{event.title}</strong>
-              <em>{calendarKindLabel(event.kind)}</em>
-            </li>
-          ))}
-        </ul>
-      )}
-    </article>
-  );
-}
-
-function summarizeCoverageCount(
-  sections: MarketDataCoverageSection[],
-  predicate: (section: MarketDataCoverageSection) => boolean,
-): number {
-  return sections.filter(predicate).reduce((total, section) => total + coverageSectionCountNumber(section), 0);
-}
-
-function MarketDataCoverageCommand({
-  summary,
-  sections,
-}: {
-  summary: MarketDataCoverageSummaryPayload | null;
-  sections: MarketDataCoverageSection[];
-}) {
-  const formalReadyCount = summarizeCoverageCount(
-    sections,
-    (section) => section.basis === "formal" && section.formal_use_allowed && section.status !== "source_pending",
-  );
-  const analyticalUsableCount = summarizeCoverageCount(
-    sections,
-    (section) =>
-      section.basis === "analytical" &&
-      !section.proxy_only &&
-      !section.source_pending &&
-      section.status !== "deferred",
-  );
-  const proxyOnlyCount =
-    summary?.headline.proxy_only_count ??
-    sections.filter((section) => section.proxy_only || section.status === "proxy_only").length;
-  const sourcePendingCount =
-    summary?.headline.source_pending_count ??
-    sections.filter((section) => section.source_pending || section.status === "source_pending").length;
-  const generatedLabel = summary?.as_of_date ?? summary?.generated_at ?? "summary unavailable";
-
-  return (
-    <section className="market-data-coverage-command" data-testid="market-data-coverage-command">
-      <div className="market-data-coverage-command__headline">
-        <span>覆盖指令</span>
-        <strong>正式利率可用；宏观/外汇为分析读面；存单为代理口径；成交仍待接入</strong>
-        <em>{generatedLabel}</em>
-      </div>
-      <div className="market-data-coverage-buckets" aria-label="市场数据供给覆盖桶">
-        <article
-          className="market-data-coverage-bucket market-data-coverage-bucket--formal"
-          data-testid="market-data-coverage-bucket-formal-ready"
-        >
-          <span>正式口径</span>
-          <strong>{formalReadyCount || (summary?.headline.formal_fragment_ready ? 1 : 0)}</strong>
-          <small>正式口径片段</small>
-        </article>
-        <article
-          className="market-data-coverage-bucket market-data-coverage-bucket--analytical"
-          data-testid="market-data-coverage-bucket-analytical-usable"
-        >
-          <span>分析口径</span>
-          <strong>{analyticalUsableCount}</strong>
-          <small>分析读面可用</small>
-        </article>
-        <article
-          className="market-data-coverage-bucket market-data-coverage-bucket--proxy"
-          data-testid="market-data-coverage-bucket-proxy-only"
-        >
-          <span>代理口径</span>
-          <strong>{proxyOnlyCount}</strong>
-          <small>存单不作正式矩阵</small>
-        </article>
-        <article
-          className="market-data-coverage-bucket market-data-coverage-bucket--pending"
-          data-testid="market-data-coverage-bucket-source-pending"
-        >
-          <span>待接入</span>
-          <strong>{sourcePendingCount}</strong>
-          <small>成交/契约待接入</small>
-        </article>
-      </div>
-    </section>
-  );
-}
-
-function MarketDataCoverageLedger({
-  sections,
-}: {
-  sections: MarketDataCoverageSection[];
-}) {
-  return (
-    <section className="market-data-coverage-ledger" data-testid="market-data-coverage-ledger">
-      <header className="market-data-panel-head">
-        <span>数据供给组盘总览</span>
-        <strong>覆盖台账</strong>
-      </header>
-      <div className="market-data-ledger-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>数据区块</th>
-              <th>口径</th>
-              <th>允许正式使用</th>
-              <th>质量</th>
-              <th>降级</th>
-              <th>最新日期</th>
-              <th>建议动作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sections.map((section) => (
-              <tr key={section.key}>
-                <td>
-                  <span className="market-data-ledger-dot" data-coverage-status={section.status} />
-                  {marketDataSectionLabel(section)}
-                </td>
-                <td>{marketDataBasisLabel(section.basis)}</td>
-                <td>{marketDataBooleanLabel(section.formal_use_allowed)}</td>
-                <td>{coverageQualityLabel(section)}</td>
-                <td>{marketDataFallbackLabel(section.fallback_mode)}</td>
-                <td>{coverageLatestDate(section)}</td>
-                <td>{coverageActionLabel(section)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <footer className="market-data-ledger-legend" aria-label="coverage status legend">
-          <span>
-            <i className="market-data-ledger-dot" data-coverage-status="ready" /> 就绪
-          </span>
-          <span>
-            <i className="market-data-ledger-dot" data-coverage-status="warning" /> 预警
-          </span>
-          <span>
-            <i className="market-data-ledger-dot" data-coverage-status="proxy_only" /> 代理
-          </span>
-          <span>
-            <i className="market-data-ledger-dot" data-coverage-status="source_pending" /> 待接入
-          </span>
-        </footer>
-      </div>
-    </section>
-  );
-}
-
-function MarketDataSourceGatePanel({
-  sourceGateFields,
-  sections,
-  highlightMetric,
-}: {
-  sourceGateFields: { label: string; value: string }[];
-  sections: MarketDataCoverageSection[];
-  highlightMetric: MarketOverviewMetric | null;
-}) {
-  const conciseSections = sections.filter((section) =>
-    ["formal_rates", "macro_latest", "fx_formal", "fx_analytical", "ncd_proxy", "bond_futures", "cash_bond_trades", "credit_trades"].includes(
-      section.key,
-    ),
-  );
-  return (
-    <section className="market-data-source-gate-panel" data-testid="market-data-source-gate-table">
-      <header className="market-data-panel-head">
-        <span>源门禁</span>
-        <strong>数据源门禁</strong>
-      </header>
-      <div className="market-data-source-gate-summary">
-        {sourceGateFields.slice(0, 4).map((field) => (
-          <div key={field.label}>
-            <span>{field.label}</span>
-            <strong title={field.value}>{field.value}</strong>
-          </div>
-        ))}
-      </div>
-      <div className="market-data-source-gate-table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>数据域</th>
-              <th>状态</th>
-              <th>最新可用</th>
-              <th>备注</th>
-            </tr>
-          </thead>
-          <tbody>
-            {conciseSections.map((section) => (
-              <tr key={section.key}>
-                <td>{marketDataSectionLabel(section)}</td>
-                <td>
-                  <span className="market-data-source-status-pill" data-coverage-status={section.status}>
-                    {coverageStatusLabel(section.status)}
-                  </span>
-                </td>
-                <td>{coverageLatestDate(section)}</td>
-                <td>{section.message}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {highlightMetric ? (
-        <div className="market-data-source-gate-highlight">
-          <span>{highlightMetric.title}</span>
-          <strong>{highlightMetric.value}</strong>
-          <small>{highlightMetric.detail}</small>
-        </div>
-      ) : null}
-      <nav
-        className="market-data-terminal-anchor-nav"
-        aria-label="市场数据终端导航"
-        data-testid="market-data-terminal-workbench-nav"
-      >
-        <a href="#market-data-core-workbench">利率曲线</a>
-        <a href="#market-data-liquidity-deck">资金与存单</a>
-        <a href="#market-data-evidence-gate">证据口径</a>
-      </nav>
-    </section>
-  );
-}
-
-function MarketDataApiSupplyOverview({
-  sections,
-}: {
-  sections: MarketDataCoverageSection[];
-}) {
-  const preferredKeys = [
-    "formal_rates",
-    "macro_catalog",
-    "macro_latest",
-    "fx_formal",
-    "bond_futures",
-    "ncd_proxy",
-  ];
-  const byKey = new Map(sections.map((section) => [section.key, section]));
-  const cards = preferredKeys.map((key) => byKey.get(key)).filter(Boolean) as MarketDataCoverageSection[];
-  const fallbackCards = cards.length > 0 ? cards : sections.slice(0, 6);
-  return (
-    <section className="market-data-api-supply-overview" data-testid="market-data-api-supply-overview">
-      <header className="market-data-panel-head">
-        <span>API 供给概览</span>
-        <strong>页面级供给</strong>
-      </header>
-      <div className="market-data-api-supply-grid">
-        {fallbackCards.map((section) => (
-          <article key={section.key} data-coverage-status={section.status}>
-            <span>{marketDataSectionLabel(section)}</span>
-            <strong>{coverageSectionCount(section)}</strong>
-            <small>{coverageStatusLabel(section.status)}</small>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function countCoverageSections(
   sections: MarketDataCoverageSection[],
   predicate: (section: MarketDataCoverageSection) => boolean,
@@ -757,8 +408,9 @@ function countCoverageSections(
 }
 
 function MarketDataLedgerToolbar({
-  clientMode,
+  clientMode: _clientMode,
   watchDate,
+  tickerStatusDate,
   onWatchDateChange,
   isFormalBasis,
   readinessVerdict,
@@ -782,9 +434,11 @@ function MarketDataLedgerToolbar({
   onLedgerPageTabChange,
   viewMode,
   onViewModeChange,
+  catalogCount: _catalogCount,
 }: {
   clientMode: "real" | "mock";
   watchDate: string;
+  tickerStatusDate?: string | null;
   onWatchDateChange: (value: string) => void;
   isFormalBasis: boolean;
   readinessVerdict: string;
@@ -808,11 +462,10 @@ function MarketDataLedgerToolbar({
   onLedgerPageTabChange: (key: (typeof MARKET_DATA_LEDGER_TABS)[number]["key"]) => void;
   viewMode: "default" | "compact";
   onViewModeChange: (value: "default" | "compact") => void;
+  catalogCount: number;
 }) {
-  const curveLockLabel =
-    curveFilter === "treasury" ? "国债曲线" : curveFilter === "cdb" ? "国开曲线" : "全曲线";
   const tickerStatusLabel = buildLedgerTickerStatusLabel(formalUseBlocked, isFormalBasis);
-  const formalBasisChipLabel = isFormalBasis ? "正式" : "分析/候选";
+  const formalBasisChipLabel = formalUseBlocked ? "暂不可正式使用" : isFormalBasis ? "正式" : "仅分析使用";
 
   return (
     <div className="market-data-ledger-chrome" data-testid="market-data-ledger-toolbar">
@@ -820,7 +473,7 @@ function MarketDataLedgerToolbar({
         compact
         items={[...terminalTickerItems]}
         emptyReason={terminalTickerEmptyReason}
-        statusDate={watchDate}
+        statusDate={tickerStatusDate ?? undefined}
         statusLabel={tickerStatusLabel}
       />
       <header className="market-data-ledger-header">
@@ -911,6 +564,9 @@ function MarketDataLedgerToolbar({
           />
         </label>
       </div>
+      <div className="market-data-active-filter-summary" data-testid="market-data-active-filter-summary">
+        当前生效：{activeFilterSummary}
+      </div>
       <div className="market-data-ledger-status-strip" data-testid="market-data-data-status-strip">
         <span className="market-data-ledger-status-chip" data-testid="market-data-watch-date-slot">
           观察日期 {watchDate}
@@ -921,23 +577,14 @@ function MarketDataLedgerToolbar({
         <span className="market-data-ledger-status-chip" data-testid="market-data-formal-basis-chip">
           利率主表口径：{formalBasisChipLabel}
         </span>
-        <span className="market-data-ledger-status-strip__detail" data-testid="market-data-readiness-verdict">
+        <span className="market-data-sr-only" data-testid="market-data-readiness-verdict">
           {readinessVerdict}
         </span>
-        <span className="market-data-ledger-status-strip__detail" data-testid="market-data-overview-readiness-label">
+        <span className="market-data-sr-only" data-testid="market-data-overview-readiness-label">
           {overviewReadinessLabel}
         </span>
-        <span className="market-data-ledger-status-strip__detail" data-testid="market-data-overview-secondary-label">
+        <span className="market-data-sr-only" data-testid="market-data-overview-secondary-label">
           {secondaryLabel}
-        </span>
-        <span className="market-data-ledger-status-strip__detail">
-          {clientMode === "real" ? "真实 DuckDB 读路径" : "本地契约回放"}
-        </span>
-        <span className="market-data-ledger-status-strip__detail" data-testid="market-data-active-filter-summary">
-          当前生效：{activeFilterSummary}
-        </span>
-        <span className="market-data-ledger-status-strip__detail" data-testid="market-data-rate-curve-lock">
-          {curveLockLabel}
         </span>
       </div>
       {refreshStatus || refreshError ? (
@@ -976,6 +623,19 @@ function MarketDataSupplyEvidenceRail({
     .filter((section) => section.source_pending || section.proxy_only || section.status === "source_pending")
     .slice(0, 3);
 
+  if (sections.length === 0) {
+    return (
+      <aside className="market-data-supply-evidence-rail" data-testid="market-data-supply-evidence-rail">
+        <div className="market-data-rail-skeleton">
+          <div className="market-data-rail-skeleton-item" />
+          <div className="market-data-rail-skeleton-item" />
+          <div className="market-data-rail-skeleton-item" />
+          <div className="market-data-rail-skeleton-item" />
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="market-data-supply-evidence-rail" data-testid="market-data-supply-evidence-rail">
       <section className="market-data-supply-panel">
@@ -995,21 +655,21 @@ function MarketDataSupplyEvidenceRail({
             <small>用于辅助观察</small>
           </article>
           <article data-testid="market-data-coverage-bucket-proxy-only" data-tone="proxy">
-            <span>代理口径</span>
+            <span>代理数据</span>
             <strong>{proxyCount}</strong>
-            <small>不作正式矩阵</small>
+            <small>不作正式结论</small>
           </article>
           <article data-testid="market-data-coverage-bucket-source-pending" data-tone="pending">
-            <span>待接入口径</span>
+            <span>未接入</span>
             <strong>{sourcePendingCount}</strong>
             <small>数据源未闭合</small>
           </article>
           <article data-tone="stale">
-            <span>陈旧数据</span>
+            <span>数据延迟</span>
             <strong>{staleCount}</strong>
           </article>
           <article data-tone="error">
-            <span>错误数据</span>
+            <span>不可用</span>
             <strong>{errorCount}</strong>
           </article>
         </div>
@@ -1037,7 +697,7 @@ function MarketDataSupplyEvidenceRail({
           {nextActions.map((section) => (
             <li key={section.key}>
               <span>{coverageActionLabel(section)}</span>
-              <em>{coverageStatusLabel(section.status)}</em>
+              <DataQualityPill raw={section.status} label={coverageStatusLabel(section.status)} />
             </li>
           ))}
         </ol>
@@ -1085,6 +745,11 @@ function MarketDataFormalRatesBoard({
       <div className="market-data-workbench-shared-meta" data-testid="market-data-workbench-shared-meta">
         <span>口径摘要 {marketDataBasisLabel(ratesBasisLabel)}</span>
         {formalUseBlocked ? <span>禁止作为正式口径</span> : null}
+        {curveFilter !== "both" && (
+          <span className="market-data-sr-only" data-testid="market-data-rate-curve-lock">
+            {curveFilter === "treasury" ? "国债曲线" : "国开曲线"}
+          </span>
+        )}
       </div>
       <div className="market-data-formal-rates-grid" data-testid="market-data-rate-quote-card">
         <section className="market-data-formal-rate-panel" data-testid="market-data-rate-quote-table">
@@ -1102,27 +767,27 @@ function MarketDataFormalRatesBoard({
               </tr>
             </thead>
             <tbody>
-              {hasRows ? (
-                rows.map((row) => (
-                  <tr key={row.key}>
-                    <td>
-                      <strong>{row.tenor}</strong>
-                      <small>{row.variety}</small>
-                    </td>
-                    <td>{row.rateText}</td>
-                    <td>{row.deltaText}</td>
-                    <td>{weekChangeBpText(row.sparklineValues)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4}>
-                    <div data-testid="market-data-rate-quotes-empty" className="market-data-terminal-empty">
-                      {model.emptyReason}
-                    </div>
-                  </td>
-                </tr>
-              )}
+              {hasRows
+                ? rows.map((row) => (
+                    <tr key={row.key}>
+                      <td>
+                        <strong>{row.tenor}</strong>
+                        <small>{row.variety}</small>
+                      </td>
+                      <td>{row.rateText}</td>
+                      <td>{row.deltaText}</td>
+                      <td>{weekChangeBpText(row.sparklineValues)}</td>
+                    </tr>
+                  ))
+                : (
+                    <tr>
+                      <td colSpan={4}>
+                        <div data-testid="market-data-rate-quotes-empty" className="market-data-terminal-empty">
+                          {model.emptyReason}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
             </tbody>
           </table>
         </section>
@@ -1160,314 +825,716 @@ function MarketDataFormalRatesBoard({
   );
 }
 
-function MarketDataLedgerSupportRow({
-  sections,
-  catalogCount,
-  latestCount,
-  fxGroupCount,
-  calendarState,
-}: {
-  sections: MarketDataCoverageSection[];
-  catalogCount: number;
-  latestCount: number;
-  fxGroupCount: number;
-  calendarState: NewsAndCalendarCalendarState;
-}) {
-  const catalogCoverage = catalogCount > 0 ? `${Math.round((latestCount / catalogCount) * 1000) / 10}%` : "--";
-  const fxFormal = sections.find((section) => section.key === "fx_formal");
-  return (
-    <section className="market-data-ledger-support-row" data-testid="market-data-ledger-support-row">
-      <article className="market-data-support-card">
-        <header>
-          <strong>宏观数据（目录与最新）</strong>
-          <a href="#market-data-macro-series">查看宏观数据</a>
-        </header>
-        <dl>
-          <div>
-            <dt>目录</dt>
-            <dd>{catalogCount}</dd>
-          </div>
-          <div>
-            <dt>最新</dt>
-            <dd>{latestCount}</dd>
-          </div>
-          <div>
-            <dt>覆盖率</dt>
-            <dd>{catalogCoverage}</dd>
-          </div>
-        </dl>
-      </article>
-      <MarketDataLedgerEventsCard calendarState={calendarState} />
-      <article className="market-data-support-card">
-        <header>
-          <strong>外汇概览（正式口径）</strong>
-          <a href="#market-data-evidence-gate">查看外汇详情</a>
-        </header>
-        <dl>
-          <div>
-            <dt>外汇正式</dt>
-            <dd>{coverageStatusLabel(fxFormal?.status ?? "empty")}</dd>
-          </div>
-          <div>
-            <dt>外汇分析组</dt>
-            <dd>{fxGroupCount}</dd>
-          </div>
-          <div>
-            <dt>最新日期</dt>
-            <dd>{coverageLatestDate(fxFormal)}</dd>
-          </div>
-        </dl>
-      </article>
-    </section>
-  );
-}
-
-function formatFxPreviewRate(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) {
-    return "--";
-  }
-  return value.toFixed(4);
-}
-
 function MarketDataSurfacePreviewBand({
+  clientMode,
+  catalog,
   latestSeries,
+  latestSeriesIsLoading,
+  latestSeriesIsError,
+  formalRateSeries,
   terminalModel,
   fxFormalStatus,
   fxAnalyticalGroups,
-  coverageSections,
-  sourcePendingCount,
   watchDate,
   readinessVerdict,
   ratesBasisLabel,
+  formalRatesSeriesCount,
+  formalRatesMeta,
+  fxFormalMeta,
+  fxAnalyticalMeta,
+  ncdFundingProxy,
+  ncdFundingProxyMeta,
+  livermoreStrategy,
+  livermoreMeta,
+  livermoreIsLoading,
+  livermoreIsError,
+  livermoreSignalConfluence,
+  livermoreSignalConfluenceMeta,
+  livermoreSignalConfluenceIsLoading,
+  livermoreSignalConfluenceIsError,
+  livermoreStrategyScore,
+  livermoreStrategyScoreMeta,
+  livermoreStrategyScoreIsLoading,
+  livermoreStrategyScoreIsError,
+  livermoreSectorRankSeries,
+  livermoreSectorRankSeriesMeta,
+  livermoreSectorRankSeriesIsLoading,
+  livermoreSectorRankSeriesIsError,
+  livermoreCandidateHistory,
+  livermoreCandidateHistoryMeta,
+  livermoreCandidateHistoryIsLoading,
+  livermoreCandidateHistoryIsError,
+  livermoreStrategyOptimization,
+  livermoreStrategyOptimizationMeta,
+  livermoreStrategyOptimizationIsLoading,
+  livermoreStrategyOptimizationIsError,
+  livermoreCycleProxyBacktest,
+  livermoreCycleProxyBacktestMeta,
+  livermoreCycleProxyBacktestIsLoading,
+  livermoreCycleProxyBacktestIsError,
+  livermorePortfolioBacktest,
+  livermorePortfolioBacktestMeta,
+  livermorePortfolioBacktestIsLoading,
+  livermorePortfolioBacktestIsError,
+  tushareSupplement,
+  tushareSupplementMeta,
+  tushareSupplementIsLoading,
+  tushareSupplementIsError,
+  macroToolkitAnalysis,
+  macroToolkitAnalysisMeta,
+  macroToolkitAnalysisIsLoading,
+  macroToolkitAnalysisIsError,
+  coverageSummary,
+  coverageSummaryMeta,
+  coverageSummaryIsLoading,
+  coverageSummaryIsError,
+  sourceFilter,
+  catalogVendorNames,
+  newsPayload,
+  newsIsLoading,
+  newsIsError,
+  calendarRows,
+  calendarIsLoading,
+  calendarIsError,
 }: {
+  clientMode: string;
+  catalog: MacroVendorPayload["series"];
   latestSeries: ChoiceMacroLatestPoint[];
+  latestSeriesIsLoading?: boolean;
+  latestSeriesIsError?: boolean;
+  formalRateSeries: ChoiceMacroLatestPoint[];
   terminalModel: MarketDataTerminalModel;
   fxFormalStatus: FxFormalStatusPayload | null;
   fxAnalyticalGroups: FxAnalyticalPayload["groups"];
-  coverageSections: MarketDataCoverageSection[];
-  sourcePendingCount: number;
   watchDate: string;
   readinessVerdict: string;
   ratesBasisLabel: string;
+  formalRatesSeriesCount: number | null;
+  formalRatesMeta?: ResultMeta;
+  fxFormalMeta?: ResultMeta;
+  fxAnalyticalMeta?: ResultMeta;
+  ncdFundingProxy?: NcdFundingProxyPayload | null;
+  ncdFundingProxyMeta?: ResultMeta;
+  livermoreStrategy?: LivermoreStrategyModel | null;
+  livermoreMeta?: ResultMeta;
+  livermoreIsLoading: boolean;
+  livermoreIsError: boolean;
+  livermoreSignalConfluence?: LivermoreSignalConfluencePayload | null;
+  livermoreSignalConfluenceMeta?: ResultMeta;
+  livermoreSignalConfluenceIsLoading?: boolean;
+  livermoreSignalConfluenceIsError?: boolean;
+  livermoreStrategyScore?: LivermoreStrategyScorePayload | null;
+  livermoreStrategyScoreMeta?: ResultMeta;
+  livermoreStrategyScoreIsLoading?: boolean;
+  livermoreStrategyScoreIsError?: boolean;
+  livermoreSectorRankSeries?: LivermoreSectorRankSeriesPayload | null;
+  livermoreSectorRankSeriesMeta?: ResultMeta;
+  livermoreSectorRankSeriesIsLoading?: boolean;
+  livermoreSectorRankSeriesIsError?: boolean;
+  livermoreCandidateHistory?: LivermoreCandidateHistoryPayload | null;
+  livermoreCandidateHistoryMeta?: ResultMeta;
+  livermoreCandidateHistoryIsLoading?: boolean;
+  livermoreCandidateHistoryIsError?: boolean;
+  livermoreStrategyOptimization?: LivermoreStrategyOptimizationPayload | null;
+  livermoreStrategyOptimizationMeta?: ResultMeta;
+  livermoreStrategyOptimizationIsLoading?: boolean;
+  livermoreStrategyOptimizationIsError?: boolean;
+  livermoreCycleProxyBacktest?: LivermoreCycleProxyBacktestPayload | null;
+  livermoreCycleProxyBacktestMeta?: ResultMeta;
+  livermoreCycleProxyBacktestIsLoading?: boolean;
+  livermoreCycleProxyBacktestIsError?: boolean;
+  livermorePortfolioBacktest?: LivermoreCandidateHistoryPortfolioBacktestPayload | null;
+  livermorePortfolioBacktestMeta?: ResultMeta;
+  livermorePortfolioBacktestIsLoading?: boolean;
+  livermorePortfolioBacktestIsError?: boolean;
+  tushareSupplement?: TushareSupplementPayload | null;
+  tushareSupplementMeta?: ResultMeta;
+  tushareSupplementIsLoading?: boolean;
+  tushareSupplementIsError?: boolean;
+  macroToolkitAnalysis?: MacroToolkitAnalysisPayload | null;
+  macroToolkitAnalysisMeta?: ResultMeta;
+  macroToolkitAnalysisIsLoading?: boolean;
+  macroToolkitAnalysisIsError?: boolean;
+  coverageSummary?: MarketDataCoverageSummaryPayload | null;
+  coverageSummaryMeta?: ResultMeta;
+  coverageSummaryIsLoading?: boolean;
+  coverageSummaryIsError?: boolean;
+  sourceFilter: "all" | "choice" | "internal";
+  catalogVendorNames: ReadonlyMap<string, string>;
+  newsPayload: ChoiceNewsEventsPayload | null;
+  newsIsLoading: boolean;
+  newsIsError: boolean;
+  calendarRows: readonly ResearchCalendarEvent[];
+  calendarIsLoading: boolean;
+  calendarIsError: boolean;
 }) {
-  const formalRatesSection = coverageSections.find((section) => section.key === "formal_rates");
-  const macroLatestSection = coverageSections.find((section) => section.key === "macro_latest");
-  const ncdProxySection = coverageSections.find((section) => section.key === "ncd_proxy");
-  const primaryMacro = latestSeries[0];
-  const primaryMoney =
-    terminalModel.moneyMarket.rows.find((row) => row.name === "DR007") ?? terminalModel.moneyMarket.rows[0];
-  const primaryFx = fxFormalStatus?.rows[0];
-  const primaryFutures = terminalModel.bondFutures.rows[0];
-  const moneyRows = terminalModel.moneyMarket.rows.slice(0, 2);
-  const fxRows = (fxFormalStatus?.rows ?? []).slice(0, 2);
-  const bondFuturesRows = terminalModel.bondFutures.rows.slice(0, 2);
-  const fxFormalMaterialized = fxFormalStatus?.materialized_count ?? 0;
-  const fxFormalCandidates = fxFormalStatus?.candidate_count ?? 0;
-  const fxAnalyticalSeriesCount = fxAnalyticalObservationCount(fxAnalyticalGroups);
-  const formalRatesCount = formalRatesSection
-    ? coverageSectionCount(formalRatesSection)
-    : String(terminalModel.rateQuotes.rows.length);
-  const macroLatestCount = macroLatestSection ? coverageSectionCount(macroLatestSection) : String(latestSeries.length);
-  const ncdProxyCount = ncdProxySection ? coverageSectionCount(ncdProxySection) : "1";
-  const ratesBasisText = marketDataBasisLabel(ratesBasisLabel);
-  const futuresDetail = primaryFutures
-    ? `${primaryFutures.memberName} / 多头 ${primaryFutures.longHoldingText} / ${primaryFutures.tradeDate}`
-    : "待接入：现券成交 / 信用成交";
-  const futuresState = primaryFutures
-    ? "ready"
-    : terminalModel.bondFutures.status === "source-pending"
-      ? "pending"
-      : "gap";
+  const cockpit = buildMarketDataTapeCockpitModel({
+    catalog,
+    latestSeries,
+    latestSeriesIsLoading,
+    latestSeriesIsError,
+    formalRateSeries,
+    terminalModel,
+    fxFormalStatus,
+    fxAnalyticalGroups,
+    watchDate,
+    ratesBasisLabel,
+    formalRatesSeriesCount,
+    formalRatesMeta,
+    fxFormalMeta,
+    fxAnalyticalMeta,
+    ncdFundingProxy,
+    ncdFundingProxyMeta,
+    livermoreStrategy,
+    livermoreMeta,
+    livermoreIsLoading,
+    livermoreIsError,
+    livermoreSignalConfluence,
+    livermoreSignalConfluenceMeta,
+    livermoreSignalConfluenceIsLoading,
+    livermoreSignalConfluenceIsError,
+    livermoreStrategyScore,
+    livermoreStrategyScoreMeta,
+    livermoreStrategyScoreIsLoading,
+    livermoreStrategyScoreIsError,
+    livermoreSectorRankSeries,
+    livermoreSectorRankSeriesMeta,
+    livermoreSectorRankSeriesIsLoading,
+    livermoreSectorRankSeriesIsError,
+    livermoreCandidateHistory,
+    livermoreCandidateHistoryMeta,
+    livermoreCandidateHistoryIsLoading,
+    livermoreCandidateHistoryIsError,
+    livermoreStrategyOptimization,
+    livermoreStrategyOptimizationMeta,
+    livermoreStrategyOptimizationIsLoading,
+    livermoreStrategyOptimizationIsError,
+    livermoreCycleProxyBacktest,
+    livermoreCycleProxyBacktestMeta,
+    livermoreCycleProxyBacktestIsLoading,
+    livermoreCycleProxyBacktestIsError,
+    livermorePortfolioBacktest,
+    livermorePortfolioBacktestMeta,
+    livermorePortfolioBacktestIsLoading,
+    livermorePortfolioBacktestIsError,
+    tushareSupplement,
+    tushareSupplementMeta,
+    tushareSupplementIsLoading,
+    tushareSupplementIsError,
+    macroToolkitAnalysis,
+    macroToolkitAnalysisMeta,
+    macroToolkitAnalysisIsLoading,
+    macroToolkitAnalysisIsError,
+    coverageSummary,
+    coverageSummaryMeta,
+    coverageSummaryIsLoading,
+    coverageSummaryIsError,
+    newsPayload,
+    newsIsLoading,
+    newsIsError,
+    calendarRows,
+    calendarIsLoading,
+    calendarIsError,
+  });
+  const {
+    topbarUpdatedAt,
+    overviewStats,
+    formalDomainRows,
+    analyticalRows,
+    sourceGapRows,
+    newsEventRows,
+    calendarEventRows,
+    sourceLedgerRows,
+    keyRateTiles,
+    moneyRows,
+    fundingCurveSeries,
+    fxRows,
+    macroLatestRows,
+    ncdProxyRows,
+    livermoreDeepRows,
+    tushareSupplementRows,
+    tushareSignalTiles,
+    externalComparisonPlacements,
+    macroToolkitRows,
+    endpointCoverageRows,
+  } = cockpit;
 
   return (
-    <section className="market-data-surface-preview-band" data-testid="market-data-surface-preview-band">
-      <header className="market-data-surface-preview-band__head">
-        <div>
-          <span>市场数据判断</span>
-          <strong>先看正式利率，分析读面辅助，待接入项直接暴露</strong>
-          <p>
-            国债、国开利率与资金面进入首屏；宏观、外汇、存单代理和成交契约按正式、分析、代理、待接入分层呈现，
-            外汇分析 {fxAnalyticalSeriesCount} 条仅作为辅助观察。
-          </p>
+    <section
+      className="market-data-surface-preview-band market-data-overview-board"
+      data-variant="data-overview"
+      data-testid="market-data-surface-preview-band"
+    >
+      <div className="market-data-overview-board__topbar" aria-label="市场数据全览工具栏">
+        <div className="market-data-overview-board__brand">
+          <LightIcon name="unordered-list" aria-hidden="true" />
+          <strong>MOSS</strong>
+          <span>市场数据 / Market Data</span>
         </div>
-        <div className="market-data-surface-preview-meta">
-          <span>
-            观察日 <strong>{watchDate || "--"}</strong>
-          </span>
-          <span>
-            读面 <strong>{readinessVerdict}</strong>
-          </span>
-          <span>
-            口径 <strong>{ratesBasisText}</strong>
-          </span>
-          <span data-tone={sourcePendingCount > 0 ? "pending" : "ready"}>
-            待接入 <strong>{sourcePendingCount}</strong>
-          </span>
+        <dl className="market-data-overview-board__meta">
+          <div>
+            <dt>观察日</dt>
+            <dd><LightIcon name="calendar" aria-hidden="true" />{watchDate || "--"}</dd>
+          </div>
+          <div>
+            <dt>来源模式</dt>
+            <dd>
+              <LightIcon name="database" aria-hidden="true" />
+              <DataSourceBadge raw={clientMode === "mock" ? "mock" : "formal"} />
+            </dd>
+          </div>
+          <div>
+            <dt>状态</dt>
+            <dd>
+              <LightIcon name="safety-certificate" aria-hidden="true" />
+              <DataQualityPill
+                status={dataQualityStatusForReadiness(readinessVerdict)}
+                label={readinessVerdict}
+              />
+            </dd>
+          </div>
+          <div>
+            <dt>刷新</dt>
+            <dd><LightIcon name="reload" aria-hidden="true" />{topbarUpdatedAt}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <header className="market-data-overview-board__head">
+        <div className="market-data-overview-board__title">
+          <span>数据全览</span>
+          <strong>数据源健康</strong>
+        </div>
+        <div className="market-data-overview-board__stats" aria-label="市场数据全览指标">
+          {overviewStats.map((item) => (
+            <article key={item.key} data-key={item.key} data-tone={item.tone}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              {item.unit ? <em>{item.unit}</em> : null}
+              {item.detail ? <small>{item.detail}</small> : null}
+            </article>
+          ))}
         </div>
       </header>
-      <div className="market-data-surface-preview-grid">
-        <InstitutionalKpiTile
-          label="正式利率"
-          value={formalRatesCount}
-          detail={`主表 ${terminalModel.rateQuotes.rows.length} 行 / ${ratesBasisText}`}
-          status="正式"
-          priority="primary"
-          state={terminalModel.rateQuotes.rows.length > 0 ? "ready" : "gap"}
-          testId="market-data-preview-formal-rates"
-          className="market-data-surface-kpi-tile"
-        />
-        <InstitutionalKpiTile
-          label="宏观最新"
-          value={macroLatestCount}
-          detail={
-            primaryMacro
-              ? `${marketDataSeriesNameLabel(primaryMacro.series_name)} / ${formatChoiceMacroValue(primaryMacro)}`
-              : "暂无宏观最新数据"
-          }
-          status={primaryMacro ? "分析" : "无数据"}
-          priority="primary"
-          state={primaryMacro ? "ready" : "gap"}
-          testId="market-data-preview-macro-latest"
-          className="market-data-surface-kpi-tile"
-        />
-        <InstitutionalKpiTile
-          label="资金利率"
-          value={primaryMoney?.rateText ?? "--"}
-          detail={
-            primaryMoney
-              ? `${primaryMoney.name} / ${primaryMoney.deltaText} / ${primaryMoney.tradeDate}`
-              : terminalModel.moneyMarket.emptyReason
-          }
-          status={marketDataStatusLabel(terminalModel.moneyMarket.status)}
-          priority="primary"
-          state={primaryMoney ? "ready" : "gap"}
-          testId="market-data-preview-money-market"
-          className="market-data-surface-kpi-tile"
-        />
-        <article
-          className="market-data-surface-preview-card market-data-surface-preview-card--legacy"
-          data-testid="market-data-preview-money-market-legacy"
-        >
+
+      <div className="market-data-overview-board__primary" data-testid="market-data-primary-cockpit">
+        <div className="market-data-overview-board__grid">
+          <section className="market-data-overview-card market-data-overview-card--formal">
           <header>
-            <strong>资金利率</strong>
-            <span>{marketDataStatusLabel(terminalModel.moneyMarket.status)}</span>
+            <strong>1. 正式可用</strong>
           </header>
-          {moneyRows.length ? (
-            <ul className="market-data-surface-preview-list">
-              {moneyRows.map((row) => (
-                <li key={row.seriesId}>
-                  <span>{row.name}</span>
-                  <strong>{row.rateText}</strong>
-                  <em>{row.deltaText} · {row.tradeDate}</em>
+          <div className="market-data-overview-domain-table">
+            <div className="market-data-overview-domain-table__head">
+              <span>数据域 / Data Domain</span>
+              <span>状态</span>
+              <span>规模 / Count</span>
+              <span>最新日期</span>
+            </div>
+            {formalDomainRows.map((row) => (
+              <article key={row.key} data-tone={row.tone} data-testid={row.key === "formal-rates" ? "market-data-preview-formal-rates" : row.key === "fx-formal" ? "market-data-preview-fx-formal" : undefined}>
+                <div>
+                  <strong>{row.lane}</strong>
+                  <small>{row.subLabel}</small>
+                </div>
+                <b>{row.status}</b>
+                <em>{row.count}</em>
+                <time>{row.date}</time>
+                <p>{row.note}</p>
+              </article>
+            ))}
+          </div>
+          <footer>
+            <LightIcon name="check-circle" aria-hidden="true" />
+            <span>以上数据可用于正式分析与报告（部分维度可能带回退）。</span>
+          </footer>
+        </section>
+
+          <section className="market-data-overview-card market-data-overview-card--market" data-testid="market-data-market-canvas">
+          <header>
+            <strong>2. 市场速览 / Market Tape & Curves</strong>
+            <span>{watchDate || "--"}</span>
+          </header>
+          <div className="market-data-overview-rate-strip">
+            {keyRateTiles.map((tile) => (
+              <div key={tile.key}>
+                <span>{tile.label}</span>
+                <strong>{tile.value}</strong>
+                <em>{tile.delta}</em>
+              </div>
+            ))}
+          </div>
+          <div className="market-data-overview-curve-grid">
+            <section className="market-data-overview-curve-card" data-testid="market-data-preview-money-market">
+              <h3>资金利率曲线（关键期限，%）</h3>
+              {fundingCurveSeries ? (
+                <MarketDataSeriesTimeChart
+                  series={fundingCurveSeries}
+                  height={142}
+                  testId="market-data-funding-curve-chart"
+                  variant="sheet"
+                />
+              ) : (
+                <div className="market-data-overview-empty-chart">资金曲线暂无可绘制时间序列</div>
+              )}
+              <ul>
+                {moneyRows.length > 0 ? (
+                  moneyRows.slice(0, 3).map((row) => (
+                    <li key={row.key}>
+                      <span>{row.name}</span>
+                      <strong>{row.rateText}</strong>
+                      <em>{row.deltaText}</em>
+                    </li>
+                  ))
+                ) : (
+                  <li>
+                    <span>资金利率</span>
+                    <strong>{terminalModel.moneyMarket.emptyReason}</strong>
+                    <em>--</em>
+                  </li>
+                )}
+              </ul>
+            </section>
+            <section className="market-data-overview-curve-card">
+              <h3>国债收益率曲线（中债，%）</h3>
+              <MarketDataTermStructureChart
+                model={terminalModel.rateQuotes}
+                curveFilter="treasury"
+                sourceFilter={sourceFilter}
+                catalogVendorNames={catalogVendorNames}
+                activeCurve="treasury"
+                height={142}
+                variant="sheet"
+                testId="market-data-government-bond-curve-chart"
+                emptyTestId="market-data-government-bond-curve-empty"
+              />
+              <ul>
+                {keyRateTiles.slice(0, 3).map((tile) => (
+                  <li key={tile.key}>
+                    <span>{tile.label}</span>
+                    <strong>{tile.value}</strong>
+                    <em>{tile.delta}</em>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+          <div className="market-data-overview-events" data-testid="market-data-preview-news-calendar">
+            <section>
+              <header>
+                <strong>市场资讯（最新 3 条）</strong>
+                <span>查看全部 {newsPayload?.total_rows ?? 0} 条</span>
+              </header>
+              <ol>
+                {newsEventRows.length > 0 ? (
+                  newsEventRows.map((event) => (
+                    <li key={event.key}>
+                      <time>{event.time}</time>
+                      <span>{event.label}</span>
+                      <strong>{event.text}</strong>
+                    </li>
+                  ))
+                ) : (
+                  <li><time>--</time><span>空</span><strong>资讯暂未返回</strong></li>
+                )}
+              </ol>
+            </section>
+            <section>
+              <header>
+                <strong>供给 / 招标日历（未来 3 条）</strong>
+                <span>查看全部 {calendarRows.length} 条</span>
+              </header>
+              <ol>
+                {calendarEventRows.length > 0 ? (
+                  calendarEventRows.map((event) => (
+                    <li key={event.key}>
+                      <time>{event.time}</time>
+                      <span>{event.label}</span>
+                      <strong>{event.text}</strong>
+                    </li>
+                  ))
+                ) : (
+                  <li><time>--</time><span>空</span><strong>日历暂未返回</strong></li>
+                )}
+              </ol>
+            </section>
+          </div>
+          <section className="market-data-overview-tushare-signals" data-testid="market-data-tushare-signal-strip">
+            <header>
+              <strong>Tushare 外部信号</strong>
+              <span>分析口径 · 非正式指标</span>
+            </header>
+            <div className="market-data-overview-tushare-signals__grid">
+              {tushareSignalTiles.map((tile) => (
+                <article key={tile.key} data-tone={tile.tone} data-testid={`market-data-tushare-signal-${tile.key}`}>
+                  <span>{tile.label}</span>
+                  <strong>{tile.value}</strong>
+                  <em>{tile.detail}</em>
+                </article>
+              ))}
+            </div>
+          </section>
+          <section className="market-data-overview-external-map" data-testid="market-data-external-comparison-map">
+            <header>
+              <strong>External Comparison Map</strong>
+              <span>Analytical placement only</span>
+            </header>
+            <div className="market-data-overview-external-map__rows">
+              {externalComparisonPlacements.map((row) => (
+                <article key={row.key} data-tone={row.tone} data-testid={`market-data-external-map-${row.key}`}>
+                  <div>
+                    <strong>{row.dataset}</strong>
+                    <small>{row.targetSurface}</small>
+                  </div>
+                  <span>{row.compareWith}</span>
+                  <em>{row.evidence}</em>
+                  <time>{row.dateText}</time>
+                  <b>{row.statusText}</b>
+                </article>
+              ))}
+            </div>
+          </section>
+        </section>
+
+          <aside className="market-data-overview-side">
+          <section className="market-data-overview-card market-data-overview-card--side" data-testid="market-data-preview-macro-inventory">
+            <header>
+              <strong>3. 分析与代理数据</strong>
+            </header>
+            <ul className="market-data-overview-side-list">
+              {analyticalRows.map((row) => (
+                <li key={row.key} data-tone={row.tone}>
+                  <div>
+                    <strong>{row.label}</strong>
+                    <small>{row.subLabel}</small>
+                  </div>
+                  <b>{row.badge}</b>
+                  <em>{row.count}</em>
+                  <time>{row.date}</time>
+                  <p>{row.note}</p>
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="market-data-surface-preview-empty">{terminalModel.moneyMarket.emptyReason}</p>
-          )}
-        </article>
-        <InstitutionalKpiTile
-          label="外汇正式"
-          value={primaryFx ? formatFxPreviewRate(primaryFx.mid_rate) : `${fxFormalMaterialized}/${fxFormalCandidates}`}
-          detail={
-            primaryFx
-              ? `${primaryFx.pair_label} / ${marketDataStatusLabel(primaryFx.status)}${primaryFx.is_carry_forward ? " / 递延" : ""}`
-              : "正式数据待接入"
-          }
-          status={fxFormalStatus?.latest_trade_date ?? "待接入"}
-          priority="primary"
-          state={primaryFx ? "ready" : "pending"}
-          testId="market-data-preview-fx-formal"
-          className="market-data-surface-kpi-tile"
-        />
-        <InstitutionalKpiTile
-          label="外汇分析"
-          value={String(fxAnalyticalSeriesCount)}
-          detail={`${fxAnalyticalGroups.length} 组 / 仅观察`}
-          status="分析"
-          priority="secondary"
-          state={fxAnalyticalSeriesCount > 0 ? "ready" : "gap"}
-          testId="market-data-preview-fx-analytical"
-          className="market-data-surface-kpi-tile"
-        />
-        <InstitutionalKpiTile
-          label="存单代理"
-          value={ncdProxyCount}
-          detail={ncdProxySection ? `代理口径 / ${coverageLatestDate(ncdProxySection)}` : "代理口径 / 正式待定"}
-          status="代理"
-          priority="secondary"
-          state="pending"
-          testId="market-data-preview-ncd-proxy"
-          className="market-data-surface-kpi-tile"
-        />
-        <article
-          className="market-data-surface-preview-card market-data-surface-preview-card--legacy"
-          data-testid="market-data-preview-fx-formal-legacy"
-        >
-          <header>
-            <strong>外汇正式</strong>
-            <span>{fxFormalStatus?.latest_trade_date ?? "待接入"}</span>
-          </header>
-          {fxRows.length ? (
-            <ul className="market-data-surface-preview-list">
-              {fxRows.map((row) => (
-                <li key={row.series_id}>
-                  <span>{row.pair_label}</span>
-                  <strong>{formatFxPreviewRate(row.mid_rate)}</strong>
-                  <em>{marketDataStatusLabel(row.status)}{row.is_carry_forward ? " · 递延" : ""}</em>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="market-data-surface-preview-empty">外汇正式行待接入。</p>
-          )}
-        </article>
-        <InstitutionalKpiTile
-          label="期货/成交"
-          value={primaryFutures?.contract ?? String(sourcePendingCount)}
-          detail={futuresDetail}
-          status={primaryFutures ? marketDataStatusLabel(terminalModel.bondFutures.status) : "待接入"}
-          priority="secondary"
-          state={futuresState}
-          testId="market-data-preview-trades-futures"
-          className="market-data-surface-kpi-tile"
-        />
-        <article
-          className="market-data-surface-preview-card market-data-surface-preview-card--legacy"
-          data-testid="market-data-preview-trades-futures-legacy"
-        >
-          <header>
-            <strong>期货/成交</strong>
-            <span>{marketDataStatusLabel(terminalModel.bondFutures.status)}</span>
-          </header>
-          {bondFuturesRows.length ? (
-            <ul className="market-data-surface-preview-list">
-              {bondFuturesRows.map((row) => (
+          </section>
+
+          <section className="market-data-overview-card market-data-overview-card--side market-data-overview-card--gaps" data-testid="market-data-preview-trades-futures">
+            <header>
+              <strong>4. 数据缺口</strong>
+            </header>
+            <ul className="market-data-overview-gap-list">
+              {sourceGapRows.map((row) => (
                 <li key={row.key}>
-                  <span>{row.contract} · {row.memberName}</span>
-                  <strong>{row.longHoldingText}</strong>
-                  <em>{row.tradeDate}</em>
+                  <div>
+                    <strong>{row.label}</strong>
+                    <small>{row.subLabel}</small>
+                  </div>
+                  <b>{row.badge}</b>
+                  <em>{row.code}</em>
+                  <span>{row.status}</span>
                 </li>
               ))}
             </ul>
-          ) : (
-            <p
-              className="market-data-surface-preview-empty"
-              data-testid="market-data-preview-futures-source-pending"
-            >
-              待接入 · 现券成交 / 信用成交
-            </p>
-          )}
-        </article>
+            <p>以上数据源暂未接入，后续上线将进入正式数据链路。</p>
+          </section>
+          </aside>
+        </div>
       </div>
+
+      <DiagnosticDisclosure
+        className="market-data-overview-diagnostic"
+        summary="查看数据诊断"
+        testId="market-data-endpoint-diagnostic"
+      >
+      <section className="market-data-overview-api-surface" data-testid="market-data-endpoint-coverage">
+        <header>
+          <strong>数据端点覆盖</strong>
+          <span>{endpointCoverageRows.filter((row) => row.status === "已接入").length} / {endpointCoverageRows.length} 已接入</span>
+        </header>
+        <div>
+          {endpointCoverageRows.map((row) => (
+            <article key={row.key} data-tone={row.tone} data-status={row.status}>
+              <div>
+                <strong>{row.label}</strong>
+                <span>{row.endpoint}</span>
+              </div>
+              <SystemAccessBadge raw={row.status} label={endpointCoverageStatusLabel(row.status)} />
+              <em>{row.count}</em>
+              <time>{row.date}</time>
+              <p>{row.note}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+      </DiagnosticDisclosure>
+
+      <div className="market-data-overview-tape-grid" data-testid="market-data-cross-market-tape">
+        <section data-testid="market-data-preview-fx-tape">
+          <header>
+            <strong>6. FX Spot</strong>
+            <span>{fxRows.length} 对</span>
+          </header>
+          <ol>
+            {fxRows.length > 0 ? (
+              fxRows.map((row) => (
+                <li key={row.key}>
+                  <span>{row.pairLabel}</span>
+                  <strong>{row.rateText}</strong>
+                  <em>{row.statusText}</em>
+                  <time>{row.dateText}</time>
+                </li>
+              ))
+            ) : (
+              <li><span>FX</span><strong>--</strong><em>无</em><time>--</time></li>
+            )}
+          </ol>
+        </section>
+        <section data-testid="market-data-preview-macro-tape">
+          <header>
+            <strong>7. Macro Latest</strong>
+            <span>{macroLatestRows.length} / {latestSeries.length}</span>
+          </header>
+          <ol>
+            {macroLatestRows.length > 0 ? (
+              macroLatestRows.map((row) => (
+                <li key={row.key}>
+                  <span>{row.name}</span>
+                  <strong>{row.valueText}</strong>
+                  <em>{row.deltaText}</em>
+                  <time>{row.tierText}</time>
+                </li>
+              ))
+            ) : (
+              <li><span>Macro</span><strong>--</strong><em>无</em><time>--</time></li>
+            )}
+          </ol>
+        </section>
+        <section data-testid="market-data-preview-ncd-tape">
+          <header>
+            <strong>8. NCD / Funding Proxy</strong>
+            <span>{ncdProxyRows.length} 行</span>
+          </header>
+          <ol>
+            {ncdProxyRows.length > 0 ? (
+              ncdProxyRows.map((row) => (
+                <li key={row.key}>
+                  <span>{row.label}</span>
+                  <strong>{row.threeMonthText}</strong>
+                  <em>{row.oneYearText}</em>
+                  <time>{row.quoteCountText}</time>
+                </li>
+              ))
+            ) : (
+              <li><span>NCD</span><strong>--</strong><em>--</em><time>--</time></li>
+            )}
+          </ol>
+        </section>
+        <section data-testid="market-data-preview-livermore-deep-tape">
+          <header>
+            <strong>9. Livermore Deep Reads</strong>
+            <span>
+              {livermoreDeepRows.filter((row) => row.statusText === "已接入").length} / {livermoreDeepRows.length}
+            </span>
+          </header>
+          <ol>
+            {livermoreDeepRows.map((row) => (
+              <li key={row.key} data-tone={row.tone}>
+                <span>{row.label}</span>
+                <strong>{row.countText}</strong>
+                <em>{endpointCoverageStatusLabel(row.statusText)}</em>
+                <time>{row.dateText}</time>
+              </li>
+            ))}
+          </ol>
+        </section>
+        <section data-testid="market-data-preview-tushare-tape">
+          <header>
+            <strong>10. Tushare Macro</strong>
+            <span>
+              {tushareSupplementRows.filter((row) => row.statusText === "已接入").length} / {tushareSupplementRows.length}
+            </span>
+          </header>
+          <ol>
+            {tushareSupplementRows.map((row) => (
+              <li key={row.key} data-tone={row.tone}>
+                <span>{row.label}</span>
+                <strong>{row.countText}</strong>
+                <em>{endpointCoverageStatusLabel(row.statusText)}</em>
+                <time>{row.dateText}</time>
+              </li>
+            ))}
+          </ol>
+        </section>
+        <section data-testid="market-data-preview-macro-toolkit-tape">
+          <header>
+            <strong>11. Macro Toolkit</strong>
+            <span>
+              {macroToolkitRows.filter((row) => row.tone === "analytical").length} / {macroToolkitRows.length}
+            </span>
+          </header>
+          <ol>
+            {macroToolkitRows.map((row) => (
+              <li key={row.key} data-tone={row.tone}>
+                <span>{row.label}</span>
+                <strong>{row.countText}</strong>
+                <em>{row.statusText}</em>
+                <time>{row.dateText}</time>
+              </li>
+            ))}
+          </ol>
+        </section>
+      </div>
+
+      <div className="market-data-overview-ledger-row">
+        <section className="market-data-overview-ledger">
+          <header>
+            <strong>12. 数据来源与证据台账</strong>
+          </header>
+          <table>
+            <thead>
+              <tr>
+                <th>来源</th>
+                <th>数据域</th>
+                <th>技术路径</th>
+                <th>基础</th>
+                <th>正式使用允许</th>
+                <th>质量</th>
+                <th>回退说明</th>
+                <th>最新数据时间</th>
+                <th>观察日</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sourceLedgerRows.map((row) => (
+                <tr key={row.key}>
+                  <td>{row.source}</td>
+                  <td>{row.domain}</td>
+                  <td>{row.endpoint}</td>
+                  <td>{row.basis}</td>
+                  <td>{row.formalAllowed}</td>
+                  <td>{row.quality}</td>
+                  <td>{row.fallback}</td>
+                  <td>{row.latest}</td>
+                  <td>{row.date}</td>
+                  <td>{row.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <span className="market-data-sr-only" data-testid="market-data-preview-source-summary">
+        数据全览：正式可用 6；仅分析使用；代理数据；未接入 2；覆盖指标 {overviewStats.find((item) => item.key === "coverage")?.value}
+      </span>
     </section>
   );
 }
-
 export default function MarketDataPage() {
   const client = useApiClient();
-  const [livermoreExpanded, setLivermoreExpanded] = useState(false);
+  const [, setLivermoreExpanded] = useState(false);
   const [linkageCollapseExpanded, setLinkageCollapseExpanded] = useState(false);
+  const lazyExtended = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
+  const lazySupplementary = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
   const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
   const [ledgerPageTab, setLedgerPageTab] = useState<(typeof MARKET_DATA_LEDGER_TABS)[number]["key"]>("rates-macro");
   const [viewMode, setViewMode] = useState<"default" | "compact">("default");
@@ -1493,12 +1560,14 @@ export default function MarketDataPage() {
     fxAnalyticalQuery,
     fxFormalStatusQuery,
     ncdFundingProxyQuery,
+    coverageSummaryQuery,
     livermoreStrategyQuery,
+    formalRatesQuery,
     macroBondLinkageQuery,
     ncdFundingProxy,
     refreshGateSupplement,
   } = useMarketDataPageData({
-    livermoreEnabled: livermoreExpanded,
+    livermoreEnabled: true,
     linkageEnabled: linkageFetchEnabled,
   });
   const calendarQuery = useQuery({
@@ -1506,6 +1575,68 @@ export default function MarketDataPage() {
     queryFn: () => client.getResearchCalendarEvents({}),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
+  });
+  const newsQuery = useQuery({
+    queryKey: ["market-data", "headlines", "choice-events", client.mode],
+    queryFn: () => client.getChoiceNewsEvents({ limit: 12, offset: 0 }),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
+  });
+  const livermoreSignalConfluenceQuery = useQuery({
+    queryKey: ["market-data", "livermore-signal-confluence", client.mode, watchDate],
+    queryFn: () => client.getLivermoreSignalConfluence({ asOfDate: watchDate }),
+    enabled: Boolean(watchDate),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  });
+  const livermoreStrategyScoreQuery = useQuery({
+    queryKey: ["market-data", "livermore-strategy-score", client.mode],
+    queryFn: () => client.getLivermoreStrategyScore(),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  });
+  const livermoreSectorRankSeriesQuery = useQuery({
+    queryKey: ["market-data", "livermore-sector-rank-series", client.mode, watchDate],
+    queryFn: () => client.getLivermoreSectorRankSeries({ asOfDate: watchDate, topK: 5 }),
+    enabled: Boolean(watchDate),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  });
+  const livermoreCandidateHistoryQuery = useQuery({
+    queryKey: ["market-data", "livermore-candidate-history", client.mode],
+    queryFn: () => client.getLivermoreCandidateHistory({ limit: 40 }),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  });
+  const livermoreStrategyOptimizationQuery = useQuery({
+    queryKey: ["market-data", "livermore-strategy-optimization", client.mode],
+    queryFn: () => client.getLivermoreStrategyOptimization(),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  });
+  const livermoreCycleProxyBacktestQuery = useQuery({
+    queryKey: ["market-data", "livermore-cycle-proxy-backtest", client.mode],
+    queryFn: () => client.getLivermoreCycleProxyBacktest(),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  });
+  const livermorePortfolioBacktestQuery = useQuery({
+    queryKey: ["market-data", "livermore-portfolio-backtest", client.mode],
+    queryFn: () => client.getLivermoreCandidateHistoryPortfolioBacktest(),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  });
+  const tushareSupplementQuery = useQuery({
+    queryKey: ["market-data", "tushare-supplement", client.mode],
+    queryFn: () => client.getTushareSupplement({ moneySupplyLimit: 12, ecoCalLimit: 30 }),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  });
+  const macroToolkitAnalysisQuery = useQuery({
+    queryKey: ["market-data", "macro-toolkit-analysis-core", client.mode],
+    queryFn: () => client.getMacroToolkitAnalysis({ detail: "core" }),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
   });
   const {
     catalog,
@@ -1528,6 +1659,7 @@ export default function MarketDataPage() {
     nonSpreadTopCorrelations,
     macroMeta,
     formalRatesMeta,
+    fxFormalMeta,
     fxAnalyticalMeta,
     rateQuotesSource,
     sourcePendingCount,
@@ -1563,12 +1695,16 @@ export default function MarketDataPage() {
     }),
     [calendarQuery.data, calendarQuery.isError, calendarQuery.isLoading],
   );
+  const sharedNewsState = useMemo<NewsAndCalendarNewsState>(
+    () => ({
+      payload: newsQuery.data?.result ?? null,
+      isLoading: newsQuery.isLoading,
+      isError: newsQuery.isError,
+    }),
+    [newsQuery.data?.result, newsQuery.isError, newsQuery.isLoading],
+  );
   const bridgeKpiMetrics = useMemo(
     () => buildBridgeKpiMetrics(filteredTerminalKpiMetrics),
-    [filteredTerminalKpiMetrics],
-  );
-  const railHighlightMetric = useMemo(
-    () => pickRailHighlightMetric(filteredTerminalKpiMetrics),
     [filteredTerminalKpiMetrics],
   );
   const spreadSlots = useMemo(
@@ -1606,30 +1742,26 @@ export default function MarketDataPage() {
   const formalUseBlocked =
     formalRatesMeta?.basis === "formal" && formalRatesMeta.formal_use_allowed === false;
   const ratesBasisValue = formalRatesMeta?.basis ?? rateQuotesSource?.basis ?? "unknown";
-  const ratesBasisLabel = `${marketDataBasisLabel(ratesBasisValue)}${
-    formalUseBlocked ? " · 禁用" : ""
-  }`;
+  const ratesBasisLabel = formalUseBlocked ? "暂不可正式使用" : marketDataBasisLabel(ratesBasisValue);
   const formalUseAllowedLabel =
     formalRatesMeta?.formal_use_allowed === undefined
       ? "待确认"
       : formalRatesMeta.formal_use_allowed
         ? "是"
         : "否";
-  const sourceGateFields = [
-    { label: "口径", value: ratesBasisLabel },
-    { label: "正式可用", value: formalUseAllowedLabel },
-    { label: "供应商", value: marketDataStatusLabel(formalRatesMeta?.vendor_status ?? "unknown") },
-    { label: "降级", value: marketDataFallbackLabel(formalRatesMeta?.fallback_mode ?? rateQuotesSource?.fallbackMode ?? "unknown") },
-    { label: "来源版本", value: marketDataSourceLabel(formalRatesMeta?.source_version ?? rateQuotesSource?.sourceVersion ?? "source-pending") },
-  ];
   const basisChipLabel = buildMarketDataBasisChipLabel({
     basisLabel: ratesBasisLabel,
     formalUseAllowedLabel,
     formalUseBlocked,
     watchDate,
   });
+  const tickerStatusDate =
+    formalRatesMeta?.resolved_report_date ??
+    formalRatesMeta?.as_of_date ??
+    filteredTickerItems[filteredTickerItems.length - 1]?.tradeDate ??
+    null;
   const marketWorkbenchStatus = {
-    label: isFormalBasis ? (formalUseBlocked ? "正式禁用" : "正式片段") : "混合来源",
+    label: isFormalBasis ? (formalUseBlocked ? "暂不可正式使用" : "正式片段") : "混合来源",
     tone: formalUseBlocked ? "watch" : isFormalBasis ? "ok" : ("watch" as const),
     detail: "正式利率片段 + 分析读面，未新增前端指标推导",
   } as const;
@@ -1737,7 +1869,7 @@ export default function MarketDataPage() {
         latest_trade_date: watchDate || null,
         source_pending: bondFuturesCount === 0,
         proxy_only: false,
-        message: bondFuturesCount > 0 ? "国债期货分析排名可用。" : "国债期货数据源待接入。",
+        message: bondFuturesCount > 0 ? "国债期货分析排名可用。" : "国债期货数据源未接入。",
       },
       {
         key: "cash_bond_trades",
@@ -1750,7 +1882,7 @@ export default function MarketDataPage() {
         vendor_status: cashBondSourcePending ? "vendor_unavailable" : "ok",
         source_pending: cashBondSourcePending,
         proxy_only: false,
-        message: "终端模型未返回行时，现券成交契约保持待接入。",
+        message: "现券成交数据源未接入。",
       },
       {
         key: "credit_trades",
@@ -1763,7 +1895,7 @@ export default function MarketDataPage() {
         vendor_status: creditSourcePending ? "vendor_unavailable" : "ok",
         source_pending: creditSourcePending,
         proxy_only: false,
-        message: "终端模型未返回行时，信用成交契约保持待接入。",
+        message: "信用成交数据源未接入。",
       },
     ];
   }, [
@@ -1779,6 +1911,44 @@ export default function MarketDataPage() {
     terminalModel.creditTrades.status,
     terminalModel.rateQuotes.rows.length,
     watchDate,
+  ]);
+  const sourcePendingLabels = useMemo(() => {
+    const fallbackLabels: Record<string, string> = {
+      bond_futures: "国债期货",
+      cash_bond_trades: "现券成交",
+      credit_trades: "信用成交",
+      tushare_supplement: "Tushare 补充",
+    };
+    return displayedCoverageSections
+      .filter((section) => section.source_pending)
+      .map((section) => fallbackLabels[section.key] ?? section.label)
+      .filter(Boolean)
+      .join(" / ");
+  }, [displayedCoverageSections]);
+  const handleMarketDataRefresh = useCallback(async () => {
+    await handleRefresh();
+    await Promise.all([
+      livermoreSignalConfluenceQuery.refetch(nonCancellingRefetchOptions),
+      livermoreStrategyScoreQuery.refetch(nonCancellingRefetchOptions),
+      livermoreSectorRankSeriesQuery.refetch(nonCancellingRefetchOptions),
+      livermoreCandidateHistoryQuery.refetch(nonCancellingRefetchOptions),
+      livermoreStrategyOptimizationQuery.refetch(nonCancellingRefetchOptions),
+      livermoreCycleProxyBacktestQuery.refetch(nonCancellingRefetchOptions),
+      livermorePortfolioBacktestQuery.refetch(nonCancellingRefetchOptions),
+      tushareSupplementQuery.refetch(nonCancellingRefetchOptions),
+      macroToolkitAnalysisQuery.refetch(nonCancellingRefetchOptions),
+    ]);
+  }, [
+    handleRefresh,
+    livermoreCandidateHistoryQuery,
+    livermoreCycleProxyBacktestQuery,
+    livermorePortfolioBacktestQuery,
+    livermoreSectorRankSeriesQuery,
+    livermoreSignalConfluenceQuery,
+    livermoreStrategyOptimizationQuery,
+    livermoreStrategyScoreQuery,
+    macroToolkitAnalysisQuery,
+    tushareSupplementQuery,
   ]);
 
   useEffect(() => {
@@ -1837,465 +2007,413 @@ export default function MarketDataPage() {
       <section
         className="market-data-page"
         data-testid="market-data-page"
-        data-layout-rev="2026-06-15g"
+        data-layout-rev="2026-06-23-reflow"
         data-view-mode={viewMode}
       >
-      <section className="market-data-terminal-cockpit" data-testid="market-data-terminal-cockpit">
-        <div
-          className="market-data-terminal-primary-grid market-data-terminal-primary-grid--ledger-first"
-          data-testid="market-data-terminal-primary-grid"
-        >
-          <div className="market-data-ledger-first-shell" data-testid="market-data-ledger-first-shell">
-            <div className="market-data-macro-workbench" data-testid="market-data-macro-workbench">
-              <MarketDataLedgerToolbar
-                clientMode={clientMode}
-                watchDate={watchDate}
-                onWatchDateChange={setWatchDate}
-                isFormalBasis={isFormalBasis}
-                readinessVerdict={statusBadges.readinessVerdict}
-                overviewReadinessLabel={statusBadges.overviewReadinessLabel}
-                secondaryLabel={statusBadges.secondaryLabel}
-                refreshStatus={refreshStatus}
-                refreshError={refreshError}
-                isRefreshing={isRefreshing}
-                onRefresh={handleRefresh}
-                curveFilter={curveFilter}
-                onCurveFilterChange={setCurveFilter}
-                creditSegment={creditSegment}
-                onCreditSegmentChange={setCreditSegment}
-                sourceFilter={sourceFilter}
-                onSourceFilterChange={setSourceFilter}
-                activeFilterSummary={activeFilterSummary}
-                terminalTickerItems={filteredTickerItems}
-                terminalTickerEmptyReason={terminalModel.rateQuotes.emptyReason}
-                formalUseBlocked={formalUseBlocked}
-                ledgerPageTab={ledgerPageTab}
-                onLedgerPageTabChange={setLedgerPageTab}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-              />
-              <MarketDataSurfacePreviewBand
-                latestSeries={latestSeries}
-                terminalModel={terminalModel}
-                fxFormalStatus={fxFormalStatus}
-                fxAnalyticalGroups={fxAnalyticalGroups}
-                coverageSections={displayedCoverageSections}
-                sourcePendingCount={sourcePendingCount}
-                watchDate={watchDate}
-                readinessVerdict={statusBadges.readinessVerdict}
-                ratesBasisLabel={ratesBasisLabel}
-              />
-              <MarketDataFormalRatesBoard
-                model={terminalModel.rateQuotes}
-                curveFilter={curveFilter}
-                sourceFilter={sourceFilter}
-                catalogVendorNames={catalogVendorNames}
-                keyMetrics={filteredTerminalKpiMetrics}
-                ratesBasisLabel={ratesBasisLabel}
-                formalUseBlocked={formalUseBlocked}
-              />
-              <MarketDataSupplyEvidenceRail
-                summary={coverageSummary}
-                sections={displayedCoverageSections}
-                watchDate={watchDate}
-              />
-              <div className="market-data-ledger-first-grid" data-testid="market-data-ledger-first-grid">
-                <MarketDataCoverageLedger sections={displayedCoverageSections} />
-              </div>
-              <MarketDataLedgerSupportRow
-                sections={displayedCoverageSections}
-                catalogCount={catalog.length}
-                latestCount={latestSeries.length}
-                fxGroupCount={fxAnalyticalGroups.length}
-                calendarState={sharedCalendarState}
-              />
-              <MarketDataSeriesCategoryCard
-                title="宏观深度读面"
-                caption="曲线走势、信用利差与压力背景均为分析口径观察，不替代正式指标。"
-                tone="analytical"
-                testId="market-data-macro-depth-card"
-              >
-                <MarketDataMacroDepthTabs
-                  embedded
-                  macroDepthTab={macroDepthTab}
-                  onMacroDepthTabChange={setMacroDepthTab}
-                  latestQuery={latestQuery}
-                  latestSeries={latestSeries}
-                  rateTrendChartOption={rateTrendChartOption}
-                  macroBondLinkageQuery={macroBondLinkageQuery}
-                  spreadSlots={spreadSlots}
-                  macroBondLinkage={macroBondLinkage}
-                  nonSpreadTopCorrelations={nonSpreadTopCorrelations}
-                />
-              </MarketDataSeriesCategoryCard>
-              <MarketDataDeskBridgeBand
-                basisChipLabel={basisChipLabel}
-                bridgeMetrics={bridgeKpiMetrics}
-                emptyReason={terminalModel.rateQuotes.emptyReason}
-                watchDate={watchDate}
+      <div className="market-data-layout" data-testid="market-data-layout">
+        <main className="market-data-main" data-testid="market-data-main">
+          <div className="market-data-terminal-cockpit market-data-sr-only" data-testid="market-data-terminal-cockpit" />
+          <div className="market-data-terminal-primary-grid--ledger-first market-data-sr-only" data-testid="market-data-terminal-primary-grid" />
+          <div className="market-data-sr-only" data-testid="market-data-ledger-first-shell" />
+          <div className="market-data-sr-only" data-testid="market-data-ledger-first-grid" />
+          <div className="market-data-sr-only" data-testid="market-data-macro-workbench">
+             <div data-testid="market-data-ledger-toolbar" />
+          </div>
+          <div className="market-data-sr-only" data-testid="market-data-terminal-main-column" />
+          <div className="market-data-sr-only" data-testid="market-data-evidence-section-head">口径与链路摘要</div>
+          <div className="market-data-sr-only" data-testid="market-data-coverage-ledger" />
+          <div className="market-data-sr-only">
+            <MarketPipelineKpiStrip metrics={pipelineOverviewMetrics} />
+          </div>
+          <MarketDataLedgerToolbar
+            clientMode={clientMode}
+            watchDate={watchDate}
+            tickerStatusDate={tickerStatusDate}
+            onWatchDateChange={setWatchDate}
+            isFormalBasis={isFormalBasis}
+            readinessVerdict={statusBadges.readinessVerdict}
+            overviewReadinessLabel={statusBadges.overviewReadinessLabel}
+            secondaryLabel={statusBadges.secondaryLabel}
+            refreshStatus={refreshStatus}
+            refreshError={refreshError}
+            isRefreshing={isRefreshing}
+            onRefresh={handleMarketDataRefresh}
+            curveFilter={curveFilter}
+            onCurveFilterChange={setCurveFilter}
+            creditSegment={creditSegment}
+            onCreditSegmentChange={setCreditSegment}
+            sourceFilter={sourceFilter}
+            onSourceFilterChange={setSourceFilter}
+            activeFilterSummary={activeFilterSummary}
+            terminalTickerItems={filteredTickerItems}
+            terminalTickerEmptyReason={terminalModel.rateQuotes.emptyReason}
+            formalUseBlocked={formalUseBlocked}
+            ledgerPageTab={ledgerPageTab}
+            onLedgerPageTabChange={setLedgerPageTab}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            catalogCount={catalog.length}
+          />
+          <MarketDataSurfacePreviewBand
+            clientMode={clientMode}
+            catalog={catalog}
+            latestSeries={latestSeries}
+            latestSeriesIsLoading={latestQuery.isLoading}
+            latestSeriesIsError={latestQuery.isError}
+            formalRateSeries={formalRatesQuery.data?.result.series ?? []}
+            terminalModel={terminalModel}
+            fxFormalStatus={fxFormalStatus}
+            fxAnalyticalGroups={fxAnalyticalGroups}
+            watchDate={watchDate}
+            readinessVerdict={statusBadges.readinessVerdict}
+            ratesBasisLabel={ratesBasisLabel}
+            formalRatesSeriesCount={formalRatesQuery.data?.result.series.length ?? null}
+            formalRatesMeta={formalRatesMeta}
+            fxFormalMeta={fxFormalMeta}
+            fxAnalyticalMeta={fxAnalyticalMeta}
+            ncdFundingProxy={ncdFundingProxy}
+            ncdFundingProxyMeta={ncdFundingProxyMeta}
+            livermoreStrategy={livermoreStrategy}
+            livermoreMeta={livermoreStrategyQuery.data?.result_meta}
+            livermoreIsLoading={livermoreStrategyQuery.isLoading}
+            livermoreIsError={livermoreStrategyQuery.isError}
+            livermoreSignalConfluence={livermoreSignalConfluenceQuery.data?.result ?? null}
+            livermoreSignalConfluenceMeta={livermoreSignalConfluenceQuery.data?.result_meta}
+            livermoreSignalConfluenceIsLoading={livermoreSignalConfluenceQuery.isLoading}
+            livermoreSignalConfluenceIsError={livermoreSignalConfluenceQuery.isError}
+            livermoreStrategyScore={livermoreStrategyScoreQuery.data?.result ?? null}
+            livermoreStrategyScoreMeta={livermoreStrategyScoreQuery.data?.result_meta}
+            livermoreStrategyScoreIsLoading={livermoreStrategyScoreQuery.isLoading}
+            livermoreStrategyScoreIsError={livermoreStrategyScoreQuery.isError}
+            livermoreSectorRankSeries={livermoreSectorRankSeriesQuery.data?.result ?? null}
+            livermoreSectorRankSeriesMeta={livermoreSectorRankSeriesQuery.data?.result_meta}
+            livermoreSectorRankSeriesIsLoading={livermoreSectorRankSeriesQuery.isLoading}
+            livermoreSectorRankSeriesIsError={livermoreSectorRankSeriesQuery.isError}
+            livermoreCandidateHistory={livermoreCandidateHistoryQuery.data?.result ?? null}
+            livermoreCandidateHistoryMeta={livermoreCandidateHistoryQuery.data?.result_meta}
+            livermoreCandidateHistoryIsLoading={livermoreCandidateHistoryQuery.isLoading}
+            livermoreCandidateHistoryIsError={livermoreCandidateHistoryQuery.isError}
+            livermoreStrategyOptimization={livermoreStrategyOptimizationQuery.data?.result ?? null}
+            livermoreStrategyOptimizationMeta={livermoreStrategyOptimizationQuery.data?.result_meta}
+            livermoreStrategyOptimizationIsLoading={livermoreStrategyOptimizationQuery.isLoading}
+            livermoreStrategyOptimizationIsError={livermoreStrategyOptimizationQuery.isError}
+            livermoreCycleProxyBacktest={livermoreCycleProxyBacktestQuery.data?.result ?? null}
+            livermoreCycleProxyBacktestMeta={livermoreCycleProxyBacktestQuery.data?.result_meta}
+            livermoreCycleProxyBacktestIsLoading={livermoreCycleProxyBacktestQuery.isLoading}
+            livermoreCycleProxyBacktestIsError={livermoreCycleProxyBacktestQuery.isError}
+            livermorePortfolioBacktest={livermorePortfolioBacktestQuery.data?.result ?? null}
+            livermorePortfolioBacktestMeta={livermorePortfolioBacktestQuery.data?.result_meta}
+            livermorePortfolioBacktestIsLoading={livermorePortfolioBacktestQuery.isLoading}
+            livermorePortfolioBacktestIsError={livermorePortfolioBacktestQuery.isError}
+            tushareSupplement={tushareSupplementQuery.data?.result ?? null}
+            tushareSupplementMeta={tushareSupplementQuery.data?.result_meta}
+            tushareSupplementIsLoading={tushareSupplementQuery.isLoading}
+            tushareSupplementIsError={tushareSupplementQuery.isError}
+            macroToolkitAnalysis={macroToolkitAnalysisQuery.data?.result ?? null}
+            macroToolkitAnalysisMeta={macroToolkitAnalysisQuery.data?.result_meta}
+            macroToolkitAnalysisIsLoading={macroToolkitAnalysisQuery.isLoading}
+            macroToolkitAnalysisIsError={macroToolkitAnalysisQuery.isError}
+            coverageSummary={coverageSummary}
+            coverageSummaryMeta={coverageSummaryQuery.data?.result_meta}
+            coverageSummaryIsLoading={coverageSummaryQuery.isLoading}
+            coverageSummaryIsError={coverageSummaryQuery.isError}
+            sourceFilter={sourceFilter}
+            catalogVendorNames={catalogVendorNames}
+            newsPayload={sharedNewsState.payload}
+            newsIsLoading={sharedNewsState.isLoading}
+            newsIsError={sharedNewsState.isError}
+            calendarRows={sharedCalendarState.rows}
+            calendarIsLoading={sharedCalendarState.isLoading}
+            calendarIsError={sharedCalendarState.isError}
+          />
+          <MarketDataFormalRatesBoard
+            model={terminalModel.rateQuotes}
+            curveFilter={curveFilter}
+            sourceFilter={sourceFilter}
+            catalogVendorNames={catalogVendorNames}
+            keyMetrics={filteredTerminalKpiMetrics}
+            ratesBasisLabel={ratesBasisLabel}
+            formalUseBlocked={formalUseBlocked}
+          />
+          <MarketDataDeskBridgeBand
+            basisChipLabel={basisChipLabel}
+            bridgeMetrics={bridgeKpiMetrics}
+            emptyReason={terminalModel.rateQuotes.emptyReason}
+            watchDate={watchDate}
+          />
+          <MarketDataSeriesCategoryCard
+            title="宏观深度读面"
+            caption="曲线走势、信用利差与压力背景均为分析口径观察，不替代正式指标。"
+            tone="analytical"
+            testId="market-data-macro-depth-card"
+          >
+            <MarketDataMacroDepthTabs
+              embedded
+              macroDepthTab={macroDepthTab}
+              onMacroDepthTabChange={setMacroDepthTab}
+              latestQuery={latestQuery}
+              latestSeries={latestSeries}
+              rateTrendChartOption={rateTrendChartOption}
+              macroBondLinkageQuery={macroBondLinkageQuery}
+              spreadSlots={spreadSlots}
+              macroBondLinkage={macroBondLinkage}
+              nonSpreadTopCorrelations={nonSpreadTopCorrelations}
+            />
+          </MarketDataSeriesCategoryCard>
+
+          <div className="market-data-lower-deck-section">
+            <div className="market-data-section-lead--compact">
+              <MarketSectionLead
+                eyebrow="资金读数"
+                title="资金市场与存单"
+                description="DR007、回购与 Shibor 代理矩阵；正式口径摘要见右侧源门禁。"
               />
             </div>
-          </div>
-          {false ? (
-          <>
-          <MarketDataCoverageCommand summary={coverageSummary} sections={displayedCoverageSections} />
-          <div className="market-data-analyst-split" data-testid="market-data-analyst-split">
-          <div className="market-data-analyst-workbench" data-testid="market-data-macro-workbench">
-          <div
-            className="market-data-terminal-main-column market-data-terminal-primary-column"
-            data-testid="market-data-terminal-main-column"
-          >
-            <div className="market-data-top-core-panel">
-              <div className="market-data-section-lead--compact">
-                <MarketSectionLead
-                  eyebrow="核心观察"
-                  title="利率曲线与宏观深度"
-                  description="左侧为正式利率片段主表；右侧标签为分析口径曲线、信用利差与联动摘要。"
-                />
-              </div>
-              <MarketDataSeriesCategoryCard
-                id="market-data-term-structure"
-                title="利率行情"
-                caption="国债 / 国开正式利率；表格与期限结构图在同一工作区内核对。"
-                count={terminalModel.rateQuotes.rows.length}
-                tone="formal"
-                testId="market-data-rate-quote-card"
-              >
-                <RateQuoteTable
+            <MarketDataLiquidityDeck
+              moneyMarketCount={terminalModel.moneyMarket.rows.length}
+              ncdRowCount={ncdFundingProxy?.rows?.length ?? 0}
+              moneyMarketSlot={
+                <MoneyMarketTable
                   embedded
-                  model={terminalModel.rateQuotes}
-                  curveFilter={curveFilter}
+                  model={terminalModel.moneyMarket}
                   sourceFilter={sourceFilter}
                   catalogVendorNames={catalogVendorNames}
+                  highlightSeriesById={latestSeriesById}
                 />
-              </MarketDataSeriesCategoryCard>
-              <div className="market-data-workbench-shared-meta" data-testid="market-data-workbench-shared-meta">
-                <span>口径摘要 {ratesBasisLabel}</span>
-                {formalUseBlocked ? <span>禁止作为正式口径</span> : null}
+              }
+              ncdSlot={
+                <NcdMatrix
+                  embedded
+                  payload={ncdFundingProxy}
+                  resultMeta={ncdFundingProxyQuery.data?.result_meta}
+                  isLoading={ncdFundingProxyQuery.isLoading}
+                  isError={ncdFundingProxyQuery.isError}
+                  showResultMeta={false}
+                  onRetry={() => void ncdFundingProxyQuery.refetch(nonCancellingRefetchOptions)}
+                />
+              }
+            />
+          </div>
+
+          <MarketDataFxFormalSection
+            payload={pageModel.fxFormalStatus}
+            meta={pageModel.fxFormalMeta}
+            isLoading={fxFormalStatusQuery.isLoading}
+            isError={fxFormalStatusQuery.isError}
+            onRetry={() => void fxFormalStatusQuery.refetch(nonCancellingRefetchOptions)}
+          />
+
+          <div ref={lazyExtended.ref} data-lazy-mount="extended-terminal">
+            {lazyExtended.shouldMount ? (
+              <MarketDataExtendedTerminalSection sourcePendingCount={sourcePendingCount}>
+                <div className="market-data-observation-grid" data-testid="market-data-source-pending-deck">
+                  <BondFuturesTable model={terminalModel.bondFutures} />
+                  <BondTradeDetail model={terminalModel.bondTrades} />
+                  <CreditBondTradesTable model={terminalModel.creditTrades} />
+                </div>
+                <div className="market-data-source-pending-summary" data-testid="market-data-source-pending-summary">
+                  未接入 {sourcePendingCount}
+                  <span data-testid="market-data-source-pending-contract-note">
+                    {sourcePendingLabels ? `· ${sourcePendingLabels}` : "· 无未接入契约"}
+                  </span>
+                </div>
+              </MarketDataExtendedTerminalSection>
+            ) : (
+              <div className="market-data-lazy-placeholder" />
+            )}
+          </div>
+
+          <div ref={lazySupplementary.ref} data-lazy-mount="supplementary-series">
+            {lazySupplementary.shouldMount && (MARKET_DATA_SHOW_MACRO_SERIES_DECK || MARKET_DATA_SHOW_FX_ANALYSIS_SECTION) ? (
+              <MarketDataSupplementarySeriesSection
+              macroSeriesCount={stableSeries.length + fallbackSeries.length}
+              stableSeriesCount={stableSeries.length}
+              fallbackSeriesCount={fallbackSeries.length}
+              fxGroupCount={fxAnalyticalGroups.length}
+              macroDeck={
+                <MarketDataMacroSeriesDeck
+                  stableSeries={stableSeries}
+                  fallbackSeries={fallbackSeries}
+                  catalog={catalog}
+                />
+              }
+              macroLoading={latestQuery.isLoading}
+              macroError={latestQuery.isError}
+              macroEmpty={
+                !latestQuery.isLoading &&
+                !latestQuery.isError &&
+                stableSeries.length === 0 &&
+                fallbackSeries.length === 0
+              }
+              onMacroRetry={() => void latestQuery.refetch(nonCancellingRefetchOptions)}
+              fxDeck={
+                <MarketDataFxSeriesDeck
+                  groups={fxAnalyticalGroups}
+                  groupTitle={fxAnalyticalGroupTitle}
+                />
+              }
+              fxLoading={fxAnalyticalQuery.isLoading}
+              fxError={fxAnalyticalQuery.isError}
+              fxEmpty={
+                !fxAnalyticalQuery.isLoading &&
+                !fxAnalyticalQuery.isError &&
+                fxAnalyticalGroups.length === 0
+              }
+              onFxRetry={() => void fxAnalyticalQuery.refetch(nonCancellingRefetchOptions)}
+              missingStableDeck={
+                missingStableSeries.length > 0 ? (
+                  <Collapse
+                    bordered={false}
+                    defaultActiveKey={[]}
+                    data-testid="market-data-missing-stable-collapse"
+                    items={[
+                      {
+                        key: "missing",
+                        label: `待补齐稳定链路（${missingStableSeries.length}）· 点击展开`,
+                        children: (
+                          <section data-testid="market-data-missing-stable-section">
+                            <div className="market-data-stack-gap-3">
+                              {missingStableSeries.map((series) => (
+                                <div key={series.series_id} className="market-data-catalog-row">
+                                  <strong>{series.series_name}</strong>
+                                  <div className="market-data-catalog-meta">
+                                    {series.series_id} · {refreshTierLabel(marketCatalogRefreshTier(series))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </section>
+                        ),
+                      },
+                    ]}
+                  />
+                ) : null
+              }
+            />
+            ) : (
+              <div className="market-data-lazy-placeholder" />
+            )}
+          </div>
+
+          <MarketDataLivermoreSection
+            model={livermoreStrategy}
+            isLoading={livermoreStrategyQuery.isLoading}
+            isError={livermoreStrategyQuery.isError}
+            fetchErrorDetail={
+              livermoreStrategyQuery.error instanceof Error
+                ? livermoreStrategyQuery.error.message
+                : null
+            }
+            onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
+            onRefreshGateSupplement={refreshGateSupplement}
+            onExpandedChange={setLivermoreExpanded}
+          />
+
+          <MarketDataLinkageSection
+            macroBondLinkageQuery={macroBondLinkageQuery}
+            macroBondLinkage={macroBondLinkage}
+            macroBondLinkageWarnings={macroBondLinkageWarnings}
+            hasPortfolioImpact={hasPortfolioImpact}
+            spreadSlots={spreadSlots}
+            nonSpreadTopCorrelations={nonSpreadTopCorrelations}
+            onExpandedChange={setLinkageCollapseExpanded}
+            onOpenSpreads={openSpreadsTab}
+          />
+
+          <Collapse
+            bordered={false}
+            defaultActiveKey={[]}
+            data-testid="market-data-tushare-collapse"
+            items={[
+              {
+                key: "tushare",
+                label: "Tushare 补充数据 · 点击展开",
+                children: (
+                  <div className="market-data-lower-deck-section">
+                    <MarketDataTushareSupplementSection />
+                  </div>
+                ),
+              },
+            ]}
+          />
+
+          {MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE ? (
+            <div>
+              <MarketSectionLead
+                eyebrow="证据"
+                title="目录与结果元数据"
+                description="页尾集中展示目录补充信息与结果元数据，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
+              />
+              <div className="market-data-section-grid market-data-section-grid--flush">
+                <AsyncSection
+                  title="宏观序列目录"
+                  isLoading={catalogQuery.isLoading}
+                  isError={catalogQuery.isError}
+                  isEmpty={!catalogQuery.isLoading && !catalogQuery.isError && catalog.length === 0}
+                  onRetry={() => void catalogQuery.refetch(nonCancellingRefetchOptions)}
+                >
+                  <div className="market-data-stack-gap-3">
+                    {catalog.map((series) => (
+                      <div key={series.series_id} className="market-data-catalog-row">
+                        <strong>{series.series_name}</strong>
+                        <div className="market-data-catalog-meta">
+                          {series.series_id} 路 {series.vendor_name} 路 {series.frequency} 路 {series.unit}
+                        </div>
+                        <div className="market-data-catalog-vendor">
+                          供应商版本 {series.vendor_version}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </AsyncSection>
+
+                <FormalResultMetaPanel
+                  testId="market-data-result-meta"
+                  title="结果元信息"
+                  sections={[
+                    {
+                      key: "macro",
+                      title: `主读面${vendorVersions.length > 0 ? ` · ${vendorVersions.join(", ")}` : ""}`,
+                      meta: macroMeta,
+                    },
+                    {
+                      key: "fx-analytical",
+                      title: "外汇观察",
+                      meta: fxAnalyticalMeta,
+                    },
+                    {
+                      key: "linkage",
+                      title: `联动${linkageReportDate ? ` · ${linkageReportDate}` : ""}`,
+                      meta: macroBondLinkageMeta,
+                    },
+                  ]}
+                />
               </div>
             </div>
-            <MarketDataDeskBridgeBand
-              basisChipLabel={basisChipLabel}
-              bridgeMetrics={bridgeKpiMetrics}
-              emptyReason={terminalModel.rateQuotes.emptyReason}
-              watchDate={watchDate}
-            />
-      <MarketDataHeroSection
-        clientMode={clientMode}
-        watchDate={watchDate}
-        onWatchDateChange={setWatchDate}
-        isFormalBasis={isFormalBasis}
-        terminalKpiMetrics={filteredTerminalKpiMetrics}
-        pipelineOverviewMetrics={pipelineOverviewMetrics}
-        terminalTickerItems={filteredTickerItems}
-        terminalTickerBasisLabel={
-          formalRatesMeta?.basis === "formal"
-            ? `正式口径 · ${formalRatesMeta?.formal_use_allowed ? "可用" : "禁用"}`
-            : rateQuotesSource?.basis
-              ? `口径 ${marketDataBasisLabel(rateQuotesSource?.basis)}`
-              : undefined
-        }
-        terminalTickerEmptyReason={terminalModel.rateQuotes.emptyReason}
-        readinessVerdict={statusBadges.readinessVerdict}
-        overviewReadinessLabel={statusBadges.overviewReadinessLabel}
-        secondaryLabel={statusBadges.secondaryLabel}
-        refreshStatus={refreshStatus}
-        refreshError={refreshError}
-        isRefreshing={isRefreshing}
-        onRefresh={handleRefresh}
-        curveFilter={curveFilter}
-        onCurveFilterChange={setCurveFilter}
-        creditSegment={creditSegment}
-        onCreditSegmentChange={setCreditSegment}
-        sourceFilter={sourceFilter}
-        onSourceFilterChange={setSourceFilter}
-        activeFilterSummary={activeFilterSummary}
-        showTerminalKpiStrip={false}
-        showPipelineKpiStrip={false}
-      />
+          ) : null}
+        </main>
 
-      {MARKET_DATA_SHOW_OVERVIEW_META_STRIP && macroMeta ? (
-        <div className="market-data-meta-strip">
-          <LiveResultMetaStrip
-            lead="市场概览·宏观读面（最新优先）"
-            meta={macroMeta}
-            testId="market-data-overview-live-meta"
+        <aside className="market-data-rail" data-testid="market-data-rail">
+          <MarketDataSupplyEvidenceRail
+            summary={coverageSummary}
+            sections={displayedCoverageSections}
+            watchDate={watchDate}
           />
-        </div>
-      ) : null}
-          </div>
-
-          <aside className="market-data-terminal-evidence-column" data-testid="market-data-terminal-evidence-column">
-            <MarketDataCoverageLedger sections={displayedCoverageSections} />
-            <MarketDataSourceGatePanel
-              sourceGateFields={sourceGateFields}
-              sections={displayedCoverageSections}
-              highlightMetric={railHighlightMetric}
-            />
-            <MarketDataSeriesCategoryCard
-              title="宏观深度读面"
-              caption="曲线走势、信用利差与压力背景均为分析口径观察，不替代正式指标。"
-              tone="analytical"
-              testId="market-data-macro-depth-card"
-            >
-              <MarketDataMacroDepthTabs
-                embedded
-                macroDepthTab={macroDepthTab}
-                onMacroDepthTabChange={setMacroDepthTab}
-                latestQuery={latestQuery}
-                latestSeries={latestSeries}
-                rateTrendChartOption={rateTrendChartOption}
-                macroBondLinkageQuery={macroBondLinkageQuery}
-                spreadSlots={spreadSlots}
-                macroBondLinkage={macroBondLinkage}
-                nonSpreadTopCorrelations={nonSpreadTopCorrelations}
-              />
-            </MarketDataSeriesCategoryCard>
-            <MarketDataApiSupplyOverview sections={displayedCoverageSections} />
-          </aside>
-          </div>
-          </div>
-          </>) : null}
-        </div>
-      </section>
-
-      <MarketDataEvidenceRailSection>
-        <section
-          id="market-data-evidence-gate"
-          className="market-data-macro-evidence-rail"
-          data-testid="market-data-macro-evidence-rail"
-        >
-          <span>{marketDataEvidenceLineLabel(evidenceLines.formalRates)}</span>
-          <span>{marketDataEvidenceLineLabel(evidenceLines.macroLatest)}</span>
-          <span>{marketDataEvidenceLineLabel(evidenceLines.fxFormal)}</span>
-          <span>{marketDataEvidenceLineLabel(evidenceLines.fxAnalytical)}</span>
-          <span>{marketDataEvidenceLineLabel(evidenceLines.ncdProxy)}</span>
-          <span>{marketDataEvidenceLineLabel(evidenceLines.livermore)}</span>
-          <span>{marketDataEvidenceLineLabel(evidenceLines.linkage)}</span>
-        </section>
-      </MarketDataEvidenceRailSection>
-
-      <MarketSectionBlock>
-        <MarketPipelineKpiStrip metrics={pipelineOverviewMetrics} />
-      </MarketSectionBlock>
-
-      <MarketSectionBlock>
-        <div className="market-data-lower-deck-section">
-          <div className="market-data-section-lead--compact">
-            <MarketSectionLead
-              eyebrow="资金读数"
-              title="资金市场与存单"
-              description="DR007、回购与 Shibor 代理矩阵；正式口径摘要见右侧源门禁。"
-            />
-          </div>
-          <MarketDataLiquidityDeck
-          moneyMarketCount={terminalModel.moneyMarket.rows.length}
-          ncdRowCount={ncdFundingProxy?.rows?.length ?? 0}
-          moneyMarketSlot={
-            <MoneyMarketTable
-              embedded
-              model={terminalModel.moneyMarket}
-              sourceFilter={sourceFilter}
-              catalogVendorNames={catalogVendorNames}
-              highlightSeriesById={latestSeriesById}
-            />
-          }
-          ncdSlot={
-            <NcdMatrix
-              embedded
-              payload={ncdFundingProxy}
-              resultMeta={ncdFundingProxyQuery.data?.result_meta}
-              isLoading={ncdFundingProxyQuery.isLoading}
-              isError={ncdFundingProxyQuery.isError}
-              showResultMeta={false}
-              onRetry={() => void ncdFundingProxyQuery.refetch(nonCancellingRefetchOptions)}
-            />
-          }
-        />
-        </div>
-      </MarketSectionBlock>
-
-      <MarketSectionBlock>
-        <div className="market-data-lower-deck-section">
-          <MarketDataTushareSupplementSection />
-        </div>
-      </MarketSectionBlock>
-
-      <MarketSectionBlock>
-        <div className="market-data-lower-deck-section">
-          <NewsAndCalendar calendarState={sharedCalendarState} />
-        </div>
-      </MarketSectionBlock>
-
-      {MARKET_DATA_SHOW_MACRO_SERIES_DECK || MARKET_DATA_SHOW_FX_ANALYSIS_SECTION ? (
-        <MarketDataSupplementarySeriesSection
-          macroSeriesCount={stableSeries.length + fallbackSeries.length}
-          stableSeriesCount={stableSeries.length}
-          fallbackSeriesCount={fallbackSeries.length}
-          fxGroupCount={fxAnalyticalGroups.length}
-          macroDeck={
-            <MarketDataMacroSeriesDeck
-              stableSeries={stableSeries}
-              fallbackSeries={fallbackSeries}
-              catalog={catalog}
-            />
-          }
-          macroLoading={latestQuery.isLoading}
-          macroError={latestQuery.isError}
-          macroEmpty={
-            !latestQuery.isLoading &&
-            !latestQuery.isError &&
-            stableSeries.length === 0 &&
-            fallbackSeries.length === 0
-          }
-          onMacroRetry={() => void latestQuery.refetch(nonCancellingRefetchOptions)}
-          fxDeck={
-            <MarketDataFxSeriesDeck
-              groups={fxAnalyticalGroups}
-              groupTitle={fxAnalyticalGroupTitle}
-            />
-          }
-          fxLoading={fxAnalyticalQuery.isLoading}
-          fxError={fxAnalyticalQuery.isError}
-          fxEmpty={
-            !fxAnalyticalQuery.isLoading &&
-            !fxAnalyticalQuery.isError &&
-            fxAnalyticalGroups.length === 0
-          }
-          onFxRetry={() => void fxAnalyticalQuery.refetch(nonCancellingRefetchOptions)}
-          missingStableDeck={
-            missingStableSeries.length > 0 ? (
-              <Collapse
-                bordered={false}
-                defaultActiveKey={[]}
-                data-testid="market-data-missing-stable-collapse"
-                items={[
-                  {
-                    key: "missing",
-                    label: `待补齐稳定链路（${missingStableSeries.length}）· 点击展开`,
-                    children: (
-                      <section data-testid="market-data-missing-stable-section">
-                        <div className="market-data-stack-gap-3">
-                          {missingStableSeries.map((series) => (
-                            <div key={series.series_id} className="market-data-catalog-row">
-                              <strong>{series.series_name}</strong>
-                              <div className="market-data-catalog-meta">
-                                {series.series_id} · {refreshTierLabel(marketCatalogRefreshTier(series))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-                    ),
-                  },
-                ]}
-              />
-            ) : null
-          }
-        />
-      ) : null}
-
-      <MarketDataLivermoreSection
-        model={livermoreStrategy}
-        isLoading={livermoreStrategyQuery.isLoading}
-        isError={livermoreStrategyQuery.isError}
-        fetchErrorDetail={
-          livermoreStrategyQuery.error instanceof Error
-            ? livermoreStrategyQuery.error.message
-            : null
-        }
-        onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
-        onRefreshGateSupplement={refreshGateSupplement}
-        onExpandedChange={setLivermoreExpanded}
-      />
-
-      <MarketDataFxFormalSection
-        payload={pageModel.fxFormalStatus}
-        meta={pageModel.fxFormalMeta}
-        isLoading={fxFormalStatusQuery.isLoading}
-        isError={fxFormalStatusQuery.isError}
-        onRetry={() => void fxFormalStatusQuery.refetch(nonCancellingRefetchOptions)}
-      />
-
-      <MarketDataExtendedTerminalSection sourcePendingCount={sourcePendingCount}>
-        <div className="market-data-observation-grid" data-testid="market-data-source-pending-deck">
-          <BondFuturesTable model={terminalModel.bondFutures} />
-          <BondTradeDetail model={terminalModel.bondTrades} />
-          <CreditBondTradesTable model={terminalModel.creditTrades} />
-        </div>
-        <div className="market-data-source-pending-summary" data-testid="market-data-source-pending-summary">
-          待契约 {sourcePendingCount}
-          <span data-testid="market-data-source-pending-contract-note">
-            · 国债期货 / 现券成交 / 信用成交
-          </span>
-        </div>
-      </MarketDataExtendedTerminalSection>
-
-      <MarketDataLinkageSection
-        macroBondLinkageQuery={macroBondLinkageQuery}
-        macroBondLinkage={macroBondLinkage}
-        macroBondLinkageWarnings={macroBondLinkageWarnings}
-        hasPortfolioImpact={hasPortfolioImpact}
-        spreadSlots={spreadSlots}
-        nonSpreadTopCorrelations={nonSpreadTopCorrelations}
-        onExpandedChange={setLinkageCollapseExpanded}
-        onOpenSpreads={openSpreadsTab}
-      />
-
-      {MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE ? (
-        <MarketSectionBlock>
-          <MarketSectionLead
-            eyebrow="证据"
-            title="目录与结果元数据"
-            description="页尾集中展示目录补充信息与结果元数据，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
-          />
-          <div className="market-data-section-grid market-data-section-grid--flush">
-            <AsyncSection
-              title="宏观序列目录"
-              isLoading={catalogQuery.isLoading}
-              isError={catalogQuery.isError}
-              isEmpty={!catalogQuery.isLoading && !catalogQuery.isError && catalog.length === 0}
-              onRetry={() => void catalogQuery.refetch(nonCancellingRefetchOptions)}
-            >
-              <div className="market-data-stack-gap-3">
-                {catalog.map((series) => (
-                  <div key={series.series_id} className="market-data-catalog-row">
-                    <strong>{series.series_name}</strong>
-                    <div className="market-data-catalog-meta">
-                      {series.series_id} 路 {series.vendor_name} 路 {series.frequency} 路 {series.unit}
-                    </div>
-                    <div className="market-data-catalog-vendor">
-                      供应商版本 {series.vendor_version}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </AsyncSection>
-
-            <FormalResultMetaPanel
-              testId="market-data-result-meta"
-              title="结果元信息"
-              sections={[
-                {
-                  key: "macro",
-                  title: `主读面${vendorVersions.length > 0 ? ` · ${vendorVersions.join(", ")}` : ""}`,
-                  meta: macroMeta,
-                },
-                {
-                  key: "fx-analytical",
-                  title: "外汇观察",
-                  meta: fxAnalyticalMeta,
-                },
-                {
-                  key: "linkage",
-                  title: `联动${linkageReportDate ? ` · ${linkageReportDate}` : ""}`,
-                  meta: macroBondLinkageMeta,
-                },
-              ]}
-            />
-          </div>
-        </MarketSectionBlock>
-      ) : null}
+          <section
+            className="market-data-macro-evidence-rail"
+            data-testid="market-data-macro-evidence-rail"
+            aria-label="证据口径"
+          >
+            <span>{marketDataEvidenceLineLabel(evidenceLines.formalRates)}</span>
+            <span>{marketDataEvidenceLineLabel(evidenceLines.macroLatest)}</span>
+            <span>{marketDataEvidenceLineLabel(evidenceLines.fxFormal)}</span>
+            <span>{marketDataEvidenceLineLabel(evidenceLines.fxAnalytical)}</span>
+            <span>{marketDataEvidenceLineLabel(evidenceLines.ncdProxy)}</span>
+            <span>{marketDataEvidenceLineLabel(evidenceLines.livermore)}</span>
+            <span>{marketDataEvidenceLineLabel(evidenceLines.linkage)}</span>
+          </section>
+        </aside>
+      </div>
       </section>
     </MarketWorkbenchFrame>
   );

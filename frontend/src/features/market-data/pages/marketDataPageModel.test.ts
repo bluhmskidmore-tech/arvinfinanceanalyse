@@ -298,7 +298,7 @@ describe("marketDataPageModel", () => {
     expect(model.fxAnalyticalGroups).toHaveLength(2);
     expect(model.fxAnalyticalSeriesCount).toBe(2);
     expect(model.isFormalBasis).toBe(true);
-    expect(model.statusBadges.readinessVerdict).toBe("读面就绪");
+    expect(model.statusBadges.readinessVerdict).toBe("数据正常");
     expect(model.sourcePendingCount).toBe(3);
     expect(model.hasPortfolioImpact).toBe(true);
     expect(model.macroBondLinkageWarnings).toEqual(["lineage pending"]);
@@ -367,9 +367,9 @@ describe("marketDataPageModel", () => {
       "Livermore: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
       "macro-bond linkage: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
     ]);
-    expect(model.statusBadges.readinessVerdict).toBe("等待数据");
-    expect(model.statusBadges.overviewReadinessLabel).toBe("口径待定");
-    expect(model.statusBadges.secondaryLabel).toBe("等待 API 返回");
+    expect(model.statusBadges.readinessVerdict).toBe("接入中");
+    expect(model.statusBadges.overviewReadinessLabel).toBe("待确认");
+    expect(model.statusBadges.secondaryLabel).toBe("查看数据诊断");
     expect(model.stableLatestTradeDate).toBe("—");
     expect(model.linkageReportDate).toBe("");
     expect(model.sourcePendingCount).toBe(3);
@@ -694,7 +694,7 @@ describe("bridge helpers", () => {
         formalUseBlocked: false,
         watchDate: "2026-06-11",
       }),
-    ).toBe("formal · 正式可用 是 · 观察日 2026-06-11");
+    ).toBe("formal · 正式使用 是 · 观察日 2026-06-11");
   });
 });
 

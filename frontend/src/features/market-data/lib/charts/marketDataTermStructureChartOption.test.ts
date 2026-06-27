@@ -67,7 +67,7 @@ describe("buildMarketDataTermStructureChartOption", () => {
     const option = buildMarketDataTermStructureChartOption(curves);
 
     expect(option).not.toBeNull();
-    expect(option?.grid).toMatchObject({ left: 44, right: 42, top: 18 });
+    expect(option?.grid).toMatchObject({ left: 48, right: 56, top: 20 });
     expect((option?.tooltip as { axisPointer?: { type?: string } }).axisPointer?.type).toBe("line");
 
     const series = option?.series;
@@ -92,7 +92,30 @@ describe("buildMarketDataTermStructureChartOption", () => {
       type: "bar",
       yAxisIndex: 1,
       barMaxWidth: 10,
-      itemStyle: { opacity: 0.18 },
+      itemStyle: { opacity: 0.35 },
     });
+  });
+
+  it("renders a quieter sheet variant without delta bars or end labels", () => {
+    const option = buildMarketDataTermStructureChartOption(curves, { variant: "sheet" });
+
+    expect(option).not.toBeNull();
+    expect(option?.grid).toMatchObject({ left: 34, right: 16, top: 12, bottom: 28 });
+    expect(option?.legend).toMatchObject({ show: false });
+
+    const series = option?.series;
+    if (!Array.isArray(series)) {
+      throw new Error("Expected sheet term-structure chart to expose series array");
+    }
+
+    expect(series).toHaveLength(2);
+    expect(series[0]).toMatchObject({
+      type: "line",
+      symbolSize: 5,
+      lineStyle: { width: 2 },
+      endLabel: { show: false },
+      label: { show: true },
+    });
+    expect(series.some((item) => (item as { type?: string }).type === "bar")).toBe(false);
   });
 });

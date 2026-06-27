@@ -233,7 +233,7 @@ export function MarketDataSeriesCompactTable({
           return (
             <div className="market-data-series-compact-recent-cell">
               {tooltipTitle ? (
-                <Tooltip title={tooltipTitle} placement="topLeft" mouseEnterDelay={0.35} destroyTooltipOnHide>
+                <Tooltip title={tooltipTitle} placement="topLeft" mouseEnterDelay={0.35} destroyOnHidden>
                   {recentVisual}
                 </Tooltip>
               ) : (

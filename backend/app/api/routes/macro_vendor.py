@@ -18,6 +18,9 @@ from backend.app.services.macro_vendor_service import (
     fx_formal_status_envelope,
     macro_foundation_formal_envelope,
     macro_vendor_envelope,
+    market_data_bond_futures_rankings_envelope,
+    market_data_coverage_summary_envelope,
+    tushare_supplement_envelope,
 )
 from backend.app.tasks.choice_macro import (
     refresh_choice_macro_snapshot,
@@ -103,6 +106,47 @@ def fx_analytical(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> di
     _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     return fx_analytical_envelope(settings.duckdb_path)
+
+
+@router.get("/ui/market-data/tushare-supplement")
+def market_data_tushare_supplement(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    money_supply_limit: int = Query(default=12, ge=0, le=120),
+    eco_cal_limit: int = Query(default=30, ge=0, le=300),
+) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return tushare_supplement_envelope(
+        settings.duckdb_path,
+        money_supply_limit=money_supply_limit,
+        eco_cal_limit=eco_cal_limit,
+    )
+
+
+@router.get("/ui/market-data/bond-futures/rankings")
+def market_data_bond_futures_rankings(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    contract: str = Query(default="T.CFE", min_length=1, max_length=24),
+    trade_date: str | None = Query(default=None, min_length=8, max_length=10),
+    limit: int = Query(default=10, ge=0, le=100),
+) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return market_data_bond_futures_rankings_envelope(
+        settings.duckdb_path,
+        contract=contract,
+        trade_date=trade_date,
+        limit=limit,
+    )
+
+
+@router.get("/ui/market-data/coverage-summary")
+def market_data_coverage_summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
+    settings = get_settings()
+    return market_data_coverage_summary_envelope(settings.duckdb_path)
 
 
 @router.post("/ui/macro/choice-series/refresh")

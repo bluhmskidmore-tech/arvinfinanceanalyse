@@ -296,8 +296,8 @@ export function buildMarketDataBasisChipLabel(input: {
   formalUseBlocked: boolean;
   watchDate: string;
 }): string {
-  const allowed = input.formalUseBlocked ? "blocked" : input.formalUseAllowedLabel;
-  return `${input.basisLabel} · 正式可用 ${allowed} · 观察日 ${input.watchDate}`;
+  const allowed = input.formalUseBlocked ? "暂不可正式使用" : input.formalUseAllowedLabel;
+  return `${input.basisLabel} · 正式使用 ${allowed} · 观察日 ${input.watchDate}`;
 }
 
 function buildTerminalKpiMetrics(terminalModel: MarketDataTerminalModel): MarketOverviewMetric[] {
@@ -433,50 +433,50 @@ function buildStatusBadges(input: {
   const { formalRatesMeta, hasTerminalRows } = input;
   if (!formalRatesMeta) {
     return {
-      readinessVerdict: "等待数据",
-      overviewReadinessLabel: "口径待定",
-      secondaryLabel: "等待 API 返回",
+      readinessVerdict: "接入中",
+      overviewReadinessLabel: "待确认",
+      secondaryLabel: "查看数据诊断",
     };
   }
   if (formalRatesMeta.quality_flag === "error") {
     return {
-      readinessVerdict: "读面异常",
-      overviewReadinessLabel: "加载失败",
-      secondaryLabel: "查看错误与重试",
+      readinessVerdict: "不可用",
+      overviewReadinessLabel: "技术异常",
+      secondaryLabel: "查看数据诊断",
     };
   }
   if (formalRatesMeta.formal_use_allowed === false) {
     return {
-      readinessVerdict: "分析/候选",
-      overviewReadinessLabel: "正式禁用",
-      secondaryLabel: "不可作正式口径",
+      readinessVerdict: "仅分析使用",
+      overviewReadinessLabel: "暂不可正式使用",
+      secondaryLabel: "不可用于正式决策",
     };
   }
   if (!hasTerminalRows) {
     return {
-      readinessVerdict: "无行情数据",
-      overviewReadinessLabel: "空态",
-      secondaryLabel: "未补示例行情",
+      readinessVerdict: "部分缺失",
+      overviewReadinessLabel: "暂无数据",
+      secondaryLabel: "查看数据诊断",
     };
   }
   if (formalRatesMeta.quality_flag === "stale") {
     return {
-      readinessVerdict: "数据陈旧",
+      readinessVerdict: "数据延迟",
       overviewReadinessLabel: "需刷新",
       secondaryLabel: "不可直接外推",
     };
   }
   if (formalRatesMeta.fallback_mode !== "none" || formalRatesMeta.vendor_status !== "ok") {
     return {
-      readinessVerdict: "降级可用",
+      readinessVerdict: "部分缺失",
       overviewReadinessLabel: "需复核",
       secondaryLabel: "保留来源提示",
     };
   }
   return {
-    readinessVerdict: "读面就绪",
-    overviewReadinessLabel: "读面就绪",
-    secondaryLabel: "辅助观察",
+    readinessVerdict: "数据正常",
+    overviewReadinessLabel: "数据正常",
+    secondaryLabel: "可用于当前观察",
   };
 }
 

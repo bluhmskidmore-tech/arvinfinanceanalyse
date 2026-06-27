@@ -1,7 +1,7 @@
 import type { MacroBondLinkageEnvironmentScore } from "../../../../api/contracts";
 import { createBarChartOption } from "../../../../components/charts/chartTheme";
 import type { EChartsOption } from "../../../../lib/echarts";
-import { marketDataChartTheme } from "./marketDataChartTheme";
+import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
 
 type EnvironmentScoreInput = Partial<MacroBondLinkageEnvironmentScore>;
 
@@ -38,7 +38,11 @@ export function buildLinkageEnvironmentBarOption(
 
   return createBarChartOption({
     color: [marketDataChartTheme.positiveBar],
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+    tooltip: buildMarketDataChartTooltip({
+      trigger: "axis",
+      axisPointer: marketDataChartTheme.axisPointerShadow,
+      valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(2) : String(value)),
+    }),
     legend: undefined,
     grid: marketDataChartTheme.gridCompact,
     xAxis: {
@@ -46,6 +50,7 @@ export function buildLinkageEnvironmentBarOption(
       data: categories,
       axisLabel: marketDataChartTheme.axisLabel,
       axisLine: marketDataChartTheme.axisLine,
+      axisTick: { show: false },
     },
     yAxis: {
       type: "value",
@@ -57,11 +62,14 @@ export function buildLinkageEnvironmentBarOption(
       {
         name: "环境分项",
         type: "bar",
-        barMaxWidth: 36,
+        barMaxWidth: 30,
+        barCategoryGap: "42%",
         data: values.map((value) => ({
           value,
           itemStyle: {
             color: value >= 0 ? marketDataChartTheme.positiveBar : marketDataChartTheme.negativeBar,
+            opacity: 0.84,
+            borderRadius: [3, 3, 0, 0],
           },
         })),
       },
@@ -85,23 +93,37 @@ export function buildDerivedSpreadsBarOption(
 
   return {
     color: [marketDataChartTheme.derivedSpreadColor],
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    grid: { left: 120, right: 16, top: 8, bottom: 24 },
+    tooltip: buildMarketDataChartTooltip({
+      trigger: "axis",
+      axisPointer: marketDataChartTheme.axisPointerShadow,
+      valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(2) : String(value)),
+    }),
+    grid: { left: 120, right: 24, top: 10, bottom: 28, containLabel: true },
     xAxis: {
       type: "value",
       axisLabel: marketDataChartTheme.axisLabel,
       splitLine: marketDataChartTheme.splitLine,
+      axisLine: marketDataChartTheme.axisLine,
     },
     yAxis: {
       type: "category",
       data: entries.map(([key]) => key),
       axisLabel: marketDataChartTheme.axisLabel,
+      axisLine: marketDataChartTheme.axisLine,
+      axisTick: { show: false },
     },
     series: [
       {
         name: "衍生利差",
         type: "bar",
-        data: entries.map(([, value]) => value),
+        data: entries.map(([, value]) => ({
+          value,
+          itemStyle: {
+            color: value >= 0 ? marketDataChartTheme.derivedSpreadColor : marketDataChartTheme.negativeBar,
+            opacity: 0.84,
+            borderRadius: [0, 3, 3, 0],
+          },
+        })),
         barMaxWidth: 18,
       },
     ],

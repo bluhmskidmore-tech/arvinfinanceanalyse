@@ -31,3 +31,48 @@
   background: var(--moss-color-danger-50);
   color: var(--moss-color-danger-600);
 }
+
+.status-pill[data-status="neutral"] {
+  border-color: var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+}
+
+.diagnostic-disclosure {
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+}
+
+.diagnostic-disclosure > summary {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--moss-space-2);
+  min-height: 36px;
+  padding: 8px 12px;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.diagnostic-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.diagnostic-disclosure > summary::after {
+  content: "+";
+  color: var(--moss-color-text-muted);
+  font-family: var(--moss-font-mono);
+  font-size: 13px;
+}
+
+.diagnostic-disclosure[open] > summary::after {
+  content: "-";
+}
+
+.diagnostic-disclosure__body {
+  border-top: 1px solid var(--moss-color-border-default);
+  padding: 12px;
+}

@@ -1,8 +1,7 @@
 import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../../api/contracts";
 import { createLineChartOption } from "../../../../components/charts/chartTheme";
 import type { EChartsOption } from "../../../../lib/echarts";
-import { ibTokens } from "../../../../theme/designSystem";
-import { marketDataChartTheme } from "./marketDataChartTheme";
+import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
 
 export type MarketDataSeriesTimeInput = Pick<
   ChoiceMacroLatestPoint,
@@ -34,43 +33,57 @@ function compactSeriesEndLabel(seriesName: string) {
   return name.length > 12 ? `${name.slice(0, 12)}...` : name;
 }
 
+type MarketDataSeriesTimeChartVariant = "default" | "sheet";
+
 export function buildMarketDataSeriesTimeChartOption(
   series: MarketDataSeriesTimeInput,
+  options: { variant?: MarketDataSeriesTimeChartVariant } = {},
 ): EChartsOption | null {
   const timeline = sortedRecentPoints(series.recent_points);
   if (timeline.length === 0) {
     return null;
   }
 
+  const isSheetVariant = options.variant === "sheet";
   const categories = timeline.map((point) => point.trade_date);
   const values = timeline.map((point) => point.value_numeric);
   const unit = series.unit?.trim() || undefined;
   const qualityNote =
     series.quality_flag && series.quality_flag !== "ok" ? ` · 质量 ${series.quality_flag}` : "";
+  const axisLabel = isSheetVariant
+    ? { ...marketDataChartTheme.axisLabel, fontSize: 10, fontWeight: 600 }
+    : marketDataChartTheme.axisLabel;
 
   return createLineChartOption({
     color: [marketDataChartTheme.multiSeriesPalette[0]],
-    title: {
-      text: `${series.series_name}${qualityNote}`,
-      left: 0,
-      top: 0,
-      textStyle: marketDataChartTheme.titleMuted,
-    },
-    tooltip: { trigger: "axis" },
+    title: isSheetVariant
+      ? undefined
+      : {
+          text: `${series.series_name}${qualityNote}`,
+          left: 0,
+          top: 0,
+          textStyle: marketDataChartTheme.titleMuted,
+        },
+    tooltip: buildMarketDataChartTooltip({
+      trigger: "axis",
+      axisPointer: marketDataChartTheme.axisPointerLine,
+    }),
     legend: undefined,
-    grid: marketDataChartTheme.gridWithTitle,
+    grid: isSheetVariant
+      ? { left: 34, right: 20, top: 12, bottom: 28, containLabel: true }
+      : marketDataChartTheme.gridWithTitle,
     xAxis: {
       type: "category",
       boundaryGap: false,
       data: categories,
-      axisLabel: marketDataChartTheme.axisLabel,
+      axisLabel,
       axisLine: marketDataChartTheme.axisLine,
     },
     yAxis: {
       type: "value",
       scale: true,
-      name: unit,
-      axisLabel: marketDataChartTheme.axisLabel,
+      name: isSheetVariant ? "" : unit,
+      axisLabel,
       splitLine: marketDataChartTheme.splitLine,
     },
     series: [
@@ -79,11 +92,26 @@ export function buildMarketDataSeriesTimeChartOption(
         type: "line",
         smooth: true,
         symbol: "circle",
-        symbolSize: 6,
-        showSymbol: categories.length <= 24,
+        symbolSize: isSheetVariant ? 4 : 6,
+        showSymbol: categories.length <= (isSheetVariant ? 12 : 24),
         connectNulls: true,
-        lineStyle: { width: 2.1 },
-        itemStyle: { borderColor: ibTokens.color.surface, borderWidth: 1.2 },
+        lineStyle: { width: isSheetVariant ? 2 : 2.35 },
+        itemStyle: { borderColor: marketDataChartTheme.chartSurface, borderWidth: 1.2 },
+        areaStyle: isSheetVariant
+          ? undefined
+          : {
+              color: {
+                type: "linear",
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [
+                  { offset: 0, color: `${marketDataChartTheme.multiSeriesPalette[0]}22` },
+                  { offset: 1, color: `${marketDataChartTheme.multiSeriesPalette[0]}00` },
+                ],
+              },
+            },
         endLabel: {
           show: true,
           formatter: compactSeriesEndLabel(series.series_name),
@@ -116,14 +144,11 @@ export function buildMarketDataMultiSeriesTimeChartOption(
   const categories = [...dateSet].sort((left, right) => left.localeCompare(right));
   return createLineChartOption({
     color: marketDataChartTheme.multiSeriesPalette,
-    tooltip: {
+    tooltip: buildMarketDataChartTooltip({
       trigger: "axis",
-      axisPointer: {
-        type: "line",
-        lineStyle: { color: ibTokens.color.gold, width: 1, type: "dashed" },
-      },
+      axisPointer: marketDataChartTheme.axisPointerLine,
       valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(2) : String(value)),
-    },
+    }),
     legend: {
       bottom: 0,
       type: "scroll",
@@ -131,7 +156,7 @@ export function buildMarketDataMultiSeriesTimeChartOption(
       itemHeight: 8,
       textStyle: marketDataChartTheme.axisLabel,
     },
-    grid: { left: 44, right: 48, top: 18, bottom: usable.length > 1 ? 50 : 28 },
+    grid: { left: 48, right: 56, top: 20, bottom: usable.length > 1 ? 52 : 32, containLabel: true },
     xAxis: {
       type: "category",
       boundaryGap: false,
@@ -147,24 +172,40 @@ export function buildMarketDataMultiSeriesTimeChartOption(
     },
     series: usable.map((item, index) => {
       const color = marketDataChartTheme.multiSeriesPalette[index % marketDataChartTheme.multiSeriesPalette.length]!;
+      const isPrimary = index === 0;
       return {
         name: item.series_name,
         type: "line" as const,
         smooth: true,
         symbol: "circle",
-        symbolSize: index === 0 ? 7 : 6,
+        symbolSize: isPrimary ? 7 : 6,
         showSymbol: categories.length <= 30,
         connectNulls: true,
         lineStyle: {
           color,
-          width: index === 0 ? 2.2 : 1.7,
-          opacity: index === 0 ? 1 : 0.72,
+          width: isPrimary ? 2.2 : 1.7,
+          opacity: isPrimary ? 1 : 0.72,
         },
         itemStyle: {
           color,
-          borderColor: ibTokens.color.surface,
+          borderColor: marketDataChartTheme.chartSurface,
           borderWidth: 1.2,
         },
+        areaStyle: isPrimary
+          ? {
+              color: {
+                type: "linear" as const,
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [
+                  { offset: 0, color: `${color}1e` },
+                  { offset: 1, color: `${color}00` },
+                ],
+              },
+            }
+          : undefined,
         endLabel: {
           show: true,
           formatter: compactSeriesEndLabel(item.series_name),

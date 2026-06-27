@@ -1,12 +1,13 @@
 import type { YieldCurveTermStructureCurvePayload } from "../../../../api/contracts";
 import type { EChartsOption } from "../../../../lib/echarts";
-import { ibTokens } from "../../../../theme/designSystem";
-import { marketDataChartTheme } from "./marketDataChartTheme";
+import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
 
 const CURVE_LABEL: Record<string, string> = {
   treasury: "国债",
   cdb: "国开",
 };
+
+type MarketDataTermStructureChartVariant = "default" | "sheet";
 
 function pctNumericToAxisPercent(value: YieldCurveTermStructureCurvePayload["points"][number]["yield_pct"]) {
   if (!value || value.raw == null) {
@@ -27,6 +28,7 @@ function bpNumericToAxis(value: YieldCurveTermStructureCurvePayload["points"][nu
 
 export function buildMarketDataTermStructureChartOption(
   curves: YieldCurveTermStructureCurvePayload[],
+  options: { variant?: MarketDataTermStructureChartVariant } = {},
 ): EChartsOption | null {
   if (!curves.length) {
     return null;
@@ -35,11 +37,17 @@ export function buildMarketDataTermStructureChartOption(
   if (!categories.length) {
     return null;
   }
+  const isSheetVariant = options.variant === "sheet";
 
-  const palette = [ibTokens.color.accent, "#6f8ab8", ibTokens.color.gold];
+  const palette = [
+    marketDataChartTheme.multiSeriesPalette[0]!,
+    marketDataChartTheme.multiSeriesPalette[1]!,
+    marketDataChartTheme.multiSeriesPalette[2]!,
+  ];
   const lineSeries = curves.map((curve, index) => {
     const color = palette[index % palette.length]!;
     const label = CURVE_LABEL[curve.curve_type] ?? curve.curve_type;
+    const isPrimary = index === 0;
 
     return {
       name: `${label} 收益率`,
@@ -47,32 +55,57 @@ export function buildMarketDataTermStructureChartOption(
       yAxisIndex: 0,
       smooth: false,
       symbol: "circle",
-      symbolSize: index === 0 ? 7 : 6,
+      symbolSize: isSheetVariant ? 5 : isPrimary ? 7 : 6,
       connectNulls: true,
       itemStyle: {
         color,
-        borderColor: "#ffffff",
-        borderWidth: 1.5,
+        borderColor: marketDataChartTheme.chartSurface,
+        borderWidth: isSheetVariant ? 1 : 1.5,
       },
       lineStyle: {
         color,
-        width: index === 0 ? 2.4 : 1.8,
-        opacity: index === 0 ? 1 : 0.7,
+        width: isSheetVariant ? (isPrimary ? 2 : 1.4) : isPrimary ? 2.4 : 1.8,
+        opacity: isPrimary ? 1 : 0.7,
       },
+      areaStyle: isPrimary && !isSheetVariant
+        ? {
+            color: {
+              type: "linear" as const,
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: `${color}26` },
+                { offset: 1, color: `${color}00` },
+              ],
+            },
+          }
+        : undefined,
       endLabel: {
-        show: true,
+        show: !isSheetVariant,
         formatter: "{a}",
         color,
         fontSize: 10,
         distance: 8,
       },
+      label: isSheetVariant
+        ? {
+            show: true,
+            position: "top" as const,
+            color,
+            fontSize: 10,
+            fontWeight: 650,
+            formatter: (params: { value?: unknown }) =>
+              typeof params.value === "number" ? params.value.toFixed(2) : "",
+          }
+        : undefined,
       emphasis: { focus: "series" as const },
       data: curve.points.map((point) => pctNumericToAxisPercent(point.yield_pct)),
     };
   });
 
-  const barSeries = curves.map((curve, index) => {
-    const color = palette[index % palette.length]!;
+  const barSeries = curves.map((curve) => {
     const label = CURVE_LABEL[curve.curve_type] ?? curve.curve_type;
 
     return {
@@ -82,49 +115,64 @@ export function buildMarketDataTermStructureChartOption(
       barGap: "18%",
       barMaxWidth: 10,
       itemStyle: {
-        color,
-        opacity: 0.18,
-        borderRadius: [1, 1, 0, 0],
+        color: marketDataChartTheme.neutralBar,
+        opacity: 0.35,
+        borderRadius: [2, 2, 0, 0],
       },
       emphasis: { disabled: true },
-      data: curve.points.map((point) => bpNumericToAxis(point.delta_bp_prev)),
+      data: curve.points.map((point) => {
+        const value = bpNumericToAxis(point.delta_bp_prev);
+        return {
+          value,
+          itemStyle: {
+            color:
+              value == null || value === 0
+                ? marketDataChartTheme.neutralBar
+                : value > 0
+                  ? marketDataChartTheme.positiveBar
+                  : marketDataChartTheme.negativeBar,
+          },
+        };
+      }),
     };
   });
 
+  const sheetAxisLabel = { ...marketDataChartTheme.axisLabel, fontSize: 10, fontWeight: 600 };
+
   return {
     color: palette,
-    tooltip: {
+    tooltip: buildMarketDataChartTooltip({
       trigger: "axis",
-      axisPointer: {
-        type: "line",
-        lineStyle: { color: ibTokens.color.gold, width: 1, type: "dashed" },
-      },
+      axisPointer: marketDataChartTheme.axisPointerLine,
       valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(2) : String(value)),
-    },
+    }),
     legend: {
+      show: !isSheetVariant,
       bottom: 0,
       type: "scroll",
       itemWidth: 18,
       itemHeight: 8,
       textStyle: marketDataChartTheme.axisLabel,
     },
-    grid: { left: 44, right: 42, top: 18, bottom: 54 },
+    grid: isSheetVariant
+      ? { left: 34, right: 16, top: 12, bottom: 28, containLabel: true }
+      : { left: 48, right: 56, top: 20, bottom: 56, containLabel: true },
     xAxis: {
       type: "category",
       boundaryGap: true,
       data: categories,
-      axisLabel: { ...marketDataChartTheme.axisLabel, fontSize: 11, fontWeight: 600 },
+      axisLabel: isSheetVariant ? sheetAxisLabel : { ...marketDataChartTheme.axisLabel, fontSize: 11, fontWeight: 600 },
       axisLine: marketDataChartTheme.axisLine,
-      axisTick: { alignWithLabel: true, lineStyle: { color: ibTokens.color.hairline } },
+      axisTick: { alignWithLabel: true, lineStyle: marketDataChartTheme.axisLine.lineStyle },
     },
     yAxis: [
       {
         type: "value",
-        name: "收益率 (%)",
+        name: isSheetVariant ? "" : "收益率 (%)",
         scale: true,
         nameTextStyle: { ...marketDataChartTheme.axisLabel, align: "left" },
-        axisLabel: { ...marketDataChartTheme.axisLabel, formatter: "{value}" },
-        splitLine: { lineStyle: { color: ibTokens.color.hairline, width: 1, type: "solid" } },
+        axisLabel: { ...(isSheetVariant ? sheetAxisLabel : marketDataChartTheme.axisLabel), formatter: "{value}" },
+        splitLine: marketDataChartTheme.splitLine,
       },
       {
         type: "value",
@@ -135,6 +183,6 @@ export function buildMarketDataTermStructureChartOption(
         splitLine: { show: false },
       },
     ],
-    series: [...lineSeries, ...barSeries],
+    series: isSheetVariant ? lineSeries : [...lineSeries, ...barSeries],
   };
 }

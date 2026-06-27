@@ -4,12 +4,18 @@ import { Spin, Tabs } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy";
-import type { ChoiceNewsEvent, ResearchCalendarEvent } from "../../../api/contracts";
+import type { ChoiceNewsEvent, ChoiceNewsEventsPayload, ResearchCalendarEvent } from "../../../api/contracts";
 
 import { tabularNumsStyle } from "../../../theme/designSystem";
 
 export type NewsAndCalendarCalendarState = {
   rows: readonly ResearchCalendarEvent[];
+  isLoading: boolean;
+  isError: boolean;
+};
+
+export type NewsAndCalendarNewsState = {
+  payload: ChoiceNewsEventsPayload | null;
   isLoading: boolean;
   isError: boolean;
 };
@@ -54,14 +60,17 @@ function calendarSeverityLabel(severity: ResearchCalendarEvent["severity"]) {
 
 export function NewsAndCalendar({
   calendarState,
+  newsState,
 }: {
   calendarState?: NewsAndCalendarCalendarState;
+  newsState?: NewsAndCalendarNewsState;
 } = {}) {
   const client = useApiClient();
   const newsQuery = useQuery({
     queryKey: ["market-data", "headlines", "choice-events", client.mode],
     queryFn: () => client.getChoiceNewsEvents({ limit: 12, offset: 0 }),
     retry: false,
+    enabled: !newsState,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
 
@@ -73,13 +82,16 @@ export function NewsAndCalendar({
     enabled: !calendarState,
   });
 
+  const newsPayload = newsState?.payload ?? newsQuery.data?.result ?? null;
+  const newsIsLoading = newsState?.isLoading ?? newsQuery.isLoading;
+  const newsIsError = newsState?.isError ?? newsQuery.isError;
   const headlineRows = useMemo(() => {
-    const events = newsQuery.data?.result.events ?? [];
+    const events = newsPayload?.events ?? [];
     return events.map((e) => ({
       time: formatReceivedTime(e.received_at),
       title: summarizeNewsLine(e),
     }));
-  }, [newsQuery.data?.result.events]);
+  }, [newsPayload?.events]);
 
   const calendarRows = useMemo(() => {
     const rows = calendarState?.rows ?? calendarQuery.data ?? [];
@@ -111,11 +123,11 @@ export function NewsAndCalendar({
             label: "资讯",
             children: (
               <div className="market-data-news-calendar-pane">
-                {newsQuery.isLoading ? (
+                {newsIsLoading ? (
                   <div className="market-data-news-calendar-loading">
                     <Spin />
                   </div>
-                ) : newsQuery.isError ? (
+                ) : newsIsError ? (
                   <p className="market-data-news-calendar-empty">资讯加载失败，请稍后重试。</p>
                 ) : headlineRows.length === 0 ? (
                   <p className="market-data-news-calendar-empty">当前无资讯事件，请确认数据源或稍后刷新。</p>

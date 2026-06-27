@@ -32,6 +32,36 @@ describe("marketDataSeriesTimeChartOption", () => {
     ).toBeNull();
   });
 
+  it("supports a sheet variant for dense market-data preview charts", () => {
+    const option = buildMarketDataSeriesTimeChartOption(
+      {
+        series_id: "DR007",
+        series_name: "存款类机构质押式回购加权利率:DR007",
+        unit: "%",
+        quality_flag: "ok",
+        recent_points: [
+          { trade_date: "2026-06-11", value_numeric: 1.4, quality_flag: "ok", source_version: "sv", vendor_version: "vv" },
+          { trade_date: "2026-06-12", value_numeric: 1.46, quality_flag: "ok", source_version: "sv", vendor_version: "vv" },
+        ],
+      },
+      { variant: "sheet" },
+    );
+
+    expect(option?.title).toBeUndefined();
+    expect(option?.grid).toMatchObject({ left: 34, right: 20, top: 12, bottom: 28 });
+
+    const series = option?.series;
+    if (!Array.isArray(series)) {
+      throw new Error("Expected sheet chart to expose a series array");
+    }
+    expect(series[0]).toMatchObject({
+      type: "line",
+      symbolSize: 4,
+      lineStyle: { width: 2 },
+      areaStyle: undefined,
+    });
+  });
+
   it("merges multiple series onto a shared timeline", () => {
     const option = buildMarketDataMultiSeriesTimeChartOption([
       {
@@ -77,7 +107,7 @@ describe("marketDataSeriesTimeChartOption", () => {
       },
     ]);
 
-    expect(option?.grid).toMatchObject({ left: 44, right: 48, top: 18 });
+    expect(option?.grid).toMatchObject({ left: 48, right: 56, top: 20 });
     expect((option?.tooltip as { axisPointer?: { type?: string } }).axisPointer?.type).toBe("line");
 
     const series = option?.series;

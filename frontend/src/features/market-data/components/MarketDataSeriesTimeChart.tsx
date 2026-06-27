@@ -9,14 +9,16 @@ type MarketDataSeriesTimeChartProps = {
   series: MarketDataSeriesTimeInput;
   height?: number;
   testId?: string;
+  variant?: "default" | "sheet";
 };
 
 export function MarketDataSeriesTimeChart({
   series,
   height = 220,
   testId = "market-data-series-time-chart",
+  variant = "default",
 }: MarketDataSeriesTimeChartProps) {
-  const option = useMemo(() => buildMarketDataSeriesTimeChartOption(series), [series]);
+  const option = useMemo(() => buildMarketDataSeriesTimeChartOption(series, { variant }), [series, variant]);
 
   return (
     <MarketDataChartShell

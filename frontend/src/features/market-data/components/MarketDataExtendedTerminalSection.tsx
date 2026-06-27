@@ -8,8 +8,8 @@ type MarketDataExtendedTerminalSectionProps = {
 
 function extendedTerminalLabel(sourcePendingCount: number) {
   const pendingHint =
-    sourcePendingCount > 0 ? ` · ${sourcePendingCount} 项待契约` : "";
-  return `待接入数据源（期货·成交）${pendingHint} · 点击展开`;
+    sourcePendingCount > 0 ? ` · ${sourcePendingCount} 项未接入` : "";
+  return `未接入数据源（期货·成交）${pendingHint} · 点击展开`;
 }
 
 export function MarketDataExtendedTerminalSection({

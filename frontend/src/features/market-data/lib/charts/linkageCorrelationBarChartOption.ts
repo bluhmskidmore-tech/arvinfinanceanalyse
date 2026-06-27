@@ -1,6 +1,6 @@
 import type { MacroBondLinkageTopCorrelation } from "../../../../api/contracts";
 import type { EChartsOption } from "../../../../lib/echarts";
-import { marketDataChartTheme } from "./marketDataChartTheme";
+import { buildMarketDataChartTooltip, marketDataChartTheme } from "./marketDataChartTheme";
 
 const CORR_WINDOWS = [
   { key: "correlation_3m" as const, label: "3M" },
@@ -30,8 +30,17 @@ export function buildLinkageCorrelationBarOption(
   );
 
   return {
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    legend: { bottom: 0, textStyle: marketDataChartTheme.axisLabel },
+    tooltip: buildMarketDataChartTooltip({
+      trigger: "axis",
+      axisPointer: marketDataChartTheme.axisPointerShadow,
+      valueFormatter: (value: unknown) => (typeof value === "number" ? value.toFixed(3) : String(value)),
+    }),
+    legend: {
+      bottom: 0,
+      itemWidth: 16,
+      itemHeight: 8,
+      textStyle: marketDataChartTheme.axisLabel,
+    },
     grid: { ...marketDataChartTheme.gridCompact, bottom: correlations.length > 3 ? 72 : 52 },
     xAxis: {
       type: "category",
@@ -42,6 +51,7 @@ export function buildLinkageCorrelationBarOption(
         rotate: categories.length > 4 ? 24 : 0,
       },
       axisLine: marketDataChartTheme.axisLine,
+      axisTick: { show: false },
     },
     yAxis: {
       type: "value",
@@ -49,17 +59,23 @@ export function buildLinkageCorrelationBarOption(
       max: 1,
       axisLabel: marketDataChartTheme.axisLabel,
       splitLine: marketDataChartTheme.splitLine,
+      axisLine: marketDataChartTheme.axisLine,
     },
     series: CORR_WINDOWS.map((window) => ({
       name: window.label,
       type: "bar" as const,
       barGap: "12%",
+      barCategoryGap: "34%",
       barMaxWidth: 18,
       data: correlations.map((item) => {
         const value = item[window.key];
         return {
           value: value ?? null,
-          itemStyle: { color: corrColor(value) },
+          itemStyle: {
+            color: corrColor(value),
+            opacity: value == null ? 0.35 : 0.82,
+            borderRadius: [3, 3, 0, 0],
+          },
         };
       }),
     })),
