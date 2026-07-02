@@ -79,6 +79,13 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
     ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
     ...marketDataQueryFocusOptions,
   });
+  const externalDataWatermarksQuery = useQuery({
+    queryKey: ["market-data", "external-data-watermarks", client.mode],
+    queryFn: () => client.getExternalDataWatermarks(),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...marketDataQueryFocusOptions,
+  });
   const fxAnalyticalQuery = useQuery({
     queryKey: ["market-data", "fx-analytical", client.mode],
     queryFn: () => client.getFxAnalytical(),
@@ -282,6 +289,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
       await Promise.all([
         catalogQuery.refetch(nonCancellingRefetchOptions),
         latestQuery.refetch(nonCancellingRefetchOptions),
+        externalDataWatermarksQuery.refetch(nonCancellingRefetchOptions),
         formalRatesQuery.refetch(nonCancellingRefetchOptions),
         fxAnalyticalQuery.refetch(nonCancellingRefetchOptions),
         fxFormalStatusQuery.refetch(nonCancellingRefetchOptions),
@@ -303,6 +311,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
     client,
     catalogQuery,
     latestQuery,
+    externalDataWatermarksQuery,
     formalRatesQuery,
     fxAnalyticalQuery,
     fxFormalStatusQuery,
@@ -325,6 +334,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
     pageModel,
     catalogQuery,
     latestQuery,
+    externalDataWatermarksQuery,
     fxAnalyticalQuery,
     fxFormalStatusQuery,
     ncdFundingProxyQuery,

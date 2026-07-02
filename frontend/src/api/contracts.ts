@@ -987,6 +987,10 @@ export type RiskTensorPayload = {
   report_date: string;
   portfolio_dv01: RiskTensorScalar;
   regulatory_dv01?: RiskTensorScalar | null;
+  ac_dv01?: RiskTensorScalar | null;
+  oci_dv01?: RiskTensorScalar | null;
+  tpl_dv01?: RiskTensorScalar | null;
+  other_dv01?: RiskTensorScalar | null;
   krd_1y: RiskTensorScalar;
   krd_3y: RiskTensorScalar;
   krd_5y: RiskTensorScalar;
@@ -1026,6 +1030,54 @@ export type BlockedReportDate = {
 export type RiskTensorDatesPayload = {
   report_dates: string[];
   blocked_report_dates?: BlockedReportDate[];
+};
+
+export type RiskScenarioStressCategory = "rate" | "credit" | "liquidity" | "fx";
+
+export type RiskScenarioStressRow = {
+  scenario_key: string;
+  category: RiskScenarioStressCategory;
+  label: string;
+  source_field: string;
+  shock: Numeric;
+  estimated_impact: Numeric;
+  measure: string;
+  calculation: string;
+  interpretation: string;
+  data_status: "available" | "source_missing";
+  human_review_required: boolean;
+  baseline_value?: Numeric;
+  stressed_value?: Numeric;
+  baseline_ratio?: Numeric;
+  stressed_ratio?: Numeric;
+};
+
+export type RiskScenarioStressSummary = {
+  scenario_count: number;
+  available_count: number;
+  review_required_count: number;
+  worst_estimated_impact: Numeric;
+  worst_scenario_key: string | null;
+  message: string;
+};
+
+export type RiskScenarioStressPayload = {
+  report_date: string;
+  basis: "scenario";
+  scenario_set_id: string;
+  rule_version: string;
+  source: {
+    result_kind?: string | null;
+    trace_id?: string | null;
+    source_version?: string | null;
+    rule_version?: string | null;
+    cache_version?: string | null;
+    quality_flag?: string | null;
+  };
+  summary: RiskScenarioStressSummary;
+  scenarios: RiskScenarioStressRow[];
+  warnings: string[];
+  source_warnings: string[];
 };
 
 export type PlaceholderSnapshot = {
@@ -1128,6 +1180,7 @@ export type ChoiceMacroRefreshPayload = {
   warnings?: string[];
   choice_macro?: ChoiceMacroRefreshPayload;
   public_cross_asset?: ChoiceMacroRefreshPayload;
+  tushare_ncd_shibor?: ChoiceMacroRefreshPayload;
   detail?: string | null;
   error_message?: string | null;
 };
@@ -1430,6 +1483,38 @@ export type ChoiceNewsEvent = {
   payload_json: string | null;
 };
 
+export type ChoiceNewsCompareRow = {
+  event_family?: string;
+  factor_tags?: string[];
+  event_count?: number;
+  source_event_ids?: string[];
+  summary?: string;
+  review_reason?: string;
+  conflict_type?: string;
+  families?: Array<{ event_family: string; source_event_ids: string[] }>;
+};
+
+export type ChoiceNewsCandidateScenario = {
+  event_family: string;
+  match_rule: string;
+  factor_tags: string[];
+  scenario_template_id: string;
+  default_shocks: string[];
+  rule_version: string;
+  human_review_required: boolean;
+  mapping_rule_id: string;
+  source_event_ids: string[];
+};
+
+export type ChoiceNewsComparePayload = {
+  basis: "analytical";
+  rule_version: string;
+  same_direction: ChoiceNewsCompareRow[];
+  conflicting: ChoiceNewsCompareRow[];
+  review_needed: ChoiceNewsCompareRow[];
+  candidate_scenarios: ChoiceNewsCandidateScenario[];
+};
+
 export type ChoiceNewsEventsPayload = {
   total_rows: number;
   limit: number;
@@ -1437,6 +1522,7 @@ export type ChoiceNewsEventsPayload = {
   stock_code?: string | null;
   stock_filter_mode?: string | null;
   stock_filter_tokens?: string[];
+  compare?: ChoiceNewsComparePayload;
   events: ChoiceNewsEvent[];
 };
 
@@ -1528,7 +1614,8 @@ export type LivermoreRuleReadinessStatus =
   | "blocked"
   | "stale";
 export type LivermoreDiagnosticSeverity = "info" | "warning" | "error";
-export type LivermoreDataGapStatus = "missing" | "partial" | "stale" | "ready";
+export type ExternalDataFreshnessTier = "fresh" | "stale" | "expired" | "unknown";
+export type LivermoreDataGapStatus = "missing" | "partial" | "stale" | "ready" | "look_ahead";
 export type LivermoreOutputKey =
   | "market_gate"
   | "sector_rank"
@@ -1578,6 +1665,46 @@ export type LivermoreDataGap = {
   input_family: string;
   status: LivermoreDataGapStatus;
   evidence: string;
+  input?: string | null;
+  business_date?: string | null;
+  age_days?: number | null;
+  tier?: ExternalDataFreshnessTier | null;
+};
+
+export type ExternalDataWatermarkEntry = {
+  series_id: string;
+  series_name: string;
+  vendor_name: string;
+  source_family: string;
+  domain: "macro" | "news" | "yield_curve" | "fx" | "other";
+  frequency?: string | null;
+  unit?: string | null;
+  refresh_tier?: string | null;
+  fetch_mode?: string | null;
+  relation_name?: string | null;
+  date_column?: string | null;
+  row_count: number;
+  latest_business_date?: string | null;
+  latest_loaded_at?: string | null;
+  age_days?: number | null;
+  freshness_tier?: ExternalDataFreshnessTier | null;
+  data_status: "available" | "no_data" | "unavailable";
+  error_message?: string | null;
+};
+
+export type ExternalDataWatermarkSummary = {
+  catalog_count: number;
+  available_count: number;
+  no_data_count: number;
+  unavailable_count: number;
+  oldest_available_business_date?: string | null;
+  newest_available_business_date?: string | null;
+  last_successful_ingest?: string | null;
+};
+
+export type ExternalDataWatermarkLedger = {
+  summary: ExternalDataWatermarkSummary;
+  entries: ExternalDataWatermarkEntry[];
 };
 
 export type LivermoreUnsupportedOutput = {
@@ -2132,6 +2259,117 @@ export type LivermoreStrategyPayload = {
   workbench_summary?: Record<string, unknown>;
 };
 
+export type StockAnalysisWorkbenchAnswerState =
+  | "review_ready"
+  | "limited_review"
+  | "blocked"
+  | "no_data"
+  | string;
+
+export type StockAnalysisWorkbenchModuleStatus =
+  | "ready"
+  | "deferred"
+  | "missing"
+  | "error"
+  | "unsupported"
+  | "stale"
+  | string;
+
+export type StockAnalysisWorkbenchIssue = {
+  severity: "info" | "warning" | "blocking" | string;
+  code: string;
+  message: string;
+  source_module: string | null;
+};
+
+export type StockAnalysisWorkbenchModule<T = unknown> = {
+  key: string;
+  label: string;
+  endpoint: string;
+  status: StockAnalysisWorkbenchModuleStatus;
+  result: T | null;
+  summary: Record<string, unknown>;
+  meta: Record<string, unknown>;
+  issues: StockAnalysisWorkbenchIssue[];
+};
+
+export type StockAnalysisWorkbenchEndpointEvidence = {
+  key: string;
+  label: string;
+  endpoint: string;
+  status: StockAnalysisWorkbenchModuleStatus;
+  as_of_date: string | null;
+  rows: number | null;
+  warning: string | null;
+};
+
+export type StockAnalysisWorkbenchPayload = {
+  page_id: "GAP-STOCK-ANALYSIS-PAGE";
+  route: "/stock-analysis";
+  basis: "analytical";
+  contract_status: "observational_only";
+  formal_use_allowed: false;
+  requested_as_of_date: string | null;
+  as_of_date: string | null;
+  fallback_date: string | null;
+  stale: boolean;
+  page_question: {
+    question: string;
+    answer_state: StockAnalysisWorkbenchAnswerState;
+    answer_label: string;
+    reason: string;
+  };
+  decision_summary: {
+    gate_state: string | null;
+    gate_label: string;
+    can_review_candidates: boolean;
+    top_review_stock_code: string | null;
+    top_review_stock_name: string | null;
+    review_queue_count: number;
+    evidence_closure_label: string;
+    primary_blocker: string | null;
+    quality_flag?: string | null;
+  };
+  data_status: {
+    quality_flag: string | null;
+    vendor_status: string | null;
+    fallback_mode: string | null;
+    source_version: string | null;
+    rule_version: string | null;
+    cache_version: string | null;
+    tables_used: string[];
+    evidence_rows: number | null;
+  };
+  first_screen: {
+    market_gate: LivermoreMarketGate | Record<string, unknown> | null;
+    review_queue: Record<string, unknown>[];
+    sector_snapshot: Record<string, unknown>[];
+    risk_exit_snapshot: Record<string, unknown>[];
+    data_gaps: LivermoreDataGap[] | Record<string, unknown>[];
+    diagnostics: LivermoreDiagnostic[] | Record<string, unknown>[];
+    supported_outputs: string[];
+    unsupported_outputs: LivermoreUnsupportedOutput[] | Record<string, unknown>[];
+  };
+  modules: Record<string, StockAnalysisWorkbenchModule>;
+  endpoint_evidence: StockAnalysisWorkbenchEndpointEvidence[];
+  issues: StockAnalysisWorkbenchIssue[];
+  links: {
+    stock_detail: string;
+    candidate_history: string;
+    sector_rank_series: string;
+    strategy_score: string;
+    strategy_optimization: string;
+    cycle_proxy_backtest: string;
+    portfolio_backtest: string;
+  };
+  include: {
+    requested: string[];
+    unknown: string[];
+    sector_window_days: number;
+    top_k: number;
+  };
+};
+
 export type LivermoreStockDetailCandle = {
   trade_date: string;
   open_value: number | null;
@@ -2386,7 +2624,51 @@ export type LivermoreStrategyScoreDiagnostics = {
   risk_flags: LivermoreStrategyScoreRiskFlag[];
 };
 
-export type LivermoreStrategyScoreRow = {
+export type LivermoreStrategyFamilyMetadata = {
+  family_key?: string | null;
+  family_label?: string | null;
+  family_contract_version?: string | null;
+  primary_sample_size?: number | null;
+  family_readiness?: LivermoreStrategyFamilyReadiness | null;
+};
+
+export type LivermoreMacroContextV1 = {
+  macro_context_id: string;
+  macro_contract_version: string;
+  asof_date: string;
+  report_date?: string | null;
+  data_state: "ready" | "degraded" | "stale" | "no_data" | string;
+  coverage_ratio: number;
+  freshness_score: number;
+  confidence_score: number;
+  fallback_mode: string;
+  dimension_scores: Record<string, number | null>;
+  readiness_reasons: string[];
+  quality_flag?: string | null;
+  vendor_status?: string | null;
+  source_version?: string | null;
+  vendor_version?: string | null;
+  rule_version?: string | null;
+  cache_version?: string | null;
+  evidence_rows?: number | null;
+  warning_count?: number | null;
+};
+
+export type LivermoreStrategyFamilyReadiness = {
+  readiness_contract_version: string;
+  readiness_state: "observation_ready" | "degraded_observation" | string;
+  macro_context_id?: string | null;
+  market_gate_context_id?: string | null;
+  macro_compatibility: "compatible" | "degraded" | "unknown" | string;
+  market_gate_compatibility: "compatible" | "degraded" | "unknown" | string;
+  data_readiness: "ready" | "degraded" | "missing" | string;
+  sample_maturity: "sufficient" | "insufficient" | "unknown" | string;
+  readiness_reasons: string[];
+  observational_only: boolean;
+  formal_use_allowed: boolean;
+};
+
+export type LivermoreStrategyScoreRow = LivermoreStrategyFamilyMetadata & {
   market_state: string;
   signal_kind: string;
   strategy_label: string;
@@ -2407,6 +2689,7 @@ export type LivermoreStrategyScorePayload = {
   min_sample: number;
   review_thresholds?: Record<string, unknown>;
   current_market_state: string | null;
+  macro_context?: LivermoreMacroContextV1 | null;
   backtest_window_summary?: BacktestWindowSummary | null;
   rows: LivermoreStrategyScoreRow[];
   current_market_state_rows: LivermoreStrategyScoreRow[];
@@ -2459,7 +2742,7 @@ export type LivermoreStrategyOptimizationDateWeightedStatsByKey = Record<
   LivermoreStrategyOptimizationDateWeightedStats
 >;
 
-export type LivermoreStrategyOptimizationSummary = {
+export type LivermoreStrategyOptimizationSummary = LivermoreStrategyFamilyMetadata & {
   summary_key: string;
   signal_kind: string;
   strategy_label: string;
@@ -2469,7 +2752,7 @@ export type LivermoreStrategyOptimizationSummary = {
   recommendation: LivermoreStrategyOptimizationRecommendation;
 };
 
-export type LivermoreStrategyOptimizationSlice = {
+export type LivermoreStrategyOptimizationSlice = LivermoreStrategyFamilyMetadata & {
   slice_key: string;
   signal_kind: string;
   strategy_label: string;
@@ -2506,6 +2789,7 @@ export type LivermoreStrategyOptimizationPayload = {
   min_sample: number;
   review_thresholds?: Record<string, unknown>;
   current_market_state: string | null;
+  macro_context?: LivermoreMacroContextV1 | null;
   backtest_window_summary?: BacktestWindowSummary | null;
   strategy_summaries: LivermoreStrategyOptimizationSummary[];
   slices: LivermoreStrategyOptimizationSlice[];
@@ -2515,7 +2799,7 @@ export type LivermoreStrategyOptimizationPayload = {
       target_key: string;
       signal_kind: string;
       label: string;
-    }
+    } & LivermoreStrategyFamilyMetadata
   >;
   pending_summary: LivermoreStrategyOptimizationPendingSummary;
   sample_maturity?: LivermoreStrategyOptimizationSampleMaturity | null;

@@ -211,7 +211,7 @@ describe("stockAnalysisPageLabels", () => {
     expect(overview.riskDetailLabel).toBe("持仓 5 / 触发 1 / 观察 1");
     expect(overview.qualityLabel).toBe("质量 需复核");
     expect(overview.vendorLabel).toBe("通道 异常");
-    expect(overview.fallbackLabel).toBe("回退快照");
+    expect(overview.fallbackLabel).toBe("数据延迟");
     expect(overview.basisLabel).toBe("分析口径");
     expect(overview.readinessRows).toBe(strategyPayload.rule_readiness);
     expect(overview.dataGapRows).toBe(strategyPayload.data_gaps);

@@ -20,6 +20,75 @@
   gap: 6px;
 }
 
+.market-data-hero-kpi-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.market-data-hero-date-slot,
+.market-data-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--moss-space-2);
+}
+
+.market-data-hero-date-input {
+  padding: 4px 8px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-paper);
+  color: var(--ib-ink);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.market-data-hero-date-note,
+.market-data-terminal-ticker-empty {
+  color: var(--ib-ink-muted);
+  font-size: 12px;
+}
+
+.market-data-hero-status-warn {
+  color: var(--ib-warn);
+}
+
+.market-data-hero-status-accent {
+  color: var(--ib-accent);
+}
+
+.market-data-hero-status-danger {
+  color: var(--ib-down);
+}
+
+.market-data-hero-select--curve {
+  width: 100px;
+}
+
+.market-data-hero-select--source {
+  width: 90px;
+}
+
+.market-data-hero-refresh-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-paper);
+  color: var(--ib-ink);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.market-data-hero-refresh-btn:disabled {
+  background: var(--ib-surface);
+  cursor: not-allowed;
+}
+
+.market-data-terminal-ticker-empty {
+  padding: var(--moss-space-3);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+}
+
 .market-data-page[data-view-mode="compact"] .market-data-terminal-cockpit {
   padding: 4px;
 }

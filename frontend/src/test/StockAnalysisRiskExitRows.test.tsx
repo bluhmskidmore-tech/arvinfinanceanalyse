@@ -109,7 +109,7 @@ describe("StockAnalysisRiskExitRows", () => {
     expect(section).toHaveTextContent("持仓快照缺失");
     expect(section).not.toHaveTextContent("livermore_position_snapshot has no ACTIVE A-share rows.");
 
-    fireEvent.click(screen.getByTestId("stock-risk-row-000001.SZ"));
-    expect(onOpenRiskDetail).toHaveBeenCalledWith(row);
+    expect(screen.queryByTestId("stock-risk-row-000001.SZ")).not.toBeInTheDocument();
+    expect(onOpenRiskDetail).not.toHaveBeenCalled();
   });
 });

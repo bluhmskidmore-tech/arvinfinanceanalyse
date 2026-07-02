@@ -24,15 +24,20 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.0.0",
+    "@heroui/react": "^3.2.1",
+    "@heroui/styles": "^3.2.1",
+    "@nextui-org/react": "^2.6.11",
     "@tanstack/react-query": "^5.0.0",
     "ag-grid-community": "^35.2.1",
     "ag-grid-react": "^35.2.1",
     "antd": "^5.0.0",
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.6",
+    "framer-motion": "^12.42.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-router-dom": "^6.30.4",
+    "tailwind-variants": "^3.2.2",
     "write-excel-file": "^4.0.6"
   },
   "devDependencies": {

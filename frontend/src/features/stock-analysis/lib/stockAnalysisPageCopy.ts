@@ -65,6 +65,9 @@ export function localizeStockErrorMessage(message: string) {
   ) {
     return "请求失败：必需数据源缺失，稍后复核供数状态。";
   }
+  if (normalized === "not found" || normalized.includes("not found") || normalized.includes("404")) {
+    return "\u4f9b\u6570\u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u590d\u6838\u3002";
+  }
   if (
     normalized.includes("request failed") ||
     normalized.includes("/ui/") ||
@@ -111,9 +114,9 @@ export function stockSupplyVendorLabel(value: string | null | undefined) {
   const normalized = (value ?? "").trim().toLowerCase();
   const labels: Record<string, string> = {
     ok: "正常",
-    vendor_stale: "陈旧",
+    vendor_stale: "数据延迟",
     vendor_unavailable: "异常",
-    degraded: "降级",
+    degraded: "部分缺失",
     error: "异常",
     pending: "待确认",
   };
@@ -122,13 +125,13 @@ export function stockSupplyVendorLabel(value: string | null | undefined) {
 
 export function stockSupplyFallbackLabel(value: string | null | undefined) {
   const normalized = (value ?? "").trim().toLowerCase();
-  if (!normalized || normalized === "none") return "无回退";
+  if (!normalized || normalized === "none") return "数据正常";
   const labels: Record<string, string> = {
-    latest_snapshot: "回退快照",
-    cache: "缓存回退",
-    mock: "模拟回退",
+    latest_snapshot: "数据延迟",
+    cache: "数据延迟",
+    mock: "演示数据",
   };
-  return labels[normalized] ?? "回退待确认";
+  return labels[normalized] ?? "待确认";
 }
 
 export function stockSupplyBasisLabel(value: string | null | undefined) {

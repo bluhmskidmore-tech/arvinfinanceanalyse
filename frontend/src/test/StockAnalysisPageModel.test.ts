@@ -665,7 +665,7 @@ describe("stockAnalysisPageModel", () => {
 
     expect(inlineMeta.find((item) => item.key === "quality_flag")?.text).toBe("质量需复核");
     expect(inlineMeta.find((item) => item.key === "vendor_status")?.text).toBe("供数待确认");
-    expect(inlineMeta.find((item) => item.key === "fallback_mode")?.text).toBe("回退待确认");
+    expect(inlineMeta.find((item) => item.key === "fallback_mode")?.text).toBe("待确认");
     expect(copy).toContain("sv_livermore_test");
     expect(copy).toContain("rv_livermore_market_gate_v1");
     expect(copy).not.toContain("warning");
@@ -698,7 +698,7 @@ describe("stockAnalysisPageModel", () => {
     const ruleRow = rows.find((item) => item.key === "rule-version");
 
     expect(ruleRow?.label).toBe("规则版本");
-    expect(ruleRow?.statusLabel).toBe("待补");
+    expect(ruleRow?.statusLabel).toBe("规则待确认");
     expect(ruleRow?.tone).toBe("warning");
     expect(ruleRow?.statusLabel).not.toBe(strategyPayload.sector_rank?.formula_version);
   });
@@ -728,7 +728,7 @@ describe("stockAnalysisPageModel", () => {
       tone: "positive",
       dateLabel: "日期：2026-04-29",
       issueLabel: "无新增提示",
-      metaLabel: "质量正常 / 供数正常",
+      metaLabel: "数据正常",
       traceLabel: "链路：trace-stock-20260429",
     });
   });
@@ -757,7 +757,7 @@ describe("stockAnalysisPageModel", () => {
     expect(rows[0].tone).toBe("warning");
     expect(rows[0].dateLabel).toBe("窗口：2026-04-20 至 2026-04-29");
     expect(rows[0].issueLabel).toBe("提示 2 / 阻断 1 / 缺输入 3");
-    expect(rows[0].metaLabel).toBe("质量需复核 / 供数正常 / 回退快照");
+    expect(rows[0].metaLabel).toBe("数据延迟");
   });
 
   it("does not present idle, failed, or meta-missing endpoints as ready", () => {
@@ -802,7 +802,7 @@ describe("stockAnalysisPageModel", () => {
     expect(rows[2]).toMatchObject({
       statusLabel: "证据待补",
       tone: "warning",
-      metaLabel: "接口元信息待补",
+      metaLabel: "证据待补",
     });
     expect(rows[2].detail).not.toContain("result_meta");
   });
@@ -871,7 +871,7 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.formalUseAllowed).toBe(false);
     expect(summary.detail).toContain("正式用途：否");
     expect(summary.detail).toContain("gap_or_observational");
-    expect(summary.headline).toBe("代码侧证据读取覆盖 3/4");
+    expect(summary.headline).toBe("证据读取覆盖 3/4");
     expect(summary.headline).not.toContain("闭环完成");
     expect(summary.unresolvedReasons.map((item) => item.kind)).toEqual([
       "query-error",
@@ -1027,6 +1027,86 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.nextReviewAction).not.toContain("买入");
   });
 
+  it("localizes signed hybrid fusion actions without turning them into trading instructions", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      supported_outputs: strategyPayload.supported_outputs.includes("hybrid_fusion")
+        ? strategyPayload.supported_outputs
+        : [...strategyPayload.supported_outputs, "hybrid_fusion" as LivermoreOutputKey],
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-06-26",
+        formula_version: "rv_hybrid_fusion_candidates_v3",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 3,
+        coverage_note: "Hybrid fusion uses signed observation inputs.",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000001.SZ",
+            stock_name: "Core Alpha",
+            sector_code: "801001",
+            sector_name: "AI",
+            fusion_score: 0.36,
+            cycle_score: 0.46,
+            lifecourt_proxy_score: 0.18,
+            attention_score: 0.22,
+            price_confirm_score: 0.33,
+            crowding_penalty: 0,
+            fusion_action: "core_plus_trading",
+            confidence: "low",
+            reason: "Fusion observation-only candidate",
+            evidence: { source_kinds: ["stock_candidate", "factor_screen"] },
+          },
+          {
+            rank: 2,
+            stock_code: "000002.SZ",
+            stock_name: "Reduce Beta",
+            sector_code: "801002",
+            sector_name: "新能源车",
+            fusion_score: 0.24,
+            cycle_score: 0.29,
+            lifecourt_proxy_score: 0.14,
+            attention_score: 0.18,
+            price_confirm_score: 0.24,
+            crowding_penalty: 0,
+            fusion_action: "core_reduce_trading",
+            confidence: "medium",
+            reason: "Fusion observation-only candidate",
+            evidence: { source_kinds: ["factor_screen"] },
+          },
+          {
+            rank: 3,
+            stock_code: "000003.SZ",
+            stock_name: "Satellite Gamma",
+            sector_code: "801003",
+            sector_name: "电子",
+            fusion_score: 0.18,
+            cycle_score: 0.2,
+            lifecourt_proxy_score: 0.1,
+            attention_score: 0.12,
+            price_confirm_score: 0.2,
+            crowding_penalty: 0,
+            fusion_action: "satellite_trial",
+            confidence: "high",
+            reason: "Fusion observation-only candidate",
+            evidence: { source_kinds: ["theme_breakout"] },
+          },
+        ],
+      },
+    };
+
+    const cards = buildCandidateEvidenceCards(payload);
+    const actionValues = cards.map((card) => card.rawFields.find((row) => row.key === "fusion_action")?.value);
+    const confidenceValues = cards.map((card) => card.rawFields.find((row) => row.key === "confidence")?.value);
+
+    expect(actionValues).toEqual(["重点复核", "降权观察", "卫星观察"]);
+    expect(confidenceValues).toEqual(["低", "中", "高"]);
+    expect(cards.map((card) => card.evidence.join(" ")).join(" ")).not.toContain("core_plus_trading");
+    expect(cards.map((card) => card.evidence.join(" ")).join(" ")).not.toContain("trading");
+    expect(cards.map((card) => card.evidence.join(" ")).join(" ")).not.toContain("买入");
+  });
+
   it("treats fallback snapshots as data that needs review", () => {
     const summary = buildDecisionSummary(strategyPayload, {
       quality_flag: "ok",
@@ -1039,8 +1119,8 @@ describe("stockAnalysisPageModel", () => {
       fallback_mode: "latest_snapshot",
     });
 
-    expect(summary.dataFreshnessLabel).toBe("数据需复核 质量正常 / 供数正常 / 回退快照");
-    expect(purpose.dataStatusLine).toContain("回退快照");
+    expect(summary.dataFreshnessLabel).toBe("数据需复核 质量正常 / 供数正常 / 数据延迟");
+    expect(purpose.dataStatusLine).toContain("数据延迟");
     expect(purpose.dataStatusLine).not.toContain("latest_snapshot");
   });
 
@@ -1053,8 +1133,8 @@ describe("stockAnalysisPageModel", () => {
     const summary = buildDecisionSummary(strategyPayload, unknownFallbackMeta);
     const purpose = buildStockAnalysisPagePurpose(strategyPayload, unknownFallbackMeta);
 
-    expect(summary.dataFreshnessLabel).toContain("回退待确认");
-    expect(purpose.dataStatusLine).toContain("回退待确认");
+    expect(summary.dataFreshnessLabel).toContain("待确认");
+    expect(purpose.dataStatusLine).toContain("待确认");
     expect(summary.dataFreshnessLabel).not.toContain("external_vendor_snapshot");
     expect(purpose.dataStatusLine).not.toContain("external_vendor_snapshot");
   });
@@ -1383,6 +1463,7 @@ describe("stockAnalysisPageModel", () => {
       stockCode: "688001.SH",
       pctChange: "12.10%",
       sourceLabel: "题材强势",
+      detailSource: "theme_breakout",
     });
     expect(preview.sectorsWithSamples).toBe(1);
   });
@@ -1419,6 +1500,7 @@ describe("stockAnalysisPageModel", () => {
       stockName: "Leader Alpha",
       pctChange: "8.20%",
       sourceLabel: "板块成分",
+      detailSource: "sector_constituent",
       auxiliaryLabel: "振幅 6.10%",
     });
   });
@@ -2876,7 +2958,7 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.diagnosticsCount).toBe(1);
     expect(summary.dataGapCount).toBe(1);
     expect(summary.unsupportedCount).toBe(1);
-    expect(summary.freshnessLabel).toBe("新鲜度 质量需复核 / 供数正常 / 回退快照");
+    expect(summary.freshnessLabel).toBe("新鲜度 质量需复核 / 供数正常 / 数据延迟");
     expect(summary.summaryLabel).toBe("3 条边界");
     expect(summary.detailLabel).toContain("诊断 1 / 缺口 1 / 阻断 1");
     expect(summary.topMessages.join(" ")).toContain("市场宽度输入不可用");

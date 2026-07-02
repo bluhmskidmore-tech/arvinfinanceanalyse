@@ -213,7 +213,7 @@ export function MarketDataHeroSection({
             <span data-testid="market-data-hero-readiness-chip">读面结论：{readinessVerdict}</span>
             <span aria-hidden="true">·</span>
             <span data-testid="market-data-formal-basis-chip">
-              利率主表口径：{isFormalBasis ? "正式" : "分析/候选"}
+              利率主表：{isFormalBasis ? "正式可用" : "仅分析"}
             </span>
           </div>
         </DataStatusStrip>

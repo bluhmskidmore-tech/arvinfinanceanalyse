@@ -75,6 +75,26 @@ function positionRiskIsInactive(model: LivermoreStrategyModel, inputFamily: stri
   return inputFamily === "position_risk" && model.riskExit === null;
 }
 
+function freshnessTierStatus(tier: LivermoreStrategyModel["dataGaps"][number]["tier"]) {
+  if (tier === "stale" || tier === "expired") {
+    return "warning";
+  }
+  if (tier === "fresh") {
+    return "ready";
+  }
+  return "info";
+}
+
+function dataGapRowKey(gap: LivermoreStrategyModel["dataGaps"][number]) {
+  return [
+    gap.inputFamily,
+    gap.status,
+    gap.input ?? "",
+    gap.businessDate ?? "",
+    gap.ageDays ?? "",
+  ].join(":");
+}
+
 export function LivermoreStrategyPanel({
   model,
   isLoading,
@@ -290,13 +310,25 @@ export function LivermoreStrategyPanel({
           <h3 className="livermore-strategy-panel__block-title">数据缺口</h3>
           <ul className="livermore-strategy-panel__list">
             {model.dataGaps.map((gap) => (
-              <li className="livermore-strategy-panel__row" key={gap.inputFamily}>
+              <li className="livermore-strategy-panel__row" key={dataGapRowKey(gap)}>
                 <span className="livermore-strategy-panel__row-main">
                   <span className="livermore-strategy-panel__row-title">{gap.inputFamily}</span>
                   <span className="livermore-strategy-panel__row-detail">{gap.evidence}</span>
+                  {gap.freshnessLabel ? (
+                    <span className="livermore-strategy-panel__row-detail">
+                      {gap.freshnessLabel}
+                    </span>
+                  ) : null}
                 </span>
-                <span className={statusClass(positionRiskIsInactive(model, gap.inputFamily) ? "info" : gap.status)}>
-                  {positionRiskIsInactive(model, gap.inputFamily) ? "未启用" : gap.statusLabel}
+                <span className="livermore-strategy-panel__row-actions">
+                  {gap.tier ? (
+                    <span className={statusClass(freshnessTierStatus(gap.tier))}>
+                      {gap.tier}
+                    </span>
+                  ) : null}
+                  <span className={statusClass(positionRiskIsInactive(model, gap.inputFamily) ? "info" : gap.status)}>
+                    {positionRiskIsInactive(model, gap.inputFamily) ? "未启用" : gap.statusLabel}
+                  </span>
                 </span>
               </li>
             ))}

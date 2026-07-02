@@ -191,6 +191,87 @@ describe("stockAnalysisOptimizationModel", () => {
     expect(buildStrategyOptimizationRows(null)).toEqual([]);
   });
 
+  it("accepts enriched strategy family metadata without changing optimization rows", () => {
+    const payload = buildPayload();
+    const enrichedPayload: LivermoreStrategyOptimizationPayload = {
+      ...payload,
+      strategy_summaries: payload.strategy_summaries.map((row) => ({
+        ...row,
+        family_key: row.signal_kind === "stock_candidate" ? "trend_core" : row.signal_kind,
+        family_label: row.strategy_label,
+        family_contract_version: "rv_livermore_strategy_family_contract_v1",
+        primary_sample_size: row.stats[payload.primary_horizon]?.available_count ?? null,
+        family_readiness: {
+          readiness_contract_version: "rv_livermore_strategy_family_readiness_v1",
+          readiness_state: "degraded_observation",
+          macro_context_id: "macroctx_unit",
+          market_gate_context_id: null,
+          macro_compatibility: "compatible",
+          market_gate_compatibility: "unknown",
+          data_readiness: "ready",
+          sample_maturity: "insufficient",
+          readiness_reasons: ["OBSERVATION_ONLY_BOUNDARY"],
+          observational_only: true,
+          formal_use_allowed: false,
+        },
+      })),
+      slices: payload.slices.map((row) => ({
+        ...row,
+        family_key: row.signal_kind === "stock_candidate" ? "trend_core" : row.signal_kind,
+        family_label: row.strategy_label,
+        family_contract_version: "rv_livermore_strategy_family_contract_v1",
+        primary_sample_size: row.stats[payload.primary_horizon]?.available_count ?? null,
+        family_readiness: {
+          readiness_contract_version: "rv_livermore_strategy_family_readiness_v1",
+          readiness_state: "degraded_observation",
+          macro_context_id: "macroctx_unit",
+          market_gate_context_id: null,
+          macro_compatibility: "compatible",
+          market_gate_compatibility: "unknown",
+          data_readiness: "ready",
+          sample_maturity: "insufficient",
+          readiness_reasons: ["OBSERVATION_ONLY_BOUNDARY"],
+          observational_only: true,
+          formal_use_allowed: false,
+        },
+      })),
+      recommendations: [
+        {
+          ...buildRecommendation("promote"),
+          target_type: "strategy",
+          target_key: "stock",
+          signal_kind: "stock_candidate",
+          label: "stock_candidate",
+          family_key: "trend_core",
+          family_label: "Trend core",
+          family_contract_version: "rv_livermore_strategy_family_contract_v1",
+          primary_sample_size: 24,
+          family_readiness: {
+            readiness_contract_version: "rv_livermore_strategy_family_readiness_v1",
+            readiness_state: "degraded_observation",
+            macro_context_id: "macroctx_unit",
+            market_gate_context_id: null,
+            macro_compatibility: "compatible",
+            market_gate_compatibility: "unknown",
+            data_readiness: "ready",
+            sample_maturity: "insufficient",
+            readiness_reasons: ["OBSERVATION_ONLY_BOUNDARY"],
+            observational_only: true,
+            formal_use_allowed: false,
+          },
+        },
+      ],
+    };
+
+    expect(buildStrategyOptimizationRows(enrichedPayload).map((row) => row.summary_key)).toEqual(
+      buildStrategyOptimizationRows(payload).map((row) => row.summary_key),
+    );
+    const enrichedPair = strategyOptimizationSlicePair(enrichedPayload);
+    const basePair = strategyOptimizationSlicePair(payload);
+    expect(enrichedPair.strongest?.slice_key).toBe(basePair.strongest?.slice_key);
+    expect(enrichedPair.weakest?.slice_key).toBe(basePair.weakest?.slice_key);
+  });
+
   it("formats primary horizon stats and date-weighted maturity without inventing unavailable data", () => {
     const [stockRow, factorRow] = buildStrategyOptimizationRows(buildPayload());
 

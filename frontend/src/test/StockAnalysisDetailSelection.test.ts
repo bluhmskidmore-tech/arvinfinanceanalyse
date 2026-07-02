@@ -21,6 +21,11 @@ describe("stockAnalysisDetailSelection", () => {
       "factor_screen",
       "hybrid_fusion",
       "consensus",
+      "sector_constituent",
+      "theme_breakout",
+      "livermore",
+      "fresh_trend_watchlist",
+      "source_unconfirmed",
     ]);
   });
 
@@ -71,6 +76,12 @@ describe("stockAnalysisDetailSelection", () => {
       sectorCode: "BK001",
       sectorName: "Banking",
       distanceToBreakoutPct: "2.4%",
+      reviewFocus: "Sample Bank · Banking · 距观察位 2.4%",
+      primaryEvidence: [{ key: "turnover", label: "量比", value: "1.8x" }],
+      supportingEvidence: [{ key: "breadth", label: "扩散", value: "行业扩散 3/5" }],
+      boundaryEvidence: ["仅作观察与复核，不作为执行依据。", "公告催化尚未核实，边界待复核。"],
+      invalidationFocus: "跌回 MA20 下方即降级观察。",
+      invalidationRules: ["跌回 MA20 下方即降级观察。"],
     };
     const ranks = {
       livermoreRank: 8,
@@ -105,6 +116,12 @@ describe("stockAnalysisDetailSelection", () => {
       reviewRank: 5,
       livermoreRank: 8,
       hybridFusionRank: 5,
+      reviewThesis: {
+        whySelected: ["Sample Bank · Banking · 距观察位 2.4%", "量比：1.8x", "扩散：行业扩散 3/5"],
+        boundaries: ["公告催化尚未核实，边界待复核。"],
+        invalidation: ["跌回 MA20 下方即降级观察。"],
+        nextActions: ["看 K 线确认价格与量能", "查公告/新闻确认边界", "确认失效条件后再继续观察"],
+      },
     });
   });
 
@@ -200,6 +217,7 @@ describe("stockAnalysisDetailSelection", () => {
         stockName: "Sample Bank",
         sectorCode: "BK001",
         sectorName: "Banking",
+        source: "source_unconfirmed",
         ranks: {
           livermoreRank: 8,
           meanReversionRank: null,
@@ -212,11 +230,21 @@ describe("stockAnalysisDetailSelection", () => {
       name: "Sample Bank",
       sectorCode: "BK001",
       sectorName: "Banking",
+      source: "source_unconfirmed",
       livermoreRank: 8,
       meanReversionRank: null,
       factorScreenRank: 3,
       hybridFusionRank: 2,
     });
+
+    const context = buildStockDetailReviewContext({
+      code: "600000.SH",
+      source: "source_unconfirmed",
+    });
+    expect(context).toMatchObject({
+      sourceLabel: "来源待确认",
+    });
+    expect(context?.sourceLabel).not.toBe("复核队列");
   });
 
   it("builds stock detail drawer review context from a selection", () => {
@@ -242,6 +270,7 @@ describe("stockAnalysisDetailSelection", () => {
       meanReversionRank: null,
       factorScreenRank: 7,
       hybridFusionRank: 2,
+      reviewThesis: undefined,
     });
 
     expect(buildStockDetailReviewContext(null)).toBeNull();

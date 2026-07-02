@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -91,6 +92,7 @@ def test_external_data_read_surfaces_require_explicit_read_scope(tmp_path, monke
 
     read_requests = (
         "/api/external-data/catalog",
+        "/api/external-data/watermarks",
         "/api/external-data/catalog/api.series",
         "/api/external-data/catalog/by-domain/macro",
         "/api/external-data/series/api.series/data",
@@ -202,3 +204,72 @@ def test_external_data_series_data_endpoints_return_rows(tmp_path, monkeypatch) 
 
     assert missing.status_code == 404
     assert missing.json()["detail"] == "series_id not found"
+
+
+def test_external_data_watermark_endpoint_returns_catalog_freshness(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "watermark-api.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path.resolve()))
+    _grant_external_data_read_scope(tmp_path, monkeypatch)
+    conn = duckdb.connect(str(db_path))
+    try:
+        ensure_external_data_catalog_schema(conn)
+        ensure_std_external_macro_schema(conn)
+        repo = ExternalDataCatalogRepository(conn=conn)
+        repo.register(
+            ExternalDataCatalogEntry(
+                series_id="api.watermark.series",
+                series_name="API watermark series",
+                vendor_name="v",
+                source_family="sf",
+                domain="macro",
+                standardized_table="std_external_macro_daily",
+                view_name="vw_external_macro_daily",
+                catalog_version="cv",
+                created_at="2026-04-21T00:00:00+00:00",
+            )
+        )
+        conn.execute(
+            """
+            insert or replace into std_external_macro_daily (
+              series_id, vendor_name, domain, trade_date, value_numeric,
+              frequency, unit, source_version, vendor_version, rule_version,
+              ingest_batch_id, raw_zone_path, created_at
+            ) values
+            ('api.watermark.series', 'v', 'macro', '2026-04-20', 1.25, 'd', 'pct', 'sv', 'vv', 'rv', 'batch', null, timestamp '2026-04-21 08:00:00')
+            """,
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(app)
+    response = client.get("/api/external-data/watermarks")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["summary"]["catalog_count"] == 1
+    assert payload["summary"]["available_count"] == 1
+    assert payload["summary"]["oldest_available_business_date"] == "2026-04-20"
+    assert payload["summary"]["newest_available_business_date"] == "2026-04-20"
+    assert payload["summary"]["last_successful_ingest"] == "2026-04-21 08:00:00"
+    assert payload["entries"] == [
+        {
+            "series_id": "api.watermark.series",
+            "series_name": "API watermark series",
+            "vendor_name": "v",
+            "source_family": "sf",
+            "domain": "macro",
+            "frequency": None,
+            "unit": None,
+            "refresh_tier": None,
+            "fetch_mode": None,
+            "relation_name": "vw_external_macro_daily",
+            "date_column": "trade_date",
+            "row_count": 1,
+            "latest_business_date": "2026-04-20",
+            "latest_loaded_at": "2026-04-21 08:00:00",
+            "age_days": (date.today() - date(2026, 4, 20)).days,
+            "freshness_tier": "unknown",
+            "data_status": "available",
+            "error_message": None,
+        }
+    ]

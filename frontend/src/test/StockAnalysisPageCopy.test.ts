@@ -52,13 +52,13 @@ describe("stockAnalysisPageCopy", () => {
 
     expect(stockSupplyQualityLabel("warning")).toBe("需复核");
     expect(stockSupplyQualityLabel("vendor_pending")).toBe("质量待确认");
-    expect(stockSupplyVendorLabel("degraded")).toBe("降级");
+    expect(stockSupplyVendorLabel("degraded")).toBe("部分缺失");
     expect(stockSupplyVendorLabel("vendor_unavailable")).toBe("异常");
-    expect(stockSupplyVendorLabel("vendor_stale")).toBe("陈旧");
+    expect(stockSupplyVendorLabel("vendor_stale")).toBe("数据延迟");
     expect(stockSupplyVendorLabel("vendor_pending")).toBe("供数待确认");
-    expect(stockSupplyFallbackLabel("none")).toBe("无回退");
-    expect(stockSupplyFallbackLabel("latest_snapshot")).toBe("回退快照");
-    expect(stockSupplyFallbackLabel("unknown")).toBe("回退待确认");
+    expect(stockSupplyFallbackLabel("none")).toBe("数据正常");
+    expect(stockSupplyFallbackLabel("latest_snapshot")).toBe("数据延迟");
+    expect(stockSupplyFallbackLabel("unknown")).toBe("待确认");
     expect(stockSupplyBasisLabel("analytical")).toBe("分析口径");
     expect(stockSupplyBasisLabel("formal")).toBe("正式口径");
     expect(stockSupplyBasisLabel("vendor_pending")).toBe("口径待确认");

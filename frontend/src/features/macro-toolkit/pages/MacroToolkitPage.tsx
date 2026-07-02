@@ -18,6 +18,7 @@ import {
 } from "@ant-design/icons";
 import { Alert, Button, Checkbox, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { cardVariants } from "@heroui/styles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
@@ -71,6 +72,8 @@ import { isEvidenceBookRowPending } from "../lib/macroToolkitCommitteeEvidence";
 
 import { formatCrisisTopContributorSummary } from "../lib/crisisScoreDisplay";
 
+import "./MacroToolkitPage.css";
+
 const GROUP_LABELS: Record<string, string> = {
   allocation: "配置",
   credit: "信用",
@@ -108,6 +111,7 @@ const MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES = 5;
 const MACRO_COMMODITY_SHADOW_MIN_CORRELATION = 0.2;
 const MACRO_COMMODITY_SUGGESTED_REFRESH_LOOKBACK_DAYS = 45;
 const MACRO_TOOLKIT_ACTION_RECEIPT_LIMIT = 4;
+const MACRO_TOOLKIT_HERO_CARD_SLOTS = cardVariants({ variant: "default" });
 const BUSINESS_EVIDENCE_LABELS: Record<string, string> = {
   analytical: "证据口径已归档",
   choice: "宏观数据源",
@@ -2237,12 +2241,24 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   ) : null;
   const observationFirstScreenLoop =
     !showOperations ? (
-      <div className="macro-toolkit-observation-loop" aria-label="宏观观察首屏闭环">
-        <div className="macro-toolkit-observation-loop__head">
+      <div
+        className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
+          className: "macro-toolkit-observation-loop border border-default-200 bg-content1 text-foreground",
+        })}
+        aria-label="宏观观察首屏闭环"
+        data-slot="card"
+      >
+        <div
+          className={MACRO_TOOLKIT_HERO_CARD_SLOTS.header({ className: "macro-toolkit-observation-loop__head p-0" })}
+          data-slot="card-header"
+        >
           <span>观察闭环</span>
           <strong>{analysis?.as_of_date ?? "日期待确认"}</strong>
         </div>
-        <div className="macro-toolkit-observation-loop__grid">
+        <div
+          className={MACRO_TOOLKIT_HERO_CARD_SLOTS.content({ className: "macro-toolkit-observation-loop__grid p-0" })}
+          data-slot="card-content"
+        >
           <div>
             <span>当前判断</span>
             <strong>{analysis?.conclusion.stance ?? "读取中"}</strong>
@@ -4702,9 +4718,17 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       <main className={`${MT_SHELL_MAIN} macro-toolkit-page__main`}>
       <section
         data-testid="macro-toolkit-tailwind-cockpit"
-        className={`macro-toolkit-cockpit macro-toolkit-cockpit--${showOperations ? "toolkit" : "observation"}`}
+        className={MACRO_TOOLKIT_HERO_CARD_SLOTS.base({
+          className: `macro-toolkit-cockpit macro-toolkit-cockpit--${
+            showOperations ? "toolkit" : "observation"
+          } border border-default-200 bg-background/95 text-foreground shadow-sm`,
+        })}
+        data-slot="card"
       >
-        <div className="macro-toolkit-cockpit__body">
+        <div
+          className={MACRO_TOOLKIT_HERO_CARD_SLOTS.content({ className: "macro-toolkit-cockpit__body p-0" })}
+          data-slot="card-content"
+        >
           <div
             className="macro-toolkit-cockpit__analysis macro-toolkit-house-view"
             data-testid="macro-toolkit-house-view"
@@ -4914,6 +4938,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         </section>
       ) : null}
 
+      <div className="macro-toolkit-page__content">
       {analysisQuery.isError ? (
         <Alert type="error" showIcon message="宏观分析结果加载失败" />
       ) : null}
@@ -5426,6 +5451,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           )}
         </>
       ) : null}
+      </div>
 
       {showOperations ? (
         <section className="macro-toolkit-section">

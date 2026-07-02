@@ -27,6 +27,11 @@ function makeModel(): LivermoreStrategyModel {
         status: "missing",
         statusLabel: "缺失",
         evidence: "No position snapshot is loaded.",
+        input: null,
+        businessDate: null,
+        ageDays: null,
+        tier: null,
+        freshnessLabel: null,
       },
     ],
     supportedOutputs: [
@@ -102,5 +107,92 @@ describe("LivermoreStrategyPanel", () => {
 
     fireEvent.click(within(pool).getByRole("button", { name: "移出" }));
     expect(pool).toHaveTextContent("尚未选中候选股");
+  });
+
+  it("shows input freshness and degraded quality notes in data gaps", () => {
+    const model = makeModel();
+    model.statusNotes = [
+      "breadth breadth_close data lagged 8 days (stale), signal quality degraded",
+    ];
+    model.dataGaps = [
+      {
+        inputFamily: "breadth",
+        status: "stale",
+        statusLabel: "陈旧",
+        evidence: "Breadth input is stale.",
+        input: "breadth_close",
+        businessDate: "2026-04-21",
+        ageDays: 8,
+        tier: "stale",
+        freshnessLabel: "输入 breadth_close · 日期 2026-04-21 · T+8 · stale",
+      },
+    ];
+
+    render(
+      <LivermoreStrategyPanel
+        model={model}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("livermore-status-notes")).toHaveTextContent(
+      "signal quality degraded",
+    );
+    const dataGaps = screen.getByTestId("livermore-data-gaps");
+    expect(dataGaps).toHaveTextContent("breadth_close");
+    expect(dataGaps).toHaveTextContent("2026-04-21");
+    expect(dataGaps).toHaveTextContent("T+8");
+    expect(dataGaps).toHaveTextContent("stale");
+  });
+
+  it("renders multiple data gaps from the same input family without duplicate row keys", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const model = makeModel();
+    model.dataGaps = [
+      {
+        inputFamily: "breadth",
+        status: "stale",
+        statusLabel: "陈旧",
+        evidence: "Breadth input is stale.",
+        input: "breadth_close",
+        businessDate: "2026-04-21",
+        ageDays: 8,
+        tier: "stale",
+        freshnessLabel: "输入 breadth_close · 日期 2026-04-21 · T+8 · stale",
+      },
+      {
+        inputFamily: "breadth",
+        status: "look_ahead",
+        statusLabel: "前视风险",
+        evidence: "breadth_close business_date is later than the resolved trade_date.",
+        input: "breadth_close",
+        businessDate: "2026-05-02",
+        ageDays: -1,
+        tier: "fresh",
+        freshnessLabel: "输入 breadth_close · 日期 2026-05-02 · T+-1 · fresh",
+      },
+    ];
+
+    render(
+      <LivermoreStrategyPanel
+        model={model}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const dataGaps = screen.getByTestId("livermore-data-gaps");
+    expect(dataGaps).toHaveTextContent("T+8");
+    expect(dataGaps).toHaveTextContent("T+-1");
+    expect(dataGaps).toHaveTextContent("前视风险");
+    expect(
+      consoleError.mock.calls.some((call) =>
+        call.some((part) => String(part).includes("Encountered two children with the same key")),
+      ),
+    ).toBe(false);
+    consoleError.mockRestore();
   });
 });

@@ -297,6 +297,46 @@ describe("livermoreStrategyModel", () => {
     expect(model.statusNotes).toContain("当前结果使用最新快照降级。");
   });
 
+  it("surfaces backend input freshness fields and degraded quality notes", () => {
+    const degradedMessage = "breadth DR007 data lagged 8 days (stale), signal quality degraded";
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope(
+        {
+          diagnostics: [
+            {
+              severity: "warning",
+              code: "LIVERMORE_INPUT_FRESHNESS_DEGRADED",
+              message: degradedMessage,
+              input_family: "breadth",
+            },
+          ],
+          data_gaps: [
+            {
+              input_family: "breadth",
+              status: "stale",
+              evidence: "Breadth input is stale.",
+              input: "DR007",
+              business_date: "2026-04-21",
+              age_days: 8,
+              tier: "stale",
+            },
+          ],
+        },
+        { quality_flag: "warning" },
+      ),
+    });
+
+    expect(model.statusNotes).toContain(degradedMessage);
+    expect(model.dataGaps[0]).toMatchObject({
+      inputFamily: "breadth",
+      input: "DR007",
+      businessDate: "2026-04-21",
+      ageDays: 8,
+      tier: "stale",
+      freshnessLabel: "输入 DR007 · 日期 2026-04-21 · T+8 · stale",
+    });
+  });
+
   it("maps data gap status ready to 就绪", () => {
     const model = buildLivermoreStrategyModel({
       envelope: makeEnvelope({

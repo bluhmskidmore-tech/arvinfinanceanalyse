@@ -39,6 +39,8 @@ export const SA_SECTION_DESC = `${shellStyles.dhMuted} stock-analysis-page__dh-s
 export const SA_SECTION_EYEBROW = `${shellStyles.dhReportKicker} stock-analysis-page__dh-section-eyebrow`;
 export const SA_PILL = `${shellStyles.dhStatusPill} stock-analysis-page__dh-pill`;
 
+// Static icon arrays are shared page chrome, not component modules.
+// eslint-disable-next-line react-refresh/only-export-components
 export const DECISION_GRID_ICONS = [
   <ClockCircleOutlined key="date" />,
   <DatabaseOutlined key="basis" />,
@@ -46,6 +48,7 @@ export const DECISION_GRID_ICONS = [
   <CheckCircleOutlined key="gate" />,
 ];
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const FIRST_SCREEN_ICONS = [
   <BarChartOutlined key="sectors" />,
   <ThunderboltOutlined key="consensus" />,
@@ -53,6 +56,7 @@ export const FIRST_SCREEN_ICONS = [
   <FireOutlined key="events" />,
 ];
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const SECTION_HEAD_ICONS = [
   <LineChartOutlined key="sector" />,
   <SafetyCertificateOutlined key="risk" />,

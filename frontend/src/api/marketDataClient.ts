@@ -5,6 +5,7 @@ import type {
   ChoiceMacroRecentPoint,
   ChoiceMacroRefreshPayload,
   ChoiceNewsEventsPayload,
+  ExternalDataWatermarkLedger,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
   MarketDataBondFuturesRankingsPayload,
@@ -35,6 +36,7 @@ import type {
   SourcePreviewRowsPayload,
   SourcePreviewSummary,
   SourcePreviewTracesPayload,
+  StockAnalysisWorkbenchPayload,
 } from "./contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
@@ -73,6 +75,7 @@ export type MarketDataClientMethods = {
   }) => Promise<ApiEnvelope<SourcePreviewTracesPayload>>;
   getMacroFoundation: () => Promise<ApiEnvelope<MacroVendorPayload>>;
   getChoiceMacroLatest: () => Promise<ApiEnvelope<ChoiceMacroLatestPayload>>;
+  getExternalDataWatermarks: () => Promise<ExternalDataWatermarkLedger>;
   getMacroBondLinkageAnalysis: (options: {
     reportDate: string;
   }) => Promise<ApiEnvelope<MacroBondLinkagePayload>>;
@@ -94,6 +97,12 @@ export type MarketDataClientMethods = {
   getLivermoreStrategy: (options?: {
     asOfDate?: string;
   }) => Promise<ApiEnvelope<LivermoreStrategyPayload>>;
+  getStockAnalysisWorkbench: (options?: {
+    asOfDate?: string;
+    include?: string[];
+    sectorWindowDays?: number;
+    topK?: number;
+  }) => Promise<ApiEnvelope<StockAnalysisWorkbenchPayload>>;
   getLivermoreStockDetail: (options: {
     stockCode: string;
     asOfDate?: string;
@@ -470,6 +479,7 @@ function buildMockChoiceNewsEnvelope(options: {
     total_rows: filtered.length,
     limit: options.limit,
     offset: options.offset,
+    compare: buildMockChoiceNewsCompare(filtered),
     events: filtered.slice(options.offset, options.offset + options.limit),
   };
   if (stockCode) {
@@ -478,6 +488,48 @@ function buildMockChoiceNewsEnvelope(options: {
     result.stock_filter_tokens = stockFilterTokens;
   }
   return buildMockApiEnvelope("news.choice.latest", result);
+}
+
+function buildMockChoiceNewsCompare(
+  events: ChoiceNewsEventsPayload["events"],
+): NonNullable<ChoiceNewsEventsPayload["compare"]> {
+  const sourceEventIds = events.slice(0, 3).map((event) => event.event_key);
+  return {
+    basis: "analytical",
+    rule_version: "rv_research_radar_mapping_registry_v1b_mock",
+    same_direction: [
+      {
+        event_family: "rates",
+        factor_tags: ["rates", "duration"],
+        event_count: sourceEventIds.length,
+        source_event_ids: sourceEventIds,
+        summary: "mock 事件共同指向利率与久期复核。",
+      },
+    ],
+    conflicting: [],
+    review_needed: [
+      {
+        event_family: "fx",
+        factor_tags: ["fx"],
+        event_count: 1,
+        source_event_ids: sourceEventIds.slice(0, 1),
+        review_reason: "mock 数据未接入汇率敞口，需人工确认。",
+      },
+    ],
+    candidate_scenarios: [
+      {
+        event_family: "rates",
+        match_rule: "keyword_any",
+        factor_tags: ["rates", "duration"],
+        scenario_template_id: "rate_parallel_up_candidate",
+        default_shocks: ["parallel_up_25bp_candidate"],
+        rule_version: "rv_research_radar_mapping_registry_v1b_mock",
+        human_review_required: true,
+        mapping_rule_id: "mock_rates_duration",
+        source_event_ids: sourceEventIds,
+      },
+    ],
+  };
 }
 
 function buildChoiceNewsStockFilterTokens(stockCode: string | null): string[] {
@@ -688,6 +740,12 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
     ],
     diagnostics: [
       {
+        severity: "warning",
+        code: "LIVERMORE_INPUT_FRESHNESS_DEGRADED",
+        message: "breadth breadth_close data lagged 8 days (stale), signal quality degraded",
+        input_family: "breadth",
+      },
+      {
         severity: "info",
         code: "LIVERMORE_STOCK_PIVOT_PAUSED_BY_POLICY",
         message: "Stock candidate policy exp3b is inactive in OVERHEAT; active market states are HOT/WARM.",
@@ -697,13 +755,21 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
     data_gaps: [
       {
         input_family: "breadth",
-        status: "ready",
+        status: "stale",
         evidence: "5-day breadth input family is landed for the mock OVERHEAT closure.",
+        input: "breadth_close",
+        business_date: "2026-04-02",
+        age_days: 8,
+        tier: "stale",
       },
       {
         input_family: "limit_up_quality",
         status: "ready",
         evidence: "Limit-up seal/break quality input family is landed for the mock OVERHEAT closure.",
+        input: "limit_up_quality",
+        business_date: resolvedDate,
+        age_days: 0,
+        tier: "fresh",
       },
     ],
     supported_outputs: supportedOutputs,
@@ -904,6 +970,145 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
           triggered: false,
         },
       ],
+    },
+  };
+}
+
+function buildMockStockAnalysisWorkbenchPayload(options?: {
+  asOfDate?: string;
+  include?: string[];
+  sectorWindowDays?: number;
+  topK?: number;
+}): StockAnalysisWorkbenchPayload {
+  const strategy = buildMockLivermoreStrategyPayload(options?.asOfDate);
+  const topK = options?.topK ?? 10;
+  const reviewQueue = [
+    ...(strategy.fresh_trend_watchlist?.items ?? []).map((item) => ({
+      ...item,
+      source_module: "fresh_trend_watchlist",
+    })),
+    ...(strategy.factor_screen_candidates?.items ?? []).map((item) => ({
+      ...item,
+      source_module: "factor_screen_candidates",
+    })),
+  ].slice(0, topK);
+  const include = new Set(["main", "evidence_summary", ...(options?.include ?? [])]);
+  const modules: StockAnalysisWorkbenchPayload["modules"] = {
+    main: {
+      key: "main",
+      label: "Livermore strategy snapshot",
+      endpoint: "/ui/market-data/livermore",
+      status: "ready",
+      result: strategy,
+      summary: strategy.workbench_summary ?? {},
+      meta: {
+        source_version: "sv_livermore_mock",
+        rule_version: "rv_livermore_market_gate_v1",
+        cache_version: "cv_livermore_market_gate_v1",
+        quality_flag: "ok",
+        vendor_status: "ok",
+        fallback_mode: "none",
+      },
+      issues: [],
+    },
+  };
+  if (include.has("signal_confluence")) {
+    modules.signal_confluence = {
+      key: "signal_confluence",
+      label: "signal confluence",
+      endpoint: "/ui/market-data/livermore/signal-confluence",
+      status: "deferred",
+      result: null,
+      summary: { as_of_date: strategy.as_of_date },
+      meta: {},
+      issues: [
+        {
+          severity: "info",
+          code: "module_deferred",
+          message: "Deferred from the default workbench response to keep first-screen data bounded.",
+          source_module: "signal_confluence",
+        },
+      ],
+    };
+  }
+  return {
+    page_id: "GAP-STOCK-ANALYSIS-PAGE",
+    route: "/stock-analysis",
+    basis: "analytical",
+    contract_status: "observational_only",
+    formal_use_allowed: false,
+    requested_as_of_date: strategy.requested_as_of_date,
+    as_of_date: strategy.as_of_date,
+    fallback_date: null,
+    stale: false,
+    page_question: {
+      question: "Can the stock analysis workbench continue candidate review today, and who should be reviewed first?",
+      answer_state: reviewQueue.length > 0 ? "review_ready" : "no_data",
+      answer_label: reviewQueue.length > 0 ? "review_ready" : "no_data",
+      reason:
+        reviewQueue.length > 0
+          ? "Mock candidates and first-screen evidence are available for observational review."
+          : "No mock review candidates are present.",
+    },
+    decision_summary: {
+      gate_state: strategy.market_gate.state,
+      gate_label: strategy.market_gate.state,
+      can_review_candidates: reviewQueue.length > 0,
+      top_review_stock_code: String(reviewQueue[0]?.stock_code ?? "") || null,
+      top_review_stock_name: String(reviewQueue[0]?.stock_name ?? "") || null,
+      review_queue_count: reviewQueue.length,
+      evidence_closure_label: "review_ready",
+      primary_blocker: null,
+      quality_flag: "ok",
+    },
+    data_status: {
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "none",
+      source_version: "sv_livermore_mock",
+      rule_version: "rv_livermore_market_gate_v1",
+      cache_version: "cv_livermore_market_gate_v1",
+      tables_used: [],
+      evidence_rows: 0,
+    },
+    first_screen: {
+      market_gate: strategy.market_gate,
+      review_queue: reviewQueue,
+      sector_snapshot: (strategy.sector_rank?.items ?? []).slice(0, topK),
+      risk_exit_snapshot: [
+        ...(strategy.risk_exit?.items ?? []),
+        ...(strategy.risk_exit?.watch_items ?? []),
+      ].slice(0, topK),
+      data_gaps: strategy.data_gaps,
+      diagnostics: strategy.diagnostics,
+      supported_outputs: strategy.supported_outputs,
+      unsupported_outputs: strategy.unsupported_outputs,
+    },
+    modules,
+    endpoint_evidence: Object.values(modules).map((module) => ({
+      key: module.key,
+      label: module.label,
+      endpoint: module.endpoint,
+      status: module.status,
+      as_of_date: strategy.as_of_date,
+      rows: module.key === "main" ? 0 : null,
+      warning: module.issues[0]?.message ?? null,
+    })),
+    issues: [],
+    links: {
+      stock_detail: "/ui/market-data/livermore/stock-detail",
+      candidate_history: "/ui/market-data/livermore/candidate-history",
+      sector_rank_series: "/ui/market-data/livermore/sector-rank-series",
+      strategy_score: "/ui/market-data/livermore/strategy-score",
+      strategy_optimization: "/ui/market-data/livermore/strategy-optimization",
+      cycle_proxy_backtest: "/ui/market-data/livermore/cycle-proxy-backtest",
+      portfolio_backtest: "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+    },
+    include: {
+      requested: Array.from(include).sort(),
+      unknown: [],
+      sector_window_days: options?.sectorWindowDays ?? 20,
+      top_k: topK,
     },
   };
 }
@@ -1153,6 +1358,100 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
   ],
 };
 
+const MOCK_EXTERNAL_DATA_WATERMARK_LEDGER: ExternalDataWatermarkLedger = {
+  summary: {
+    catalog_count: 4,
+    available_count: 3,
+    no_data_count: 1,
+    unavailable_count: 0,
+    oldest_available_business_date: "2026-03-01",
+    newest_available_business_date: "2026-04-10",
+    last_successful_ingest: "2026-04-10T09:05:00Z",
+  },
+  entries: [
+    {
+      series_id: "M001",
+      series_name: "Open Market 7D Reverse Repo",
+      vendor_name: "choice",
+      source_family: "choice_macro",
+      domain: "macro",
+      frequency: "daily",
+      unit: "%",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      relation_name: "choice_macro_series",
+      date_column: "trade_date",
+      row_count: 20,
+      latest_business_date: "2026-04-10",
+      latest_loaded_at: "2026-04-10T09:05:00Z",
+      age_days: 0,
+      freshness_tier: "fresh",
+      data_status: "available",
+      error_message: null,
+    },
+    {
+      series_id: "M002",
+      series_name: "DR007",
+      vendor_name: "choice",
+      source_family: "choice_macro",
+      domain: "macro",
+      frequency: "daily",
+      unit: "%",
+      refresh_tier: "fallback",
+      fetch_mode: "latest",
+      relation_name: "choice_macro_series",
+      date_column: "trade_date",
+      row_count: 20,
+      latest_business_date: "2026-02-21",
+      latest_loaded_at: "2026-04-10T08:55:00Z",
+      age_days: 48,
+      freshness_tier: "stale",
+      data_status: "available",
+      error_message: null,
+    },
+    {
+      series_id: "CA.BRENT",
+      series_name: "Brent crude oil futures close",
+      vendor_name: "choice",
+      source_family: "choice_macro",
+      domain: "macro",
+      frequency: "daily",
+      unit: "USD/bbl",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      relation_name: "choice_macro_series",
+      date_column: "trade_date",
+      row_count: 20,
+      latest_business_date: "2026-02-07",
+      latest_loaded_at: "2026-04-09T17:40:00Z",
+      age_days: 62,
+      freshness_tier: "expired",
+      data_status: "available",
+      error_message: null,
+    },
+    {
+      series_id: "CA.USDCNY",
+      series_name: "USD/CNY spot",
+      vendor_name: "choice",
+      source_family: "choice_macro",
+      domain: "macro",
+      frequency: null,
+      unit: "CNY/USD",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      relation_name: null,
+      date_column: null,
+      row_count: 0,
+      latest_business_date: null,
+      latest_loaded_at: null,
+      age_days: null,
+      freshness_tier: "unknown",
+      data_status: "no_data",
+      error_message: null,
+    },
+  ],
+};
+
 const MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
   report_date: "2026-04-10",
   environment_score: {
@@ -1362,6 +1661,31 @@ function buildLivermoreQuery(options?: { asOfDate?: string }) {
     return "";
   }
   return `?as_of_date=${encodeURIComponent(asOfDate)}`;
+}
+
+function buildStockAnalysisWorkbenchQuery(options?: {
+  asOfDate?: string;
+  include?: string[];
+  sectorWindowDays?: number;
+  topK?: number;
+}) {
+  const params = new URLSearchParams();
+  const asOfDate = options?.asOfDate?.trim();
+  if (asOfDate) {
+    params.set("as_of_date", asOfDate);
+  }
+  const include = options?.include?.map((item) => item.trim()).filter(Boolean);
+  if (include?.length) {
+    params.set("include", include.join(","));
+  }
+  if (options?.sectorWindowDays != null) {
+    params.set("sector_window_days", String(options.sectorWindowDays));
+  }
+  if (options?.topK != null) {
+    params.set("top_k", String(options.topK));
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
 }
 
 function buildBondFuturesRankingsQuery(options?: {
@@ -1737,6 +2061,10 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         cache_version: "cv_choice_macro_thin_slice_v1",
       });
     },
+    async getExternalDataWatermarks() {
+      await delay();
+      return MOCK_EXTERNAL_DATA_WATERMARK_LEDGER;
+    },
     async getMacroBondLinkageAnalysis({ reportDate }) {
       await delay();
       return buildMockApiEnvelope(
@@ -2096,6 +2424,29 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           vendor_version: "vv_livermore_mock",
           rule_version: "rv_livermore_market_gate_v1",
           cache_version: "cv_livermore_market_gate_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
+    async getStockAnalysisWorkbench(options?: {
+      asOfDate?: string;
+      include?: string[];
+      sectorWindowDays?: number;
+      topK?: number;
+    }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "market_data.stock_analysis.workbench",
+        buildMockStockAnalysisWorkbenchPayload(options),
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_stock_analysis_workbench_mock",
+          vendor_version: "vv_livermore_mock",
+          rule_version: "rv_stock_analysis_workbench_v1",
+          cache_version: "cv_stock_analysis_workbench_v1",
           quality_flag: "ok",
           vendor_status: "ok",
           fallback_mode: "none",
@@ -2645,6 +2996,12 @@ export function createRealMarketDataClient({
       requestJson<MacroVendorPayload>(fetchImpl, baseUrl, "/ui/preview/macro-foundation"),
     getChoiceMacroLatest: () =>
       requestJson<ChoiceMacroLatestPayload>(fetchImpl, baseUrl, "/ui/macro/choice-series/latest"),
+    getExternalDataWatermarks: () =>
+      requestPlainJson<ExternalDataWatermarkLedger>(
+        fetchImpl,
+        baseUrl,
+        "/api/external-data/watermarks",
+      ),
     getMacroBondLinkageAnalysis: ({ reportDate }) =>
       requestJson<MacroBondLinkagePayload>(
         fetchImpl,
@@ -2716,6 +3073,17 @@ export function createRealMarketDataClient({
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore${buildLivermoreQuery(options)}`,
+      ),
+    getStockAnalysisWorkbench: (options?: {
+      asOfDate?: string;
+      include?: string[];
+      sectorWindowDays?: number;
+      topK?: number;
+    }) =>
+      requestJson<StockAnalysisWorkbenchPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/stock-analysis/workbench${buildStockAnalysisWorkbenchQuery(options)}`,
       ),
     getLivermoreStockDetail: (options: { stockCode: string; asOfDate?: string; lookback?: number }) =>
       requestJson<LivermoreStockDetailPayload>(
@@ -2950,6 +3318,21 @@ async function requestJson<TData>(
     throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
   }
   return (await response.json()) as ApiEnvelope<TData>;
+}
+
+async function requestPlainJson<TData>(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  path: string,
+): Promise<TData> {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    const detail = await readHttpJsonDetail(response);
+    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
+  }
+  return (await response.json()) as TData;
 }
 
 async function requestActionJson<TResponse>(

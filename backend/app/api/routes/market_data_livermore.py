@@ -25,11 +25,15 @@ from backend.app.services.livermore_signal_confluence_service import (
     build_livermore_signal_confluence,
 )
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
-from backend.app.services.macro_bond_linkage_service import get_macro_environment_context
+from backend.app.services.macro_bond_linkage_service import (
+    get_macro_context_v1,
+    get_macro_environment_context,
+)
 from backend.app.services.market_data_livermore_service import (
     _risk_exit_input_block_reason,
     livermore_strategy_envelope_from_catalog,
 )
+from backend.app.services.stock_analysis_workbench_service import stock_analysis_workbench_envelope
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 
@@ -282,6 +286,35 @@ def livermore_strategy(
             choice_stock_catalog_file=settings.choice_stock_catalog_file,
         ),
         summary_kind="strategy",
+    )
+
+
+@router.get("/stock-analysis/workbench")
+def stock_analysis_workbench(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    as_of_date: str | None = Query(None),
+    include: str | None = Query(None),
+    sector_window_days: int = Query(default=20, ge=2, le=60),
+    top_k: int = Query(default=10, ge=1, le=50),
+) -> dict[str, object]:
+    if as_of_date is not None:
+        try:
+            date.fromisoformat(as_of_date)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
+
+    settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
+    return timed_api_call(
+        "/ui/market-data/stock-analysis/workbench",
+        lambda: stock_analysis_workbench_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            as_of_date=as_of_date,
+            choice_stock_catalog_file=settings.choice_stock_catalog_file,
+            include=include,
+            sector_window_days=sector_window_days,
+            top_k=top_k,
+        ),
     )
 
 
@@ -638,6 +671,7 @@ def livermore_strategy_score(
                 current_market_state=current_market_state,
                 min_sample=min_sample,
                 primary_horizon=primary_horizon,
+                macro_context_loader=_livermore_macro_context_v1_for_date,
             ),
             summary_kind="strategy_score",
         ),
@@ -668,6 +702,7 @@ def livermore_strategy_optimization(
                 current_market_state=current_market_state,
                 min_sample=min_sample,
                 primary_horizon=primary_horizon,
+                macro_context_loader=_livermore_macro_context_v1_for_date,
             ),
             summary_kind="strategy_optimization",
         ),
@@ -740,6 +775,16 @@ def _validate_livermore_primary_horizon(primary_horizon: str) -> None:
             status_code=422,
             detail="Invalid primary_horizon. Expected return_1d, return_5d, or return_20d.",
         )
+
+
+def _livermore_macro_context_v1_for_date(as_of_date: str) -> dict[str, object] | None:
+    as_of_text = _optional_text(as_of_date)
+    if not as_of_text:
+        return None
+    return get_macro_context_v1(
+        date.fromisoformat(as_of_text[:10]),
+        as_of_date=as_of_text[:10],
+    )
 
 
 def _mapping(value: object) -> dict[str, object]:

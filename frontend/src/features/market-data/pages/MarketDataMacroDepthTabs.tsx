@@ -1,7 +1,9 @@
 import { Button } from "antd";
-import type { UseQueryResult } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
+import { useApiClient } from "../../../api/client";
+import { externalDataQueryOptions } from "../../../app/externalDataRefreshPolicy";
 import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
@@ -12,6 +14,7 @@ import type {
 import { type EChartsOption } from "../../../lib/echarts";
 import { LinkageSpreadTenorTable } from "../components/LinkageSpreadTenorTable";
 import { LiveResultMetaStrip } from "../components/LiveResultMetaStrip";
+import { MacroLatestReadinessBanner } from "../components/MacroLatestReadinessBanner";
 import {
   MarketDataLinkageCorrelationChart,
   MarketDataLinkageEnvironmentChart,
@@ -81,8 +84,20 @@ export function MarketDataMacroDepthTabs({
   nonSpreadTopCorrelations,
   embedded = false,
 }: MarketDataMacroDepthTabsProps) {
+  const client = useApiClient();
   const [extraSeriesIds, setExtraSeriesIds] = useState<string[]>([]);
   const derivedSpreads = latestQuery.data?.result.derived_spreads;
+  const latestSeriesIds = useMemo(
+    () => latestSeries.map((point) => point.series_id),
+    [latestSeries],
+  );
+  const externalDataWatermarksQuery = useQuery({
+    queryKey: ["market-data", "external-data-watermarks", client.mode],
+    queryFn: () => client.getExternalDataWatermarks(),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    refetchOnWindowFocus: false,
+  });
 
   const selectableSeries = useMemo(
     () =>
@@ -151,6 +166,17 @@ export function MarketDataMacroDepthTabs({
           );
         })}
       </div>
+      <MacroLatestReadinessBanner
+        testId="market-data-macro-readiness"
+        isLoading={latestQuery.isLoading}
+        isError={latestQuery.isError}
+        hasSeries={latestSeries.length > 0}
+        meta={latestQuery.data?.result_meta}
+        watermarkLedger={externalDataWatermarksQuery.data}
+        watermarkIsLoading={externalDataWatermarksQuery.isLoading}
+        watermarkIsError={externalDataWatermarksQuery.isError}
+        seriesIds={latestSeriesIds}
+      />
 
       {macroDepthTab === "curve" ? (
         <div

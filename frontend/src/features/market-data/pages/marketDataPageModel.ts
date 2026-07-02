@@ -572,9 +572,51 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
 
 export function metaEvidenceLine(label: string, meta: ResultMeta | undefined) {
   if (!meta) {
-    return `${label}: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending`;
+    return `${label}: 未接入 / 部分缺失 / 查看数据诊断`;
   }
-  return `${label}: basis=${meta.basis} formal_use_allowed=${meta.formal_use_allowed} quality=${meta.quality_flag} fallback=${meta.fallback_mode} vendor_status=${meta.vendor_status} source=${meta.source_version}`;
+  const parts = [
+    evidenceBasisLabel(meta),
+    evidenceQualityLabel(meta),
+    evidenceFormalUseLabel(meta),
+    ...evidenceCaveatLabels(meta),
+  ];
+  return `${label}: ${parts.join(" / ")}`;
+}
+
+function evidenceBasisLabel(meta: ResultMeta): string {
+  if (meta.basis === "formal") {
+    return meta.formal_use_allowed === true ? "正式可用" : "暂不可正式使用";
+  }
+  if (meta.basis === "analytical") return "仅分析使用";
+  if ((meta.basis as string) === "proxy") return "代理数据";
+  if (meta.basis === "mock") return "演示数据";
+  return "待确认";
+}
+
+function evidenceQualityLabel(meta: ResultMeta): string {
+  if (meta.quality_flag === "ok") return "数据正常";
+  if (meta.quality_flag === "stale") return "数据延迟";
+  if (meta.quality_flag === "error") return "不可用";
+  return "部分缺失";
+}
+
+function evidenceFormalUseLabel(meta: ResultMeta): string {
+  if (meta.formal_use_allowed === true && meta.quality_flag === "ok" && meta.fallback_mode === "none") {
+    return "可正式使用";
+  }
+  if (meta.formal_use_allowed === true) return "需复核";
+  return "暂不可用于正式决策";
+}
+
+function evidenceCaveatLabels(meta: ResultMeta): string[] {
+  const caveats: string[] = [];
+  if (meta.fallback_mode && meta.fallback_mode !== "none") {
+    caveats.push("数据延迟");
+  }
+  if (meta.vendor_status && meta.vendor_status !== "ok") {
+    caveats.push("来源需复核");
+  }
+  return caveats;
 }
 
 /** 页头 meta 带来源摘要：避免多路 vendor 版本串成一行撑破布局。 */

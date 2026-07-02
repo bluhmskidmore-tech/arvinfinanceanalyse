@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartOutlined,
@@ -10,7 +10,7 @@ import {
   StockOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Collapse, Drawer, Tabs, Typography } from "antd";
+import { Button as AntButton, Drawer as AntDrawer } from "antd";
 import dayjs from "dayjs";
 
 import { useApiClient } from "../../../api/client";
@@ -21,10 +21,9 @@ import type {
   LivermoreSignalConfluencePayload,
   LivermoreStrategyPayload,
   ResultMeta,
+  StockAnalysisWorkbenchPayload,
 } from "../../../api/contracts";
-import ReactECharts from "../../../lib/echarts";
 import { AnalysisGrid, DataStatusStrip } from "../../../components/page/PagePrimitives";
-import { AgentPanel } from "../../agent/AgentPanel";
 import {
   buildCandidateReviewQueue,
   buildClosedLoopSummary,
@@ -42,7 +41,6 @@ import {
   buildStockAnalysisEventMonitorRows,
   buildStockAnalysisEvidenceStatus,
   buildStockEndpointEvidenceItems,
-  buildStockAnalysisKpiStrip,
   buildStockSectorOverviewState,
   buildSectorHeavyweightPreview,
   buildStrategyLensItems,
@@ -77,6 +75,8 @@ import type {
   StockCandidateReviewQueueItem,
   StockEndpointEvidenceQueryState,
   StockObservationClosureReasonInput,
+  StockSectorHeavyweightPreviewRow,
+  StockSectorHeavyweightStockPreview,
   StockSectorRow,
   WorkbenchFact,
   WorkbenchSlowState,
@@ -90,7 +90,6 @@ import {
   buildThemeBreakoutBlockerCopy,
   compactStockText as compactText,
   filterChipClass,
-  kpiToneToDelta,
   rawStockErrorMessage as rawErrorMessage,
   stockPageErrorMessage as errorMessage,
   stockSupplyFallbackLabel,
@@ -177,7 +176,6 @@ import { useSectorRankSeriesSupport } from "../hooks/useSectorRankSeriesSupport"
 import { useSectorSortState } from "../hooks/useSectorSortState";
 import { useStockSelectionRefresh } from "../hooks/useStockSelectionRefresh";
 import { useStrategyCardExpansion } from "../hooks/useStrategyCardExpansion";
-import { EquityKpiCard } from "../components/EquityKpiCard";
 import { BacktestBoundaryChips } from "../components/StockAnalysisBacktestBoundaryChips";
 import {
   StockAnalysisErrorWorkbench,
@@ -186,6 +184,7 @@ import {
 import { StockAnalysisCycleRuleSummary } from "../components/StockAnalysisCycleRuleSummary";
 import { StockAnalysisDeepZoneHeader } from "../components/StockAnalysisDeepZoneHeader";
 import { StockAnalysisCandidateLedgerTable } from "../components/StockAnalysisCandidateLedgerTable";
+import { StockAnalysisCandidateComparison } from "../components/StockAnalysisCandidateComparison";
 import { StockAnalysisConsensusFirstScreen } from "../components/StockAnalysisConsensusFirstScreen";
 import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvidenceLedgerRail";
 import {
@@ -199,16 +198,30 @@ import { StockAnalysisObservationPreview } from "../components/StockAnalysisObse
 import { CompactStatusTile, StatusIcon } from "../components/StockAnalysisStatusPrimitives";
 import { StrategyModuleCard } from "../components/StrategyModuleCard";
 import { StrategyPanelComplianceDetails } from "../components/StrategyPanelResultStrip";
-import { StockDetailDrawer } from "../components/StockDetailDrawer";
 import { StockAnalysisWorkbenchActions } from "../components/StockAnalysisWorkbenchActions";
+import {
+  StockAnalysisAccordion as Accordion,
+  StockAnalysisAccordionItem as AccordionItem,
+} from "../components/StockAnalysisAccordion";
+import { StockAnalysisTab as Tab, StockAnalysisTabs as Tabs } from "../components/StockAnalysisTabs";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import { EMPTY_STRATEGY_PRIORITY_ROWS, stockAnalysisReadQueryOptions } from "../lib/stockAnalysisQueryOptions";
 import { MarketWorkbenchFrame } from "../../workbench/market-shell";
+import { TableSkeleton, TextSkeleton } from "../../../components/Skeletons";
 import "./StockAnalysisPage.css";
 
-const { Text } = Typography;
+
 
 const STOCK_ANALYSIS_ENDPOINT_EVIDENCE_RAIL_ID = "stock-analysis-endpoint-evidence-rail";
+const SECTOR_STRENGTH_DEFAULT_TOP_COUNT = 3;
+
+const LazyReactECharts = lazy(() => import("../../../lib/echarts"));
+const LazyAgentPanel = lazy(() =>
+  import("../../agent/AgentPanel").then((module) => ({ default: module.AgentPanel })),
+);
+const LazyStockDetailDrawer = lazy(() =>
+  import("../components/StockDetailDrawer").then((module) => ({ default: module.StockDetailDrawer })),
+);
 
 const WORKBENCH_FACT_ENDPOINT_MAP: Record<string, string> = {
   "data-date": "strategy",
@@ -348,6 +361,19 @@ function activeUnsupportedOutputCount(payload: LivermoreStrategyPayload | null):
   return payload.unsupported_outputs.filter(isActionableLivermoreUnsupportedOutput).length;
 }
 
+function isLivermoreStrategyPayload(value: unknown): value is LivermoreStrategyPayload {
+  if (value == null || typeof value !== "object") return false;
+  const payload = value as Partial<LivermoreStrategyPayload>;
+  return payload.basis === "analytical" && payload.market_gate != null && Array.isArray(payload.supported_outputs);
+}
+
+function extractWorkbenchStrategyPayload(
+  payload: StockAnalysisWorkbenchPayload | null | undefined,
+): LivermoreStrategyPayload | null {
+  const mainResult = payload?.modules.main?.result;
+  return isLivermoreStrategyPayload(mainResult) ? mainResult : null;
+}
+
 function confluenceDiagnosticCount(payload: LivermoreSignalConfluencePayload | null): number | null {
   if (!payload) return null;
   return payload.diagnostics.filter(isActionableConfluenceDiagnostic).length;
@@ -412,6 +438,72 @@ function isActionableConfluenceDiagnostic(item: LivermoreSignalConfluencePayload
   return (item.severity ?? "warning") !== "info";
 }
 
+function gateLedgerSourceLabel(card: StockCandidateReviewQueueItem, index: number): string {
+  const rawSource =
+    card.rawFields.find((field) => ["source", "source_kind", "strategy", "module"].includes(field.key))?.value ??
+    card.rawFields.find((field) => /source|strategy|module/i.test(`${field.key} ${field.label}`))?.value;
+  if (rawSource?.trim()) return compactText(rawSource, 18);
+  if (index === 1) return "factor_screen";
+  if (index >= 2) return "hybrid_fusion";
+  return "stock_candidates";
+}
+
+function gateLedgerSignalLabel(sourceLabel: string): { label: string; tone: "positive" | "warning" } {
+  const normalized = sourceLabel.toLowerCase();
+  if (normalized.includes("hybrid")) return { label: "融合池", tone: "warning" };
+  if (normalized.includes("factor")) return { label: "因子池", tone: "warning" };
+  return { label: "主快照", tone: "positive" };
+}
+
+function StockAnalysisGateLedgerQueue({
+  candidates,
+  canReviewCandidates,
+  onOpenCandidate,
+}: {
+  candidates: StockCandidateReviewQueueItem[];
+  canReviewCandidates: boolean;
+  onOpenCandidate: (card: StockCandidateReviewQueueItem) => void;
+}) {
+  return (
+    <div className="stock-analysis-page__gate-ledger-queue" data-testid="stock-analysis-gate-ledger-queue">
+      <div className="stock-analysis-page__gate-ledger-rows">
+        {candidates.slice(0, 3).map((card, index) => {
+          const sourceLabel = gateLedgerSourceLabel(card, index);
+          const signal = gateLedgerSignalLabel(sourceLabel);
+          return (
+            <button
+              type="button"
+              key={card.stockCode}
+              className="stock-analysis-page__gate-ledger-row"
+              data-testid={`stock-analysis-gate-ledger-row-${card.stockCode}`}
+              onClick={() => onOpenCandidate(card)}
+            >
+              <span className="stock-analysis-page__gate-ledger-rank">#{index + 1}</span>
+              <span className="stock-analysis-page__gate-ledger-stock">
+                <strong>{card.stockCode}</strong>
+                <small>{sourceLabel}</small>
+              </span>
+              <span className="stock-analysis-page__gate-ledger-pending">待补证</span>
+              <span className="stock-analysis-page__gate-ledger-signal" data-tone={signal.tone}>
+                {signal.label}
+              </span>
+              <strong className="stock-analysis-page__gate-ledger-status">
+                {canReviewCandidates ? "待复核" : "阻断"}
+              </strong>
+              <span className="stock-analysis-page__gate-ledger-action">
+                {canReviewCandidates ? "复核" : "只读"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="stock-analysis-page__gate-ledger-note">
+        个股详情、候选历史和风险退出证据移入抽屉；第一屏只保留门禁判断所需字段。
+      </p>
+    </div>
+  );
+}
+
 export default function StockAnalysisPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
@@ -419,10 +511,12 @@ export default function StockAnalysisPage() {
   const [detailSelection, setDetailSelection] = useState<StockDetailSelection | null>(null);
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
   const [queueSearchText, setQueueSearchText] = useState("");
+  const [queueLedgerOpen, setQueueLedgerOpen] = useState(false);
   const [completeEvidenceOnly, setCompleteEvidenceOnly] = useState(false);
   const [boundaryDiagnosticsOpen, setBoundaryDiagnosticsOpen] = useState(false);
   const [activeWorkbenchFactId, setActiveWorkbenchFactId] = useState<string | null>(null);
   const [focusedEndpointKey, setFocusedEndpointKey] = useState<string | null>(null);
+  const [sectorDetailOpen, setSectorDetailOpen] = useState(false);
   const {
     sectorFilterSectorCode,
     sectorView,
@@ -439,21 +533,25 @@ export default function StockAnalysisPage() {
   const {
     firstScreenAnalyticsTab,
     firstScreenAnalyticsRequested,
+    firstScreenPriorityRequested,
+    firstScreenOptimizationRequested,
     handleFirstScreenAnalyticsTabChange,
   } = useFirstScreenAnalyticsTabs();
 
-  const strategyQueryKey = ["stock-analysis", "livermore-strategy", asOfOverride ?? "__default"] as const;
+  const strategyQueryKey = ["stock-analysis", "workbench", asOfOverride ?? "__default"] as const;
 
   const strategyQuery = useQuery({
     queryKey: strategyQueryKey,
     queryFn: () =>
-      asOfOverride
-        ? client.getLivermoreStrategy({ asOfDate: asOfOverride })
-        : client.getLivermoreStrategy(),
+      client.getStockAnalysisWorkbench({
+        ...(asOfOverride ? { asOfDate: asOfOverride } : {}),
+        topK: 3,
+      }),
     ...stockAnalysisReadQueryOptions,
   });
 
-  const strategyPayload = strategyQuery.data?.result ?? null;
+  const strategyPayload = extractWorkbenchStrategyPayload(strategyQuery.data?.result);
+  const workbenchPayload: StockAnalysisWorkbenchPayload | null = strategyQuery.data?.result ?? null;
   const analyticsAsOf = strategyPayload?.as_of_date ?? null;
   const {
     isRefreshing: isRefreshingChoiceStock,
@@ -570,10 +668,11 @@ export default function StockAnalysisPage() {
       ? localizeStockBackendText(factorScreenPayload.coverage_note, "factor_screen_candidates")
       : null;
   const hybridFusionPayload = strategyPayload?.hybrid_fusion_candidates;
-  const hybridFusionSupported = strategyPayload?.supported_outputs.includes("hybrid_fusion") ?? false;
   const hybridFusionObservationCandidateCount = hybridFusionPayload?.candidate_count ?? 0;
   const factorScreenObservationCandidateCount = factorScreenPayload?.candidate_count ?? 0;
-  const reviewQueueUsesHybridFusion = hybridFusionSupported && (hybridFusionPayload?.items?.length ?? 0) > 0;
+  const reviewQueueUsesHybridFusion = reviewQueue.some((card) =>
+    card.rawFields.some((field) => field.key === "fusion_score"),
+  );
   const cycleRotationFramework = strategyPayload?.cycle_rotation_framework;
   const cycleMacroLayerSummary = useMemo(
     () => (strategyPayload ? buildCycleMacroLayerSummary(strategyPayload) : null),
@@ -626,6 +725,23 @@ export default function StockAnalysisPage() {
   );
 
   const sectorHeavyweightRows = sectorHeavyweightPreview?.rows.filter((row) => row.stocks.length > 0) ?? [];
+
+  function openSectorHeavyweightDetail(
+    sector: StockSectorHeavyweightPreviewRow,
+    stock: StockSectorHeavyweightStockPreview,
+  ) {
+    const ranks = lookupStockStrategyRanks(strategyPayload ?? null, stock.stockCode);
+    setDetailSelection(
+      buildRankContextDetailSelection({
+        stockCode: stock.stockCode,
+        stockName: stock.stockName,
+        sectorCode: sector.sectorCode,
+        sectorName: sector.sectorName,
+        source: stock.detailSource,
+        ranks,
+      }),
+    );
+  }
 
   const themeEvidenceRows = useMemo(
     () => (strategyPayload ? buildThemeEvidenceStateRows(strategyPayload) : []),
@@ -789,15 +905,6 @@ export default function StockAnalysisPage() {
     [strategyPayload],
   );
 
-  const kpiStrip = useMemo(
-    () =>
-      strategyPayload ? buildStockAnalysisKpiStrip(strategyPayload, confluencePayload, closedLoopMeta) : [],
-    [strategyPayload, confluencePayload, closedLoopMeta],
-  );
-  const decisionKpiStrip = kpiStrip.filter((item) =>
-    ["market-state", "review-queue", "closed-loop", "data-boundary"].includes(item.key),
-  );
-
   const evidenceStatusItems = useMemo(
     () =>
       strategyPayload
@@ -838,6 +945,8 @@ export default function StockAnalysisPage() {
 
   const sectorViewOverview = useMemo(() => buildStockSectorOverviewState(sectorViewRows), [sectorViewRows]);
   const { topBars, bottomBars } = sectorViewOverview;
+  const visibleSectorTopBars = topBars.slice(0, SECTOR_STRENGTH_DEFAULT_TOP_COUNT);
+  const backgroundSectorTopBars = topBars.slice(SECTOR_STRENGTH_DEFAULT_TOP_COUNT);
   const strongestSectorChip =
     sectorLeaderRow != null
       ? `最强 ${sectorLeaderRow.sectorName} (${sectorLeaderRow.pctChange})`
@@ -869,7 +978,7 @@ export default function StockAnalysisPage() {
         primaryHorizon: "return_5d",
       }),
     enabled: Boolean(
-      analyticsAsOf && (strategyPrioritySection.seen || firstScreenAnalyticsRequested),
+      analyticsAsOf && (strategyPrioritySection.seen || firstScreenPriorityRequested),
     ),
     ...stockAnalysisReadQueryOptions,
   });
@@ -889,7 +998,7 @@ export default function StockAnalysisPage() {
         primaryHorizon: "return_5d",
       }),
     enabled: Boolean(
-      analyticsAsOf && (strategyOptimizationSection.seen || firstScreenAnalyticsRequested),
+      analyticsAsOf && (strategyOptimizationSection.seen || firstScreenOptimizationRequested),
     ),
     ...stockAnalysisReadQueryOptions,
   });
@@ -914,7 +1023,7 @@ export default function StockAnalysisPage() {
         snapshotTo: analyticsAsOf ?? undefined,
         limit: 500,
       }),
-    enabled: Boolean(analyticsAsOf && (strategyBacktestSection.seen || firstScreenAnalyticsRequested)),
+    enabled: Boolean(analyticsAsOf && strategyBacktestSection.seen),
     ...stockAnalysisReadQueryOptions,
   });
 
@@ -1044,7 +1153,7 @@ export default function StockAnalysisPage() {
         key: "strategy-score",
         label: "优先级评分",
         queryState: endpointQueryState({
-          enabled: Boolean(analyticsAsOf && (strategyPrioritySection.seen || firstScreenAnalyticsRequested)),
+          enabled: Boolean(analyticsAsOf && (strategyPrioritySection.seen || firstScreenPriorityRequested)),
           isLoading: strategyScoreQuery.isLoading,
           isFetching: strategyScoreQuery.isFetching,
           isError: strategyScoreQuery.isError,
@@ -1064,7 +1173,7 @@ export default function StockAnalysisPage() {
         key: "candidate-history",
         label: "策略回溯窗口",
         queryState: endpointQueryState({
-          enabled: Boolean(analyticsAsOf && (strategyBacktestSection.seen || firstScreenAnalyticsRequested)),
+          enabled: Boolean(analyticsAsOf && strategyBacktestSection.seen),
           isLoading: strategyBacktestQuery.isLoading,
           isFetching: strategyBacktestQuery.isFetching,
           isError: strategyBacktestQuery.isError,
@@ -1081,7 +1190,7 @@ export default function StockAnalysisPage() {
         key: "strategy-optimization",
         label: "策略优化",
         queryState: endpointQueryState({
-          enabled: Boolean(analyticsAsOf && (strategyOptimizationSection.seen || firstScreenAnalyticsRequested)),
+          enabled: Boolean(analyticsAsOf && (strategyOptimizationSection.seen || firstScreenOptimizationRequested)),
           isLoading: strategyOptimizationQuery.isLoading,
           isFetching: strategyOptimizationQuery.isFetching,
           isError: strategyOptimizationQuery.isError,
@@ -1149,7 +1258,8 @@ export default function StockAnalysisPage() {
     cycleProxyBacktestQuery.isFetching,
     cycleProxyBacktestQuery.isLoading,
     cycleRotationFramework,
-    firstScreenAnalyticsRequested,
+    firstScreenPriorityRequested,
+    firstScreenOptimizationRequested,
     sectorRankSeriesQuery.data,
     sectorRankSeriesQuery.isError,
     sectorRankSeriesQuery.isFetching,
@@ -1634,24 +1744,41 @@ export default function StockAnalysisPage() {
       strategyPayload?.requested_as_of_date,
     ],
   );
+  const resultMeta = strategyQuery.data?.result_meta;
+  const workbenchCanReviewCandidates =
+    workbenchPayload?.decision_summary.can_review_candidates ?? (queueTotalCount > 0 && boundaryRailIssueCount === 0);
+  const workbenchAnswerState =
+    workbenchPayload?.page_question.answer_state ??
+    (workbenchCanReviewCandidates ? (queueTotalCount > 0 ? "review_ready" : "no_data") : "blocked");
+  const workbenchPrimaryBlocker =
+    workbenchPayload?.decision_summary.primary_blocker ??
+    (workbenchCanReviewCandidates ? null : "data_gap_missing");
+  const workbenchReviewBlocked =
+    workbenchAnswerState === "blocked" || workbenchCanReviewCandidates === false;
+  const formalUseAllowed = Boolean(resultMeta?.formal_use_allowed ?? workbenchPayload?.formal_use_allowed ?? false);
+  const workbenchRouteLabel = "/ui/market-data/stock-analysis/workbench";
+  const workbenchResultKindLabel = resultMeta?.result_kind ?? "market_data.stock_analysis.workbench";
   const stockWorkbenchStatus = {
     label: strategyQuery.isError
       ? "读取异常"
       : strategyQuery.isLoading
         ? "读取中"
-        : showStaleBanner || boundaryRailIssueCount > 0
+        : workbenchReviewBlocked
+          ? "复核阻断"
+          : showStaleBanner || boundaryRailIssueCount > 0
           ? "只读复核"
           : "只读观察",
     tone: strategyQuery.isError
       ? "error"
       : strategyQuery.isLoading
         ? "muted"
-        : showStaleBanner || boundaryRailIssueCount > 0
+        : workbenchReviewBlocked
+          ? "error"
+          : showStaleBanner || boundaryRailIssueCount > 0
           ? "watch"
           : "ok",
-    detail: "A股观察证据仅用于复核，不生成交易指令",
+    detail: `answer_state=${workbenchAnswerState}；不输出买卖建议或正式结论`,
   } as const;
-  const resultMeta = strategyQuery.data?.result_meta;
   const sourceVersion = resultMeta?.source_version ?? "来源待返回";
   const sourceVersionSummary = sourceVersion.length > 36 ? "来源明细" : sourceVersion;
   const sourceGateTone = stockSourceGateTone({
@@ -1759,10 +1886,24 @@ export default function StockAnalysisPage() {
       .map((gap) => dataGapFamilyLabel(gap.input_family))
       .slice(0, 3)
       .join(" / ") || "无新增缺口";
+  const activeDataGaps = strategyPayload?.data_gaps?.filter((gap) => gap.status !== "ready") ?? [];
   const backendTableCount = resultMeta?.tables_used?.length ?? 0;
-  const dataGapCount = strategyPayload?.data_gaps?.filter((gap) => gap.status !== "ready").length ?? 0;
+  const dataGapCount = activeDataGaps.length;
+  const missingGapCount = activeDataGaps.filter((gap) =>
+    ["missing", "blocked", "error", "unsupported"].includes(String(gap.status)),
+  ).length;
+  const partialGapCount = activeDataGaps.filter((gap) =>
+    ["partial", "stale", "warning", "degraded", "deferred"].includes(String(gap.status)),
+  ).length;
+  const dataGapDisplay =
+    missingGapCount > 0 && partialGapCount > 0
+      ? `${missingGapCount}+${partialGapCount}`
+      : `${dataGapCount}`;
+  const primaryGapLedgerLabel =
+    activeDataGaps.map((gap) => dataGapFamilyLabel(gap.input_family)).slice(0, 3).join(" / ") || "无新增缺口";
+  const evidenceRowsLabel =
+    typeof resultMeta?.evidence_rows === "number" ? resultMeta.evidence_rows.toLocaleString("zh-CN") : "待返回";
   const supportedOutputCount = apiSupportedOutputs.length;
-  const unsupportedOutputCount = activeUnsupportedOutputCount(strategyPayload) ?? 0;
   const queueLeadCandidate = queueVisibleCandidates[0] ?? null;
   const queueLeadEvidenceCount = queueLeadCandidate
     ? queueLeadCandidate.primaryEvidence.length + queueLeadCandidate.supportingEvidence.length
@@ -1775,34 +1916,59 @@ export default function StockAnalysisPage() {
       : (decisionSummary?.nextReviewAction ?? "等待候选");
   const queueNextActionLabel = queueLeadCandidate ? `先复核${queueLeadCandidate.stockName}` : railNextActionLabel;
   const queueNextActionFullLabel = queueLeadCandidate ? queueNextReviewAction : railNextActionFullLabel;
-  const queueGateLabel = backendSupplyOverview?.gateLabel ?? decisionSummary?.gateLabel ?? "门控待确认";
+  const queueGateLabel =
+    workbenchPayload?.decision_summary.gate_state ??
+    workbenchPayload?.decision_summary.gate_label ??
+    backendSupplyOverview?.gateLabel ??
+    decisionSummary?.gateLabel ??
+    "门控待确认";
   const queueGateStatusLabel = queueGateLabel.startsWith("门控") ? queueGateLabel : `门控 ${queueGateLabel}`;
   const observationClosureIssueCount = observationClosureSummary.unresolvedReasons.length;
   const observationClosureLabel = observationClosureIssueCount > 0 ? "待复核" : "只读";
   const observationClosureDetail =
     observationClosureIssueCount > 0 ? `${observationClosureIssueCount} 项待复核` : "无新增待复核项";
   const observationClosureTone = observationClosureIssueCount > 0 ? "warning" : "positive";
-  const queueLoopStatusLabel = `闭环${observationClosureLabel}`;
+  const queueLoopStatusLabel = workbenchReviewBlocked ? "复核阻断" : `闭环${observationClosureLabel}`;
+  const mainModuleStatus = workbenchPayload?.modules?.main?.status ?? (strategyPayload ? "ready" : "missing");
   const queueDataStatusLabel = strategyQuery.isError
     ? "数据异常"
     : strategyQuery.isLoading
       ? "数据读取中"
-      : "数据已更新";
+      : `主包 ${mainModuleStatus}`;
+  const reviewQueueLedgerCount =
+    workbenchPayload?.decision_summary.review_queue_count ?? Math.min(queueVisibleCount || queueTotalCount, 3);
   const gateDecisionTone = stockGateDecisionTone(currentMarketState, boundaryRailIssueCount > 0);
   const gateContextTone = stockGateContextTone(gateDecisionTone);
   const apiLedgerMetrics = [
     {
-      label: "候选",
-      value: `${queueVisibleCount}/${queueTotalCount}`,
-      detail: `${queueVisibleCount}只候选进入只读复核队列`,
+      label: "门控",
+      value: queueGateLabel.replace(/^门控\s*/, "") || "WARM",
+      detail: workbenchCanReviewCandidates ? "可复核" : "非放行",
     },
-    { label: "暴露", value: decisionSummary?.exposureLabel ?? "待确认" },
     {
-      label: "条件",
-      value: backendSupplyOverview?.conditionLabel ?? marketState?.passedLabel ?? "待确认",
-      detail: `${backendSupplyOverview?.readinessLabel ?? "就绪待确认"} · ${
-        backendSupplyOverview?.supportedLabel ?? `可用 ${supportedOutputCount}`
-      } · ${backendSupplyOverview?.unsupportedLabel ?? `阻断 ${unsupportedOutputCount}`}`,
+      label: "支持输出",
+      value: `${reviewQueueLedgerCount}`,
+      detail: "候选队列",
+    },
+    {
+      label: "证据行",
+      value: evidenceRowsLabel,
+      detail: "接口元信息",
+    },
+    {
+      label: "缺口",
+      value: dataGapDisplay,
+      detail: primaryGapLedgerLabel,
+    },
+    {
+      label: "候选池",
+      value: `${reviewQueueLedgerCount}`,
+      detail: "review_queue",
+    },
+    {
+      label: "正式用途",
+      value: formalUseAllowed ? "是" : "否",
+      detail: `formal=${String(formalUseAllowed)}`,
     },
   ];
   const apiLedgerConditionCells: StockAnalysisLedgerCell[] = [
@@ -1886,53 +2052,42 @@ export default function StockAnalysisPage() {
   const apiLedgerRailRows = [
     {
       label: "结论",
-      value: `${stockWorkbenchStatus.label}，${queueGateStatusLabel}`,
+      value: `${workbenchAnswerState}，${queueGateStatusLabel}`,
     },
     {
       label: "关键证据",
-      value: `证据 ${queueLeadEvidenceCount}，边界缺口 ${queueLeadBoundaryCount}`,
+      value: `rows ${evidenceRowsLabel}，缺口 ${dataGapDisplay}`,
     },
     {
       label: "可用输出",
-      value: supportedOutputsLabel,
+      value: "main ready / optional deferred",
     },
     {
       label: "主要缺口",
-      value: primaryGapLabel,
+      value: primaryGapLedgerLabel,
     },
     {
       label: "下一步",
-      value: queueNextActionLabel,
-      detail: riskExitUnsupported ? "风险退出阻断" : queueNextActionFullLabel,
+      value: workbenchReviewBlocked ? "先补缺口，再释放复核入口" : queueNextActionLabel,
+      detail: riskExitUnsupported || workbenchReviewBlocked ? "复核入口未放行" : queueNextActionFullLabel,
     },
   ];
   const apiDecisionSupplementItems = [
     {
-      label: "队列",
-      value: "今日复核队列",
-      detail: `${queueVisibleCount}/${queueTotalCount}`,
+      label: "数据日",
+      value: backendSupplyOverview?.asOfLabel ?? strategyPayload?.as_of_date ?? "待确认",
     },
     {
-      label: "首位",
-      value: queueLeadCandidate?.stockName ?? "待补",
-      detail: `${queueVisibleCount}/${queueTotalCount} · ${queueVisibleCount}只候选进入只读复核队列`,
+      label: "请求日期",
+      value: backendSupplyOverview?.requestedAsOfLabel ?? "默认",
     },
     {
-      label: "供数",
-      value: backendSupplyOverview?.readinessLabel ?? "就绪待确认",
-      detail: `${backendSupplyOverview?.supportedLabel ?? `可用 ${supportedOutputCount}`} · ${
-        backendSupplyOverview?.unsupportedLabel ?? `阻断 ${unsupportedOutputCount}`
-      }`,
+      label: "口径",
+      value: stockSupplyBasisLabel(strategyQuery.data?.result_meta?.basis ?? workbenchPayload?.basis ?? "analytical"),
     },
     {
-      label: "边界",
-      value: backendSupplyOverview?.dataGapLabel ?? `缺口 ${dataGapCount}`,
-      detail: primaryGapLabel,
-    },
-    {
-      label: "闭环",
-      value: "供数闭环",
-      detail: observationClosureLabel,
+      label: "回退",
+      value: stockSupplyFallbackLabel(resultMeta?.fallback_mode ?? workbenchPayload?.data_status.fallback_mode ?? "none"),
     },
   ];
   const apiSupplyStatusRows = [
@@ -1952,14 +2107,99 @@ export default function StockAnalysisPage() {
         tone: gapTone(item.status),
       })),
   ];
-  const queueReportHeadline = queueLeadCandidate
-    ? `${queueGateStatusLabel}下的 ${queueVisibleCount} 个观察候选；风险退出${riskExitUnsupported ? "仍为阻断" : "未触发"}。`
-    : queueFiltersActive && queueTotalCount > 0
-      ? "筛选后暂无候选；请调整行业、搜索或证据条件。"
-      : "复核队列暂无候选；等待证据闭环。";
-  const queueReportLead = queueFiltersActive
-    ? `当前显示 ${queueVisibleCount} / ${queueTotalCount} 个候选；排名、证据、边界和复核入口集中在同一张表内。`
-    : "候选来自融合观察与多因子观察池；当前页面只做复核与证据追踪，不表达交易建议。";
+  const mainEndpointEvidence = workbenchPayload?.endpoint_evidence?.find((item) => item.key === "main");
+  const endpointLedgerItems = [
+    {
+      key: "main",
+      label: "主策略快照",
+      status: mainEndpointEvidence?.status ?? mainModuleStatus,
+      tone: "positive",
+      detail:
+        mainEndpointEvidence?.rows != null
+          ? `rows=${mainEndpointEvidence.rows.toLocaleString("zh-CN")} / as_of=${
+              mainEndpointEvidence.as_of_date ?? strategyPayload?.as_of_date ?? "待确认"
+            }`
+          : `rows=${evidenceRowsLabel} / as_of=${strategyPayload?.as_of_date ?? "待确认"}`,
+    },
+    {
+      key: "signal-confluence",
+      label: "信号共振",
+      status: "deferred",
+      tone: "neutral",
+      detail: "deferred，抽屉按需读取",
+    },
+    {
+      key: "candidate-history",
+      label: "候选历史",
+      status: "deferred",
+      tone: "neutral",
+      detail: "deferred，保留接口入口",
+    },
+    {
+      key: "risk-exit",
+      label: "风险退出",
+      status: riskExitUnsupported || primaryGapLedgerLabel.includes("持仓") ? "unsupported" : "deferred",
+      tone: riskExitUnsupported || primaryGapLedgerLabel.includes("持仓") ? "negative" : "neutral",
+      detail: primaryGapLedgerLabel.includes("持仓")
+        ? "position_risk missing，退出结论阻断"
+        : "退出诊断按需读取",
+    },
+    {
+      key: "strategy-optimization",
+      label: "策略优化",
+      status: "deferred",
+      tone: "neutral",
+      detail: "诊断页保留，首屏不抢加载",
+    },
+    {
+      key: "data-catalog",
+      label: "数据目录",
+      status: partialGapCount > 0 ? "watch" : "ready",
+      tone: partialGapCount > 0 ? "warning" : "positive",
+      detail: partialGapCount > 0 ? "theme_taxonomy partial，需显式暴露" : "目录状态随主包返回",
+    },
+  ];
+  const gateStateVariantRows = [
+    {
+      key: "blocked",
+      title: "blocked",
+      tone: "warning",
+      detail: "有候选但 data_gaps 未闭合，主操作禁用，只允许只读排查。",
+    },
+    {
+      key: "limited_review",
+      title: "limited_review",
+      tone: "neutral",
+      detail: "存在 warning 时允许阅读证据，但复核动作需二次确认。",
+    },
+    {
+      key: "no_data",
+      title: "no_data",
+      tone: "negative",
+      detail: "候选队列为空时，不把 0 包装成正常，直接显示 no_data。",
+    },
+    {
+      key: "stale-fallback",
+      title: "stale/fallback",
+      tone: "warning",
+      detail: "回退日期或缓存口径不一致时，顶部和证据栏同步提示。",
+    },
+  ];
+  const queueReportHeadline = workbenchReviewBlocked
+    ? "复核门禁未放行，观察池仅可只读排查"
+    : queueLeadCandidate
+      ? `${queueGateStatusLabel} · 缺口 ${dataGapDisplay} · 风险退出${riskExitUnsupported ? "阻断" : "未触发"}`
+      : queueFiltersActive && queueTotalCount > 0
+        ? "筛选后暂无候选 · 复核条件待调整"
+        : "暂无候选 · 等待证据闭环";
+  const queueReportLead = workbenchReviewBlocked
+    ? `后端 answer_state=${workbenchAnswerState}；阻断原因来自 data_gaps：${primaryGapLedgerLabel}。候选队列保留 ${reviewQueueLedgerCount} 条，但 can_review_candidates=${String(workbenchCanReviewCandidates)}，页面不输出买卖建议或正式结论。`
+    : queueFiltersActive
+      ? `当前显示 ${queueVisibleCount}/${queueTotalCount} 个候选；主要缺口：${primaryGapLabel}。`
+      : `主要缺口：${primaryGapLabel}；${queueNextActionLabel}。`;
+  const gateAuditStripText = `can_review_candidates=${String(
+    workbenchCanReviewCandidates,
+  )} · answer_state=${workbenchAnswerState} · primary_blocker=${workbenchPrimaryBlocker ?? "none"}`;
   const decisionMemoTiles = [
     {
       key: "gate",
@@ -2063,7 +2303,6 @@ export default function StockAnalysisPage() {
     {
       label: "来源",
       value: sourceVersionSummary,
-      hint: sourceVersion.length > 36 ? sourceVersion : undefined,
     },
     { label: "口径", value: strategyQuery.data?.result_meta?.basis ?? "analytical" },
   ];
@@ -2076,7 +2315,9 @@ export default function StockAnalysisPage() {
       gateStatusLabel={queueGateStatusLabel}
       gateStatusTone={boundaryRailIssueCount > 0 ? "warning" : "positive"}
       loopStatusLabel={queueLoopStatusLabel}
-      loopStatusTone={observationClosureTone}
+      loopStatusTone={workbenchReviewBlocked ? "negative" : observationClosureTone}
+      formalUseAllowed={formalUseAllowed}
+      routeLabel={workbenchRouteLabel}
       completeEvidenceOnly={completeEvidenceOnly}
       agentDrawerOpen={agentDrawerOpen}
       generatedAt={strategyQuery.data?.result_meta?.generated_at}
@@ -2094,8 +2335,8 @@ export default function StockAnalysisPage() {
   return (
     <MarketWorkbenchFrame
       pageKey="stock-analysis"
-      title="股票分析"
-      question="A股观察证据今天支持哪些只读复核结论？"
+      title="股票分析门禁"
+      question="A 股观察工作台 / 后端口径复核"
       status={stockWorkbenchStatus}
       metaItems={stockWorkbenchMetaItems}
       actions={stockWorkbenchToolbarActions}
@@ -2112,7 +2353,7 @@ export default function StockAnalysisPage() {
     >
       <section
         data-testid="stock-analysis-page"
-        className={`${SA_SHELL_PAGE} stock-analysis-page stock-analysis-page--market-shell`}
+        className={`${SA_SHELL_PAGE} stock-analysis-page stock-analysis-page--market-shell dark text-foreground`}
         data-layout-rev="2026-05-31e"
         data-data-viz-rev="2026-05-31e"
         style={stockAnalysisPageCssVars}
@@ -2160,13 +2401,14 @@ export default function StockAnalysisPage() {
                 <StockAnalysisReviewLedgerFirstScreen
                   asOfLabel={decisionSummary?.asOfLabel ?? "待确认"}
                   requestedAsOfLabel={backendSupplyOverview?.requestedAsOfLabel}
-                  kicker="今日复核队列"
+                  kicker="第一屏门禁结论"
                   headline={queueReportHeadline}
                   lead={queueReportLead}
                   metrics={apiLedgerMetrics}
                   conditionCells={apiLedgerConditionCells}
                   sourceCells={apiLedgerSourceCells}
                   railRows={apiLedgerRailRows}
+                  auditStripText={gateAuditStripText}
                   pagePurposeText={
                     pagePurpose
                       ? `${pagePurpose.eyebrow} ${pagePurpose.title} ${pagePurpose.asOfLine} ${pagePurpose.dataStatusLine}`
@@ -2187,12 +2429,13 @@ export default function StockAnalysisPage() {
                   railContent={
                     <StockAnalysisEvidenceLedgerRail
                       asOfLabel={decisionSummary?.asOfLabel ?? analyticsAsOf ?? "—"}
-                      statusLabel={stockWorkbenchStatus.label}
+                      statusLabel={workbenchAnswerState}
                       gateStatusLabel={queueGateStatusLabel}
-                      evidenceCount={queueLeadEvidenceCount}
-                      boundaryCount={queueLeadBoundaryCount}
-                      availableOutputsLabel={supportedOutputsLabel}
-                      primaryGapLabel={primaryGapLabel}
+                      evidenceCount={typeof resultMeta?.evidence_rows === "number" ? resultMeta.evidence_rows : queueLeadEvidenceCount}
+                      boundaryCount={dataGapCount || queueLeadBoundaryCount}
+                      gapCountLabel={dataGapDisplay}
+                      availableOutputsLabel="main ready / optional deferred"
+                      primaryGapLabel={primaryGapLedgerLabel}
                       leadCandidateName={queueLeadCandidate?.stockName}
                       boundaryIssueCount={boundaryRailIssueCount}
                       sourceVersionSummary={sourceVersionSummary}
@@ -2222,9 +2465,99 @@ export default function StockAnalysisPage() {
                       boundaryItems={boundaryRailItems}
                       boundarySummary={boundarySummary}
                       strategyPayload={strategyPayload}
+                      routeLabel={workbenchRouteLabel}
+                      resultKindLabel={workbenchResultKindLabel}
+                      formalUseAllowed={formalUseAllowed}
                     />
                   }
                 />
+                <section
+                  className={`${SA_FIRST_CARD} stock-analysis-page__theme-heavyweights-sidebar`}
+                  data-testid="stock-analysis-theme-heavyweights-sidebar"
+                  aria-label="题材权重股侧栏"
+                >
+                  <div className={SA_SECTION_HEAD}>
+                    <div className="stock-analysis-page__min-w-0">
+                      <p className={SA_SECTION_EYEBROW}>题材/板块</p>
+                      <h2 className={SA_CARD_TITLE}>权重股侧栏</h2>
+                      <p className={SA_SECTION_DESC}>按分类列出当前权重样本</p>
+                    </div>
+                    <span className={SA_PILL}>
+                      {sectorHeavyweightPreview
+                        ? `${sectorHeavyweightRows.length}/${sectorHeavyweightPreview.sectorLimit} 类 · ${sectorHeavyweightPreview.totalSampleCount} 只`
+                        : "权重待补"}
+                    </span>
+                  </div>
+
+                  {!sectorHeavyweightPreview || sectorHeavyweightPreview.rows.length === 0 ? (
+                    <CompactStatusTile
+                      icon={<BarChartOutlined />}
+                      label="题材分类"
+                      value="未就绪"
+                      tone="warning"
+                      testId="stock-analysis-theme-heavyweights-sidebar-empty"
+                    />
+                  ) : sectorHeavyweightRows.length === 0 ? (
+                    <CompactStatusTile
+                      icon={<StockOutlined />}
+                      label={`前 ${sectorHeavyweightPreview.sectorLimit} 类`}
+                      value="0 命中"
+                      testId="stock-analysis-theme-heavyweights-sidebar-empty"
+                    />
+                  ) : (
+                    <>
+                      {sectorHeavyweightPreview.uncoveredSectorCount > 0 ? (
+                        <div
+                          className="stock-analysis-page__theme-heavyweights-sidebar-gap"
+                          data-testid="stock-analysis-theme-heavyweights-sidebar-gap"
+                          role="status"
+                        >
+                          <DatabaseOutlined aria-hidden="true" />
+                          <span>缺口 {sectorHeavyweightPreview.uncoveredSectorCount} 类</span>
+                        </div>
+                      ) : null}
+                      <div className="stock-analysis-page__theme-heavyweights-sidebar-list">
+                        {sectorHeavyweightRows.map((sector) => (
+                          <article
+                            className="stock-analysis-page__theme-heavyweights-sidebar-card"
+                            data-testid={`theme-heavyweight-sidebar-category-${sector.sectorCode}`}
+                            key={sector.sectorCode}
+                          >
+                            <header>
+                              <strong>
+                                #{sector.sectorRank} {sector.sectorName}
+                              </strong>
+                              <span>
+                                {sector.sectorPctChange} · score {sector.sectorScore} · {sector.stocks.length} 只
+                              </span>
+                            </header>
+                            <div className="stock-analysis-page__theme-heavyweights-sidebar-stocks">
+                              {sector.stocks.map((stock) => (
+                                <button
+                                  type="button"
+                                  className="stock-analysis-page__theme-heavyweights-sidebar-stock"
+                                  data-testid={`theme-heavyweight-sidebar-stock-${sector.sectorCode}-${stock.stockCode}`}
+                                  key={stock.stockCode}
+                                  onClick={() => openSectorHeavyweightDetail(sector, stock)}
+                                >
+                                  <span>
+                                    <strong>{stock.stockName}</strong>
+                                    <small className="stock-analysis-page__tabular">{stock.stockCode}</small>
+                                  </span>
+                                  <em>{stock.sourceLabel}</em>
+                                  <small>
+                                    {stock.pctChange} · 换手 {stock.turn}
+                                    {stock.auxiliaryLabel ? ` · ${stock.auxiliaryLabel}` : ""}
+                                  </small>
+                                </button>
+                              ))}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </section>
                 {false ? (() => {
                   if (
                     !pagePurpose ||
@@ -2309,7 +2642,6 @@ export default function StockAnalysisPage() {
                       className="stock-analysis-page__source-gate-strip"
                       data-tone={sourceGateTone}
                       data-testid="stock-analysis-source-gate-strip"
-                      title={sourceVersion}
                     >
                       <span>来源核验</span>
                       <strong>{sourceGateStatusLabel}</strong>
@@ -2567,29 +2899,6 @@ export default function StockAnalysisPage() {
                   );
                 })() : null}
 
-                {false && decisionKpiStrip.length > 0 ? (
-                  <section data-testid="stock-analysis-kpi-section" aria-label="选股快照">
-                    <p className="stock-analysis-page__visually-hidden">选股快照</p>
-                    <div
-                      className="stock-analysis-page__dh-kpi-strip"
-                      data-testid="stock-analysis-kpi-strip"
-                    >
-                    {decisionKpiStrip.map((item) => (
-                      <EquityKpiCard
-                        key={item.key}
-                        kpiKey={item.key}
-                        label={item.label}
-                        value={item.value}
-                        deltaText={item.detail}
-                        deltaTone={kpiToneToDelta(item.tone)}
-                        gaugeValue={item.gaugeValue}
-                        testId={`stock-analysis-kpi-${item.key}`}
-                      />
-                    ))}
-                    </div>
-                  </section>
-                ) : null}
-
                 <div
                   className="stock-analysis-page__review-summary-stack"
                   data-testid="stock-analysis-review-summary"
@@ -2601,14 +2910,18 @@ export default function StockAnalysisPage() {
                   >
                 <div className={SA_SECTION_HEAD}>
                   <div className="stock-analysis-page__min-w-0">
-                    <p className={SA_SECTION_EYEBROW}>今日待复核</p>
-                    <h2 className={SA_CARD_TITLE}>复核队列</h2>
+                    <p className={SA_SECTION_EYEBROW}>观察池队列</p>
+                    <h2 className={SA_CARD_TITLE}>观察池队列</h2>
                     <p className={SA_SECTION_DESC}>
-                      {reviewQueueUsesHybridFusion ? "融合优先 · 边界复核" : "候选排序 · 边界复核"}
+                      只读排序，待补证后才允许进入复核动作
                     </p>
                   </div>
                   <span className={SA_PILL}>
-                    {reviewQueueUsesHybridFusion ? "融合策略 / 复核队列" : "候选 / 复核队列"}
+                    {reviewQueueLedgerCount} 条
+                  </span>
+                  <h2 className="sr-only">复核队列</h2>
+                  <span className="sr-only">
+                    {reviewQueueUsesHybridFusion ? "融合策略 / 复核队列" : "候选/ 复核队列"}
                   </span>
                 </div>
 
@@ -2652,11 +2965,25 @@ export default function StockAnalysisPage() {
                   />
                 ) : (
                   <>
-                  <StockAnalysisCandidateLedgerTable
+                  <StockAnalysisGateLedgerQueue
+                    candidates={queueVisibleCandidates}
+                    canReviewCandidates={workbenchCanReviewCandidates}
+                    onOpenCandidate={(card) => {
+                      const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
+                      setDetailSelection(
+                        buildReviewQueueDetailSelection({
+                          card,
+                          ranks,
+                          reviewQueueUsesHybridFusion,
+                        }),
+                      );
+                    }}
+                  />
+                  <div className="stock-analysis-page__legacy-candidate-comparison-shell">
+                  <StockAnalysisCandidateComparison
                     candidates={queueVisibleCandidates}
                     usesHybridFusion={reviewQueueUsesHybridFusion}
-                    selectedSectorCode={sectorFilterSectorCode}
-                    visibleCount={10}
+                    asOfLabel={decisionSummary?.asOfLabel ?? analyticsAsOf}
                     onReviewCandidate={(card) => {
                       const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
                       setDetailSelection(
@@ -2668,6 +2995,44 @@ export default function StockAnalysisPage() {
                       );
                     }}
                   />
+                  <section
+                    className="stock-analysis-page__queue-ledger-details"
+                    data-testid="stock-analysis-review-queue-details"
+                    data-open={queueLedgerOpen ? "true" : "false"}
+                  >
+                    <button
+                      type="button"
+                      aria-expanded={queueLedgerOpen}
+                      aria-controls="stock-analysis-review-queue-table-panel"
+                      onClick={() => setQueueLedgerOpen((current) => !current)}
+                    >
+                      <span>完整候选队列</span>
+                      <small>
+                        前 {Math.min(queueVisibleCandidates.length, 10)} 只 · 展开看排序明细
+                      </small>
+                    </button>
+                    {queueLedgerOpen ? (
+                      <div id="stock-analysis-review-queue-table-panel">
+                        <StockAnalysisCandidateLedgerTable
+                          candidates={queueVisibleCandidates}
+                          usesHybridFusion={reviewQueueUsesHybridFusion}
+                          selectedSectorCode={sectorFilterSectorCode}
+                          visibleCount={10}
+                          onReviewCandidate={(card) => {
+                            const ranks = lookupStockStrategyRanks(strategyPayload ?? null, card.stockCode);
+                            setDetailSelection(
+                              buildReviewQueueDetailSelection({
+                                card,
+                                ranks,
+                                reviewQueueUsesHybridFusion,
+                              }),
+                            );
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </section>
+                  </div>
                   {false ? (
                   <div className="stock-analysis-page__review-table-wrap">
                     <table
@@ -2815,8 +3180,7 @@ export default function StockAnalysisPage() {
                                 </>
                               )}
                               <td>
-                                <Button
-                                  type="default"
+                                <AntButton
                                   size="small"
                                   icon={<LineChartOutlined />}
                                   data-testid={`stock-candidate-review-chart-${card.stockCode}`}
@@ -2824,7 +3188,7 @@ export default function StockAnalysisPage() {
                                   aria-label={`复核 ${card.stockName} K 线`}
                                 >
                                   <span className="sr-only">复核 </span>K 线
-                                </Button>
+                                </AntButton>
                                 <small title={rowStatus.label}>{rowStatus.label}</small>
                               </td>
                             </tr>
@@ -2846,38 +3210,40 @@ export default function StockAnalysisPage() {
                   </>
                 )}
 
-                <div
-                  className="stock-analysis-page__review-workbench-strip"
-                  data-testid="stock-analysis-review-workbench-strip"
-                  aria-label="复核工作台摘要"
-                >
-                  <div>
-                    <DatabaseOutlined aria-hidden="true" />
-                    <span>队列</span>
-                    <strong className="stock-analysis-page__tabular">
-                      {queueVisibleCount}/{queueTotalCount}
-                    </strong>
+                {queueTotalCount > 0 ? (
+                  <div
+                    className="stock-analysis-page__review-workbench-strip"
+                    data-testid="stock-analysis-review-workbench-strip"
+                    aria-label="复核工作台摘要"
+                  >
+                    <div>
+                      <DatabaseOutlined aria-hidden="true" />
+                      <span>队列</span>
+                      <strong className="stock-analysis-page__tabular">
+                        {queueVisibleCount}/{queueTotalCount}
+                      </strong>
+                    </div>
+                    <div>
+                      <StockOutlined aria-hidden="true" />
+                      <span>首位</span>
+                      <strong>{queueLeadCandidate?.stockName ?? "待补"}</strong>
+                    </div>
+                    <div>
+                      <BarChartOutlined aria-hidden="true" />
+                      <span>距观察</span>
+                      <strong className="stock-analysis-page__tabular">
+                        {queueLeadCandidate?.distanceToBreakoutPct ?? "-"}
+                      </strong>
+                    </div>
+                    <div>
+                      <SafetyCertificateOutlined aria-hidden="true" />
+                      <span>证据</span>
+                      <strong className="stock-analysis-page__tabular">
+                        {queueLeadEvidenceCount}
+                      </strong>
+                    </div>
                   </div>
-                  <div>
-                    <StockOutlined aria-hidden="true" />
-                    <span>首位</span>
-                    <strong>{queueLeadCandidate?.stockName ?? "待补"}</strong>
-                  </div>
-                  <div>
-                    <BarChartOutlined aria-hidden="true" />
-                    <span>距观察</span>
-                    <strong className="stock-analysis-page__tabular">
-                      {queueLeadCandidate?.distanceToBreakoutPct ?? "-"}
-                    </strong>
-                  </div>
-                  <div>
-                    <SafetyCertificateOutlined aria-hidden="true" />
-                    <span>证据</span>
-                    <strong className="stock-analysis-page__tabular">
-                      {queueLeadEvidenceCount}
-                    </strong>
-                  </div>
-                </div>
+                ) : null}
 
                 {queueTotalCount > 0 ? (
                   <div
@@ -2954,6 +3320,33 @@ export default function StockAnalysisPage() {
                   </div>
                 ) : null}
               </section>
+              {activeDataGaps.length > 0 ? (
+                <section
+                  className="stock-analysis-page__v6-gap-release-panel"
+                  data-testid="stock-analysis-v6-gap-release-panel"
+                  aria-label="阻断项与释放条件"
+                >
+                  <div className={SA_SECTION_HEAD}>
+                    <div className="stock-analysis-page__min-w-0">
+                      <p className={SA_SECTION_EYEBROW}>阻断项与释放条件</p>
+                      <h2 className={SA_CARD_TITLE}>阻断项与释放条件</h2>
+                      <p className={SA_SECTION_DESC}>明确为什么不能正式使用，以及补齐后释放什么动作</p>
+                    </div>
+                  </div>
+                  <div className="stock-analysis-page__v6-gap-release-grid">
+                    {activeDataGaps.slice(0, 3).map((gap, index) => (
+                      <article
+                        key={`${gap.input_family}-${gap.status}-${index}`}
+                        className="stock-analysis-page__v6-gap-release-card"
+                        data-tone={index === 2 ? "negative" : index === 1 ? "neutral" : "warning"}
+                      >
+                        <strong>{dataGapFamilyLabel(gap.input_family)}</strong>
+                        <span>{localizeStockBackendText(gap.status, gap.input_family)}，阻断复核释放</span>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
                 </div>
 
                 </main>
@@ -2961,11 +3354,80 @@ export default function StockAnalysisPage() {
               </div>
             ) : null}
 
+            {decisionSummary && dailyJudgmentStrip ? (
+              <>
+                <section
+                  className="stock-analysis-page__v6-endpoint-ledger-section"
+                  data-testid="stock-analysis-v6-endpoint-ledger-section"
+                  aria-label="供数与链路"
+                >
+                  <div className={SA_SECTION_HEAD}>
+                    <div className="stock-analysis-page__min-w-0">
+                      <p className={SA_SECTION_EYEBROW}>供数与链路</p>
+                      <h2 className={SA_CARD_TITLE}>供数与链路</h2>
+                      <p className={SA_SECTION_DESC}>
+                        默认只读主包，重型诊断按需加载；页面不伪造缺失模块
+                      </p>
+                    </div>
+                  </div>
+                  <div className="stock-analysis-page__v6-endpoint-ledger-grid">
+                    {endpointLedgerItems.map((item) => (
+                      <article
+                        key={item.key}
+                        className="stock-analysis-page__v6-endpoint-ledger-card"
+                        data-tone={item.tone}
+                      >
+                        <div>
+                          <strong>{item.label}</strong>
+                          <b>{item.status}</b>
+                        </div>
+                        <p>{item.detail}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+                <section
+                  className="stock-analysis-page__v6-state-variants-section"
+                  data-testid="stock-analysis-v6-state-variants-section"
+                  aria-label="门禁状态稿"
+                >
+                  <div className={SA_SECTION_HEAD}>
+                    <div className="stock-analysis-page__min-w-0">
+                      <p className={SA_SECTION_EYEBROW}>门禁状态稿</p>
+                      <h2 className={SA_CARD_TITLE}>门禁状态稿</h2>
+                      <p className={SA_SECTION_DESC}>
+                        第一屏必须显式暴露的异常状态，避免用户把观察结果当正式结论
+                      </p>
+                    </div>
+                  </div>
+                  <div className="stock-analysis-page__v6-state-variant-grid">
+                    {gateStateVariantRows.map((item) => (
+                      <article
+                        key={item.key}
+                        className="stock-analysis-page__v6-state-variant-card"
+                        data-tone={item.tone}
+                      >
+                        <strong>{item.title}</strong>
+                        <p>{item.detail}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : null}
+
             {apiAccurateReadinessItems.length > 0 ? (
-              <section
-                className="stock-analysis-page__api-readiness-section"
+              <details
+                className="stock-analysis-page__api-readiness-section stock-analysis-page__api-readiness-disclosure"
+                data-testid="stock-analysis-api-readiness-shell"
                 aria-label="规则准备度与数据缺口"
               >
+                <summary className="stock-analysis-page__api-readiness-summary">
+                  <span>真实 API 边界</span>
+                  <strong>规则准备度与数据缺口</strong>
+                  <small>{apiAccurateReadinessItems.length} 项明细 · 默认收起</small>
+                </summary>
+                <div className="stock-analysis-page__api-readiness-detail">
                 <div className={SA_SECTION_HEAD}>
                   <div className="stock-analysis-page__min-w-0">
                     <p className={SA_SECTION_EYEBROW}>真实 API 边界</p>
@@ -2994,7 +3456,8 @@ export default function StockAnalysisPage() {
                     </div>
                   ))}
                 </div>
-              </section>
+                </div>
+              </details>
             ) : null}
 
             <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
@@ -3286,14 +3749,12 @@ export default function StockAnalysisPage() {
 
                     <Tabs
                       className="stock-analysis-page__analytics-tabs"
-                      size="small"
-                      activeKey={firstScreenAnalyticsTab}
-                      onChange={handleFirstScreenAnalyticsTabChange}
-                      items={[
-                        {
-                          key: "consensus",
-                          label: "历史共振",
-                          children: !consensusSummary.hasAnyStrategy ? (
+                      size="sm"
+                      selectedKey={firstScreenAnalyticsTab}
+                      onSelectionChange={(k) => handleFirstScreenAnalyticsTabChange(String(k))}
+                    >
+                      <Tab key="consensus" title="历史共振">
+                        {!consensusSummary.hasAnyStrategy ? (
                             <CompactStatusTile
                               icon={<ThunderboltOutlined />}
                               label="历史共振"
@@ -3358,12 +3819,10 @@ export default function StockAnalysisPage() {
                                 );
                               })}
                             </ul>
-                          ),
-                        },
-                        {
-                          key: "priority",
-                          label: "策略优先级",
-                          children: !firstScreenAnalyticsRequested ? (
+                          )}
+                      </Tab>
+                      <Tab key="priority" title="策略优先级">
+                        {!firstScreenPriorityRequested ? (
                             <CompactStatusTile
                               icon={<LineChartOutlined />}
                               label="策略优先级"
@@ -3371,7 +3830,7 @@ export default function StockAnalysisPage() {
                               testId="stock-analysis-priority-deferred"
                             />
                           ) : strategyScoreQuery.isLoading ? (
-                            <p className="stock-analysis-page__empty">当前市场策略优先级加载中。</p>
+                            <TableSkeleton />
                           ) : strategyScoreQuery.isError ? (
                             <p className="stock-analysis-page__notice">
                               当前市场策略优先级暂不可用：{strategyPanelErrorMessage(strategyScoreQuery.error)}
@@ -3423,12 +3882,10 @@ export default function StockAnalysisPage() {
                               value="样本不足"
                               testId="stock-analysis-priority-empty"
                             />
-                          ),
-                        },
-                        {
-                          key: "optimization",
-                          label: "优化诊断",
-                          children: !firstScreenAnalyticsRequested ? (
+                          )}
+                      </Tab>
+                      <Tab key="optimization" title="优化诊断">
+                        {!firstScreenOptimizationRequested ? (
                             <CompactStatusTile
                               icon={<SafetyCertificateOutlined />}
                               label="优化诊断"
@@ -3436,7 +3893,7 @@ export default function StockAnalysisPage() {
                               testId="stock-analysis-optimization-deferred"
                             />
                           ) : strategyOptimizationQuery.isLoading ? (
-                            <p className="stock-analysis-page__empty">优化诊断加载中。</p>
+                            <TableSkeleton />
                           ) : strategyOptimizationQuery.isError ? (
                             <p className="stock-analysis-page__notice">
                               优化诊断暂不可用：{strategyPanelErrorMessage(strategyOptimizationQuery.error)}
@@ -3482,10 +3939,9 @@ export default function StockAnalysisPage() {
                               value="0"
                               testId="stock-analysis-optimization-empty"
                             />
-                          ),
-                        },
-                      ]}
-                    />
+                          )}
+                      </Tab>
+                    </Tabs>
                   </section>
 
                     <section
@@ -3539,37 +3995,20 @@ export default function StockAnalysisPage() {
                     </div>
                     <Tabs
                       className="stock-analysis-page__sector-tabs"
-                      size="small"
-                      activeKey={sectorView}
-                      onChange={handleSectorViewChange}
-                      items={sectorViewTabs.map((tab) => ({ key: tab.key, label: tab.label }))}
-                    />
-
-                    <div
-                      className="stock-analysis-page__sector-chart-wrap"
-                      data-testid="stock-analysis-sector-strength-chart"
-                      aria-label="板块强弱横向图"
+                      size="sm"
+                      selectedKey={sectorView}
+                      onSelectionChange={(k) => handleSectorViewChange(String(k))}
                     >
-                      {sectorStrengthChartRows.length > 0 ? (
-                        <ReactECharts
-                          option={sectorStrengthChartOption}
-                          className="stock-analysis-page__echart stock-analysis-page__echart--sector-strength"
-                          opts={{ renderer: "canvas" }}
-                          notMerge
-                          lazyUpdate
-                        />
-                      ) : (
-                        <span className="stock-analysis-page__sector-empty-chart">
-                          -
-                        </span>
-                      )}
-                    </div>
+                      {sectorViewTabs.map((tab) => (
+                        <Tab key={tab.key} title={tab.label} />
+                      ))}
+                    </Tabs>
 
                     <div className="stock-analysis-page__sector-rank-grid" data-testid="stock-analysis-sector-bars">
                       <div className="stock-analysis-page__sector-rank-col stock-analysis-page__sector-rank-col--top">
-                        <h3>强势前 5</h3>
+                        <h3>强势前 {SECTOR_STRENGTH_DEFAULT_TOP_COUNT}</h3>
                         <div className="stock-analysis-page__sector-rank-list">
-                          {topBars.map((row) => (
+                          {visibleSectorTopBars.map((row) => (
                             <button
                               type="button"
                               key={`top-${row.sectorCode}-${row.rank}`}
@@ -3607,6 +4046,91 @@ export default function StockAnalysisPage() {
                           ))}
                         </div>
                       </div>
+                    </div>
+
+                    <details
+                      className="stock-analysis-page__sector-detail-more"
+                      data-testid="stock-analysis-sector-detail-more"
+                      onToggle={(event) => setSectorDetailOpen(event.currentTarget.open)}
+                    >
+                      <summary className="stock-analysis-page__sector-detail-more-summary">
+                        <span>背景明细</span>
+                        <small>
+                          图表 / 强势余 {backgroundSectorTopBars.length} / 弱势后 5 / 行业明细
+                        </small>
+                      </summary>
+                      <div className="stock-analysis-page__sector-detail-more-body">
+                        <div
+                          className="stock-analysis-page__sector-chart-wrap"
+                          data-testid="stock-analysis-sector-strength-chart"
+                          aria-label="板块强弱横向图"
+                        >
+                          {sectorDetailOpen ? (
+                            sectorStrengthChartRows.length > 0 ? (
+                              <Suspense fallback={<TextSkeleton className="w-full" />}>
+                                <LazyReactECharts
+                                  option={sectorStrengthChartOption}
+                                  className="stock-analysis-page__echart stock-analysis-page__echart--sector-strength"
+                                  opts={{ renderer: "canvas" }}
+                                  notMerge
+                                  lazyUpdate
+                                />
+                              </Suspense>
+                            ) : (
+                              <span className="stock-analysis-page__sector-empty-chart">
+                                -
+                              </span>
+                            )
+                          ) : null}
+                        </div>
+
+                        <div
+                          className="stock-analysis-page__sector-rank-grid stock-analysis-page__sector-rank-grid--secondary"
+                          data-testid="stock-analysis-sector-bars-secondary"
+                        >
+                      {backgroundSectorTopBars.length > 0 ? (
+                        <div className="stock-analysis-page__sector-rank-col stock-analysis-page__sector-rank-col--top">
+                          <h3>强势余下</h3>
+                          <div className="stock-analysis-page__sector-rank-list">
+                            {backgroundSectorTopBars.map((row) => (
+                              <button
+                                type="button"
+                                key={`top-extra-${row.sectorCode}-${row.rank}`}
+                                className={`stock-analysis-page__sector-rank-row${
+                                  sectorFilterSectorCode === row.sectorCode
+                                    ? " stock-analysis-page__sector-rank-row--selected"
+                                    : ""
+                                }`}
+                                aria-pressed={sectorFilterSectorCode === row.sectorCode}
+                                data-testid={`sector-bar-${row.sectorCode}`}
+                                onClick={() => toggleSectorFilter(row.sectorCode)}
+                              >
+                                <div className="stock-analysis-page__sector-rank-row-head stock-analysis-page__tabular">
+                                  <span className="stock-analysis-page__min-w-0 stock-analysis-page__sector-rank-row-label">
+                                    {row.rank}. {row.sectorName}{" "}
+                                    <small>{row.sectorCode}</small>
+                                  </span>
+                                  <span>{row.score}</span>
+                                </div>
+                                <div className="stock-analysis-page__sector-rank-bar">
+                                  <progress
+                                    className="stock-analysis-page__sector-rank-progress stock-analysis-page__sector-rank-progress--top"
+                                    max={100}
+                                    value={(sectorView === "score" ? row.scoreNormalized : row.metricBarNormalized) * 100}
+                                    aria-hidden="true"
+                                  />
+                                  <div
+                                    className="stock-analysis-page__sector-rank-bar-label stock-analysis-page__tabular"
+                                  >
+                                    <span>{row.pctChange}</span>
+                                    <small className="stock-analysis-page__sector-rank-row-meta">成分 {row.constituentCount}</small>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="stock-analysis-page__sector-rank-col stock-analysis-page__sector-rank-col--bottom">
                         <h3>弱势后 5</h3>
                         <div className="stock-analysis-page__sector-rank-list">
@@ -3661,15 +4185,15 @@ export default function StockAnalysisPage() {
                       </span>
                     </div>
 
-                    <Collapse
-                      bordered={false}
+                    <Accordion
                       className="stock-analysis-page__sector-collapse"
-                      items={[
-                        {
-                          key: "sector-detail-table",
-                          label: "行业明细",
-                          children: (
-                            <div className="stock-analysis-page__table-wrap">
+                    >
+                      <AccordionItem
+                        key="sector-detail-table"
+                        aria-label="行业明细"
+                        title="行业明细"
+                      >
+                        <div className="stock-analysis-page__table-wrap">
                               <table className="stock-analysis-page__table">
                                 <thead>
                                   <tr>
@@ -3762,22 +4286,23 @@ export default function StockAnalysisPage() {
                                 </tbody>
                               </table>
                             </div>
-                          ),
-                        },
-                      ]}
-                    />
+                          </AccordionItem>
+                    </Accordion>
 
-                    <Collapse
-                      bordered={false}
+                    <Accordion
                       className="stock-analysis-page__sector-collapse"
-                      activeKey={sectorSeriesCollapseKeys}
-                      onChange={handleSectorSeriesCollapseChange}
-                      items={[
-                        {
-                          key: "sector-rank-series-multi",
-                          label: "多日强弱",
-                          children: (
-                            <div
+                      selectedKeys={new Set(sectorSeriesCollapseKeys)}
+                      onSelectionChange={(keys) => {
+                        const newKeys = Array.from(keys).map(String);
+                        handleSectorSeriesCollapseChange(newKeys);
+                      }}
+                    >
+                      <AccordionItem
+                        key="sector-rank-series-multi"
+                        aria-label="多日强弱"
+                        title="多日强弱"
+                      >
+                        <div
                               className="stock-analysis-page__sector-series-wrap"
                               data-testid="stock-analysis-sector-series-panel"
                             >
@@ -3796,25 +4321,27 @@ export default function StockAnalysisPage() {
                                 </ul>
                               ) : null}
                               <Tabs
-                                size="small"
-                                activeKey={String(sectorSeriesWindow)}
-                                onChange={handleSectorSeriesWindowChange}
+                                size="sm"
+                                selectedKey={String(sectorSeriesWindow)}
+                                onSelectionChange={(k) => handleSectorSeriesWindowChange(String(k))}
                                 className="stock-analysis-page__sector-series-tabs"
-                                items={[
-                                  { key: "5", label: "5 交易日" },
-                                  { key: "20", label: "20 交易日" },
-                                ]}
-                              />
+                              >
+                                <Tab key="5" title="5 交易日" />
+                                <Tab key="20" title="20 交易日" />
+                              </Tabs>
                               {sectorRankSeriesQuery.isFetching ? (
-                                <Text type="secondary">加载多日板块序列中。</Text>
+                                <TextSkeleton className="w-full" />
                               ) : null}
                               {sectorRankSeriesQuery.isError ? (
-                                <Alert
-                                  type="warning"
-                                  showIcon
-                                  message="多日板块序列加载失败"
-                                  description={strategyPanelErrorMessage(sectorRankSeriesQuery.error)}
-                                />
+                                <div
+                                  className="p-4 mb-4 text-sm text-warning-800 rounded-lg bg-warning-50 flex items-start gap-3 border border-warning-200"
+                                  role="alert"
+                                >
+                                  <div className="flex flex-col gap-1">
+                                    <span className="font-semibold text-warning-900">多日板块序列加载失败</span>
+                                    <span>{strategyPanelErrorMessage(sectorRankSeriesQuery.error)}</span>
+                                  </div>
+                                </div>
                               ) : null}
                               {!sectorRankSeriesQuery.isFetching &&
                               !sectorRankSeriesQuery.isError &&
@@ -3835,20 +4362,22 @@ export default function StockAnalysisPage() {
                                   data-testid="stock-analysis-sector-series-chart"
                                   aria-label="多日板块得分走势"
                                 >
-                                  <ReactECharts
-                                    option={sectorSeriesTrendChartOption}
-                                    className="stock-analysis-page__echart stock-analysis-page__echart--sector-series"
-                                    opts={{ renderer: "canvas" }}
-                                    notMerge
-                                    lazyUpdate
-                                  />
+                                  <Suspense fallback={<TextSkeleton className="w-full" />}>
+                                    <LazyReactECharts
+                                      option={sectorSeriesTrendChartOption}
+                                      className="stock-analysis-page__echart stock-analysis-page__echart--sector-series"
+                                      opts={{ renderer: "canvas" }}
+                                      notMerge
+                                      lazyUpdate
+                                    />
+                                  </Suspense>
                                 </div>
                               ) : null}
                               {!sectorRankSeriesQuery.isFetching &&
                               !sectorRankSeriesQuery.isError &&
                               sectorRankSeriesQuery.data?.result?.state === "ok" &&
                               sectorSeriesTableRows.length === 0 ? (
-                                <Text type="secondary">窗口内无表格行可展示。</Text>
+                                <span className="text-default-500">窗口内无表格行可展示。</span>
                               ) : null}
                               {!sectorRankSeriesQuery.isFetching &&
                               !sectorRankSeriesQuery.isError &&
@@ -3901,10 +4430,10 @@ export default function StockAnalysisPage() {
                                 </div>
                               ) : null}
                             </div>
-                          ),
-                        },
-                      ]}
-                    />
+                          </AccordionItem>
+                    </Accordion>
+                      </div>
+                    </details>
                   </>
                 ) : (
                   <div
@@ -3917,7 +4446,18 @@ export default function StockAnalysisPage() {
               </section>
 
                 </div>
-              <div className="stock-analysis-strategy-card-grid">
+              <details
+                className="stock-analysis-page__strategy-research-more"
+                data-testid="stock-analysis-strategy-research-more"
+              >
+                <summary
+                  className="stock-analysis-page__strategy-research-more-summary"
+                  data-testid="stock-analysis-strategy-research-more-summary"
+                >
+                  <span>策略研究背景</span>
+                  <small>回测 / 事件 / 题材 / 规则</small>
+                </summary>
+                <div className="stock-analysis-strategy-card-grid" data-testid="stock-analysis-strategy-card-grid">
               {cycleRotationFramework ? (
                 <StrategyModuleCard
                   id="cycle-rotation"
@@ -4010,7 +4550,7 @@ export default function StockAnalysisPage() {
                     data-testid="stock-analysis-candidate-history-portfolio-backtest"
                   >
                     {candidateHistoryPortfolioBacktestQuery.isLoading ? (
-                      <p className="stock-analysis-page__empty">组合回测加载中。</p>
+                      <TableSkeleton />
                     ) : null}
                     {candidateHistoryPortfolioBacktestQuery.isError ? (
                       <p className="stock-analysis-page__notice">
@@ -4077,7 +4617,7 @@ export default function StockAnalysisPage() {
                     data-testid="stock-analysis-cycle-proxy-backtest"
                   >
                     {cycleProxyBacktestQuery.isLoading ? (
-                      <p className="stock-analysis-page__empty">代理回测加载中。</p>
+                      <TableSkeleton />
                     ) : null}
                     {cycleProxyBacktestQuery.isError ? (
                       <p className="stock-analysis-page__notice">
@@ -4565,39 +5105,55 @@ export default function StockAnalysisPage() {
                   />
                 )}
               </StrategyModuleCard>
-              </div>
+                </div>
+              </details>
               </div>
             </AnalysisGrid>
           </>
         ) : null}
-        <StockDetailDrawer
-          stockCode={detailSelection?.code ?? null}
-          stockName={detailSelection?.name}
-          asOfDate={stockDetailAsOfDate}
-          reviewContext={buildStockDetailReviewContext(detailSelection)}
-          onClose={() => setDetailSelection(null)}
-        />
-        <Drawer
-          title="复核助手"
+        {detailSelection ? (
+          <Suspense fallback={null}>
+            <LazyStockDetailDrawer
+              stockCode={detailSelection.code}
+              stockName={detailSelection.name}
+              asOfDate={stockDetailAsOfDate}
+              reviewContext={buildStockDetailReviewContext(detailSelection)}
+              onClose={() => setDetailSelection(null)}
+            />
+          </Suspense>
+        ) : null}
+        <AntDrawer
           placement="left"
-          width={480}
+          width={560}
           open={agentDrawerOpen}
           onClose={() => setAgentDrawerOpen(false)}
-          destroyOnClose
           className="stock-analysis-page__agent-drawer"
           data-testid="stock-analysis-agent-drawer"
-          maskClosable
+          title="复核助手"
+          extra={
+            <AntButton
+              type="text"
+              onClick={() => setAgentDrawerOpen(false)}
+              aria-label="关闭抽屉"
+            >
+              关闭
+            </AntButton>
+          }
         >
           <div style={stockAnalysisPageCssVars} className="stock-analysis-page__agent-drawer-body">
-            <AgentPanel
-              pageId="stock-analysis"
-              currentFilters={stockAnalysisAgentPageContext.current_filters}
-              defaultFilters={{ research_domain: "stock" }}
-              selectedRows={stockAnalysisAgentPageContext.selected_rows}
-              contextNote={stockAnalysisAgentPageContext.context_note ?? null}
-            />
+            {agentDrawerOpen ? (
+              <Suspense fallback={<TextSkeleton className="w-full" />}>
+                <LazyAgentPanel
+                  pageId="stock-analysis"
+                  currentFilters={stockAnalysisAgentPageContext.current_filters}
+                  defaultFilters={{ research_domain: "stock" }}
+                  selectedRows={stockAnalysisAgentPageContext.selected_rows}
+                  contextNote={stockAnalysisAgentPageContext.context_note ?? null}
+                />
+              </Suspense>
+            ) : null}
           </div>
-        </Drawer>
+        </AntDrawer>
       </section>
     </MarketWorkbenchFrame>
   );

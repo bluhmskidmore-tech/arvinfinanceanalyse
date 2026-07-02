@@ -5,7 +5,7 @@ import {
   DatabaseOutlined,
   SafetyCertificateOutlined,
 } from "@ant-design/icons";
-import { Button, Drawer, Typography } from "antd";
+import { Button as AntButton, Drawer as AntDrawer } from "antd";
 
 import type { LivermoreStrategyPayload } from "../../../api/contracts";
 import type {
@@ -24,7 +24,6 @@ import {
 } from "../lib/stockAnalysisPageLabels";
 import { stockStatusLabel } from "../lib/stockAnalysisPageCopy";
 
-const { Text } = Typography;
 
 function boundaryRailIcon(key: StockAnalysisEvidenceStatusItem["key"]) {
   if (key === "as-of-date") return <ClockCircleOutlined />;
@@ -104,94 +103,94 @@ export function StockAnalysisBoundaryRail({
         </div>
       ) : null}
       {showInlineDiagnosticsAction ? (
-        <Button
+        <AntButton
           type="link"
           className="stock-analysis-page__rail-action"
           aria-expanded={isDrawerOpen}
           onClick={openDiagnostics}
         >
           查看完整诊断
-        </Button>
+        </AntButton>
       ) : null}
-      <Drawer
+      <AntDrawer
         title="数据口径诊断"
+        placement="right"
+        width={560}
         open={isDrawerOpen}
         onClose={closeDiagnostics}
-        destroyOnClose
-        width={480}
       >
         {strategyPayload ? (
-          <>
-            <Text strong type="danger">
-              严重
-            </Text>
-            <ul>
-              {strategyPayload.diagnostics
-                .filter((diagnostic) => diagnostic.severity === "error")
-                .map((diagnostic) => (
-                  <li key={diagnostic.code}>
-                    {localizeStockBackendText(diagnostic.message, diagnostic.input_family)}
+            <>
+              <strong className="text-danger">
+                严重
+              </strong>
+              <ul>
+                {strategyPayload.diagnostics
+                  .filter((diagnostic) => diagnostic.severity === "error")
+                  .map((diagnostic) => (
+                    <li key={diagnostic.code}>
+                      {localizeStockBackendText(diagnostic.message, diagnostic.input_family)}
+                    </li>
+                  ))}
+                {strategyPayload.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length === 0 ? (
+                  <li>暂无</li>
+                ) : null}
+              </ul>
+              <strong className="text-warning">
+                警告
+              </strong>
+              <ul>
+                {strategyPayload.diagnostics
+                  .filter((diagnostic) => diagnostic.severity === "warning")
+                  .map((diagnostic) => (
+                    <li key={diagnostic.code}>
+                      {localizeStockBackendText(diagnostic.message, diagnostic.input_family)}
+                    </li>
+                  ))}
+                {strategyPayload.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length === 0 ? (
+                  <li>暂无</li>
+                ) : null}
+              </ul>
+              <strong className="text-default-500">
+                信息
+              </strong>
+              <ul>
+                {strategyPayload.diagnostics
+                  .filter((diagnostic) => diagnostic.severity === "info")
+                  .map((diagnostic) => (
+                    <li key={diagnostic.code}>
+                      {localizeStockBackendText(diagnostic.message, diagnostic.input_family)}
+                    </li>
+                  ))}
+              </ul>
+              <h5 className="text-md font-semibold mt-4 mb-2">数据缺口</h5>
+              <ul>
+                {strategyPayload.data_gaps.map((gap) => {
+                  const familyLabel = dataGapFamilyLabel(gap.input_family);
+                  const status = stockStatusLabel(gap.status);
+                  return (
+                    <li key={`${gap.input_family}-${gap.status}`}>
+                      <span className="sr-only">{familyLabel} {status}</span>
+                      <strong>{familyLabel}</strong> {status}:{" "}
+                      {localizeStockBackendText(gap.evidence, gap.input_family)}
+                    </li>
+                  );
+                })}
+              </ul>
+              <h5 className="text-md font-semibold mt-4 mb-2">可用输出</h5>
+              <p>{strategyPayload.supported_outputs.map(outputKeyLabel).join("、") || "无"}</p>
+              <h5 className="text-md font-semibold mt-4 mb-2">阻断输出</h5>
+              <ul>
+                {strategyPayload.unsupported_outputs.map((unsupported) => (
+                  <li key={unsupported.key}>
+                    <strong>{outputKeyLabel(unsupported.key)}</strong>:{" "}
+                    {localizeStockBackendText(unsupported.reason, unsupported.key)}
                   </li>
                 ))}
-              {strategyPayload.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length === 0 ? (
-                <li>暂无</li>
-              ) : null}
-            </ul>
-            <Text strong type="warning">
-              警告
-            </Text>
-            <ul>
-              {strategyPayload.diagnostics
-                .filter((diagnostic) => diagnostic.severity === "warning")
-                .map((diagnostic) => (
-                  <li key={diagnostic.code}>
-                    {localizeStockBackendText(diagnostic.message, diagnostic.input_family)}
-                  </li>
-                ))}
-              {strategyPayload.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length === 0 ? (
-                <li>暂无</li>
-              ) : null}
-            </ul>
-            <Text strong type="secondary">
-              信息
-            </Text>
-            <ul>
-              {strategyPayload.diagnostics
-                .filter((diagnostic) => diagnostic.severity === "info")
-                .map((diagnostic) => (
-                  <li key={diagnostic.code}>
-                    {localizeStockBackendText(diagnostic.message, diagnostic.input_family)}
-                  </li>
-                ))}
-            </ul>
-            <Typography.Title level={5}>数据缺口</Typography.Title>
-            <ul>
-              {strategyPayload.data_gaps.map((gap) => {
-                const familyLabel = dataGapFamilyLabel(gap.input_family);
-                const status = stockStatusLabel(gap.status);
-                return (
-                  <li key={`${gap.input_family}-${gap.status}`}>
-                    <span className="sr-only">{familyLabel} {status}</span>
-                    <strong>{familyLabel}</strong> {status}:{" "}
-                    {localizeStockBackendText(gap.evidence, gap.input_family)}
-                  </li>
-                );
-              })}
-            </ul>
-            <Typography.Title level={5}>可用输出</Typography.Title>
-            <p>{strategyPayload.supported_outputs.map(outputKeyLabel).join("、") || "无"}</p>
-            <Typography.Title level={5}>阻断输出</Typography.Title>
-            <ul>
-              {strategyPayload.unsupported_outputs.map((unsupported) => (
-                <li key={unsupported.key}>
-                  <strong>{outputKeyLabel(unsupported.key)}</strong>:{" "}
-                  {localizeStockBackendText(unsupported.reason, unsupported.key)}
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-      </Drawer>
+              </ul>
+            </>
+          ) : null}
+      </AntDrawer>
     </section>
   );
 }

@@ -304,19 +304,19 @@ describe("marketDataPageModel", () => {
     expect(model.macroBondLinkageWarnings).toEqual(["lineage pending"]);
     expect(model.evidenceLines).toEqual({
       formalRates:
-        "formal rates: basis=formal formal_use_allowed=true quality=ok fallback=none vendor_status=ok source=sv_formal_rates",
+        "formal rates: 正式可用 / 数据正常 / 可正式使用",
       macroLatest:
-        "macro latest: basis=analytical formal_use_allowed=false quality=ok fallback=none vendor_status=ok source=sv_market_data_page_model",
+        "macro latest: 仅分析使用 / 数据正常 / 暂不可用于正式决策",
       fxFormal:
-        "FX formal: basis=formal formal_use_allowed=true quality=ok fallback=none vendor_status=ok source=sv_fx_formal",
+        "FX formal: 正式可用 / 数据正常 / 可正式使用",
       fxAnalytical:
-        "FX analytical: basis=analytical formal_use_allowed=false quality=ok fallback=none vendor_status=ok source=sv_fx_analytical",
+        "FX analytical: 仅分析使用 / 数据正常 / 暂不可用于正式决策",
       ncdProxy:
-        "NCD proxy: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+        "NCD proxy: 未接入 / 部分缺失 / 查看数据诊断",
       livermore:
-        "Livermore: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+        "Livermore: 未接入 / 部分缺失 / 查看数据诊断",
       linkage:
-        "macro-bond linkage: basis=analytical formal_use_allowed=false quality=ok fallback=none vendor_status=ok source=sv_linkage",
+        "macro-bond linkage: 仅分析使用 / 数据正常 / 暂不可用于正式决策",
     });
     expect(model.spreadSlots.find((slot) => slot.tenor === "5Y")?.point?.series_id).toBe(
       "SPREAD_HIGH",
@@ -359,13 +359,13 @@ describe("marketDataPageModel", () => {
     expect(model.macroMeta).toBeUndefined();
     expect(model.isFormalBasis).toBe(false);
     expect(Object.values(model.evidenceLines)).toEqual([
-      "formal rates: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
-      "macro latest: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
-      "FX formal: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
-      "FX analytical: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
-      "NCD proxy: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
-      "Livermore: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
-      "macro-bond linkage: basis=pending formal_use_allowed=pending quality=pending fallback=pending vendor_status=pending source=pending",
+      "formal rates: 未接入 / 部分缺失 / 查看数据诊断",
+      "macro latest: 未接入 / 部分缺失 / 查看数据诊断",
+      "FX formal: 未接入 / 部分缺失 / 查看数据诊断",
+      "FX analytical: 未接入 / 部分缺失 / 查看数据诊断",
+      "NCD proxy: 未接入 / 部分缺失 / 查看数据诊断",
+      "Livermore: 未接入 / 部分缺失 / 查看数据诊断",
+      "macro-bond linkage: 未接入 / 部分缺失 / 查看数据诊断",
     ]);
     expect(model.statusBadges.readinessVerdict).toBe("接入中");
     expect(model.statusBadges.overviewReadinessLabel).toBe("待确认");
@@ -530,7 +530,7 @@ describe("marketDataPageModel", () => {
 
     expect(model.isFormalBasis).toBe(false);
     expect(model.evidenceLines.formalRates).toBe(
-      "formal rates: basis=analytical formal_use_allowed=false quality=ok fallback=latest_snapshot vendor_status=ok source=sv_analytical_rates",
+      "formal rates: 仅分析使用 / 数据正常 / 暂不可用于正式决策 / 数据延迟",
     );
   });
 
@@ -549,7 +549,7 @@ describe("marketDataPageModel", () => {
 
     expect(model.isFormalBasis).toBe(false);
     expect(model.evidenceLines.formalRates).toBe(
-      "formal rates: basis=formal formal_use_allowed=false quality=ok fallback=none vendor_status=ok source=sv_candidate_rates",
+      "formal rates: 暂不可正式使用 / 数据正常 / 暂不可用于正式决策",
     );
   });
 
@@ -567,7 +567,7 @@ describe("marketDataPageModel", () => {
     });
 
     expect(model.evidenceLines.formalRates).toBe(
-      "formal rates: basis=formal formal_use_allowed=true quality=stale fallback=none vendor_status=ok source=sv_stale_rates",
+      "formal rates: 正式可用 / 数据延迟 / 需复核",
     );
   });
 

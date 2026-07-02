@@ -17,6 +17,12 @@ from backend.app.core_finance.cycle_macro_score import (
     CycleMacroSnapshot,
     build_cycle_macro_snapshot,
 )
+from backend.app.core_finance.data_freshness import (
+    FRESHNESS_TIER_EXPIRED,
+    FRESHNESS_TIER_FRESH,
+    FRESHNESS_TIER_STALE,
+    assess_freshness,
+)
 from backend.app.core_finance.factor_screen_candidates import (
     compute_factor_screen_candidates,
 )
@@ -94,6 +100,7 @@ EMPTY_SOURCE_VERSION = "sv_livermore_empty"
 EMPTY_VENDOR_VERSION = "vv_none"
 BROAD_INDEX_SERIES_ID = "CA.CSI300"
 HISTORY_LIMIT = 260
+CHOICE_STOCK_HISTORY_WINDOW = 130
 STOCK_CANDIDATE_LIMIT_RATIO_BLOCK_REASON = (
     "No price-field or rule-derived limit_ratio source is available for Livermore stock pivot filters."
 )
@@ -119,6 +126,21 @@ LIVERMORE_OUTPUT_KEYS: tuple[str, ...] = (
 STOCK_MODULE_FRESHNESS_THRESHOLD_DAYS = 3
 STOCK_MODULE_PRIMARY_COVERAGE_THRESHOLD = 0.8
 STOCK_MODULE_PARTIAL_COVERAGE_THRESHOLD = 0.5
+INPUT_FRESHNESS_DEGRADED_DIAGNOSTIC_CODE = "LIVERMORE_INPUT_FRESHNESS_DEGRADED"
+INPUT_FRESHNESS_LOOK_AHEAD_STATUS = "look_ahead"
+INPUT_FRESHNESS_DEGRADED_TIERS = frozenset({FRESHNESS_TIER_STALE, FRESHNESS_TIER_EXPIRED})
+_INPUT_FRESHNESS_TIER_RANK = {
+    FRESHNESS_TIER_EXPIRED: 3,
+    FRESHNESS_TIER_STALE: 2,
+    FRESHNESS_TIER_FRESH: 1,
+}
+_INPUT_FRESHNESS_NOTE_CATEGORY_BY_FAMILY = {
+    "PMI": "宏观输入",
+    "credit_impulse": "宏观输入",
+    "price_spread": "宏观输入",
+    "turnover_persistence": "股票日线输入",
+    "valuation_percentile_history": "因子快照输入",
+}
 
 
 def livermore_strategy_envelope(
@@ -269,6 +291,15 @@ def _load_livermore_strategy_payload_uncached(
         supplement=supplement,
         latest_trade_date=latest_trade_date,
     )
+    input_freshness = _assess_input_freshness(
+        cycle_input_evidence=cycle_input_evidence,
+        as_of_date=latest_trade_date,
+    )
+    _merge_input_freshness_into_data_gaps(
+        data_gaps=cast(list[dict[str, object]], data_gaps),
+        input_freshness=input_freshness,
+    )
+    diagnostics.extend(_input_freshness_degradation_notes(input_freshness))
     rule_readiness = _build_rule_readiness(
         market_gate=market_gate,
         history_count=len(history_rows),
@@ -288,7 +319,10 @@ def _load_livermore_strategy_payload_uncached(
         unsupported_outputs=unsupported_outputs,
         stock_outputs=stock_outputs,
     )
-    quality_flag = _quality_flag_for_market_gate(str(market_gate["state"]))
+    quality_flag = _degrade_quality_flag_for_input_freshness(
+        _quality_flag_for_market_gate(str(market_gate["state"])),
+        input_freshness,
+    )
     payload: dict[str, object] = {
         "as_of_date": resolved_as_of_date,
         "requested_as_of_date": requested_text,
@@ -513,6 +547,7 @@ def _load_cycle_input_evidence(
     tables_used: list[str] = []
     source_versions: list[str] = []
     evidence_rows = 0
+    input_business_dates: list[tuple[str, str, str, str]] = []
     try:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
         price_spread_evidence = ""
@@ -576,9 +611,26 @@ def _load_cycle_input_evidence(
                     )
 
             pmi_points = points_by_series.get(PMI_SERIES_ID)
+            credit_series_id = SOCIAL_FINANCING_YOY_SERIES_ID
             sf_points = points_by_series.get(SOCIAL_FINANCING_YOY_SERIES_ID)
             if not sf_points or len(sf_points) < 2:
+                credit_series_id = M2_YOY_SERIES_ID
                 sf_points = points_by_series.get(M2_YOY_SERIES_ID)
+            for freshness_family, freshness_series_id, freshness_cadence, freshness_points in (
+                ("PMI", PMI_SERIES_ID, "monthly", pmi_points),
+                ("credit_impulse", credit_series_id, "monthly", sf_points),
+                ("price_spread", CSI300_PE_SERIES_ID, "daily", pe_points),
+                ("price_spread", CN10Y_SERIES_ID, "daily", cn10y_points),
+            ):
+                if freshness_points:
+                    input_business_dates.append(
+                        (
+                            freshness_family,
+                            freshness_series_id,
+                            freshness_cadence,
+                            str(freshness_points[-1][0])[:10],
+                        )
+                    )
             macro_snapshot = build_cycle_macro_snapshot(
                 pmi_points=pmi_points,
                 social_financing_yoy_points=sf_points,
@@ -621,6 +673,25 @@ def _load_cycle_input_evidence(
                     source_versions.append(str(turnover_row[2]))
                 evidence_rows += int(row_count)
 
+        if _table_has_columns(conn, "choice_stock_daily_observation", ["trade_date"]):
+            stock_daily_latest = conn.execute(
+                """
+                select max(cast(trade_date as date))
+                from choice_stock_daily_observation
+                where cast(trade_date as date) <= cast(? as date)
+                """,
+                [as_of_date.isoformat()],
+            ).fetchone()
+            if stock_daily_latest and stock_daily_latest[0] is not None:
+                input_business_dates.append(
+                    (
+                        "turnover_persistence",
+                        "choice_stock_daily_observation",
+                        "daily",
+                        str(stock_daily_latest[0])[:10],
+                    )
+                )
+
         valuation_ready = False
         valuation_evidence = ""
         if _table_has_columns(conn, "choice_stock_factor_snapshot", ["as_of_date", "stock_code", "pe", "pb"]):
@@ -643,6 +714,15 @@ def _load_cycle_input_evidence(
                 [as_of_date.isoformat()],
             ).fetchone()
             if valuation_row:
+                if valuation_row[0]:
+                    input_business_dates.append(
+                        (
+                            "valuation_percentile_history",
+                            "choice_stock_factor_snapshot",
+                            "daily",
+                            str(valuation_row[0])[:10],
+                        )
+                    )
                 row_count = _safe_int(valuation_row[1]) or 0
                 if row_count > 0:
                     valuation_ready = True
@@ -678,6 +758,7 @@ def _load_cycle_input_evidence(
             turnover_persistence_evidence=turnover_evidence,
             valuation_percentile_history_ready=valuation_ready,
             valuation_percentile_history_evidence=valuation_evidence,
+            input_business_dates=tuple(input_business_dates),
             tables_used=tuple(_unique_preserving_order(tables_used)),
             source_versions=tuple(_unique_preserving_order(source_versions)),
             evidence_rows=evidence_rows,
@@ -722,6 +803,30 @@ class _FreshTrendWatchlistLoadResult:
 
 
 @dataclass(frozen=True)
+class _TradingStockDailyRow:
+    stock_code: str
+    stock_name: str
+    sector_code: str
+    sector_name: str
+    close_value: object
+    low_value: object
+    high_value: object
+    volume: object
+    pctchange: object
+    turn: object
+    amplitude: object
+
+
+@dataclass(frozen=True)
+class _TradingStockSnapshotInputs:
+    current_rows: list[_TradingStockDailyRow]
+    history_by_code: dict[str, dict[str, list[object]]]
+    concepts_by_code: dict[str, list[object]]
+    hlimitedays_by_code: dict[str, object]
+    tables_used: list[str]
+
+
+@dataclass(frozen=True)
 class _CycleInputEvidence:
     price_spread_ready: bool = False
     price_spread_evidence: str = ""
@@ -737,6 +842,9 @@ class _CycleInputEvidence:
     turnover_persistence_evidence: str = ""
     valuation_percentile_history_ready: bool = False
     valuation_percentile_history_evidence: str = ""
+    # (input_family, input_label, cadence, business_date) rows captured from the
+    # same trade_date-bounded queries; consumed by _assess_input_freshness.
+    input_business_dates: tuple[tuple[str, str, str, str], ...] = ()
     tables_used: tuple[str, ...] = ()
     source_versions: tuple[str, ...] = ()
     evidence_rows: int = 0
@@ -844,6 +952,18 @@ def _load_choice_stock_outputs(
     source_versions: list[str] = []
     vendor_versions: list[str] = []
     evidence_rows = 0
+    trading_snapshot_inputs: _TradingStockSnapshotInputs | None = None
+
+    def shared_trading_snapshot_inputs() -> _TradingStockSnapshotInputs:
+        nonlocal trading_snapshot_inputs
+        if trading_snapshot_inputs is None:
+            trading_snapshot_inputs = _load_trading_stock_snapshot_inputs(
+                duckdb_path=duckdb_path,
+                as_of_date=as_of_date,
+                include_concepts=True,
+                include_limit_quality=True,
+            )
+        return trading_snapshot_inputs
 
     sector_rank_payload: dict[str, object] | None = None
     if sector_coverage.full_coverage:
@@ -897,10 +1017,7 @@ def _load_choice_stock_outputs(
 
     uptrend_momentum_payload: dict[str, object] | None = None
     if stock_coverage.full_coverage and market_state in {"WARM", "HOT"}:
-        uptrend_snapshots = _load_uptrend_momentum_snapshots(
-            duckdb_path=duckdb_path,
-            as_of_date=as_of_date,
-        )
+        uptrend_snapshots = _uptrend_momentum_snapshots_from_inputs(shared_trading_snapshot_inputs())
         if uptrend_snapshots:
             uptrend_result = compute_uptrend_momentum_candidates(
                 as_of_date=as_of_date,
@@ -919,10 +1036,7 @@ def _load_choice_stock_outputs(
 
     fresh_trend_watchlist_payload: dict[str, object] | None = None
     if stock_coverage.full_coverage and market_state in {"WARM", "HOT", "OVERHEAT"}:
-        fresh_trend_load = _load_fresh_trend_watchlist_snapshots(
-            duckdb_path=duckdb_path,
-            as_of_date=as_of_date,
-        )
+        fresh_trend_load = _fresh_trend_watchlist_snapshots_from_inputs(shared_trading_snapshot_inputs())
         if fresh_trend_load.snapshots:
             fresh_trend_result = compute_fresh_trend_watchlist_candidates(
                 as_of_date=as_of_date,
@@ -935,10 +1049,7 @@ def _load_choice_stock_outputs(
 
     mean_reversion_payload: dict[str, object] | None = None
     if stock_coverage.full_coverage and market_state in {"OFF", "WARM"}:
-        mr_snapshots = _load_mean_reversion_snapshots(
-            duckdb_path=duckdb_path,
-            as_of_date=as_of_date,
-        )
+        mr_snapshots = _mean_reversion_snapshots_from_inputs(shared_trading_snapshot_inputs())
         if mr_snapshots:
             mr_result = compute_mean_reversion_candidates(
                 as_of_date=as_of_date,
@@ -1328,13 +1439,25 @@ def _load_stock_candidate_snapshots(
         placeholders = ",".join("?" for _ in stock_codes)
         history_rows = conn.execute(
             f"""
+            with ranked_history as (
+              select
+                stock_code,
+                close_value,
+                turn,
+                row_number() over (
+                  partition by stock_code
+                  order by cast(trade_date as date) desc
+                ) as rn
+              from choice_stock_daily_observation
+              where stock_code in ({placeholders})
+                and cast(trade_date as date) <= cast(? as date)
+            )
             select stock_code, close_value, turn
-            from choice_stock_daily_observation
-            where stock_code in ({placeholders})
-              and cast(trade_date as date) <= cast(? as date)
-            order by stock_code asc, cast(trade_date as date) asc
+            from ranked_history
+            where rn <= ?
+            order by stock_code asc, rn desc
             """,
-            [*stock_codes, as_of_date],
+            [*stock_codes, as_of_date, CHOICE_STOCK_HISTORY_WINDOW],
         ).fetchall()
     except duckdb.Error:
         return [], list(required_tables), [], []
@@ -1431,6 +1554,289 @@ def _load_stock_candidate_snapshots(
     if factor_snapshot_date is not None:
         tables_used.append("choice_stock_factor_snapshot")
     return snapshots, tables_used, source_versions, vendor_versions
+
+
+def _load_trading_stock_snapshot_inputs(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+    include_concepts: bool = False,
+    include_limit_quality: bool = False,
+) -> _TradingStockSnapshotInputs:
+    empty = _TradingStockSnapshotInputs(
+        current_rows=[],
+        history_by_code={},
+        concepts_by_code={},
+        hlimitedays_by_code={},
+        tables_used=[],
+    )
+    path = Path(duckdb_path)
+    if not path.exists():
+        return empty
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return empty
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        required_tables = {
+            "choice_stock_universe",
+            "choice_stock_sector_membership",
+            "choice_stock_daily_observation",
+        }
+        if not required_tables.issubset(tables):
+            return empty
+        tables_used = [
+            "choice_stock_daily_observation",
+            "choice_stock_universe",
+            "choice_stock_sector_membership",
+        ]
+        universe_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_universe",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        membership_snapshot_date = _latest_table_date_on_or_before(
+            conn,
+            table_name="choice_stock_sector_membership",
+            column_name="as_of_date",
+            as_of_date=as_of_date,
+        )
+        if universe_snapshot_date is None or membership_snapshot_date is None:
+            return empty
+        current_raw_rows = conn.execute(
+            """
+            select
+              daily.stock_code,
+              coalesce(nullif(trim(universe.stock_name), ''), daily.stock_code) as stock_name,
+              coalesce(nullif(trim(membership.sw2021code), ''), '') as sector_code,
+              coalesce(nullif(trim(membership.sw2021), ''), '') as sector_name,
+              daily.close_value,
+              daily.low_value,
+              daily.high_value,
+              daily.volume,
+              daily.pctchange,
+              daily.turn,
+              daily.amplitude
+            from choice_stock_daily_observation daily
+            left join choice_stock_universe universe
+              on universe.stock_code = daily.stock_code
+             and universe.as_of_date = ?
+            left join choice_stock_sector_membership membership
+              on membership.stock_code = daily.stock_code
+             and membership.as_of_date = ?
+            where cast(daily.trade_date as date) = cast(? as date)
+              and trim(coalesce(daily.tradestatus, '')) = 'Trading'
+            """,
+            [universe_snapshot_date, membership_snapshot_date, as_of_date],
+        ).fetchall()
+        stock_codes = [str(row[0] or "") for row in current_raw_rows if row[0]]
+        if not stock_codes:
+            return _TradingStockSnapshotInputs(
+                current_rows=[],
+                history_by_code={},
+                concepts_by_code={},
+                hlimitedays_by_code={},
+                tables_used=tables_used,
+            )
+        placeholders = ",".join("?" for _ in stock_codes)
+        history_rows = conn.execute(
+            f"""
+            with ranked_history as (
+              select
+                stock_code,
+                close_value,
+                amount,
+                volume,
+                row_number() over (
+                  partition by stock_code
+                  order by cast(trade_date as date) desc
+                ) as rn
+              from choice_stock_daily_observation
+              where stock_code in ({placeholders})
+                and cast(trade_date as date) <= cast(? as date)
+                and trim(coalesce(tradestatus, '')) = 'Trading'
+            )
+            select stock_code, close_value, amount, volume
+            from ranked_history
+            where rn <= ?
+            order by stock_code asc, rn desc
+            """,
+            [*stock_codes, as_of_date, CHOICE_STOCK_HISTORY_WINDOW],
+        ).fetchall()
+        concept_rows: list[tuple[object, object]] = []
+        if include_concepts and "choice_stock_concept_membership" in tables:
+            concept_snapshot_date = _latest_table_date_on_or_before(
+                conn,
+                table_name="choice_stock_concept_membership",
+                column_name="as_of_date",
+                as_of_date=as_of_date,
+            )
+            if concept_snapshot_date is not None:
+                concept_rows = conn.execute(
+                    f"""
+                    select stock_code, concept_name
+                    from choice_stock_concept_membership
+                    where stock_code in ({placeholders})
+                      and as_of_date = ?
+                    order by stock_code asc, concept_name asc
+                    """,
+                    [*stock_codes, concept_snapshot_date],
+                ).fetchall()
+                tables_used.append("choice_stock_concept_membership")
+        limit_rows: list[tuple[object, object]] = []
+        if include_limit_quality and "choice_stock_limit_quality" in tables:
+            limit_snapshot_date = _latest_table_date_on_or_before(
+                conn,
+                table_name="choice_stock_limit_quality",
+                column_name="as_of_date",
+                as_of_date=as_of_date,
+            )
+            if limit_snapshot_date is not None:
+                limit_rows = conn.execute(
+                    f"""
+                    select stock_code, hlimitedays
+                    from choice_stock_limit_quality
+                    where stock_code in ({placeholders})
+                      and as_of_date = ?
+                    """,
+                    [*stock_codes, limit_snapshot_date],
+                ).fetchall()
+                tables_used.append("choice_stock_limit_quality")
+    except duckdb.Error:
+        return empty
+    finally:
+        conn.close()
+
+    history_by_code: dict[str, dict[str, list[object]]] = {}
+    for row in history_rows:
+        code = str(row[0] or "")
+        if not code:
+            continue
+        bucket = history_by_code.setdefault(code, {"close": [], "amount": [], "volume": []})
+        bucket["close"].append(row[1])
+        bucket["amount"].append(row[2])
+        bucket["volume"].append(row[3])
+
+    concepts_by_code: dict[str, list[object]] = {}
+    for code_raw, concept_name in concept_rows:
+        code = str(code_raw or "")
+        if code:
+            concepts_by_code.setdefault(code, []).append(concept_name)
+
+    current_rows = [
+        _TradingStockDailyRow(
+            stock_code=str(row[0] or ""),
+            stock_name=str(row[1] or row[0] or ""),
+            sector_code=str(row[2] or ""),
+            sector_name=str(row[3] or ""),
+            close_value=row[4],
+            low_value=row[5],
+            high_value=row[6],
+            volume=row[7],
+            pctchange=row[8],
+            turn=row[9],
+            amplitude=row[10],
+        )
+        for row in current_raw_rows
+        if row[0]
+    ]
+    return _TradingStockSnapshotInputs(
+        current_rows=current_rows,
+        history_by_code=history_by_code,
+        concepts_by_code=concepts_by_code,
+        hlimitedays_by_code={str(code or ""): hlimitedays for code, hlimitedays in limit_rows if code},
+        tables_used=_unique_preserving_order(tables_used),
+    )
+
+
+def _mean_reversion_snapshots_from_inputs(inputs: _TradingStockSnapshotInputs) -> list[MeanReversionSnapshot]:
+    snapshots: list[MeanReversionSnapshot] = []
+    for row in inputs.current_rows:
+        bucket = inputs.history_by_code.get(row.stock_code, {"close": [], "volume": []})
+        closes = bucket["close"]
+        volumes = bucket["volume"]
+        if len(closes) > 65:
+            closes = closes[-65:]
+            volumes = volumes[-65:]
+        if len(closes) != len(volumes):
+            continue
+        snapshots.append(
+            MeanReversionSnapshot(
+                stock_code=row.stock_code,
+                stock_name=row.stock_name or row.stock_code,
+                sector_code=row.sector_code,
+                sector_name=row.sector_name,
+                close_value=row.close_value,
+                low_value=row.low_value,
+                high_value=row.high_value,
+                volume=row.volume,
+                close_history=closes,
+                volume_history=volumes,
+            )
+        )
+    return snapshots
+
+
+def _uptrend_momentum_snapshots_from_inputs(inputs: _TradingStockSnapshotInputs) -> list[UptrendMomentumSnapshot]:
+    snapshots: list[UptrendMomentumSnapshot] = []
+    for row in inputs.current_rows:
+        bucket = inputs.history_by_code.get(row.stock_code, {"close": [], "amount": []})
+        closes = bucket["close"]
+        amounts = bucket["amount"]
+        if len(closes) > CHOICE_STOCK_HISTORY_WINDOW:
+            closes = closes[-CHOICE_STOCK_HISTORY_WINDOW:]
+            amounts = amounts[-CHOICE_STOCK_HISTORY_WINDOW:]
+        if len(closes) != len(amounts):
+            continue
+        snapshots.append(
+            UptrendMomentumSnapshot(
+                stock_code=row.stock_code,
+                stock_name=row.stock_name or row.stock_code,
+                sector_code=row.sector_code,
+                sector_name=row.sector_name,
+                close_value=row.close_value,
+                pctchange=row.pctchange,
+                turn=row.turn,
+                amplitude=row.amplitude,
+                close_history=closes,
+                amount_history=amounts,
+            )
+        )
+    return snapshots
+
+
+def _fresh_trend_watchlist_snapshots_from_inputs(
+    inputs: _TradingStockSnapshotInputs,
+) -> _FreshTrendWatchlistLoadResult:
+    snapshots: list[FreshTrendWatchlistSnapshot] = []
+    for row in inputs.current_rows:
+        bucket = inputs.history_by_code.get(row.stock_code, {"close": [], "amount": []})
+        closes = bucket["close"]
+        amounts = bucket["amount"]
+        if len(closes) > CHOICE_STOCK_HISTORY_WINDOW:
+            closes = closes[-CHOICE_STOCK_HISTORY_WINDOW:]
+            amounts = amounts[-CHOICE_STOCK_HISTORY_WINDOW:]
+        if len(closes) != len(amounts):
+            continue
+        snapshots.append(
+            FreshTrendWatchlistSnapshot(
+                stock_code=row.stock_code,
+                stock_name=row.stock_name or row.stock_code,
+                sector_code=row.sector_code,
+                sector_name=row.sector_name,
+                concepts=inputs.concepts_by_code.get(row.stock_code, []),
+                close_value=row.close_value,
+                pctchange=row.pctchange,
+                turn=row.turn,
+                amplitude=row.amplitude,
+                hlimitedays=inputs.hlimitedays_by_code.get(row.stock_code),
+                close_history=closes,
+                amount_history=amounts,
+            )
+        )
+    return _FreshTrendWatchlistLoadResult(snapshots=snapshots, tables_used=inputs.tables_used)
 
 
 def _load_mean_reversion_snapshots(
@@ -3700,6 +4106,111 @@ def _build_data_gaps(
             },
         )
     return gaps
+
+
+def _assess_input_freshness(
+    *,
+    cycle_input_evidence: _CycleInputEvidence,
+    as_of_date: date | None,
+) -> list[dict[str, object]]:
+    """Assess key strategy inputs against the strategy-resolved trade_date (not wall clock)."""
+    if as_of_date is None:
+        return []
+    entries: list[dict[str, object]] = []
+    for input_family, input_label, cadence, business_date in cycle_input_evidence.input_business_dates:
+        assessment = assess_freshness(business_date, as_of_date, cadence=cadence)
+        entries.append(
+            {
+                "input_family": input_family,
+                "input": input_label,
+                "cadence": cadence,
+                "business_date": business_date,
+                "age_days": assessment.age_days,
+                "tier": assessment.tier,
+            }
+        )
+    return entries
+
+
+def _input_freshness_severity(entry: dict[str, object]) -> tuple[int, int]:
+    tier_rank = _INPUT_FRESHNESS_TIER_RANK.get(str(entry.get("tier") or ""), 0)
+    age_days = entry.get("age_days")
+    return tier_rank, age_days if isinstance(age_days, int) else -(10**9)
+
+
+def _merge_input_freshness_into_data_gaps(
+    *,
+    data_gaps: list[dict[str, object]],
+    input_freshness: list[dict[str, object]],
+) -> None:
+    """Extend existing data_gaps entries with freshness evidence; flag look-ahead-dated inputs."""
+    worst_by_family: dict[str, dict[str, object]] = {}
+    for entry in input_freshness:
+        family = str(entry.get("input_family") or "")
+        current = worst_by_family.get(family)
+        if current is None or _input_freshness_severity(entry) > _input_freshness_severity(current):
+            worst_by_family[family] = entry
+    for gap in data_gaps:
+        entry = worst_by_family.get(str(gap.get("input_family") or ""))
+        if entry is None:
+            continue
+        gap["input"] = str(entry.get("input") or "")
+        gap["business_date"] = str(entry.get("business_date") or "")
+        gap["age_days"] = entry.get("age_days")
+        gap["tier"] = str(entry.get("tier") or "")
+    for entry in input_freshness:
+        age_days = entry.get("age_days")
+        if isinstance(age_days, int) and age_days < 0:
+            data_gaps.append(
+                {
+                    "input_family": str(entry.get("input_family") or ""),
+                    "input": str(entry.get("input") or ""),
+                    "status": INPUT_FRESHNESS_LOOK_AHEAD_STATUS,
+                    "evidence": (
+                        f"{entry.get('input')} business_date {entry.get('business_date')} is later than the "
+                        f"resolved trade_date (age_days={age_days}); flagged as a look-ahead risk."
+                    ),
+                    "business_date": str(entry.get("business_date") or ""),
+                    "age_days": age_days,
+                    "tier": str(entry.get("tier") or ""),
+                }
+            )
+
+
+def _input_freshness_degradation_notes(
+    input_freshness: list[dict[str, object]],
+) -> list[dict[str, str | None]]:
+    notes: list[dict[str, str | None]] = []
+    for entry in input_freshness:
+        tier = str(entry.get("tier") or "")
+        if tier not in INPUT_FRESHNESS_DEGRADED_TIERS:
+            continue
+        family = str(entry.get("input_family") or "")
+        category = _INPUT_FRESHNESS_NOTE_CATEGORY_BY_FAMILY.get(family, "关键输入")
+        notes.append(
+            {
+                "severity": "warning",
+                "code": INPUT_FRESHNESS_DEGRADED_DIAGNOSTIC_CODE,
+                "message": (
+                    f"{category} {entry.get('input')} 数据滞后 {entry.get('age_days')} 天（{tier}），信号质量降级"
+                ),
+                "input_family": family,
+            }
+        )
+    return notes
+
+
+def _degrade_quality_flag_for_input_freshness(
+    quality_flag: str,
+    input_freshness: list[dict[str, object]],
+) -> str:
+    """Any stale/expired key input downgrades an otherwise-ok result to warning; never upgrades."""
+    if quality_flag != "ok":
+        return quality_flag
+    has_lagging_input = any(
+        str(entry.get("tier") or "") in INPUT_FRESHNESS_DEGRADED_TIERS for entry in input_freshness
+    )
+    return "warning" if has_lagging_input else quality_flag
 
 
 def _build_diagnostics(

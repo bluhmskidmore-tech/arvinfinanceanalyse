@@ -40,6 +40,15 @@ def list_catalog(
     return [e.model_dump() for e in svc.list_catalog()]
 
 
+@router.get("/watermarks")
+def get_watermark_ledger(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    _ensure_external_data_read_allowed(auth)
+    svc = default_service()
+    return svc.get_watermark_ledger().model_dump()
+
+
 @router.get("/catalog/{series_id}")
 def get_catalog_entry(
     auth: Annotated[AuthContext, Depends(get_auth_context)],

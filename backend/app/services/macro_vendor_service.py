@@ -7,16 +7,22 @@ from pathlib import Path
 import duckdb
 from backend.app.core_finance.fx_rates import get_usd_cny_rate
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.cffex_member_rank_repo import (
+    RULE_VERSION as CFFEX_MEMBER_RANK_RULE_VERSION,
+)
+from backend.app.repositories.cffex_member_rank_repo import (
+    TABLE_NAME as CFFEX_MEMBER_RANK_TABLE,
+)
+from backend.app.repositories.cffex_member_rank_repo import (
+    VIEW_NAME as CFFEX_MEMBER_RANK_VIEW,
+)
+from backend.app.repositories.cffex_member_rank_repo import (
+    normalize_cffex_contract,
+    normalize_trade_date,
+)
 from backend.app.repositories.choice_fx_catalog import (
     classify_fx_series_group,
     discover_formal_fx_candidates,
-)
-from backend.app.repositories.cffex_member_rank_repo import (
-    RULE_VERSION as CFFEX_MEMBER_RANK_RULE_VERSION,
-    TABLE_NAME as CFFEX_MEMBER_RANK_TABLE,
-    VIEW_NAME as CFFEX_MEMBER_RANK_VIEW,
-    normalize_cffex_contract,
-    normalize_trade_date,
 )
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -346,19 +352,237 @@ BOND_FUTURES_RANKINGS_CACHE_VERSION = "cv_market_data_bond_futures_rankings_v1"
 COVERAGE_SUMMARY_RULE_VERSION = "rv_market_data_coverage_summary_v1"
 COVERAGE_SUMMARY_CACHE_VERSION = "cv_market_data_coverage_summary_v1"
 
+FORMAL_YIELD_CURVE_TABLES = ("fact_formal_yield_curve_daily", "yield_curve_daily")
+FORMAL_YIELD_CURVE_SERIES: dict[tuple[str, str], tuple[str, str]] = {
+    ("treasury", "1Y"): ("EMM00166458", "China treasury yield 1Y"),
+    ("treasury", "2Y"): ("EMM00588704", "China treasury yield 2Y"),
+    ("treasury", "3Y"): ("EMM00166460", "China treasury yield 3Y"),
+    ("treasury", "5Y"): ("EMM00166462", "China treasury yield 5Y"),
+    ("treasury", "7Y"): ("EMM00166464", "China treasury yield 7Y"),
+    ("treasury", "10Y"): ("EMM00166466", "China treasury yield 10Y"),
+    ("treasury", "20Y"): ("EMM00166468", "China treasury yield 20Y"),
+    ("treasury", "30Y"): ("EMM00166469", "China treasury yield 30Y"),
+    ("cdb", "1Y"): ("EMM00166494", "China CDB yield 1Y"),
+    ("cdb", "2Y"): ("EMM00166495", "China CDB yield 2Y"),
+    ("cdb", "3Y"): ("EMM00166496", "China CDB yield 3Y"),
+    ("cdb", "5Y"): ("EMM00166498", "China CDB yield 5Y"),
+    ("cdb", "10Y"): ("EMM00166502", "China CDB yield 10Y"),
+    ("cdb", "20Y"): ("EMM00166504", "China CDB yield 20Y"),
+}
+
+
+def _normalize_formal_rate_unit(unit: str | None) -> str:
+    normalized = (unit or "").strip().lower()
+    if normalized in {"", "unknown", "pct", "percent"}:
+        return "%"
+    return unit or "%"
+
+
+def _latest_point_as_recent(point: ChoiceMacroLatestPoint) -> ChoiceMacroRecentPoint:
+    return ChoiceMacroRecentPoint(
+        trade_date=point.trade_date,
+        value_numeric=point.value_numeric,
+        source_version=point.source_version,
+        vendor_version=point.vendor_version,
+        quality_flag=point.quality_flag,
+    )
+
+
+def _load_formal_yield_curve_points(
+    duckdb_path: str,
+) -> tuple[list[ChoiceMacroLatestPoint], str | None]:
+    duckdb_file = Path(duckdb_path)
+    if not duckdb_file.exists():
+        return [], None
+
+    try:
+        conn = duckdb.connect(str(duckdb_file), read_only=True)
+    except duckdb.Error:
+        return [], None
+
+    table_name: str | None = None
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        for candidate in FORMAL_YIELD_CURVE_TABLES:
+            if candidate in tables:
+                table_name = candidate
+                break
+        if table_name is None:
+            return [], None
+
+        curve_types = sorted({curve_type for curve_type, _tenor in FORMAL_YIELD_CURVE_SERIES})
+        tenors = sorted({tenor for _curve_type, tenor in FORMAL_YIELD_CURVE_SERIES})
+        curve_placeholders = ", ".join(["?"] * len(curve_types))
+        tenor_placeholders = ", ".join(["?"] * len(tenors))
+        rows = conn.execute(
+            f"""
+            with ranked as (
+              select
+                curve_type,
+                tenor,
+                cast(trade_date as varchar) as trade_date,
+                cast(rate_pct as double) as value_numeric,
+                coalesce(vendor_name, '') as vendor_name,
+                coalesce(vendor_version, '') as vendor_version,
+                coalesce(source_version, '') as source_version,
+                row_number() over (
+                  partition by curve_type, tenor
+                  order by trade_date desc
+                ) as rn
+              from {table_name}
+              where curve_type in ({curve_placeholders})
+                and tenor in ({tenor_placeholders})
+                and rate_pct is not null
+            )
+            select
+              curve_type,
+              tenor,
+              trade_date,
+              value_numeric,
+              vendor_name,
+              vendor_version,
+              source_version,
+              rn
+            from ranked
+            where rn <= {_CHOICE_MACRO_RECENT_POINT_LIMIT}
+            order by curve_type, tenor, rn
+            """,
+            [*curve_types, *tenors],
+        ).fetchall()
+    except duckdb.Error:
+        return [], None
+    finally:
+        conn.close()
+
+    grouped_rows: dict[tuple[str, str], list[dict[str, object]]] = {}
+    for curve_type, tenor, trade_date, value_numeric, vendor_name, vendor_version, source_version, _rn in rows:
+        key = (str(curve_type), str(tenor))
+        if key not in FORMAL_YIELD_CURVE_SERIES:
+            continue
+        grouped_rows.setdefault(key, []).append(
+            {
+                "trade_date": str(trade_date),
+                "value_numeric": float(value_numeric),
+                "vendor_name": str(vendor_name or "unknown"),
+                "vendor_version": str(vendor_version or "vv_formal_yield_curve_unknown"),
+                "source_version": str(source_version or "sv_formal_yield_curve_unknown"),
+            }
+        )
+
+    points: list[ChoiceMacroLatestPoint] = []
+    for key in sorted(grouped_rows):
+        series_id, series_name = FORMAL_YIELD_CURVE_SERIES[key]
+        curve_rows = sorted(grouped_rows[key], key=lambda row: str(row["trade_date"]), reverse=True)
+        latest = curve_rows[0]
+        recent_points = [
+            ChoiceMacroRecentPoint(
+                trade_date=str(row["trade_date"]),
+                value_numeric=float(row["value_numeric"]),
+                source_version=str(row["source_version"]),
+                vendor_version=str(row["vendor_version"]),
+                quality_flag="ok",
+            )
+            for row in curve_rows
+        ]
+        latest_change = None
+        if len(recent_points) > 1:
+            latest_change = recent_points[0].value_numeric - recent_points[1].value_numeric
+        points.append(
+            ChoiceMacroLatestPoint(
+                series_id=series_id,
+                series_name=series_name,
+                trade_date=str(latest["trade_date"]),
+                value_numeric=float(latest["value_numeric"]),
+                frequency="daily",
+                unit="%",
+                source_version=str(latest["source_version"]),
+                vendor_version=str(latest["vendor_version"]),
+                vendor_name=str(latest["vendor_name"] or "unknown"),
+                refresh_tier="stable",
+                fetch_mode="date_slice",
+                fetch_granularity="batch",
+                policy_note="Formal yield curve daily materialization.",
+                quality_flag="ok",
+                latest_change=latest_change,
+                recent_points=recent_points,
+            )
+        )
+    return points, table_name
+
+
+def _merge_formal_yield_curve_history(
+    existing: ChoiceMacroLatestPoint,
+    formal: ChoiceMacroLatestPoint,
+) -> ChoiceMacroLatestPoint:
+    latest_source = existing if existing.trade_date >= formal.trade_date else formal
+    ordered_sources = [formal, existing] if latest_source is existing else [existing, formal]
+    recent_by_date: dict[str, ChoiceMacroRecentPoint] = {}
+    for source in ordered_sources:
+        for point in source.recent_points:
+            recent_by_date[point.trade_date] = point
+        recent_by_date[source.trade_date] = _latest_point_as_recent(source)
+
+    recent_points = sorted(
+        recent_by_date.values(),
+        key=lambda point: point.trade_date,
+        reverse=True,
+    )[:_CHOICE_MACRO_RECENT_POINT_LIMIT]
+    latest_change = latest_source.latest_change
+    if len(recent_points) > 1 and recent_points[0].trade_date == latest_source.trade_date:
+        latest_change = recent_points[0].value_numeric - recent_points[1].value_numeric
+
+    return latest_source.model_copy(
+        update={
+            "unit": _normalize_formal_rate_unit(latest_source.unit),
+            "latest_change": latest_change,
+            "recent_points": recent_points,
+        }
+    )
+
+
+def _merge_formal_yield_curve_payload(
+    payload: ChoiceMacroLatestPayload,
+    formal_points: list[ChoiceMacroLatestPoint],
+) -> ChoiceMacroLatestPayload:
+    if not formal_points:
+        return payload
+
+    points_by_id = {point.series_id: point for point in payload.series}
+    for formal in formal_points:
+        existing = points_by_id.get(formal.series_id)
+        points_by_id[formal.series_id] = (
+            _merge_formal_yield_curve_history(existing, formal)
+            if existing is not None
+            else formal
+        )
+
+    return ChoiceMacroLatestPayload(
+        series=sorted(points_by_id.values(), key=lambda point: point.series_id)
+    )
+
 
 def choice_macro_formal_envelope(duckdb_path: str) -> dict[str, object]:
     """Formal-basis envelope: only stable-tier series for market-data page."""
     payload = load_choice_macro_latest_payload(duckdb_path, category="stable")
+    choice_series_count = len(payload.series)
+    formal_points, formal_table = _load_formal_yield_curve_points(duckdb_path)
+    payload = _merge_formal_yield_curve_payload(payload, formal_points)
     quality_flag = _aggregate_quality_flags([item.quality_flag for item in payload.series])
+    source_versions = [item.source_version for item in payload.series]
+    source_versions.extend(item.source_version for item in formal_points)
+    vendor_versions = [item.vendor_version for item in payload.series]
+    vendor_versions.extend(item.vendor_version for item in formal_points)
     source_version = _aggregate_lineage_value(
-        [item.source_version for item in payload.series],
+        source_versions,
         empty_value="sv_market_data_rates_empty",
     )
     vendor_version = _aggregate_lineage_value(
-        [item.vendor_version for item in payload.series],
+        vendor_versions,
         empty_value="vv_none",
     )
+    tables_used = ["fact_choice_macro_daily"] if choice_series_count else []
+    if formal_table and formal_points:
+        tables_used.append(formal_table)
     return build_result_envelope(
         basis="formal",
         trace_id="tr_market_data_formal",
@@ -371,6 +595,8 @@ def choice_macro_formal_envelope(duckdb_path: str) -> dict[str, object]:
         vendor_status=_vendor_status_for_macro_latest(payload, quality_flag),
         fallback_mode=_fallback_mode_for_macro_latest(payload, quality_flag),
         result_payload=payload.model_dump(mode="json"),
+        tables_used=tables_used,
+        evidence_rows=len(payload.series),
         source_surface="market_data",
     )
 
@@ -496,7 +722,6 @@ def market_data_coverage_summary_envelope(duckdb_path: str) -> dict[str, object]
     formal_rate_rows = formal_rates["result"].get("series", [])
     macro_latest_rows = macro_latest["result"].get("series", [])
     fx_formal_result = fx_formal["result"]
-    fx_formal_rows = fx_formal_result.get("rows", [])
     fx_analytical_groups = fx_analytical["result"].get("groups", [])
     fx_analytical_series_count = sum(len(group.get("series", [])) for group in fx_analytical_groups)
     bond_rows = bond_futures["result"].get("rows", [])

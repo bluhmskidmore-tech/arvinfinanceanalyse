@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { TableSkeleton } from "../../../components/Skeletons";
 
 import type {
   BacktestWindowSummary,
@@ -215,16 +216,16 @@ export function StockAnalysisStrategyReviewCards({
         sectionTestId="stock-analysis-market-priority-summary"
       >
         {strategyScoreLoading ? (
-          <p className="stock-analysis-page__empty">当前市场策略优先级加载中。</p>
+          <TableSkeleton />
         ) : null}
         {strategyScoreError ? (
-          <p className="stock-analysis-page__notice">
+          <p className="text-xs text-warning bg-warning/10 p-2 rounded mb-2">
             当前市场策略优先级暂不可用：{stockStrategyPanelErrorMessage(strategyScoreErrorValue)}
           </p>
         ) : null}
         {!strategyScoreLoading && !strategyScoreError ? (
           <>
-            <div className="stock-analysis-page__filter-status" data-testid="stock-analysis-market-priority-current">
+            <div className="flex gap-2 items-center text-sm mb-2" data-testid="stock-analysis-market-priority-current">
               <span>
                 {localizeMarketDataStatus(
                   strategyScorePayload?.current_market_state ?? currentMarketState ?? "UNKNOWN",
@@ -236,13 +237,13 @@ export function StockAnalysisStrategyReviewCards({
               </small>
             </div>
             {strategyPriorityRows.length > 0 ? (
-              <div className="stock-analysis-page__table-wrap">
-                <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+              <div className="overflow-x-auto rounded-lg border border-default-200 mb-4">
+                <table className="w-full table-auto text-sm text-left whitespace-nowrap [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-default-100 [&_th]:text-default-500 [&_th]:font-semibold [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-default-100/50">
                   <thead>
                     <tr>
                       <th scope="col">策略</th>
                       <th scope="col">状态</th>
-                      <th className="stock-analysis-page__table-number" scope="col">
+                      <th className="px-3 py-2 text-right border-b border-default-100" scope="col">
                         评分
                       </th>
                       {strategyBacktestHorizons.map((horizon) => (
@@ -263,18 +264,18 @@ export function StockAnalysisStrategyReviewCards({
                         >
                           <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
                           <td>{strategyPriorityStatusLabel(row.priority_label)}</td>
-                          <td className="stock-analysis-page__table-number" data-testid="stock-analysis-market-priority-score">
+                          <td className="px-3 py-2 text-right border-b border-default-100" data-testid="stock-analysis-market-priority-score">
                             {formatPriorityScore(row.priority_score)}
                           </td>
                           {strategyBacktestHorizons.map((horizon) => (
-                            <td className="stock-analysis-page__table-number" key={horizon}>
+                            <td className="px-3 py-2 text-right border-b border-default-100" key={horizon}>
                               {backtestStatsText(row.stats[horizon])}
                             </td>
                           ))}
                           <td>
                             <span>{strategyPriorityReasonLabel(row)}</span>
                             {diagnosticLabels.length > 0 ? (
-                              <div className="stock-analysis-page__strategy-diagnostic-tags">
+                              <div className="flex gap-1 flex-wrap">
                                 {diagnosticLabels.map((label) => (
                                   <span key={label}>{label}</span>
                                 ))}
@@ -288,11 +289,11 @@ export function StockAnalysisStrategyReviewCards({
                 </table>
               </div>
             ) : (
-              <p className="stock-analysis-page__empty">样本不足</p>
+              <p className="text-sm text-default-500 italic p-4 text-center">样本不足</p>
             )}
             {strategyMaturityRow && strategyMaturity && strategyMaturitySnapshots.length > 0 ? (
               <div data-testid="stock-analysis-candidate-maturity">
-                <div className="stock-analysis-page__filter-status">
+                <div className="flex gap-2 items-center text-sm mb-2">
                   <span>当前候选成熟进度</span>
                   <strong>
                     {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
@@ -305,12 +306,12 @@ export function StockAnalysisStrategyReviewCards({
                     {localizeStockBackendText(strategyMaturity.reason, strategyMaturityRow.signal_kind)}
                   </small>
                 </div>
-                <div className="stock-analysis-page__table-wrap">
-                  <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                <div className="overflow-x-auto rounded-lg border border-default-200 mb-4">
+                  <table className="w-full table-auto text-sm text-left whitespace-nowrap [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-default-100 [&_th]:text-default-500 [&_th]:font-semibold [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-default-100/50">
                     <thead>
                       <tr>
                         <th scope="col">快照</th>
-                        <th className="stock-analysis-page__table-number" scope="col">
+                        <th className="px-3 py-2 text-right border-b border-default-100" scope="col">
                           候选
                         </th>
                         {strategyBacktestHorizons.map((horizon) => (
@@ -324,7 +325,7 @@ export function StockAnalysisStrategyReviewCards({
                       {strategyMaturitySnapshots.map((snapshot) => (
                         <tr key={snapshot.snapshot_as_of_date}>
                           <td>{snapshot.snapshot_as_of_date}</td>
-                          <td className="stock-analysis-page__table-number">{snapshot.candidate_count}</td>
+                          <td className="px-3 py-2 text-right border-b border-default-100">{snapshot.candidate_count}</td>
                           {strategyBacktestHorizons.map((horizon) => (
                             <td key={horizon}>{strategyMaturityHorizonText(snapshot, horizon)}</td>
                           ))}
@@ -333,7 +334,7 @@ export function StockAnalysisStrategyReviewCards({
                     </tbody>
                   </table>
                 </div>
-                <div className="stock-analysis-page__filter-status">
+                <div className="flex gap-2 items-center text-sm mb-2">
                   <span>候选明细</span>
                   <strong>
                     {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
@@ -341,30 +342,30 @@ export function StockAnalysisStrategyReviewCards({
                   <small>快照明细 · 按排名</small>
                 </div>
                 {strategyMaturityDetailQuery.isLoading ? (
-                  <p className="stock-analysis-page__empty">候选明细加载中。</p>
+                  <TableSkeleton />
                 ) : null}
                 {strategyMaturityDetailQuery.isError ? (
-                  <p className="stock-analysis-page__notice">
+                  <p className="text-xs text-warning bg-warning/10 p-2 rounded mb-2">
                     候选明细暂不可用：{stockStrategyPanelErrorMessage(strategyMaturityDetailQuery.error)}
                   </p>
                 ) : null}
                 {!strategyMaturityDetailQuery.isLoading && !strategyMaturityDetailQuery.isError ? (
                   strategyMaturityCandidateRows.length > 0 ? (
-                    <div className="stock-analysis-page__table-wrap">
-                      <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                    <div className="overflow-x-auto rounded-lg border border-default-200 mb-4">
+                      <table className="w-full table-auto text-sm text-left whitespace-nowrap [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-default-100 [&_th]:text-default-500 [&_th]:font-semibold [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-default-100/50">
                         <thead>
                           <tr>
                             <th scope="col">快照</th>
                             <th scope="col">排名</th>
                             <th scope="col">候选</th>
                             <th scope="col">板块</th>
-                            <th className="stock-analysis-page__table-number" scope="col">
+                            <th className="px-3 py-2 text-right border-b border-default-100" scope="col">
                               T+1
                             </th>
-                            <th className="stock-analysis-page__table-number" scope="col">
+                            <th className="px-3 py-2 text-right border-b border-default-100" scope="col">
                               T+5
                             </th>
-                            <th className="stock-analysis-page__table-number" scope="col">
+                            <th className="px-3 py-2 text-right border-b border-default-100" scope="col">
                               T+20
                             </th>
                           </tr>
@@ -381,13 +382,13 @@ export function StockAnalysisStrategyReviewCards({
                                 <small> {candidate.stock_code}</small>
                               </td>
                               <td>{candidate.sector_name ?? "-"}</td>
-                              <td className="stock-analysis-page__table-number">
+                              <td className="px-3 py-2 text-right border-b border-default-100">
                                 {strategyCandidateReturnText(candidate.return_1d)}
                               </td>
-                              <td className="stock-analysis-page__table-number">
+                              <td className="px-3 py-2 text-right border-b border-default-100">
                                 {strategyCandidateReturnText(candidate.return_5d)}
                               </td>
-                              <td className="stock-analysis-page__table-number">
+                              <td className="px-3 py-2 text-right border-b border-default-100">
                                 {strategyCandidateReturnText(candidate.return_20d)}
                               </td>
                             </tr>
@@ -396,7 +397,7 @@ export function StockAnalysisStrategyReviewCards({
                       </table>
                     </div>
                   ) : (
-                    <p className="stock-analysis-page__empty">当前可见快照暂无候选明细。</p>
+                    <p className="text-sm text-default-500 italic p-4 text-center">当前可见快照暂无候选明细。</p>
                   )
                 ) : null}
               </div>
@@ -419,16 +420,16 @@ export function StockAnalysisStrategyReviewCards({
         sectionTestId="stock-analysis-strategy-backtest"
       >
         {strategyBacktestLoading ? (
-          <p className="stock-analysis-page__empty">策略回溯表现加载中。</p>
+          <TableSkeleton />
         ) : null}
         {strategyBacktestError ? (
-          <p className="stock-analysis-page__notice">
+          <p className="text-xs text-warning bg-warning/10 p-2 rounded mb-2">
             策略回溯表现暂不可用：{stockStrategyPanelErrorMessage(strategyBacktestErrorValue)}
           </p>
         ) : null}
         {!strategyBacktestLoading && !strategyBacktestError ? (
           <>
-            <div className="stock-analysis-page__filter-status">
+            <div className="flex gap-2 items-center text-sm mb-2">
               <span>有效样本</span>
               <strong>{strategyBacktestSampleCount} 条</strong>
               <small>
@@ -437,8 +438,8 @@ export function StockAnalysisStrategyReviewCards({
                 {strategyBacktestWindow?.replay_dates_unsupported ?? 0}
               </small>
             </div>
-            <div className="stock-analysis-page__table-wrap">
-              <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+            <div className="overflow-x-auto rounded-lg border border-default-200 mb-4">
+              <table className="w-full table-auto text-sm text-left whitespace-nowrap [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-default-100 [&_th]:text-default-500 [&_th]:font-semibold [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-default-100/50">
                 <thead>
                   <tr>
                     <th scope="col">策略</th>
@@ -454,9 +455,9 @@ export function StockAnalysisStrategyReviewCards({
                   {strategyBacktestRows.map((row) => (
                     <tr key={row.kind} data-testid={`stock-analysis-strategy-backtest-${row.kind}`}>
                       <td>{row.label}</td>
-                      <td className="stock-analysis-page__table-number">{row.count}</td>
+                      <td className="px-3 py-2 text-right border-b border-default-100">{row.count}</td>
                       {strategyBacktestHorizons.map((horizon) => (
-                        <td className="stock-analysis-page__table-number" key={horizon}>
+                        <td className="px-3 py-2 text-right border-b border-default-100" key={horizon}>
                           {row.stats[horizon]}
                         </td>
                       ))}
@@ -467,9 +468,9 @@ export function StockAnalysisStrategyReviewCards({
             </div>
             {strategyBacktestMarketStateRows.length > 0 ? (
               <div data-testid="stock-analysis-strategy-backtest-market-state">
-                <p className="stock-analysis-page__footnote">市场状态分段</p>
-                <div className="stock-analysis-page__table-wrap">
-                  <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                <p className="text-xs text-default-500 mt-2">市场状态分段</p>
+                <div className="overflow-x-auto rounded-lg border border-default-200 mb-4">
+                  <table className="w-full table-auto text-sm text-left whitespace-nowrap [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-default-100 [&_th]:text-default-500 [&_th]:font-semibold [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-default-100/50">
                     <thead>
                       <tr>
                         <th scope="col">市场状态</th>
@@ -490,7 +491,7 @@ export function StockAnalysisStrategyReviewCards({
                           <td>{localizeMarketDataStatus(row.marketState)}</td>
                           <td>{row.label}</td>
                           {strategyBacktestHorizons.map((horizon) => (
-                            <td className="stock-analysis-page__table-number" key={horizon}>
+                            <td className="px-3 py-2 text-right border-b border-default-100" key={horizon}>
                               {row.stats[horizon]}
                             </td>
                           ))}
@@ -519,16 +520,16 @@ export function StockAnalysisStrategyReviewCards({
         sectionTestId="stock-analysis-strategy-optimization"
       >
         {strategyOptimizationLoading ? (
-          <p className="stock-analysis-page__empty">优化诊断加载中。</p>
+          <TableSkeleton />
         ) : null}
         {strategyOptimizationError ? (
-          <p className="stock-analysis-page__notice">
+          <p className="text-xs text-warning bg-warning/10 p-2 rounded mb-2">
             优化诊断暂不可用：{stockStrategyPanelErrorMessage(strategyOptimizationErrorValue)}
           </p>
         ) : null}
         {!strategyOptimizationLoading && !strategyOptimizationError ? (
           <>
-            <div className="stock-analysis-page__filter-status">
+            <div className="flex gap-2 items-center text-sm mb-2">
               <span>当前最新日期收益</span>
               <strong>
                 {(strategyOptimizationPayload?.pending_summary.pending_rows ?? 0) > 0 ? "待成熟" : "已成熟"}
@@ -539,15 +540,15 @@ export function StockAnalysisStrategyReviewCards({
                 )}
               </small>
             </div>
-            <p className="stock-analysis-page__footnote">复核排序 · 不改规则</p>
-            <div className="stock-analysis-page__filter-status">
+            <p className="text-xs text-default-500 mt-2">复核排序 · 不改规则</p>
+            <div className="flex gap-2 items-center text-sm mb-2">
               <span>三策略 T+5 排名</span>
               <strong>{strategyOptimizationRows.length} 组</strong>
               <small>阈值 {strategyOptimizationPayload?.min_sample ?? 30} · 收益/胜率/成熟度</small>
             </div>
             {strategyOptimizationRows.length > 0 ? (
-              <div className="stock-analysis-page__table-wrap">
-                <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+              <div className="overflow-x-auto rounded-lg border border-default-200 mb-4">
+                <table className="w-full table-auto text-sm text-left whitespace-nowrap [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-default-100 [&_th]:text-default-500 [&_th]:font-semibold [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-default-100/50">
                   <thead>
                     <tr>
                       <th scope="col">策略</th>
@@ -562,10 +563,10 @@ export function StockAnalysisStrategyReviewCards({
                       <tr key={row.summary_key}>
                         <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
                         <td>{strategyPriorityStatusLabel(row.recommendation.priority_label)}</td>
-                        <td className="stock-analysis-page__table-number">
+                        <td className="px-3 py-2 text-right border-b border-default-100">
                           {backtestStatsText(strategyOptimizationPrimaryStats(row, strategyOptimizationPayload))}
                         </td>
-                        <td className="stock-analysis-page__table-number">
+                        <td className="px-3 py-2 text-right border-b border-default-100">
                           {strategyOptimizationDateWeightedText(row, strategyOptimizationPayload)}
                         </td>
                         <td>{strategyOptimizationReasonLabel(row)}</td>
@@ -575,9 +576,9 @@ export function StockAnalysisStrategyReviewCards({
                 </table>
               </div>
             ) : (
-              <p className="stock-analysis-page__empty">优化诊断样本不足。</p>
+              <p className="text-sm text-default-500 italic p-4 text-center">优化诊断样本不足。</p>
             )}
-            <div className="stock-analysis-page__filter-status">
+            <div className="flex gap-2 items-center text-sm mb-2">
               <span>各策略最强 / 最弱切片</span>
               <strong>
                 {strategyOptimizationSlices.strongest
@@ -602,8 +603,8 @@ export function StockAnalysisStrategyReviewCards({
               </small>
             </div>
             {strategyOptimizationSlices.strongest || strategyOptimizationSlices.weakest ? (
-              <div className="stock-analysis-page__table-wrap">
-                <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+              <div className="overflow-x-auto rounded-lg border border-default-200 mb-4">
+                <table className="w-full table-auto text-sm text-left whitespace-nowrap [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-default-100 [&_th]:text-default-500 [&_th]:font-semibold [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-default-100/50">
                   <thead>
                     <tr>
                       <th scope="col">切片</th>
@@ -624,7 +625,7 @@ export function StockAnalysisStrategyReviewCards({
                           </td>
                           <td>{strategyDisplayLabel(slice.strategy_label, slice.signal_kind)}</td>
                           <td>{strategyPriorityStatusLabel(slice.recommendation.priority_label)}</td>
-                          <td className="stock-analysis-page__table-number">
+                          <td className="px-3 py-2 text-right border-b border-default-100">
                             {backtestStatsText(strategyOptimizationPrimaryStats(slice, strategyOptimizationPayload))}
                           </td>
                         </tr>

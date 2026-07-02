@@ -21,6 +21,7 @@ type StockAnalysisEvidenceLedgerRailProps = {
   gateStatusLabel: string;
   evidenceCount: number;
   boundaryCount: number;
+  gapCountLabel?: string;
   availableOutputsLabel: string;
   primaryGapLabel: string;
   leadCandidateName?: string | null;
@@ -49,6 +50,9 @@ type StockAnalysisEvidenceLedgerRailProps = {
   boundaryItems: BoundaryRailProps["boundaryItems"];
   boundarySummary: BoundaryRailProps["boundarySummary"];
   strategyPayload: BoundaryRailProps["strategyPayload"];
+  routeLabel?: string;
+  resultKindLabel?: string;
+  formalUseAllowed?: boolean;
 };
 
 export function StockAnalysisEvidenceLedgerRail({
@@ -57,6 +61,7 @@ export function StockAnalysisEvidenceLedgerRail({
   gateStatusLabel,
   evidenceCount,
   boundaryCount,
+  gapCountLabel,
   availableOutputsLabel,
   primaryGapLabel,
   leadCandidateName,
@@ -85,7 +90,21 @@ export function StockAnalysisEvidenceLedgerRail({
   boundaryItems,
   boundarySummary,
   strategyPayload,
+  routeLabel = "/ui/market-data/stock-analysis/workbench",
+  resultKindLabel = "market_data.stock_analysis.workbench",
+  formalUseAllowed = false,
 }: StockAnalysisEvidenceLedgerRailProps) {
+  const endpointPreviewBaseItems = endpointItems.slice(0, 4);
+  const focusedEndpointItem = focusedEndpointKey
+    ? endpointItems.find((item) => item.key === focusedEndpointKey)
+    : undefined;
+  const endpointPreviewItems =
+    focusedEndpointItem && !endpointPreviewBaseItems.some((item) => item.key === focusedEndpointItem.key)
+      ? [...endpointPreviewBaseItems.slice(0, 3), focusedEndpointItem]
+      : endpointPreviewBaseItems;
+  const endpointPreviewKeySet = new Set(endpointPreviewItems.map((item) => item.key));
+  const hiddenEndpointCount = endpointItems.length - endpointPreviewItems.length;
+
   return (
     <aside
       className={`${SA_SHELL_RAIL} stock-analysis-page__decision-rail`}
@@ -95,8 +114,11 @@ export function StockAnalysisEvidenceLedgerRail({
       <article className={SA_SHELL_REVIEW_RAIL} data-testid="stock-analysis-evidence-ledger">
         <div className={SA_SHELL_REVIEW_RAIL_HEAD}>
           <span>
-            判断依据
+            补证清单
             <span className="stock-analysis-page__visually-hidden">证据账本</span>
+            <small className="stock-analysis-page__evidence-ledger-subtitle">
+              data_gaps / endpoint evidence / release gate
+            </small>
           </span>
           <b className={SA_SHELL_NUM}>{asOfLabel}</b>
         </div>
@@ -107,7 +129,7 @@ export function StockAnalysisEvidenceLedgerRail({
           </div>
           <div>
             <dt>关键证据</dt>
-            <dd>{`证据 ${evidenceCount}，边界缺口 ${boundaryCount}`}</dd>
+            <dd>{`rows ${evidenceCount.toLocaleString("zh-CN")}，缺口 ${gapCountLabel ?? boundaryCount}`}</dd>
           </div>
           <div>
             <dt>可用输出</dt>
@@ -127,32 +149,35 @@ export function StockAnalysisEvidenceLedgerRail({
           </div>
         </dl>
         <div className="stock-analysis-page__home-rail-data-note" data-testid="stock-analysis-home-rail-data-note">
-          <h3>数据口径</h3>
-          <p>来源：{sourceVersionSummary}</p>
-          <p>口径：{basisLabel}</p>
-          <p>质量：{qualityLabel}</p>
-          <p>更新时间：{updatedAtLabel}</p>
-          <p className="stock-analysis-page__home-rail-data-status">数据已更新 · 复核读数</p>
+          <h3>接口口径</h3>
+          <p>route：{routeLabel}</p>
+          <p>result_kind：{resultKindLabel}</p>
+          <p>formal_use_allowed={String(formalUseAllowed)}</p>
+          <p className="stock-analysis-page__home-rail-data-status">
+            {sourceVersionSummary} · {basisLabel} · {qualityLabel} · {updatedAtLabel}
+          </p>
         </div>
         {endpointItems.length > 0 ? (
           <section
             id="stock-analysis-endpoint-evidence-rail"
             className="stock-analysis-page__endpoint-evidence"
             data-testid="stock-analysis-endpoint-evidence-rail"
-            aria-label="接口证据状态"
+            aria-label="证据链状态"
           >
             <div className="stock-analysis-page__endpoint-evidence-head">
-              <h3>接口证据</h3>
-              <span>{endpointItems.length} 条链路</span>
+              <h3>证据链状态</h3>
+              <span>{endpointItems.length} 项证据 · 重点 {endpointPreviewItems.length}</span>
             </div>
             <ul>
               {endpointItems.map((item) => {
                 const isFocused = focusedEndpointKey === item.key;
+                const isPreview = endpointPreviewKeySet.has(item.key);
                 return (
                   <li
                     key={item.key}
                     data-tone={item.tone}
                     data-active={isFocused ? "true" : "false"}
+                    data-preview={isPreview ? "true" : "false"}
                     data-testid={`stock-analysis-endpoint-evidence-${item.key}`}
                   >
                     <button
@@ -164,16 +189,31 @@ export function StockAnalysisEvidenceLedgerRail({
                         <span>{item.label}</span>
                         <strong>{item.statusLabel}</strong>
                       </div>
-                      <p>{item.detail}</p>
-                      <small>{item.dateLabel}</small>
-                      <small>{item.issueLabel}</small>
-                      <small>{item.metaLabel}</small>
-                      <small>{item.traceLabel}</small>
+                      {isPreview ? (
+                        <>
+                          <p>{item.detail}</p>
+                          <small>{item.dateLabel}</small>
+                          <small>{item.issueLabel}</small>
+                        </>
+                      ) : (
+                        <p className="stock-analysis-page__endpoint-evidence-index-note">点击定位 · 查看完整诊断</p>
+                      )}
                     </button>
                   </li>
                 );
               })}
             </ul>
+            {hiddenEndpointCount > 0 ? (
+              <button
+                type="button"
+                className="stock-analysis-page__endpoint-evidence-more"
+                aria-label={`打开完整证据诊断，还有 ${hiddenEndpointCount} 项`}
+                onClick={onOpenDiagnostics}
+              >
+                <span>完整诊断</span>
+                <strong>{hiddenEndpointCount} 项仅索引</strong>
+              </button>
+            ) : null}
           </section>
         ) : null}
         <button

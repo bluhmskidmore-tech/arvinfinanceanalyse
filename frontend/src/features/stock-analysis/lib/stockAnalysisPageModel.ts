@@ -23,6 +23,7 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import type { ConsensusSummary } from "./buildConsensusSummary";
+import type { StockDetailSource } from "./stockAnalysisDetailSelection";
 
 type NormalizedConfluenceReplayBlockedDate = Omit<ConfluenceReplayBlockedDate, "reason_code"> & {
   reason_code: string;
@@ -1081,9 +1082,14 @@ function fusionActionLabel(value: string | null | undefined): string {
   const normalized = action.toLowerCase().replace(/[\s-]+/g, "_");
   const labels: Record<string, string> = {
     observe: "观察",
+    monitor: "观察",
+    monitor_only: "观察",
     review: "复核",
     pending_review: "待复核",
     observation_only: "仅观察",
+    core_plus_trading: "重点复核",
+    core_reduce_trading: "降权观察",
+    satellite_trial: "卫星观察",
   };
   if (labels[normalized]) return labels[normalized];
   const compact = normalized.replace(/_/g, "");
@@ -1098,6 +1104,7 @@ function fusionActionLabel(value: string | null | undefined): string {
   ) {
     return "裁决待确认";
   }
+  if (/^[a-z0-9_]+$/i.test(normalized)) return "裁决待确认";
   return action;
 }
 
@@ -1348,13 +1355,13 @@ function localizeMetaVendorStatus(value: string | undefined): string {
 
 function localizeFallbackMode(value: string | undefined): string {
   const normalized = (value ?? "none").trim().toLowerCase();
-  if (!normalized || normalized === "none") return "无回退";
+  if (!normalized || normalized === "none") return "数据正常";
   const labels: Record<string, string> = {
-    latest_snapshot: "回退快照",
-    cache: "缓存回退",
-    mock: "模拟回退",
+    latest_snapshot: "数据延迟",
+    cache: "数据延迟",
+    mock: "演示数据",
   };
-  return labels[normalized] ?? "回退待确认";
+  return labels[normalized] ?? "待确认";
 }
 
 export function localizeStockDataFamily(inputFamily: string | null | undefined): string {
@@ -2158,6 +2165,7 @@ export type StockSectorHeavyweightStockPreview = {
   turn: string;
   closeStrength: string;
   sourceLabel: string;
+  detailSource: StockDetailSource;
   detailLabel?: string;
   auxiliaryLabel?: string;
 };
@@ -2192,6 +2200,20 @@ function sectorHeavyweightSourceLabel(source: string) {
     sector_constituent: "板块成分",
   };
   return labels[source] ?? "来源待确认";
+}
+
+function sectorHeavyweightDetailSource(source: string): StockDetailSource {
+  const sources: Record<string, StockDetailSource> = {
+    theme_breakout: "theme_breakout",
+    livermore: "livermore",
+    fresh_trend_watchlist: "fresh_trend_watchlist",
+    factor_screen: "factor_screen",
+    hybrid_fusion: "hybrid_fusion",
+    mean_reversion: "mean_reversion",
+    review_queue: "review_queue",
+    sector_constituent: "sector_constituent",
+  };
+  return sources[source] ?? "source_unconfirmed";
 }
 
 export function buildSectorHeavyweightPreview(
@@ -2367,6 +2389,7 @@ export function buildSectorHeavyweightPreview(
       closeStrength:
         entry.closeStrengthValue != null ? formatRatioAsPercent(entry.closeStrengthValue, 0) : "待补",
       sourceLabel: sectorHeavyweightSourceLabel(entry.source),
+      detailSource: sectorHeavyweightDetailSource(entry.source),
       detailLabel:
         entry.source === "factor_screen" && entry.factorScoreValue != null
           ? `因子分 ${formatNumber(entry.factorScoreValue, 4)}`
@@ -2390,6 +2413,7 @@ export function buildSectorHeavyweightPreview(
           turn: formatNumber(leader.turn, 2),
           closeStrength: "待补",
           sourceLabel: sectorHeavyweightSourceLabel("sector_constituent"),
+          detailSource: sectorHeavyweightDetailSource("sector_constituent"),
           auxiliaryLabel: `振幅 ${formatPercent(leader.amplitude)}`,
         };
       });
@@ -2788,8 +2812,8 @@ export function buildStockAnalysisEvidenceStatus(
   const vendor = meta.vendor_status ?? "pending";
   const fallback = meta.fallback_mode ?? "none";
   const qualityTone = isMetaBoundary(meta) ? "warning" : "positive";
-  const lineageLabel = meta.source_version ?? "待补";
-  const ruleVersion = meta.rule_version ?? "待补";
+  const lineageReady = Boolean(meta.source_version);
+  const ruleReady = Boolean(meta.rule_version);
   const basisLabel = localizeBasisLabel(payload.basis);
 
   return [
@@ -2802,10 +2826,10 @@ export function buildStockAnalysisEvidenceStatus(
     },
     {
       key: "lineage",
-      label: "来源版本",
-      statusLabel: lineageLabel,
-      tone: lineageLabel === "待补" ? "warning" : "positive",
-      detail: meta.trace_id ? `链路 ${meta.trace_id}` : "链路待补",
+      label: "来源状态",
+      statusLabel: lineageReady ? "可追踪" : "待确认",
+      tone: lineageReady ? "positive" : "warning",
+      detail: lineageReady ? "完整追踪见诊断" : "来源追踪待确认",
     },
     {
       key: "basis",
@@ -2817,8 +2841,8 @@ export function buildStockAnalysisEvidenceStatus(
     {
       key: "rule-version",
       label: "规则版本",
-      statusLabel: ruleVersion,
-      tone: ruleVersion === "待补" ? "warning" : "positive",
+      statusLabel: ruleReady ? "规则已加载" : "规则待确认",
+      tone: ruleReady ? "positive" : "warning",
       detail: `可用 ${payload.supported_outputs.length} / 阻断 ${payload.unsupported_outputs.length}`,
     },
     {
@@ -2826,9 +2850,7 @@ export function buildStockAnalysisEvidenceStatus(
       label: "数据质量",
       statusLabel: qualityTone === "positive" ? "正常" : "需复核",
       tone: qualityTone,
-      detail: `${localizeMetaQualityFlag(quality)} / ${localizeMetaVendorStatus(vendor)}${
-        fallback !== "none" ? ` / ${localizeFallbackMode(fallback)}` : ""
-      }`,
+      detail: stockEvidenceBusinessQualityLabel(quality, vendor, fallback),
     },
     {
       key: "exceptions",
@@ -2845,6 +2867,18 @@ function compactEndpointTrace(value: string | null | undefined): string {
   if (!trace) return "链路待补";
   if (trace.length <= 28) return `链路：${trace}`;
   return `链路：${trace.slice(0, 10)}...${trace.slice(-8)}`;
+}
+
+function stockEvidenceBusinessQualityLabel(
+  quality: string | null | undefined,
+  vendor: string | null | undefined,
+  fallback: string | null | undefined,
+): string {
+  if (quality === "error" || vendor === "vendor_unavailable") return "不可用";
+  if (fallback && fallback !== "none") return "数据延迟";
+  if (quality === "stale" || vendor === "vendor_stale") return "数据延迟";
+  if (quality === "ok" && vendor === "ok") return "数据正常";
+  return "部分缺失";
 }
 
 function normalizeEndpointCount(value: number | null | undefined): number | null {
@@ -2907,12 +2941,11 @@ function endpointMetaNeedsReview(meta: StockEndpointEvidenceMeta): boolean {
 }
 
 function endpointMetaLabel(meta: StockEndpointEvidenceMeta | null | undefined): string {
-  if (!meta) return "接口元信息待补";
+  if (!meta) return "证据待补";
   const quality = meta.quality_flag ?? "pending";
   const vendor = meta.vendor_status ?? "pending";
   const fallback = meta.fallback_mode ?? "pending";
-  const fallbackLabel = fallback !== "none" ? ` / ${localizeFallbackMode(fallback)}` : "";
-  return `${localizeMetaQualityFlag(quality)} / ${localizeMetaVendorStatus(vendor)}${fallbackLabel}`;
+  return stockEvidenceBusinessQualityLabel(quality, vendor, fallback);
 }
 
 export function buildStockEndpointEvidenceItems(
@@ -2933,7 +2966,7 @@ export function buildStockEndpointEvidenceItems(
         ...base,
         statusLabel: "读取中",
         tone: "neutral",
-        detail: "正在读取接口证据，暂不纳入复核判断",
+        detail: "正在读取证据链，暂不纳入复核判断",
       };
     }
 
@@ -2942,7 +2975,7 @@ export function buildStockEndpointEvidenceItems(
         ...base,
         statusLabel: "读取失败",
         tone: "negative",
-        detail: "接口读取失败，当前结论不使用该接口扩展证据",
+        detail: "证据读取失败，当前结论不使用该扩展证据",
       };
     }
 
@@ -2951,7 +2984,7 @@ export function buildStockEndpointEvidenceItems(
         ...base,
         statusLabel: "待触发",
         tone: "neutral",
-        detail: "接口尚未触发，展开相关复核区后读取",
+        detail: "证据链尚未触发，展开相关复核区后读取",
       };
     }
 
@@ -2960,7 +2993,7 @@ export function buildStockEndpointEvidenceItems(
         ...base,
         statusLabel: "证据待补",
         tone: "warning",
-        detail: "接口已返回，但链路、质量、版本元信息待补",
+        detail: "证据已返回，但质量状态待补",
       };
     }
 
@@ -2969,7 +3002,7 @@ export function buildStockEndpointEvidenceItems(
       ...base,
       statusLabel: needsReview ? "需复核" : "接通",
       tone: needsReview ? "warning" : "positive",
-      detail: needsReview ? "接口已返回，质量或业务提示需复核" : "接口已返回，链路和质量可核验",
+      detail: needsReview ? "证据已返回，业务提示需复核" : "证据链已返回，质量可核验",
     };
   });
 }
@@ -2984,9 +3017,9 @@ function closureActionText(reason: StockObservationClosureReason): string {
   const source = reason.endpointLabel;
   switch (reason.kind) {
     case "query-error":
-      return `修复${source}接口读取失败`;
+      return `修复${source}证据读取失败`;
     case "meta-missing":
-      return `补齐${source}接口元信息`;
+      return `补齐${source}证据状态`;
     case "fallback":
       return `核对${source}回退状态与供数状态`;
     case "warning":
@@ -3040,7 +3073,7 @@ export function buildObservationClosureSummary({
           endpointLabel: item.label,
           kind: "meta-missing",
           fieldPath: `${item.key}.result_meta`,
-          displayText: `${item.label}接口元信息待补`,
+          displayText: `${item.label}证据状态待补`,
         },
       ];
     }
@@ -3083,7 +3116,7 @@ export function buildObservationClosureSummary({
     metaMissingCount,
     unresolvedReasons,
     nextEvidenceActions,
-    headline: `代码侧证据读取覆盖 ${endpointLoadedCount}/${endpointItems.length}`,
+    headline: `证据读取覆盖 ${endpointLoadedCount}/${endpointItems.length}`,
     detail: formalUse
       ? `治理状态：${approval}`
       : `正式用途：否 · 治理状态：${approval} · 待复核项 ${unresolvedReasons.length}`,

@@ -208,6 +208,41 @@ function withCrisisScoreInputEvidence(
 }
 
 describe("MacroToolkitPage", () => {
+  it("imports the page stylesheet", () => {
+    const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
+
+    expect(source).toContain('import "./MacroToolkitPage.css";');
+  });
+
+  it("uses HeroUI card variants with Tailwind visual tokens for the observation cockpit", () => {
+    const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
+
+    expect(source).toContain('import { cardVariants } from "@heroui/styles";');
+    expect(source).toContain("MACRO_TOOLKIT_HERO_CARD_SLOTS");
+    expect(source).toContain("macro-toolkit-tailwind-cockpit");
+    expect(source).toContain('data-slot="card"');
+    expect(source).toContain('data-slot="card-content"');
+    expect(source).toContain("border border-default-200 bg-background/95 text-foreground shadow-sm");
+    expect(source).toContain("macro-toolkit-observation-loop border border-default-200 bg-content1 text-foreground");
+  });
+
+  it("renders the macro observation loop as an institutional ledger strip", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const loopBlock = extractCssBlock(css, ".macro-toolkit-observation-loop");
+    const loopCellBlock = extractCssBlock(css, ".macro-toolkit-observation-loop__grid > div");
+
+    expect(loopBlock).toContain("padding: 0");
+    expect(loopBlock).toContain("overflow: hidden");
+    expect(loopCellBlock).toContain("border: 0");
+    expect(loopCellBlock).toContain("border-radius: 0");
+    expect(css).toMatch(
+      /\.macro-toolkit-observation-loop__grid > div \+ div\s*\{[\s\S]*?border-left:\s*1px solid var\(--macro-toolkit-border-muted\)/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 1100px\)[\s\S]*?\.macro-toolkit-observation-loop__grid > div \+ div\s*\{[\s\S]*?border-top:\s*1px solid var\(--macro-toolkit-border-muted\)[\s\S]*?border-left:\s*0/,
+    );
+  });
+
   it("keeps the macro toolkit page off the monolithic API client entrypoint", () => {
     const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
 
@@ -273,6 +308,8 @@ describe("MacroToolkitPage", () => {
     expect(css).toContain("Mobile first-screen compression pass");
     expect(css).toMatch(/\.macro-toolkit-page__header-summary\s*\{\s*display:\s*none/);
     expect(css).toMatch(/\.macro-toolkit-page__header\s*\{[\s\S]*?padding:\s*8px/);
+    expect(css).toMatch(/\.macro-toolkit-page__header-main\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(css).toMatch(/\.macro-toolkit-page__toolbar-info,\s*[\r\n]+\s*\.macro-toolkit-page__header-controls\s*\{[\s\S]*?width:\s*100%/);
     expect(css).toMatch(/\.macro-toolkit-mobile-committee-strip\s*\{[\s\S]*?display:\s*grid/);
     expect(css).toMatch(/\.macro-toolkit-committee-decision-memo__grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
   });
@@ -886,14 +923,14 @@ describe("MacroToolkitPage", () => {
     const submissionCockpit = within(investmentBrief).getByLabelText("投委会提交总控台");
     const pipeline = within(investmentBrief).getByLabelText("投委会首屏流水线");
 
-    await waitFor(() => expect(submissionCockpit).toHaveTextContent("提交包 1/4"));
+    await waitFor(() => expect(submissionCockpit).toHaveTextContent("提交包 2/4"));
 
     expect(submissionCockpit).toHaveTextContent("提交结论");
     expect(submissionCockpit).toHaveTextContent("暂缓提交");
     expect(submissionCockpit).toHaveTextContent("责任人");
     expect(submissionCockpit).toHaveTextContent("数据运营负责人");
-    expect(submissionCockpit).toHaveTextContent("提交包 1/4");
-    expect(submissionCockpit).toHaveTextContent("签核 1/3");
+    expect(submissionCockpit).toHaveTextContent("提交包 2/4");
+    expect(submissionCockpit).toHaveTextContent("签核 2/3");
     expect(submissionCockpit).toHaveTextContent("剩余风险 1");
     expect(submissionCockpit).toHaveTextContent("待复核回执 0");
 
@@ -956,9 +993,9 @@ describe("MacroToolkitPage", () => {
     const submissionSummary = within(evidenceBook).getByLabelText("证据复核总账提交包总览");
 
     expect(submissionSummary).toHaveTextContent("提交包可审");
-    expect(submissionSummary).toHaveTextContent("1/4");
+    expect(submissionSummary).toHaveTextContent("2/4");
     expect(submissionSummary).toHaveTextContent("签核");
-    expect(submissionSummary).toHaveTextContent("1/3");
+    expect(submissionSummary).toHaveTextContent("2/3");
     expect(submissionSummary).toHaveTextContent("待复核回执");
     expect(submissionSummary).toHaveTextContent("0");
     expect(submissionSummary).toHaveTextContent("硬阻断");
@@ -981,8 +1018,8 @@ describe("MacroToolkitPage", () => {
     expect(submissionGate).toHaveTextContent("数据运营负责人");
     expect(submissionGate).toHaveTextContent("下一动作");
     expect(submissionGate).toHaveTextContent("处理数据缺口");
-    expect(submissionGate).toHaveTextContent("提交包 1/4");
-    expect(submissionGate).toHaveTextContent("签核 1/3");
+    expect(submissionGate).toHaveTextContent("提交包 2/4");
+    expect(submissionGate).toHaveTextContent("签核 2/3");
     expect(submissionGate).toHaveTextContent("剩余风险 1");
     expect(submissionGate).toHaveTextContent("待复核回执 0");
     expect(submissionGate).toHaveTextContent("未达提交标准");
@@ -1004,8 +1041,8 @@ describe("MacroToolkitPage", () => {
     expect(packReceipt).toHaveTextContent("数据运营负责人");
     expect(packReceipt).toHaveTextContent("下一动作");
     expect(packReceipt).toHaveTextContent("处理数据缺口");
-    expect(packReceipt).toHaveTextContent("提交包 1/4");
-    expect(packReceipt).toHaveTextContent("签核 1/3");
+    expect(packReceipt).toHaveTextContent("提交包 2/4");
+    expect(packReceipt).toHaveTextContent("签核 2/3");
     expect(packReceipt).toHaveTextContent("剩余风险 1");
     expect(packReceipt).toHaveTextContent("待复核回执 0");
     expect(packReceipt).toHaveTextContent("证据留痕");
@@ -1039,8 +1076,8 @@ describe("MacroToolkitPage", () => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("首要卡点 数据缺口"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("责任人 数据运营负责人"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("下一动作 处理数据缺口"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("提交包 1/4"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("签核 1/3"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("提交包 2/4"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("签核 2/3"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("剩余风险 1"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("待复核回执 0"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("证据留痕 数据健康 · 数据运营负责人"));
@@ -1729,79 +1766,32 @@ describe("MacroToolkitPage", () => {
         "macro-toolkit-committee-readiness",
       );
       expect(committeeReadinessAfterSignoff).toHaveTextContent("待确认闭环");
-      expect(committeeReadinessAfterSignoff).toHaveTextContent("策略供数待确认");
-      expect(committeeReadinessAfterSignoff).toHaveTextContent("权益策略负责人");
+      expect(committeeReadinessAfterSignoff).toHaveTextContent("工具执行待确认");
+      expect(committeeReadinessAfterSignoff).toHaveTextContent("数据运营负责人");
       expect(
-        within(committeeReadinessAfterSignoff).getByRole("button", { name: "执行策略供数刷新" }),
+        within(committeeReadinessAfterSignoff).getByRole("button", { name: "复核工具执行结果" }),
       ).toBeInTheDocument();
+      expect(committeeReadinessAfterSignoff).not.toHaveTextContent("策略供数待确认");
       expect(committeeReadinessAfterSignoff).not.toHaveTextContent("查看签核证据");
       expect(committeeReadinessAfterSignoff).not.toHaveTextContent("数据健康回执待复核");
       const decisionMemoAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会决策稿");
       expect(
-        within(decisionMemoAfterSignoff).getByRole("button", { name: "执行策略供数刷新" }),
-      ).toHaveTextContent("执行策略供数刷新");
+        within(decisionMemoAfterSignoff).getByRole("button", { name: "复核工具执行结果" }),
+      ).toHaveTextContent("复核工具执行结果");
       const currentRepairStatusAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会当前处理状态");
       expect(currentRepairStatusAfterSignoff).toHaveTextContent("M0041813");
       expect(currentRepairStatusAfterSignoff).toHaveTextContent("签核已确认");
       const committeePackAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会材料包");
       expect(within(committeePackAfterSignoff).getByLabelText("投委会材料包-数据健康")).toHaveTextContent("已签核");
-
-      const firstScreenStrategyAction = within(committeeReadinessAfterSignoff).getByRole("button", {
-        name: "执行策略供数刷新",
-      });
-      await user.click(firstScreenStrategyAction);
-
-      await waitFor(() => expect(choiceStockCalls).toHaveLength(1));
-      await waitFor(() => {
-        const investmentBriefAfterRefresh = screen.getByTestId("macro-toolkit-investment-brief");
-        const committeePackAfterRefresh = within(investmentBriefAfterRefresh).getByLabelText("投委会材料包");
-        expect(within(committeePackAfterRefresh).getByLabelText("投委会材料包-策略供数")).toHaveTextContent(
-          "回执待复核",
-        );
-      });
-      await waitFor(() => {
-        const investmentBriefAfterRefresh = screen.getByTestId("macro-toolkit-investment-brief");
-        const committeeReadinessAfterRefresh = within(investmentBriefAfterRefresh).getByTestId(
-          "macro-toolkit-committee-readiness",
-        );
-        expect(committeeReadinessAfterRefresh).toHaveTextContent("策略供数回执待复核");
-      });
-      const investmentBriefAfterStrategyReceipt = await screen.findByTestId("macro-toolkit-investment-brief");
-      const committeeReadinessAfterStrategyReceipt = within(investmentBriefAfterStrategyReceipt).getByTestId(
-        "macro-toolkit-committee-readiness",
-      );
-      expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("待复核回执");
-      expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("策略供数回执待复核");
-      expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("复核策略供数回执");
-      expect(committeeReadinessAfterStrategyReceipt).not.toHaveTextContent("待补全证据");
-      expect(analysisCalls.some((item) => item?.detail === "full")).toBe(true);
-      const strategySignoffAction = within(committeeReadinessAfterStrategyReceipt).getByRole("button", {
-        name: "复核策略供数回执",
-      });
-      const committeePackAfterStrategyReceipt = within(investmentBriefAfterStrategyReceipt).getByLabelText("投委会材料包");
-      expect(within(committeePackAfterStrategyReceipt).getByLabelText("投委会材料包-策略供数")).toHaveTextContent(
-        "回执待复核",
-      );
-
-      await user.click(strategySignoffAction);
-
-      const investmentBriefAfterStrategySignoff = await screen.findByTestId("macro-toolkit-investment-brief");
-      const committeeReadinessAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByTestId(
-        "macro-toolkit-committee-readiness",
-      );
-      expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("待确认闭环");
-      expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("工具执行待确认");
-      expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("复核工具执行结果");
-      expect(committeeReadinessAfterStrategySignoff).not.toHaveTextContent("策略供数待确认");
-      const summaryAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByLabelText(
+      expect(within(committeePackAfterSignoff).getByLabelText("投委会材料包-策略供数")).toHaveTextContent("已归档");
+      const summaryAfterSignoffReady = within(investmentBriefAfterSignoff).getByLabelText(
         "投委会提交包就绪摘要",
       );
-      expect(summaryAfterStrategySignoff).toHaveTextContent(/提交包就绪度\s*3\/4/);
-      expect(summaryAfterStrategySignoff).toHaveTextContent(/待复核回执\s*0/);
-      const committeePackAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByLabelText("投委会材料包");
-      expect(within(committeePackAfterStrategySignoff).getByLabelText("投委会材料包-策略供数")).toHaveTextContent("已签核");
+      expect(summaryAfterSignoffReady).toHaveTextContent(/提交包就绪度\s*3\/4/);
+      expect(summaryAfterSignoffReady).toHaveTextContent(/待复核回执\s*0/);
+      expect(analysisCalls.some((item) => item?.detail === "full")).toBe(true);
 
-      const firstScreenToolAction = within(committeeReadinessAfterStrategySignoff).getByRole("button", {
+      const firstScreenToolAction = within(committeeReadinessAfterSignoff).getByRole("button", {
         name: "复核工具执行结果",
       });
       await user.click(firstScreenToolAction);
@@ -1923,13 +1913,13 @@ describe("MacroToolkitPage", () => {
     expect(investmentBrief).toHaveTextContent("先补齐高优先级输入，再复核观察结论。");
     expect(investmentBrief).toHaveTextContent("证据入口");
     expect(investmentBrief).toHaveTextContent("提交条件摘要");
-    expect(investmentBrief).toHaveTextContent("1/4");
+    expect(investmentBrief).toHaveTextContent("2/4");
     expect(investmentBrief).toHaveTextContent("数据健康");
     expect(investmentBrief).toHaveTextContent("未通过");
     expect(investmentBrief).toHaveTextContent("证据口径");
     expect(investmentBrief).toHaveTextContent("已通过");
     expect(investmentBrief).toHaveTextContent("策略供数");
-    expect(investmentBrief).toHaveTextContent("待确认");
+    expect(investmentBrief).toHaveTextContent("已通过");
     expect(investmentBrief).toHaveTextContent("工具执行");
     expect(investmentBrief).toHaveTextContent("待确认");
     expect(investmentBrief).toHaveTextContent("查看证据覆盖");
@@ -1940,9 +1930,9 @@ describe("MacroToolkitPage", () => {
     expect(mobileCommitteeStrip).toHaveTextContent("硬阻断");
     expect(mobileCommitteeStrip).toHaveTextContent("高优先级");
     expect(mobileCommitteeStrip).toHaveTextContent("提交包");
-    expect(mobileCommitteeStrip).toHaveTextContent("1/4");
+    expect(mobileCommitteeStrip).toHaveTextContent("2/4");
     expect(mobileCommitteeStrip).toHaveTextContent("签核");
-    expect(mobileCommitteeStrip).toHaveTextContent("1/3");
+    expect(mobileCommitteeStrip).toHaveTextContent("2/3");
     expect(within(mobileCommitteeStrip).getByRole("link", { name: /硬阻断.*处理数据缺口/s })).toHaveAttribute(
       "href",
       "#macro-toolkit-data-health-detail",
@@ -1957,8 +1947,8 @@ describe("MacroToolkitPage", () => {
     expect(committeeDecisionMemo).toHaveTextContent("处理数据缺口");
     expect(committeeDecisionMemo).toHaveTextContent("主入口在首屏流水线");
     expect(committeeDecisionMemo).toHaveTextContent("放行条件");
-    expect(committeeDecisionMemo).toHaveTextContent("提交包 1/4");
-    expect(committeeDecisionMemo).toHaveTextContent("签核 1/3");
+    expect(committeeDecisionMemo).toHaveTextContent("提交包 2/4");
+    expect(committeeDecisionMemo).toHaveTextContent("签核 2/3");
     expect(committeeDecisionMemo).toHaveTextContent("硬阻断 1");
     expect(within(committeeDecisionMemo).queryByRole("link", { name: /执行下一动作.*处理数据缺口/s })).not.toBeInTheDocument();
     const committeeReadiness = await screen.findByTestId("macro-toolkit-committee-readiness");
@@ -2052,9 +2042,9 @@ describe("MacroToolkitPage", () => {
     );
     const committeeReadinessSummary = within(investmentBrief).getByLabelText("投委会提交包就绪摘要");
     expect(committeeReadinessSummary).toHaveTextContent("提交包就绪度");
-    expect(committeeReadinessSummary).toHaveTextContent("1/4");
+    expect(committeeReadinessSummary).toHaveTextContent("2/4");
     expect(committeeReadinessSummary).toHaveTextContent("签核就绪");
-    expect(committeeReadinessSummary).toHaveTextContent("1/3");
+    expect(committeeReadinessSummary).toHaveTextContent("2/3");
     expect(committeeReadinessSummary).toHaveTextContent("硬阻断");
     expect(committeeReadinessSummary).toHaveTextContent("1");
     expect(committeeReadinessSummary).toHaveTextContent("待复核回执");
@@ -2067,7 +2057,7 @@ describe("MacroToolkitPage", () => {
     expect(committeeDecisionLanguage).toHaveTextContent("数据健康");
     expect(committeeDecisionLanguage).toHaveTextContent("未通过");
     expect(committeeDecisionLanguage).toHaveTextContent("策略供数");
-    expect(committeeDecisionLanguage).toHaveTextContent("待确认");
+    expect(committeeDecisionLanguage).toHaveTextContent("已通过");
     expect(committeeDecisionLanguage).toHaveTextContent("工具执行");
     expect(within(committeeDecisionLanguage).getByRole("link", { name: /数据健康.*证据入口/s })).toHaveAttribute(
       "href",
@@ -2075,9 +2065,9 @@ describe("MacroToolkitPage", () => {
     );
     const committeeChecklist = within(investmentBrief).getByLabelText("投委会提交条件摘要");
     expect(committeeChecklist).toHaveTextContent("提交条件摘要");
-    expect(committeeChecklist).toHaveTextContent(/已通过\s*1/);
+    expect(committeeChecklist).toHaveTextContent(/已通过\s*2/);
     expect(committeeChecklist).toHaveTextContent(/阻断\s*1/);
-    expect(committeeChecklist).toHaveTextContent(/待确认\s*2/);
+    expect(committeeChecklist).toHaveTextContent(/待确认\s*1/);
     expect(committeeChecklist).toHaveTextContent("主卡点");
     expect(committeeChecklist).toHaveTextContent("数据健康");
     expect(within(committeeChecklist).getByRole("link", { name: /主卡点.*数据健康.*证据入口/s })).toHaveAttribute(
@@ -2111,8 +2101,8 @@ describe("MacroToolkitPage", () => {
     expect(signoffLane).toHaveTextContent("阻断签核");
     expect(signoffLane).toHaveTextContent("数据健康");
     expect(signoffLane).toHaveTextContent("权益策略负责人");
-    expect(signoffLane).toHaveTextContent("待补证据");
-    expect(signoffLane).toHaveTextContent("策略供数");
+    expect(signoffLane).toHaveTextContent("可签核");
+    expect(signoffLane).toHaveTextContent("证据留痕");
     expect(committeeWorkQueue).toHaveTextContent("执行入口");
     const submissionMatrix = within(committeeWorkQueue).getByLabelText("投委会提交判断矩阵");
     expect(submissionMatrix).toHaveTextContent("提交判断矩阵");
@@ -2126,7 +2116,7 @@ describe("MacroToolkitPage", () => {
     expect(submissionMatrix).toHaveTextContent("数据健康");
     expect(submissionMatrix).toHaveTextContent("未通过");
     expect(submissionMatrix).toHaveTextContent("策略供数");
-    expect(submissionMatrix).toHaveTextContent("待确认");
+    expect(submissionMatrix).toHaveTextContent("已通过");
     expect(submissionMatrix).toHaveTextContent("工具执行");
     expect(within(submissionMatrix).getByRole("link", { name: /数据健康.*证据入口/s })).toHaveAttribute(
       "href",
@@ -2159,10 +2149,7 @@ describe("MacroToolkitPage", () => {
       "href",
       "#macro-toolkit-data-health-detail",
     );
-    expect(within(committeeWorkQueue).getByRole("link", { name: /策略供数.*执行入口/s })).toHaveAttribute(
-      "href",
-      "#macro-toolkit-strategy-detail",
-    );
+    expect(within(committeeWorkQueue).queryByRole("link", { name: /策略供数.*执行入口/s })).not.toBeInTheDocument();
     expect(within(committeeWorkQueue).getByRole("link", { name: /工具执行.*执行入口/s })).toHaveAttribute(
       "href",
       "#macro-toolkit-operations-actions",
@@ -2877,10 +2864,8 @@ describe("MacroToolkitPage", () => {
     const decisionStrategyAction = within(decisionLanguage).getByRole("link", { name: /策略供数/ });
     const decisionToolAction = within(decisionLanguage).getByRole("link", { name: /工具执行/ });
     const queueDataHealthAction = within(committeeWorkQueue).getByRole("link", { name: /数据健康.*先完成数据缺口复核/s });
-    const queueStrategyAction = within(committeeWorkQueue).getByRole("link", { name: /策略供数.*确认策略供数链路/s });
     const queueToolAction = within(committeeWorkQueue).getByRole("link", { name: /工具执行.*复核工具执行结果/s });
     const queueDataHealthExecution = within(committeeWorkQueue).getByRole("link", { name: /数据健康.*执行入口/s });
-    const queueStrategyExecution = within(committeeWorkQueue).getByRole("link", { name: /策略供数.*执行入口/s });
     const queueToolExecution = within(committeeWorkQueue).getByRole("link", { name: /工具执行.*执行入口/s });
     const packDataHealthAction = within(committeePack).getByLabelText("投委会材料包-数据健康");
     const packStrategyAction = within(committeePack).getByLabelText("投委会材料包-策略供数");
@@ -2990,15 +2975,6 @@ describe("MacroToolkitPage", () => {
       "macro-toolkit-anchor-target--active",
     );
 
-    await user.click(queueStrategyAction);
-
-    expect(queueStrategyAction).toHaveAttribute("aria-current", "true");
-    expect(strategyEvidenceRow).toHaveAttribute("aria-current", "true");
-    expect(dataHealthEvidenceRow).not.toHaveAttribute("aria-current");
-    expect(screen.getByTestId("macro-toolkit-strategy-detail")).toHaveClass(
-      "macro-toolkit-section--audit-focus",
-    );
-
     await user.click(queueToolAction);
 
     expect(queueToolAction).toHaveAttribute("aria-current", "true");
@@ -3013,13 +2989,6 @@ describe("MacroToolkitPage", () => {
     expect(queueDataHealthExecution).toHaveAttribute("aria-current", "true");
     expect(screen.getByTestId("macro-toolkit-data-health-detail")).toHaveClass(
       "macro-toolkit-anchor-target--active",
-    );
-
-    await user.click(queueStrategyExecution);
-
-    expect(queueStrategyExecution).toHaveAttribute("aria-current", "true");
-    expect(screen.getByTestId("macro-toolkit-strategy-detail")).toHaveClass(
-      "macro-toolkit-section--audit-focus",
     );
 
     await user.click(queueToolExecution);
@@ -3232,9 +3201,9 @@ describe("MacroToolkitPage", () => {
     expect(primarySignalPackAfterScript).not.toHaveTextContent("回执待复核");
     expect(toolPackAfterScript).toHaveTextContent("回执待复核");
     expect(toolPackAfterScript).toHaveTextContent("脚本产物");
-    expect(signoffAfterScript).toHaveTextContent("1/3");
+    expect(signoffAfterScript).toHaveTextContent("2/3");
     const readinessSummaryAfterScript = within(investmentBriefAfterScript).getByLabelText("投委会提交包就绪摘要");
-    expect(readinessSummaryAfterScript).toHaveTextContent(/提交包就绪度\s*2\/4/);
+    expect(readinessSummaryAfterScript).toHaveTextContent(/提交包就绪度\s*3\/4/);
     expect(readinessSummaryAfterScript).toHaveTextContent(/待复核回执\s*1/);
 
     await user.click(toolExecutionSignoff);
@@ -3249,7 +3218,7 @@ describe("MacroToolkitPage", () => {
     expect(within(committeePackAfterToolSignoff).getByLabelText("投委会材料包-工具执行")).toHaveTextContent("已签核");
     expect(signoffAfterToolConfirmation).toHaveTextContent("宏观策略负责人");
     expect(signoffAfterToolConfirmation).toHaveTextContent("已签核确认");
-    expect(signoffAfterToolConfirmation).toHaveTextContent("1/3");
+    expect(signoffAfterToolConfirmation).toHaveTextContent("2/3");
     expect(signoffAfterToolConfirmation).toHaveTextContent("数据运营负责人");
     expect(signoffAfterToolConfirmation).toHaveTextContent("阻断签核");
 
@@ -3265,16 +3234,12 @@ describe("MacroToolkitPage", () => {
     expect(stockReceipt).toHaveTextContent("因子");
     const committeeWorkQueueAfterStock = within(operationsConsole).getByTestId("macro-toolkit-committee-work-queue");
     const signoffAfterStock = within(committeeWorkQueueAfterStock).getByLabelText("投委会签核轨道");
-    const strategyLedgerAfterStock = within(committeeWorkQueueAfterStock).getByLabelText("投委会提交链路-策略供数");
     const investmentBriefAfterStock = await screen.findByTestId("macro-toolkit-investment-brief");
     const committeePackAfterStock = within(investmentBriefAfterStock).getByLabelText("投委会材料包");
     const strategyPackAfterStock = within(committeePackAfterStock).getByLabelText("投委会材料包-策略供数");
     expect(signoffAfterStock).toHaveTextContent("权益策略负责人");
     expect(signoffAfterStock).toHaveTextContent("已留痕复核");
-    expect(committeeWorkQueueAfterStock).toHaveTextContent("策略展示");
-    expect(committeeWorkQueueAfterStock).toHaveTextContent("回执待复核");
-    expect(strategyLedgerAfterStock).toHaveTextContent("回执闭环 · 策略展示");
-    expect(strategyLedgerAfterStock).toHaveTextContent("复核签核");
+    expect(within(committeeWorkQueueAfterStock).queryByLabelText("投委会提交链路-策略供数")).not.toBeInTheDocument();
     expect(strategyPackAfterStock).toHaveTextContent("回执待复核");
     expect(strategyPackAfterStock).toHaveTextContent("策略展示");
     expect(signoffAfterStock).toHaveTextContent("2/3");
@@ -3977,10 +3942,10 @@ describe("MacroToolkitPage", () => {
     expect(coreDataHealth).not.toHaveTextContent("来源未命中");
     expect(screen.queryByLabelText("Crisis Score 数据来源")).not.toBeInTheDocument();
     await user.click(within(coreDataHealth).getByRole("button", { name: /查看完整分析/ }));
-    expect(calls).toContainEqual({ detail: "full" });
+    expect(calls).toContainEqual({ detail: "full", historyLimit: 430 });
     await screen.findByLabelText("Crisis Score 数据来源");
 
-    expect(calls).toContainEqual({ detail: "full" });
+    expect(calls).toContainEqual({ detail: "full", historyLimit: 430 });
     const fullDataHealth = await screen.findByLabelText("数据健康总览");
     expect(fullDataHealth).toHaveTextContent("待处理数据项");
     expect(fullDataHealth).toHaveTextContent("补齐 M0041813 后重新运行完整宏观分析");
@@ -4004,7 +3969,7 @@ describe("MacroToolkitPage", () => {
     const sourceBackfillSummary = within(investmentBriefAfterBackfill).getByLabelText(
       "投委会提交包就绪摘要",
     );
-    expect(sourceBackfillSummary).toHaveTextContent(/提交包就绪度\s*2\/4/);
+    expect(sourceBackfillSummary).toHaveTextContent(/提交包就绪度\s*3\/4/);
     expect(sourceBackfillSummary).toHaveTextContent(/硬阻断\s*0/);
     expect(sourceBackfillSummary).toHaveTextContent(/待复核回执\s*1/);
     expect(sourceBackfillSummary).toHaveTextContent("待复核回执");
@@ -5537,7 +5502,7 @@ describe("MacroToolkitPage", () => {
     expect(completedResult).toHaveTextContent("已写入");
     expect(completedResult).toHaveTextContent("2026-04-30");
     expect(completedResult).toHaveTextContent("3187.42");
-    await waitFor(() => expect(calls).toContainEqual({ detail: "full" }));
+    await waitFor(() => expect(calls).toContainEqual({ detail: "full", historyLimit: 430 }));
     const repairFeedback = screen.queryByTestId("crisis-gap-repair-feedback");
     if (repairFeedback) {
       expect(repairFeedback).not.toHaveTextContent("正在刷新并重读完整分析");

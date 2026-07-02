@@ -1,5 +1,6 @@
 import type {
   ApiEnvelope,
+  ExternalDataFreshnessTier,
   LivermoreConditionStatus,
   LivermoreDiagnosticSeverity,
   LivermoreOutputKey,
@@ -51,6 +52,11 @@ export type LivermoreStrategyModel = {
     status: LivermoreStrategyPayload["data_gaps"][number]["status"];
     statusLabel: string;
     evidence: string;
+    input: string | null;
+    businessDate: string | null;
+    ageDays: number | null;
+    tier: ExternalDataFreshnessTier | null;
+    freshnessLabel: string | null;
   }>;
   supportedOutputs: Array<{
     key: LivermoreOutputKey;
@@ -183,6 +189,7 @@ const gapStatusLabels: Record<LivermoreStrategyPayload["data_gaps"][number]["sta
   partial: "部分",
   stale: "陈旧",
   ready: "就绪",
+  look_ahead: "前视风险",
 };
 
 function fallbackLabel(value: ResultMeta["fallback_mode"]) {
@@ -212,11 +219,38 @@ function buildStatusNotes(
   if (meta.fallback_mode !== "none") {
     notes.push(`当前结果使用${fallbackLabel(meta.fallback_mode)}。`);
   }
+  if (meta.quality_flag !== "ok") {
+    for (const diagnostic of payload.diagnostics) {
+      if (
+        diagnostic.code === "LIVERMORE_INPUT_FRESHNESS_DEGRADED" &&
+        diagnostic.message &&
+        !notes.includes(diagnostic.message)
+      ) {
+        notes.push(diagnostic.message);
+      }
+    }
+  }
   return notes;
 }
 
 function formatMetric(value: number, digits = 3) {
   return value.toFixed(digits);
+}
+
+function formatFreshnessLabel(gap: LivermoreStrategyPayload["data_gaps"][number]) {
+  const hasFreshness =
+    gap.input != null ||
+    gap.business_date != null ||
+    gap.age_days != null ||
+    gap.tier != null;
+  if (!hasFreshness) {
+    return null;
+  }
+  const input = gap.input ?? gap.input_family;
+  const businessDate = gap.business_date ?? "未知";
+  const age = typeof gap.age_days === "number" ? `T+${gap.age_days}` : "T+未知";
+  const tier = gap.tier ?? "unknown";
+  return `输入 ${input} · 日期 ${businessDate} · ${age} · ${tier}`;
 }
 
 export function buildLivermoreStrategyModel(input: {
@@ -267,6 +301,11 @@ export function buildLivermoreStrategyModel(input: {
       status: gap.status,
       statusLabel: gapStatusLabels[gap.status],
       evidence: gap.evidence,
+      input: gap.input ?? null,
+      businessDate: gap.business_date ?? null,
+      ageDays: gap.age_days ?? null,
+      tier: gap.tier ?? null,
+      freshnessLabel: formatFreshnessLabel(gap),
     })),
     supportedOutputs: payload.supported_outputs.map((key) => ({
       key,

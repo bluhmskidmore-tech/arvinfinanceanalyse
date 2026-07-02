@@ -49,9 +49,29 @@ def run_tushare_macro_ingest_once(ingest_batch_id: str | None = None) -> dict[st
         catalog_repo=catalog_repo,
         manifest_repo=manifest_repo,
     )
-    results = service.ingest_all_seed_series(batch)
-    logger.info("tushare macro ingest completed batch_id=%s series=%s", batch, len(results))
+    summary = service.ingest_all_seed_series_with_summary(batch)
+    results = summary["results"]
+    succeeded = summary["succeeded"]
+    failed = summary["failed"]
+    if failed:
+        logger.error(
+            "tushare macro ingest failures batch_id=%s failed_count=%s failed_series=%s",
+            batch,
+            len(failed),
+            failed,
+        )
+    if failed and not succeeded:
+        msg = f"tushare macro ingest batch {batch!r} failed for all {len(failed)} series"
+        raise RuntimeError(msg)
+    logger.info(
+        "tushare macro ingest completed batch_id=%s series=%s failed=%s",
+        batch,
+        len(results),
+        len(failed),
+    )
     return {
         "ingest_batch_id": batch,
         "results": results,
+        "succeeded": succeeded,
+        "failed": failed,
     }

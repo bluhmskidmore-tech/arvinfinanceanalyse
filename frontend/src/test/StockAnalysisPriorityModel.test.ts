@@ -220,6 +220,33 @@ describe("stockAnalysisPriorityModel", () => {
     expect(strategyPriorityReasonLabel(scorePayloadRows[0])).toContain("优先复核");
   });
 
+  it("accepts enriched strategy family metadata without changing priority copy", () => {
+    const enrichedRows = scorePayloadRows.map((row) => ({
+      ...row,
+      family_key: row.signal_kind === "stock_candidate" ? "trend_core" : row.signal_kind,
+      family_label: row.signal_kind === "stock_candidate" ? "Trend core" : row.strategy_label,
+      family_contract_version: "rv_livermore_strategy_family_contract_v1",
+      primary_sample_size: row.stats.return_5d.available_count,
+      family_readiness: {
+        readiness_contract_version: "rv_livermore_strategy_family_readiness_v1",
+        readiness_state: "degraded_observation",
+        macro_context_id: "macroctx_unit",
+        market_gate_context_id: null,
+        macro_compatibility: "compatible",
+        market_gate_compatibility: "unknown",
+        data_readiness: "ready",
+        sample_maturity: "insufficient",
+        readiness_reasons: ["OBSERVATION_ONLY_BOUNDARY"],
+        observational_only: true,
+        formal_use_allowed: false,
+      },
+    }));
+
+    expect(buildStrategyPriorityHeadline(enrichedRows)).toBe(buildStrategyPriorityHeadline(scorePayloadRows));
+    expect(strategyPrioritySummaryReason(enrichedRows)).toBe(strategyPrioritySummaryReason(scorePayloadRows));
+    expect(strategyPriorityReasonLabel(enrichedRows[0])).toBe(strategyPriorityReasonLabel(scorePayloadRows[0]));
+  });
+
   it("localizes rank, scope, risk, and status labels without leaking vendor codes", () => {
     expect(localizeRankRangeLabel("rank 11-20")).toBe("第 11-20 名");
     expect(localizeRankRangeLabel(null, 21, 30)).toBe("第 21-30 名");

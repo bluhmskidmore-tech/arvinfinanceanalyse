@@ -3,7 +3,10 @@ import {
   FireOutlined,
   LineChartOutlined,
 } from "@ant-design/icons";
-import { Collapse } from "antd";
+import {
+  StockAnalysisAccordion as Accordion,
+  StockAnalysisAccordionItem as AccordionItem,
+} from "./StockAnalysisAccordion";
 
 import type { LivermoreUnsupportedOutput } from "../../../api/contracts";
 import type { StockRiskExitRow } from "../lib/stockAnalysisPageModel";
@@ -73,24 +76,20 @@ export function StockAnalysisRiskExitRows({
               <span className="stock-analysis-page__tabular">距 {row.distanceToExitPct}</span>
               <span className="stock-analysis-page__tabular">线 {row.exitWatchPrice}</span>
             </div>
-            <Collapse
-              ghost
-              bordered={false}
-              destroyOnHidden
+            <Accordion
               className="stock-analysis-page__candidate-collapse stock-analysis-page__rail-collapse"
-              items={[
-                {
-                  key: `${row.stockCode}-risk-reason`,
-                  label: "供数原因",
-                  children: (
-                    <div className="stock-analysis-page__collapse-detail">
-                      <p>{row.reason}</p>
-                      <p className="stock-analysis-page__collapse-detail--muted">退出观察价 {row.exitWatchPrice}</p>
-                    </div>
-                  ),
-                },
-              ]}
-            />
+            >
+              <AccordionItem
+                key={`${row.stockCode}-risk-reason`}
+                aria-label="供数原因"
+                title="供数原因"
+              >
+                <div className="stock-analysis-page__collapse-detail">
+                  <p>{row.reason}</p>
+                  <p className="stock-analysis-page__collapse-detail--muted">退出观察价 {row.exitWatchPrice}</p>
+                </div>
+              </AccordionItem>
+            </Accordion>
           </div>
         );
       })}
@@ -159,23 +158,19 @@ export function StockAnalysisRiskExitSection({
             </span>
           </div>
           {unsupportedOutput.reason ? (
-            <Collapse
-              ghost
-              bordered={false}
-              destroyOnHidden
+            <Accordion
               className="stock-analysis-page__candidate-collapse stock-analysis-page__rail-collapse"
-              items={[
-                {
-                  key: "risk-exit-unsupported-reason",
-                  label: "供数原因",
-                  children: (
-                    <p className="stock-analysis-page__collapse-detail stock-analysis-page__collapse-detail--compact">
-                      {riskExitBlockedDetail(unsupportedOutput.reason, unsupportedOutput.key)}
-                    </p>
-                  ),
-                },
-              ]}
-            />
+            >
+              <AccordionItem
+                key="risk-exit-unsupported-reason"
+                aria-label="供数原因"
+                title="供数原因"
+              >
+                <p className="stock-analysis-page__collapse-detail stock-analysis-page__collapse-detail--compact">
+                  {riskExitBlockedDetail(unsupportedOutput.reason, unsupportedOutput.key)}
+                </p>
+              </AccordionItem>
+            </Accordion>
           ) : null}
         </div>
       ) : null}

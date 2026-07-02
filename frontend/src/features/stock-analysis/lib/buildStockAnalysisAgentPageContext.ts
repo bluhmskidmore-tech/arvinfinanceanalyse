@@ -1,4 +1,5 @@
 import type { AgentPageContext } from "../../../api/contracts";
+import type { StockDetailSource } from "./stockAnalysisDetailSelection";
 import type { StockSectorViewKind } from "./stockAnalysisPageModel";
 
 export const STOCK_ANALYSIS_AGENT_CONTEXT_NOTE = "stock-analysis workbench observation context";
@@ -17,7 +18,7 @@ export type BuildStockAnalysisAgentPageContextInput = {
     reviewRank?: number;
     sectorCode?: string;
     sectorName?: string;
-    source?: "review_queue" | "risk_exit" | "mean_reversion" | "factor_screen" | "hybrid_fusion" | "consensus";
+    source?: StockDetailSource;
     livermoreRank?: number | null;
     meanReversionRank?: number | null;
     factorScreenRank?: number | null;

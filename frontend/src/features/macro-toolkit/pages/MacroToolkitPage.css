@@ -1,4 +1,43 @@
 .macro-toolkit-page {
+  --dh-bg: #f5f7f9;
+  --dh-card: #ffffff;
+  --dh-card-soft: #f8fafc;
+  --dh-surface-muted: #eef2f7;
+  --dh-line: #e5e7eb;
+  --dh-line-soft: #eef2f7;
+  --dh-line-strong: #d8dee8;
+  --dh-ink: #1f2937;
+  --dh-ink-2: #374151;
+  --dh-muted: #6b7280;
+  --dh-muted-2: #94a3b8;
+  --dh-blue: #1850a1;
+  --dh-blue-2: #3b82f6;
+  --dh-blue-deep: #123f80;
+  --dh-blue-soft: rgba(24, 80, 161, 0.08);
+  --dh-navy: #1f2937;
+  --dh-steel: #64748b;
+  --dh-green: #2d8a5e;
+  --dh-green-soft: rgba(45, 138, 94, 0.1);
+  --dh-red: #ef4444;
+  --dh-red-soft: rgba(239, 68, 68, 0.1);
+  --dh-amber: #d97706;
+  --dh-amber-soft: rgba(217, 119, 6, 0.12);
+  --dh-gold: #8a6f2a;
+  --ib-paper: var(--dh-bg);
+  --ib-surface: var(--dh-card);
+  --ib-surface-muted: var(--dh-card-soft);
+  --ib-hairline: var(--dh-line-strong);
+  --ib-rule-strong: #cbd5e1;
+  --ib-ink: var(--dh-ink);
+  --ib-ink-secondary: var(--dh-ink-2);
+  --ib-ink-muted: var(--dh-muted);
+  --ib-accent: var(--dh-blue);
+  --ib-accent-hover: var(--dh-blue-2);
+  --ib-accent-surface: var(--dh-blue-soft);
+  --ib-up: var(--dh-green);
+  --ib-down: var(--dh-red);
+  --ib-warn: var(--dh-amber);
+  --ib-gold: var(--dh-gold);
   --macro-toolkit-card: var(--ib-surface);
   --macro-toolkit-card-soft: var(--ib-surface-muted);
   --macro-toolkit-card-muted: var(--ib-surface-muted);
@@ -17,6 +56,34 @@
   --macro-toolkit-warning-soft: var(--ib-paper);
   min-width: 0;
   padding-bottom: 32px;
+}
+
+/* Two-column grid for content below the operations band */
+.macro-toolkit-two-col {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.macro-toolkit-two-col > :nth-child(2) {
+  float: left;
+  width: calc(50% - 9px);
+}
+
+.macro-toolkit-two-col > :nth-child(3) {
+  float: right;
+  width: calc(50% - 9px);
+}
+
+.macro-toolkit-two-col > :nth-child(1) {
+  float: none;
+  width: 100%;
+  margin-bottom: 18px;
+}
+
+.macro-toolkit-two-col::after {
+  content: "";
+  display: block;
+  clear: both;
 }
 
 .macro-toolkit-page__header {
@@ -507,11 +574,36 @@
 .macro-toolkit-cockpit--observation .macro-toolkit-cockpit__analysis {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
+  gap: 10px;
+}
+
+.macro-toolkit-cockpit--observation .macro-toolkit-house-view {
+  gap: 10px;
+  padding: 10px;
+  border-color: color-mix(in srgb, var(--macro-toolkit-primary) 22%, var(--macro-toolkit-border-soft));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--macro-toolkit-card) 94%, var(--macro-toolkit-primary-soft)),
+    var(--macro-toolkit-card)
+  );
+}
+
+.macro-toolkit-cockpit--observation .macro-toolkit-panel-kicker {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--macro-toolkit-border-muted);
 }
 
 .macro-toolkit-cockpit--observation .macro-toolkit-cockpit__conclusion {
   align-content: start;
-  padding: 10px 12px;
+  padding: 12px 14px;
+  border-color: color-mix(in srgb, var(--ib-accent) 34%, var(--macro-toolkit-border-soft));
+  border-left-color: var(--ib-accent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--macro-toolkit-card) 86%, var(--macro-toolkit-primary-soft)),
+    var(--macro-toolkit-primary-soft)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
 .macro-toolkit-cockpit--observation .macro-toolkit-cockpit__conclusion strong {
@@ -520,15 +612,20 @@
   font-weight: 600;
 }
 
+.macro-toolkit-cockpit--observation .macro-toolkit-cockpit__conclusion p {
+  -webkit-line-clamp: 3;
+}
+
 .macro-toolkit-observation-loop {
   display: grid;
-  gap: 8px;
+  gap: 0;
   min-width: 0;
-  padding: 10px;
-  border: 1px solid var(--macro-toolkit-border-soft);
-  border-left: 3px solid var(--macro-toolkit-info);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--macro-toolkit-info) 28%, var(--macro-toolkit-border-soft));
   border-radius: var(--moss-radius-sm);
-  background: var(--macro-toolkit-card-muted);
+  background: var(--macro-toolkit-card);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .macro-toolkit-observation-loop__head {
@@ -538,6 +635,13 @@
   align-items: baseline;
   justify-content: space-between;
   min-width: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--macro-toolkit-border-muted);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--macro-toolkit-info-soft) 56%, var(--macro-toolkit-card)),
+    var(--macro-toolkit-card)
+  );
 }
 
 .macro-toolkit-observation-loop__head span,
@@ -558,18 +662,38 @@
 .macro-toolkit-observation-loop__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
   min-width: 0;
 }
 
 .macro-toolkit-observation-loop__grid > div {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
-  padding: 8px 9px;
-  border: 1px solid var(--macro-toolkit-border-muted);
-  border-radius: var(--moss-radius-sm);
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
   background: var(--macro-toolkit-card);
+}
+
+.macro-toolkit-observation-loop__grid > div + div {
+  border-left: 1px solid var(--macro-toolkit-border-muted);
+}
+
+.macro-toolkit-observation-loop__grid > div::before {
+  content: "";
+  width: 28px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--macro-toolkit-info);
+}
+
+.macro-toolkit-observation-loop__grid > div:nth-child(2)::before {
+  background: var(--ib-warn);
+}
+
+.macro-toolkit-observation-loop__grid > div:nth-child(3)::before {
+  background: var(--macro-toolkit-primary);
 }
 
 .macro-toolkit-observation-loop__grid strong {
@@ -7740,6 +7864,11 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .macro-toolkit-observation-loop__grid > div + div {
+    border-top: 1px solid var(--macro-toolkit-border-muted);
+    border-left: 0;
+  }
+
   .macro-toolkit-observation-boundaries {
     grid-template-columns: 1fr;
   }
@@ -7939,6 +8068,18 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     padding: 8px;
   }
 
+  .macro-toolkit-page__header-main {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 6px;
+  }
+
+  .macro-toolkit-page__toolbar-info,
+  .macro-toolkit-page__header-controls {
+    justify-content: start;
+    width: 100%;
+  }
+
   .macro-toolkit-cockpit__body {
     display: flex;
     flex-direction: column;
@@ -7992,7 +8133,7 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-observation-loop__grid > div {
-    padding: 7px 8px;
+    padding: 9px 10px;
   }
 
   .macro-toolkit-cockpit__analysis .macro-toolkit-brief-metrics {

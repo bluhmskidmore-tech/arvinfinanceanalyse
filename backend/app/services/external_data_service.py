@@ -2,15 +2,51 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import duckdb
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository
-from backend.app.schemas.external_data import ExternalDataCatalogEntry
+from backend.app.schemas.external_data import (
+    ExternalDataCatalogEntry,
+    ExternalDataWatermarkEntry,
+    ExternalDataWatermarkLedger,
+    ExternalDataWatermarkSummary,
+)
 from backend.app.services.external_data_query_service import (
     SeriesDataPage,
+    SeriesWatermark,
     fetch_series_data_page,
     fetch_series_data_recent,
+    fetch_series_watermark,
 )
+
+
+def _max_loaded_at_text(values: list[str]) -> str | None:
+    """Latest ``latest_loaded_at`` across series (derived last-successful-ingest marker).
+
+    Values are DuckDB varchar timestamps whose separators can differ per relation
+    ("2026-04-21 08:00:00" vs "2026-04-21T08:00:00+00:00"), so compare parsed
+    datetimes (normalized to naive UTC) and only fall back to lexicographic max
+    for values ``fromisoformat`` cannot read.
+    """
+    best_key: datetime | None = None
+    best_raw: str | None = None
+    unparsed: list[str] = []
+    for raw in values:
+        try:
+            parsed = datetime.fromisoformat(str(raw).strip())
+        except ValueError:
+            unparsed.append(raw)
+            continue
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(UTC).replace(tzinfo=None)
+        if best_key is None or parsed > best_key:
+            best_key = parsed
+            best_raw = raw
+    if best_raw is not None:
+        return best_raw
+    return max(unparsed) if unparsed else None
 
 
 class ExternalDataService:
@@ -33,6 +69,25 @@ class ExternalDataService:
 
     def list_by_domain(self, domain: str) -> list[ExternalDataCatalogEntry]:
         return self._repo.list_by_domain(domain)
+
+    def get_watermark_ledger(self) -> ExternalDataWatermarkLedger:
+        if self._duckdb_path is None:
+            msg = "duckdb_path is required for external data watermark reads"
+            raise RuntimeError(msg)
+
+        entries = self.list_catalog()
+        conn = duckdb.connect(str(self._duckdb_path), read_only=True)
+        try:
+            watermark_entries = [
+                self._watermark_entry_for_catalog_entry(conn, entry) for entry in entries
+            ]
+        finally:
+            conn.close()
+
+        return ExternalDataWatermarkLedger(
+            summary=self._summarize_watermarks(watermark_entries),
+            entries=watermark_entries,
+        )
 
     def get_series_data_page(
         self,
@@ -74,6 +129,73 @@ class ExternalDataService:
             return fetch_series_data_recent(conn, entry, days=recent_days, limit=limit)
         finally:
             conn.close()
+
+    def _watermark_entry_for_catalog_entry(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        entry: ExternalDataCatalogEntry,
+    ) -> ExternalDataWatermarkEntry:
+        try:
+            watermark = fetch_series_watermark(conn, entry)
+        except (duckdb.Error, ValueError) as exc:
+            return self._watermark_entry(entry, error_message=str(exc))
+        return self._watermark_entry(entry, watermark=watermark)
+
+    @staticmethod
+    def _watermark_entry(
+        entry: ExternalDataCatalogEntry,
+        *,
+        watermark: SeriesWatermark | None = None,
+        error_message: str | None = None,
+    ) -> ExternalDataWatermarkEntry:
+        if error_message is not None:
+            data_status = "unavailable"
+        elif watermark is not None and watermark.row_count > 0 and watermark.latest_business_date:
+            data_status = "available"
+        else:
+            data_status = "no_data"
+
+        return ExternalDataWatermarkEntry(
+            series_id=entry.series_id,
+            series_name=entry.series_name,
+            vendor_name=entry.vendor_name,
+            source_family=entry.source_family,
+            domain=entry.domain,
+            frequency=entry.frequency,
+            unit=entry.unit,
+            refresh_tier=entry.refresh_tier,
+            fetch_mode=entry.fetch_mode,
+            relation_name=None if watermark is None else watermark.relation_name,
+            date_column=None if watermark is None else watermark.date_column,
+            row_count=0 if watermark is None else watermark.row_count,
+            latest_business_date=None if watermark is None else watermark.latest_business_date,
+            latest_loaded_at=None if watermark is None else watermark.latest_loaded_at,
+            age_days=None if watermark is None else watermark.age_days,
+            freshness_tier="unknown" if watermark is None else watermark.freshness_tier,
+            data_status=data_status,
+            error_message=error_message,
+        )
+
+    @staticmethod
+    def _summarize_watermarks(
+        entries: list[ExternalDataWatermarkEntry],
+    ) -> ExternalDataWatermarkSummary:
+        available_dates = [
+            entry.latest_business_date
+            for entry in entries
+            if entry.data_status == "available" and entry.latest_business_date is not None
+        ]
+        return ExternalDataWatermarkSummary(
+            catalog_count=len(entries),
+            available_count=sum(1 for entry in entries if entry.data_status == "available"),
+            no_data_count=sum(1 for entry in entries if entry.data_status == "no_data"),
+            unavailable_count=sum(1 for entry in entries if entry.data_status == "unavailable"),
+            oldest_available_business_date=min(available_dates) if available_dates else None,
+            newest_available_business_date=max(available_dates) if available_dates else None,
+            last_successful_ingest=_max_loaded_at_text(
+                [entry.latest_loaded_at for entry in entries if entry.latest_loaded_at]
+            ),
+        )
 
 
 def default_service() -> ExternalDataService:

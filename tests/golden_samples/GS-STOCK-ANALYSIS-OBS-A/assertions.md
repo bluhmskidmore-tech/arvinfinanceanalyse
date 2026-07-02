@@ -38,7 +38,7 @@
 - `result.market_gate.passed_conditions == 0`.
 - `result.market_gate.required_conditions == 4`.
 - `result.supported_outputs == ["market_gate"]`.
-- `result.unsupported_outputs` includes `sector_rank`, `stock_candidates`, `mean_reversion_candidates`, `factor_screen_candidates`, `theme_breakout`, `hybrid_fusion`, and `risk_exit`.
+- `result.unsupported_outputs` includes `sector_rank`, `stock_candidates`, `uptrend_momentum_candidates`, `fresh_trend_watchlist`, `mean_reversion_candidates`, `factor_screen_candidates`, `theme_breakout`, `hybrid_fusion`, and `risk_exit`.
 - `result.rule_readiness` preserves the four keys `market_gate`, `sector_rank`, `stock_pivot`, and `risk_exit`.
 - `result.data_gaps` preserves missing or partial input families for broad-index history, macro inputs, stock universe, sector strength, limit-up quality, and position risk.
 

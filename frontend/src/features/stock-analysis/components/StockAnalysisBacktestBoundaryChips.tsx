@@ -2,6 +2,7 @@ import {
   DatabaseOutlined,
   LineChartOutlined,
 } from "@ant-design/icons";
+import { StockAnalysisInlineChip as Chip } from "./StockAnalysisStatusPrimitives";
 
 import { compactStockText } from "../lib/stockAnalysisPageCopy";
 import { cycleInputLabel } from "../lib/stockAnalysisPageLabels";
@@ -19,31 +20,32 @@ export function BacktestBoundaryChips({
 
   return (
     <div
-      className="stock-analysis-page__boundary-chip-bar"
+      className="flex flex-wrap gap-2 items-center text-sm mb-4"
       role="status"
       aria-label={`${label}边界`}
       data-testid={testId}
     >
-      <span className="stock-analysis-page__boundary-chip stock-analysis-page__boundary-chip--accent">
-        <LineChartOutlined aria-hidden="true" /> 代理口径
-      </span>
-      <span className="stock-analysis-page__boundary-chip stock-analysis-page__boundary-chip--warn">
-        <DatabaseOutlined aria-hidden="true" /> 缺口 {missing.length}
-      </span>
+      <Chip color="primary" variant="flat" startContent={<LineChartOutlined aria-hidden="true" />}>
+        代理口径
+      </Chip>
+      <Chip color="warning" variant="flat" startContent={<DatabaseOutlined aria-hidden="true" />}>
+        缺口 {missing.length}
+      </Chip>
       {missing.slice(0, 3).map((input) => {
         const labelText = cycleInputLabel(input);
         return (
-          <span
+          <Chip
             key={input}
-            className="stock-analysis-page__boundary-chip stock-analysis-page__boundary-chip--truncate"
+            variant="bordered"
             title={labelText}
+            className="truncate max-w-[150px]"
           >
             {compactStockText(labelText, 10)}
-          </span>
+          </Chip>
         );
       })}
       {missing.length > 3 ? (
-        <span className="stock-analysis-page__boundary-chip">+{missing.length - 3}</span>
+        <Chip variant="bordered">+{missing.length - 3}</Chip>
       ) : null}
     </div>
   );

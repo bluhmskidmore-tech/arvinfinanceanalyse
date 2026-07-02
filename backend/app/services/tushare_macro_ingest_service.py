@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 
 from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
@@ -18,6 +21,26 @@ from backend.app.services.external_std_macro_etl_service import ExternalStdMacro
 CATALOG_VERSION_M2A = "m2a.tushare_macro.v1"
 ACCESS_PATH_PLACEHOLDER = "select 1 -- m2a placeholder, std table comes in M2b"
 _SOURCE_FAMILY = "tushare_macro"
+
+logger = logging.getLogger(__name__)
+
+
+class TushareIngestFailure(TypedDict):
+    series_id: str
+    error: str
+
+
+class TushareIngestBatchSummary(TypedDict):
+    """Structured batch outcome: original per-series results plus success/failure split."""
+
+    results: list[dict[str, object]]
+    succeeded: list[str]
+    failed: list[TushareIngestFailure]
+
+
+def _error_summary(exc: Exception) -> str:
+    text = f"{type(exc).__name__}: {exc}".strip()
+    return text if len(text) <= 300 else text[:297] + "..."
 
 
 def _access_path_vw_macro(series_id: str) -> str:
@@ -146,3 +169,64 @@ class TushareMacroIngestService:
 
     def ingest_all_seed_series(self, ingest_batch_id: str) -> list[dict[str, object]]:
         return [self.ingest_series(c["series_id"], ingest_batch_id) for c in TUSHARE_M2A_SERIES]
+
+    def _ingest_series_with_retry(
+        self,
+        series_id: str,
+        ingest_batch_id: str,
+        *,
+        max_retries: int = 2,
+        retry_sleep_seconds: float = 1.0,
+    ) -> dict[str, object]:
+        """Run ``ingest_series`` with bounded retries; re-raise the last error when exhausted."""
+        attempts = max(0, int(max_retries)) + 1
+        for attempt in range(1, attempts + 1):
+            try:
+                return self.ingest_series(series_id, ingest_batch_id)
+            except Exception as exc:
+                if attempt >= attempts:
+                    raise
+                logger.warning(
+                    "tushare macro ingest retry series_id=%s attempt=%s/%s error=%s",
+                    series_id,
+                    attempt,
+                    attempts,
+                    _error_summary(exc),
+                )
+                if retry_sleep_seconds > 0:
+                    time.sleep(retry_sleep_seconds)
+        msg = f"unreachable: retry loop exhausted for series {series_id!r}"
+        raise RuntimeError(msg)
+
+    def ingest_all_seed_series_with_summary(
+        self,
+        ingest_batch_id: str,
+        *,
+        max_retries: int = 2,
+        retry_sleep_seconds: float = 1.0,
+    ) -> TushareIngestBatchSummary:
+        """Ingest every M2a seed series; a single failing series never aborts the batch.
+
+        Additive companion to ``ingest_all_seed_series`` (whose list return shape has
+        callers): ``results`` keeps the original per-series result dicts for the
+        series that succeeded, while ``succeeded`` / ``failed`` summarize the batch
+        so callers can alert on partial failures instead of failing silently.
+        """
+        results: list[dict[str, object]] = []
+        succeeded: list[str] = []
+        failed: list[TushareIngestFailure] = []
+        for cfg in TUSHARE_M2A_SERIES:
+            series_id = cfg["series_id"]
+            try:
+                result = self._ingest_series_with_retry(
+                    series_id,
+                    ingest_batch_id,
+                    max_retries=max_retries,
+                    retry_sleep_seconds=retry_sleep_seconds,
+                )
+            except Exception as exc:
+                failed.append({"series_id": series_id, "error": _error_summary(exc)})
+                continue
+            results.append(result)
+            succeeded.append(series_id)
+        return {"results": results, "succeeded": succeeded, "failed": failed}

@@ -1027,6 +1027,7 @@
 - 页面名称：`经营分析`
 - 路由：前端 `/operations-analysis`（`frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx`）
 - 页面状态：`mixed-source`（当前首屏正式经营口径复用 product-category PnL headline；余额读面仅作为专题入口补充；`basis=analytical` 的 source/macro/news 与 FX 覆盖状态仍为证据/观察面；`WorkbenchShell` 对本路由保留 **temporary exception** 横幅）
+- 经营分析 harness：见 `docs/operating_analysis_harness.md`；本页只执行 `operating_analysis_driver_taxonomy_v1` 的证据门，要求经营差异落入 `market` / `business_action` / `accounting_caliber` / `one_off` / `data_issue` / `driver_unclear` 之一，不能据此新建 `MTR-OPS-*` 或把 mixed-source 证据升格为 formal truth。
 - 编制备注：`client.mode === "real"` 与 `"mock"` 分支影响 badge/演示语义；**不得**将 mock 与真实链路混读为同一正式结论。
 
 ### B. 页面目标
@@ -1168,6 +1169,54 @@
 
 - 现有测试锚点：`frontend/src/test/BondDashboardPage.test.tsx`、`tests/test_bond_dashboard_api_contract.py`、`tests/test_bond_dashboard_headlines_contract.py`、`tests/test_bond_analytics_api.py`、`tests/test_result_meta_source_surface_followup.py`
 - 黄金样本状态：`GS-BOND-HEADLINE-A` 现已作为 **capture-ready** 页面样本绑定到 `GET /api/bond-dashboard/headline-kpis`，样本目录位于 `tests/golden_samples/GS-BOND-HEADLINE-A/`，并已纳入 `tests/test_golden_samples_capture_ready.py`。该样本冻结的是 bond-dashboard 首屏 headline DTO 真值与空态行为；Headline / 风险卡与正式 `MTR-*` 的字典级绑定仍见 `docs/metric_dictionary.md` **GAP-BOND-DASH-***，本次样本冻结**不**自动批准新的字典级 metric 映射。
+
+## 13.6.1 PAGE-BOND-ANALYSIS-001 债券分析工作台
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-BOND-ANALYSIS-001`
+- 页面名称：`债券分析`
+- 路由：前端 `/bond-analysis`；别名 `/bond-analytics-advanced` 归并到该路由。
+- 页面状态：`candidate`。本页展示 action-attribution、组合读面、风险监控和下钻复核入口；`formal_use_allowed=false` 的边界必须可见，不能借用 `PAGE-BOND-001` 或 `GS-BOND-HEADLINE-A` 认证本页。
+
+### B. 业务问题与不回答
+
+- **须回答**：在选定报告日和期间下，债券 action-attribution DTO、候选固定收益风险/收益读面、下钻入口和可用 `result_meta` 证据是什么。
+- **不回答**：不批准固定收益公式，不替代 formal risk tensor、bond-dashboard headline、PnL 或人工审计闭环；不产生交易指令或 owner approval。
+
+### C. 必有 / 禁止
+
+- **必有**：`bond-analysis-overview`、`bond-analysis-toolbar`、action-attribution 读面、候选标签、`result_meta`/source/version/run_id 证据、owner approval pending 状态。
+- **禁止**：把 `/bond-dashboard` headline 样本、`PAGE-BOND-001`、`GS-BOND-HEADLINE-A` 或 `MTR-BOND-001`~`MTR-BOND-004` 复用为 `/bond-analysis` certification。
+
+### D. 时间语义
+
+- `requested_report_date`：页面选择的 report date。
+- `resolved_report_date`：以后端 action-attribution payload 内报告日和 `result_meta` 为准。
+- `period_type`：当前样本冻结 `MoM`；其他期间需保持候选/待审边界。
+
+### E. Endpoint / DTO 表
+
+| Endpoint | 用途 | DTO/Schema | 口径 |
+| --- | --- | --- | --- |
+| `GET /api/bond-analytics/action-attribution` | action-attribution 页面 DTO 与候选归因读面 | `BondActionAttributionPayload` | candidate / `formal_use_allowed=false` |
+| `GET /api/bond-analytics/dates` | 报告日选择 | `BondAnalyticsDatesPayload` | source metadata |
+| `GET /api/bond-analytics/top-holdings` | 重仓券/深钻入口辅助读面 | `BondTopHoldingsPayload` | analytical / candidate |
+
+### F. 指标映射
+
+- `MTR-BOND-ACT-001`~`MTR-BOND-ACT-006` 仍为 `candidate`、`pending_confirmation=true`，并绑定 `GS-BOND-ANALYSIS-ACTION-ATTR-A` 的页面 DTO 样本边界。
+- 本页不新增 fixed-income formula approval；不把 `DV01`、duration、KRD、credit-spread、holdings、yield 或 accounting-class 展示值晋升为正式指标。
+
+### G. 状态
+
+- **Loading / Empty / Error**：以页面 query 状态和后端 envelope 为准，空态不得隐藏候选边界。
+- **Stale / fallback**：以后端 `result_meta.quality_flag`、`fallback_mode`、`tables_used`、`source_version` 和 warning 文案为准。
+
+### H. 测试与黄金样本
+
+- 黄金样本：`GS-BOND-ANALYSIS-ACTION-ATTR-A`，只冻结 `GET /api/bond-analytics/action-attribution` 页面 DTO；状态为 capture-ready pending approval。
+- 测试锚点：`tests/test_golden_samples_capture_ready.py`、`tests/test_bond_analysis_business_owner_approval_status.py`、`frontend/src/test/BondAnalyticsView.test.tsx`、`tests/test_live_route_page_contract_completeness.py`。
 
 ## 13.7 PAGE-POS-001 持仓
 
@@ -1431,6 +1480,7 @@
 
 | Client 方法 / Endpoint | 用途 | DTO/Schema | 口径 |
 | --- | --- | --- | --- |
+| `getMacroToolkitAnalysis({ detail: "core" })` -> `GET /ui/macro/toolkit/analysis?detail=core` | 首屏核心分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
 | `getMacroToolkitAnalysis({ detail })` -> `GET /ui/macro/toolkit/analysis?detail=core\|full` | 核心/完整分析、风险、指标、能力结果、runtime 状态 | `MacroToolkitAnalysisPayload` | analytical / tooling |
 | `getMacroToolkitAnalysis({ detail: "full", historyLimit })` -> `GET /ui/macro/toolkit/analysis?detail=full&history_limit=430` | 完整分析下的 Crisis Score 历史序列（`score_history`） | `MacroToolkitAnalysisPayload.capability_results[crisis_score_cn].result.score_history` | analytical / tooling |
 | `getMacroToolkitStrategySummaries()` -> `GET /ui/macro/toolkit/analysis/strategy-summaries` | 策略摘要、真实/降级/样例供数状态 | `MacroToolkitStrategySummariesPayload` | analytical / candidate |

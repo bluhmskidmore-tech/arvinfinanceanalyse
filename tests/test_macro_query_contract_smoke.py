@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.macro_vendor_service import (
+    choice_macro_formal_envelope,
     choice_macro_refresh_status,
     load_choice_macro_latest_payload,
 )
@@ -164,6 +165,116 @@ def test_market_data_rates_logs_api_perf(tmp_path, monkeypatch, caplog):
     assert getattr(record, "duration_ms") >= 0
     assert getattr(record, "result_kind")
     get_settings.cache_clear()
+
+
+def test_market_data_rates_merges_formal_yield_curve_history_for_single_point_choice_rates(tmp_path):
+    duckdb_path = tmp_path / "market-data-rates-formal-history.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_yield_curve_daily (
+              trade_date varchar,
+              curve_type varchar,
+              tenor varchar,
+              rate_pct decimal(18,8),
+              vendor_name varchar,
+              vendor_version varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'EMM00166460',
+                'China treasury yield 3Y',
+                '2026-06-11',
+                1.3141,
+                'daily',
+                'unknown',
+                'sv_choice_single_3y',
+                'vv_choice_single',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice-single'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'EMM00166460',
+                'China treasury yield 3Y',
+                'choice',
+                'vv_choice_single',
+                'daily',
+                'unknown',
+                'date_slice',
+                'batch',
+                'stable',
+                'stable rate series'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_yield_curve_daily values
+              ('2026-05-29', 'treasury', '3Y', 1.2705, 'akshare', 'vv_formal_curve', 'sv_formal_curve_0529', 'rv_yield_curve_formal_materialize_v1'),
+              ('2026-04-30', 'treasury', '3Y', 1.2802, 'akshare', 'vv_formal_curve', 'sv_formal_curve_0430', 'rv_yield_curve_formal_materialize_v1')
+            """
+        )
+    finally:
+        conn.close()
+
+    payload = choice_macro_formal_envelope(str(duckdb_path))
+
+    series_by_id = {item["series_id"]: item for item in payload["result"]["series"]}
+    point = series_by_id["EMM00166460"]
+    assert point["trade_date"] == "2026-06-11"
+    assert point["unit"] == "%"
+    assert point["latest_change"] == pytest.approx(0.0436)
+    assert [item["trade_date"] for item in point["recent_points"][:3]] == [
+        "2026-06-11",
+        "2026-05-29",
+        "2026-04-30",
+    ]
 
 
 def test_choice_macro_latest_ignores_empty_snapshot_table_when_fact_rows_exist(
@@ -607,6 +718,57 @@ def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch
     assert payload["public_cross_asset"]["series_count"] == 3
     assert payload["public_cross_asset"]["row_count"] == 20
     assert payload["warnings"] == ["tushare index_weight used latest available date"]
+
+
+def test_choice_macro_refresh_uses_public_and_tushare_backups_when_choice_fails(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    calls: list[tuple[str, int | None]] = []
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            calls.append(("choice", backfill_days))
+            raise RuntimeError("user access for this API expired")
+
+    def _public_refresh() -> dict[str, object]:
+        calls.append(("public_cross_asset", None))
+        return {
+            "status": "completed",
+            "run_id": "public_cross_asset_refresh:test",
+            "series_count": 16,
+            "row_count": 1806,
+            "warnings": ["public backup used latest available date"],
+        }
+
+    def _tushare_shibor_refresh() -> dict[str, object]:
+        calls.append(("tushare_ncd_shibor", None))
+        return {
+            "status": "completed",
+            "run_id": "tushare_ncd_shibor_refresh:test",
+            "series_count": 5,
+            "row_count": 305,
+        }
+
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
+    monkeypatch.setattr(route_module, "refresh_tushare_ncd_shibor_proxy", _tushare_shibor_refresh, raising=False)
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=30)
+
+    assert calls == [("choice", 30), ("public_cross_asset", None), ("tushare_ncd_shibor", None)]
+    assert payload["status"] == "partial"
+    assert payload["choice_macro"]["status"] == "failed"
+    assert payload["choice_macro"]["error_message"] == "user access for this API expired"
+    assert payload["public_cross_asset"]["status"] == "completed"
+    assert payload["tushare_ncd_shibor"]["status"] == "completed"
+    assert payload["warnings"] == [
+        "Choice macro refresh failed: user access for this API expired",
+        "public backup used latest available date",
+    ]
 
 
 def test_choice_macro_refresh_invalidates_cached_latest_payload(monkeypatch):

@@ -188,6 +188,7 @@
 .livermore-strategy-panel__status--partial,
 .livermore-strategy-panel__status--warning,
 .livermore-strategy-panel__status--stale,
+.livermore-strategy-panel__status--look_ahead,
 .livermore-strategy-panel__status--blocked {
   background: #fff7e8;
   color: #b45309;
