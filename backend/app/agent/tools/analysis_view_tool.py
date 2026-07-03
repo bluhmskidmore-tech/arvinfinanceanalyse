@@ -9,6 +9,10 @@ from backend.app.agent.runtime.financial_workflow_catalog import (
     FinancialWorkflow,
     resolve_financial_workflow,
 )
+from backend.app.agent.runtime.research_workflow_catalog import (
+    is_research_workflow_id,
+    resolve_research_workflow,
+)
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentCard,
@@ -110,7 +114,15 @@ _LOCAL_GOVERNED_INTENTS = frozenset(intent for intent, _label in _GOVERNED_PATHS
 
 
 def is_explicit_local_agent_intent(intent: str) -> bool:
-    return intent.strip().lower() in _LOCAL_GOVERNED_INTENTS
+    normalized = intent.strip().lower()
+    return normalized in _LOCAL_GOVERNED_INTENTS or is_research_workflow_id(normalized)
+
+
+def has_explicit_local_agent_context(context: dict[str, Any] | None) -> bool:
+    context = context or {}
+    explicit_intent = str(context.get("intent") or "").strip().lower()
+    explicit_workflow = str(context.get("workflow_id") or "").strip().lower()
+    return is_explicit_local_agent_intent(explicit_intent) or is_research_workflow_id(explicit_workflow)
 
 
 def is_plain_analysis_chat_question(question: str) -> bool:
@@ -148,6 +160,28 @@ class AnalysisViewTool:
             if str(request.context.get("workflow_mode") or "").strip().lower() == "execute":
                 return self._execute_workflow_envelope(request, workflow)
             return self._workflow_envelope(request, workflow)
+
+        research_workflow = resolve_research_workflow(request.context)
+        if research_workflow is not None:
+            handler = self._intent_handlers.get(research_workflow.workflow_id)
+            if handler is None:
+                return self._error_envelope(
+                    request=request,
+                    intent=research_workflow.workflow_id,
+                    detail="No registered research workflow handler.",
+                )
+            try:
+                return self._payload_envelope(
+                    request=request,
+                    intent=research_workflow.workflow_id,
+                    payload=handler(request),
+                )
+            except Exception as exc:
+                return self._error_envelope(
+                    request=request,
+                    intent=research_workflow.workflow_id,
+                    detail=str(exc),
+                )
 
         intent = self._resolve_intent(request)
         try:
@@ -765,14 +799,20 @@ class AnalysisViewTool:
             evidence_rows=evidence.evidence_rows,
             next_drill=next_drill,
         )
+        answer_mode = str(payload.get("answer_mode") or "business").strip().lower()
+        raw_answer = str(payload.get("answer") or "")
         return AgentEnvelope(
             **self._finalize_envelope(
-                answer=self._business_answer(
-                    conclusion=str(payload.get("answer") or ""),
-                    cards=cards,
-                    evidence=evidence,
-                    result_meta=result_meta,
-                    next_drill=next_drill,
+                answer=(
+                    raw_answer
+                    if answer_mode == "raw"
+                    else self._business_answer(
+                        conclusion=raw_answer,
+                        cards=cards,
+                        evidence=evidence,
+                        result_meta=result_meta,
+                        next_drill=next_drill,
+                    )
                 ),
                 cards=cards,
                 evidence=evidence,

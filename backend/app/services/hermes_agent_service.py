@@ -29,6 +29,77 @@ RULE_VERSION = "rv_agent_hermes_v1"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _HERMES_BRIDGE_PROCESS: subprocess.Popen | None = None
 _HERMES_BRIDGE_LOCK = threading.Lock()
+_LOCAL_OPEN_CHAT_EXACT = {
+    "?",
+    "？",
+    "??",
+    "？？",
+    "在吗",
+    "在么",
+    "你好",
+    "您好",
+    "hello",
+    "hi",
+    "hey",
+    "ping",
+}
+_LOCAL_OPEN_CHAT_PATTERNS = (
+    "你能做什么",
+    "能做什么",
+    "你会什么",
+    "怎么用",
+    "如何使用",
+    "你是谁",
+    "你是什么",
+    "随便聊",
+    "聊聊天",
+    "闲聊",
+    "帮我想想",
+    "给点建议",
+    "有什么建议",
+    "该关注什么",
+    "需要关注什么",
+    "早上好",
+    "晚上好",
+    "谢谢",
+    "没事",
+    "what can you do",
+    "who are you",
+    "how do i use",
+    "help me think",
+    "chat",
+)
+_BUSINESS_QUERY_HINTS = (
+    "组合",
+    "损益",
+    "久期",
+    "信用",
+    "风险",
+    "债",
+    "股票",
+    "宏观",
+    "利率",
+    "估值",
+    "报表",
+    "资产",
+    "收益",
+    "仓位",
+    "情景",
+    "压力",
+    "数据",
+    "查询",
+    "指标",
+    "ifrs9",
+    "pnl",
+    "portfolio",
+    "duration",
+    "credit",
+    "risk",
+    "bond",
+    "stock",
+    "macro",
+    "market",
+)
 
 
 def execute_hermes_agent_query(
@@ -36,21 +107,101 @@ def execute_hermes_agent_query(
     governance_dir: str,
     settings: Any,
 ) -> AgentEnvelope:
-    result = run_hermes_agent(
-        request=request,
-        command=str(settings.agent_hermes_command),
-        wsl_distro=str(settings.agent_hermes_wsl_distro or ""),
-        hermes_home=str(getattr(settings, "agent_hermes_home", "") or ""),
-        transport=str(getattr(settings, "agent_hermes_transport", "cli") or "cli"),
-        bridge_url=str(getattr(settings, "agent_hermes_bridge_url", "") or ""),
-        model=str(settings.agent_hermes_model or ""),
-        toolsets=str(getattr(settings, "agent_hermes_toolsets", "") or ""),
-        max_turns=int(settings.agent_hermes_max_turns),
-        timeout_seconds=float(settings.agent_hermes_timeout_seconds),
-    )
-    envelope = build_hermes_envelope(request=request, result=result)
+    if _should_answer_open_chat_locally(request.question):
+        result = {
+            "answer": "",
+            "stdout": "",
+            "stderr": "",
+            "command": "local_open_chat",
+            "model": "local",
+            "toolsets": "",
+            "transport": "sync",
+            "reason": "short_open_chat",
+        }
+        envelope = build_local_open_chat_envelope(request=request)
+        _append_hermes_audit(request, governance_dir, envelope, result)
+        return envelope
+
+    try:
+        result = run_hermes_agent(
+            request=request,
+            command=str(settings.agent_hermes_command),
+            wsl_distro=str(settings.agent_hermes_wsl_distro or ""),
+            hermes_home=str(getattr(settings, "agent_hermes_home", "") or ""),
+            transport=str(getattr(settings, "agent_hermes_transport", "cli") or "cli"),
+            bridge_url=str(getattr(settings, "agent_hermes_bridge_url", "") or ""),
+            model=str(settings.agent_hermes_model or ""),
+            toolsets=str(getattr(settings, "agent_hermes_toolsets", "") or ""),
+            max_turns=int(settings.agent_hermes_max_turns),
+            timeout_seconds=float(settings.agent_hermes_timeout_seconds),
+        )
+        envelope = build_hermes_envelope(request=request, result=result)
+    except RuntimeError as exc:
+        result = {
+            "answer": "",
+            "stdout": "",
+            "stderr": str(exc),
+            "command": str(settings.agent_hermes_command),
+            "model": str(settings.agent_hermes_model or ""),
+            "toolsets": str(getattr(settings, "agent_hermes_toolsets", "") or ""),
+            "transport": str(getattr(settings, "agent_hermes_transport", "cli") or "cli"),
+            "error": str(exc),
+        }
+        envelope = build_hermes_fallback_envelope(request=request, result=result)
     _append_hermes_audit(request, governance_dir, envelope, result)
     return envelope
+
+
+def build_local_open_chat_envelope(*, request: AgentQueryRequest) -> AgentEnvelope:
+    trace_id = f"tr_agent_local_chat_{uuid4().hex[:12]}"
+    generated_at = datetime.now(UTC)
+    filters_applied = {
+        key: value for key, value in request.filters.items() if value not in (None, "")
+    }
+    filters_applied["provider"] = "local"
+    filters_applied["requested_provider"] = "hermes"
+    filters_applied["transport"] = "sync"
+    filters_applied["fallback_reason"] = "short_open_chat"
+    evidence = AgentEvidence(
+        tables_used=["agent_local_chat"],
+        filters_applied=filters_applied,
+        sql_executed=[],
+        evidence_rows=0,
+        quality_flag="warning",
+        evidence_strength="local_fallback",
+    )
+    result_meta = AgentResultMeta(
+        trace_id=trace_id,
+        basis=request.basis,
+        result_kind="agent.local_chat",
+        formal_use_allowed=False,
+        source_version="sv_agent_local_chat",
+        vendor_version="vv_none",
+        rule_version=RULE_VERSION,
+        cache_version="cv_agent_local_chat_v1",
+        quality_flag=evidence.quality_flag,
+        vendor_status="ok",
+        fallback_mode="none",
+        scenario_flag=request.basis == Basis.SCENARIO.value,
+        generated_at=generated_at,
+        tables_used=evidence.tables_used,
+        filters_applied=evidence.filters_applied,
+        sql_executed=[],
+        evidence_rows=evidence.evidence_rows,
+        evidence_strength=evidence.evidence_strength,
+    )
+    answer = _build_local_open_chat_answer(request.question)
+    return AgentEnvelope(
+        answer=answer,
+        cards=[
+            AgentCard(type="text", title="本地对话", value=answer),
+            AgentCard(type="metric", title="Provider", value="local"),
+        ],
+        evidence=evidence,
+        result_meta=result_meta,
+        next_drill=[],
+        suggested_actions=[],
+    )
 
 
 def warm_hermes_bridge_if_configured(settings: Any) -> bool:
@@ -346,6 +497,70 @@ def build_hermes_envelope(
     )
 
 
+def build_hermes_fallback_envelope(
+    *,
+    request: AgentQueryRequest,
+    result: dict[str, str],
+) -> AgentEnvelope:
+    trace_id = f"tr_agent_hermes_fallback_{uuid4().hex[:12]}"
+    generated_at = datetime.now(UTC)
+    error_detail = _truncate(str(result.get("error") or result.get("stderr") or "Hermes runtime unavailable."), 1000)
+    filters_applied = {
+        key: value for key, value in request.filters.items() if value not in (None, "")
+    }
+    filters_applied["provider"] = "hermes"
+    filters_applied["fallback_provider"] = "local"
+    filters_applied["fallback_reason"] = error_detail
+    if result.get("model"):
+        filters_applied["model"] = result["model"]
+    if result.get("toolsets"):
+        filters_applied["toolsets"] = _normalize_toolsets(result["toolsets"])
+    if result.get("transport"):
+        filters_applied["transport"] = result["transport"]
+
+    evidence = AgentEvidence(
+        tables_used=["hermes_local_fallback"],
+        filters_applied=filters_applied,
+        sql_executed=[],
+        evidence_rows=0,
+        quality_flag="warning",
+        evidence_strength="local_fallback",
+    )
+    result_meta = AgentResultMeta(
+        trace_id=trace_id,
+        basis=request.basis,
+        result_kind="agent.hermes_fallback",
+        formal_use_allowed=False,
+        source_version="sv_hermes_local_fallback",
+        vendor_version="vv_hermes_unavailable",
+        rule_version=RULE_VERSION,
+        cache_version="cv_agent_hermes_fallback_v1",
+        quality_flag=evidence.quality_flag,
+        vendor_status="vendor_unavailable",
+        fallback_mode="none",
+        scenario_flag=request.basis == Basis.SCENARIO.value,
+        generated_at=generated_at,
+        tables_used=evidence.tables_used,
+        filters_applied=evidence.filters_applied,
+        sql_executed=[],
+        evidence_rows=evidence.evidence_rows,
+        evidence_strength=evidence.evidence_strength,
+    )
+    answer = _build_hermes_fallback_answer(request.question)
+    return AgentEnvelope(
+        answer=answer,
+        cards=[
+            AgentCard(type="status", title="本地稳定兜底", value=answer),
+            AgentCard(type="metric", title="Provider", value="local fallback"),
+            AgentCard(type="metric", title="Hermes Status", value="unavailable"),
+        ],
+        evidence=evidence,
+        result_meta=result_meta,
+        next_drill=[],
+        suggested_actions=[],
+    )
+
+
 def _build_hermes_command(
     *,
     command: str,
@@ -475,6 +690,74 @@ def _build_hermes_prompt(request: AgentQueryRequest) -> str:
     )
 
 
+def _should_answer_open_chat_locally(question: str) -> bool:
+    normalized = str(question or "").strip().lower()
+    if not normalized:
+        return False
+    compact = normalized.replace(" ", "")
+    if compact in _LOCAL_OPEN_CHAT_EXACT:
+        return True
+    if any(hint in normalized or hint in compact for hint in _BUSINESS_QUERY_HINTS):
+        return False
+    return len(compact) <= 32 and any(
+        pattern in normalized or pattern in compact for pattern in _LOCAL_OPEN_CHAT_PATTERNS
+    )
+
+
+def _build_local_open_chat_answer(question: str) -> str:
+    normalized = str(question or "").strip()
+    compact = normalized.lower().replace(" ", "")
+    is_chinese = any("\u4e00" <= char <= "\u9fff" for char in normalized)
+    if is_chinese or normalized in {"?", "？", "??", "？？"}:
+        if any(token in compact for token in ("你能做什么", "能做什么", "你会什么", "怎么用", "如何使用", "你是谁", "你是什么")):
+            return (
+                "我在。你可以直接问组合概览、损益变动、久期/信用风险、新闻事件或当前页面结论；"
+                "我会先给结论，再补依据和下一步检查。"
+            )
+        if any(token in compact for token in ("随便聊", "聊聊天", "闲聊", "帮我想想", "给点建议", "有什么建议", "该关注什么", "需要关注什么")):
+            return (
+                "可以。你可以从三类问题开始：组合有什么变化、风险哪里异常、今天有哪些新闻或宏观线索要看。"
+                "也可以直接丢一句业务问题，我会尽量短平快地接住。"
+            )
+        return "在，有什么可以帮你？"
+    if any(token in compact for token in ("whatcanyoudo", "whoareyou", "howdoiuse")):
+        return (
+            "I am here. Ask about portfolio overview, PnL moves, duration/credit risk, news events, "
+            "or the current page. I will lead with the answer, then add evidence and next checks."
+        )
+    if any(token in compact for token in ("helpmethink", "chat")):
+        return (
+            "Sure. Start with what changed, what looks risky, or what deserves attention today; "
+            "I will keep it short and point you to the next useful check."
+        )
+    return "I am here. What can I help with?"
+
+
+def _build_hermes_fallback_answer(question: str) -> str:
+    normalized = str(question or "").strip()
+    is_chinese = any("\u4e00" <= char <= "\u9fff" for char in normalized)
+    lower = normalized.lower()
+    if is_chinese:
+        if lower in {"在吗", "你好", "您好", "ping"} or any(token in normalized for token in ("在吗", "你好", "您好")):
+            return (
+                "在。Hermes 托管通道刚才不可用，我已切到本地稳定兜底；"
+                "你可以继续问组合概览、损益、久期、信用风险，也可以继续普通对话。"
+            )
+        return (
+            f"我收到了：{normalized}。Hermes 托管通道刚才不可用，所以这轮先用本地稳定兜底接住，"
+            "不会返回 503 或红框。涉及正式业务数字时，请直接问组合概览、损益、久期或信用风险。"
+        )
+    if lower in {"hi", "hello", "hey", "ping", "are you there?"}:
+        return (
+            "I am here. The Hermes managed channel is unavailable, so I switched to the local stable fallback. "
+            "You can keep chatting or ask for governed MOSS paths such as portfolio overview, PnL, duration, or credit risk."
+        )
+    return (
+        f"I received: {normalized}. The Hermes managed channel is unavailable, so this turn is handled by the local "
+        "stable fallback instead of returning an error. For formal numbers, ask for a governed MOSS path."
+    )
+
+
 def _extract_final_answer(stdout: str) -> str:
     lines = [line.rstrip() for line in stdout.splitlines()]
     content: list[str] = []
@@ -489,6 +772,8 @@ def _extract_final_answer(stdout: str) -> str:
         if stripped.startswith("Client does not support MCP Roots"):
             continue
         if stripped.startswith("session_id:"):
+            continue
+        if stripped.startswith("Warning: Unknown toolsets:"):
             continue
         content.append(line)
     answer = "\n".join(content).strip()

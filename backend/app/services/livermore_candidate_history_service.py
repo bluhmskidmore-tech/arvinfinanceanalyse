@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import uuid
+from bisect import bisect_right
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -26,6 +28,7 @@ STRATEGY_SCORE_CACHE_VERSION = "cv_livermore_strategy_score_v1"
 STRATEGY_OPTIMIZATION_RESULT_KIND = "market_data.livermore.strategy_optimization"
 STRATEGY_OPTIMIZATION_RULE_VERSION = "rv_livermore_strategy_optimization_v1"
 STRATEGY_OPTIMIZATION_CACHE_VERSION = "cv_livermore_strategy_optimization_v1"
+STRATEGY_FAMILY_READINESS_CONTRACT_VERSION = "rv_livermore_strategy_family_readiness_v1"
 CYCLE_PROXY_BACKTEST_RESULT_KIND = "market_data.livermore.cycle_proxy_backtest"
 CYCLE_PROXY_BACKTEST_RULE_VERSION = "rv_livermore_cycle_proxy_backtest_v1"
 CYCLE_PROXY_BACKTEST_CACHE_VERSION = "cv_livermore_cycle_proxy_backtest_v1"
@@ -45,6 +48,38 @@ _STRATEGY_LABELS = {
     "theme_breakout": "题材突变",
     "mean_reversion": "超跌反弹",
 }
+STRATEGY_FAMILY_CONTRACT_VERSION = "rv_livermore_strategy_family_contract_v1"
+_STRATEGY_SCORE_FAMILY_SIGNAL_KINDS = {
+    "stock_candidate",
+    "hybrid_fusion",
+    "theme_breakout",
+    "factor_screen",
+    "mean_reversion",
+}
+_STRATEGY_FAMILY_BY_SIGNAL_KIND = {
+    "stock_candidate": "trend_core",
+    "hybrid_fusion": "hybrid_fusion",
+    "theme_breakout": "theme_breakout",
+    "factor_screen": "factor_screen",
+    "mean_reversion": "mean_reversion",
+    "fresh_trend_watchlist": "fresh_trend_watchlist",
+    "uptrend_momentum": "uptrend_momentum_observation",
+}
+_STRATEGY_FAMILY_LABELS = {
+    "trend_core": "Trend core",
+    "hybrid_fusion": "Hybrid fusion",
+    "theme_breakout": "Theme breakout",
+    "factor_screen": "Factor screen",
+    "mean_reversion": "Mean reversion",
+    "fresh_trend_watchlist": "Fresh trend watchlist",
+    "uptrend_momentum_observation": "Uptrend momentum observation",
+}
+_STRATEGY_FAMILY_FIELDS = (
+    "family_key",
+    "family_label",
+    "family_contract_version",
+    "primary_sample_size",
+)
 _HORIZON_LABELS = {
     "return_1d": "T+1",
     "return_5d": "T+5",
@@ -59,6 +94,18 @@ _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR = 0.012
 _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_TARGET = 0.024
 _ENTRY_ALLOWED_STATES = {"WARM", "HOT"}
 _COMPLETION_HORIZONS = ("return_1d", "return_5d", "return_20d")
+_FORWARD_COVERAGE_COMPLETE = "complete"
+_FORWARD_COVERAGE_PENDING = "pending"
+_FORWARD_COVERAGE_MISSING_BAR = "missing_bar"
+_FORWARD_COVERAGE_PARTIAL_HALT = "partial_halt"
+_FORWARD_COVERAGE_STATUSES = (
+    _FORWARD_COVERAGE_COMPLETE,
+    _FORWARD_COVERAGE_PENDING,
+    _FORWARD_COVERAGE_MISSING_BAR,
+    _FORWARD_COVERAGE_PARTIAL_HALT,
+)
+_FORWARD_COVERAGE_MATURITY_FORWARD_BARS = 20
+_FORWARD_RETURN_KEYS = ("return_1d", "return_5d", "return_10d", "return_20d")
 _CYCLE_PROXY_SIGNAL_KIND = "stock_candidate"
 _CYCLE_PROXY_MAX_RANK = 6
 _CYCLE_PROXY_ALLOWED_MARKET_STATES = {"WARM", "HOT"}
@@ -192,10 +239,17 @@ def livermore_candidate_history_envelope(
             """,
             bindings,
         ).fetchall()
+        items = [_normalize_row(row) for row in rows]
+        _annotate_forward_coverage(
+            items,
+            observation_trade_dates=_load_observation_trade_dates(
+                conn,
+                tables=tables,
+                min_snapshot_date=_min_snapshot_date(items),
+            ),
+        )
     finally:
         conn.close()
-
-    items = [_normalize_row(row) for row in rows]
 
     lineage_src = _first_nonempty_source_version(items)
     lineage_vend = _first_nonempty_vendor_version(items)
@@ -267,6 +321,7 @@ def livermore_candidate_history_strategy_score_envelope(
     current_market_state: str | None,
     min_sample: int,
     primary_horizon: str,
+    macro_context_loader: Callable[[str], dict[str, Any] | None] | None = None,
 ) -> dict[str, object]:
     """Read persisted candidate history and score strategies by market state; DuckDB SELECT only."""
     normalized_horizon = primary_horizon if primary_horizon in _HORIZON_LABELS else "return_5d"
@@ -285,6 +340,7 @@ def livermore_candidate_history_strategy_score_envelope(
                 snapshot_from=resolved_from,
                 snapshot_to=resolved_to,
             ),
+            macro_context=_load_strategy_macro_context(macro_context_loader, resolved_to),
         )
         return _wrap_strategy_score_envelope(
             payload=payload,
@@ -311,6 +367,7 @@ def livermore_candidate_history_strategy_score_envelope(
                     snapshot_from=resolved_from,
                     snapshot_to=resolved_to,
                 ),
+                macro_context=_load_strategy_macro_context(macro_context_loader, resolved_to),
             )
             return _wrap_strategy_score_envelope(
                 payload=payload,
@@ -358,6 +415,7 @@ def livermore_candidate_history_strategy_score_envelope(
         min_sample=min_sample,
         primary_horizon=normalized_horizon,
         backtest_window_summary=backtest_window_summary,
+        macro_context=_load_strategy_macro_context(macro_context_loader, resolved_to),
     )
     return _wrap_strategy_score_envelope(
         payload=payload,
@@ -376,6 +434,7 @@ def livermore_candidate_history_strategy_optimization_envelope(
     current_market_state: str | None,
     min_sample: int,
     primary_horizon: str,
+    macro_context_loader: Callable[[str], dict[str, Any] | None] | None = None,
 ) -> dict[str, object]:
     """Read candidate history and diagnose T+n strategy slices; DuckDB SELECT only."""
     normalized_horizon = primary_horizon if primary_horizon in _HORIZON_LABELS else "return_5d"
@@ -394,6 +453,7 @@ def livermore_candidate_history_strategy_optimization_envelope(
                 snapshot_from=resolved_from,
                 snapshot_to=resolved_to,
             ),
+            macro_context=_load_strategy_macro_context(macro_context_loader, resolved_to),
         )
         return _wrap_strategy_optimization_envelope(
             payload=payload,
@@ -420,6 +480,7 @@ def livermore_candidate_history_strategy_optimization_envelope(
                     snapshot_from=resolved_from,
                     snapshot_to=resolved_to,
                 ),
+                macro_context=_load_strategy_macro_context(macro_context_loader, resolved_to),
             )
             return _wrap_strategy_optimization_envelope(
                 payload=payload,
@@ -467,6 +528,7 @@ def livermore_candidate_history_strategy_optimization_envelope(
         min_sample=min_sample,
         primary_horizon=normalized_horizon,
         backtest_window_summary=backtest_window_summary,
+        macro_context=_load_strategy_macro_context(macro_context_loader, resolved_to),
     )
     return _wrap_strategy_optimization_envelope(
         payload=payload,
@@ -778,6 +840,7 @@ def _build_backtest_window_summary_from_rows(
         "pending_rows": pending_rows,
         "unsupported_rows": unsupported_rows,
         "proxy_only_rows": proxy_only_rows,
+        "forward_coverage_row_counts": _forward_coverage_counts(rows),
         "included_completed_stats_dates": included_dates,
         "excluded_from_completed_stats_dates": excluded_dates,
         "date_reasons": date_reasons,
@@ -828,7 +891,15 @@ def _load_backtest_window_rows(
         """,
         bindings,
     ).fetchall()
-    return [_normalize_row(row) for row in rows]
+    items = [_normalize_row(row) for row in rows]
+    return _annotate_forward_coverage(
+        items,
+        observation_trade_dates=_load_observation_trade_dates(
+            conn,
+            tables=tables,
+            min_snapshot_date=_min_snapshot_date(items),
+        ),
+    )
 
 
 def _normalize_row(row: tuple[Any, ...]) -> dict[str, Any]:
@@ -836,6 +907,107 @@ def _normalize_row(row: tuple[Any, ...]) -> dict[str, Any]:
     if not str(item.get("signal_kind") or "").strip():
         item["signal_kind"] = "stock_candidate"
     return item
+
+
+def _min_snapshot_date(items: list[dict[str, Any]]) -> str | None:
+    dates = [text for item in items if (text := str(item.get("snapshot_as_of_date") or "").strip()[:10])]
+    return min(dates) if dates else None
+
+
+def _load_observation_trade_dates(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    min_snapshot_date: str | None,
+) -> list[str]:
+    """Distinct observation trade dates after the earliest snapshot (maturity reference; SELECT only)."""
+    if TABLE_OBS not in tables or not min_snapshot_date:
+        return []
+    columns = {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_OBS}')").fetchall()}
+    if "close_value" not in columns:
+        return []
+    rows = conn.execute(
+        f"""
+        select distinct trade_date
+        from {TABLE_OBS}
+        where trade_date > ?
+          and close_value is not null
+        """,
+        [min_snapshot_date],
+    ).fetchall()
+    return sorted({str(row[0])[:10] for row in rows if str(row[0] or "").strip()})
+
+
+def _annotate_forward_coverage(
+    items: list[dict[str, Any]],
+    *,
+    observation_trade_dates: list[str],
+) -> list[dict[str, Any]]:
+    for item in items:
+        item["forward_coverage"] = _derive_forward_coverage(
+            item,
+            observation_trade_dates=observation_trade_dates,
+        )
+    return items
+
+
+def _derive_forward_coverage(
+    item: dict[str, Any],
+    *,
+    observation_trade_dates: list[str],
+) -> str:
+    """Read-time refinement of data_status: split 'pending' into pending vs missing_bar.
+
+    A pending row becomes missing_bar when the observation calendar already provides at least
+    _FORWARD_COVERAGE_MATURITY_FORWARD_BARS trade dates after the row's snapshot date, yet
+    forward returns are still absent: the forward window has matured, so the missing bars point
+    to a delisting / unresumed halt / ingestion gap rather than an immature window. The stored
+    data_status vocabulary is never rewritten; this marker is derived per read.
+    """
+    status = str(item.get("data_status") or "").strip()
+    if status and status != _FORWARD_COVERAGE_PENDING:
+        return status
+    if not status and all(item.get(horizon) is not None for horizon in _COMPLETION_HORIZONS):
+        return _FORWARD_COVERAGE_COMPLETE
+    if not any(item.get(key) is None for key in _FORWARD_RETURN_KEYS):
+        return _FORWARD_COVERAGE_PENDING
+    snapshot_date = str(item.get("snapshot_as_of_date") or "").strip()[:10]
+    if not snapshot_date or not observation_trade_dates:
+        return _FORWARD_COVERAGE_PENDING
+    forward_bar_count = len(observation_trade_dates) - bisect_right(observation_trade_dates, snapshot_date)
+    if forward_bar_count >= _FORWARD_COVERAGE_MATURITY_FORWARD_BARS:
+        return _FORWARD_COVERAGE_MISSING_BAR
+    return _FORWARD_COVERAGE_PENDING
+
+
+def _forward_coverage_of(item: dict[str, Any]) -> str:
+    value = str(item.get("forward_coverage") or "").strip()
+    if value:
+        return value
+    return _derive_forward_coverage(item, observation_trade_dates=[])
+
+
+def _forward_coverage_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {status: 0 for status in _FORWARD_COVERAGE_STATUSES}
+    for item in items:
+        key = _forward_coverage_of(item)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _missing_bar_count(items: list[dict[str, Any]]) -> int:
+    return sum(1 for item in items if _forward_coverage_of(item) == _FORWARD_COVERAGE_MISSING_BAR)
+
+
+def _forward_coverage_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = _forward_coverage_counts(items)
+    return {
+        "row_count": len(items),
+        "counts": counts,
+        "missing_bar_row_count": counts[_FORWARD_COVERAGE_MISSING_BAR],
+        "maturity_forward_bars": _FORWARD_COVERAGE_MATURITY_FORWARD_BARS,
+        "maturity_reference": f"distinct forward trade dates in {TABLE_OBS}",
+    }
 
 
 def _resolve_replay_trade_dates(
@@ -886,6 +1058,7 @@ def _build_summary(
         "complete_count": _count_status(items, "complete"),
         "pending_count": _count_status(items, "pending"),
         "partial_halt_count": _count_status(items, "partial_halt"),
+        "forward_coverage_counts": _forward_coverage_counts(items),
         "missing_forward_return_count": sum(
             1 for item in items if any(item.get(horizon) is None for horizon in _COMPLETION_HORIZONS)
         ),
@@ -1035,6 +1208,7 @@ def _classify_replay_date(
             message=f"Forward return bars are not available yet; exclude {trade_date} from completed forward-return statistics.",
             affects_completed_stats=False,
             signal_kinds=signal_kinds,
+            missing_bar_row_count=_missing_bar_count(rows),
         )
     if any(
         str(row.get("signal_kind") or "").strip() == "theme_breakout"
@@ -1064,18 +1238,22 @@ def _classification(
     message: str,
     affects_completed_stats: bool,
     signal_kinds: list[str],
+    missing_bar_row_count: int | None = None,
 ) -> dict[str, Any]:
+    public_reason: dict[str, Any] = {
+        "trade_date": trade_date,
+        "status": status,
+        "reason_code": reason_code,
+        "message": message,
+        "affects_completed_stats": affects_completed_stats,
+        "signal_kinds": signal_kinds,
+    }
+    if missing_bar_row_count is not None:
+        public_reason["missing_bar_row_count"] = missing_bar_row_count
     return {
         "status": status,
         "affects_completed_stats": affects_completed_stats,
-        "public_reason": {
-            "trade_date": trade_date,
-            "status": status,
-            "reason_code": reason_code,
-            "message": message,
-            "affects_completed_stats": affects_completed_stats,
-            "signal_kinds": signal_kinds,
-        },
+        "public_reason": public_reason,
     }
 
 
@@ -1211,8 +1389,10 @@ def _build_strategy_score_payload(
     min_sample: int,
     primary_horizon: str,
     backtest_window_summary: dict[str, Any],
+    macro_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     effective_min_sample = max(_STRATEGY_REVIEW_MIN_T5_SAMPLE, int(min_sample))
+    normalized_macro_context = _strategy_macro_context(macro_context)
     grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for item in items:
         market_state = _market_state_from_signal_evidence(item)
@@ -1229,6 +1409,7 @@ def _build_strategy_score_payload(
                     items=signal_items,
                     min_sample=effective_min_sample,
                     primary_horizon=primary_horizon,
+                    macro_context=normalized_macro_context,
                 )
             )
 
@@ -1244,6 +1425,7 @@ def _build_strategy_score_payload(
                 signal_kind=signal_kind,
                 min_sample=effective_min_sample,
                 primary_horizon=primary_horizon,
+                macro_context=normalized_macro_context,
             )
             for signal_kind in _DEFAULT_SIGNAL_KINDS
         ]
@@ -1268,7 +1450,9 @@ def _build_strategy_score_payload(
         "min_sample": effective_min_sample,
         "review_thresholds": _strategy_review_thresholds(effective_min_sample),
         "current_market_state": normalized_current_state,
+        "macro_context": normalized_macro_context,
         "backtest_window_summary": backtest_window_summary,
+        "forward_coverage_summary": _forward_coverage_summary(items),
         "rows": _sort_strategy_score_rows(rows),
         "current_market_state_rows": current_rows,
         "stock_candidate_state_scopes": _stock_candidate_state_scopes(items),
@@ -1284,8 +1468,10 @@ def _build_strategy_optimization_payload(
     min_sample: int,
     primary_horizon: str,
     backtest_window_summary: dict[str, Any],
+    macro_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     effective_min_sample = max(_STRATEGY_REVIEW_MIN_T5_SAMPLE, int(min_sample))
+    normalized_macro_context = _strategy_macro_context(macro_context)
     normalized_current_state = _normalized_text(current_market_state) or None
     grouped: dict[str, list[dict[str, Any]]] = {}
     for item in items:
@@ -1305,6 +1491,7 @@ def _build_strategy_optimization_payload(
                 items=grouped.get(signal_kind, []),
                 min_sample=effective_min_sample,
                 primary_horizon=primary_horizon,
+                macro_context=normalized_macro_context,
             )
             for signal_kind in signal_kinds
         ]
@@ -1314,6 +1501,7 @@ def _build_strategy_optimization_payload(
             items,
             min_sample=effective_min_sample,
             primary_horizon=primary_horizon,
+            macro_context=normalized_macro_context,
         )
     )
     recommendations = _strategy_optimization_recommendations(
@@ -1329,6 +1517,7 @@ def _build_strategy_optimization_payload(
         "min_sample": effective_min_sample,
         "review_thresholds": _strategy_review_thresholds(effective_min_sample),
         "current_market_state": normalized_current_state,
+        "macro_context": normalized_macro_context,
         "backtest_window_summary": backtest_window_summary,
         "strategy_summaries": strategy_summaries,
         "slices": slices,
@@ -1844,12 +2033,241 @@ def _max_drawdown_interval(nav_series: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _strategy_primary_sample_size(
+    *,
+    stats: dict[str, dict[str, Any]],
+    primary_horizon: str,
+) -> int | None:
+    primary_stats = stats.get(primary_horizon)
+    if not isinstance(primary_stats, dict):
+        return None
+    available_count = primary_stats.get("available_count")
+    if available_count is None:
+        return None
+    try:
+        return int(available_count)
+    except (TypeError, ValueError):
+        return None
+
+
+def _empty_strategy_family_metadata() -> dict[str, Any]:
+    return {field: None for field in _STRATEGY_FAMILY_FIELDS}
+
+
+def _strategy_family_metadata(
+    *,
+    signal_kind: str,
+    stats: dict[str, dict[str, Any]],
+    primary_horizon: str,
+    score_priority_only: bool,
+) -> dict[str, Any]:
+    if score_priority_only and signal_kind not in _STRATEGY_SCORE_FAMILY_SIGNAL_KINDS:
+        return _empty_strategy_family_metadata()
+    family_key = _STRATEGY_FAMILY_BY_SIGNAL_KIND.get(signal_kind)
+    if not family_key:
+        return _empty_strategy_family_metadata()
+    return {
+        "family_key": family_key,
+        "family_label": _STRATEGY_FAMILY_LABELS.get(family_key, family_key),
+        "family_contract_version": STRATEGY_FAMILY_CONTRACT_VERSION,
+        "primary_sample_size": _strategy_primary_sample_size(
+            stats=stats,
+            primary_horizon=primary_horizon,
+        ),
+    }
+
+
+def _strategy_family_metadata_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {field: row.get(field) for field in _STRATEGY_FAMILY_FIELDS}
+
+
+def _strategy_family_metadata_index(
+    *,
+    rows: list[dict[str, Any]],
+    key_field: str,
+    target_type: str,
+) -> dict[tuple[str, str], dict[str, Any] | None]:
+    index: dict[tuple[str, str], dict[str, Any] | None] = {}
+    duplicate_keys: set[str] = set()
+    for row in rows:
+        target_key = str(row.get(key_field) or "")
+        if not target_key:
+            continue
+        index_key = (target_type, target_key)
+        if index_key in index:
+            duplicate_keys.add(target_key)
+            continue
+        index[index_key] = _strategy_family_metadata_from_row(row)
+    for target_key in duplicate_keys:
+        index[(target_type, target_key)] = None
+    return index
+
+
+def _strategy_family_metadata_for_recommendation_target(
+    *,
+    target_type: str,
+    target_key: str,
+    family_by_target: dict[tuple[str, str], dict[str, Any] | None],
+) -> dict[str, Any]:
+    source = family_by_target.get((target_type, target_key))
+    if source is None:
+        return _empty_strategy_family_metadata()
+    return {field: source.get(field) for field in _STRATEGY_FAMILY_FIELDS}
+
+
+def _load_strategy_macro_context(
+    loader: Callable[[str], dict[str, Any] | None] | None,
+    snapshot_to: str | None,
+) -> dict[str, Any] | None:
+    if loader is None or not snapshot_to:
+        return None
+    context = loader(snapshot_to)
+    return _strategy_macro_context(context)
+
+
+def _strategy_macro_context(context: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(context, dict) or not context:
+        return None
+    return dict(context)
+
+
+def _strategy_family_sample_maturity(
+    *,
+    primary_sample_size: Any,
+    min_sample: int,
+) -> str:
+    if primary_sample_size is None:
+        return "unknown"
+    try:
+        sample_size = int(primary_sample_size)
+    except (TypeError, ValueError):
+        return "unknown"
+    return "sufficient" if sample_size >= min_sample else "insufficient"
+
+
+def _strategy_family_data_readiness(macro_context: dict[str, Any] | None) -> str:
+    if not macro_context:
+        return "missing"
+    data_state = _normalized_text(macro_context.get("data_state")) or "missing"
+    if data_state == "ready":
+        return "ready"
+    if data_state in {"degraded", "stale"}:
+        return "degraded"
+    return "missing"
+
+
+def _strategy_family_macro_compatibility(data_readiness: str) -> str:
+    if data_readiness == "ready":
+        return "compatible"
+    if data_readiness == "degraded":
+        return "degraded"
+    return "unknown"
+
+
+def _strategy_family_readiness_reasons(
+    *,
+    macro_context: dict[str, Any] | None,
+    sample_maturity: str,
+) -> list[str]:
+    reasons = ["OBSERVATION_ONLY_BOUNDARY"]
+    if not macro_context:
+        reasons.append("MACRO_CONTEXT_MISSING")
+    else:
+        raw_reasons = macro_context.get("readiness_reasons")
+        if isinstance(raw_reasons, list):
+            reasons.extend(str(reason) for reason in raw_reasons if str(reason or "").strip())
+    if sample_maturity != "sufficient":
+        reasons.append("SAMPLE_MATURITY_INSUFFICIENT")
+    return _dedupe_preserve_order(reasons)
+
+
+def _strategy_family_readiness(
+    *,
+    family_metadata: dict[str, Any],
+    macro_context: dict[str, Any] | None,
+    min_sample: int,
+) -> dict[str, Any] | None:
+    if not family_metadata.get("family_key"):
+        return None
+    sample_maturity = _strategy_family_sample_maturity(
+        primary_sample_size=family_metadata.get("primary_sample_size"),
+        min_sample=min_sample,
+    )
+    data_readiness = _strategy_family_data_readiness(macro_context)
+    readiness_state = (
+        "observation_ready"
+        if data_readiness == "ready" and sample_maturity == "sufficient"
+        else "degraded_observation"
+    )
+    return {
+        "readiness_contract_version": STRATEGY_FAMILY_READINESS_CONTRACT_VERSION,
+        "readiness_state": readiness_state,
+        "macro_context_id": (macro_context or {}).get("macro_context_id"),
+        "market_gate_context_id": None,
+        "macro_compatibility": _strategy_family_macro_compatibility(data_readiness),
+        "market_gate_compatibility": "unknown",
+        "data_readiness": data_readiness,
+        "sample_maturity": sample_maturity,
+        "readiness_reasons": _strategy_family_readiness_reasons(
+            macro_context=macro_context,
+            sample_maturity=sample_maturity,
+        ),
+        "observational_only": True,
+        "formal_use_allowed": False,
+    }
+
+
+def _strategy_family_contract_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **_strategy_family_metadata_from_row(row),
+        "family_readiness": row.get("family_readiness"),
+    }
+
+
+def _strategy_family_contract_index(
+    *,
+    rows: list[dict[str, Any]],
+    key_field: str,
+    target_type: str,
+) -> dict[tuple[str, str], dict[str, Any] | None]:
+    index: dict[tuple[str, str], dict[str, Any] | None] = {}
+    duplicate_keys: set[str] = set()
+    for row in rows:
+        target_key = str(row.get(key_field) or "")
+        if not target_key:
+            continue
+        index_key = (target_type, target_key)
+        if index_key in index:
+            duplicate_keys.add(target_key)
+            continue
+        index[index_key] = _strategy_family_contract_from_row(row)
+    for target_key in duplicate_keys:
+        index[(target_type, target_key)] = None
+    return index
+
+
+def _strategy_family_contract_for_recommendation_target(
+    *,
+    target_type: str,
+    target_key: str,
+    family_by_target: dict[tuple[str, str], dict[str, Any] | None],
+) -> dict[str, Any]:
+    source = family_by_target.get((target_type, target_key))
+    if source is None:
+        return {**_empty_strategy_family_metadata(), "family_readiness": None}
+    return {
+        **{field: source.get(field) for field in _STRATEGY_FAMILY_FIELDS},
+        "family_readiness": source.get("family_readiness"),
+    }
+
+
 def _strategy_optimization_summary(
     *,
     signal_kind: str,
     items: list[dict[str, Any]],
     min_sample: int,
     primary_horizon: str,
+    macro_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     stats = _build_horizon_stats(items)
     recommendation = _optimization_recommendation(
@@ -1857,10 +2275,23 @@ def _strategy_optimization_summary(
         min_sample=min_sample,
         primary_horizon=primary_horizon,
     )
+    family_metadata = _strategy_family_metadata(
+        signal_kind=signal_kind,
+        stats=stats,
+        primary_horizon=primary_horizon,
+        score_priority_only=False,
+    )
+    family_readiness = _strategy_family_readiness(
+        family_metadata=family_metadata,
+        macro_context=macro_context,
+        min_sample=min_sample,
+    )
     return {
         "summary_key": f"strategy:{signal_kind}",
         "signal_kind": signal_kind,
         "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+        **family_metadata,
+        "family_readiness": family_readiness,
         "sample_status": "sufficient" if recommendation["action"] != "pending_more_history" else "insufficient",
         "stats": stats,
         "date_weighted_stats": _build_date_weighted_horizon_stats(items),
@@ -1873,6 +2304,7 @@ def _build_strategy_optimization_slices(
     *,
     min_sample: int,
     primary_horizon: str,
+    macro_context: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     evidence_by_item = _signal_evidence_by_item(items)
     factor_items = [item for item in items if _normalized_signal_kind(item) == "factor_screen"]
@@ -1888,6 +2320,7 @@ def _build_strategy_optimization_slices(
             buckets=[(1, 10, "1-10"), (11, 20, "11-20"), (21, 30, "21-30")],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -1898,6 +2331,7 @@ def _build_strategy_optimization_slices(
             buckets=[(1, 10, "1-10"), (11, 20, "11-20"), (21, 30, "21-30")],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -1909,6 +2343,7 @@ def _build_strategy_optimization_slices(
             classifier=lambda item: _market_state_from_signal_evidence(item, evidence_by_item=evidence_by_item),
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -1920,6 +2355,7 @@ def _build_strategy_optimization_slices(
             classifier=lambda item: _fundamental_overlay_status(item, evidence_by_item=evidence_by_item),
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -1934,6 +2370,7 @@ def _build_strategy_optimization_slices(
             ordered_labels=["<1", "1-2", "2-3.5", ">3.5", "unknown"],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -1948,6 +2385,7 @@ def _build_strategy_optimization_slices(
             ordered_labels=["<=0", "0-0.2", "0.2-0.45", ">0.45", "unknown"],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -1962,6 +2400,7 @@ def _build_strategy_optimization_slices(
             ordered_labels=["<=0.1", "0.1-0.25", "0.25-0.35", ">0.35", "unknown"],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -1974,6 +2413,7 @@ def _build_strategy_optimization_slices(
             buckets=[(1, 3, "1-3"), (4, 10, "4-10"), (11, None, "11+")],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -1986,6 +2426,7 @@ def _build_strategy_optimization_slices(
             buckets=[(1, 3, "1-3"), (4, 5, "4-5"), (6, None, "6+")],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -2000,6 +2441,7 @@ def _build_strategy_optimization_slices(
             ordered_labels=["0", "1-5", "6-10", ">10", "unknown"],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     slices.extend(
@@ -2014,6 +2456,7 @@ def _build_strategy_optimization_slices(
             ordered_labels=["0", "1", "2+", "unknown"],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
     )
     return slices
@@ -2027,6 +2470,7 @@ def _rank_optimization_slices(
     buckets: list[tuple[int, int | None, str]],
     min_sample: int,
     primary_horizon: str,
+    macro_context: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     return _rank_value_optimization_slices(
         signal_kind=signal_kind,
@@ -2037,6 +2481,7 @@ def _rank_optimization_slices(
         buckets=buckets,
         min_sample=min_sample,
         primary_horizon=primary_horizon,
+        macro_context=macro_context,
     )
 
 
@@ -2050,6 +2495,7 @@ def _rank_value_optimization_slices(
     buckets: list[tuple[int, int | None, str]],
     min_sample: int,
     primary_horizon: str,
+    macro_context: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     slices: list[dict[str, Any]] = []
     for rank_from, rank_to, label in buckets:
@@ -2071,6 +2517,7 @@ def _rank_value_optimization_slices(
                 items=bucket_items,
                 min_sample=min_sample,
                 primary_horizon=primary_horizon,
+                macro_context=macro_context,
             )
         )
     return slices
@@ -2085,6 +2532,7 @@ def _categorical_optimization_slices(
     classifier: Any,
     min_sample: int,
     primary_horizon: str,
+    macro_context: dict[str, Any] | None,
     ordered_labels: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
@@ -2103,6 +2551,7 @@ def _categorical_optimization_slices(
             items=grouped[label],
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+            macro_context=macro_context,
         )
         for label in labels
     ]
@@ -2117,6 +2566,7 @@ def _strategy_optimization_slice(
     items: list[dict[str, Any]],
     min_sample: int,
     primary_horizon: str,
+    macro_context: dict[str, Any] | None,
 ) -> dict[str, Any]:
     stats = _build_horizon_stats(items)
     recommendation = _optimization_recommendation(
@@ -2124,10 +2574,23 @@ def _strategy_optimization_slice(
         min_sample=min_sample,
         primary_horizon=primary_horizon,
     )
+    family_metadata = _strategy_family_metadata(
+        signal_kind=signal_kind,
+        stats=stats,
+        primary_horizon=primary_horizon,
+        score_priority_only=False,
+    )
+    family_readiness = _strategy_family_readiness(
+        family_metadata=family_metadata,
+        macro_context=macro_context,
+        min_sample=min_sample,
+    )
     return {
         "slice_key": f"{signal_kind}:{dimension}:{_slug_text(bucket_key)}",
         "signal_kind": signal_kind,
         "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+        **family_metadata,
+        "family_readiness": family_readiness,
         "dimension": dimension,
         "bucket": bucket_key,
         "label": label,
@@ -2374,24 +2837,50 @@ def _strategy_optimization_recommendations(
     slices: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     recommendations: list[dict[str, Any]] = []
+    family_by_target = {
+        **_strategy_family_contract_index(
+            rows=strategy_summaries,
+            key_field="summary_key",
+            target_type="strategy",
+        ),
+        **_strategy_family_contract_index(
+            rows=slices,
+            key_field="slice_key",
+            target_type="slice",
+        ),
+    }
     for row in strategy_summaries:
+        target_type = "strategy"
+        target_key = str(row["summary_key"])
         recommendations.append(
             {
                 **cast(dict[str, Any], row["recommendation"]),
-                "target_type": "strategy",
-                "target_key": row["summary_key"],
+                "target_type": target_type,
+                "target_key": target_key,
                 "signal_kind": row["signal_kind"],
                 "label": row["strategy_label"],
+                **_strategy_family_contract_for_recommendation_target(
+                    target_type=target_type,
+                    target_key=target_key,
+                    family_by_target=family_by_target,
+                ),
             }
         )
     for row in slices:
+        target_type = "slice"
+        target_key = str(row["slice_key"])
         recommendations.append(
             {
                 **cast(dict[str, Any], row["recommendation"]),
-                "target_type": "slice",
-                "target_key": row["slice_key"],
+                "target_type": target_type,
+                "target_key": target_key,
                 "signal_kind": row["signal_kind"],
                 "label": row["label"],
+                **_strategy_family_contract_for_recommendation_target(
+                    target_type=target_type,
+                    target_key=target_key,
+                    family_by_target=family_by_target,
+                ),
             }
         )
     return sorted(recommendations, key=_strategy_optimization_recommendation_sort_key)
@@ -2567,6 +3056,7 @@ def _strategy_score_row(
     items: list[dict[str, Any]],
     min_sample: int,
     primary_horizon: str,
+    macro_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     stats = _build_horizon_stats(items)
     diagnostics = _strategy_score_diagnostics(
@@ -2577,18 +3067,33 @@ def _strategy_score_row(
         min_sample=min_sample,
         primary_horizon=primary_horizon,
     )
+    family_metadata = _strategy_family_metadata(
+        signal_kind=signal_kind,
+        stats=stats,
+        primary_horizon=primary_horizon,
+        score_priority_only=True,
+    )
+    family_readiness = _strategy_family_readiness(
+        family_metadata=family_metadata,
+        macro_context=macro_context,
+        min_sample=min_sample,
+    )
     review = _strategy_review_gate(stats=stats, min_sample=min_sample)
+    missing_bar_count = _missing_bar_count(items)
     if review["sample_status"] == "insufficient":
         return {
             "market_state": market_state,
             "signal_kind": signal_kind,
             "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+            **family_metadata,
+            "family_readiness": family_readiness,
             "sample_status": "insufficient",
             "priority_score": None,
             "priority_rank": None,
             "priority_label": "样本不足",
             "reason": review["reason"],
             "stats": stats,
+            "missing_bar_count": missing_bar_count,
             "diagnostics": diagnostics,
         }
 
@@ -2596,12 +3101,15 @@ def _strategy_score_row(
         "market_state": market_state,
         "signal_kind": signal_kind,
         "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+        **family_metadata,
+        "family_readiness": family_readiness,
         "sample_status": "sufficient",
         "priority_score": review["score"],
         "priority_rank": None,
         "priority_label": review["priority_label"],
         "reason": review["reason"],
         "stats": stats,
+        "missing_bar_count": missing_bar_count,
         "diagnostics": diagnostics,
     }
 
@@ -2612,18 +3120,33 @@ def _empty_strategy_score_row(
     signal_kind: str,
     min_sample: int,
     primary_horizon: str,
+    macro_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     stats = _empty_horizon_stats_by_key()
+    family_metadata = _strategy_family_metadata(
+        signal_kind=signal_kind,
+        stats=stats,
+        primary_horizon=primary_horizon,
+        score_priority_only=True,
+    )
+    family_readiness = _strategy_family_readiness(
+        family_metadata=family_metadata,
+        macro_context=macro_context,
+        min_sample=min_sample,
+    )
     return {
         "market_state": market_state,
         "signal_kind": signal_kind,
         "strategy_label": _STRATEGY_LABELS.get(signal_kind, signal_kind),
+        **family_metadata,
+        "family_readiness": family_readiness,
         "sample_status": "insufficient",
         "priority_score": None,
         "priority_rank": None,
         "priority_label": "样本不足",
         "reason": _sample_insufficient_reason(0, min_sample=min_sample, primary_horizon=_STRATEGY_REVIEW_HORIZON),
         "stats": stats,
+        "missing_bar_count": 0,
         "diagnostics": _empty_strategy_score_diagnostics(),
     }
 
@@ -3082,6 +3605,18 @@ def _normalized_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        deduped.append(text)
+    return deduped
+
+
 def _decision_excluded_dates(
     items: list[dict[str, Any]],
     *,
@@ -3129,6 +3664,7 @@ def _empty_backtest_window_summary(
         "pending_rows": 0,
         "unsupported_rows": 0,
         "proxy_only_rows": 0,
+        "forward_coverage_row_counts": {status: 0 for status in _FORWARD_COVERAGE_STATUSES},
         "included_completed_stats_dates": [],
         "excluded_from_completed_stats_dates": [],
         "date_reasons": [],

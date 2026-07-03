@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -145,7 +146,7 @@ def test_agent_run_create_returns_queued_and_status_completes(monkeypatch, tmp_p
     ]
 
 
-def test_agent_run_create_returns_sync_envelope_for_cli_transport(monkeypatch, tmp_path):
+def test_agent_run_create_queues_cli_transport_without_blocking(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -156,9 +157,13 @@ def test_agent_run_create_returns_sync_envelope_for_cli_transport(monkeypatch, t
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
 
     calls = []
+    started = threading.Event()
+    release = threading.Event()
 
     def fake_execute(request, governance_dir, settings):
         calls.append((request.question, governance_dir, settings.agent_hermes_transport))
+        started.set()
+        assert release.wait(2)
         return _sample_envelope()
 
     monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute)
@@ -169,11 +174,46 @@ def test_agent_run_create_returns_sync_envelope_for_cli_transport(monkeypatch, t
     response = client.post("/api/agent/runs", json={"question": "ping"})
 
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["answer"] == "Hermes managed answer."
-    assert payload["result_meta"]["result_kind"] == "agent.hermes"
+    created = response.json()
+    assert created["status"] == "queued"
+    assert created["run_id"].startswith("agent_run:")
+    assert started.wait(2)
+    running = client.get(f"/api/agent/runs/{created['run_id']}").json()
+    assert running["status"] in {"starting", "running"}
+    release.set()
+    completed = _wait_for_terminal(client, created["run_id"])
+    assert completed["status"] == "completed"
+    assert completed["result"]["answer"] == "Hermes managed answer."
     assert calls == [("ping", str(tmp_path / "governance"), "cli")]
-    assert not (tmp_path / "governance" / "agent_run.jsonl").exists()
+    assert (tmp_path / "governance" / "agent_run.jsonl").exists()
+
+
+def test_agent_run_cli_transport_records_failed_status_on_provider_failure(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    settings = _settings(tmp_path)
+    settings.agent_hermes_transport = "cli"
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+
+    def fake_execute(_request, _governance_dir, _settings):
+        raise RuntimeError("Hermes failed with exit code 1: session_id: test")
+
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/runs", json={"question": "ping"})
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["status"] == "queued"
+    completed = _wait_for_terminal(client, created["run_id"])
+    assert completed["status"] == "failed"
+    assert completed["error_message"] == "Hermes failed with exit code 1: session_id: test"
 
 
 def test_agent_run_status_returns_404_for_unknown_run(monkeypatch, tmp_path):

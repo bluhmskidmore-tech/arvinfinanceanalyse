@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.services import hermes_agent_service as service
 
@@ -65,7 +67,7 @@ def test_run_hermes_agent_sets_home_in_process_env_for_non_wsl(monkeypatch):
 
     def fake_run(args, **kwargs):
         calls.append({"args": args, **kwargs})
-        return SimpleNamespace(returncode=0, stdout="pong\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="Warning: Unknown toolsets: evidence, query, research\npong\n", stderr="")
 
     monkeypatch.setattr(service.subprocess, "run", fake_run)
 
@@ -169,6 +171,168 @@ def test_build_hermes_envelope_exposes_hermes_runtime_evidence():
     assert envelope.evidence.quality_flag == "warning"
     assert envelope.result_meta.quality_flag == "warning"
     assert envelope.evidence.evidence_rows == 0
+
+
+def test_execute_hermes_agent_query_answers_short_open_chat_locally(monkeypatch, tmp_path):
+    audit_calls = []
+
+    monkeypatch.setattr(
+        service,
+        "run_hermes_agent",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("Hermes should not run for short open chat")),
+    )
+    monkeypatch.setattr(
+        service,
+        "_append_hermes_audit",
+        lambda request, governance_dir, envelope, result: audit_calls.append(
+            (request, governance_dir, envelope, result)
+        ),
+    )
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question="在吗"),
+        governance_dir=str(tmp_path / "governance"),
+        settings=SimpleNamespace(
+            agent_hermes_command="hermes",
+            agent_hermes_wsl_distro="",
+            agent_hermes_home="",
+            agent_hermes_transport="cli",
+            agent_hermes_bridge_url="http://127.0.0.1:7891",
+            agent_hermes_model="gpt-test",
+            agent_hermes_toolsets="file",
+            agent_hermes_max_turns=3,
+            agent_hermes_timeout_seconds=9.0,
+        ),
+    )
+
+    assert envelope.answer == "在，有什么可以帮你？"
+    assert envelope.result_meta.result_kind == "agent.local_chat"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.evidence.tables_used == ["agent_local_chat"]
+    assert envelope.evidence.filters_applied["provider"] == "local"
+    assert audit_calls
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_text"),
+    [
+        ("你能做什么", "组合概览"),
+        ("随便聊聊", "三类问题"),
+        ("你是谁", "组合概览"),
+        ("帮我想想", "三类问题"),
+        ("今天该关注什么", "三类问题"),
+    ],
+)
+def test_execute_hermes_agent_query_answers_open_chat_prompts_locally(
+    question,
+    expected_text,
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(
+        service,
+        "run_hermes_agent",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("Hermes should not run for open chat prompts")),
+    )
+    monkeypatch.setattr(service, "_append_hermes_audit", lambda *_args, **_kwargs: None)
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question=question),
+        governance_dir=str(tmp_path / "governance"),
+        settings=SimpleNamespace(
+            agent_hermes_command="hermes",
+            agent_hermes_wsl_distro="",
+            agent_hermes_home="",
+            agent_hermes_transport="cli",
+            agent_hermes_bridge_url="http://127.0.0.1:7891",
+            agent_hermes_model="gpt-test",
+            agent_hermes_toolsets="file",
+            agent_hermes_max_turns=3,
+            agent_hermes_timeout_seconds=9.0,
+        ),
+    )
+
+    assert expected_text in envelope.answer
+    assert envelope.result_meta.result_kind == "agent.local_chat"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.evidence.filters_applied["provider"] == "local"
+
+
+def test_execute_hermes_agent_query_keeps_business_questions_on_hermes_path(monkeypatch, tmp_path):
+    run_calls = []
+
+    def fake_run_hermes_agent(**kwargs):
+        run_calls.append(kwargs)
+        return {
+            "answer": "formal business path",
+            "stdout": "formal business path",
+            "stderr": "",
+            "command": "hermes",
+            "model": "gpt-test",
+            "toolsets": "evidence,query,research",
+            "transport": "cli",
+        }
+
+    monkeypatch.setattr(service, "run_hermes_agent", fake_run_hermes_agent)
+    monkeypatch.setattr(service, "_append_hermes_audit", lambda *_args, **_kwargs: None)
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question="组合风险今天该关注什么"),
+        governance_dir=str(tmp_path / "governance"),
+        settings=SimpleNamespace(
+            agent_hermes_command="hermes",
+            agent_hermes_wsl_distro="",
+            agent_hermes_home="",
+            agent_hermes_transport="cli",
+            agent_hermes_bridge_url="http://127.0.0.1:7891",
+            agent_hermes_model="gpt-test",
+            agent_hermes_toolsets="file",
+            agent_hermes_max_turns=3,
+            agent_hermes_timeout_seconds=9.0,
+        ),
+    )
+
+    assert run_calls
+    assert envelope.answer == "formal business path"
+    assert envelope.result_meta.result_kind == "agent.hermes"
+
+
+def test_execute_hermes_agent_query_returns_local_fallback_when_runtime_fails(monkeypatch, tmp_path):
+    audit_calls = []
+
+    def fake_run_hermes_agent(**_kwargs):
+        raise RuntimeError("Hermes failed with exit code 1: [Errno 32] Broken pipe")
+
+    def fake_append_audit(request, governance_dir, envelope, result):
+        audit_calls.append((request, governance_dir, envelope, result))
+
+    monkeypatch.setattr(service, "run_hermes_agent", fake_run_hermes_agent)
+    monkeypatch.setattr(service, "_append_hermes_audit", fake_append_audit)
+
+    envelope = service.execute_hermes_agent_query(
+        request=AgentQueryRequest(question="summarize this open ended question"),
+        governance_dir=str(tmp_path / "governance"),
+        settings=SimpleNamespace(
+            agent_hermes_command="hermes",
+            agent_hermes_wsl_distro="",
+            agent_hermes_home="",
+            agent_hermes_transport="cli",
+            agent_hermes_bridge_url="http://127.0.0.1:7891",
+            agent_hermes_model="gpt-test",
+            agent_hermes_toolsets="file",
+            agent_hermes_max_turns=3,
+            agent_hermes_timeout_seconds=9.0,
+        ),
+    )
+
+    assert "local stable fallback" in envelope.answer
+    assert envelope.result_meta.result_kind == "agent.hermes_fallback"
+    assert envelope.result_meta.vendor_status == "vendor_unavailable"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.evidence.tables_used == ["hermes_local_fallback"]
+    assert envelope.evidence.filters_applied["fallback_provider"] == "local"
+    assert "Broken pipe" in envelope.evidence.filters_applied["fallback_reason"]
+    assert audit_calls
 
 
 def test_warm_hermes_bridge_if_configured_starts_daemon_thread(monkeypatch):

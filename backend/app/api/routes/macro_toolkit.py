@@ -694,7 +694,7 @@ def macro_toolkit_refresh_commodity_futures(
         "after_status": after_status,
         "summary": summary,
     }
-    if not refresh_request.dry_run and status in {"completed", "queued"}:
+    if not refresh_request.dry_run and status == "completed":
         market_home_response_cache.invalidate()
         clear_system_macro_source_cache()
     return _envelope(

@@ -11,7 +11,7 @@ from backend.app.agent.schemas.agent_run import (
     AgentRunStatusResponse,
 )
 from backend.app.agent.tools.analysis_view_tool import (
-    is_explicit_local_agent_intent,
+    has_explicit_local_agent_context,
     is_plain_analysis_chat_question,
 )
 from backend.app.governance.settings import get_settings
@@ -80,16 +80,8 @@ def _run_executor_for_provider(settings: object):
     return None
 
 
-def _provider_transport(settings: object) -> str:
-    provider = _provider_name(settings)
-    if provider == "dexter":
-        return str(getattr(settings, "agent_dexter_transport", "cli") or "cli").strip().lower() or "cli"
-    return str(getattr(settings, "agent_hermes_transport", "bridge") or "bridge").strip().lower() or "bridge"
-
-
 def _should_execute_local_query(request: AgentQueryRequest) -> bool:
-    explicit_intent = str(request.context.get("intent") or "").strip().lower()
-    return is_explicit_local_agent_intent(explicit_intent) or is_plain_analysis_chat_question(request.question)
+    return has_explicit_local_agent_context(request.context) or is_plain_analysis_chat_question(request.question)
 
 
 def _contains_mutating_action(value: object) -> bool:
@@ -235,15 +227,6 @@ def create_agent_run_endpoint(
     executor = _run_executor_for_provider(settings)
     if executor is None:
         raise HTTPException(status_code=400, detail="Agent runs require MOSS_AGENT_PROVIDER=hermes or dexter.")
-
-    # CLI-backed providers are more stable as synchronous calls; returning the
-    # final envelope lets the frontend use its existing sync-compat path.
-    if _provider_transport(settings) == "cli":
-        return executor(
-            request,
-            str(settings.governance_path),
-            settings,
-        )
 
     return create_agent_run(
         request=request,

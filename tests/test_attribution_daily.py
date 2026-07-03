@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -143,6 +144,57 @@ def test_residual_closes_to_total_with_fx():
     )
     assert reconstructed == pytest.approx(result["total_return"], abs=1e-6)
     assert result["fx_return"] == pytest.approx(200.0)
+
+
+def test_rolldown_uses_period_end_anchor_duration_and_market_value(monkeypatch):
+    prev_date = date(2026, 3, 1)
+    report_date = date(2026, 3, 31)
+    position = {
+        **POSITION_FVTPL,
+        "market_value_start": 100.0,
+        "market_value_end": 200.0,
+        "face_value_start": 100.0,
+        "maturity_date_start": date(2030, 1, 1),
+    }
+    globals_map = compute_daily_attribution_row.__globals__
+
+    def fake_four_effects(*_args, **_kwargs):
+        return {
+            "income_return": Decimal("0"),
+            "treasury_effect": Decimal("0"),
+            "spread_effect": Decimal("0"),
+            "total_return": Decimal("0"),
+            "mod_duration": Decimal("5"),
+        }
+
+    def fake_years_to_maturity(_maturity, as_of):
+        if as_of == prev_date:
+            return 2.5
+        if as_of == report_date:
+            return 2.0
+        raise AssertionError(f"unexpected anchor date: {as_of}")
+
+    monkeypatch.setitem(globals_map, "compute_bond_four_effects", fake_four_effects)
+    monkeypatch.setitem(globals_map, "_years_to_maturity", fake_years_to_maturity)
+    monkeypatch.setitem(
+        globals_map,
+        "interpolate_treasury_yield_pct",
+        lambda _market, years: float(years) * 10.0,
+    )
+
+    result = compute_daily_attribution_row(
+        position,
+        MARKET_START,
+        MARKET_END,
+        prev_date,
+        report_date,
+        total_pnl=0.0,
+    )
+
+    current_rate = Decimal("2.0") * Decimal("10")
+    rolled_rate = (Decimal("2.0") - Decimal("30") / Decimal("365")) * Decimal("10")
+    expected = ((current_rate - rolled_rate) / Decimal("100")) * Decimal("5") * Decimal("200")
+    assert result["rolldown_return"] == pytest.approx(float(expected), rel=0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------

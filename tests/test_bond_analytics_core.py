@@ -185,6 +185,44 @@ def test_convexity_effect_with_curve_data() -> None:
     assert summary["bond_details"][0]["convexity_effect"] == expected
 
 
+def test_roll_down_uses_exclusive_elapsed_days_for_current_anchor() -> None:
+    rm = _read_models_module()
+    current_curve = {"1Y": Decimal("1.00"), "2Y": Decimal("2.00")}
+
+    summary = rm.summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "Treasury 2Y",
+                "asset_class_raw": "rate",
+                "asset_class_std": "rate",
+                "bond_type": "treasury",
+                "accounting_class": "FVTPL",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("2"),
+                "tenor_bucket": "2Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("0"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        treasury_curve_current=current_curve,
+    )
+
+    expected = rm._curve_roll_down(
+        current_curve=current_curve,
+        years_to_maturity=Decimal("2"),
+        period_days=30,
+        modified_duration=Decimal("4"),
+        market_value=Decimal("100"),
+    )
+    assert summary["roll_down_total"] == expected
+    assert summary["bond_details"][0]["roll_down"] == expected
+
+
 def test_convexity_effect_without_curve_data_is_zero() -> None:
     summary = summarize_return_decomposition(
         [

@@ -166,6 +166,46 @@ def test_risk_tensor_materialize_fails_closed_on_pct_style_bond_rates(tmp_path):
         )
 
 
+def test_risk_tensor_materialize_fails_closed_on_malformed_numeric_inputs(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _bond_task_mod = _configure_upstream(tmp_path)
+    risk_task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+
+    def _malformed_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+        return [
+            {
+                "instrument_code": "BAD-DV01",
+                "market_value": Decimal("100"),
+                "face_value": Decimal("100"),
+                "coupon_rate": Decimal("0.03"),
+                "modified_duration": Decimal("1.5"),
+                "convexity": Decimal("0.2"),
+                "dv01": "not-a-decimal",
+                "spread_dv01": Decimal("0"),
+                "tenor_bucket": "5Y",
+                "is_credit": False,
+                "maturity_date": "2030-01-01",
+                "interest_mode": "annual",
+                "issuer_name": "Issuer Bad",
+            }
+        ]
+
+    monkeypatch.setattr(
+        risk_task_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        _malformed_rows,
+    )
+
+    with pytest.raises(RuntimeError, match="parseable numeric formal inputs"):
+        risk_task_mod.materialize_risk_tensor_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
 def test_risk_tensor_materialize_preserves_computed_source_version_when_write_fails(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _bond_task_mod = _configure_upstream(tmp_path)
     risk_task_mod = load_module(

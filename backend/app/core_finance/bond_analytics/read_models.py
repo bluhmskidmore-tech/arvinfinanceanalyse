@@ -147,6 +147,7 @@ def summarize_return_decomposition(
     _curve_lookup: _CurveRateLookup | None = None,
 ) -> dict[str, Any]:
     days = Decimal((period_end - period_start).days + 1)
+    roll_down_period_days = max((period_end - period_start).days, 0)
     curve_lookup = _curve_lookup or _CurveRateLookup()
     detail_rows = []
     carry_total = ZERO
@@ -171,7 +172,7 @@ def summarize_return_decomposition(
         roll_down = _curve_roll_down(
             current_curve=current_curve,
             years_to_maturity=years_to_maturity,
-            period_days=int(days),
+            period_days=roll_down_period_days,
             modified_duration=modified_duration,
             market_value=market_value,
             curve_lookup=curve_lookup,

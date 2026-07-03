@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -49,6 +51,38 @@ def _authorized_client():
 def _replace_dashboard_home_bond_rows(repo: Any, *, report_date: str, rows: list[Any]) -> None:
     with repository_task_write_scope("backend.app.tasks.dashboard_home_backend_blocks_test"):
         repo.replace_bond_analytics_rows(report_date=report_date, rows=rows)
+    if rows:
+        _append_bond_analytics_completed_build(
+            report_date=report_date,
+            source_version=_first_row_source_version(rows),
+        )
+
+
+def _first_row_source_version(rows: list[Any]) -> str:
+    for row in rows:
+        value = row.get("source_version") if isinstance(row, dict) else getattr(row, "source_version", "")
+        text = str(value or "").strip()
+        if text:
+            return text
+    return "sv_dashboard_home_test"
+
+
+def _append_bond_analytics_completed_build(*, report_date: str, source_version: str) -> None:
+    governance_path = Path(str(get_settings().governance_path))
+    governance_path.mkdir(parents=True, exist_ok=True)
+    record = {
+        "run_id": f"dashboard-home-test:{report_date}",
+        "job_name": "bond_analytics_materialize",
+        "status": "completed",
+        "cache_key": "bond_analytics:materialize:formal",
+        "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+        "source_version": source_version,
+        "vendor_version": "vv_none",
+        "rule_version": "rv_bond_analytics_formal_materialize_v1",
+        "report_date": report_date,
+    }
+    with (governance_path / "cache_build_run.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def _make_bond_row(
@@ -518,6 +552,74 @@ def test_home_income_trend_endpoint_accepts_bounded_cdb_curve_fallback(tmp_path,
                 "warnings": [
                     "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve "
                     f"from trade_date={resolved_date} for requested_trade_date={requested_date}."
+                ],
+            },
+            "result_meta": {
+                "source_version": "sv_cdb_curve_test",
+                "rule_version": "rv_benchmark_excess_test",
+                "vendor_status": "vendor_stale",
+                "fallback_mode": "latest_snapshot",
+            },
+        }
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    _patch_home_income_batch_from_single(service_mod, monkeypatch, fake_benchmark_excess)
+
+    try:
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
+        response = client.get(
+            "/ui/home/income-trend",
+            params={"report_date": REPORT_DATE, "window": 2},
+        )
+
+        assert response.status_code == 200, response.text
+        result = response.json()["result"]
+        assert result["source_status"] == "ready"
+        assert result["missing_components"] == []
+        assert result["warnings"] == []
+        assert [point["source_status"] for point in result["points"]] == ["ready", "ready"]
+        assert Decimal(str(result["points"][0]["benchmark_pnl"]["raw"])) == Decimal("80000000.0")
+        assert Decimal(str(result["points"][0]["excess_pnl"]["raw"])) == Decimal("40000000.0")
+    finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_keeps_benchmark_when_only_amount_disclosure_warning_blocks(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-disclosure-warning.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    def numeric(raw: Decimal, unit: str = "pct") -> dict[str, object]:
+        return {
+            "raw": float(raw),
+            "unit": unit,
+            "display": str(raw),
+            "precision": 8,
+            "sign_aware": True,
+        }
+
+    def fake_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        requested_date = "2026-02-01" if report_date.isoformat() == "2026-02-28" else "2026-03-01"
+        resolved_date = "2026-01-31" if requested_date == "2026-02-01" else "2026-02-28"
+        return {
+            "result": {
+                "report_date": report_date.isoformat(),
+                "benchmark_id": benchmark_id,
+                "portfolio_return": numeric(Decimal("0.012")),
+                "benchmark_return": numeric(Decimal("0.008")),
+                "excess_return": numeric(Decimal("40"), "bp"),
+                "warnings": [
+                    "YIELD_CURVE_LATEST_FALLBACK: Using latest available cdb curve "
+                    f"from trade_date={resolved_date} for requested_trade_date={requested_date}.",
+                    "Foreign-currency bond positions are disclosed on a CNY/RMB basis where formal CNY closure is available. "
+                    "The current API model does not expose row-level fallback markers; if upstream formal CNY closure is missing "
+                    "for some positions, derived amount fields may fall back to native currency values. Detected foreign currencies: USD.",
                 ],
             },
             "result_meta": {

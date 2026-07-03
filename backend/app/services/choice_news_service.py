@@ -5,6 +5,7 @@ from pathlib import Path
 
 import duckdb
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.research_radar_compare import build_choice_news_compare_payload
 
 RULE_VERSION = "rv_choice_news_v1"
 CACHE_VERSION = "cv_choice_news_v1"
@@ -113,6 +114,7 @@ def choice_news_latest_envelope(
         "offset": offset,
         "as_of_date": as_of_date,
         "excluded_future_rows": excluded_future_rows,
+        "compare": build_choice_news_compare_payload(payload_rows),
         "events": payload_rows,
     }
     if normalized_stock_code is not None:

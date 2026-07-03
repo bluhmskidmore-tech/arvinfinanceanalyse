@@ -66,6 +66,11 @@ def test_risk_tensor_read_surfaces_require_explicit_read_scope(tmp_path: Path, m
         "risk_tensor_envelope",
         lambda **_kwargs: {"result_meta": {"result_kind": "risk.tensor"}, "result": {}},
     )
+    monkeypatch.setattr(
+        route_module,
+        "risk_scenario_stress_envelope",
+        lambda **_kwargs: {"result_meta": {"result_kind": "risk.tensor.scenario_stress"}, "result": {}},
+    )
     _risk_tensor_scope_repo(tmp_path, monkeypatch)
     app = FastAPI()
     app.include_router(route_module.router)
@@ -74,6 +79,7 @@ def test_risk_tensor_read_surfaces_require_explicit_read_scope(tmp_path: Path, m
     for path, params in (
         ("/api/risk/tensor/dates", {}),
         ("/api/risk/tensor", {"report_date": REPORT_DATE}),
+        ("/api/risk/scenario-stress", {"report_date": REPORT_DATE}),
     ):
         response = client.get(path, params=params or None, headers=RISK_TENSOR_READ_HEADERS)
         assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
@@ -110,6 +116,33 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
         == Decimal(str(payload["result"]["asset_cashflow_30d"]["raw"]))
         - Decimal(str(payload["result"]["liability_cashflow_30d"]["raw"]))
     )
+
+    get_settings.cache_clear()
+
+
+def test_risk_scenario_stress_api_returns_scenario_envelope(tmp_path, monkeypatch):
+    _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+
+    client = _risk_tensor_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/api/risk/scenario-stress",
+        params={"report_date": REPORT_DATE},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "scenario"
+    assert payload["result_meta"]["result_kind"] == "risk.tensor.scenario_stress"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["scenario_flag"] is True
+    assert payload["result"]["basis"] == "scenario"
+    assert {row["category"] for row in payload["result"]["scenarios"]} == {
+        "rate",
+        "credit",
+        "liquidity",
+        "fx",
+    }
+    assert all(row["human_review_required"] is True for row in payload["result"]["scenarios"])
 
     get_settings.cache_clear()
 

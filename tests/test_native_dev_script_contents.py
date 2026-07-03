@@ -74,6 +74,16 @@ def test_dev_api_enables_market_home_prewarm_by_default():
     assert '$env:MOSS_MARKET_HOME_PREWARM_ENABLED = "1"' in script
 
 
+def test_dev_agent_api_uses_short_hermes_timeout_for_local_responsiveness():
+    ps1 = (ROOT / "scripts" / "dev-agent-api.ps1").read_text(encoding="utf-8")
+    cmd = (ROOT / "scripts" / "dev-agent-api.cmd").read_text(encoding="utf-8")
+
+    assert '$env:MOSS_AGENT_HERMES_TIMEOUT_SECONDS = "12"' in ps1
+    assert "MOSS_AGENT_HERMES_TIMEOUT_SECONDS=$($env:MOSS_AGENT_HERMES_TIMEOUT_SECONDS)" in ps1
+    assert "set MOSS_AGENT_HERMES_TIMEOUT_SECONDS=12" in cmd
+    assert "MOSS_AGENT_HERMES_TIMEOUT_SECONDS=%MOSS_AGENT_HERMES_TIMEOUT_SECONDS%" in cmd
+
+
 def test_dev_worker_script_bootstraps_native_environment():
     script = (ROOT / "scripts" / "dev-worker.ps1").read_text(encoding="utf-8")
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script

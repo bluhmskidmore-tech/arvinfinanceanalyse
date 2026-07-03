@@ -138,6 +138,14 @@ class _ChoiceIncompleteResult:
     }
 
 
+class _ChoiceUsdHolidayCarryResult:
+    Codes = ["EMM00058124"]
+    Dates = ["2026-01-16"]
+    Data = {
+        "EMM00058124": [[Decimal("7.21")]],
+    }
+
+
 def test_fx_mid_materialize_populates_duckdb_from_csv_override(tmp_path):
     fx_mod = _load_fx_task_module()
 
@@ -344,6 +352,49 @@ def test_materialize_fx_mid_for_report_date_uses_choice_for_complete_candidate_s
         ("USD", "CNY", Decimal("7.24000000"), "choice", "EMM00058124", date(2026, 2, 27)),
     ]
     get_settings.cache_clear()
+
+
+def test_choice_fx_fetch_allows_cfets_currency_holiday_carry_forward(monkeypatch):
+    fx_mod = _load_fx_task_module()
+
+    class _FakeChoiceClient:
+        def edb(self, codes, options="", **_kwargs):
+            assert codes == ["EMM00058124"]
+            assert "StartDate=2026-01-19" in options
+            return _ChoiceUsdHolidayCarryResult()
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+
+    rows = fx_mod._fetch_choice_fx_mid_rows_for_report_date(
+        "2026-01-19",
+        candidates=[
+            fx_mod.FormalFxCandidate(
+                series_id="EMM00058124",
+                series_name="USD/CNY middle rate",
+                vendor_series_code="EMM00058124",
+                base_currency="USD",
+                quote_currency="CNY",
+                invert_result=False,
+            )
+        ],
+    )
+
+    assert rows == [
+        (
+            "2026-01-19",
+            "USD",
+            "CNY",
+            Decimal("7.21"),
+            fx_mod.CHOICE_SOURCE_NAME,
+            False,
+            True,
+            rows[0][7],
+            "choice",
+            rows[0][9],
+            "EMM00058124",
+            "2026-01-16",
+        )
+    ]
 
 
 def test_materialize_fx_mid_for_report_date_uses_akshare_when_choice_is_incomplete(

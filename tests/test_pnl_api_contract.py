@@ -4078,7 +4078,7 @@ def test_pnl_bridge_rejects_prior_day_fx_locs_for_report_date(tmp_path, monkeypa
     get_settings.cache_clear()
 
 
-def test_pnl_bridge_accepts_same_date_non_business_day_fx_carry_forward(tmp_path, monkeypatch):
+def test_pnl_bridge_rejects_business_day_fx_carry_forward(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
     _append_manifest_override(
@@ -4100,11 +4100,10 @@ def test_pnl_bridge_accepts_same_date_non_business_day_fx_carry_forward(tmp_path
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
 
-    assert response.status_code == 200
-    payload = response.json()
-    row = payload["result"]["rows"][0]
-    assert row["fx_translation"]["raw"] == 41.35
-    assert payload["result"]["summary"]["total_fx_translation"]["raw"] == 41.35
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert "Invalid formal fx carry-forward metadata" in detail
+    assert "carry-forward is only allowed" in detail
     get_settings.cache_clear()
 
 

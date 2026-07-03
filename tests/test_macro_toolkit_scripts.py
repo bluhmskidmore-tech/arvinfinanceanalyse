@@ -638,6 +638,41 @@ def test_system_windpy_reads_bond_futures_price_oi_volume_from_daily_table(tmp_p
     assert result.Data == [[102.5, 102.75], [67890.0, 77890.0], [12345.0, 22345.0]]
 
 
+def test_system_sources_read_akshare_formal_treasury_curve_aliases(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_yield_curve_daily values
+              ('2026-06-26', 'treasury', '2Y', 1.2345, 'akshare',
+               'vv_akshare_treasury_20260626', 'sv_akshare_treasury_20260626',
+               'rv_yield_curve_formal_materialize_v1'),
+              ('2026-06-26', 'treasury', '30Y', 2.3456, 'akshare',
+               'vv_akshare_treasury_20260626', 'sv_akshare_treasury_20260626',
+               'rv_yield_curve_formal_materialize_v1')
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    system_sources.clear_system_macro_source_cache()
+
+    two_year = load_series_by_alias("S0059745", start="2026-06-26", end="2026-06-26")
+    thirty_year = load_series_by_alias("S0059752", start="2026-06-26", end="2026-06-26")
+
+    assert two_year[["series_id", "vendor_name", "value"]].to_dict("records") == [
+        {"series_id": "legacy.yield.akshare.treasury.2Y", "vendor_name": "akshare", "value": 1.2345}
+    ]
+    assert thirty_year[["series_id", "vendor_name", "value"]].to_dict("records") == [
+        {"series_id": "legacy.yield.akshare.treasury.30Y", "vendor_name": "akshare", "value": 2.3456}
+    ]
+    get_settings.cache_clear()
+    system_sources.clear_system_macro_source_cache()
+
+
 def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)

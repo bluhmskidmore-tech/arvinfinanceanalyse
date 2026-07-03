@@ -146,6 +146,48 @@ def _seed_choice_news_topics(tmp_path) -> None:
         conn.close()
 
 
+def _append_research_radar_events(tmp_path) -> None:
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=False)
+    try:
+        conn.executemany(
+            """
+            insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "ev_rates_review",
+                    "2026-05-08T14:00:00Z",
+                    "g1",
+                    "sectornews",
+                    7,
+                    1,
+                    0,
+                    "",
+                    "rates",
+                    0,
+                    "央行表态引发利率预期调整",
+                    None,
+                ),
+                (
+                    "ev_credit_review",
+                    "2026-05-08T15:00:00Z",
+                    "g1",
+                    "sectornews",
+                    8,
+                    1,
+                    0,
+                    "",
+                    "credit",
+                    0,
+                    "地产信用风险再度受关注",
+                    None,
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+
 def test_choice_events_latest_authorized_returns_envelope(tmp_path, monkeypatch) -> None:
     client = _choice_news_read_client(tmp_path, monkeypatch)
     response = client.get("/ui/news/choice-events/latest", params={"limit": 10, "offset": 0})
@@ -216,6 +258,24 @@ def test_choice_events_latest_topic_code_param_filters(tmp_path, monkeypatch) ->
     assert len(body["result"]["events"]) == 1
     assert body["result"]["events"][0]["topic_code"] == "TOPIC_FILTER_A"
     assert "alpha" in body["result"]["events"][0]["payload_text"]
+    get_settings.cache_clear()
+
+
+def test_choice_events_latest_returns_deterministic_research_compare(tmp_path, monkeypatch) -> None:
+    _seed_choice_news_topics(tmp_path)
+    _append_research_radar_events(tmp_path)
+    client = _choice_news_read_client(tmp_path, monkeypatch)
+
+    first = client.get("/ui/news/choice-events/latest", params={"limit": 10, "offset": 0})
+    second = client.get("/ui/news/choice-events/latest", params={"limit": 10, "offset": 0})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_compare = first.json()["result"]["compare"]
+    second_compare = second.json()["result"]["compare"]
+    assert first_compare == second_compare
+    assert set(first_compare) >= {"same_direction", "conflicting", "review_needed", "candidate_scenarios"}
+    assert all(row["human_review_required"] is True for row in first_compare["candidate_scenarios"])
     get_settings.cache_clear()
 
 

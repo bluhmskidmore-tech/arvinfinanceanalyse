@@ -374,7 +374,7 @@ def get_bond_dashboard_home_summary(report_date: date) -> dict[str, object]:
             source_version=str(lineage["source_version"]),
             rule_version=str(lineage["rule_version"]),
             vendor_version=str(lineage.get("vendor_version") or "vv_none"),
-            quality_flag="warning",
+            quality_flag="ok" if evidence_rows > 0 else "warning",
             source_surface="bond_analytics",
             requested_report_date=rd,
             resolved_report_date=rd,

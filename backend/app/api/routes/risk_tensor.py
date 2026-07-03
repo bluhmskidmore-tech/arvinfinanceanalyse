@@ -9,6 +9,7 @@ from backend.app.services.risk_tensor_service import (
     risk_tensor_dates_envelope,
     risk_tensor_envelope,
 )
+from backend.app.services.risk_scenario_stress_service import risk_scenario_stress_envelope
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
@@ -55,6 +56,30 @@ def risk_tensor(
     _ensure_risk_tensor_read_allowed(auth, settings)
     try:
         return risk_tensor_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/scenario-stress")
+def risk_scenario_stress(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str = Query(...),
+) -> dict:
+    try:
+        date.fromisoformat(report_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid report_date. Expected YYYY-MM-DD.") from exc
+
+    settings = get_settings()
+    _ensure_risk_tensor_read_allowed(auth, settings)
+    try:
+        return risk_scenario_stress_envelope(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
             report_date=report_date,

@@ -15,6 +15,7 @@ from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.services.gitnexus_service import build_gitnexus_status_payload
+from backend.app.services.research_radar_service import research_radar_brief_payload
 
 RULE_VERSION = "rv_agent_mvp_v1"
 BalanceAnalysisRepository = None
@@ -72,6 +73,7 @@ def _build_intent_handlers(
 ) -> dict[str, Callable[[AgentQueryRequest], dict[str, Any]]]:
     return {
         "gitnexus_status": lambda request: build_gitnexus_status_payload(request),
+        "research_radar_brief": lambda request: research_radar_brief_payload(request, duckdb_path),
         "portfolio_overview": lambda request: _portfolio_overview_payload(request, duckdb_path),
         "pnl_summary": lambda request: _pnl_summary_payload(request, duckdb_path),
         "duration_risk": lambda request: _duration_risk_payload(request, duckdb_path),
@@ -93,10 +95,11 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
     report_date = _latest_or_requested(request, repo.list_report_dates())
     if report_date is None:
         raise ValueError("No balance-analysis report date is available.")
+    currency_basis = _balance_analysis_currency_basis(request)
     overview = repo.fetch_formal_overview(
         report_date=report_date,
         position_scope=request.position_scope,
-        currency_basis=request.currency_basis,
+        currency_basis=currency_basis,
     )
     rd_mode: Literal["explicit", "latest_default"] = (
         "explicit" if _requested_report_date(request) else "latest_default"
@@ -119,7 +122,7 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
             resolution=rd_mode,
             extra={
                 "position_scope": request.position_scope,
-                "currency_basis": request.currency_basis,
+                "currency_basis": currency_basis,
             },
         ),
         "row_count": int(overview["detail_row_count"]),
@@ -150,6 +153,13 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
             },
         ],
     }
+
+
+def _balance_analysis_currency_basis(request: AgentQueryRequest) -> str:
+    currency_basis = str(request.currency_basis or "CNY").strip().upper()
+    if currency_basis == "CNX":
+        return "CNY"
+    return currency_basis or "CNY"
 
 
 def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:

@@ -130,6 +130,42 @@ def test_treasury_akshare_primary_returns_normalized_snapshot(monkeypatch):
     assert tenor_map["30Y"] == Decimal("1.90")
 
 
+def test_treasury_akshare_primary_synthesizes_missing_2y_point(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+    monkeypatch.setattr(
+        module.VendorAdapter,
+        "_fetch_akshare_records_locally",
+        lambda *args, **kwargs: [
+            {
+                "曲线名称": module.AKSHARE_CURVE_NAME_BY_TYPE["treasury"],
+                "日期": "2026-04-10",
+                "3月": Decimal("1.01"),
+                "6月": Decimal("1.02"),
+                "1年": Decimal("1.10"),
+                "3年": Decimal("1.30"),
+                "5年": Decimal("1.40"),
+                "7年": Decimal("1.50"),
+                "10年": Decimal("1.60"),
+                "30年": Decimal("1.90"),
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        module.ChoiceClient,
+        "edb",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("choice should not be called")),
+    )
+
+    snapshot = module.VendorAdapter().fetch_yield_curve("treasury", "2026-04-10")
+
+    tenor_map = {point.tenor: point.rate_pct for point in snapshot.points}
+    assert snapshot.vendor_name == "akshare"
+    assert tenor_map["2Y"] == Decimal("1.20")
+
+
 def test_cdb_choice_fallback_synthesizes_30y_point(monkeypatch):
     module = load_module(
         "backend.app.repositories.akshare_adapter",

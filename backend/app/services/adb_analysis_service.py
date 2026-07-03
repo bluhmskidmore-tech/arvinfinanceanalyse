@@ -411,6 +411,42 @@ def _adb_lineage_sources(zqtz_src: str, tyw_src: str) -> tuple[str, list[str]]:
     return basis, tables
 
 
+def _frame_report_dates(frame: pd.DataFrame) -> set[str]:
+    if frame.empty or "report_date" not in frame.columns:
+        return set()
+    return set(
+        pd.to_datetime(frame["report_date"], errors="coerce")
+        .dropna()
+        .dt.strftime("%Y-%m-%d")
+        .unique()
+        .tolist()
+    )
+
+
+def _snapshot_report_dates(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    table_name: str,
+    start_date: date,
+    end_date: date,
+) -> set[str]:
+    if not _table_exists(conn, table_name):
+        return set()
+    rows = conn.execute(
+        f"""
+        select distinct strftime(try_cast(report_date as date), '%Y-%m-%d')
+        from {table_name}
+        where try_cast(report_date as date) between ? and ?
+        """,
+        [start_date, end_date],
+    ).fetchall()
+    return {str(row[0]) for row in rows if row[0]}
+
+
+def _sql_in_placeholders(values: list[str]) -> str:
+    return ", ".join(["?"] * len(values))
+
+
 def _load_adb_raw_data(
     duckdb_path: str,
     start_date: date,
@@ -460,59 +496,59 @@ def _load_adb_raw_data(
                 [start_date, end_date],
             ).fetchdf()
 
-        # --- 2. Snapshot fallback for dates missing from formal tables ---
-        formal_dates: set[str] = set()
-        for df in (zqtz_df, tyw_df):
-            if not df.empty and "report_date" in df.columns:
-                formal_dates.update(
-                    pd.to_datetime(df["report_date"], errors="coerce")
-                    .dropna()
-                    .dt.strftime("%Y-%m-%d")
-                    .unique()
-                    .tolist()
-                )
-
-        snapshot_dates: set[str] = set()
+        # --- 2. Snapshot fallback for dates missing from each formal source ---
         has_zqtz_snap = _table_exists(conn, "zqtz_bond_daily_snapshot")
         has_tyw_snap = _table_exists(conn, "tyw_interbank_daily_snapshot")
-        if has_zqtz_snap or has_tyw_snap:
-            for snap_tbl in ("zqtz_bond_daily_snapshot", "tyw_interbank_daily_snapshot"):
-                if _table_exists(conn, snap_tbl):
-                    snap_date_rows = conn.execute(
-                        f"""
-                        select distinct cast(report_date as varchar)
-                        from {snap_tbl}
-                        where cast(report_date as date) between ? and ?
-                        """,
-                        [start_date, end_date],
-                    ).fetchall()
-                    snapshot_dates.update(r[0] for r in snap_date_rows if r[0])
-
-        missing_dates = sorted(snapshot_dates - formal_dates)
         has_zqtz_formal = _table_exists(conn, "fact_formal_zqtz_balance_daily")
         has_tyw_formal = _table_exists(conn, "fact_formal_tyw_balance_daily")
-        # 仅当对应 formal 表存在时才从快照补缺失日：无 formal 表则不读快照（须先物化 formal）
-        if missing_dates and (has_zqtz_formal or has_tyw_formal):
-            logger.info(
-                "ADB snapshot fallback: %d dates missing from formal tables, supplementing from snapshots",
-                len(missing_dates),
+        zqtz_missing_dates = (
+            sorted(
+                _snapshot_report_dates(
+                    conn,
+                    table_name="zqtz_bond_daily_snapshot",
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                - _frame_report_dates(zqtz_df)
             )
-            snapshot_date_in_list = ",".join(f"'{d}'" for d in missing_dates)
+            if has_zqtz_snap and has_zqtz_formal
+            else []
+        )
+        tyw_missing_dates = (
+            sorted(
+                _snapshot_report_dates(
+                    conn,
+                    table_name="tyw_interbank_daily_snapshot",
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                - _frame_report_dates(tyw_df)
+            )
+            if has_tyw_snap and has_tyw_formal
+            else []
+        )
+        # 仅当对应 formal 表存在时才从快照补缺失日：无 formal 表则不读快照（须先物化 formal）
+        if zqtz_missing_dates or tyw_missing_dates:
+            logger.info(
+                "ADB snapshot fallback: %d ZQTZ dates and %d TYW dates missing from formal tables",
+                len(zqtz_missing_dates),
+                len(tyw_missing_dates),
+            )
 
             # Supplement ZQTZ from snapshot
-            if has_zqtz_snap and has_zqtz_formal:
+            if zqtz_missing_dates:
                 zqtz_snap_sql = (
                     f"""
                     select
                       {_select_list_zqtz_snapshot(conn)}
                     from zqtz_bond_daily_snapshot
                     where cast(report_date as date) between ? and ?
-                      and cast(report_date as varchar) in ({snapshot_date_in_list})
+                      and strftime(try_cast(report_date as date), '%Y-%m-%d') in ({_sql_in_placeholders(zqtz_missing_dates)})
                     """
                 )
                 zqtz_snap = conn.execute(
                     zqtz_snap_sql,
-                    [start_date, end_date],
+                    [start_date, end_date, *zqtz_missing_dates],
                 ).fetchdf()
                 if not zqtz_snap.empty:
                     zqtz_df = pd.concat([zqtz_df, zqtz_snap], ignore_index=True) if not zqtz_df.empty else zqtz_snap
@@ -522,7 +558,7 @@ def _load_adb_raw_data(
                         zqtz_src = "formal+snapshot"
 
             # Supplement TYW from snapshot
-            if has_tyw_snap and has_tyw_formal:
+            if tyw_missing_dates:
                 tyw_snap_sql = f"""
                     select
                       report_date,
@@ -535,11 +571,11 @@ def _load_adb_raw_data(
                       rule_version
                     from tyw_interbank_daily_snapshot
                     where cast(report_date as date) between ? and ?
-                      and cast(report_date as varchar) in ({snapshot_date_in_list})
+                      and strftime(try_cast(report_date as date), '%Y-%m-%d') in ({_sql_in_placeholders(tyw_missing_dates)})
                     """
                 tyw_snap = conn.execute(
                     tyw_snap_sql,
-                    [start_date, end_date],
+                    [start_date, end_date, *tyw_missing_dates],
                 ).fetchdf()
                 if not tyw_snap.empty:
                     tyw_df = pd.concat([tyw_df, tyw_snap], ignore_index=True) if not tyw_df.empty else tyw_snap

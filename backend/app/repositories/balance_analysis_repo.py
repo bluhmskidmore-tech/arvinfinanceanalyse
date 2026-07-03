@@ -11,6 +11,7 @@ from backend.app.core_finance.balance_analysis import (
     TywSnapshotRow,
     ZqtzSnapshotRow,
 )
+from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
 from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.repositories.duckdb_migrations import (
     apply_pending_migrations_on_connection,
@@ -279,6 +280,15 @@ class BalanceAnalysisRepository(DuckDBRepository):
             raise ValueError(
                 f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
                 f"observed_trade_date={observed_trade_date_str} must be before report_date."
+            )
+        if not is_cfets_fx_non_business_day(
+            report_date,
+            base_currency=base_currency_normalized,
+            quote_currency="CNY",
+        ):
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
+                "carry-forward is only allowed for confirmed non-business-day rows."
             )
         return FormalFxRateLookup(
             rate=Decimal(str(mid_rate)),

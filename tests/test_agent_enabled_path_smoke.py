@@ -579,8 +579,6 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
         "/api/agent/query",
         json={
             "question": "portfolio overview",
-            "position_scope": "asset",
-            "currency_basis": "CNY",
             "context": {"user_id": "u_balance"},
         },
     )
@@ -597,7 +595,7 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "latest_default",
-        "position_scope": "asset",
+        "position_scope": "all",
         "currency_basis": "CNY",
     }
     assert payload["evidence"]["evidence_rows"] == 2
@@ -993,3 +991,49 @@ def test_agent_query_enabled_path_returns_local_analysis_chat_for_chinese_questi
     assert audit_payload["user_id"] == "u_analysis_chat"
     assert audit_payload["query_text"] == question
     assert audit_payload["tables_used"] == []
+
+
+def test_agent_query_explicit_research_radar_stays_local_even_when_provider_is_dexter(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss-research-radar.duckdb"
+    governance_dir = tmp_path / "governance-research-radar"
+    _seed_agent_news_tables(duckdb_path)
+
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    monkeypatch.setenv("MOSS_AGENT_PROVIDER", "dexter")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _set_trusted_agent_user(monkeypatch, "u_research_radar")
+
+    main_module = _fresh_main_module()
+    route_module = importlib.import_module("backend.app.api.routes.agent")
+    monkeypatch.setattr(
+        route_module,
+        "execute_dexter_agent_query",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("research radar must stay local")),
+    )
+
+    client = TestClient(main_module.app)
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "研究速读",
+            "basis": "analytical",
+            "context": {
+                "intent": "research_radar_brief",
+                "workflow_id": "research_radar_brief",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["result_kind"] == "agent.research_radar_brief"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["scenario_flag"] is False
+    assert payload["cards"][1]["title"] == "原始事件证据"
+    cards_by_title = {card["title"]: card for card in payload["cards"]}
+    assert "跨篇对比" in cards_by_title
+    assert "候选情景建议" in cards_by_title
+    assert all(row["human_review_required"] is True for row in cards_by_title["候选情景建议"]["data"])
+    assert any(row["href"] == "/news-events" for row in cards_by_title["下一步检查"]["data"])

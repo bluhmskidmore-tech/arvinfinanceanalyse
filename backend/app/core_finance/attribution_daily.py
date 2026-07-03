@@ -80,22 +80,33 @@ def compute_daily_attribution_row(
     carry = float(fx["income_return"])
     curve = float(fx["treasury_effect"])
     spread = float(fx["spread_effect"])
-    mod_dur = fx["mod_duration"]
-    mv_start_dec = safe_decimal(merged_position.get("market_value_start"))
     if infer_accounting_class(merged_position.get("asset_class_start")) == ACCOUNTING_BASIS_AC:
         rolldown = 0.0
     elif not market_end or mat_d is None:
         rolldown = 0.0
     else:
-        T_prev = _years_to_maturity(mat_d, prev_date)
-        T_rep = _years_to_maturity(mat_d, report_date)
-        if T_rep >= T_prev:
+        period_days = max((report_date - prev_date).days, 0)
+        current_years = _years_to_maturity(mat_d, report_date)
+        if period_days <= 0 or current_years <= 0:
             rolldown = 0.0
         else:
-            y_pe = interpolate_treasury_yield_pct(market_end, T_prev)
-            y_re = interpolate_treasury_yield_pct(market_end, T_rep)
-            bench_roll_dec = Decimal(str((y_re - y_pe) / 100.0))
-            rolldown = float(-mod_dur * bench_roll_dec * mv_start_dec)
+            rolled_years = max(float(current_years) - (period_days / 365), 0.0)
+            current_rate = interpolate_treasury_yield_pct(market_end, current_years)
+            rolled_rate = interpolate_treasury_yield_pct(market_end, rolled_years)
+            roll_fx = compute_bond_four_effects(
+                bond,
+                num_days,
+                bench_dec,
+                spread_dec,
+                report_date,
+                coupon_frequency=cf,
+            )
+            rate_delta = Decimal(str((current_rate - rolled_rate) / 100.0))
+            rolldown = float(
+                safe_decimal(roll_fx["mod_duration"])
+                * rate_delta
+                * safe_decimal(merged_position.get("market_value_end"))
+            )
     fx_ret = float(fx_pnl or 0.0)
     if total_pnl is not None:
         total = float(total_pnl)

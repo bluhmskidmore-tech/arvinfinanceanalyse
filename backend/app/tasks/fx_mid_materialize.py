@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import duckdb
+from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
 from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.akshare_adapter import VendorAdapter as AkShareVendorAdapter
@@ -199,6 +200,22 @@ def _normalize_vendor_row(
     vendor_name: str,
     vendor_version: str,
 ) -> tuple[object, ...]:
+    requested_date = date.fromisoformat(requested_report_date)
+    observed_date = date.fromisoformat(observed_trade_date)
+    if observed_date > requested_date:
+        raise ValueError(
+            f"FX vendor returned future observed_trade_date={observed_trade_date} "
+            f"for requested_report_date={requested_report_date}."
+        )
+    if observed_date < requested_date and not is_cfets_fx_non_business_day(
+        requested_report_date,
+        base_currency=candidate.base_currency,
+        quote_currency=candidate.quote_currency,
+    ):
+        raise ValueError(
+            f"Formal FX carry-forward is only allowed for confirmed non-business days; "
+            f"requested_report_date={requested_report_date}, observed_trade_date={observed_trade_date}."
+        )
     mid_rate = _invert_mid_rate(raw_mid_rate) if candidate.invert_result else raw_mid_rate
     is_business_day = observed_trade_date == requested_report_date
     return (
@@ -430,6 +447,7 @@ def _materialize_fx_mid_for_report_date(
     data_input_root: str,
     official_csv_path: str = "",
     explicit_csv_path: str = "",
+    writer_lock_already_held: bool = False,
 ) -> dict[str, object]:
     logger.info("starting materialize_fx_mid_for_report_date for report_date=%s", report_date)
     duckdb_file = Path(duckdb_path)
@@ -441,11 +459,17 @@ def _materialize_fx_mid_for_report_date(
     )
 
     if csv_path is not None:
-        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+        if writer_lock_already_held:
             payload = _materialize_fx_mid_rows_under_writer_lock(
                 csv_path=str(csv_path),
                 duckdb_path=duckdb_path,
             )
+        else:
+            with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+                payload = _materialize_fx_mid_rows_under_writer_lock(
+                    csv_path=str(csv_path),
+                    duckdb_path=duckdb_path,
+                )
         logger.info("completed materialize_fx_mid_for_report_date")
         return {
             **payload,
@@ -467,8 +491,11 @@ def _materialize_fx_mid_for_report_date(
         choice_rows = []
 
     if choice_rows:
-        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+        if writer_lock_already_held:
             _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=choice_rows)
+        else:
+            with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+                _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=choice_rows)
         logger.info("completed materialize_fx_mid_for_report_date")
         return {
             "status": "completed",
@@ -492,8 +519,11 @@ def _materialize_fx_mid_for_report_date(
         akshare_rows = []
 
     if akshare_rows:
-        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+        if writer_lock_already_held:
             _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=akshare_rows)
+        else:
+            with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+                _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=akshare_rows)
         logger.info("completed materialize_fx_mid_for_report_date")
         return {
             "status": "completed",

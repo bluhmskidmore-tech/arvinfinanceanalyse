@@ -834,6 +834,70 @@ def test_adb_comparison_ignores_snapshot_when_formal_tables_missing(tmp_path: Pa
     assert payload["coverage_days"] == 0
 
 
+def test_adb_comparison_supplements_missing_snapshot_dates_per_source(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb_per_source_fallback.duckdb"
+    governance_dir = tmp_path / "governance_per_source"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-02",
+            instrument_code="B-PER-SOURCE",
+            bond_type=BOND_GOV,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+        )
+        _insert_tyw(
+            conn,
+            report_date="2025-06-02",
+            position_id="TYW-PER-SOURCE",
+            product_type=INTERBANK_PLACE,
+            position_side=POSITION_LIABILITY,
+            principal=Decimal("50000000"),
+            rate=Decimal("2.5"),
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-06-02"],
+    )
+
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            delete from fact_formal_tyw_balance_daily
+            where cast(report_date as varchar) = '2025-06-02'
+            """
+        )
+    finally:
+        conn.close()
+
+    adb_analysis_service = load_module(
+        "backend.app.services.adb_analysis_service",
+        "backend/app/services/adb_analysis_service.py",
+    )
+    adb_analysis_service.clear_adb_comparison_cache()
+
+    payload = adb_analysis_service.adb_comparison_envelope(
+        "2025-06-02",
+        "2025-06-02",
+        top_n=10,
+    )["result"]
+    assert payload["adb_denominator_basis"] == "formal+snapshot_calendar"
+    assert payload["total_avg_assets"] > 0
+    assert payload["total_avg_interbank_liabilities"] == pytest.approx(50_000_000.0)
+
+
 def test_adb_comparison_denominator_uses_calendar_span(
     tmp_path: Path,
     monkeypatch,

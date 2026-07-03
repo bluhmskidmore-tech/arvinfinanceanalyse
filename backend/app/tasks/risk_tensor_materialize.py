@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
@@ -42,6 +42,17 @@ RISK_TENSOR_LOCK = RISK_TENSOR_MODULE.lock_definition
 RULE_VERSION = RISK_TENSOR_MODULE.rule_version
 CACHE_VERSION = RISK_TENSOR_MODULE.cache_version
 
+_REQUIRED_BOND_NUMERIC_FIELDS = (
+    "market_value",
+    "coupon_rate",
+    "modified_duration",
+    "convexity",
+    "dv01",
+    "spread_dv01",
+)
+_OPTIONAL_BOND_NUMERIC_FIELDS = ("face_value",)
+_REQUIRED_LIABILITY_NUMERIC_FIELDS = ("principal_amount", "funding_cost_rate")
+
 
 def _build_source_version(
     upstream_source_version: str,
@@ -80,6 +91,50 @@ def _rate_unit_violations(rows: list[dict[str, object]]) -> list[str]:
     return violations
 
 
+def _decimal_parse_violation(value: object, *, row_label: str, field_name: str) -> str | None:
+    if value is None or str(value).strip() == "":
+        return f"{row_label}.{field_name}=<missing>"
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return f"{row_label}.{field_name}={value!r}"
+    if not parsed.is_finite():
+        return f"{row_label}.{field_name}={value!r}"
+    return None
+
+
+def _numeric_input_violations(
+    rows: list[dict[str, object]],
+    *,
+    required_fields: tuple[str, ...],
+    label_field: str,
+    optional_fields: tuple[str, ...] = (),
+) -> list[str]:
+    violations: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        row_label = str(row.get(label_field) or "").strip() or f"row-{index}"
+        for field_name in required_fields:
+            violation = _decimal_parse_violation(
+                row.get(field_name),
+                row_label=row_label,
+                field_name=field_name,
+            )
+            if violation is not None:
+                violations.append(violation)
+        for field_name in optional_fields:
+            value = row.get(field_name)
+            if value is None or str(value).strip() == "":
+                continue
+            violation = _decimal_parse_violation(
+                value,
+                row_label=row_label,
+                field_name=field_name,
+            )
+            if violation is not None:
+                violations.append(violation)
+    return violations
+
+
 def _execute_risk_tensor_materialization(
     *,
     report_date: str,
@@ -112,6 +167,29 @@ def _execute_risk_tensor_materialization(
             str(row.get("source_version") or "").strip() for row in liability_rows
         ],
     )
+    numeric_violations = _numeric_input_violations(
+        rows,
+        required_fields=_REQUIRED_BOND_NUMERIC_FIELDS,
+        optional_fields=_OPTIONAL_BOND_NUMERIC_FIELDS,
+        label_field="instrument_code",
+    )
+    numeric_violations.extend(
+        _numeric_input_violations(
+            liability_rows,
+            required_fields=_REQUIRED_LIABILITY_NUMERIC_FIELDS,
+            label_field="position_id",
+        )
+    )
+    if numeric_violations:
+        raise FormalComputeMaterializeFailure(
+            source_version=source_version,
+            vendor_version="vv_none",
+            message=(
+                "risk_tensor requires parseable numeric formal inputs; "
+                f"report_date={report_date}; violations="
+                + ", ".join(numeric_violations[:5])
+            ),
+        )
     rate_unit_violations = _rate_unit_violations(rows)
     if rate_unit_violations:
         raise FormalComputeMaterializeFailure(

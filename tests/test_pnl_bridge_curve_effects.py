@@ -10,13 +10,27 @@ from backend.app.repositories.yield_curve_repo import (
     FORMAL_FACT_TABLE,
     ensure_yield_curve_tables,
 )
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_pnl_api_contract import (
     _append_balance_build_run,
     _append_manifest_override,
+    _grant_pnl_read_scope,
     _materialize_three_pnl_dates,
     _seed_pnl_bridge_balance_rows,
 )
+
+
+@pytest.fixture(autouse=True)
+def seed_pnl_bridge_curve_read_scope(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "pnl-bridge-curve-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _grant_pnl_read_scope(UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}"))
+    yield
+    get_settings.cache_clear()
 
 
 def _seed_curve_rows(duckdb_path, rows: list[tuple[object, ...]]) -> None:

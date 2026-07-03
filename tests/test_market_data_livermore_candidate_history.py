@@ -345,6 +345,36 @@ def _insert_strategy_score_rows(
     )
 
 
+def _macro_context_v1_fixture(*, data_state: str = "ready") -> dict[str, object]:
+    return {
+        "macro_context_id": "macroctx_unit",
+        "macro_contract_version": "rv_macro_context_v1",
+        "asof_date": "2026-05-01",
+        "report_date": "2026-05-01",
+        "data_state": data_state,
+        "coverage_ratio": 1.0,
+        "freshness_score": 1.0,
+        "confidence_score": 1.0 if data_state == "ready" else 0.5333,
+        "fallback_mode": "none",
+        "dimension_scores": {
+            "rate_direction_score": 0.1,
+            "liquidity_score": 0.2,
+            "growth_score": 0.3,
+            "inflation_score": -0.1,
+            "composite_score": 0.15,
+        },
+        "readiness_reasons": [] if data_state == "ready" else ["MACRO_WARNINGS_PRESENT"],
+        "quality_flag": "ok" if data_state == "ready" else "warning",
+        "vendor_status": "ok",
+        "source_version": "sv_macro",
+        "vendor_version": "vv_macro",
+        "rule_version": "rv_macro",
+        "cache_version": "cv_macro",
+        "evidence_rows": 30,
+        "warning_count": 0 if data_state == "ready" else 1,
+    }
+
+
 def _seed_csi300_benchmark(conn: duckdb.DuckDBPyConnection, rows: list[tuple[str, float]]) -> None:
     conn.execute(
         """
@@ -1100,6 +1130,7 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
     factor_stock = "000001.SZ"
     reversion_stock = "000002.SZ"
     uptrend_stock = "000003.SZ"
+    fresh_stock = "300001.SZ"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
         _minimal_observation_schema(conn)
@@ -1112,6 +1143,8 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
                 ((snap + timedelta(days=1)).isoformat(), reversion_stock, 18.0),
                 (snap.isoformat(), uptrend_stock, 30.0),
                 ((snap + timedelta(days=1)).isoformat(), uptrend_stock, 33.0),
+                (snap.isoformat(), fresh_stock, 40.0),
+                ((snap + timedelta(days=1)).isoformat(), fresh_stock, 44.0),
             ],
         )
     finally:
@@ -1178,6 +1211,32 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
                 }
             ]
         }
+        payload["fresh_trend_watchlist"] = {
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": fresh_stock,
+                    "stock_name": "Fresh D",
+                    "sector_code": "S4",
+                    "sector_name": "Fresh Tech",
+                    "concepts": ["Chiplet", "AI hardware"],
+                    "score": 1.52,
+                    "close": 40.0,
+                    "return_20d": 0.28,
+                    "return_60d": 0.68,
+                    "return_120d": 1.2,
+                    "ma20": 36.1,
+                    "ma60": 30.2,
+                    "ma120": 25.1,
+                    "amount_ratio": 1.8,
+                    "close_to_ma20": 0.108033,
+                    "pctchange": 0.045,
+                    "turn": 12.4,
+                    "amplitude": 7.2,
+                    "hlimitedays": 0,
+                }
+            ]
+        }
         return payload, meta
 
     monkeypatch.setattr(
@@ -1187,7 +1246,7 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
 
     out = materialize_livermore_candidate_history(str(db_path))
 
-    assert out["row_count"] == 3
+    assert out["row_count"] == 4
     conn = duckdb.connect(str(db_path), read_only=True)
     try:
         rows = conn.execute(
@@ -1202,10 +1261,16 @@ def test_task_materializes_factor_uptrend_and_mean_reversion_signal_rows(monkeyp
         conn.close()
 
     by_kind = {row[0]: row for row in rows}
-    assert set(by_kind) == {"factor_screen", "mean_reversion", "uptrend_momentum"}
+    assert set(by_kind) == {"factor_screen", "fresh_trend_watchlist", "mean_reversion", "uptrend_momentum"}
     assert by_kind["factor_screen"][1:4] == (factor_stock, "Factor A", 1)
     assert json.loads(by_kind["factor_screen"][7])["score"] == 3.2
     assert abs(float(by_kind["factor_screen"][8]) - 0.1) < 1e-12
+    assert by_kind["fresh_trend_watchlist"][1:4] == (fresh_stock, "Fresh D", 1)
+    assert by_kind["fresh_trend_watchlist"][4:7] == (0.045, 1.8, None)
+    fresh_evidence = json.loads(by_kind["fresh_trend_watchlist"][7])
+    assert fresh_evidence["return_120d"] == 1.2
+    assert fresh_evidence["concepts"] == ["Chiplet", "AI hardware"]
+    assert abs(float(by_kind["fresh_trend_watchlist"][8]) - 0.1) < 1e-12
     assert by_kind["mean_reversion"][1:4] == (reversion_stock, "Reversion B", 1)
     assert by_kind["mean_reversion"][4:7] == (-0.22, 2.4, 0.72)
     assert json.loads(by_kind["mean_reversion"][7])["drawdown_60d"] == -0.31
@@ -1698,6 +1763,7 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
         "complete_count": 1,
         "pending_count": 1,
         "partial_halt_count": 0,
+        "forward_coverage_counts": {"complete": 1, "pending": 1, "missing_bar": 0, "partial_halt": 0},
         "missing_forward_return_count": 1,
         "avg_return_1d": -0.04,
         "avg_return_5d": 0.03,
@@ -2091,6 +2157,7 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
         "pending_rows": 1,
         "unsupported_rows": 0,
         "proxy_only_rows": 1,
+        "forward_coverage_row_counts": {"complete": 1, "pending": 1, "missing_bar": 0, "partial_halt": 0},
         "included_completed_stats_dates": ["2026-05-06"],
         "excluded_from_completed_stats_dates": ["2026-04-30", "2026-05-07", "2026-05-08"],
         "date_reasons": [
@@ -2125,6 +2192,7 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
                 "message": "Forward return bars are not available yet; exclude 2026-05-08 from completed forward-return statistics.",
                 "affects_completed_stats": False,
                 "signal_kinds": ["stock_candidate"],
+                "missing_bar_row_count": 0,
             },
         ],
     }
@@ -3072,8 +3140,14 @@ def test_strategy_score_service_ranks_current_market_state_by_t5_score(tmp_path)
     assert body["review_thresholds"]["mature_min_sample"] == 30
     assert body["review_thresholds"]["official_t5_avg_return_band"] == {"lower": 0.012, "upper": 0.024}
     assert body["current_market_state"] == "HOT"
+    assert "family_summaries" not in body
     current_rows = body["current_market_state_rows"]
     assert [row["signal_kind"] for row in current_rows] == ["factor_screen", "stock_candidate", "theme_breakout"]
+    assert current_rows[0]["family_key"] == "factor_screen"
+    assert current_rows[0]["family_contract_version"] == "rv_livermore_strategy_family_contract_v1"
+    assert current_rows[0]["primary_sample_size"] == current_rows[0]["stats"]["return_5d"]["available_count"]
+    assert current_rows[1]["family_key"] == "trend_core"
+    assert current_rows[2]["family_key"] == "theme_breakout"
     assert current_rows[0]["strategy_label"] == "多因子"
     assert current_rows[0]["sample_status"] == "sufficient"
     assert current_rows[0]["priority_rank"] == 1
@@ -3450,6 +3524,228 @@ def test_strategy_score_service_keeps_old_rows_as_unknown_and_reports_current_st
     assert all("当前状态样本不足" in row["reason"] for row in current_rows)
 
 
+def test_strategy_score_family_metadata_keeps_non_priority_rows_null() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    payload = service._build_strategy_score_payload(
+        items=[
+            {
+                "snapshot_as_of_date": "2026-05-01",
+                "stock_code": "000001.SZ",
+                "stock_name": "Fresh Trend",
+                "candidate_rank": 1,
+                "signal_kind": "fresh_trend_watchlist",
+                "signal_evidence_json": '{"market_state":"HOT"}',
+                "return_1d": 0.01,
+                "return_5d": 0.02,
+                "return_20d": 0.03,
+            }
+        ],
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        current_market_state="HOT",
+        min_sample=1,
+        primary_horizon="return_5d",
+        backtest_window_summary={},
+    )
+
+    row = next(row for row in payload["current_market_state_rows"] if row["signal_kind"] == "fresh_trend_watchlist")
+    assert row["family_key"] is None
+    assert row["family_label"] is None
+    assert row["family_contract_version"] is None
+    assert row["primary_sample_size"] is None
+    assert row["family_readiness"] is None
+
+
+def test_strategy_score_family_readiness_attaches_macro_context_without_changing_score_scope() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    payload = service._build_strategy_score_payload(
+        items=[
+            {
+                "snapshot_as_of_date": "2026-05-01",
+                "stock_code": "000001.SZ",
+                "stock_name": "Trend",
+                "candidate_rank": 1,
+                "signal_kind": "stock_candidate",
+                "signal_evidence_json": '{"market_state":"HOT"}',
+                "return_1d": 0.01,
+                "return_5d": 0.02,
+                "return_20d": 0.03,
+            },
+            {
+                "snapshot_as_of_date": "2026-05-01",
+                "stock_code": "000002.SZ",
+                "stock_name": "Fresh Trend",
+                "candidate_rank": 2,
+                "signal_kind": "fresh_trend_watchlist",
+                "signal_evidence_json": '{"market_state":"HOT"}',
+                "return_1d": 0.01,
+                "return_5d": 0.02,
+                "return_20d": 0.03,
+            },
+        ],
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        current_market_state="HOT",
+        min_sample=1,
+        primary_horizon="return_5d",
+        backtest_window_summary={},
+        macro_context=_macro_context_v1_fixture(),
+    )
+
+    assert payload["macro_context"]["macro_context_id"] == "macroctx_unit"
+    trend_row = next(row for row in payload["current_market_state_rows"] if row["signal_kind"] == "stock_candidate")
+    readiness = trend_row["family_readiness"]
+    assert readiness["readiness_contract_version"] == "rv_livermore_strategy_family_readiness_v1"
+    assert readiness["macro_context_id"] == "macroctx_unit"
+    assert readiness["readiness_state"] == "degraded_observation"
+    assert readiness["macro_compatibility"] == "compatible"
+    assert readiness["data_readiness"] == "ready"
+    assert readiness["sample_maturity"] == "insufficient"
+    assert readiness["observational_only"] is True
+    assert readiness["formal_use_allowed"] is False
+    assert "OBSERVATION_ONLY_BOUNDARY" in readiness["readiness_reasons"]
+    assert "SAMPLE_MATURITY_INSUFFICIENT" in readiness["readiness_reasons"]
+
+    fresh_row = next(row for row in payload["current_market_state_rows"] if row["signal_kind"] == "fresh_trend_watchlist")
+    assert fresh_row["family_key"] is None
+    assert fresh_row["family_readiness"] is None
+
+
+def test_macro_context_v1_stabilizes_lineage_and_missing_state() -> None:
+    from backend.app.services import macro_bond_linkage_service as svc
+
+    macro_payload = {
+        "report_date": "2026-05-01",
+        "environment_score": {
+            "report_date": "2026-05-01",
+            "rate_direction_score": 0.1,
+            "liquidity_score": 0.2,
+            "growth_score": 0.3,
+            "inflation_score": -0.1,
+            "composite_score": 0.15,
+        },
+        "warnings": [],
+        "computed_at": "2026-05-01T10:00:00+00:00",
+    }
+    macro_meta = {
+        "source_version": "sv_macro",
+        "vendor_version": "vv_macro",
+        "rule_version": "rv_macro",
+        "cache_version": "cv_macro",
+        "quality_flag": "ok",
+        "vendor_status": "ok",
+        "fallback_mode": "none",
+        "evidence_rows": 30,
+    }
+
+    context = svc.build_macro_context_v1(
+        as_of_date="2026-05-01",
+        macro_payload=macro_payload,
+        macro_meta=macro_meta,
+    )
+    same_context = svc.build_macro_context_v1(
+        as_of_date="2026-05-01",
+        macro_payload={**macro_payload, "computed_at": "2026-05-01T11:00:00+00:00"},
+        macro_meta=macro_meta,
+    )
+
+    assert context["macro_contract_version"] == "rv_macro_context_v1"
+    assert context["macro_context_id"] == same_context["macro_context_id"]
+    assert context["data_state"] == "ready"
+    assert context["coverage_ratio"] == 1.0
+    assert context["confidence_score"] == 1.0
+    assert context["dimension_scores"]["composite_score"] == 0.15
+    assert context["score_polarity"]["liquidity_score"] == "positive=liquidity_easing"
+    assert context["score_polarity"]["composite_score"] == "positive=bond_unfavorable_restrictive_macro_pressure"
+    assert "- 0.3*liquidity_score" in context["composite_formula"]
+    assert context["composite_formula_version"] == "macro_env_composite_v2_liquidity_inverted"
+    assert context["readiness_reasons"] == []
+
+    warned = svc.build_macro_context_v1(
+        as_of_date="2026-05-01",
+        macro_payload={**macro_payload, "warnings": ["macro warning"]},
+        macro_meta=macro_meta,
+    )
+
+    assert warned["data_state"] == "degraded"
+    assert warned["coverage_ratio"] == 1.0
+    assert warned["confidence_score"] == 0.8667
+    assert warned["readiness_reasons"] == ["MACRO_WARNINGS_PRESENT"]
+    assert warned["warning_count"] == 1
+
+    quality_warning = svc.build_macro_context_v1(
+        as_of_date="2026-05-01",
+        macro_payload=macro_payload,
+        macro_meta={**macro_meta, "quality_flag": "warning"},
+    )
+
+    assert quality_warning["data_state"] == "degraded"
+    assert quality_warning["coverage_ratio"] == 1.0
+    assert quality_warning["confidence_score"] == 0.8667
+    assert quality_warning["readiness_reasons"] == ["MACRO_QUALITY_WARNING"]
+    assert quality_warning["warning_count"] == 0
+
+    missing = svc.build_macro_context_v1(
+        as_of_date="2026-05-01",
+        macro_payload={"report_date": "2026-05-01", "environment_score": {}, "warnings": ["missing"]},
+        macro_meta={**macro_meta, "quality_flag": "warning", "vendor_status": "vendor_unavailable", "evidence_rows": 0},
+    )
+
+    assert missing["data_state"] == "no_data"
+    assert missing["coverage_ratio"] == 0.0
+    assert "MACRO_SCORE_MISSING" in missing["readiness_reasons"]
+    assert "MACRO_COVERAGE_INSUFFICIENT" in missing["readiness_reasons"]
+    assert "MACRO_WARNINGS_PRESENT" in missing["readiness_reasons"]
+
+
+def test_livermore_macro_context_wrapper_uses_service_normalizer(monkeypatch) -> None:
+    from backend.app.api.routes import market_data_livermore as route
+    from backend.app.services import macro_bond_linkage_service as svc
+
+    captured_report_dates: list[date] = []
+
+    def fake_macro_environment_context(report_date: date) -> dict[str, object]:
+        captured_report_dates.append(report_date)
+        return {
+            "result": {
+                "report_date": "2026-05-01",
+                "environment_score": {
+                    "report_date": "2026-05-01",
+                    "rate_direction_score": 0.1,
+                    "liquidity_score": 0.2,
+                    "growth_score": 0.3,
+                    "inflation_score": -0.1,
+                    "composite_score": 0.15,
+                },
+                "warnings": [],
+                "computed_at": "2026-05-01T10:00:00+00:00",
+            },
+            "result_meta": {
+                "source_version": "sv_macro",
+                "vendor_version": "vv_macro",
+                "rule_version": "rv_macro",
+                "cache_version": "cv_macro",
+                "quality_flag": "ok",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+                "evidence_rows": 30,
+            },
+        }
+
+    monkeypatch.setattr(svc, "get_macro_environment_context", fake_macro_environment_context)
+
+    context = route._livermore_macro_context_v1_for_date("2026-05-01T15:30:00+08:00")
+
+    assert captured_report_dates == [date(2026, 5, 1)]
+    assert context is not None
+    assert context["macro_contract_version"] == "rv_macro_context_v1"
+    assert context["asof_date"] == "2026-05-01"
+    assert context["data_state"] == "ready"
+    assert context["dimension_scores"]["composite_score"] == 0.15
+
+
 def test_strategy_optimization_service_reports_t5_recommendations_and_rank_slices(tmp_path) -> None:
     from backend.app.services.livermore_candidate_history_service import (
         livermore_candidate_history_strategy_optimization_envelope,
@@ -3491,19 +3787,337 @@ def test_strategy_optimization_service_reports_t5_recommendations_and_rank_slice
     assert isinstance(body, dict)
     assert body["primary_horizon"] == "return_5d"
     assert body["min_sample"] == 30
+    assert "family_summaries" not in body
 
     factor = next(row for row in body["strategy_summaries"] if row["signal_kind"] == "factor_screen")
+    assert factor["family_key"] == "factor_screen"
+    assert factor["family_contract_version"] == "rv_livermore_strategy_family_contract_v1"
+    assert factor["primary_sample_size"] == 30
     assert factor["recommendation"]["action"] == "promote"
     assert factor["stats"]["return_5d"]["available_count"] == 30
     assert factor["date_weighted_stats"]["return_5d"]["available_day_count"] == 1
     assert factor["date_weighted_stats"]["return_5d"]["candidate_row_count"] == 30
 
     weak_slice = next(row for row in body["slices"] if row["slice_key"] == "factor_screen:rank:21-30")
+    assert weak_slice["family_key"] == "factor_screen"
+    assert weak_slice["primary_sample_size"] == 10
     assert weak_slice["label"] == "rank 21-30"
     assert weak_slice["recommendation"]["action"] == "pending_more_history"
     assert weak_slice["recommendation"]["priority_label"] == "样本不足"
     assert weak_slice["stats"]["return_5d"]["available_count"] == 10
     assert weak_slice["stats"]["return_5d"]["avg_return"] == -0.02
+    factor_recommendation = next(row for row in body["recommendations"] if row["target_key"] == factor["summary_key"])
+    assert factor_recommendation["target_type"] == "strategy"
+    assert factor_recommendation["family_key"] == factor["family_key"]
+    assert factor_recommendation["primary_sample_size"] == factor["primary_sample_size"]
+    slice_recommendation = next(row for row in body["recommendations"] if row["target_key"] == weak_slice["slice_key"])
+    assert slice_recommendation["target_type"] == "slice"
+    assert slice_recommendation["family_key"] == weak_slice["family_key"]
+    assert slice_recommendation["primary_sample_size"] == weak_slice["primary_sample_size"]
+
+
+def test_strategy_optimization_family_metadata_covers_replay_signal_kinds() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    expected_family_keys = {
+        "stock_candidate": "trend_core",
+        "hybrid_fusion": "hybrid_fusion",
+        "theme_breakout": "theme_breakout",
+        "factor_screen": "factor_screen",
+        "mean_reversion": "mean_reversion",
+        "fresh_trend_watchlist": "fresh_trend_watchlist",
+        "uptrend_momentum": "uptrend_momentum_observation",
+    }
+    items = [
+        {
+            "snapshot_as_of_date": "2026-05-01",
+            "stock_code": f"{index:06d}.SZ",
+            "stock_name": signal_kind,
+            "candidate_rank": index,
+            "signal_kind": signal_kind,
+            "signal_evidence_json": '{"market_state":"HOT"}',
+            "return_1d": 0.01,
+            "return_5d": 0.02,
+            "return_20d": 0.03,
+        }
+        for index, signal_kind in enumerate(expected_family_keys, start=1)
+    ]
+
+    payload = service._build_strategy_optimization_payload(
+        items=items,
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+        current_market_state="HOT",
+        min_sample=1,
+        primary_horizon="return_5d",
+        backtest_window_summary={},
+        macro_context=_macro_context_v1_fixture(),
+    )
+
+    summaries = {row["signal_kind"]: row for row in payload["strategy_summaries"]}
+    assert {signal_kind: row["family_key"] for signal_kind, row in summaries.items()} == expected_family_keys
+    assert all(row["primary_sample_size"] == 1 for row in summaries.values())
+    assert all(row["family_readiness"]["macro_context_id"] == "macroctx_unit" for row in summaries.values())
+    assert all(row["family_readiness"]["formal_use_allowed"] is False for row in summaries.values())
+    summary_recommendation = next(
+        row for row in payload["recommendations"] if row["target_type"] == "strategy" and row["target_key"] == "strategy:stock_candidate"
+    )
+    assert summary_recommendation["family_readiness"]["macro_context_id"] == "macroctx_unit"
+    assert (
+        service._strategy_family_metadata_for_recommendation_target(
+            target_type="strategy",
+            target_key="missing",
+            family_by_target={},
+        )
+        == {
+            "family_key": None,
+            "family_label": None,
+            "family_contract_version": None,
+            "primary_sample_size": None,
+        }
+    )
+
+
+def test_strategy_family_metadata_contract_handles_alias_boundaries_and_sample_size_edges() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    expected_family_keys = {
+        "stock_candidate": "trend_core",
+        "hybrid_fusion": "hybrid_fusion",
+        "theme_breakout": "theme_breakout",
+        "factor_screen": "factor_screen",
+        "mean_reversion": "mean_reversion",
+        "fresh_trend_watchlist": "fresh_trend_watchlist",
+        "uptrend_momentum": "uptrend_momentum_observation",
+    }
+    stats = {"return_5d": {"available_count": 17}}
+
+    for signal_kind, family_key in expected_family_keys.items():
+        metadata = service._strategy_family_metadata(
+            signal_kind=signal_kind,
+            stats=stats,
+            primary_horizon="return_5d",
+            score_priority_only=False,
+        )
+        assert metadata["family_key"] == family_key
+        assert metadata["family_label"]
+        assert metadata["family_contract_version"] == "rv_livermore_strategy_family_contract_v1"
+        assert metadata["primary_sample_size"] == 17
+
+    for output_key in (
+        "stock_candidates",
+        "hybrid_fusion_candidates",
+        "factor_screen_candidates",
+        "mean_reversion_candidates",
+        "uptrend_momentum_candidates",
+    ):
+        metadata = service._strategy_family_metadata(
+            signal_kind=output_key,
+            stats=stats,
+            primary_horizon="return_5d",
+            score_priority_only=False,
+        )
+        assert metadata == {
+            "family_key": None,
+            "family_label": None,
+            "family_contract_version": None,
+            "primary_sample_size": None,
+        }
+
+    assert service._strategy_primary_sample_size(stats={}, primary_horizon="return_5d") is None
+    assert service._strategy_primary_sample_size(stats={"return_1d": {"available_count": 5}}, primary_horizon="return_5d") is None
+    assert service._strategy_primary_sample_size(stats={"return_5d": {}}, primary_horizon="return_5d") is None
+    assert service._strategy_primary_sample_size(stats={"return_5d": {"available_count": None}}, primary_horizon="return_5d") is None
+    assert service._strategy_primary_sample_size(stats={"return_5d": {"available_count": 0}}, primary_horizon="return_5d") == 0
+    assert service._strategy_primary_sample_size(stats={"return_5d": {"available_count": "17"}}, primary_horizon="return_5d") == 17
+
+
+def test_strategy_family_metadata_stays_consistent_between_score_and_optimization() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    for signal_kind in ("stock_candidate", "hybrid_fusion", "theme_breakout", "factor_screen", "mean_reversion"):
+        items = [
+            {
+                "snapshot_as_of_date": "2026-05-01",
+                "stock_code": "000001.SZ",
+                "stock_name": signal_kind,
+                "candidate_rank": 1,
+                "signal_kind": signal_kind,
+                "signal_evidence_json": '{"market_state":"HOT"}',
+                "return_1d": 0.01,
+                "return_5d": 0.02,
+                "return_20d": 0.03,
+            }
+        ]
+        score_row = service._strategy_score_row(
+            market_state="HOT",
+            signal_kind=signal_kind,
+            items=items,
+            min_sample=1,
+            primary_horizon="return_5d",
+        )
+        optimization_summary = service._strategy_optimization_summary(
+            signal_kind=signal_kind,
+            items=items,
+            min_sample=1,
+            primary_horizon="return_5d",
+        )
+        for field in ("family_key", "family_label", "family_contract_version"):
+            assert score_row[field] == optimization_summary[field]
+
+
+def test_strategy_family_metadata_returns_fresh_dicts_without_sample_leakage() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    first = service._strategy_family_metadata(
+        signal_kind="stock_candidate",
+        stats={"return_5d": {"available_count": 3}},
+        primary_horizon="return_5d",
+        score_priority_only=False,
+    )
+    second = service._strategy_family_metadata(
+        signal_kind="stock_candidate",
+        stats={"return_5d": {"available_count": 19}},
+        primary_horizon="return_5d",
+        score_priority_only=False,
+    )
+    unknown = service._strategy_family_metadata(
+        signal_kind="unknown_vendor_signal",
+        stats={"return_5d": {"available_count": 99}},
+        primary_horizon="return_5d",
+        score_priority_only=False,
+    )
+
+    assert first["family_key"] == "trend_core"
+    assert first["primary_sample_size"] == 3
+    assert second["family_key"] == "trend_core"
+    assert second["primary_sample_size"] == 19
+    assert unknown == {
+        "family_key": None,
+        "family_label": None,
+        "family_contract_version": None,
+        "primary_sample_size": None,
+    }
+
+
+def test_strategy_optimization_recommendation_family_metadata_uses_target_namespace_and_unique_key() -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    recommendation = {
+        "action": "observe",
+        "priority_label": "observe",
+        "reason": "review",
+        "primary_horizon": "return_5d",
+        "available_count": 1,
+        "min_sample": 1,
+        "avg_return": 0.01,
+        "win_rate": 1.0,
+        "score": 1,
+    }
+    shared_strategy = {
+        "summary_key": "shared",
+        "signal_kind": "stock_candidate",
+        "strategy_label": "stock_candidate",
+        "family_key": "trend_core",
+        "family_label": "Trend core",
+        "family_contract_version": "rv_livermore_strategy_family_contract_v1",
+        "primary_sample_size": 10,
+        "family_readiness": {
+            "readiness_contract_version": "rv_livermore_strategy_family_readiness_v1",
+            "macro_context_id": "macroctx_strategy",
+            "formal_use_allowed": False,
+        },
+        "recommendation": recommendation,
+    }
+    shared_slice = {
+        "slice_key": "shared",
+        "signal_kind": "factor_screen",
+        "label": "factor shared",
+        "family_key": "factor_screen",
+        "family_label": "Factor screen",
+        "family_contract_version": "rv_livermore_strategy_family_contract_v1",
+        "primary_sample_size": 20,
+        "family_readiness": {
+            "readiness_contract_version": "rv_livermore_strategy_family_readiness_v1",
+            "macro_context_id": "macroctx_slice",
+            "formal_use_allowed": False,
+        },
+        "recommendation": recommendation,
+    }
+    shared_recommendations = service._strategy_optimization_recommendations(
+        strategy_summaries=[shared_strategy],
+        slices=[shared_slice],
+    )
+    strategy_recommendation = next(row for row in shared_recommendations if row["target_type"] == "strategy")
+    slice_recommendation = next(row for row in shared_recommendations if row["target_type"] == "slice")
+    assert strategy_recommendation["target_key"] == "shared"
+    assert strategy_recommendation["family_key"] == "trend_core"
+    assert strategy_recommendation["primary_sample_size"] == 10
+    assert strategy_recommendation["family_readiness"]["macro_context_id"] == "macroctx_strategy"
+    assert slice_recommendation["target_key"] == "shared"
+    assert slice_recommendation["family_key"] == "factor_screen"
+    assert slice_recommendation["primary_sample_size"] == 20
+    assert slice_recommendation["family_readiness"]["macro_context_id"] == "macroctx_slice"
+
+    duplicate_summaries = [
+        {
+            "summary_key": "strategy:duplicate",
+            "signal_kind": "stock_candidate",
+            "strategy_label": "stock_candidate",
+            "family_key": "trend_core",
+            "family_label": "Trend core",
+            "family_contract_version": "rv_livermore_strategy_family_contract_v1",
+            "primary_sample_size": 10,
+            "recommendation": recommendation,
+        },
+        {
+            "summary_key": "strategy:duplicate",
+            "signal_kind": "factor_screen",
+            "strategy_label": "factor_screen",
+            "family_key": "factor_screen",
+            "family_label": "Factor screen",
+            "family_contract_version": "rv_livermore_strategy_family_contract_v1",
+            "primary_sample_size": 20,
+            "recommendation": recommendation,
+        },
+    ]
+
+    recommendations = service._strategy_optimization_recommendations(
+        strategy_summaries=duplicate_summaries,
+        slices=[],
+    )
+
+    assert len(recommendations) == 2
+    assert all(row["target_key"] == "strategy:duplicate" for row in recommendations)
+    assert all(row["family_key"] is None for row in recommendations)
+    assert all(row["primary_sample_size"] is None for row in recommendations)
+    assert all(row["family_readiness"] is None for row in recommendations)
+
+    duplicate_slices = [
+        {
+            **shared_slice,
+            "slice_key": "slice:duplicate",
+            "family_key": "factor_screen",
+            "primary_sample_size": 30,
+        },
+        {
+            **shared_slice,
+            "slice_key": "slice:duplicate",
+            "family_key": "theme_breakout",
+            "primary_sample_size": 40,
+        },
+    ]
+    recommendations = service._strategy_optimization_recommendations(
+        strategy_summaries=[],
+        slices=duplicate_slices,
+    )
+
+    assert len(recommendations) == 2
+    assert all(row["target_type"] == "slice" for row in recommendations)
+    assert all(row["target_key"] == "slice:duplicate" for row in recommendations)
+    assert all(row["family_key"] is None for row in recommendations)
+    assert all(row["primary_sample_size"] is None for row in recommendations)
+    assert all(row["family_readiness"] is None for row in recommendations)
 
 
 def test_strategy_optimization_downgrades_when_t20_median_worsens(tmp_path) -> None:
@@ -3639,6 +4253,13 @@ def test_strategy_optimization_api_happy_path_and_query_validation(monkeypatch, 
     assert envelope["result"]["strategy_summaries"][0]["signal_kind"] == "factor_screen"
 
     client = _build_client(tmp_path, monkeypatch)
+    from backend.app.api.routes import market_data_livermore as route
+
+    monkeypatch.setattr(
+        route,
+        "_livermore_macro_context_v1_for_date",
+        lambda as_of_date: _macro_context_v1_fixture(),
+    )
     response = client.get(
         "/ui/market-data/livermore/strategy-optimization",
         params={
@@ -3655,6 +4276,14 @@ def test_strategy_optimization_api_happy_path_and_query_validation(monkeypatch, 
     assert body["result_meta"]["rule_version"] == "rv_livermore_strategy_optimization_v1"
     assert "livermore_candidate_history" in body["result_meta"]["tables_used"]
     assert body["result"]["strategy_summaries"][0]["signal_kind"] == "factor_screen"
+    assert body["result"]["macro_context"]["macro_context_id"] == "macroctx_unit"
+    assert body["result"]["macro_context"]["macro_contract_version"] == "rv_macro_context_v1"
+    readiness = body["result"]["strategy_summaries"][0]["family_readiness"]
+    assert readiness["readiness_contract_version"] == "rv_livermore_strategy_family_readiness_v1"
+    assert readiness["macro_context_id"] == "macroctx_unit"
+    assert readiness["data_readiness"] == "ready"
+    assert readiness["macro_compatibility"] == "compatible"
+    assert "OBSERVATION_ONLY_BOUNDARY" in readiness["readiness_reasons"]
 
     response_10d = client.get(
         "/ui/market-data/livermore/strategy-optimization",
@@ -3697,6 +4326,13 @@ def test_strategy_score_api_happy_path_and_query_validation(monkeypatch, tmp_pat
         conn.close()
 
     client = _build_client(tmp_path, monkeypatch)
+    from backend.app.api.routes import market_data_livermore as route
+
+    monkeypatch.setattr(
+        route,
+        "_livermore_macro_context_v1_for_date",
+        lambda as_of_date: _macro_context_v1_fixture(),
+    )
     response = client.get(
         "/ui/market-data/livermore/strategy-score",
         params={
@@ -3714,6 +4350,14 @@ def test_strategy_score_api_happy_path_and_query_validation(monkeypatch, tmp_pat
     assert body["result_meta"]["rule_version"] == "rv_livermore_strategy_score_v1"
     assert "livermore_candidate_history" in body["result_meta"]["tables_used"]
     assert body["result"]["current_market_state_rows"][0]["signal_kind"] == "factor_screen"
+    assert body["result"]["macro_context"]["macro_context_id"] == "macroctx_unit"
+    assert body["result"]["macro_context"]["macro_contract_version"] == "rv_macro_context_v1"
+    readiness = body["result"]["current_market_state_rows"][0]["family_readiness"]
+    assert readiness["readiness_contract_version"] == "rv_livermore_strategy_family_readiness_v1"
+    assert readiness["macro_context_id"] == "macroctx_unit"
+    assert readiness["data_readiness"] == "ready"
+    assert readiness["macro_compatibility"] == "compatible"
+    assert "OBSERVATION_ONLY_BOUNDARY" in readiness["readiness_reasons"]
 
     response_10d = client.get(
         "/ui/market-data/livermore/strategy-score",

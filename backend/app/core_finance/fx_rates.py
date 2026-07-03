@@ -10,10 +10,17 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from .decimal_utils import to_decimal
+from .fx_calendar import is_cfets_fx_non_business_day
 
 
 class FxRateUnavailableError(RuntimeError):
     """Raised when formal USD/CNY middle-rate input is insufficient."""
+
+
+def is_weekend_non_business_day(target_date: date | str) -> bool:
+    if isinstance(target_date, str):
+        target_date = date.fromisoformat(target_date)
+    return target_date.weekday() >= 5
 
 
 def get_usd_cny_rate(
@@ -45,7 +52,11 @@ def get_usd_cny_rate(
         is_non_business_day = (
             not target_is_business_day
             if target_is_business_day is not None
-            else target_date.weekday() >= 5
+            else is_cfets_fx_non_business_day(
+                target_date,
+                base_currency="USD",
+                quote_currency="CNY",
+            )
         )
         if is_non_business_day:
             start = target_date - timedelta(days=3)

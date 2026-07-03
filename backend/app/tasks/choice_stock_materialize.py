@@ -114,6 +114,9 @@ class _DefaultTushareStockClient:
     def __init__(self) -> None:
         self._pro: object | None = None
 
+    def stock_basic(self, **kwargs: object) -> object:
+        return self._api().stock_basic(**kwargs)
+
     def trade_cal(self, **kwargs: object) -> object:
         return self._api().trade_cal(**kwargs)
 
@@ -191,21 +194,44 @@ def materialize_choice_stock_inputs(
 
     try:
         current_request = universe_request
-        universe_result = _call_choice(choice_client, universe_request, stock_codes=[], as_of_date=resolved_date)
-        universe_rows = _normalize_sector_universe(universe_result, universe_request)
+        choice_front_layer_error: Exception | None = None
+        try:
+            universe_result = _call_choice(choice_client, universe_request, stock_codes=[], as_of_date=resolved_date)
+            universe_rows = _normalize_sector_universe(universe_result, universe_request)
+        except Exception as exc:
+            choice_front_layer_error = exc
+            fallback_client = tushare_client or _DefaultTushareStockClient()
+            universe_rows = _load_tushare_stock_universe_rows(
+                fallback_client,
+                as_of_date=resolved_date,
+                request=universe_request,
+            )
         stock_codes = sorted({_text(row.get("stock_code")) for row in universe_rows if _text(row.get("stock_code"))})
         if not stock_codes:
             raise RuntimeError("Choice stock universe returned no stock codes.")
 
-        request_audits.append(
-            _build_request_audit(
-                run_id=run_id,
-                as_of_date=resolved_date,
-                request=universe_request,
-                row_count=len(universe_rows),
-                stock_codes=[],
+        if choice_front_layer_error is None:
+            request_audits.append(
+                _build_request_audit(
+                    run_id=run_id,
+                    as_of_date=resolved_date,
+                    request=universe_request,
+                    row_count=len(universe_rows),
+                    stock_codes=[],
+                )
             )
-        )
+        else:
+            request_audits.append(
+                _build_tushare_fallback_request_audit(
+                    run_id=run_id,
+                    as_of_date=resolved_date,
+                    request=universe_request,
+                    row_count=len(universe_rows),
+                    stock_codes=[],
+                    vendor_indicator="stock_basic",
+                    error=choice_front_layer_error,
+                )
+            )
 
         for request in plan.requests:
             if request.field_key == universe_request.field_key:
@@ -214,6 +240,84 @@ def materialize_choice_stock_inputs(
             audit_status = "completed"
             audit_error_code = 0
             audit_error_msg = ""
+            if choice_front_layer_error is not None:
+                if request.input_family == "sector_membership":
+                    sector_rows.extend(
+                        _tushare_sector_membership_rows(
+                            universe_rows,
+                            request=request,
+                            as_of_date=resolved_date,
+                        )
+                    )
+                    request_audits.append(
+                        _build_tushare_fallback_request_audit(
+                            run_id=run_id,
+                            as_of_date=resolved_date,
+                            request=request,
+                            row_count=len(sector_rows),
+                            stock_codes=stock_codes,
+                            vendor_indicator="stock_basic.industry",
+                            error=choice_front_layer_error,
+                        )
+                    )
+                    continue
+                if request.call == "csd":
+                    start_date, end_date = _request_date_range(request, as_of_date=resolved_date)
+                    if (
+                        tushare_cache is None
+                        or tushare_cache.start_date != start_date
+                        or tushare_cache.end_date != end_date
+                    ):
+                        tushare_cache = _TushareStockFallbackCache(
+                            client=tushare_client or _DefaultTushareStockClient(),
+                            stock_codes=stock_codes,
+                            start_date=start_date,
+                            end_date=end_date,
+                        )
+                    csd_rows = tushare_cache.rows_for_request(request)
+                    _merge_daily_rows(daily_by_key, csd_rows, request)
+                    request_audits.append(
+                        _build_request_audit(
+                            run_id=run_id,
+                            as_of_date=resolved_date,
+                            request=request,
+                            row_count=len(csd_rows),
+                            stock_codes=stock_codes,
+                            status=TUSHARE_FALLBACK_AUDIT_STATUS,
+                            error_code=_choice_error_details(choice_front_layer_error)[0],
+                            error_msg=_choice_stock_unavailable_fallback_message(choice_front_layer_error),
+                        )
+                    )
+                    continue
+                if request.input_family == "limit_up_quality" and request.field_key == "point_in_time_limit_streaks":
+                    if tushare_cache is None:
+                        tushare_cache = _TushareStockFallbackCache(
+                            client=tushare_client or _DefaultTushareStockClient(),
+                            stock_codes=stock_codes,
+                            start_date=choice_stock_history_start_date(resolved_date),
+                            end_date=resolved_date,
+                        )
+                    limit_rows_for_request = tushare_cache.rows_for_request(request)
+                    normalized_limit_rows = _normalize_limit_quality_rows(
+                        limit_rows_for_request,
+                        request,
+                        as_of_date=resolved_date,
+                    )
+                    limit_rows.extend(normalized_limit_rows)
+                    request_audits.append(
+                        _build_tushare_fallback_request_audit(
+                            run_id=run_id,
+                            as_of_date=resolved_date,
+                            request=request,
+                            row_count=len(normalized_limit_rows),
+                            stock_codes=stock_codes,
+                            vendor_indicator="daily,stk_limit",
+                            error=choice_front_layer_error,
+                        )
+                    )
+                    continue
+                if request.input_family in {"concept_membership", "intraday_movement"}:
+                    continue
             if request.call == "css":
                 result = _call_choice(choice_client, request, stock_codes=stock_codes, as_of_date=resolved_date)
                 css_rows = _normalize_css_rows(result, request)
@@ -1120,6 +1224,8 @@ class _TushareStockFallbackCache:
             return self._trade_status_rows()
         if request.field_key == "daily_limit_flags":
             return self._limit_rows_for_as_of_date()
+        if request.field_key == "point_in_time_limit_streaks":
+            return self._limit_quality_rows_for_end_date()
         raise RuntimeError(f"No Tushare stock fallback mapping is defined for {request.field_key}.")
 
     def _sector_strength_rows(self) -> list[dict[str, object]]:
@@ -1181,6 +1287,27 @@ class _TushareStockFallbackCache:
             }
             for (trade_date, stock_code), row in self._limit_by_key().items()
         ]
+
+    def _limit_quality_rows_for_end_date(self) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        daily_by_key = self._daily_by_key()
+        limit_by_key = self._limit_by_key()
+        normalized_end_date = _normalize_date(self.end_date)
+        for stock_code in sorted(self.stock_codes):
+            daily_row = daily_by_key.get((normalized_end_date, stock_code), {})
+            limit_row = limit_by_key.get((normalized_end_date, stock_code), {})
+            close_value = _record_float(daily_row, "close")
+            rows.append(
+                {
+                    "trade_date": normalized_end_date,
+                    "stock_code": stock_code,
+                    "ISSURGEDLIMIT": _limit_flag(close_value, _record_float(limit_row, "up_limit")),
+                    "ISDECLINELIMIT": _limit_flag(close_value, _record_float(limit_row, "down_limit")),
+                    "HLIMITEDAYS": "0",
+                    "LLIMITEDDAYS": "0",
+                }
+            )
+        return rows
 
     def _trade_date_values(self) -> list[str]:
         if self._trade_dates is None:
@@ -1257,6 +1384,82 @@ class _TushareStockFallbackCache:
                     rows[key] = record
             self._limit_rows = rows
         return self._limit_rows
+
+
+def _load_tushare_stock_universe_rows(
+    client: object,
+    *,
+    as_of_date: str,
+    request: ChoiceStockRequestPlanItem,
+) -> list[dict[str, object]]:
+    frame = _call_tushare_with_retry(
+        client,
+        "stock_basic",
+        exchange="",
+        list_status="L",
+        fields="ts_code,name,industry,list_date,list_status",
+    )
+    as_of_compact = _compact_date(as_of_date)
+    rows: dict[str, dict[str, object]] = {}
+    for record in _records_from_tabular_payload(frame):
+        stock_code = _record_text(record, "ts_code")
+        if not _is_a_share_stock_code(stock_code):
+            continue
+        list_status = _record_text(record, "list_status").upper()
+        if list_status and list_status != "L":
+            continue
+        list_date = _record_text(record, "list_date")
+        if list_date and _compact_date(list_date) > as_of_compact:
+            continue
+        rows[stock_code] = {
+            "as_of_date": as_of_date,
+            "stock_code": stock_code,
+            "stock_name": _record_text(record, "name"),
+            "industry": _record_text(record, "industry"),
+            "field_key": request.field_key,
+        }
+    return [rows[key] for key in sorted(rows)]
+
+
+def _tushare_sector_membership_rows(
+    universe_rows: list[dict[str, object]],
+    *,
+    request: ChoiceStockRequestPlanItem,
+    as_of_date: str,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in universe_rows:
+        stock_code = _text(row.get("stock_code"))
+        if not stock_code:
+            continue
+        rows.append(
+            {
+                "as_of_date": as_of_date,
+                "stock_code": stock_code,
+                "sw2021": _text(row.get("industry")),
+                "sw2021code": _tushare_industry_code(row.get("industry")),
+                "field_key": request.field_key,
+            }
+        )
+    return rows
+
+
+def _is_a_share_stock_code(stock_code: str) -> bool:
+    return stock_code.endswith((".SH", ".SZ", ".BJ"))
+
+
+def _tushare_industry_code(industry: object) -> str:
+    normalized = _text(industry)
+    if not normalized:
+        return ""
+    return f"tushare:{hashlib.sha1(normalized.encode('utf-8')).hexdigest()[:10]}"
+
+
+def _limit_flag(close_value: float | None, limit_value: float | None) -> str:
+    if close_value is None or limit_value is None:
+        return "0"
+    tolerance = max(0.000001, abs(limit_value) * 0.000001)
+    return "1" if abs(close_value - limit_value) <= tolerance else "0"
 
 
 def _load_tushare_ths_concept_membership_rows(
@@ -1486,6 +1689,37 @@ def _build_request_audit(
         "error_code": error_code,
         "error_msg": error_msg,
     }
+
+
+def _build_tushare_fallback_request_audit(
+    *,
+    run_id: str,
+    as_of_date: str,
+    request: ChoiceStockRequestPlanItem,
+    row_count: int,
+    stock_codes: list[str],
+    vendor_indicator: str,
+    error: Exception,
+) -> dict[str, object]:
+    error_code, _error_msg = _choice_error_details(error)
+    audit = _build_request_audit(
+        run_id=run_id,
+        as_of_date=as_of_date,
+        request=request,
+        row_count=row_count,
+        stock_codes=stock_codes,
+        status=TUSHARE_FALLBACK_AUDIT_STATUS,
+        error_code=error_code,
+        error_msg=_choice_stock_unavailable_fallback_message(error),
+    )
+    audit["call"] = "tushare"
+    audit["vendor_indicator"] = vendor_indicator
+    return audit
+
+
+def _choice_stock_unavailable_fallback_message(error: Exception) -> str:
+    _error_code, error_msg = _choice_error_details(error)
+    return f"Choice stock unavailable; filled from Tushare stock fallback: {error_msg}"
 
 
 def _persist_failed_materialization(

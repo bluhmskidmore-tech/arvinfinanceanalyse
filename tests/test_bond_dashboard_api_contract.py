@@ -593,6 +593,7 @@ def test_bond_dashboard_home_summary_builds_child_payloads_without_child_envelop
     cached_payload = service_mod.get_bond_dashboard_home_summary(date.fromisoformat(REPORT_DATE))
 
     assert payload["result_meta"]["result_kind"] == "bond_dashboard.home_summary"
+    assert payload["result_meta"]["quality_flag"] == "ok"
     result = payload["result"]
     assert result["headline"]["kpis"]["total_market_value"]["raw"] == 1000.0
     assert result["asset_type"]["group_by"] == "bond_type"

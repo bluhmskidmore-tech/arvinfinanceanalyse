@@ -824,13 +824,63 @@ def _build_signal_rows(payload: dict[str, object]) -> list[dict[str, object]]:
                     }
                 )
 
+    fresh_trend_raw = payload.get("fresh_trend_watchlist")
+    if isinstance(fresh_trend_raw, dict):
+        raw_items = fresh_trend_raw.get("items")
+        if isinstance(raw_items, list):
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                item = cast(dict[str, object], raw)
+                rank = _safe_int(item.get("rank"), default=1)
+                rows.append(
+                    {
+                        "signal_kind": "fresh_trend_watchlist",
+                        "rank": rank,
+                        "stock_code": item.get("stock_code"),
+                        "stock_name": item.get("stock_name"),
+                        "sector_code": item.get("sector_code"),
+                        "sector_name": item.get("sector_name"),
+                        "strength_pctchange": item.get("pctchange"),
+                        "strength_turn": item.get("amount_ratio", item.get("turn")),
+                        "strength_amplitude": item.get("amplitude"),
+                        "ma20": item.get("ma20"),
+                        "ma60": item.get("ma60"),
+                        "ma120": item.get("ma120"),
+                        "market_state": market_state,
+                        "signal_evidence": {
+                            "signal_kind": "fresh_trend_watchlist",
+                            "market_state": market_state,
+                            "rank": rank,
+                            "stock_code": item.get("stock_code"),
+                            "sector_code": item.get("sector_code"),
+                            "concepts": item.get("concepts"),
+                            "score": item.get("score"),
+                            "close": item.get("close"),
+                            "return_20d": item.get("return_20d"),
+                            "return_60d": item.get("return_60d"),
+                            "return_120d": item.get("return_120d"),
+                            "ma20": item.get("ma20"),
+                            "ma60": item.get("ma60"),
+                            "ma120": item.get("ma120"),
+                            "amount_ratio": item.get("amount_ratio"),
+                            "close_to_ma20": item.get("close_to_ma20"),
+                            "pctchange": item.get("pctchange"),
+                            "turn": item.get("turn"),
+                            "amplitude": item.get("amplitude"),
+                            "hlimitedays": item.get("hlimitedays"),
+                        },
+                    }
+                )
+
     signal_order = {
         "hybrid_fusion": 0,
         "stock_candidate": 1,
         "uptrend_momentum": 2,
-        "theme_breakout": 3,
-        "factor_screen": 4,
-        "mean_reversion": 5,
+        "fresh_trend_watchlist": 3,
+        "theme_breakout": 4,
+        "factor_screen": 5,
+        "mean_reversion": 6,
     }
     return sorted(
         rows,

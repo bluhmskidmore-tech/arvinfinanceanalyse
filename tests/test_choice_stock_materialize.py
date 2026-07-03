@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -273,9 +274,36 @@ class PermissionDeniedCsdChoiceStockClient(FakeChoiceStockClient):
         return SimpleNamespace(ErrorCode=10001012, ErrorMsg="insufficient user access")
 
 
+class ExpiredChoiceStockClient(FakeChoiceStockClient):
+    def sector(self, *args: object, options: str = "") -> Any:
+        self.calls.append(("sector", args, options))
+        raise RuntimeError("user access for this API expired")
+
+
 class FakeTushareStockClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
+
+    def stock_basic(self, **kwargs: object) -> pd.DataFrame:
+        self.calls.append(("stock_basic", kwargs))
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": "000001.SZ",
+                    "name": "PAB",
+                    "industry": "Bank",
+                    "list_date": "19910403",
+                    "list_status": "L",
+                },
+                {
+                    "ts_code": "600000.SH",
+                    "name": "SPDB",
+                    "industry": "Bank",
+                    "list_date": "19991110",
+                    "list_status": "L",
+                },
+            ]
+        )
 
     def trade_cal(self, **kwargs: object) -> pd.DataFrame:
         self.calls.append(("trade_cal", kwargs))
@@ -919,6 +947,98 @@ def test_choice_stock_materialize_falls_back_to_tushare_when_choice_csd_is_denie
         ("daily_trade_status", "completed_tushare_fallback", 2, 10001012),
     ]
     assert all("Tushare stock fallback" in row[4] for row in audit_rows)
+    coverage = load_choice_stock_materialization_coverage(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-04-28",
+    )
+    assert coverage.full_coverage is True
+
+
+def test_choice_stock_materialize_falls_back_to_tushare_when_choice_universe_is_expired(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_confirmed_catalog(catalog_path)
+    tushare_client = FakeTushareStockClient()
+
+    result = materialize_choice_stock_inputs(
+        as_of_date="2026-04-28",
+        duckdb_path=str(duckdb_path),
+        catalog_path=str(catalog_path),
+        client=ExpiredChoiceStockClient(),
+        tushare_client=tushare_client,
+    )
+
+    assert result["status"] == "completed"
+    assert result["stock_code_count"] == 2
+    assert str(result["vendor_version"]).startswith("vv_choice_tushare_stock_20260428_")
+    assert [name for name, _ in tushare_client.calls] == [
+        "stock_basic",
+        "trade_cal",
+        "daily",
+        "daily_basic",
+        "stk_limit",
+    ]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        universe = conn.execute(
+            """
+            select stock_code, stock_name, field_key
+            from choice_stock_universe
+            order by stock_code
+            """
+        ).fetchall()
+        sectors = conn.execute(
+            """
+            select stock_code, sw2021, sw2021code, field_key
+            from choice_stock_sector_membership
+            order by stock_code
+            """
+        ).fetchall()
+        limits = conn.execute(
+            """
+            select stock_code, issurgedlimit, isdeclinelimit, hlimitedays, llimitedays
+            from choice_stock_limit_quality
+            order by stock_code
+            """
+        ).fetchall()
+        audit_rows = conn.execute(
+            """
+            select input_family, field_key, call, status, row_count, error_msg
+            from choice_stock_request_audit
+            order by input_family, field_key
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert universe == [
+        ("000001.SZ", "PAB", "a_share_universe_sector_001004"),
+        ("600000.SH", "SPDB", "a_share_universe_sector_001004"),
+    ]
+    tushare_bank_code = f"tushare:{hashlib.sha1('Bank'.encode('utf-8')).hexdigest()[:10]}"
+    assert sectors == [
+        ("000001.SZ", "Bank", tushare_bank_code, "sw2021_industry_membership"),
+        ("600000.SH", "Bank", tushare_bank_code, "sw2021_industry_membership"),
+    ]
+    assert limits == [
+        ("000001.SZ", "0", "0", 0, 0),
+        ("600000.SH", "0", "0", 0, 0),
+    ]
+    assert {
+        (row[0], row[1], row[2], row[3], row[4])
+        for row in audit_rows
+        if row[3] == "completed_tushare_fallback"
+    } == {
+        ("stock_universe", "a_share_universe_sector_001004", "tushare", "completed_tushare_fallback", 2),
+        ("sector_membership", "sw2021_industry_membership", "tushare", "completed_tushare_fallback", 2),
+        ("sector_strength", "daily_return_turnover_amplitude", "csd", "completed_tushare_fallback", 2),
+        ("stock_ohlcv", "daily_ohlcv_amount", "csd", "completed_tushare_fallback", 2),
+        ("stock_status", "daily_trade_status", "csd", "completed_tushare_fallback", 2),
+        ("limit_up_quality", "daily_limit_flags", "csd", "completed_tushare_fallback", 2),
+        ("limit_up_quality", "point_in_time_limit_streaks", "tushare", "completed_tushare_fallback", 2),
+    }
+    assert all("Choice stock unavailable; filled from Tushare stock fallback" in row[5] for row in audit_rows)
     coverage = load_choice_stock_materialization_coverage(
         duckdb_path=str(duckdb_path),
         as_of_date="2026-04-28",

@@ -636,6 +636,17 @@ def _validate_standardized_points(*, curve_type: str, points: list[YieldCurvePoi
 
 
 def _enrich_curve_points(*, curve_type: str, points: list[YieldCurvePoint]) -> list[YieldCurvePoint]:
+    if curve_type == "treasury":
+        tenor_map = {point.tenor: point for point in points}
+        enriched = dict(tenor_map)
+        point_1y = tenor_map.get("1Y")
+        point_3y = tenor_map.get("3Y")
+        if "2Y" not in enriched and point_1y is not None and point_3y is not None:
+            enriched["2Y"] = YieldCurvePoint(
+                tenor="2Y",
+                rate_pct=point_1y.rate_pct + (point_3y.rate_pct - point_1y.rate_pct) / Decimal("2"),
+            )
+        return sorted(enriched.values(), key=lambda point: point.tenor)
     if curve_type == "aaa_credit":
         tenor_map = {point.tenor: point for point in points}
         enriched = dict(tenor_map)

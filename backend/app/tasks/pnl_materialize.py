@@ -10,6 +10,7 @@ import duckdb
 from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )
+from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
 from backend.app.core_finance.pnl import (
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
@@ -411,6 +412,15 @@ def _load_pnl_fx_rates(
             raise ValueError(
                 f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
                 f"observed_trade_date={observed_trade_date_str} must be before report_date."
+            )
+        if not is_cfets_fx_non_business_day(
+            report_date,
+            base_currency=base,
+            quote_currency="CNY",
+        ):
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
+                "carry-forward is only allowed for confirmed non-business-day rows."
             )
         rates[base] = (Decimal(str(mid_rate)), str(source_version or ""))
 

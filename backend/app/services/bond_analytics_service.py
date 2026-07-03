@@ -1302,12 +1302,39 @@ def _resolve_curve_for_service(
     requested_trade_date: str,
     curve_type: str,
 ) -> tuple[dict[str, object] | None, str | None]:
-    snapshot, warning = repo.resolve_curve_snapshot(requested_trade_date, curve_type)
-    if snapshot is not None or warning is None:
-        return snapshot, warning
-    if str(warning).startswith("No ") and "affected components remain 0" not in warning:
-        return snapshot, f"{warning}; affected components remain 0."
-    return snapshot, warning
+    exact_snapshot = repo.fetch_curve_snapshot(requested_trade_date, curve_type)
+    if exact_snapshot is not None:
+        return exact_snapshot, None
+    if repo.fetch_curve(requested_trade_date, curve_type):
+        raise RuntimeError(
+            f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={requested_trade_date}."
+        )
+    latest_trade_date = repo.fetch_latest_trade_date_on_or_before(curve_type, requested_trade_date)
+    if latest_trade_date is None:
+        return (
+            None,
+            f"No {curve_type} curve available for requested trade_date={requested_trade_date}; "
+            "affected components remain 0.",
+        )
+    latest_snapshot = repo.fetch_curve_snapshot(latest_trade_date, curve_type)
+    if latest_snapshot is None:
+        if repo.fetch_curve(latest_trade_date, curve_type):
+            raise RuntimeError(
+                f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={latest_trade_date}."
+            )
+        return (
+            None,
+            f"No {curve_type} curve available for requested trade_date={requested_trade_date}; "
+            "affected components remain 0.",
+        )
+    return (
+        latest_snapshot,
+        format_yield_curve_latest_fallback_warning(
+            curve_type=curve_type,
+            resolved_trade_date=latest_trade_date,
+            requested_trade_date=requested_trade_date,
+        ),
+    )
 
 
 def _ordered_unique_warnings(values: list[str | None]) -> list[str]:

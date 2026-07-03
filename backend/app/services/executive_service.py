@@ -53,7 +53,11 @@ from backend.app.schemas.executive_dashboard import (
     VerdictSuggestion,
     VerdictTone,
 )
-from backend.app.services.bond_analytics_service import get_benchmark_excess, get_benchmark_excess_many
+from backend.app.services.bond_analytics_service import (
+    BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING,
+    get_benchmark_excess,
+    get_benchmark_excess_many,
+)
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.kpi_service import (
     resolve_executive_kpi_metrics,
@@ -2983,19 +2987,29 @@ def _is_bounded_home_income_curve_fallback(reason: object) -> bool:
     return 0 <= fallback_days <= _HOME_INCOME_MAX_CURVE_FALLBACK_DAYS
 
 
+def _is_home_income_amount_disclosure_warning(reason: object) -> bool:
+    return BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING in str(reason or "")
+
+
 def _home_income_blocking_benchmark_reasons(
     benchmark_warnings: list[object],
     *,
     vendor_status: str,
 ) -> list[object]:
+    has_bounded_curve_fallback = any(
+        _is_bounded_home_income_curve_fallback(warning)
+        for warning in benchmark_warnings
+    )
     blocking_reasons: list[object] = [
         warning
         for warning in benchmark_warnings
-        if not _is_bounded_home_income_curve_fallback(warning)
+        if not (
+            _is_bounded_home_income_curve_fallback(warning)
+            or _is_home_income_amount_disclosure_warning(warning)
+        )
     ]
-    bounded_fallback_only = bool(benchmark_warnings) and not blocking_reasons
     if vendor_status != "ok" and not (
-        vendor_status == "vendor_stale" and bounded_fallback_only
+        vendor_status == "vendor_stale" and has_bounded_curve_fallback and not blocking_reasons
     ):
         blocking_reasons.append(f"vendor_status={vendor_status}")
     return blocking_reasons

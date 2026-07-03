@@ -16,6 +16,7 @@ EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("anonymous", "viewer", "cashflow_projection", "read"),
     ("anonymous", "viewer", "dashboard", "read"),
     ("anonymous", "viewer", "executive", "read"),
+    ("anonymous", "viewer", "agent", "read"),
     ("anonymous", "viewer", "ledger_pnl", "read"),
     ("anonymous", "viewer", "macro_bond_linkage", "read"),
     ("anonymous", "viewer", "macro_toolkit", "read"),
@@ -24,6 +25,7 @@ EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("anonymous", "viewer", "pnl_attribution", "read"),
     ("anonymous", "viewer", "product_category_pnl", "read"),
     ("anonymous", "viewer", "research_calendar", "read"),
+    ("anonymous", "viewer", "risk_tensor", "read"),
 }
 
 

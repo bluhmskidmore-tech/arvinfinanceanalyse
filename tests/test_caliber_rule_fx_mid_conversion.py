@@ -194,3 +194,15 @@ def test_formal_canonical_usd_cny_rate_carries_forward_explicit_non_business_day
     assert observed_date == date(2026, 2, 16)
     assert warnings
     assert "formal" in warnings[0]
+
+
+def test_formal_canonical_usd_cny_rate_uses_cfets_currency_holiday_calendar() -> None:
+    rate, observed_date, warnings = get_usd_cny_rate(
+        [(date(2026, 1, 16), "7.1100")],
+        date(2026, 1, 19),
+    )
+
+    assert rate == Decimal("7.1100")
+    assert observed_date == date(2026, 1, 16)
+    assert warnings
+    assert "observed_date=2026-01-16" in warnings[0]

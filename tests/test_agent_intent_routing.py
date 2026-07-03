@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -87,7 +89,7 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
         "backend/app/agent/schemas/agent_request.py",
     )
 
-    calls: list[str] = []
+    calls: list[tuple[str, str, str]] = []
 
     class StubBalanceAnalysisRepository:
         def __init__(self, path: str):
@@ -97,7 +99,7 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
             return ["2026-03-31"]
 
         def fetch_formal_overview(self, *, report_date: str, position_scope: str, currency_basis: str) -> dict[str, object]:
-            calls.append(report_date)
+            calls.append((report_date, position_scope, currency_basis))
             return {
                 "detail_row_count": 1,
                 "total_market_value_amount": 800,
@@ -118,7 +120,8 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
         request_module.AgentQueryRequest(question="portfolio market value")
     )
 
-    assert calls == ["2026-03-31"]
+    assert calls == [("2026-03-31", "all", "CNY")]
+    assert envelope.evidence.filters_applied["currency_basis"] == "CNY"
     assert envelope.result_meta.result_kind == "agent.portfolio_overview"
     assert any(card.title == "Total Market Value" for card in envelope.cards)
 
@@ -979,34 +982,35 @@ def test_gitnexus_intent_rejects_repo_path_outside_allowed_root(tmp_path):
         "backend/app/agent/schemas/agent_request.py",
     )
 
-    outside_repo = tmp_path / "outside-repo"
-    (outside_repo / ".gitnexus").mkdir(parents=True)
-    (outside_repo / ".gitnexus" / "meta.json").write_text(
-        json.dumps(
-            {
-                "repoPath": str(outside_repo),
-                "indexedAt": "2026-03-15T13:33:15.839Z",
-                "stats": {"nodes": 1, "edges": 1, "communities": 1, "processes": 1},
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    tool = tool_module.AnalysisViewTool(
-        "test.duckdb",
-        str(tmp_path),
-        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
-    )
-    envelope = tool.execute(
-        request_module.AgentQueryRequest(
-            question="GitNexus repo status",
-            filters={"repo_path": str(outside_repo)},
+    with tempfile.TemporaryDirectory(prefix="moss-gitnexus-outside-") as outside_root:
+        outside_repo = Path(outside_root) / "outside-repo"
+        (outside_repo / ".gitnexus").mkdir(parents=True)
+        (outside_repo / ".gitnexus" / "meta.json").write_text(
+            json.dumps(
+                {
+                    "repoPath": str(outside_repo),
+                    "indexedAt": "2026-03-15T13:33:15.839Z",
+                    "stats": {"nodes": 1, "edges": 1, "communities": 1, "processes": 1},
+                }
+            ),
+            encoding="utf-8",
         )
-    )
 
-    assert envelope.result_meta.result_kind == "agent.gitnexus_status"
-    assert envelope.result_meta.quality_flag == "error"
-    assert "outside allowed roots" in envelope.answer
+        tool = tool_module.AnalysisViewTool(
+            "test.duckdb",
+            str(tmp_path),
+            intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+        )
+        envelope = tool.execute(
+            request_module.AgentQueryRequest(
+                question="GitNexus repo status",
+                filters={"repo_path": str(outside_repo)},
+            )
+        )
+
+        assert envelope.result_meta.result_kind == "agent.gitnexus_status"
+        assert envelope.result_meta.quality_flag == "error"
+        assert "outside allowed roots" in envelope.answer
 
 
 def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards(tmp_path, monkeypatch):

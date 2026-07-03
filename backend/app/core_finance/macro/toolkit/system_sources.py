@@ -1,12 +1,32 @@
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_DATA_SOURCES = ("choice", "tushare")
+
+_WARNED_SOURCE_GAPS: set[str] = set()
+
+
+def _warn_source_gap_once(gap_key: str, message: str, *args: object) -> None:
+    if gap_key in _WARNED_SOURCE_GAPS:
+        return
+    _WARNED_SOURCE_GAPS.add(gap_key)
+    logger.warning(message, *args)
+
+
+def _warn_missing_table_once(table_name: str) -> None:
+    _warn_source_gap_once(
+        f"table_missing:{table_name}",
+        "system macro source table %s is missing; this source contributes an empty frame",
+        table_name,
+    )
 
 _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "000300.sh": ("CA.CSI300", "000300.SH", "index_daily:000300.SH.close"),
@@ -38,14 +58,19 @@ _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "公开市场7天逆回购利率": ("M001", "cn_repo_7d", "m0041653"),
     "m0041813": ("NCD.SHIBOR.3M", "shibor:3m"),
     "dr007.ib": ("CA.DR007", "repo_rate_query:FDR007", "DR007.IB"),
-    "s0059743": ("EMM00166458", "legacy.yield.choice.treasury.1Y"),
-    "s0059745": ("EMM00588704", "legacy.yield.choice.treasury.2Y"),
-    "s0059746": ("EMM00166460", "legacy.yield.choice.treasury.3Y"),
-    "s0059747": ("EMM00166462", "legacy.yield.choice.treasury.5Y", "tushare.yc_cb.1001.CB.5Y"),
-    "s0059748": ("EMM00166464", "legacy.yield.choice.treasury.7Y"),
-    "s0059749": ("EMM00166466", "E1000180", "legacy.yield.choice.treasury.10Y"),
-    "s0059751": ("EMM00166468", "legacy.yield.choice.treasury.20Y"),
-    "s0059752": ("EMM00166469", "legacy.yield.choice.treasury.30Y"),
+    "s0059743": ("EMM00166458", "legacy.yield.choice.treasury.1Y", "legacy.yield.akshare.treasury.1Y"),
+    "s0059745": ("EMM00588704", "legacy.yield.choice.treasury.2Y", "legacy.yield.akshare.treasury.2Y"),
+    "s0059746": ("EMM00166460", "legacy.yield.choice.treasury.3Y", "legacy.yield.akshare.treasury.3Y"),
+    "s0059747": (
+        "EMM00166462",
+        "legacy.yield.choice.treasury.5Y",
+        "legacy.yield.akshare.treasury.5Y",
+        "tushare.yc_cb.1001.CB.5Y",
+    ),
+    "s0059748": ("EMM00166464", "legacy.yield.choice.treasury.7Y", "legacy.yield.akshare.treasury.7Y"),
+    "s0059749": ("EMM00166466", "E1000180", "legacy.yield.choice.treasury.10Y", "legacy.yield.akshare.treasury.10Y"),
+    "s0059751": ("EMM00166468", "legacy.yield.choice.treasury.20Y", "legacy.yield.akshare.treasury.20Y"),
+    "s0059752": ("EMM00166469", "legacy.yield.choice.treasury.30Y", "legacy.yield.akshare.treasury.30Y"),
     "s0059650": ("legacy.yield.choice.aaa_credit.1Y", "EMM00166655"),
     "s0059651": ("legacy.yield.choice.aaa_credit.3Y", "EMM00166657"),
     "s0059652": ("legacy.yield.choice.aaa_credit.5Y", "EMM00166659"),
@@ -66,6 +91,7 @@ _SOURCE_PRIORITY = {
     "fx_daily_mid": 0,
     "public_bond_zh_us_rate": 0,
     "public_repo_rate_query": 0,
+    "akshare": 1,
     "wind_legacy_market_db": 1,
     "tushare": 1,
     "moss_derived": 2,
@@ -84,11 +110,22 @@ def resolve_system_duckdb_path(duckdb_path: str | Path | None = None) -> Path:
 def load_system_macro_frame(duckdb_path: str | Path | None = None) -> pd.DataFrame:
     path = resolve_system_duckdb_path(duckdb_path)
     if not path.exists():
+        _warn_source_gap_once(
+            f"duckdb_missing:{path}",
+            "system macro source duckdb file %s is missing; returning empty frame",
+            path,
+        )
         return _empty_frame()
 
     try:
         conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        _warn_source_gap_once(
+            f"duckdb_connect_failed:{path}",
+            "system macro source duckdb connect failed for %s (%s); returning empty frame",
+            path,
+            exc,
+        )
         return _empty_frame()
 
     try:
@@ -120,10 +157,21 @@ def _load_system_macro_frame_for_alias_lookup(
 ) -> tuple[pd.DataFrame, dict[str, tuple[int, ...]]]:
     path = resolve_system_duckdb_path(duckdb_path)
     if not path.exists():
+        _warn_source_gap_once(
+            f"duckdb_missing:{path}",
+            "system macro source duckdb file %s is missing; returning empty frame",
+            path,
+        )
         return _empty_frame(), {}
     try:
         stat = path.stat()
-    except OSError:
+    except OSError as exc:
+        _warn_source_gap_once(
+            f"duckdb_stat_failed:{path}",
+            "system macro source duckdb stat failed for %s (%s); returning empty frame",
+            path,
+            exc,
+        )
         return _empty_frame(), {}
     path_text = str(path.resolve())
     cache_key = (
@@ -151,6 +199,7 @@ def _load_system_macro_alias_index_cache(path: str, mtime_ns: int, size: int) ->
 def clear_system_macro_source_cache() -> None:
     _load_system_macro_frame_for_alias_cache.cache_clear()
     _load_system_macro_alias_index_cache.cache_clear()
+    _WARNED_SOURCE_GAPS.clear()
 
 
 def load_series_by_alias(
@@ -189,6 +238,7 @@ def load_series_by_alias(
 
 def _load_choice_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     if not _table_exists(conn, "fact_choice_macro_daily"):
+        _warn_missing_table_once("fact_choice_macro_daily")
         return _empty_frame()
 
     fact = conn.execute(
@@ -250,6 +300,7 @@ def _load_choice_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 def _load_choice_snapshot_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     if not _table_exists(conn, "choice_market_snapshot"):
+        _warn_missing_table_once("choice_market_snapshot")
         return _empty_frame()
 
     snapshot = conn.execute(
@@ -268,6 +319,7 @@ def _load_choice_snapshot_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame
 
 def _load_external_macro_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     if not _table_exists(conn, "std_external_macro_daily"):
+        _warn_missing_table_once("std_external_macro_daily")
         return _empty_frame()
 
     std = conn.execute(
@@ -302,6 +354,7 @@ def _load_external_macro_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 def _load_commodity_daily_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     if not _table_exists(conn, "fact_commodity_futures_daily"):
+        _warn_missing_table_once("fact_commodity_futures_daily")
         return _empty_frame()
 
     commodity = conn.execute(
@@ -350,6 +403,7 @@ def _load_commodity_daily_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame
 
 def _load_fx_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     if not _table_exists(conn, "fx_daily_mid"):
+        _warn_missing_table_once("fx_daily_mid")
         return _empty_frame()
 
     fx = conn.execute(
@@ -383,6 +437,7 @@ def _load_fx_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 def _load_legacy_yield_curve_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     if not _table_exists(conn, "fact_formal_yield_curve_daily"):
+        _warn_missing_table_once("fact_formal_yield_curve_daily")
         return _empty_frame()
 
     curve = conn.execute(
@@ -401,7 +456,7 @@ def _load_legacy_yield_curve_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFr
           source_version as run_id,
           'legacy.yield.' || lower(vendor_name) || '.' || curve_type || '.' || tenor as vendor_series_code
         from fact_formal_yield_curve_daily
-        where lower(vendor_name) in ('choice', 'tushare', 'moss_derived')
+        where lower(vendor_name) in ('choice', 'tushare', 'akshare', 'moss_derived')
         """
     ).fetchdf()
     if curve.empty:
@@ -427,7 +482,13 @@ def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
                 [table_name],
             ).fetchone()[0]
         )
-    except duckdb.Error:
+    except duckdb.Error as exc:
+        _warn_source_gap_once(
+            f"table_probe_failed:{table_name}",
+            "system macro source table probe failed for %s (%s); treating table as missing",
+            table_name,
+            exc,
+        )
         return False
 
 

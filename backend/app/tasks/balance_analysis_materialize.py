@@ -157,6 +157,7 @@ def _execute_balance_analysis_materialization(
             or ""
         ),
         explicit_csv_path=str(getattr(settings, "fx_mid_csv_path", "") or ""),
+        writer_lock_already_held=True,
     )
 
     repo = BalanceAnalysisRepository(str(duckdb_file))
