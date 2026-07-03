@@ -180,6 +180,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         fx_rates_prior=fx_prior,
     )
     summary = _build_summary(rows)
+    row_diagnostic_warnings = _row_diagnostic_warnings(rows)
     lineage, lineage_warnings = _resolve_bridge_lineage(
         governance_dir=governance_dir,
         report_date=report_date,
@@ -197,11 +198,14 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         rows=[PnlBridgeRowSchema.model_validate(promote_flat_payload(row, PnlBridgeRowSchema)) for row in rows],
         summary=PnlBridgeSummarySchema.model_validate(promote_flat_payload(summary, PnlBridgeSummarySchema)),
         warnings=_bridge_warnings(
-            balance_warnings=_build_warnings(
-                current_balance_rows=current_balance_rows,
-                prior_balance_rows=prior_balance_rows,
-                prior_report_date=prior_date,
-            ),
+            balance_warnings=[
+                *_build_warnings(
+                    current_balance_rows=current_balance_rows,
+                    prior_balance_rows=prior_balance_rows,
+                    prior_report_date=prior_date,
+                ),
+                *row_diagnostic_warnings,
+            ],
             curve_warnings=_compact_warnings([*relevant_curve_warnings]),
             lineage_warnings=lineage_warnings,
         ),
@@ -264,6 +268,31 @@ def _build_summary(rows: list[PnlBridgeRow]) -> PnlBridgeSummarySchema:
         total_residual=sum((row.residual for row in rows), ZERO),
         quality_flag=worst_quality,
     )
+
+
+def _row_diagnostic_warnings(rows: list[PnlBridgeRow]) -> list[str]:
+    fallback_currency_mismatch_count = sum(
+        1
+        for row in rows
+        if any("currency_basis mismatch" in diagnostic for diagnostic in row.balance_diagnostics)
+    )
+    actual_pnl_missing_count = sum(
+        1
+        for row in rows
+        if any("actual_pnl missing" in diagnostic for diagnostic in row.balance_diagnostics)
+    )
+    warnings: list[str] = []
+    if fallback_currency_mismatch_count:
+        warnings.append(
+            f"{fallback_currency_mismatch_count} bridge row(s) used fallback balance rows with "
+            "currency_basis mismatch; review row balance_diagnostics."
+        )
+    if actual_pnl_missing_count:
+        warnings.append(
+            f"{actual_pnl_missing_count} bridge row(s) missing actual_pnl; "
+            "residual_ratio unavailable and quality_flag set to warning."
+        )
+    return warnings
 
 
 def _bridge_fx_base_currencies(

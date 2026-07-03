@@ -4045,6 +4045,8 @@ def test_pnl_bridge_reads_fx_rates_from_duckdb_and_populates_fx_translation(tmp_
     row = payload["result"]["rows"][0]
     assert row["fx_translation"]["raw"] == 41.35
     assert payload["result"]["summary"]["total_fx_translation"]["raw"] == 41.35
+    assert any("currency_basis mismatch" in warning for warning in payload["result"]["warnings"])
+    assert any("currency_basis mismatch" in message for message in row["balance_diagnostics"])
     get_settings.cache_clear()
 
 

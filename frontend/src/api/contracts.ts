@@ -3346,7 +3346,7 @@ export type PnlBridgeRow = {
   explained_pnl: Numeric;
   actual_pnl: Numeric;
   residual: Numeric;
-  residual_ratio: Numeric;
+  residual_ratio: Numeric | null;
   quality_flag: PnlBridgeQuality;
   current_balance_found?: boolean;
   prior_balance_found?: boolean;

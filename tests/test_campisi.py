@@ -89,6 +89,39 @@ class TestTreasuryYieldInterpolation:
         assert interpolate_treasury_yield_pct(None, 5.0) == 0.0
         assert interpolate_treasury_yield_pct({}, 5.0) == 0.0
 
+    def test_single_positive_tenor_returns_zero_with_warning(self, caplog):
+        market = {"treasury_10y": 3.5}
+
+        caplog.set_level("WARNING", logger="backend.app.core_finance.campisi")
+
+        assert interpolate_treasury_yield_pct(market, 5.0) == 0.0
+        assert any("at least 2 positive tenors" in record.message for record in caplog.records)
+
+    def test_missing_long_tenor_is_not_used_as_zero_spline_knot(self):
+        """Missing 30Y data should clamp to the last available tenor, not 0%."""
+        market = {
+            "treasury_1y": 2.0,
+            "treasury_3y": 2.5,
+            "treasury_5y": 3.0,
+            "treasury_7y": 3.2,
+            "treasury_10y": 3.5,
+        }
+
+        assert interpolate_treasury_yield_pct(market, 20.0) == pytest.approx(3.5)
+
+    def test_zero_long_tenor_is_not_used_as_zero_spline_knot(self):
+        """Explicit 0% tenor data is treated as unavailable for interpolation."""
+        market = {
+            "treasury_1y": 2.0,
+            "treasury_3y": 2.5,
+            "treasury_5y": 3.0,
+            "treasury_7y": 3.2,
+            "treasury_10y": 3.5,
+            "treasury_30y": 0.0,
+        }
+
+        assert interpolate_treasury_yield_pct(market, 20.0) == pytest.approx(3.5)
+
 
 class TestRateUnitCoercion:
     """Test _coerce_percent_curve heuristic for rate unit detection."""
@@ -149,8 +182,10 @@ class TestRateUnitCoercion:
         }
         result = _coerce_percent_curve(market)
         # Max non-zero is 4.0 > 2, so no scaling
+        assert "treasury_1y" not in result
         assert result["treasury_3y"] == 2.80
         assert result["treasury_5y"] == 3.10
+        assert "treasury_7y" not in result
 
     def test_none_market_returns_empty(self):
         """None input should return empty dict."""
@@ -216,6 +251,27 @@ class TestBenchmarkYieldChange:
             "treasury_30y": 4.0,
         }
         result = benchmark_yield_change_decimal(market, market, 5.0)
+        assert result == Decimal("0")
+
+    def test_benchmark_yield_change_uses_shared_positive_tenor_intersection(self):
+        market_start = {
+            "treasury_1y": 2.0,
+            "treasury_3y": 2.5,
+            "treasury_5y": 3.0,
+            "treasury_7y": 3.2,
+            "treasury_10y": 3.5,
+            "treasury_30y": 4.5,
+        }
+        market_end = {
+            "treasury_1y": 2.0,
+            "treasury_3y": 2.5,
+            "treasury_5y": 3.0,
+            "treasury_7y": 3.2,
+            "treasury_10y": 3.5,
+        }
+
+        result = benchmark_yield_change_decimal(market_start, market_end, 20.0)
+
         assert result == Decimal("0")
 
     def test_decimal_precision(self):

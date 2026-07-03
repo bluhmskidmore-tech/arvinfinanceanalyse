@@ -69,7 +69,7 @@ class PnlBridgeRowSchema(BaseModel):
     explained_pnl: Numeric
     actual_pnl: Numeric
     residual: Numeric
-    residual_ratio: Numeric
+    residual_ratio: Numeric | None
     quality_flag: Literal["ok", "warning", "error"]
     current_balance_found: bool
     prior_balance_found: bool

@@ -347,6 +347,44 @@ def test_bridge_does_not_cross_match_different_accounting_basis():
     assert rows[0].ending_dirty_mv == Decimal("0")
 
 
+def test_bridge_balance_fallback_does_not_cross_currency_basis():
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "NO-CROSS-CCY",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVTPL",
+                "interest_income_514": "1.00",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "1.00",
+                "currency_basis": "USD",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "NO-CROSS-CCY",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "FVTPL",
+                "market_value_amount": "100.00",
+                "accrued_interest_amount": "5.00",
+            }
+        ],
+        balance_rows_prior=[],
+    )
+
+    row = rows[0]
+    assert row.current_balance_found is True
+    assert row.ending_dirty_mv == Decimal("105.00")
+    assert any("currency_basis mismatch" in message for message in row.balance_diagnostics)
+
+
 def test_bridge_unrealized_equals_516():
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=[
@@ -475,8 +513,8 @@ def test_bridge_quality_flag_error():
     assert abs(rows[0].residual_ratio) >= Decimal("0.10")
 
 
-def test_bridge_zero_actual_pnl():
-    """When actual_pnl is 0, residual_ratio should be 0 (no division by zero)."""
+def test_bridge_zero_actual_pnl_and_zero_explained_pnl_is_ok():
+    """When both actual and explained PnL are 0, residual_ratio should be 0."""
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=[
             {
@@ -500,6 +538,61 @@ def test_bridge_zero_actual_pnl():
     assert row.actual_pnl == Decimal("0")
     assert row.residual_ratio == Decimal("0")
     assert row.quality_flag == "ok"
+
+
+def test_bridge_zero_actual_pnl_with_nonzero_explained_pnl_is_warning():
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "ZERO-PNL-NONZERO-EXPLAINED",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "AC",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+            }
+        ],
+        balance_rows_current=[],
+        balance_rows_prior=[],
+    )
+
+    row = rows[0]
+    assert row.actual_pnl == Decimal("0")
+    assert row.explained_pnl == Decimal("10.00")
+    assert row.residual == Decimal("-10.00")
+    assert row.residual_ratio is None
+    assert row.quality_flag == "warning"
+
+
+def test_bridge_missing_actual_pnl_is_warning_with_null_residual_ratio():
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "MISSING-ACTUAL",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "AC",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": None,
+            }
+        ],
+        balance_rows_current=[],
+        balance_rows_prior=[],
+    )
+
+    row = rows[0]
+    assert row.actual_pnl == Decimal("0")
+    assert row.residual_ratio is None
+    assert row.quality_flag == "warning"
+    assert any("actual_pnl missing" in message for message in row.balance_diagnostics)
 
 
 def test_bridge_phase3_stubs_are_zero():

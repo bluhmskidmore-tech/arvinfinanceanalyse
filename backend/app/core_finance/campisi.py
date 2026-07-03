@@ -13,6 +13,7 @@ Campisi 风格债券归因（纯函数）。
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -32,14 +33,22 @@ _TREASURY_KEYS = [
 ]
 
 _MATURITY_BUCKET_LABELS = ("0-1Y", "1-3Y", "3-5Y", "5-7Y", "7-10Y", "10Y+")
+logger = logging.getLogger(__name__)
 
 
 def _coerce_percent_curve(m: dict[str, Any] | None) -> dict[str, float]:
     if not m:
         return {}
-    out = {k: float(m.get(k) or 0) for k in _TREASURY_KEYS}
+    out: dict[str, float] = {}
+    for k in _TREASURY_KEYS:
+        value = m.get(k)
+        if value in (None, ""):
+            continue
+        numeric = float(value)
+        if numeric > 0:
+            out[k] = numeric
     # Keep the threshold in rate_units so curve-unit heuristics stay consistent.
-    if not detect_percent_unit_from_curve([v for v in out.values() if v > 0]):
+    if out and not detect_percent_unit_from_curve(list(out.values())):
         for k in out:
             out[k] = out[k] * 100.0
     return out
@@ -52,6 +61,12 @@ def interpolate_treasury_yield_pct(market: dict[str, Any] | None, maturity_years
     falls back to piecewise linear otherwise.  Signature unchanged.
     """
     curve = _coerce_percent_curve(market)
+    if not curve:
+        return 0.0
+    return _interpolate_percent_curve(curve, maturity_years)
+
+
+def _interpolate_percent_curve(curve: dict[str, float], maturity_years: float) -> float:
     if not curve:
         return 0.0
 
@@ -67,9 +82,18 @@ def interpolate_treasury_yield_pct(market: dict[str, Any] | None, maturity_years
         interpolate as _engine_interpolate,
     )
 
-    yields = [curve.get(k, 0.0) for k in _TREASURY_KEYS]
-    points = [CurvePoint(years=float(t), rate=Decimal(str(y))) for t, y in zip(_TENORS, yields, strict=False)]
+    points = [
+        CurvePoint(years=float(t), rate=Decimal(str(curve[k])))
+        for k, t in zip(_TREASURY_KEYS, _TENORS, strict=False)
+        if k in curve
+    ]
     points.sort(key=lambda p: p.years)
+    if len(points) < 2:
+        logger.warning(
+            "Treasury curve interpolation requires at least 2 positive tenors; got %s.",
+            len(points),
+        )
+        return 0.0
 
     if len(points) >= 3:
         fitted = _build_spline(points)
@@ -84,8 +108,19 @@ def benchmark_yield_change_decimal(
     maturity_years: float,
 ) -> Decimal:
     """期初期末国债收益率差（百分数点）→ 与 V1 一致的小数变动（= Δ% / 100）。"""
-    y0 = interpolate_treasury_yield_pct(market_start, maturity_years)
-    y1 = interpolate_treasury_yield_pct(market_end, maturity_years)
+    start_curve = _coerce_percent_curve(market_start)
+    end_curve = _coerce_percent_curve(market_end)
+    common_keys = set(start_curve) & set(end_curve)
+    if len(common_keys) < 2:
+        logger.warning(
+            "Benchmark yield change requires at least 2 shared positive tenors; got %s.",
+            len(common_keys),
+        )
+        return Decimal("0")
+    start_common = {k: start_curve[k] for k in _TREASURY_KEYS if k in common_keys}
+    end_common = {k: end_curve[k] for k in _TREASURY_KEYS if k in common_keys}
+    y0 = _interpolate_percent_curve(start_common, maturity_years)
+    y1 = _interpolate_percent_curve(end_common, maturity_years)
     return Decimal(str((y1 - y0) / 100.0))
 
 

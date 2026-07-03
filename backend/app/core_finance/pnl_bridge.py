@@ -40,11 +40,18 @@ class PnlBridgeRow:
     explained_pnl: Decimal
     actual_pnl: Decimal
     residual: Decimal
-    residual_ratio: Decimal
+    residual_ratio: Decimal | None
     quality_flag: str
     current_balance_found: bool
     prior_balance_found: bool
     balance_diagnostics: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class _ResolvedBalanceRow:
+    row: dict | None
+    diagnostic: str | None = None
+    match_level: str = "missing"
 
 
 def build_pnl_bridge_rows(
@@ -72,7 +79,7 @@ def build_pnl_bridge_rows(
         cost_center = str(raw_row.get("cost_center") or "")
         currency_basis = str(raw_row.get("currency_basis") or "")
 
-        current_balance = _resolve_balance_row(
+        current_resolution = _resolve_balance_row(
             instrument_code=instrument_code,
             portfolio_name=portfolio_name,
             cost_center=cost_center,
@@ -82,7 +89,8 @@ def build_pnl_bridge_rows(
             exact_without_basis=current_exact_without_basis,
             fallback=current_fallback,
         )
-        prior_balance = _resolve_balance_row(
+        current_balance = current_resolution.row
+        prior_resolution = _resolve_balance_row(
             instrument_code=instrument_code,
             portfolio_name=portfolio_name,
             cost_center=cost_center,
@@ -92,6 +100,7 @@ def build_pnl_bridge_rows(
             exact_without_basis=prior_exact_without_basis,
             fallback=prior_fallback,
         )
+        prior_balance = prior_resolution.row
 
         curve_type = infer_curve_type(
             raw_row.get("instrument_name"),
@@ -146,9 +155,19 @@ def build_pnl_bridge_rows(
             + unrealized_fv
             + manual_adjustment
         )
-        actual_pnl = _coerce_decimal(raw_row.get("total_pnl", ZERO))
+        actual_raw = raw_row.get("total_pnl")
+        actual_pnl_missing = actual_raw in (None, "")
+        actual_pnl = ZERO if actual_pnl_missing else _coerce_decimal(actual_raw)
         residual = actual_pnl - explained_pnl
-        residual_ratio = ZERO if actual_pnl == ZERO else residual / actual_pnl
+        residual_ratio = (
+            None
+            if actual_pnl_missing
+            else _calculate_residual_ratio(
+                actual_pnl=actual_pnl,
+                explained_pnl=explained_pnl,
+                residual=residual,
+            )
+        )
 
         rows.append(
             PnlBridgeRow(
@@ -171,12 +190,19 @@ def build_pnl_bridge_rows(
                 actual_pnl=actual_pnl,
                 residual=residual,
                 residual_ratio=residual_ratio,
-                quality_flag=_quality_flag(residual_ratio),
+                quality_flag="warning" if actual_pnl_missing else _quality_flag(residual_ratio),
                 current_balance_found=current_balance is not None,
                 prior_balance_found=prior_balance is not None,
                 balance_diagnostics=_build_balance_diagnostics(
                     current_balance=current_balance,
                     prior_balance=prior_balance,
+                    current_resolution_diagnostic=current_resolution.diagnostic,
+                    prior_resolution_diagnostic=prior_resolution.diagnostic,
+                    actual_pnl_diagnostic=(
+                        "actual_pnl missing; residual_ratio unavailable."
+                        if actual_pnl_missing
+                        else None
+                    ),
                 ),
             )
         )
@@ -206,7 +232,7 @@ def required_curve_types_for_pnl_bridge(
             exact=current_exact,
             exact_without_basis=current_exact_without_basis,
             fallback=current_fallback,
-        )
+        ).row
         prior_balance = _resolve_balance_row(
             instrument_code=instrument_code,
             portfolio_name=portfolio_name,
@@ -216,7 +242,7 @@ def required_curve_types_for_pnl_bridge(
             exact=prior_exact,
             exact_without_basis=prior_exact_without_basis,
             fallback=prior_fallback,
-        )
+        ).row
         representative = current_balance or prior_balance
         if representative is None:
             continue
@@ -413,8 +439,17 @@ def _build_balance_diagnostics(
     *,
     current_balance: Mapping[str, object] | None,
     prior_balance: Mapping[str, object] | None,
+    current_resolution_diagnostic: str | None = None,
+    prior_resolution_diagnostic: str | None = None,
+    actual_pnl_diagnostic: str | None = None,
 ) -> tuple[str, ...]:
     diagnostics: list[str] = []
+    if current_resolution_diagnostic:
+        diagnostics.append(current_resolution_diagnostic)
+    if prior_resolution_diagnostic:
+        diagnostics.append(prior_resolution_diagnostic)
+    if actual_pnl_diagnostic:
+        diagnostics.append(actual_pnl_diagnostic)
     if current_balance is None:
         diagnostics.append("Missing current balance row; ending_dirty_mv defaults to 0.")
     if prior_balance is None:
@@ -461,19 +496,32 @@ def _resolve_balance_row(
     exact: dict[tuple[str, str, str, str, str], dict],
     exact_without_basis: dict[tuple[str, str, str, str], dict],
     fallback: dict[tuple[str, str, str, str], dict],
-) -> dict | None:
+) -> _ResolvedBalanceRow:
     if currency_basis:
         exact_match = exact.get(
             (instrument_code, portfolio_name, cost_center, currency_basis, accounting_basis)
         )
         if exact_match is not None:
-            return exact_match
+            return _ResolvedBalanceRow(exact_match, match_level="exact")
         exact_match_without_basis = exact_without_basis.get(
             (instrument_code, portfolio_name, cost_center, currency_basis)
         )
         if exact_match_without_basis is not None:
-            return exact_match_without_basis
-    return fallback.get((instrument_code, portfolio_name, cost_center, accounting_basis))
+            return _ResolvedBalanceRow(exact_match_without_basis, match_level="exact_without_basis")
+    fallback_match = fallback.get((instrument_code, portfolio_name, cost_center, accounting_basis))
+    if fallback_match is not None and currency_basis:
+        fallback_currency = str(fallback_match.get("currency_basis") or "")
+        if fallback_currency and fallback_currency != currency_basis:
+            return _ResolvedBalanceRow(
+                fallback_match,
+                "Balance row currency_basis mismatch; "
+                f"expected {currency_basis}, found {fallback_currency}; fallback balance row used.",
+                match_level="fallback",
+            )
+    return _ResolvedBalanceRow(
+        fallback_match,
+        match_level="fallback" if fallback_match is not None else "missing",
+    )
 
 
 def _dirty_market_value(row: Mapping[str, object] | None) -> Decimal:
@@ -491,13 +539,26 @@ def _dirty_market_value(row: Mapping[str, object] | None) -> Decimal:
     return market_value + accrued_interest
 
 
-def _quality_flag(residual_ratio: Decimal) -> str:
+def _quality_flag(residual_ratio: Decimal | None) -> str:
+    if residual_ratio is None:
+        return "warning"
     abs_ratio = abs(residual_ratio)
     if abs_ratio < Decimal("0.05"):
         return "ok"
     if abs_ratio < Decimal("0.10"):
         return "warning"
     return "error"
+
+
+def _calculate_residual_ratio(
+    *,
+    actual_pnl: Decimal,
+    explained_pnl: Decimal,
+    residual: Decimal,
+) -> Decimal | None:
+    if actual_pnl == ZERO:
+        return ZERO if explained_pnl == ZERO else None
+    return residual / actual_pnl
 
 
 def _coerce_date(value: object) -> date:
