@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -9,6 +11,7 @@ from typing import Any, Literal, cast
 
 import duckdb
 from backend.app.core_finance.macro_bond_linkage import (
+    ENVIRONMENT_COMPOSITE_FORMULA_VERSION,
     EquityBondSpreadSignal,
     MacroBondCorrelation,
     MegaCapEquitySignal,
@@ -30,8 +33,8 @@ from backend.app.services.formal_result_runtime import (
 )
 from backend.app.services.runtime_cache import get_runtime_cache
 
-RULE_VERSION = "rv_macro_bond_linkage_v1"
-CACHE_VERSION = "cv_macro_bond_linkage_v1"
+RULE_VERSION = "rv_macro_bond_linkage_v2_liquidity_inverted"
+CACHE_VERSION = "cv_macro_bond_linkage_v2_liquidity_inverted"
 RESULT_KIND = "macro_bond_linkage.analysis"
 EMPTY_SOURCE_VERSION = "sv_macro_bond_linkage_empty"
 LOOKBACK_DAYS = 365
@@ -40,9 +43,30 @@ TOP_CORRELATION_LIMIT = 10
 MACRO_BOND_LINKAGE_COMPONENTS_CACHE_NAME = "macro_bond_linkage_components"
 MACRO_BOND_LINKAGE_COMPONENTS_CACHE_TTL_SECONDS = 300.0
 MACRO_ENVIRONMENT_CONTEXT_RESULT_KIND = "macro_bond_linkage.environment_context"
-MACRO_ENVIRONMENT_CONTEXT_CACHE_VERSION = "cv_macro_environment_context_v1"
+MACRO_ENVIRONMENT_CONTEXT_CACHE_VERSION = "cv_macro_environment_context_v2_liquidity_inverted"
 MACRO_ENVIRONMENT_CONTEXT_CACHE_NAME = "macro_environment_context"
 MACRO_ENVIRONMENT_CONTEXT_CACHE_TTL_SECONDS = 300.0
+MACRO_CONTEXT_CONTRACT_VERSION = "rv_macro_context_v1"
+MACRO_CONTEXT_MIN_EVIDENCE_ROWS = 30
+MACRO_CONTEXT_SCORE_FIELDS = (
+    "rate_direction_score",
+    "liquidity_score",
+    "growth_score",
+    "inflation_score",
+    "composite_score",
+)
+MACRO_CONTEXT_SCORE_POLARITY = {
+    "rate_direction_score": "positive=bond_unfavorable_rate_up_pressure",
+    "liquidity_score": "positive=liquidity_easing",
+    "growth_score": "positive=bond_unfavorable_growth_strength",
+    "inflation_score": "positive=bond_unfavorable_inflation_pressure",
+    "composite_score": "positive=bond_unfavorable_restrictive_macro_pressure",
+}
+MACRO_CONTEXT_COMPOSITE_FORMULA = (
+    "0.4*rate_direction_score - 0.3*liquidity_score "
+    "+ 0.2*growth_score + 0.1*inflation_score"
+)
+MACRO_CONTEXT_COMPOSITE_FORMULA_VERSION = ENVIRONMENT_COMPOSITE_FORMULA_VERSION
 
 
 def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
@@ -97,6 +121,99 @@ def get_macro_environment_context(report_date: date) -> dict[str, object]:
         report_date=report_date,
         duckdb_path=duckdb_path,
     )
+
+
+def get_macro_context_v1(report_date: date, *, as_of_date: str | None = None) -> dict[str, object]:
+    macro_envelope = get_macro_environment_context(report_date)
+    return build_macro_context_v1(
+        as_of_date=as_of_date or report_date.isoformat(),
+        macro_payload=_mapping(macro_envelope.get("result")),
+        macro_meta=_mapping(macro_envelope.get("result_meta")),
+    )
+
+
+def build_macro_context_v1(
+    *,
+    as_of_date: str,
+    macro_payload: dict[str, object],
+    macro_meta: dict[str, object],
+) -> dict[str, object]:
+    environment_score = _mapping(macro_payload.get("environment_score"))
+    warnings = _string_list(macro_payload.get("warnings"))
+    evidence_rows = _optional_count(_meta_evidence_rows(macro_meta)) or 0
+    source_version = _optional_text(_meta_source_version(macro_meta))
+    vendor_version = _optional_text(_meta_vendor_version(macro_meta))
+    rule_version = _optional_text(macro_meta.get("rule_version"))
+    cache_version = _optional_text(macro_meta.get("cache_version"))
+    quality_flag = _optional_text(_meta_quality_flag(macro_meta)) or "warning"
+    vendor_status = _optional_text(_meta_vendor_status(macro_meta)) or "vendor_unavailable"
+    fallback_mode = _optional_text(_meta_fallback_mode(macro_meta)) or "none"
+    data_state = _macro_context_data_state(
+        environment_score=environment_score,
+        warnings=warnings,
+        quality_flag=quality_flag,
+        vendor_status=vendor_status,
+    )
+    coverage_ratio = _macro_context_coverage_ratio(evidence_rows)
+    freshness_score = 1.0 if environment_score else 0.0
+    confidence_score = _macro_context_confidence_score(
+        coverage_ratio=coverage_ratio,
+        freshness_score=freshness_score,
+        data_state=data_state,
+    )
+    dimension_scores = {
+        field: _safe_optional_float(environment_score.get(field))
+        for field in MACRO_CONTEXT_SCORE_FIELDS
+    }
+    report_date_text = (
+        _optional_text(environment_score.get("report_date"))
+        or _optional_text(macro_payload.get("report_date"))
+        or as_of_date
+    )
+    readiness_reasons = _macro_context_readiness_reasons(
+        environment_score=environment_score,
+        warnings=warnings,
+        quality_flag=quality_flag,
+        vendor_status=vendor_status,
+        coverage_ratio=coverage_ratio,
+    )
+    return {
+        "macro_context_id": _macro_context_id(
+            {
+                "contract_version": MACRO_CONTEXT_CONTRACT_VERSION,
+                "asof_date": as_of_date,
+                "report_date": report_date_text,
+                "source_version": source_version,
+                "vendor_version": vendor_version,
+                "rule_version": rule_version,
+                "cache_version": cache_version,
+                "data_state": data_state,
+                "dimension_scores": dimension_scores,
+                "composite_formula_version": MACRO_CONTEXT_COMPOSITE_FORMULA_VERSION,
+            }
+        ),
+        "macro_contract_version": MACRO_CONTEXT_CONTRACT_VERSION,
+        "asof_date": as_of_date,
+        "report_date": report_date_text,
+        "data_state": data_state,
+        "coverage_ratio": coverage_ratio,
+        "freshness_score": freshness_score,
+        "confidence_score": confidence_score,
+        "fallback_mode": fallback_mode,
+        "dimension_scores": dimension_scores,
+        "score_polarity": MACRO_CONTEXT_SCORE_POLARITY,
+        "composite_formula": MACRO_CONTEXT_COMPOSITE_FORMULA,
+        "composite_formula_version": MACRO_CONTEXT_COMPOSITE_FORMULA_VERSION,
+        "readiness_reasons": readiness_reasons,
+        "quality_flag": quality_flag,
+        "vendor_status": vendor_status,
+        "source_version": source_version,
+        "vendor_version": vendor_version,
+        "rule_version": rule_version,
+        "cache_version": cache_version,
+        "evidence_rows": evidence_rows,
+        "warning_count": len(warnings),
+    }
 
 
 def _macro_environment_context_cache_key(
@@ -806,6 +923,65 @@ def _build_response_envelope(
     )
 
 
+def _macro_context_data_state(
+    *,
+    environment_score: dict[str, object],
+    warnings: list[str],
+    quality_flag: str,
+    vendor_status: str,
+) -> str:
+    if not environment_score:
+        return "no_data"
+    if quality_flag == "stale":
+        return "stale"
+    if warnings or quality_flag != "ok" or vendor_status != "ok":
+        return "degraded"
+    return "ready"
+
+
+def _macro_context_coverage_ratio(evidence_rows: int) -> float:
+    return round(min(1.0, max(0.0, evidence_rows / MACRO_CONTEXT_MIN_EVIDENCE_ROWS)), 4)
+
+
+def _macro_context_confidence_score(
+    *,
+    coverage_ratio: float,
+    freshness_score: float,
+    data_state: str,
+) -> float:
+    state_score = {"ready": 1.0, "degraded": 0.6, "stale": 0.4}.get(data_state, 0.0)
+    return round((coverage_ratio + freshness_score + state_score) / 3, 4)
+
+
+def _macro_context_readiness_reasons(
+    *,
+    environment_score: dict[str, object],
+    warnings: list[str],
+    quality_flag: str,
+    vendor_status: str,
+    coverage_ratio: float,
+) -> list[str]:
+    reasons: list[str] = []
+    if not environment_score:
+        reasons.append("MACRO_SCORE_MISSING")
+    if coverage_ratio < 1.0:
+        reasons.append("MACRO_COVERAGE_INSUFFICIENT")
+    if quality_flag != "ok":
+        reasons.append(f"MACRO_QUALITY_{quality_flag.upper()}")
+    if vendor_status != "ok":
+        reasons.append(f"MACRO_VENDOR_{vendor_status.upper()}")
+    if warnings:
+        reasons.append("MACRO_WARNINGS_PRESENT")
+    return _dedupe_preserve_order(reasons)
+
+
+def _macro_context_id(payload: dict[str, object]) -> str:
+    digest = hashlib.sha1(
+        json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str).encode("utf-8")
+    ).hexdigest()[:16]
+    return f"macroctx_{digest}"
+
+
 def _connect_read_only(path: str) -> duckdb.DuckDBPyConnection | None:
     duckdb_file = Path(path)
     if not duckdb_file.exists():
@@ -848,6 +1024,72 @@ def _non_empty_values(values: list[str]) -> list[str]:
 
 def _trace_id() -> str:
     return f"tr_{uuid.uuid4().hex[:12]}"
+
+
+def _mapping(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _optional_text(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _optional_count(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return max(parsed, 0)
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [text for item in value if (text := str(item or "").strip())]
+
+
+def _safe_optional_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _meta_source_version(meta: dict[str, object]) -> object:
+    source = _mapping(meta.get("source"))
+    return meta.get("source_version") or source.get("source_version") or source.get("version")
+
+
+def _meta_quality_flag(meta: dict[str, object]) -> object:
+    source = _mapping(meta.get("source"))
+    return meta.get("quality_flag") or source.get("quality_flag") or source.get("status")
+
+
+def _meta_vendor_version(meta: dict[str, object]) -> object:
+    vendor = _mapping(meta.get("vendor"))
+    return meta.get("vendor_version") or vendor.get("vendor_version") or vendor.get("version")
+
+
+def _meta_vendor_status(meta: dict[str, object]) -> object:
+    vendor = _mapping(meta.get("vendor"))
+    return meta.get("vendor_status") or vendor.get("vendor_status") or vendor.get("status")
+
+
+def _meta_fallback_mode(meta: dict[str, object]) -> object:
+    source = _mapping(meta.get("source"))
+    return meta.get("fallback_mode") or source.get("fallback_mode")
+
+
+def _meta_evidence_rows(meta: dict[str, object]) -> object:
+    evidence = _mapping(meta.get("evidence"))
+    return meta.get("evidence_rows") or evidence.get("evidence_rows") or evidence.get("rows")
 
 
 def _coerce_date(value: object) -> date | None:

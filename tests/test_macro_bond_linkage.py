@@ -681,6 +681,105 @@ def test_environment_score_liquidity_is_robust_to_baseline_outlier():
     assert score.liquidity_score < 0
 
 
+def _liquidity_isolation_history(
+    *,
+    liquidity_recent_value: float,
+    mild_rate_pressure: bool = False,
+) -> dict[str, list[tuple[date, float]]]:
+    start = REPORT_DATE - timedelta(days=89)
+    baseline_dates = [REPORT_DATE - timedelta(days=24 - index) for index in range(20)]
+    recent_dates = [REPORT_DATE - timedelta(days=4 - index) for index in range(5)]
+
+    def liquidity_points(base_value: float, recent_value: float) -> list[tuple[date, float]]:
+        return [
+            *((current_date, base_value) for current_date in baseline_dates),
+            *((current_date, recent_value) for current_date in recent_dates),
+        ]
+
+    if mild_rate_pressure:
+        rate_points = {
+            "EMM00166466": [(start, 2.00), (REPORT_DATE - timedelta(days=45), 2.01), (REPORT_DATE, 2.02)],
+            "EMM00166462": [(start, 1.80), (REPORT_DATE - timedelta(days=45), 1.81), (REPORT_DATE, 1.82)],
+            "EMM00166458": [(start, 1.50), (REPORT_DATE - timedelta(days=45), 1.51), (REPORT_DATE, 1.52)],
+        }
+    else:
+        rate_points = {
+            "EMM00166466": [(start, 2.00), (REPORT_DATE, 2.00)],
+            "EMM00166462": [(start, 1.80), (REPORT_DATE, 1.80)],
+            "EMM00166458": [(start, 1.50), (REPORT_DATE, 1.50)],
+        }
+
+    return {
+        **rate_points,
+        "EMM00166252": liquidity_points(2.00, liquidity_recent_value),
+        "EMM00166253": liquidity_points(2.02, liquidity_recent_value + 0.02),
+        "CA.DR007": liquidity_points(2.04, liquidity_recent_value + 0.04),
+        "EMM00008445": [(start, 1.2), (REPORT_DATE, 1.2)],
+        "EMM00619381": [(start, 100.0), (REPORT_DATE, 100.0)],
+        "EMM00072301": [(REPORT_DATE, 2.0)],
+    }
+
+
+def test_environment_score_liquidity_easing_remains_positive():
+    mod = _core_module()
+    history = _liquidity_isolation_history(liquidity_recent_value=1.00)
+    latest = {series_id: points[-1] for series_id, points in history.items()}
+
+    score = mod.compute_macro_environment_score(latest, history, lookback_days=90)
+
+    assert score.rate_direction_score == 0
+    assert score.growth_score == 0
+    assert score.inflation_score == 0
+    assert score.liquidity_score == pytest.approx(1.0)
+    assert score.composite_formula_version == "macro_env_composite_v2_liquidity_inverted"
+
+
+def test_environment_composite_inverts_liquidity_when_other_dimensions_neutral():
+    mod = _core_module()
+    loose_history = _liquidity_isolation_history(liquidity_recent_value=1.00)
+    tight_history = _liquidity_isolation_history(liquidity_recent_value=3.00)
+    loose_latest = {series_id: points[-1] for series_id, points in loose_history.items()}
+    tight_latest = {series_id: points[-1] for series_id, points in tight_history.items()}
+
+    loose_score = mod.compute_macro_environment_score(loose_latest, loose_history, lookback_days=90)
+    tight_score = mod.compute_macro_environment_score(tight_latest, tight_history, lookback_days=90)
+
+    assert loose_score.liquidity_score == pytest.approx(1.0)
+    assert loose_score.composite_score == pytest.approx(-0.3)
+    assert "缩短久期" not in loose_score.signal_description
+
+    assert tight_score.liquidity_score == pytest.approx(-1.0)
+    assert tight_score.composite_score == pytest.approx(0.3)
+    assert loose_score.composite_score < tight_score.composite_score
+
+
+def test_liquidity_easing_does_not_generate_restrictive_duration_signal_under_mild_rate_pressure():
+    mod = _core_module()
+    loose_history = _liquidity_isolation_history(
+        liquidity_recent_value=1.00,
+        mild_rate_pressure=True,
+    )
+    tight_history = _liquidity_isolation_history(
+        liquidity_recent_value=3.00,
+        mild_rate_pressure=True,
+    )
+    loose_latest = {series_id: points[-1] for series_id, points in loose_history.items()}
+    tight_latest = {series_id: points[-1] for series_id, points in tight_history.items()}
+
+    loose_score = mod.compute_macro_environment_score(loose_latest, loose_history, lookback_days=90)
+    tight_score = mod.compute_macro_environment_score(tight_latest, tight_history, lookback_days=90)
+
+    assert loose_score.rate_direction_score == pytest.approx(0.1974)
+    assert loose_score.liquidity_score == pytest.approx(1.0)
+    assert loose_score.composite_score == pytest.approx(-0.221, abs=1e-3)
+    assert "缩短久期" not in loose_score.signal_description
+
+    assert tight_score.rate_direction_score == pytest.approx(0.1974)
+    assert tight_score.liquidity_score == pytest.approx(-1.0)
+    assert tight_score.composite_score == pytest.approx(0.379, abs=1e-3)
+    assert "缩短久期" in tight_score.signal_description
+
+
 def test_environment_score_contributing_factors_include_method_metadata():
     mod = _core_module()
     start = REPORT_DATE - timedelta(days=89)
@@ -838,6 +937,10 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["result_kind"] == "macro_bond_linkage.analysis"
     assert payload["result"]["report_date"] == REPORT_DATE.isoformat()
     assert "environment_score" in payload["result"]
+    assert (
+        payload["result"]["environment_score"]["composite_formula_version"]
+        == "macro_env_composite_v2_liquidity_inverted"
+    )
     assert "portfolio_impact" in payload["result"]
     assert len(payload["result"]["top_correlations"]) > 0
     first_correlation = payload["result"]["top_correlations"][0]
@@ -1392,6 +1495,7 @@ def test_service_conservative_top_correlations_mirror_method_variant(tmp_path, m
     assert result["method_variants"]["market_timing"]["top_correlations"][0]["alignment_mode"] == "market_timing"
     assert result["top_correlations"][0]["alignment_mode"] == "conservative"
     assert "environment_score" in result
+    assert result["environment_score"]["composite_formula_version"] == "macro_env_composite_v2_liquidity_inverted"
     assert result["report_date"] == REPORT_DATE.isoformat()
     assert "computed_at" in result
 
@@ -1449,7 +1553,41 @@ def test_macro_environment_context_skips_full_correlation_analysis(tmp_path, mon
 
     assert envelope["result_meta"]["result_kind"] == "macro_bond_linkage.environment_context"
     assert envelope["result"]["environment_score"]["composite_score"] is not None
+    assert (
+        envelope["result"]["environment_score"]["composite_formula_version"]
+        == "macro_env_composite_v2_liquidity_inverted"
+    )
     assert "top_correlations" not in envelope["result"]
+
+    clear_runtime_cache("macro_environment_context")
+    get_settings.cache_clear()
+
+
+def test_macro_context_v1_wraps_environment_context_for_downstream_reuse(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-context-v1.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_environment_context")
+
+    context = svc.get_macro_context_v1(REPORT_DATE)
+
+    assert context["macro_contract_version"] == "rv_macro_context_v1"
+    assert str(context["macro_context_id"]).startswith("macroctx_")
+    assert context["asof_date"] == REPORT_DATE.isoformat()
+    assert context["report_date"] == REPORT_DATE.isoformat()
+    assert context["coverage_ratio"] == 1.0
+    assert context["evidence_rows"] == 45
+    assert context["dimension_scores"]["composite_score"] is not None
+    assert context["score_polarity"]["liquidity_score"] == "positive=liquidity_easing"
+    assert context["score_polarity"]["composite_score"] == "positive=bond_unfavorable_restrictive_macro_pressure"
+    assert "- 0.3*liquidity_score" in context["composite_formula"]
+    assert context["composite_formula_version"] == "macro_env_composite_v2_liquidity_inverted"
+    assert "computed_at" not in context
 
     clear_runtime_cache("macro_environment_context")
     get_settings.cache_clear()

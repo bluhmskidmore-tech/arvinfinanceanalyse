@@ -1462,6 +1462,7 @@ const MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
     growth_score: -0.14,
     inflation_score: 0.08,
     composite_score: -0.11,
+    composite_formula_version: "macro_env_composite_v2_liquidity_inverted",
     signal_description:
       "资金面维持宽松，长端对海外利率与风险偏好更敏感：国内短端利率稳定，权益与商品反弹带来增长预期修复，但美债高位约束利差压缩空间。建议以流动性为锚、用海外约束做上限、用增长预期做节奏。",
     contributing_factors: [

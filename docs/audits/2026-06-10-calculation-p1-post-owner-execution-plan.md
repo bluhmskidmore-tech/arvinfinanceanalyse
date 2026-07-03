@@ -7,6 +7,8 @@ Source snapshot generated at: `2026-06-10T21:25:00+08:00`
 
 This plan prepares deterministic execution routing after owner/governance input is captured. It does not select or approve any calculation convention.
 
+**2026-07-03 P1-07 overlay**: owner/chat decision selected Option B and the implementation slice is complete. `liquidity_score` remains looseness-positive, while `composite_score` is bond-unfavorable/tightness-positive and uses `-0.3*liquidity_score`. The generated 2026-06-10 snapshot counters below remain historical; generated JSON snapshots were not refreshed in this pass.
+
 ## Summary
 
 - `row_count=10`
@@ -55,7 +57,7 @@ This plan prepares deterministic execution routing after owner/governance input 
 | `ready_for_implementation` | 0 | none |
 | `deferred` | 0 | none |
 | `rejected` | 0 | none |
-| `incomplete` | 10 | `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-07`, `P1-09`, `P1-10`, `P1-11` |
+| `incomplete` | 10 | original 2026-06-10 snapshot: `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-07`, `P1-09`, `P1-10`, `P1-11`; after 2026-07-03 overlay, P1-07 is implemented and the remaining unclosed rows are `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-09`, `P1-10`, `P1-11` |
 
 ## Row Routing
 
@@ -67,7 +69,7 @@ This plan prepares deterministic execution routing after owner/governance input 
 | `P1-04` | `pending` | `incomplete` | none | suggested: independent source anchors or non-control label | none | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Reconciliation evidence uses two independent sources, or UI/report explicitly marks the check as non-control. | 1 | none |
 | `P1-05` | `pending` | `incomplete` | none | suggested: monthly/quarterly/yearly numeric tests | none | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Rule written to `calc_rules.md`; numeric tests for monthly, quarterly, and yearly buckets. | 3 | none |
 | `P1-06` | `pending` | `incomplete` | none | suggested: zero-actual nonzero-explained warning regression | none | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Regression where `actual_pnl=0` and explained amount nonzero returns warning and visible diagnostics. | 3 | none |
-| `P1-07` | `pending` | `incomplete` | none | suggested: isolated liquidity movement test + contract copy | none | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Unit test isolating liquidity movement with other components neutral; copy/contract states polarity. | 4 | none |
+| `P1-07` | `approved-for-implementation; implemented 2026-07-03` | `verified_closed_overlay` | codex/system-audit-remediation | isolated liquidity movement regression + macro-context formula/polarity metadata + frontend copy polarity | none | none | Option B: `liquidity_score` remains looseness-positive and enters composite with inverse sign. | 4 | none |
 | `P1-09` | `pending` | `incomplete` | none | suggested: model/component tests proving backend value wins | none | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Component/model tests prove backend value wins and missing share remains missing. | 2 | none |
 | `P1-10` | `pending` | `incomplete` | none | suggested: backend DTO / frontend removal tests | none | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | Backend DTO added or confirmed; frontend removes formal aggregation; adapter/component tests consume DTO values. | 2 | none |
 | `P1-11` | `pending` | `incomplete` | none | suggested: API contract + frontend renders provided matrix | none | `selected_decision`, `owner_rationale`, `implementation_owner`, `verification_gate`, `status` | API contract for rating-tenor matrix; frontend renders provided matrix only; regression covers bucket boundaries. | 2 | none |

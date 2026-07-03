@@ -20,6 +20,8 @@ TransmissionAxisKey = Literal[
 TransmissionAxisStance = Literal["supportive", "neutral", "restrictive", "conflicted"]
 TransmissionAxisStatus = Literal["ready", "pending_signal"]
 
+ENVIRONMENT_COMPOSITE_FORMULA_VERSION = "macro_env_composite_v2_liquidity_inverted"
+
 
 @dataclass(slots=True, frozen=True)
 class MacroBondCorrelation:
@@ -54,6 +56,7 @@ class MacroEnvironmentScore:
     signal_description: str
     contributing_factors: list[dict[str, Any]]
     warnings: list[str]
+    composite_formula_version: str = ENVIRONMENT_COMPOSITE_FORMULA_VERSION
 
 
 @dataclass(slots=True, frozen=True)
@@ -439,9 +442,12 @@ def compute_macro_environment_score(
         warnings=warnings,
         contributing_factors=contributing_factors,
     )
+    # liquidity_score is exposed as "funding easing = positive"; the
+    # composite score is "bond-unfavorable macro pressure = positive".
+    liquidity_tightness_score = -liquidity_score
     composite_score = (
         0.4 * rate_direction_score
-        + 0.3 * liquidity_score
+        + 0.3 * liquidity_tightness_score
         + 0.2 * growth_score
         + 0.1 * inflation_score
     )

@@ -30,6 +30,8 @@ import "./MarketDataPage.css";
 
 const MARKET_DATA_SHOW_CURVE_META_STRIP = false;
 const MAX_EXTRA_SERIES = 5;
+const LIQUIDITY_COMPOSITE_POLARITY_NOTE =
+  "流动性正值=宽松；综合分正值=对债偏紧，综合计算中流动性取反。";
 
 type MacroDepthTabKey = "curve" | "spreads" | "linkage";
 
@@ -248,7 +250,11 @@ export function MarketDataMacroDepthTabs({
           />
           <MarketDataLinkageSummaryBand
             compositeScore={macroBondLinkage.environment_score?.composite_score}
-            compositeDetail={macroBondLinkage.environment_score?.signal_description}
+            compositeDetail={
+              macroBondLinkage.environment_score?.signal_description
+                ? `${macroBondLinkage.environment_score.signal_description} ${LIQUIDITY_COMPOSITE_POLARITY_NOTE}`
+                : LIQUIDITY_COMPOSITE_POLARITY_NOTE
+            }
             topCorrelation={correlationRows[0] ?? null}
             onOpenSpreads={openSpreadsTab}
             onOpenLinkage={openLinkageTab}
@@ -311,7 +317,9 @@ export function MarketDataMacroDepthTabs({
                   ? String(macroBondLinkage.environment_score.composite_score.toFixed(2))
                   : "—"
               }
-              detail={macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分。"}
+              detail={`${
+                macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分。"
+              } ${LIQUIDITY_COMPOSITE_POLARITY_NOTE}`}
               tone={
                 macroBondLinkage.environment_score?.composite_score != null
                   ? toneFromSignedNumber(macroBondLinkage.environment_score.composite_score)
@@ -325,7 +333,7 @@ export function MarketDataMacroDepthTabs({
                   ? macroBondLinkage.environment_score.liquidity_score.toFixed(2)
                   : "—"
               }
-              detail="对应联动载荷的流动性评分（非 V1 压力测试原样复刻）。"
+              detail="流动性正值偏松、负值偏紧；进入综合分时取反。"
               tone={
                 macroBondLinkage.environment_score?.liquidity_score != null
                   ? toneFromSignedNumber(macroBondLinkage.environment_score.liquidity_score)

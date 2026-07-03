@@ -751,6 +751,10 @@ describe("MarketDataPage", () => {
 
     await expandMarketDataLinkageCollapse();
     expect(await screen.findByTestId("market-data-linkage-caveat")).toBeInTheDocument();
+    expect(await screen.findByTestId("market-data-linkage-composite-score")).toHaveTextContent(
+      "综合计算中流动性取反",
+    );
+    expect(screen.getByTestId("market-data-linkage-liquidity-score")).toHaveTextContent("进入综合分时取反");
   });
 
   it("keeps Livermore deferred until the collapse is expanded", async () => {
@@ -779,6 +783,11 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-macro-tab-curve")).toBeInTheDocument();
     expect(screen.queryByTestId("market-data-macro-tab-spreads")).not.toBeInTheDocument();
     expect(screen.queryByTestId("market-data-macro-tab-linkage")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("market-data-macro-tab-trigger-linkage"));
+    const linkageTab = await screen.findByTestId("market-data-macro-tab-linkage");
+    expect(linkageTab).toHaveTextContent("综合计算中流动性取反");
+    expect(linkageTab).toHaveTextContent("进入综合分时取反");
   });
 
   it("drives terminal market panels from formal/latest data and source-pending states", async () => {

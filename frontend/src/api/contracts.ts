@@ -1330,6 +1330,7 @@ export type MacroBondLinkageEnvironmentScore = {
   growth_score: number;
   inflation_score: number;
   composite_score: number;
+  composite_formula_version?: string;
   signal_description: string;
   contributing_factors: MacroBondLinkageEnvironmentFactor[];
   warnings: string[];

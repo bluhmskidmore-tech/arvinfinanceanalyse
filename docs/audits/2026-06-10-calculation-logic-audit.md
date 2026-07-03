@@ -214,6 +214,8 @@ balance_analysis.py 逾期天数全记本金利息恒 0（与源一致但字段�
 
 `_score_liquidity`(L1107) 为"宽松=正"（资金利率上行 -> 负，`tests/test_macro_bond_linkage.py:681` 锁定），与轴判定和 `estimate_macro_impact` 一致；但 `composite_score = 0.4*rate + 0.3*liquidity + 0.2*growth + 0.1*inflation` 中其余分项均为"偏紧压力=正"，`+0.3*liquidity` 使资金宽松反而推高"宏观偏紧、缩短久期"结论。现有测试因利率分量饱和未覆盖该符号。**口径待确认**：若按"偏紧压力=正"，应为 `-0.3*liquidity_score`。直接影响页面久期建议文案方向。
 
+**2026-07-03 remediation note**：按 Option B 修复，保留 `liquidity_score` 字段"宽松=正、偏紧=负"的既有语义；`composite_score` 统一为"对债不利/偏紧压力=正"，聚合时使用 `liquidity_tightness_score = -liquidity_score`，等价于 `0.4*rate - 0.3*liquidity + 0.2*growth + 0.1*inflation`。`environment_score` 直接输出 `composite_formula_version`；`build_macro_context_v1` 继续原样输出 `liquidity_score`，并新增 `score_polarity`、`composite_formula`、`composite_formula_version` 说明，避免下游把同名字段误解为偏紧分项。相关 rule/cache version 已提升；生产或历史物化输出需要按新版本刷新后才可视为不含旧公式污染。回归覆盖：隔离流动性时宽松不再触发"缩短久期"，偏紧会提高综合偏紧压力。
+
 ## P2 摘要
 
 - cycle_macro_score.py:46-51 — `compute_price_spread_signal` pe<=0 分支返回标量、正常分支返回元组，类型不一致；:60-72 vs 189-193 — 缺分量重归一但 lineage formula 永远写满式权重；:88-98 — 无发布滞后/stale 检查。

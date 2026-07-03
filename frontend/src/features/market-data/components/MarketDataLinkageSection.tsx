@@ -23,6 +23,9 @@ const TARGET_FAMILY_LABELS: Record<string, string> = {
   credit_spread: "信用利差",
 };
 
+const LIQUIDITY_COMPOSITE_POLARITY_NOTE =
+  "流动性正值=宽松；综合分正值=对债偏紧，综合计算中流动性取反。";
+
 function familyLabel(targetFamily: string) {
   return TARGET_FAMILY_LABELS[targetFamily] ?? targetFamily;
 }
@@ -204,7 +207,9 @@ export function MarketDataLinkageSection({
                             ? String(macroBondLinkage.environment_score.composite_score.toFixed(2))
                             : "不可用"
                         }
-                        detail={macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分数据。"}
+                        detail={`${
+                          macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分数据。"
+                        } ${LIQUIDITY_COMPOSITE_POLARITY_NOTE}`}
                         valueVariant="text"
                         tone={toneFromSignedNumber(
                           macroBondLinkage.environment_score?.composite_score != null
@@ -238,7 +243,7 @@ export function MarketDataLinkageSection({
                             ? macroBondLinkage.environment_score.liquidity_score.toFixed(2)
                             : "不可用"
                         }
-                        detail="正值偏松，负值偏紧。"
+                        detail="正值偏松，负值偏紧；进入综合分时取反。"
                         valueVariant="text"
                         tone={toneFromSignedNumber(
                           macroBondLinkage.environment_score?.liquidity_score != null

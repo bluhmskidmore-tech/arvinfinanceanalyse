@@ -55,7 +55,7 @@ Boundary: this template does not approve calculation conventions, pages, governa
 | P1-04 | QDB position-vs-ledger reconciliation control status |  |  |  | suggested: independent source anchors or non-control label | pending |
 | P1-05 | Quarterly/yearly yield denominator |  |  |  | suggested: monthly/quarterly/yearly numeric tests | pending |
 | P1-06 | PnL bridge zero-actual residual quality |  |  |  | suggested: zero-actual nonzero-explained warning regression | pending |
-| P1-07 | Macro liquidity score polarity |  |  |  | suggested: isolated liquidity movement test + contract copy | pending |
+| P1-07 | Macro liquidity score polarity | Option B - liquidity remains looseness-positive but enters composite with inverse sign | 保留 `liquidity_score` 宽松=正的既有语义，避免破坏下游展示；`composite_score` 统一为对债不利/偏紧压力=正，聚合时对流动性取反。 | codex/system-audit-remediation | `tests/test_macro_bond_linkage.py` isolated liquidity regressions; `build_macro_context_v1` formula/polarity metadata assertions; frontend polarity copy checks | approved-for-implementation |
 | P1-09 | Balance movement share source |  |  |  | suggested: model/component tests proving backend value wins | pending |
 | P1-10 | Frontend formal aggregation boundary |  |  |  | suggested: backend DTO / frontend removal tests | pending |
 | P1-11 | Credit spread rating-tenor matrix owner |  |  |  | suggested: API contract + frontend renders provided matrix | pending |
