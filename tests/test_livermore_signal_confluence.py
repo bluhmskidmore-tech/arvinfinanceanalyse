@@ -447,6 +447,32 @@ def test_build_livermore_signal_confluence_falls_back_to_triggered_exit_items_wh
     assert closed_loop_state["exit_gate"] == "triggered"
 
 
+@pytest.mark.parametrize("composite_score", [-0.3, 0.3])
+def test_build_livermore_signal_confluence_treats_macro_boundary_as_neutral(
+    composite_score: float,
+) -> None:
+    result = _build_livermore_signal_confluence(
+        as_of_date="2026-05-02",
+        livermore_payload={
+            "market_gate": {
+                "state": "WARM",
+                "exposure": 0.5,
+            },
+            "stock_candidates": {"items": []},
+            "risk_exit": {"watch_items": []},
+        },
+        macro_payload={
+            "environment_score": {
+                "composite_score": composite_score,
+            }
+        },
+    )
+
+    macro_context = cast(dict[str, Any], result["macro_context"])
+    assert macro_context["status"] == "neutral"
+    assert macro_context["composite_score"] == pytest.approx(composite_score)
+
+
 def test_build_livermore_signal_confluence_does_not_invent_exit_watch_evidence_when_ema10_is_missing() -> None:
     result = _build_livermore_signal_confluence(
         as_of_date="2026-05-02",

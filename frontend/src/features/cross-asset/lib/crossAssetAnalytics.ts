@@ -611,50 +611,61 @@ export type WaterfallBar = {
   color: string;
 };
 
+type CompositeContribution = {
+  component?: string;
+  signed_contribution?: number;
+};
+
+const CONTRIBUTION_LABELS: Record<string, { key: string; label: string }> = {
+  liquidity: { key: "liquidity", label: "流动性" },
+  rate: { key: "rate", label: "海外利率" },
+  rate_direction: { key: "rate", label: "海外利率" },
+  growth: { key: "growth", label: "增长预期" },
+  inflation: { key: "inflation", label: "通胀扰动" },
+};
+
+function waterfallColor(value: number, kind: "factor" | "total") {
+  if (value > 0.05) return "#dc2626";
+  if (value < -0.05) return "#16a34a";
+  return kind === "total" ? "#64748b" : "#94a3b8";
+}
+
 /**
- * Build waterfall chart data from environment scores.
- * Each factor (liquidity, rate, growth, inflation) contributes to the composite score.
- * The waterfall shows how each factor pushes the composite up or down.
+ * Build waterfall chart data from backend-provided composite contributions.
  */
 export function buildDriverWaterfall(env: {
-  liquidity_score?: number;
-  rate_direction_score?: number;
-  growth_score?: number;
-  inflation_score?: number;
+  composite_contributions?: CompositeContribution[];
   composite_score?: number;
 }): WaterfallBar[] {
-  const factors: Array<{ key: string; label: string; value: number }> = [
-    { key: "liquidity", label: "流动性", value: env.liquidity_score ?? 0 },
-    { key: "rate", label: "海外利率", value: env.rate_direction_score ?? 0 },
-    { key: "growth", label: "增长预期", value: env.growth_score ?? 0 },
-    { key: "inflation", label: "通胀扰动", value: env.inflation_score ?? 0 },
-  ];
-
   const bars: WaterfallBar[] = [];
   let cumulative = 0;
 
-  for (const f of factors) {
-    cumulative += f.value;
+  for (const contribution of env.composite_contributions ?? []) {
+    const value = contribution.signed_contribution;
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    const component = String(contribution.component ?? "").trim();
+    const labelConfig = CONTRIBUTION_LABELS[component] ?? { key: component || `factor-${bars.length + 1}`, label: component || "因子" };
+    cumulative += value;
     bars.push({
-      key: f.key,
-      label: f.label,
-      value: f.value,
+      key: labelConfig.key,
+      label: labelConfig.label,
+      value,
       cumulative,
       kind: "factor",
-      color: f.value > 0.05 ? "#16a34a" : f.value < -0.05 ? "#dc2626" : "#94a3b8",
+      color: waterfallColor(value, "factor"),
     });
   }
 
-  // Total bar
-  const composite = env.composite_score ?? cumulative;
-  bars.push({
-    key: "composite",
-    label: "综合",
-    value: composite,
-    cumulative: composite,
-    kind: "total",
-    color: composite > 0.05 ? "#16a34a" : composite < -0.05 ? "#dc2626" : "#64748b",
-  });
+  if (typeof env.composite_score === "number" && Number.isFinite(env.composite_score)) {
+    bars.push({
+      key: "composite",
+      label: "综合",
+      value: env.composite_score,
+      cumulative: env.composite_score,
+      kind: "total",
+      color: waterfallColor(env.composite_score, "total"),
+    });
+  }
 
   return bars;
 }

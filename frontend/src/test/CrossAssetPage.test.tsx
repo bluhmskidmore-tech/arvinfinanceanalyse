@@ -737,12 +737,12 @@ describe("CrossAssetPage", () => {
     const analyticsGrid = await screen.findByTestId("cross-asset-zone-analytics-grid");
     const riskRail = await screen.findByTestId("cross-asset-risk-snapshot-grid");
     const waterfallDecision = await screen.findByTestId("cross-asset-driver-waterfall-decision");
-    const waterfallGapStrip = await screen.findByTestId("cross-asset-driver-waterfall-gap-strip");
+    const waterfallEvidence = await screen.findByTestId("cross-asset-driver-waterfall-evidence");
     const foldedVolAssets = await screen.findByTestId("cross-asset-vol-folded-assets");
 
     expect(analyticsGrid).toContainElement(riskRail);
     expect(analyticsGrid).toContainElement(waterfallDecision);
-    expect(analyticsGrid).toContainElement(waterfallGapStrip);
+    expect(waterfallEvidence).toHaveTextContent("海外利率");
     expect(riskRail).toContainElement(foldedVolAssets);
     expect(foldedVolAssets).toHaveTextContent(/其余 \d+ 项/);
     expect(foldedVolAssets).toHaveTextContent("常规波动");
@@ -765,7 +765,13 @@ describe("CrossAssetPage", () => {
           rate_direction_score: -0.24,
           growth_score: 0,
           inflation_score: 0,
-          composite_score: 0.28,
+          composite_score: -0.252,
+          composite_contributions: [
+            { component: "liquidity", raw_score: 0.52, weight: -0.3, signed_contribution: -0.156 },
+            { component: "rate_direction", raw_score: -0.24, weight: 0.4, signed_contribution: -0.096 },
+            { component: "growth", raw_score: 0, weight: 0.2, signed_contribution: 0 },
+            { component: "inflation", raw_score: 0, weight: 0.1, signed_contribution: 0 },
+          ],
           contributing_factors: [
             { category: "liquidity", series_name: "Liquidity proxy", latest_value: 1.2 },
             { category: "rate", series_name: "Rate proxy", latest_value: 1.6 },
@@ -904,7 +910,7 @@ describe("CrossAssetPage", () => {
     renderPage(createApiClient({ mode: "mock" }));
 
     const candidateActions = await screen.findByTestId("cross-asset-candidate-actions");
-    const header = within(candidateActions).getByText("执行台账");
+    const header = within(candidateActions).getByText("Action Queue");
     const queue = within(candidateActions).getByRole("list", { name: "市场候选动作队列" });
     const actionItems = within(queue).getAllByRole("listitem");
 
@@ -1209,7 +1215,27 @@ describe("CrossAssetPage", () => {
     expect(css).toContain(".ca-waterfall__gap-summary");
     expect(css).toContain(".ca-waterfall__chart--compact-gaps");
 
-    renderPage(createApiClient({ mode: "mock" }));
+    const client = createApiClient({ mode: "mock" });
+    const linkagePayload = await client.getMacroBondLinkageAnalysis({ reportDate: "2026-04-10" });
+    vi.spyOn(client, "getMacroBondLinkageAnalysis").mockResolvedValue({
+      ...linkagePayload,
+      result: {
+        ...linkagePayload.result,
+        environment_score: {
+          ...linkagePayload.result.environment_score,
+          composite_score: 0,
+          composite_contributions: [
+            { component: "liquidity", raw_score: 0, weight: -0.3, signed_contribution: 0 },
+            { component: "rate_direction", raw_score: 0, weight: 0.4, signed_contribution: 0 },
+            { component: "growth", raw_score: 0, weight: 0.2, signed_contribution: 0 },
+            { component: "inflation", raw_score: 0, weight: 0.1, signed_contribution: 0 },
+          ],
+          contributing_factors: [],
+        },
+      },
+    });
+
+    renderPage(client);
 
     const waterfall = await screen.findByTestId("cross-asset-driver-waterfall");
     const chart = waterfall.querySelector(".ca-waterfall__chart--compact-gaps");
@@ -1649,8 +1675,11 @@ describe("CrossAssetPage", () => {
             }
           : rule,
       ),
-      supported_outputs: ["market_gate", "sector_rank", "stock_candidates"] as LivermoreOutputKey[],
+      supported_outputs: livermorePayload.result.supported_outputs.filter(
+        (key) => key !== "risk_exit",
+      ) as LivermoreOutputKey[],
       unsupported_outputs: [
+        ...livermorePayload.result.unsupported_outputs.filter((item) => item.key !== "risk_exit"),
         {
           key: "risk_exit" as const,
           reason: "livermore_position_snapshot has no ACTIVE A-share rows for as_of_date 2026-04-30.",
@@ -1688,8 +1717,11 @@ describe("CrossAssetPage", () => {
     await waitFor(() => {
       expect(panel).toHaveTextContent("市场门控");
     });
-    expect(panel).toHaveTextContent("趋势门控可用；市场宽度与涨停质量仍缺数。");
-    expect(panel).toHaveTextContent("个股候选筛选已可由 Choice 个股输入支撑。");
+    expect(panel).toHaveTextContent("趋势突破策略在过热门控下暂停；仅在偏热/温和门控下进入候选。");
+    expect(screen.getByTestId("cross-asset-livermore-risk-exit")).toHaveTextContent(
+      "退出信号 1 条，覆盖持仓 2 条。",
+    );
+    expect(panel).toHaveTextContent("日期 2026-04-10");
     expect(panel).not.toHaveTextContent("Trend-only market gate");
     expect(panel).not.toHaveTextContent("Stock pivot candidate");
   });
@@ -1710,8 +1742,13 @@ describe("CrossAssetPage", () => {
             }
           : rule,
       ),
-      supported_outputs: ["market_gate", "sector_rank", "stock_candidates"] as LivermoreOutputKey[],
-      unsupported_outputs: [{ key: "risk_exit" as const, reason: "position snapshot is missing." }],
+      supported_outputs: livermorePayload.result.supported_outputs.filter(
+        (key) => key !== "risk_exit",
+      ) as LivermoreOutputKey[],
+      unsupported_outputs: [
+        ...livermorePayload.result.unsupported_outputs.filter((item) => item.key !== "risk_exit"),
+        { key: "risk_exit" as const, reason: "position snapshot is missing." },
+      ],
     };
     delete blockedResult.risk_exit;
     vi.spyOn(client, "getLivermoreStrategy").mockResolvedValue({

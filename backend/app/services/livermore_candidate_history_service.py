@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
+from backend.app.core_finance.matched_baseline import (
+    MATCHED_BASELINE_TABLE,
+    matched_baseline_stats_from_rows,
+)
+from backend.app.core_finance.strategy_policy import POLICY
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
@@ -36,6 +41,7 @@ CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RESULT_KIND = "market_data.livermore.candid
 CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_RULE_VERSION = "rv_livermore_candidate_history_portfolio_backtest_v1"
 CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION = "cv_livermore_candidate_history_portfolio_backtest_v1"
 TABLE_HIST = "livermore_candidate_history"
+TABLE_EXECUTION_HIST = "livermore_candidate_execution_history"
 TABLE_OBS = "choice_stock_daily_observation"
 BENCHMARK_SERIES_ID = "CA.CSI300"
 TABLE_BENCHMARK_DAILY = "fact_choice_macro_daily"
@@ -92,7 +98,7 @@ _STRATEGY_REVIEW_MIN_T5_SAMPLE = 30
 _STRATEGY_REVIEW_MIN_T5_WIN_RATE = 0.5
 _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_FLOOR = 0.012
 _STRATEGY_REVIEW_OFFICIAL_T5_AVG_RETURN_TARGET = 0.024
-_ENTRY_ALLOWED_STATES = {"WARM", "HOT"}
+_ENTRY_ALLOWED_STATES = POLICY.entry_observation_states
 _COMPLETION_HORIZONS = ("return_1d", "return_5d", "return_20d")
 _FORWARD_COVERAGE_COMPLETE = "complete"
 _FORWARD_COVERAGE_PENDING = "pending"
@@ -106,14 +112,27 @@ _FORWARD_COVERAGE_STATUSES = (
 )
 _FORWARD_COVERAGE_MATURITY_FORWARD_BARS = 20
 _FORWARD_RETURN_KEYS = ("return_1d", "return_5d", "return_10d", "return_20d")
+_ADJUSTED_FORWARD_RETURN_KEYS = {
+    "return_1d": "return_1d_adj",
+    "return_5d": "return_5d_adj",
+    "return_10d": "return_10d_adj",
+    "return_20d": "return_20d_adj",
+}
+_EXECUTION_RETURN_KEYS = {
+    "return_1d": "return_1d_net_adj",
+    "return_5d": "return_5d_net_adj",
+    "return_10d": "return_10d_net_adj",
+    "return_20d": "return_20d_net_adj",
+}
+_EXECUTION_METRIC_BASIS = "net_next_open_adj"
 _CYCLE_PROXY_SIGNAL_KIND = "stock_candidate"
 _CYCLE_PROXY_MAX_RANK = 6
-_CYCLE_PROXY_ALLOWED_MARKET_STATES = {"WARM", "HOT"}
+_CYCLE_PROXY_ALLOWED_MARKET_STATES = POLICY.entry_observation_states
 _PORTFOLIO_BACKTEST_SIGNAL_KIND = "stock_candidate"
 _PORTFOLIO_BACKTEST_MAX_RANK = 6
-_PORTFOLIO_BACKTEST_ALLOWED_MARKET_STATES = {"WARM", "HOT"}
-_PORTFOLIO_BACKTEST_BUY_COST_RATE = 0.0008
-_PORTFOLIO_BACKTEST_SELL_COST_RATE = 0.0013
+_PORTFOLIO_BACKTEST_ALLOWED_MARKET_STATES = POLICY.entry_observation_states
+_PORTFOLIO_BACKTEST_BUY_COST_RATE = POLICY.buy_cost_rate
+_PORTFOLIO_BACKTEST_SELL_COST_RATE = POLICY.sell_cost_rate
 _CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS = [
     "PMI",
     "credit_impulse",
@@ -143,6 +162,10 @@ _SELECT_COLUMNS = (
     "return_5d",
     "return_10d",
     "return_20d",
+    "return_1d_adj",
+    "return_5d_adj",
+    "return_10d_adj",
+    "return_20d_adj",
     "data_status",
     "formula_version",
     "source_version",
@@ -171,6 +194,33 @@ _SELECT_COLUMNS = (
     "close_strength",
     "closed_up_limit",
     "signal_evidence_json",
+)
+_EXECUTION_SELECT_COLUMNS = (
+    "signal_date",
+    "stock_code",
+    "signal_kind",
+    "market_state",
+    "entry_executable",
+    "entry_block_reason",
+    "return_1d_net_adj",
+    "return_5d_net_adj",
+    "return_10d_net_adj",
+    "return_20d_net_adj",
+)
+_MATCHED_BASELINE_SELECT_COLUMNS = (
+    "signal_date",
+    "candidate_stock_code",
+    "signal_kind",
+    "control_stock_code",
+    "control_group",
+    "control_return_1d_net_adj",
+    "control_return_5d_net_adj",
+    "control_return_10d_net_adj",
+    "control_return_20d_net_adj",
+    "control_entry_executable",
+    "seed",
+    "formula_version",
+    "run_id",
 )
 
 
@@ -248,6 +298,26 @@ def livermore_candidate_history_envelope(
                 min_snapshot_date=_min_snapshot_date(items),
             ),
         )
+        execution_rows = (
+            _load_execution_window_rows(
+                conn,
+                stock_code=trimmed_code,
+                snapshot_from=normalized_snapshot_from,
+                snapshot_to=normalized_snapshot_to,
+            )
+            if TABLE_EXECUTION_HIST in tables
+            else None
+        )
+        matched_baseline_rows = (
+            _load_matched_baseline_window_rows(
+                conn,
+                stock_code=trimmed_code,
+                snapshot_from=normalized_snapshot_from,
+                snapshot_to=normalized_snapshot_to,
+            )
+            if MATCHED_BASELINE_TABLE in tables
+            else None
+        )
     finally:
         conn.close()
 
@@ -262,7 +332,12 @@ def livermore_candidate_history_envelope(
     )
     result_payload = {
         "items": items,
-        "summary": _build_summary(items, backtest_window_summary=backtest_window_summary),
+        "summary": _build_summary(
+            items,
+            backtest_window_summary=backtest_window_summary,
+            execution_rows=execution_rows,
+            matched_baseline_rows=matched_baseline_rows,
+        ),
         "backtest_window_summary": backtest_window_summary,
         "stock_code": trimmed_code,
         "snapshot_from": normalized_snapshot_from,
@@ -287,7 +362,9 @@ def livermore_candidate_history_envelope(
             "snapshot_to": result_payload["snapshot_to"],
             "limit": limit,
         },
-        tables_used=[TABLE_HIST],
+        tables_used=[TABLE_HIST]
+        + ([TABLE_EXECUTION_HIST] if execution_rows is not None else [])
+        + ([MATCHED_BASELINE_TABLE] if matched_baseline_rows is not None else []),
         evidence_rows=len(items),
         result_payload=result_payload,
     )
@@ -705,6 +782,17 @@ def _available_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
     return {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_HIST}')").fetchall()}
 
 
+def _available_execution_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
+    return {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_EXECUTION_HIST}')").fetchall()}
+
+
+def _available_matched_baseline_columns(conn: duckdb.DuckDBPyConnection) -> set[str]:
+    return {
+        str(row[1]).lower()
+        for row in conn.execute(f"pragma table_info('{MATCHED_BASELINE_TABLE}')").fetchall()
+    }
+
+
 def livermore_candidate_history_backtest_window_summary(
     *,
     duckdb_path: str,
@@ -859,6 +947,30 @@ def _select_list(available_columns: set[str]) -> str:
     return ", ".join(parts)
 
 
+def _execution_select_list(available_columns: set[str]) -> str:
+    parts: list[str] = []
+    for column in _EXECUTION_SELECT_COLUMNS:
+        if column.lower() in available_columns:
+            parts.append(column)
+        elif column == "signal_kind":
+            parts.append("'stock_candidate' as signal_kind")
+        else:
+            parts.append(f"null as {column}")
+    return ", ".join(parts)
+
+
+def _matched_baseline_select_list(available_columns: set[str]) -> str:
+    parts: list[str] = []
+    for column in _MATCHED_BASELINE_SELECT_COLUMNS:
+        if column.lower() in available_columns:
+            parts.append(column)
+        elif column == "signal_kind":
+            parts.append("'stock_candidate' as signal_kind")
+        else:
+            parts.append(f"null as {column}")
+    return ", ".join(parts)
+
+
 def _load_backtest_window_rows(
     conn: duckdb.DuckDBPyConnection,
     *,
@@ -902,8 +1014,86 @@ def _load_backtest_window_rows(
     )
 
 
+def _load_execution_window_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    stock_code: str | None,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+) -> list[dict[str, Any]]:
+    available_columns = _available_execution_columns(conn)
+    where_clauses: list[str] = []
+    bindings: list[object] = []
+    if stock_code:
+        where_clauses.append("stock_code = ?")
+        bindings.append(stock_code)
+    if snapshot_from:
+        where_clauses.append("signal_date >= ?")
+        bindings.append(snapshot_from[:10])
+    if snapshot_to:
+        where_clauses.append("signal_date <= ?")
+        bindings.append(snapshot_to[:10])
+    sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
+    rows = conn.execute(
+        f"""
+        select {_execution_select_list(available_columns)}
+        from {TABLE_EXECUTION_HIST}
+        {sql_where}
+        order by signal_date asc, stock_code asc
+        """,
+        bindings,
+    ).fetchall()
+    return [_normalize_execution_row(row) for row in rows]
+
+
+def _load_matched_baseline_window_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    stock_code: str | None,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+) -> list[dict[str, Any]]:
+    available_columns = _available_matched_baseline_columns(conn)
+    where_clauses: list[str] = []
+    bindings: list[object] = []
+    if stock_code:
+        where_clauses.append("candidate_stock_code = ?")
+        bindings.append(stock_code)
+    if snapshot_from:
+        where_clauses.append("signal_date >= ?")
+        bindings.append(snapshot_from[:10])
+    if snapshot_to:
+        where_clauses.append("signal_date <= ?")
+        bindings.append(snapshot_to[:10])
+    sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
+    rows = conn.execute(
+        f"""
+        select {_matched_baseline_select_list(available_columns)}
+        from {MATCHED_BASELINE_TABLE}
+        {sql_where}
+        order by signal_date asc, candidate_stock_code asc, control_stock_code asc
+        """,
+        bindings,
+    ).fetchall()
+    return [_normalize_matched_baseline_row(row) for row in rows]
+
+
 def _normalize_row(row: tuple[Any, ...]) -> dict[str, Any]:
     item = {_SELECT_COLUMNS[i]: row[i] for i in range(len(_SELECT_COLUMNS))}
+    if not str(item.get("signal_kind") or "").strip():
+        item["signal_kind"] = "stock_candidate"
+    return item
+
+
+def _normalize_execution_row(row: tuple[Any, ...]) -> dict[str, Any]:
+    item = {_EXECUTION_SELECT_COLUMNS[i]: row[i] for i in range(len(_EXECUTION_SELECT_COLUMNS))}
+    if not str(item.get("signal_kind") or "").strip():
+        item["signal_kind"] = "stock_candidate"
+    return item
+
+
+def _normalize_matched_baseline_row(row: tuple[Any, ...]) -> dict[str, Any]:
+    item = {_MATCHED_BASELINE_SELECT_COLUMNS[i]: row[i] for i in range(len(_MATCHED_BASELINE_SELECT_COLUMNS))}
     if not str(item.get("signal_kind") or "").strip():
         item["signal_kind"] = "stock_candidate"
     return item
@@ -1052,6 +1242,8 @@ def _build_summary(
     items: list[dict[str, Any]],
     *,
     backtest_window_summary: dict[str, Any] | None = None,
+    execution_rows: list[dict[str, Any]] | None = None,
+    matched_baseline_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "row_count": len(items),
@@ -1081,6 +1273,22 @@ def _build_summary(
         summary["by_market_state_signal_kind_horizon_stats"] = _build_market_state_signal_kind_horizon_stats(
             horizon_usable_items
         )
+        if execution_rows is not None:
+            execution_usable_rows = _execution_rows_for_dates(
+                execution_rows,
+                _decision_usable_dates(backtest_window_summary),
+            )
+            summary["execution_usable_stats"] = _build_execution_usable_stats(execution_usable_rows)
+            summary["entry_blocked_stats"] = _build_entry_blocked_stats(execution_usable_rows)
+            summary["by_market_state_signal_kind_execution_stats"] = (
+                _build_market_state_signal_kind_execution_stats(execution_usable_rows)
+            )
+            if matched_baseline_rows is not None:
+                summary["matched_baseline_stats"] = matched_baseline_stats_from_rows(
+                    execution_usable_rows,
+                    matched_baseline_rows,
+                    dimensions=("signal_kind",),
+                )
     return summary
 
 
@@ -1090,13 +1298,19 @@ def _build_decision_usable_stats(
     backtest_window_summary: dict[str, Any],
 ) -> dict[str, Any]:
     included_dates = _decision_usable_dates(backtest_window_summary)
-    usable_items = [
+    completed_items = [
         item
         for item in items
         if str(item.get("snapshot_as_of_date") or "")[:10] in included_dates
         and str(item.get("data_status") or "").strip() == "complete"
     ]
+    usable_items = [_decision_usable_adjusted_item(item) for item in completed_items]
+    usable_items = [item for item in usable_items if item is not None]
     return {
+        "metric_basis": "adjusted_close_return",
+        "adj_coverage_count": len(usable_items),
+        "adj_coverage_total": len(completed_items),
+        "adj_coverage_ratio": round(len(usable_items) / len(completed_items), 6) if completed_items else None,
         "row_count": len(usable_items),
         "complete_row_count": _count_status(usable_items, "complete"),
         "pending_row_count": _count_status(usable_items, "pending"),
@@ -1121,6 +1335,19 @@ def _build_decision_usable_stats(
             included_dates=included_dates,
         ),
     }
+
+
+def _decision_usable_adjusted_item(item: dict[str, Any]) -> dict[str, Any] | None:
+    adjusted_item = dict(item)
+    has_adjusted_return = False
+    for raw_key, adjusted_key in _ADJUSTED_FORWARD_RETURN_KEYS.items():
+        adjusted_value = item.get(adjusted_key)
+        adjusted_item[raw_key] = adjusted_value
+        if adjusted_value is not None:
+            has_adjusted_return = True
+    if not has_adjusted_return:
+        return None
+    return adjusted_item
 
 
 def _decision_usable_dates(backtest_window_summary: dict[str, Any]) -> set[str]:
@@ -1335,6 +1562,122 @@ def _build_signal_kind_horizon_stats(items: list[dict[str, Any]]) -> dict[str, d
         signal_kind = _normalized_signal_kind(item)
         grouped.setdefault(signal_kind, []).append(item)
     return {signal_kind: _build_horizon_stats(rows) for signal_kind, rows in sorted(grouped.items())}
+
+
+def _execution_rows_for_dates(rows: list[dict[str, Any]], included_dates: set[str]) -> list[dict[str, Any]]:
+    if not included_dates:
+        return []
+    return [row for row in rows if str(row.get("signal_date") or "").strip()[:10] in included_dates]
+
+
+def _execution_executable_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if _bool_value(row.get("entry_executable")) is True]
+
+
+def _build_execution_usable_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    executable_rows = _execution_executable_rows(rows)
+    signal_kind_stats = _build_execution_signal_kind_horizon_stats(executable_rows)
+    return {
+        "metric_basis": _EXECUTION_METRIC_BASIS,
+        "basis_label": "T+1\u5f00\u76d8\u6210\u4ea4\u00b7\u542b\u8d39\u00b7\u590d\u6743",
+        "row_count": len(executable_rows),
+        "execution_row_count": len(rows),
+        "entry_executable_count": len(executable_rows),
+        "horizon_usable_stats": _build_execution_horizon_stats(executable_rows),
+        "by_signal_kind": _count_by_execution_signal_kind(executable_rows),
+        "by_signal_kind_horizon_stats": signal_kind_stats,
+        "by_signal_kind_horizon_usable_stats": signal_kind_stats,
+        "included_signal_dates": sorted(
+            {date_text for row in executable_rows if (date_text := str(row.get("signal_date") or "").strip()[:10])}
+        ),
+    }
+
+
+def _build_execution_horizon_stats(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        horizon: _execution_horizon_stat(rows, column)
+        for horizon, column in _EXECUTION_RETURN_KEYS.items()
+    }
+
+
+def _execution_horizon_stat(rows: list[dict[str, Any]], column: str) -> dict[str, Any]:
+    values = _present_float_values(rows, column)
+    positive_count = sum(1 for value in values if value > 0)
+    avg_return = round(sum(values) / len(values), 6) if values else None
+    median_return = _median_float(values)
+    win_rate = round(positive_count / len(values), 6) if values else None
+    missing_count = len(rows) - len(values)
+    return {
+        "available_count": len(values),
+        "missing_count": missing_count,
+        "positive_count": positive_count,
+        "non_positive_count": len(values) - positive_count,
+        "avg_return": avg_return,
+        "median_return": median_return,
+        "win_rate": win_rate,
+        "n": len(values),
+        "adj_missing_n": missing_count,
+        "win": win_rate,
+        "avg": avg_return,
+        "median": median_return,
+        "p10": _percentile_float(values, 0.1),
+        "p90": _percentile_float(values, 0.9),
+    }
+
+
+def _build_execution_signal_kind_horizon_stats(
+    rows: list[dict[str, Any]],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        signal_kind = _execution_signal_kind(row)
+        grouped.setdefault(signal_kind, []).append(row)
+    return {signal_kind: _build_execution_horizon_stats(group_rows) for signal_kind, group_rows in sorted(grouped.items())}
+
+
+def _build_market_state_signal_kind_execution_stats(
+    rows: list[dict[str, Any]],
+) -> dict[str, dict[str, dict[str, dict[str, Any]]]]:
+    grouped: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for row in _execution_executable_rows(rows):
+        market_state = _execution_market_state(row)
+        signal_kind = _execution_signal_kind(row)
+        grouped.setdefault(market_state, {}).setdefault(signal_kind, []).append(row)
+    return {
+        market_state: {
+            signal_kind: _build_execution_horizon_stats(group_rows)
+            for signal_kind, group_rows in sorted(signal_groups.items())
+        }
+        for market_state, signal_groups in sorted(grouped.items())
+    }
+
+
+def _build_entry_blocked_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    blocked_rows = [row for row in rows if _bool_value(row.get("entry_executable")) is False]
+    by_reason: dict[str, dict[str, Any]] = {}
+    for row in blocked_rows:
+        reason = str(row.get("entry_block_reason") or "unknown").strip() or "unknown"
+        current = by_reason.setdefault(reason, {"count": 0, "share": None})
+        current["count"] += 1
+    for reason in sorted(by_reason):
+        by_reason[reason]["share"] = round(by_reason[reason]["count"] / len(rows), 6) if rows else None
+    executable_count = len(_execution_executable_rows(rows))
+    return {
+        "metric_basis": _EXECUTION_METRIC_BASIS,
+        "total_row_count": len(rows),
+        "entry_executable_count": executable_count,
+        "blocked_row_count": len(blocked_rows),
+        "blocked_ratio": round(len(blocked_rows) / len(rows), 6) if rows else None,
+        "by_reason": dict(sorted(by_reason.items())),
+    }
+
+
+def _count_by_execution_signal_kind(rows: list[dict[str, Any]]) -> dict[str, int]:
+    by_signal_kind: dict[str, int] = {}
+    for row in rows:
+        signal_kind = _execution_signal_kind(row)
+        by_signal_kind[signal_kind] = by_signal_kind.get(signal_kind, 0) + 1
+    return by_signal_kind
 
 
 def _build_market_state_signal_kind_horizon_stats(
@@ -3533,8 +3876,43 @@ def _present_float_values(items: list[dict[str, Any]], key: str) -> list[float]:
     return values
 
 
+def _percentile_float(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return round(ordered[0], 6)
+    bounded = min(max(float(percentile), 0.0), 1.0)
+    position = bounded * (len(ordered) - 1)
+    lower_index = int(position)
+    upper_index = min(lower_index + 1, len(ordered) - 1)
+    weight = position - lower_index
+    return round(ordered[lower_index] * (1 - weight) + ordered[upper_index] * weight, 6)
+
+
 def _normalized_signal_kind(item: dict[str, Any]) -> str:
     return str(item.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
+
+
+def _execution_signal_kind(row: dict[str, Any]) -> str:
+    return str(row.get("signal_kind") or "stock_candidate").strip() or "stock_candidate"
+
+
+def _execution_market_state(row: dict[str, Any]) -> str:
+    return _normalized_text(row.get("market_state")) or "unknown"
+
+
+def _bool_value(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value or "").strip().lower()
+    if text in {"true", "t", "1", "yes", "y"}:
+        return True
+    if text in {"false", "f", "0", "no", "n"}:
+        return False
+    return None
 
 
 def _market_state_from_signal_evidence(

@@ -6,21 +6,25 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
+from backend.app.core_finance.strategy_policy import POLICY
+from backend.app.core_finance.strategy_policy import StockCandidatePolicyDefinition
+
 EPS = 1e-12
 FORMULA_VERSION = "rv_livermore_stock_candidates_bundle_v7"
 DEFAULT_STOCK_CANDIDATE_POLICY = "default"
 EXP3B_STOCK_CANDIDATE_POLICY = "exp3b"
 EXP3C_SHADOW_STOCK_CANDIDATE_POLICY = "exp3c_shadow"
-MIN_HISTORY = 120
-EMA_WINDOW = 10
-MAX_RANKED = 6
-MAX_BREAKOUT_EXTENSION_NORM = 0.35
-GAP_NORM_MIN = 0.0
-ABNORMAL_TURNOVER_MIN_V7 = 1.2
-ABNORMAL_TURNOVER_MAX_V7 = 2.0
-CROWDED_LEADER_TURNOVER_BLOCK = 2.0
-DEFAULT_FUNDAMENTAL_TOP_FRACTION = 0.5
-WARM_FUNDAMENTAL_TOP_FRACTION = 1 / 3
+MIN_HISTORY = POLICY.entry_filters.min_history
+EMA_WINDOW = POLICY.entry_filters.ema_window
+MAX_RANKED = POLICY.entry_filters.max_ranked
+MIN_DAILY_AMOUNT = POLICY.entry_filters.min_daily_amount
+MAX_BREAKOUT_EXTENSION_NORM = POLICY.entry_filters.max_breakout_extension_norm
+GAP_NORM_MIN = POLICY.entry_filters.gap_norm_min
+ABNORMAL_TURNOVER_MIN_V7 = POLICY.entry_filters.abnormal_turnover_range[0]
+ABNORMAL_TURNOVER_MAX_V7 = POLICY.entry_filters.abnormal_turnover_range[1]
+CROWDED_LEADER_TURNOVER_BLOCK = POLICY.entry_filters.crowded_leader_turnover_block
+DEFAULT_FUNDAMENTAL_TOP_FRACTION = POLICY.entry_filters.default_fundamental_top_fraction
+WARM_FUNDAMENTAL_TOP_FRACTION = POLICY.entry_filters.warm_fundamental_top_fraction
 
 
 @dataclass(frozen=True)
@@ -36,6 +40,7 @@ class StockCandidateSnapshot:
     close_value: object
     turnover_free: object
     limit_ratio: object
+    daily_amount: object = None
     one_word_board: bool = False
     closed_up_limit: bool = False
     close_history: Sequence[object] = ()
@@ -56,54 +61,11 @@ class StockCandidateResult:
     payload: dict[str, object]
 
 
-@dataclass(frozen=True)
-class _StockCandidatePolicy:
-    name: str
-    active_market_states: frozenset[str]
-    close_strength_min: float
-    gap_norm_max: float
-    abnormal_turnover_min: float
-    abnormal_turnover_max: float
-    close_strength_first: bool = False
+_StockCandidatePolicy = StockCandidatePolicyDefinition
 
 
 _POLICY_BY_NAME: dict[str, _StockCandidatePolicy] = {
-    DEFAULT_STOCK_CANDIDATE_POLICY: _StockCandidatePolicy(
-        name=DEFAULT_STOCK_CANDIDATE_POLICY,
-        active_market_states=frozenset({"WARM", "HOT", "OVERHEAT"}),
-        close_strength_min=0.95,
-        gap_norm_max=0.45,
-        abnormal_turnover_min=1.2,
-        abnormal_turnover_max=2.0,
-    ),
-    EXP3B_STOCK_CANDIDATE_POLICY: _StockCandidatePolicy(
-        name=EXP3B_STOCK_CANDIDATE_POLICY,
-        active_market_states=frozenset({"WARM", "HOT"}),
-        close_strength_min=0.99,
-        gap_norm_max=0.35,
-        abnormal_turnover_min=1.2,
-        abnormal_turnover_max=2.4,
-        close_strength_first=True,
-    ),
-    EXP3C_SHADOW_STOCK_CANDIDATE_POLICY: _StockCandidatePolicy(
-        name=EXP3C_SHADOW_STOCK_CANDIDATE_POLICY,
-        active_market_states=frozenset({"WARM", "HOT"}),
-        close_strength_min=0.99,
-        gap_norm_max=0.35,
-        abnormal_turnover_min=1.0,
-        abnormal_turnover_max=2.4,
-        close_strength_first=True,
-    ),
-    # v6_compat: looser turnover band for OVERHEAT fallback (win_5d -4.3pp under v7).
-    # Registered for market_data_livermore_service wiring; not active until OVERHEAT maps here.
-    "v6_compat": _StockCandidatePolicy(
-        name="v6_compat",
-        active_market_states=frozenset({"WARM", "HOT", "OVERHEAT"}),
-        close_strength_min=0.95,
-        gap_norm_max=0.45,
-        abnormal_turnover_min=1.0,
-        abnormal_turnover_max=3.5,
-    ),
+    policy.name: policy for policy in POLICY.entry_filters.stock_candidate_policies
 }
 ACTIVE_MARKET_STATES = set(_POLICY_BY_NAME[DEFAULT_STOCK_CANDIDATE_POLICY].active_market_states)
 
@@ -255,6 +217,7 @@ def _candidate_row(
     close_value = _valid_float(snapshot.close_value)
     turnover_free = _valid_float(snapshot.turnover_free)
     limit_ratio = _valid_float(snapshot.limit_ratio)
+    daily_amount = _valid_float(snapshot.daily_amount)
     if (
         sector_rank is None
         or open_value is None
@@ -268,6 +231,8 @@ def _candidate_row(
     if sector_rank > 3:
         return None, False
     if limit_ratio <= 0:
+        return None, False
+    if closes[-2] <= 0:
         return None, False
     if snapshot.one_word_board or snapshot.closed_up_limit:
         return None, False
@@ -325,6 +290,8 @@ def _candidate_row(
         "gap_norm": round(gap_norm, 6),
         "breakout_extension_norm": round(breakout_extension_norm, 6),
         "abnormal_turnover": round(abnormal_turnover, 6),
+        "daily_amount": _round_optional(daily_amount),
+        "liquidity_floor_pass": None if daily_amount is None else daily_amount >= MIN_DAILY_AMOUNT,
         "selection_policy": policy.name,
         "pe": _round_optional(snapshot.pe),
         "pb": _round_optional(snapshot.pb),
@@ -376,6 +343,8 @@ def _snapshot_filter_diagnostic(
             failures.append("sector_rank<=3")
     if limit_ratio is not None and limit_ratio <= 0:
         failures.append("limit_ratio>0")
+    if closes is not None and len(closes) >= MIN_HISTORY and closes[-2] <= 0:
+        failures.append("prior_close>0")
     if snapshot.one_word_board:
         failures.append("not_one_word_board")
     if snapshot.closed_up_limit:
@@ -394,6 +363,7 @@ def _snapshot_filter_diagnostic(
         and turnover_free is not None
         and limit_ratio is not None
         and limit_ratio > 0
+        and closes[-2] > 0
     ):
         breakout_level = max(closes[-56:-1])
         ma20 = _moving_average(closes, 20)

@@ -747,6 +747,18 @@ def test_environment_composite_inverts_liquidity_when_other_dimensions_neutral()
     assert loose_score.liquidity_score == pytest.approx(1.0)
     assert loose_score.composite_score == pytest.approx(-0.3)
     assert "缩短久期" not in loose_score.signal_description
+    loose_contributions = {
+        item["component"]: item for item in loose_score.composite_contributions
+    }
+    assert sum(item["signed_contribution"] for item in loose_score.composite_contributions) == pytest.approx(
+        loose_score.composite_score
+    )
+    assert loose_contributions["liquidity"] == {
+        "component": "liquidity",
+        "raw_score": 1.0,
+        "weight": -0.3,
+        "signed_contribution": -0.3,
+    }
 
     assert tight_score.liquidity_score == pytest.approx(-1.0)
     assert tight_score.composite_score == pytest.approx(0.3)
@@ -1236,6 +1248,42 @@ def test_equity_bond_spread_axis_uses_explicit_rule_table_thresholds():
     assert neutral.stance == "neutral"
 
 
+def test_commodities_inflation_axis_treats_positive_pressure_as_restrictive():
+    mod = _core_module()
+
+    restrictive = mod._build_commodities_inflation_axis(
+        mod.MacroEnvironmentScore(
+            report_date=REPORT_DATE,
+            rate_direction="neutral",
+            rate_direction_score=0.0,
+            liquidity_score=0.0,
+            growth_score=1.0,
+            inflation_score=1.0,
+            composite_score=0.3,
+            signal_description="inflation and growth pressure",
+            contributing_factors=[],
+            warnings=[],
+        )
+    )
+    supportive = mod._build_commodities_inflation_axis(
+        mod.MacroEnvironmentScore(
+            report_date=REPORT_DATE,
+            rate_direction="neutral",
+            rate_direction_score=0.0,
+            liquidity_score=0.0,
+            growth_score=-1.0,
+            inflation_score=-1.0,
+            composite_score=-0.3,
+            signal_description="inflation and growth easing",
+            contributing_factors=[],
+            warnings=[],
+        )
+    )
+
+    assert restrictive.stance == "restrictive"
+    assert supportive.stance == "supportive"
+
+
 def test_mean_empty_sequence_returns_zero_for_optional_macro_windows():
     mod = _core_module()
 
@@ -1380,6 +1428,70 @@ def test_duration_summary_does_not_overattribute_to_equity_when_global_rates_alr
 
     assert view.stance == "bullish"
     assert "股债相对估值传导轴偏有利" not in view.summary
+
+
+def test_restrictive_inflation_axis_blocks_bullish_duration_view():
+    mod = _core_module()
+    macro_environment = mod.MacroEnvironmentScore(
+        report_date=REPORT_DATE,
+        rate_direction="falling",
+        rate_direction_score=-0.4,
+        liquidity_score=0.0,
+        growth_score=0.0,
+        inflation_score=1.0,
+        composite_score=0.0,
+        signal_description="falling rates but high inflation pressure",
+        contributing_factors=[],
+        warnings=[],
+    )
+    inflation_axis = mod._build_commodities_inflation_axis(macro_environment)
+
+    view = mod._build_duration_view(
+        macro_environment,
+        {
+            "global_rates": mod.MacroBondTransmissionAxisResult(
+                axis_key="global_rates",
+                status="ready",
+                stance="supportive",
+                summary="global supportive",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "liquidity": mod.MacroBondTransmissionAxisResult(
+                axis_key="liquidity",
+                status="ready",
+                stance="neutral",
+                summary="liquidity neutral",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "equity_bond_spread": mod.MacroBondTransmissionAxisResult(
+                axis_key="equity_bond_spread",
+                status="pending_signal",
+                stance="neutral",
+                summary="equity pending",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "commodities_inflation": inflation_axis,
+            "mega_cap_equities": mod.MacroBondTransmissionAxisResult(
+                axis_key="mega_cap_equities",
+                status="pending_signal",
+                stance="neutral",
+                summary="pending",
+                impacted_views=["instrument"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+        },
+        [],
+    )
+
+    assert inflation_axis.stance == "restrictive"
+    assert view.stance != "bullish"
 
 
 def test_mega_cap_equity_axis_uses_explicit_rule_table_thresholds():

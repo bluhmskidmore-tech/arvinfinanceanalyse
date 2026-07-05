@@ -1457,11 +1457,17 @@ const MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
   environment_score: {
     report_date: "2026-04-10",
     rate_direction: "falling",
-    rate_direction_score: -0.42,
+    rate_direction_score: -0.1,
     liquidity_score: 0.31,
-    growth_score: -0.14,
+    growth_score: 0.075,
     inflation_score: 0.08,
     composite_score: -0.11,
+    composite_contributions: [
+      { component: "rate_direction", raw_score: -0.1, weight: 0.4, signed_contribution: -0.04 },
+      { component: "liquidity", raw_score: 0.31, weight: -0.3, signed_contribution: -0.093 },
+      { component: "growth", raw_score: 0.075, weight: 0.2, signed_contribution: 0.015 },
+      { component: "inflation", raw_score: 0.08, weight: 0.1, signed_contribution: 0.008 },
+    ],
     composite_formula_version: "macro_env_composite_v2_liquidity_inverted",
     signal_description:
       "资金面维持宽松，长端对海外利率与风险偏好更敏感：国内短端利率稳定，权益与商品反弹带来增长预期修复，但美债高位约束利差压缩空间。建议以流动性为锚、用海外约束做上限、用增长预期做节奏。",

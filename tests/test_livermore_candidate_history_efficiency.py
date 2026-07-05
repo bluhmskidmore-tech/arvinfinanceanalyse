@@ -253,6 +253,51 @@ def test_candidate_history_envelope_builds_backtest_window_once_when_history_exi
     assert len(calls) == 1
 
 
+def test_decision_usable_stats_use_adjusted_returns_and_report_coverage() -> None:
+    stats = service._build_decision_usable_stats(
+        [
+            {
+                "snapshot_as_of_date": "2026-05-06",
+                "stock_code": "000001.SZ",
+                "signal_kind": "stock_candidate",
+                "data_status": "complete",
+                "return_1d": -0.05,
+                "return_5d": -0.02,
+                "return_20d": -0.01,
+                "return_1d_adj": 0.01,
+                "return_5d_adj": 0.12,
+                "return_20d_adj": 0.22,
+            },
+            {
+                "snapshot_as_of_date": "2026-05-06",
+                "stock_code": "000002.SZ",
+                "signal_kind": "stock_candidate",
+                "data_status": "complete",
+                "return_1d": 0.50,
+                "return_5d": 0.50,
+                "return_20d": 0.50,
+                "return_1d_adj": None,
+                "return_5d_adj": None,
+                "return_20d_adj": None,
+            },
+        ],
+        backtest_window_summary={
+            "included_completed_stats_dates": ["2026-05-06"],
+        },
+    )
+
+    assert stats["metric_basis"] == "adjusted_close_return"
+    assert stats["adj_coverage_count"] == 1
+    assert stats["adj_coverage_total"] == 2
+    assert stats["adj_coverage_ratio"] == 0.5
+    assert stats["row_count"] == 1
+    assert stats["avg_return_1d"] == 0.01
+    assert stats["avg_return_5d"] == 0.12
+    assert stats["avg_return_20d"] == 0.22
+    assert stats["win_rate_5d"] == 1.0
+    assert stats["excluded_snapshot_dates"] == ["2026-05-06"]
+
+
 def test_strategy_score_reuses_loaded_window_rows_for_backtest_summary(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "strategy-score-single-load.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)

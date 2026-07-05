@@ -3,19 +3,16 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 
+from backend.app.core_finance.strategy_policy import POLICY
+
 DISCLAIMER = "Observation-only output. This service does not generate trading instructions."
-ENTRY_OBSERVATION_STATES = {"WARM", "HOT"}
+ENTRY_OBSERVATION_STATES = POLICY.entry_observation_states
 REPLAY_READY_COMPLETED_DATES = 20
 REPLAY_READY_MATCHED_ENTRIES = 100
 REPLAY_PARTIAL_COMPLETED_DATES = 5
 REPLAY_PARTIAL_MATCHED_ENTRIES = 30
 REPLAY_REQUIRED_HORIZONS = ("return_5d", "return_20d")
-MACRO_MULTIPLIERS = {
-    "supportive": 1.0,
-    "neutral": 0.5,
-    "restrictive": 0.0,
-    "unknown": 0.0,
-}
+MACRO_MULTIPLIERS = POLICY.macro_multipliers
 
 
 def build_livermore_replay_status(backtest_window_summary: dict[str, object] | None = None) -> dict[str, object]:
@@ -451,9 +448,9 @@ def _extract_composite_score(payload: Mapping[str, object]) -> float | None:
 def _macro_status(composite_score: float | None) -> str:
     if composite_score is None:
         return "unknown"
-    if composite_score <= -0.3:
+    if composite_score < -0.3:
         return "supportive"
-    if composite_score >= 0.3:
+    if composite_score > 0.3:
         return "restrictive"
     return "neutral"
 

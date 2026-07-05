@@ -732,6 +732,7 @@ export type CreditSpreadMigrationPayload = {
   oci_spread_dv01: Numeric;
   oci_sensitivity_25bp: Numeric;
   warnings: string[];
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -848,6 +849,7 @@ export type ActionAttributionPayload = {
   missing_inputs?: string[];
   blocked_components?: string[];
   warnings: string[];
+  warning_codes?: string[];
   computed_at: string;
 };
 
@@ -1322,6 +1324,13 @@ export type MarketDataCoverageSummaryPayload = {
 
 export type MacroBondLinkageEnvironmentFactor = Record<string, unknown>;
 
+export type MacroBondLinkageCompositeContribution = {
+  component: string;
+  raw_score: number;
+  weight: number;
+  signed_contribution: number;
+};
+
 export type MacroBondLinkageEnvironmentScore = {
   report_date: string;
   rate_direction: string;
@@ -1330,6 +1339,7 @@ export type MacroBondLinkageEnvironmentScore = {
   growth_score: number;
   inflation_score: number;
   composite_score: number;
+  composite_contributions?: MacroBondLinkageCompositeContribution[];
   composite_formula_version?: string;
   signal_description: string;
   contributing_factors: MacroBondLinkageEnvironmentFactor[];
@@ -2493,6 +2503,7 @@ export type LivermoreCandidateHistoryLegacySummary = {
   missing_forward_return_count?: number;
   avg_return_1d?: number | null;
   avg_return_5d?: number | null;
+  avg_return_10d?: number | null;
   avg_return_20d?: number | null;
   horizon_stats?: LivermoreCandidateHistoryHorizonStatsByKey;
   horizon_usable_stats?: LivermoreCandidateHistoryHorizonStatsByKey;
@@ -2500,10 +2511,14 @@ export type LivermoreCandidateHistoryLegacySummary = {
   by_signal_kind_horizon_stats?: LivermoreCandidateHistorySignalKindHorizonStats;
   by_signal_kind_horizon_usable_stats?: LivermoreCandidateHistorySignalKindHorizonStats;
   by_market_state_signal_kind_horizon_stats?: LivermoreCandidateHistoryMarketStateSignalKindHorizonStats;
+  by_market_state_signal_kind_execution_stats?: LivermoreCandidateHistoryMarketStateSignalKindHorizonStats;
   decision_usable_stats?: LivermoreCandidateHistoryDecisionUsableStats | null;
+  execution_usable_stats?: LivermoreCandidateHistoryExecutionUsableStats | null;
+  entry_blocked_stats?: LivermoreCandidateHistoryEntryBlockedStats | null;
+  matched_baseline_stats?: LivermoreCandidateHistoryMatchedBaselineStats | null;
 };
 
-export type LivermoreCandidateHistoryHorizonKey = "return_1d" | "return_5d" | "return_20d";
+export type LivermoreCandidateHistoryHorizonKey = "return_1d" | "return_5d" | "return_10d" | "return_20d";
 
 export type LivermoreCandidateHistoryHorizonStats = {
   available_count: number;
@@ -2513,6 +2528,13 @@ export type LivermoreCandidateHistoryHorizonStats = {
   avg_return: number | null;
   median_return?: number | null;
   win_rate: number | null;
+  n?: number;
+  adj_missing_n?: number;
+  win?: number | null;
+  avg?: number | null;
+  median?: number | null;
+  p10?: number | null;
+  p90?: number | null;
 };
 
 export type LivermoreCandidateHistoryHorizonStatsByKey = Record<
@@ -2530,7 +2552,51 @@ export type LivermoreCandidateHistoryMarketStateSignalKindHorizonStats = Record<
   LivermoreCandidateHistorySignalKindHorizonStats
 >;
 
+export type LivermoreCandidateHistoryExecutionUsableStats = {
+  metric_basis: string;
+  basis_label?: string | null;
+  row_count: number;
+  execution_row_count?: number;
+  entry_executable_count?: number;
+  horizon_usable_stats?: LivermoreCandidateHistoryHorizonStatsByKey;
+  by_signal_kind?: Record<string, number>;
+  by_signal_kind_horizon_stats?: LivermoreCandidateHistorySignalKindHorizonStats;
+  by_signal_kind_horizon_usable_stats?: LivermoreCandidateHistorySignalKindHorizonStats;
+  included_signal_dates?: string[];
+};
+
+export type LivermoreCandidateHistoryEntryBlockedStats = {
+  metric_basis?: string;
+  total_row_count: number;
+  entry_executable_count: number;
+  blocked_row_count: number;
+  blocked_ratio: number | null;
+  by_reason: Record<string, { count: number; share: number | null }>;
+};
+
+export type LivermoreCandidateHistoryMatchedBaselineHorizonStats = {
+  n: number;
+  paired_alpha_avg: number | null;
+  paired_alpha_median: number | null;
+  avg_control_count?: number | null;
+  bootstrap_ci_95?: {
+    low: number | null;
+    high: number | null;
+    confidence: number;
+    iterations: number;
+  };
+};
+
+export type LivermoreCandidateHistoryMatchedBaselineStats = Record<
+  string,
+  Record<string, LivermoreCandidateHistoryMatchedBaselineHorizonStats>
+>;
+
 export type LivermoreCandidateHistoryDecisionUsableStats = {
+  metric_basis?: string;
+  adj_coverage_count?: number;
+  adj_coverage_total?: number;
+  adj_coverage_ratio?: number | null;
   row_count: number;
   complete_row_count: number;
   pending_row_count: number;
@@ -2538,9 +2604,11 @@ export type LivermoreCandidateHistoryDecisionUsableStats = {
   missing_forward_return_count: number;
   avg_return_1d: number | null;
   avg_return_5d: number | null;
+  avg_return_10d?: number | null;
   avg_return_20d: number | null;
   win_rate_1d: number | null;
   win_rate_5d: number | null;
+  win_rate_10d?: number | null;
   win_rate_20d: number | null;
   horizon_usable_stats?: LivermoreCandidateHistoryHorizonStatsByKey;
   by_signal_kind: Record<string, number>;
@@ -5193,7 +5261,7 @@ export type CampisiDecisionGradeSummary = {
   formal_actual_pnl: number;
   explained_pnl: number;
   residual_noise: number;
-  residual_ratio: number;
+  residual_ratio: number | null;
   valuation_change_516: number;
   fvoci_valuation_change_516: number;
   fvtpl_valuation_change_516: number;
@@ -5629,6 +5697,12 @@ export type LiabilityYieldKpi = {
   liability_cost: Numeric | null;
   market_liability_cost: Numeric | null;
   nim: Numeric | null;
+  nim_stress?: LiabilityNimStress | null;
+};
+
+export type LiabilityNimStress = {
+  nim_stressed: Numeric | null;
+  delta_bp: Numeric | null;
 };
 
 export type LiabilityYieldHistoryPoint = {
@@ -5819,6 +5893,7 @@ export type AdbCategoryItem = {
   avg_balance: number | null;
   proportion: number;
   weighted_rate?: number | null;
+  rate_coverage_ratio?: number | null;
 };
 
 export type AdbAccountingBasisDailyAvgItem = {
@@ -5879,6 +5954,8 @@ export type AdbComparisonResponse = {
   asset_yield: number | null;
   liability_cost: number | null;
   net_interest_margin: number | null;
+  asset_rate_coverage_ratio?: number | null;
+  liability_rate_coverage_ratio?: number | null;
   assets_breakdown: AdbCategoryItem[];
   liabilities_breakdown: AdbCategoryItem[];
   accounting_basis_daily_avg?: AdbAccountingBasisDailyAvg;
@@ -5893,6 +5970,7 @@ export type AdbMonthlyBreakdownItem = {
   avg_balance: number | null;
   proportion?: number | null;
   weighted_rate?: number | null;
+  rate_coverage_ratio?: number | null;
 };
 
 export type AdbMonthlyDataItem = {
@@ -5904,6 +5982,8 @@ export type AdbMonthlyDataItem = {
   asset_yield: number | null;
   liability_cost: number | null;
   net_interest_margin: number | null;
+  asset_rate_coverage_ratio?: number | null;
+  liability_rate_coverage_ratio?: number | null;
   mom_change_assets: number | null;
   mom_change_pct_assets: number | null;
   mom_change_liabilities: number | null;
@@ -5922,6 +6002,8 @@ export type AdbMonthlyResponse = {
   ytd_asset_yield: number | null;
   ytd_liability_cost: number | null;
   ytd_nim: number | null;
+  ytd_asset_rate_coverage_ratio?: number | null;
+  ytd_liability_rate_coverage_ratio?: number | null;
   unit?: string;
 };
 
