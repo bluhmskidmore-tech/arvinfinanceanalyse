@@ -53,6 +53,12 @@ _HORIZON_LABELS = {
 }
 _ENTRY_ALLOWED_STATES = {"WARM", "HOT"}
 _COMPLETION_HORIZONS = ("return_1d", "return_5d", "return_20d")
+_ADJUSTED_FORWARD_RETURN_KEYS = {
+    "return_1d": "return_1d_adj",
+    "return_5d": "return_5d_adj",
+    "return_10d": "return_10d_adj",
+    "return_20d": "return_20d_adj",
+}
 _CYCLE_PROXY_SIGNAL_KIND = "stock_candidate"
 _CYCLE_PROXY_MAX_RANK = 6
 _CYCLE_PROXY_ALLOWED_MARKET_STATES = {"WARM", "HOT"}
@@ -90,6 +96,10 @@ _SELECT_COLUMNS = (
     "return_5d",
     "return_10d",
     "return_20d",
+    "return_1d_adj",
+    "return_5d_adj",
+    "return_10d_adj",
+    "return_20d_adj",
     "data_status",
     "formula_version",
     "source_version",
@@ -908,13 +918,19 @@ def _build_decision_usable_stats(
     backtest_window_summary: dict[str, Any],
 ) -> dict[str, Any]:
     included_dates = _decision_usable_dates(backtest_window_summary)
-    usable_items = [
+    completed_items = [
         item
         for item in items
         if str(item.get("snapshot_as_of_date") or "")[:10] in included_dates
         and str(item.get("data_status") or "").strip() == "complete"
     ]
+    usable_items = [_decision_usable_adjusted_item(item) for item in completed_items]
+    usable_items = [item for item in usable_items if item is not None]
     return {
+        "metric_basis": "adjusted_close_return",
+        "adj_coverage_count": len(usable_items),
+        "adj_coverage_total": len(completed_items),
+        "adj_coverage_ratio": round(len(usable_items) / len(completed_items), 6) if completed_items else None,
         "row_count": len(usable_items),
         "complete_row_count": _count_status(usable_items, "complete"),
         "pending_row_count": _count_status(usable_items, "pending"),
@@ -939,6 +955,19 @@ def _build_decision_usable_stats(
             included_dates=included_dates,
         ),
     }
+
+
+def _decision_usable_adjusted_item(item: dict[str, Any]) -> dict[str, Any] | None:
+    adjusted_item = dict(item)
+    has_adjusted_return = False
+    for raw_key, adjusted_key in _ADJUSTED_FORWARD_RETURN_KEYS.items():
+        adjusted_value = item.get(adjusted_key)
+        adjusted_item[raw_key] = adjusted_value
+        if adjusted_value is not None:
+            has_adjusted_return = True
+    if not has_adjusted_return:
+        return None
+    return adjusted_item
 
 
 def _decision_usable_dates(backtest_window_summary: dict[str, Any]) -> set[str]:

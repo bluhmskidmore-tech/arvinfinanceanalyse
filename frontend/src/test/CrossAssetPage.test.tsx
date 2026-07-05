@@ -128,7 +128,27 @@ describe("CrossAssetPage", () => {
   });
 
   it("renders a decision header, market state strip, transmission canvas, and action rail on the first screen", async () => {
-    renderPage(createApiClient({ mode: "mock" }));
+    const client = createApiClient({ mode: "mock" });
+    const linkagePayload = await client.getMacroBondLinkageAnalysis({ reportDate: "2026-04-10" });
+    vi.spyOn(client, "getMacroBondLinkageAnalysis").mockResolvedValue({
+      ...linkagePayload,
+      result: {
+        ...linkagePayload.result,
+        environment_score: {
+          ...linkagePayload.result.environment_score,
+          composite_score: 0,
+          composite_contributions: [
+            { component: "liquidity", raw_score: 0, weight: -0.3, signed_contribution: 0 },
+            { component: "rate_direction", raw_score: 0, weight: 0.4, signed_contribution: 0 },
+            { component: "growth", raw_score: 0, weight: 0.2, signed_contribution: 0 },
+            { component: "inflation", raw_score: 0, weight: 0.1, signed_contribution: 0 },
+          ],
+          contributing_factors: [],
+        },
+      },
+    });
+
+    renderPage(client);
 
     const firstScreen = await screen.findByTestId("cross-asset-first-screen");
     const decisionHeader = await screen.findByTestId("cross-asset-decision-header");
@@ -559,7 +579,7 @@ describe("CrossAssetPage", () => {
     expect(observationSupport).toContainElement(correlationHeatmap);
     expect(momentumTable).toBeInTheDocument();
     expect(correlationMatrix).toBeInTheDocument();
-    expect(waterfallEvidence).toHaveTextContent("综合");
+    expect(waterfallEvidence).toHaveTextContent("Rates");
     expect(fullKpiBand.querySelectorAll(".cross-asset-drivers-page__mini-kpi").length).toBeGreaterThanOrEqual(4);
     expect(Boolean(researchViews.compareDocumentPosition(fullKpiBand) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean(fullKpiBand.compareDocumentPosition(livermoreStatus) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
@@ -633,12 +653,12 @@ describe("CrossAssetPage", () => {
     const analyticsGrid = await screen.findByTestId("cross-asset-zone-analytics-grid");
     const riskRail = await screen.findByTestId("cross-asset-risk-snapshot-grid");
     const waterfallDecision = await screen.findByTestId("cross-asset-driver-waterfall-decision");
-    const waterfallGapStrip = await screen.findByTestId("cross-asset-driver-waterfall-gap-strip");
+    const waterfallEvidence = await screen.findByTestId("cross-asset-driver-waterfall-evidence");
     const foldedVolAssets = await screen.findByTestId("cross-asset-vol-folded-assets");
 
     expect(analyticsGrid).toContainElement(riskRail);
     expect(analyticsGrid).toContainElement(waterfallDecision);
-    expect(analyticsGrid).toContainElement(waterfallGapStrip);
+    expect(waterfallEvidence).toHaveTextContent("Rates");
     expect(riskRail).toContainElement(foldedVolAssets);
     expect(foldedVolAssets).toHaveTextContent("其余 3 项");
     expect(foldedVolAssets).toHaveAttribute("title", expect.stringContaining("USD/CNY"));
@@ -660,7 +680,13 @@ describe("CrossAssetPage", () => {
           rate_direction_score: -0.24,
           growth_score: 0,
           inflation_score: 0,
-          composite_score: 0.28,
+          composite_score: -0.252,
+          composite_contributions: [
+            { component: "liquidity", raw_score: 0.52, weight: -0.3, signed_contribution: -0.156 },
+            { component: "rate_direction", raw_score: -0.24, weight: 0.4, signed_contribution: -0.096 },
+            { component: "growth", raw_score: 0, weight: 0.2, signed_contribution: 0 },
+            { component: "inflation", raw_score: 0, weight: 0.1, signed_contribution: 0 },
+          ],
           contributing_factors: [
             { category: "liquidity", series_name: "Liquidity proxy", latest_value: 1.2 },
             { category: "rate", series_name: "Rate proxy", latest_value: 1.6 },
@@ -1076,7 +1102,27 @@ describe("CrossAssetPage", () => {
     expect(css).toContain(".ca-waterfall__gap-summary");
     expect(css).toContain(".ca-waterfall__chart--compact-gaps");
 
-    renderPage(createApiClient({ mode: "mock" }));
+    const client = createApiClient({ mode: "mock" });
+    const linkagePayload = await client.getMacroBondLinkageAnalysis({ reportDate: "2026-04-10" });
+    vi.spyOn(client, "getMacroBondLinkageAnalysis").mockResolvedValue({
+      ...linkagePayload,
+      result: {
+        ...linkagePayload.result,
+        environment_score: {
+          ...linkagePayload.result.environment_score,
+          composite_score: 0,
+          composite_contributions: [
+            { component: "liquidity", raw_score: 0, weight: -0.3, signed_contribution: 0 },
+            { component: "rate_direction", raw_score: 0, weight: 0.4, signed_contribution: 0 },
+            { component: "growth", raw_score: 0, weight: 0.2, signed_contribution: 0 },
+            { component: "inflation", raw_score: 0, weight: 0.1, signed_contribution: 0 },
+          ],
+          contributing_factors: [],
+        },
+      },
+    });
+
+    renderPage(client);
 
     const waterfall = await screen.findByTestId("cross-asset-driver-waterfall");
     const chart = waterfall.querySelector(".ca-waterfall__chart--compact-gaps");
@@ -1097,8 +1143,8 @@ describe("CrossAssetPage", () => {
     expect(zeroLine).not.toHaveAttribute("style");
     expect(within(chart as HTMLElement).queryAllByText("缺数据")).toHaveLength(0);
     expect(within(chart as HTMLElement).queryAllByText("样本不足")).toHaveLength(0);
-    expect(gapStrip).toHaveTextContent("流动性");
-    expect(gapStrip).toHaveTextContent("通胀扰动");
+    expect(gapStrip).toHaveTextContent("Liquidity");
+    expect(gapStrip).toHaveTextContent("Inflation");
   });
 
   it("keeps waterfall value labels separated from bar status chips on desktop", () => {

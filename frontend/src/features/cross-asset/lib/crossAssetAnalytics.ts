@@ -616,7 +616,7 @@ export type WaterfallBar = {
  * Each factor (liquidity, rate, growth, inflation) contributes to the composite score.
  * The waterfall shows how each factor pushes the composite up or down.
  */
-export function buildDriverWaterfall(env: {
+function buildDriverWaterfallLegacy(env: {
   liquidity_score?: number;
   rate_direction_score?: number;
   growth_score?: number;
@@ -655,6 +655,65 @@ export function buildDriverWaterfall(env: {
     kind: "total",
     color: composite > 0.05 ? "#16a34a" : composite < -0.05 ? "#dc2626" : "#64748b",
   });
+
+  return bars;
+}
+
+type CompositeContribution = {
+  component?: string;
+  signed_contribution?: number;
+};
+
+const CONTRIBUTION_LABELS: Record<string, { key: string; label: string }> = {
+  liquidity: { key: "liquidity", label: "Liquidity" },
+  rate: { key: "rate", label: "Rates" },
+  rate_direction: { key: "rate", label: "Rates" },
+  growth: { key: "growth", label: "Growth" },
+  inflation: { key: "inflation", label: "Inflation" },
+};
+
+function waterfallColor(value: number, kind: "factor" | "total") {
+  if (value > 0.05) return "#dc2626";
+  if (value < -0.05) return "#16a34a";
+  return kind === "total" ? "#64748b" : "#94a3b8";
+}
+
+export function buildDriverWaterfall(env: {
+  composite_contributions?: CompositeContribution[];
+  composite_score?: number;
+}): WaterfallBar[] {
+  const bars: WaterfallBar[] = [];
+  let cumulative = 0;
+
+  for (const contribution of env.composite_contributions ?? []) {
+    const value = contribution.signed_contribution;
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    const component = String(contribution.component ?? "").trim();
+    const labelConfig = CONTRIBUTION_LABELS[component] ?? {
+      key: component || `factor-${bars.length + 1}`,
+      label: component || "Factor",
+    };
+    cumulative += value;
+    bars.push({
+      key: labelConfig.key,
+      label: labelConfig.label,
+      value,
+      cumulative,
+      kind: "factor",
+      color: waterfallColor(value, "factor"),
+    });
+  }
+
+  if (typeof env.composite_score === "number" && Number.isFinite(env.composite_score)) {
+    bars.push({
+      key: "composite",
+      label: "Composite",
+      value: env.composite_score,
+      cumulative: env.composite_score,
+      kind: "total",
+      color: waterfallColor(env.composite_score, "total"),
+    });
+  }
 
   return bars;
 }

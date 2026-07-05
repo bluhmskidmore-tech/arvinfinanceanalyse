@@ -2233,6 +2233,19 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                 ),
             ],
         )
+        conn.execute("alter table livermore_candidate_history add column return_1d_adj double")
+        conn.execute("alter table livermore_candidate_history add column return_5d_adj double")
+        conn.execute("alter table livermore_candidate_history add column return_10d_adj double")
+        conn.execute("alter table livermore_candidate_history add column return_20d_adj double")
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set return_1d_adj = 0.03,
+                return_5d_adj = 0.12,
+                return_20d_adj = 0.22
+            where snapshot_as_of_date = '2026-05-06'
+            """
+        )
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-06")
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-08")
     finally:
@@ -2253,15 +2266,19 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
     assert summary["avg_return_1d"] == 0.005
     assert summary["by_signal_kind"] == {"stock_candidate": 2}
     assert summary["decision_usable_stats"] == {
+        "metric_basis": "adjusted_close_return",
+        "adj_coverage_count": 1,
+        "adj_coverage_total": 1,
+        "adj_coverage_ratio": 1.0,
         "row_count": 1,
         "complete_row_count": 1,
         "pending_row_count": 0,
         "partial_halt_row_count": 0,
         "missing_forward_return_count": 0,
-        "avg_return_1d": 0.02,
-        "avg_return_5d": 0.1,
+        "avg_return_1d": 0.03,
+        "avg_return_5d": 0.12,
         "avg_return_10d": None,
-        "avg_return_20d": 0.2,
+        "avg_return_20d": 0.22,
         "win_rate_1d": 1.0,
         "win_rate_5d": 1.0,
         "win_rate_10d": None,
@@ -2274,7 +2291,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "missing_count": 0,
                     "positive_count": 1,
                     "non_positive_count": 0,
-                    "avg_return": 0.02,
+                    "avg_return": 0.03,
                     "win_rate": 1.0,
                 },
                 "return_5d": {
@@ -2282,7 +2299,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "missing_count": 0,
                     "positive_count": 1,
                     "non_positive_count": 0,
-                    "avg_return": 0.1,
+                    "avg_return": 0.12,
                     "win_rate": 1.0,
                 },
                 "return_10d": {
@@ -2298,7 +2315,7 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "missing_count": 0,
                     "positive_count": 1,
                     "non_positive_count": 0,
-                    "avg_return": 0.2,
+                    "avg_return": 0.22,
                     "win_rate": 1.0,
                 },
             }

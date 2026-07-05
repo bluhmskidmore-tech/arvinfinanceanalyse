@@ -237,6 +237,49 @@ def test_stock_candidates_skip_market_off_and_count_insufficient_history() -> No
     assert off_result.payload["items"] == []
 
 
+def test_stock_candidates_exclude_zero_prior_close_without_aborting_batch() -> None:
+    zero_prior_closes = _close_history(start=10.0, step=0.1)
+    zero_prior_closes[-2] = 0.0
+    valid_closes = _close_history(start=20.0, step=0.08)
+    zero_prior_snapshot = _snapshot(
+        stock_code="000001.SZ",
+        stock_name="ZeroPrior",
+        sector_code="801001",
+        sector_name="AI",
+        sector_rank=1,
+        close_history=zero_prior_closes,
+        turnover_history=_turnover_history(baseline=0.5, current=1.5),
+        open_value=21.85,
+        high_value=21.92,
+        low_value=21.4,
+    )
+
+    result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="WARM",
+        snapshots=[
+            zero_prior_snapshot,
+            _snapshot(
+                stock_code="000002.SZ",
+                stock_name="Beta",
+                sector_code="801002",
+                sector_name="Bank",
+                sector_rank=2,
+                close_history=valid_closes,
+                turnover_history=_turnover_history(baseline=0.4, current=1.25),
+                open_value=29.45,
+                high_value=29.53,
+                low_value=29.2,
+            ),
+        ],
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    items = cast(list[dict[str, Any]], payload["items"])
+    assert payload["candidate_count"] == 1
+    assert [row["stock_code"] for row in items] == ["000002.SZ"]
+
+
 def test_stock_candidates_keep_only_top_six_ranked_breakouts_and_count_trimmed_tail() -> None:
     closes = _close_history(start=10.0, step=0.1)
     snapshots = [

@@ -1184,6 +1184,13 @@ export type ChoiceMacroLatestPayload = {
 
 export type MacroBondLinkageEnvironmentFactor = Record<string, unknown>;
 
+export type MacroBondLinkageCompositeContribution = {
+  component: string;
+  raw_score: number;
+  weight: number;
+  signed_contribution: number;
+};
+
 export type MacroBondLinkageEnvironmentScore = {
   report_date: string;
   rate_direction: string;
@@ -1192,6 +1199,7 @@ export type MacroBondLinkageEnvironmentScore = {
   growth_score: number;
   inflation_score: number;
   composite_score: number;
+  composite_contributions?: MacroBondLinkageCompositeContribution[];
   signal_description: string;
   contributing_factors: MacroBondLinkageEnvironmentFactor[];
   warnings: string[];

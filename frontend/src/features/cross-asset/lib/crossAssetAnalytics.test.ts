@@ -262,29 +262,38 @@ describe("computeEquityBondERP", () => {
 describe("buildDriverWaterfall", () => {
   it("builds factor + total bars from env scores", () => {
     const bars = buildDriverWaterfall({
-      liquidity_score: 0.15,
-      rate_direction_score: -0.1,
-      growth_score: 0.05,
-      inflation_score: -0.02,
-      composite_score: 0.08,
+      composite_contributions: [
+        { component: "rate_direction", signed_contribution: -0.04 },
+        { component: "liquidity", signed_contribution: -0.045 },
+        { component: "growth", signed_contribution: 0.01 },
+        { component: "inflation", signed_contribution: -0.005 },
+      ],
+      composite_score: -0.08,
     });
     expect(bars).toHaveLength(5); // 4 factors + 1 total
-    expect(bars[0].key).toBe("liquidity");
+    expect(bars[0].key).toBe("rate");
     expect(bars[0].kind).toBe("factor");
     expect(bars[4].key).toBe("composite");
     expect(bars[4].kind).toBe("total");
-    expect(bars[4].value).toBe(0.08);
+    expect(bars[4].value).toBe(-0.08);
+    expect(bars[4].cumulative).toBe(-0.08);
   });
 
-  it("assigns correct colors based on value", () => {
+  it("renders backend contribution polarity without recalculating raw macro scores", () => {
     const bars = buildDriverWaterfall({
       liquidity_score: 0.2,
-      rate_direction_score: -0.2,
-      growth_score: 0,
-      inflation_score: 0,
-    });
-    expect(bars[0].color).toBe("#16a34a"); // positive
-    expect(bars[1].color).toBe("#dc2626"); // negative
+      rate_direction_score: 0.2,
+      composite_contributions: [
+        { component: "liquidity", signed_contribution: -0.06 },
+        { component: "rate_direction", signed_contribution: 0.08 },
+        { component: "growth", signed_contribution: 0 },
+      ],
+      composite_score: 0.02,
+    } as Parameters<typeof buildDriverWaterfall>[0] & { liquidity_score: number; rate_direction_score: number });
+    expect(bars[0].key).toBe("liquidity");
+    expect(bars[0].value).toBe(-0.06);
+    expect(bars[0].color).toBe("#16a34a"); // liquidity easing pulls restrictive composite down
+    expect(bars[1].color).toBe("#dc2626"); // positive contribution is bond-unfavorable
     expect(bars[2].color).toBe("#94a3b8"); // neutral
   });
 });

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Literal
@@ -54,6 +54,7 @@ class MacroEnvironmentScore:
     signal_description: str
     contributing_factors: list[dict[str, Any]]
     warnings: list[str]
+    composite_contributions: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True, frozen=True)
@@ -441,9 +442,17 @@ def compute_macro_environment_score(
     )
     composite_score = (
         0.4 * rate_direction_score
-        + 0.3 * liquidity_score
+        - 0.3 * liquidity_score
         + 0.2 * growth_score
         + 0.1 * inflation_score
+    )
+    rounded_composite_score = round(composite_score, 4)
+    composite_contributions = _macro_environment_composite_contributions(
+        rate_direction_score=rate_direction_score,
+        liquidity_score=liquidity_score,
+        growth_score=growth_score,
+        inflation_score=inflation_score,
+        composite_score=rounded_composite_score,
     )
     if rate_direction_score > 0.2:
         rate_direction = "rising"
@@ -466,11 +475,51 @@ def compute_macro_environment_score(
         liquidity_score=round(liquidity_score, 4),
         growth_score=round(growth_score, 4),
         inflation_score=round(inflation_score, 4),
-        composite_score=round(composite_score, 4),
+        composite_score=rounded_composite_score,
         signal_description=signal_description,
         contributing_factors=contributing_factors,
         warnings=warnings,
+        composite_contributions=composite_contributions,
     )
+
+
+def _macro_environment_composite_contributions(
+    *,
+    rate_direction_score: float,
+    liquidity_score: float,
+    growth_score: float,
+    inflation_score: float,
+    composite_score: float,
+) -> list[dict[str, Any]]:
+    component_specs = [
+        ("rate_direction", rate_direction_score, 0.4),
+        ("liquidity", liquidity_score, -0.3),
+        ("growth", growth_score, 0.2),
+        ("inflation", inflation_score, 0.1),
+    ]
+    contributions: list[dict[str, Any]] = []
+    running = 0.0
+    for component, raw_score, weight in component_specs[:-1]:
+        signed_contribution = round(raw_score * weight, 4)
+        running = round(running + signed_contribution, 4)
+        contributions.append(
+            {
+                "component": component,
+                "raw_score": round(raw_score, 4),
+                "weight": weight,
+                "signed_contribution": signed_contribution,
+            }
+        )
+    component, raw_score, weight = component_specs[-1]
+    contributions.append(
+        {
+            "component": component,
+            "raw_score": round(raw_score, 4),
+            "weight": weight,
+            "signed_contribution": round(composite_score - running, 4),
+        }
+    )
+    return contributions
 
 
 def estimate_macro_impact_on_portfolio(
@@ -1243,8 +1292,12 @@ def _build_liquidity_axis(
 def _build_commodities_inflation_axis(
     macro_environment: MacroEnvironmentScore,
 ) -> MacroBondTransmissionAxisResult:
-    inflation_stance = _axis_stance_from_score(macro_environment.inflation_score)
-    growth_stance = _axis_stance_from_score(macro_environment.growth_score, neutral_threshold=0.2)
+    inflation_stance = _axis_stance_from_score(macro_environment.inflation_score, reverse=True)
+    growth_stance = _axis_stance_from_score(
+        macro_environment.growth_score,
+        neutral_threshold=0.2,
+        reverse=True,
+    )
     stance = _merge_axis_stances(inflation_stance, growth_stance)
     if stance == "supportive":
         summary = "通胀压力相对温和，对利率端与高等级利差票息有支撑。"

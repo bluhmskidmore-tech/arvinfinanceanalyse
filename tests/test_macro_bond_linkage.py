@@ -679,6 +679,13 @@ def test_environment_score_liquidity_is_robust_to_baseline_outlier():
     score = mod.compute_macro_environment_score(latest, history, lookback_days=90)
 
     assert score.liquidity_score < 0
+    assert sum(
+        item["signed_contribution"] for item in score.composite_contributions
+    ) == pytest.approx(score.composite_score)
+    liquidity_contribution = next(
+        item for item in score.composite_contributions if item["component"] == "liquidity"
+    )
+    assert liquidity_contribution["weight"] == -0.3
 
 
 def test_environment_score_contributing_factors_include_method_metadata():
@@ -1277,6 +1284,42 @@ def test_duration_summary_does_not_overattribute_to_equity_when_global_rates_alr
 
     assert view.stance == "bullish"
     assert "股债相对估值传导轴偏有利" not in view.summary
+
+
+def test_commodities_inflation_axis_treats_positive_pressure_as_restrictive():
+    mod = _core_module()
+
+    restrictive = mod._build_commodities_inflation_axis(
+        mod.MacroEnvironmentScore(
+            report_date=REPORT_DATE,
+            rate_direction="neutral",
+            rate_direction_score=0.0,
+            liquidity_score=0.0,
+            growth_score=1.0,
+            inflation_score=1.0,
+            composite_score=0.3,
+            signal_description="inflation and growth pressure",
+            contributing_factors=[],
+            warnings=[],
+        )
+    )
+    supportive = mod._build_commodities_inflation_axis(
+        mod.MacroEnvironmentScore(
+            report_date=REPORT_DATE,
+            rate_direction="neutral",
+            rate_direction_score=0.0,
+            liquidity_score=0.0,
+            growth_score=-1.0,
+            inflation_score=-1.0,
+            composite_score=-0.3,
+            signal_description="inflation and growth easing",
+            contributing_factors=[],
+            warnings=[],
+        )
+    )
+
+    assert restrictive.stance == "restrictive"
+    assert supportive.stance == "supportive"
 
 
 def test_mega_cap_equity_axis_uses_explicit_rule_table_thresholds():

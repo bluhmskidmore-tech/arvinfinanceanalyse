@@ -379,9 +379,9 @@ def _extract_composite_score(payload: Mapping[str, object]) -> float | None:
 def _macro_status(composite_score: float | None) -> str:
     if composite_score is None:
         return "unknown"
-    if composite_score <= -0.3:
+    if composite_score < -0.3:
         return "supportive"
-    if composite_score >= 0.3:
+    if composite_score > 0.3:
         return "restrictive"
     return "neutral"
 

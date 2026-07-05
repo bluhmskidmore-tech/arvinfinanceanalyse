@@ -204,6 +204,8 @@ def _candidate_row(
         return None, False
     if limit_ratio <= 0:
         return None, False
+    if closes[-2] <= 0:
+        return None, False
     if snapshot.one_word_board or snapshot.closed_up_limit:
         return None, False
 
