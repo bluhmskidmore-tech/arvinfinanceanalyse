@@ -226,6 +226,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/pnl-by-business") {
+      return {
+        path: section.path.slice(1),
+        element: themedRouteElement(<PnlByBusinessPage />),
+      };
+    }
+
     if (section.path === "/pnl-bridge") {
       return {
         path: section.path.slice(1),
@@ -416,10 +423,6 @@ export const workbenchRoutes: RouteObject[] = [
       {
         path: "adb",
         element: <Navigate to="/average-balance" replace />,
-      },
-      {
-        path: "pnl-by-business",
-        element: themedRouteElement(<PnlByBusinessPage />),
       },
       {
         path: "pnl-formal-v1",
