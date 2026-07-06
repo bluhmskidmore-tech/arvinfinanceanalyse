@@ -21,7 +21,7 @@ def normalize_rate_values(
     values: list[object],
     field_name: str,
     override: str | None = None,
-) -> list[float]:
+) -> list[float | None]:
     mode = override or RATE_INPUT_OVERRIDES.get(field_name, "auto")
     if mode == "auto":
         logger.warning(
@@ -75,28 +75,28 @@ def _coerce_rate_number(value: object) -> float | None:
     return number
 
 
-def _normalize_percent_value(value: object) -> float:
+def _normalize_percent_value(value: object) -> float | None:
     number = _coerce_rate_number(value)
     if number is None:
-        return 0.0
+        return None
     return number / 100.0
 
 
-def _normalize_decimal_value(value: object) -> float:
+def _normalize_decimal_value(value: object) -> float | None:
     number = _coerce_rate_number(value)
     if number is None:
-        return 0.0
+        return None
     return number
 
 
-def _normalize_auto_value(value: object) -> float:
+def _normalize_auto_value(value: object) -> float | None:
     """Deprecated: heuristic percent vs decimal; prefer explicit percent/decimal in overrides."""
     logger.warning(
         "_normalize_auto_value is deprecated; use percent or decimal normalization explicitly"
     )
     number = _coerce_rate_number(value)
     if number is None:
-        return 0.0
+        return None
     if 1 <= number <= 100:
         return number / 100.0
     return number

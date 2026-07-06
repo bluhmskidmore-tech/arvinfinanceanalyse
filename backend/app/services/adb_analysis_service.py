@@ -356,6 +356,7 @@ def _build_bonds_df(
         df,
         date_columns=("report_date",),
         numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
+        nullable_numeric_columns=("yield_to_maturity", "coupon_rate"),
     )
 
 
@@ -379,6 +380,7 @@ def _build_ib_df(
         df,
         date_columns=("report_date",),
         numeric_columns=("amount", "interest_rate"),
+        nullable_numeric_columns=("interest_rate",),
     )
 
 
@@ -644,6 +646,7 @@ def _load_adb_raw_data(
             bonds_df,
             date_columns=("report_date",),
             numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
+            nullable_numeric_columns=("yield_to_maturity", "coupon_rate"),
         )
         bonds_df = _assign_zqtz_bond_categories(bonds_df)
 
@@ -677,6 +680,7 @@ def _load_adb_raw_data(
             ib_df,
             date_columns=("report_date",),
             numeric_columns=("amount", "interest_rate"),
+            nullable_numeric_columns=("interest_rate",),
         )
 
     return bonds_df, ib_df, source_versions, rule_versions, adb_denominator_basis, adb_tables_used
@@ -711,12 +715,23 @@ def _frame_sum_by_date(frame: pd.DataFrame, amount_attr: str) -> dict[date, Deci
     return totals
 
 
-def _frame_total_amounts(frame: pd.DataFrame, amount_attr: str) -> tuple[float, float]:
+def _frame_total_amounts(frame: pd.DataFrame, amount_attr: str) -> tuple[float, float, float]:
     if frame.empty:
-        return 0.0, 0.0
-    total_amount = pd.to_numeric(frame[amount_attr], errors="coerce").fillna(0).sum()
-    total_weighted = pd.to_numeric(frame["weighted"], errors="coerce").fillna(0).sum() if "weighted" in frame else 0.0
-    return float(total_amount), float(total_weighted)
+        return 0.0, 0.0, 0.0
+    amounts = pd.to_numeric(frame[amount_attr], errors="coerce").fillna(0)
+    total_amount = amounts.sum()
+    if "rate_decimal" in frame:
+        valid_rate = pd.to_numeric(frame["rate_decimal"], errors="coerce").notna()
+    else:
+        valid_rate = pd.Series(True, index=frame.index)
+    weighted = (
+        pd.to_numeric(frame["weighted"], errors="coerce").where(valid_rate, 0).fillna(0)
+        if "weighted" in frame
+        else pd.Series(0.0, index=frame.index)
+    )
+    total_rate_amount = amounts.where(valid_rate, 0).sum()
+    total_weighted = weighted.sum()
+    return float(total_amount), float(total_rate_amount), float(total_weighted)
 
 
 def _frame_spot_total_for_date(frame: pd.DataFrame, amount_attr: str, target_date: date) -> float:
@@ -747,23 +762,30 @@ def _frame_breakdown_rows(
         {
             "category": categories,
             "amount": pd.to_numeric(frame[amount_attr], errors="coerce").fillna(0),
-            "weighted": (
-                pd.to_numeric(frame["weighted"], errors="coerce").fillna(0)
-                if "weighted" in frame
-                else 0.0
-            ),
         }
+    )
+    if "rate_decimal" in frame:
+        valid_rate = pd.to_numeric(frame["rate_decimal"], errors="coerce").notna()
+    else:
+        valid_rate = pd.Series(True, index=frame.index)
+    grouped_source["rate_amount"] = grouped_source["amount"].where(valid_rate, 0)
+    grouped_source["weighted"] = (
+        pd.to_numeric(frame["weighted"], errors="coerce").where(valid_rate, 0).fillna(0)
+        if "weighted" in frame
+        else 0.0
     )
     grouped = grouped_source.groupby("category", sort=False, as_index=False).sum(numeric_only=True)
     rows: list[dict[str, Any]] = []
     for row in grouped.itertuples(index=False):
         total_amount = float(row.amount or 0)
+        rate_amount = float(row.rate_amount or 0)
         total_weighted = float(row.weighted or 0)
         rows.append(
             {
                 "category": row.category,
                 "avg_balance": total_amount / num_days if num_days > 0 else 0.0,
-                "weighted_rate": (total_weighted / total_amount * 100) if total_amount > 0 else None,
+                "weighted_rate": (total_weighted / rate_amount * 100) if rate_amount > 0 else None,
+                "rate_coverage_ratio": round(rate_amount / total_amount, 4) if total_amount > 0 else None,
             }
         )
     return rows
@@ -863,6 +885,7 @@ def _normalize_adb_frame(
     *,
     date_columns: tuple[str, ...],
     numeric_columns: tuple[str, ...],
+    nullable_numeric_columns: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     if frame.empty:
         return frame
@@ -870,9 +893,11 @@ def _normalize_adb_frame(
     for column in date_columns:
         if column in normalized.columns:
             normalized[column] = pd.to_datetime(normalized[column], errors="coerce")
+    nullable = set(nullable_numeric_columns)
     for column in numeric_columns:
         if column in normalized.columns:
-            normalized[column] = pd.to_numeric(normalized[column], errors="coerce").fillna(0)
+            values = pd.to_numeric(normalized[column], errors="coerce")
+            normalized[column] = values if column in nullable else values.fillna(0)
     return normalized
 
 
@@ -979,7 +1004,7 @@ def _split_rate_frames(
                 "yield_to_maturity",
             )
             bonds_assets_df["weighted"] = bonds_assets_df["balance"] * bonds_assets_df["rate_decimal"]
-            asset_frames.append(bonds_assets_df[["category", "balance", "weighted"]])
+            asset_frames.append(bonds_assets_df[["category", "balance", "rate_decimal", "weighted"]])
 
         bonds_liab_df = bonds_df[issued_mask].copy()
         if not bonds_liab_df.empty:
@@ -994,7 +1019,7 @@ def _split_rate_frames(
                 )
             ]
             bonds_liab_df["weighted"] = bonds_liab_df["balance"] * bonds_liab_df["rate_decimal"]
-            liability_frames.append(bonds_liab_df[["category", "balance", "weighted"]])
+            liability_frames.append(bonds_liab_df[["category", "balance", "rate_decimal", "weighted"]])
 
     ib_assets_df = pd.DataFrame()
     ib_liab_df = pd.DataFrame()
@@ -1008,7 +1033,7 @@ def _split_rate_frames(
                 "interbank_interest_rate",
             )
             ib_assets_df["weighted"] = ib_assets_df["balance"] * ib_assets_df["rate_decimal"]
-            asset_frames.append(ib_assets_df[["category", "balance", "weighted"]])
+            asset_frames.append(ib_assets_df[["category", "balance", "rate_decimal", "weighted"]])
 
         ib_liab_df = interbank_df[interbank_df["direction"] == "LIABILITY"].copy()
         if not ib_liab_df.empty:
@@ -1019,7 +1044,7 @@ def _split_rate_frames(
                 "interbank_interest_rate",
             )
             ib_liab_df["weighted"] = ib_liab_df["balance"] * ib_liab_df["rate_decimal"]
-            liability_frames.append(ib_liab_df[["category", "balance", "weighted"]])
+            liability_frames.append(ib_liab_df[["category", "balance", "rate_decimal", "weighted"]])
 
     return asset_frames, liability_frames, bonds_assets_df, bonds_liab_df, ib_assets_df, ib_liab_df
 
@@ -1268,6 +1293,8 @@ def _empty_comparison_response(
         "asset_yield": None,
         "liability_cost": None,
         "net_interest_margin": None,
+        "asset_rate_coverage_ratio": None,
+        "liability_rate_coverage_ratio": None,
         "assets_breakdown": [],
         "liabilities_breakdown": [],
     }
@@ -1298,6 +1325,7 @@ def _append_other_row(
             "avg_balance": residual_avg,
             "proportion": round(residual_avg / total_avg * 100, 2),
             "weighted_rate": None,
+            "rate_coverage_ratio": None,
         },
     ]
 
@@ -1373,8 +1401,8 @@ def get_adb_comparison(
         total_avg_liabilities = float(sum(sum_liabilities_effective.values(), start=Decimal("0")) / calendar_days_dec)
 
     asset_frames, liability_frames, *_ = _split_rate_frames(bonds_df, interbank_df)
-    asset_rate_map, asset_yield = build_rate_map(asset_frames)
-    liability_rate_map, liability_cost = build_rate_map(liability_frames)
+    asset_rate_map, asset_yield, asset_rate_coverage_map = build_rate_map(asset_frames)
+    liability_rate_map, liability_cost, liability_rate_coverage_map = build_rate_map(liability_frames)
 
     tyw_avg_days = coverage_days if coverage_days > 0 else calendar_denom
     tyw_avg_assets, tyw_avg_liabilities = _tyw_interval_avg_balances(interbank_df, tyw_avg_days)
@@ -1399,8 +1427,18 @@ def get_adb_comparison(
         "asset_yield": asset_yield,
         "liability_cost": liability_cost,
         "net_interest_margin": compute_nim(asset_yield, liability_cost),
-        "assets_breakdown": _append_other_row(enrich_breakdown(assets, total_avg_assets, asset_rate_map), total_spot_assets, total_avg_assets),
-        "liabilities_breakdown": _append_other_row(enrich_breakdown(liabilities, total_avg_liabilities, liability_rate_map), total_spot_liabilities, total_avg_liabilities),
+        "asset_rate_coverage_ratio": asset_rate_coverage_map.get("__total__"),
+        "liability_rate_coverage_ratio": liability_rate_coverage_map.get("__total__"),
+        "assets_breakdown": _append_other_row(
+            enrich_breakdown(assets, total_avg_assets, asset_rate_map, asset_rate_coverage_map),
+            total_spot_assets,
+            total_avg_assets,
+        ),
+        "liabilities_breakdown": _append_other_row(
+            enrich_breakdown(liabilities, total_avg_liabilities, liability_rate_map, liability_rate_coverage_map),
+            total_spot_liabilities,
+            total_avg_liabilities,
+        ),
     }
 
     return payload, source_versions, rule_versions, adb_tables_used
@@ -1468,16 +1506,18 @@ def _process_single_month(
         return None
 
     num_days = len(all_month_dates)
-    total_assets, total_assets_weighted = 0.0, 0.0
+    total_assets, total_assets_rate_balance, total_assets_weighted = 0.0, 0.0, 0.0
     for frame, col in ((month_bonds_assets, "market_value"), (month_ib_assets, "amount")):
-        ft, fw = _frame_total_amounts(frame, col)
+        ft, fr, fw = _frame_total_amounts(frame, col)
         total_assets += ft
+        total_assets_rate_balance += fr
         total_assets_weighted += fw
 
-    total_liabilities, total_liabilities_weighted = 0.0, 0.0
+    total_liabilities, total_liabilities_rate_balance, total_liabilities_weighted = 0.0, 0.0, 0.0
     for frame, col in ((month_bonds_liab, "market_value"), (month_ib_liab, "amount")):
-        ft, fw = _frame_total_amounts(frame, col)
+        ft, fr, fw = _frame_total_amounts(frame, col)
         total_liabilities += ft
+        total_liabilities_rate_balance += fr
         total_liabilities_weighted += fw
 
     if total_assets == 0 and total_liabilities == 0:
@@ -1504,8 +1544,8 @@ def _process_single_month(
     assets_mom, assets_mom_pct, liabilities_mom, liabilities_mom_pct = compute_mom_changes(
         avg_assets, avg_liabilities, prev_avg_assets, prev_avg_liabilities
     )
-    asset_yield = compute_weighted_rate(total_assets_weighted, total_assets)
-    liability_cost = compute_weighted_rate(total_liabilities_weighted, total_liabilities)
+    asset_yield = compute_weighted_rate(total_assets_weighted, total_assets_rate_balance)
+    liability_cost = compute_weighted_rate(total_liabilities_weighted, total_liabilities_rate_balance)
 
     return {
         "month": f"{month_year}-{month_number:02d}",
@@ -1521,13 +1561,23 @@ def _process_single_month(
         "asset_yield": asset_yield,
         "liability_cost": liability_cost,
         "net_interest_margin": compute_nim(asset_yield, liability_cost),
+        "asset_rate_coverage_ratio": (
+            round(total_assets_rate_balance / total_assets, 4) if total_assets > 0 else None
+        ),
+        "liability_rate_coverage_ratio": (
+            round(total_liabilities_rate_balance / total_liabilities, 4)
+            if total_liabilities > 0
+            else None
+        ),
         "breakdown_assets": breakdown_assets,
         "breakdown_liabilities": breakdown_liabilities,
         "num_days": num_days,
         # YTD accumulators — stripped by caller before appending to months_data
         "total_assets": total_assets,
+        "total_assets_rate_balance": total_assets_rate_balance,
         "total_assets_weighted": total_assets_weighted,
         "total_liabilities": total_liabilities,
+        "total_liabilities_rate_balance": total_liabilities_rate_balance,
         "total_liabilities_weighted": total_liabilities_weighted,
     }
 
@@ -1543,6 +1593,8 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         "ytd_asset_yield": None,
         "ytd_liability_cost": None,
         "ytd_nim": None,
+        "ytd_asset_rate_coverage_ratio": None,
+        "ytd_liability_rate_coverage_ratio": None,
         "unit": "percent",
     }
 
@@ -1577,7 +1629,9 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
     prev_avg_liabilities: float | None = None
     ytd_total_assets = Decimal("0")
     ytd_total_liabilities = Decimal("0")
+    ytd_assets_rate_balance = Decimal("0")
     ytd_assets_weighted = Decimal("0")
+    ytd_liabilities_rate_balance = Decimal("0")
     ytd_liabilities_weighted = Decimal("0")
     ytd_days = 0
 
@@ -1598,21 +1652,25 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
 
         ytd_total_assets += Decimal(str(month_result["total_assets"]))
         ytd_total_liabilities += Decimal(str(month_result["total_liabilities"]))
+        ytd_assets_rate_balance += Decimal(str(month_result["total_assets_rate_balance"]))
         ytd_assets_weighted += Decimal(str(month_result["total_assets_weighted"]))
+        ytd_liabilities_rate_balance += Decimal(str(month_result["total_liabilities_rate_balance"]))
         ytd_liabilities_weighted += Decimal(str(month_result["total_liabilities_weighted"]))
         ytd_days += month_result["num_days"]
 
         month_result.pop("total_assets")
+        month_result.pop("total_assets_rate_balance")
         month_result.pop("total_assets_weighted")
         month_result.pop("total_liabilities")
+        month_result.pop("total_liabilities_rate_balance")
         month_result.pop("total_liabilities_weighted")
 
         months_data.append(month_result)
         prev_avg_assets = month_result["avg_assets"]
         prev_avg_liabilities = month_result["avg_liabilities"]
 
-    ytd_asset_yield = compute_weighted_rate(float(ytd_assets_weighted), float(ytd_total_assets))
-    ytd_liability_cost = compute_weighted_rate(float(ytd_liabilities_weighted), float(ytd_total_liabilities))
+    ytd_asset_yield = compute_weighted_rate(float(ytd_assets_weighted), float(ytd_assets_rate_balance))
+    ytd_liability_cost = compute_weighted_rate(float(ytd_liabilities_weighted), float(ytd_liabilities_rate_balance))
 
     payload = {
         "year": year,
@@ -1622,6 +1680,16 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         "ytd_asset_yield": ytd_asset_yield,
         "ytd_liability_cost": ytd_liability_cost,
         "ytd_nim": compute_nim(ytd_asset_yield, ytd_liability_cost),
+        "ytd_asset_rate_coverage_ratio": (
+            round(float(ytd_assets_rate_balance / ytd_total_assets), 4)
+            if ytd_total_assets > 0
+            else None
+        ),
+        "ytd_liability_rate_coverage_ratio": (
+            round(float(ytd_liabilities_rate_balance / ytd_total_liabilities), 4)
+            if ytd_total_liabilities > 0
+            else None
+        ),
         "unit": "percent",
     }
     return payload, source_versions, rule_versions, adb_tables_used

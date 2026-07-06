@@ -1,9 +1,16 @@
-"""Tests for ADB comparison breakdown row ordering and totals inputs."""
+"""Tests for ADB calculation helpers."""
 
 from datetime import date
 from decimal import Decimal
 
-from backend.app.core_finance.adb_analytics import build_comparison_rows
+import pandas as pd
+
+from backend.app.core_finance.adb_analytics import (
+    build_comparison_rows,
+    enrich_bonds_asset_frame,
+    enrich_bonds_liability_frame,
+    enrich_interbank_frame,
+)
 
 
 def test_build_comparison_rows_sorts_by_avg_balance_desc() -> None:
@@ -37,3 +44,74 @@ def test_build_comparison_rows_top_n_truncates_after_sort() -> None:
     )
     assert len(rows) == 1
     assert rows[0]["category"] == "big"
+
+
+def test_enrich_frames_warn_when_balance_input_is_coerced_to_nan(caplog) -> None:
+    caplog.set_level("WARNING", logger="backend.app.core_finance.adb_analytics")
+
+    enrich_bonds_asset_frame(
+        pd.DataFrame(
+            {
+                "bond_category": ["asset"],
+                "market_value": ["not-a-number"],
+                "yield_to_maturity": [Decimal("0.02")],
+            }
+        )
+    )
+    enrich_bonds_liability_frame(
+        pd.DataFrame(
+            {
+                "bond_category": ["liability"],
+                "market_value": ["dirty"],
+                "coupon_rate": [Decimal("0.03")],
+            }
+        )
+    )
+    enrich_interbank_frame(
+        pd.DataFrame(
+            {
+                "product_type": ["ib"],
+                "amount": ["bad-amount"],
+                "interest_rate": [Decimal("0.015")],
+            }
+        )
+    )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("bonds_asset.market_value" in message and "not-a-number" in message for message in messages)
+    assert any("bonds_liability.market_value" in message and "dirty" in message for message in messages)
+    assert any("interbank.amount" in message and "bad-amount" in message for message in messages)
+
+
+def test_enrich_frames_do_not_warn_for_valid_balance_inputs(caplog) -> None:
+    caplog.set_level("WARNING", logger="backend.app.core_finance.adb_analytics")
+
+    enrich_bonds_asset_frame(
+        pd.DataFrame(
+            {
+                "bond_category": ["asset"],
+                "market_value": [Decimal("100")],
+                "yield_to_maturity": [Decimal("0.02")],
+            }
+        )
+    )
+    enrich_bonds_liability_frame(
+        pd.DataFrame(
+            {
+                "bond_category": ["liability"],
+                "market_value": [Decimal("200")],
+                "coupon_rate": [Decimal("0.03")],
+            }
+        )
+    )
+    enrich_interbank_frame(
+        pd.DataFrame(
+            {
+                "product_type": ["ib"],
+                "amount": [Decimal("300")],
+                "interest_rate": [Decimal("0.015")],
+            }
+        )
+    )
+
+    assert caplog.records == []
