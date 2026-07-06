@@ -317,7 +317,8 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
     assert result["portfolio_duration"] == "5.05978431"
     assert result["portfolio_modified_duration"] == "4.87293147"
     assert result["portfolio_dv01"] == "0.22175249"
-    assert result["portfolio_convexity"] == "36.65108294"
+    # 8c422eff made convexity use the parsed coupon frequency; these annual-pay fixtures no longer use the old semi-annual default.
+    assert result["portfolio_convexity"] == "35.23794449"
     assert result["krd_buckets"] == [
         {
             "tenor": "10Y",
@@ -339,7 +340,7 @@ def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_output
         },
     ]
     assert result["scenarios"][0]["scenario_name"] == "parallel_up_25bp"
-    assert result["scenarios"][0]["pnl_economic"] == "-5.17708364"
+    assert result["scenarios"][0]["pnl_economic"] == "-5.17897813"
     assert result["by_asset_class"] == [
         {
             "asset_class": "credit",
@@ -371,28 +372,52 @@ def test_bond_analytics_credit_spread_with_real_facts_returns_expected_scenario_
     assert result["spread_scenarios"] == [
         {
             "scenario_name": "利差走阔 10bp",
-            "spread_change_bp": 10.0,
+            "spread_change_bp": {
+                "raw": 10.0,
+                "unit": "bp",
+                "display": "+10.00 bp",
+                "precision": 2,
+                "sign_aware": True,
+            },
             "pnl_impact": "-2.11929310",
             "oci_impact": "-0.91387350",
             "tpl_impact": "-1.20541960",
         },
         {
             "scenario_name": "利差收窄 10bp",
-            "spread_change_bp": -10.0,
+            "spread_change_bp": {
+                "raw": -10.0,
+                "unit": "bp",
+                "display": "-10.00 bp",
+                "precision": 2,
+                "sign_aware": True,
+            },
             "pnl_impact": "2.11929310",
             "oci_impact": "0.91387350",
             "tpl_impact": "1.20541960",
         },
         {
             "scenario_name": "利差走阔 25bp",
-            "spread_change_bp": 25.0,
+            "spread_change_bp": {
+                "raw": 25.0,
+                "unit": "bp",
+                "display": "+25.00 bp",
+                "precision": 2,
+                "sign_aware": True,
+            },
             "pnl_impact": "-5.29823275",
             "oci_impact": "-2.28468375",
             "tpl_impact": "-3.01354900",
         },
         {
             "scenario_name": "利差收窄 25bp",
-            "spread_change_bp": -25.0,
+            "spread_change_bp": {
+                "raw": -25.0,
+                "unit": "bp",
+                "display": "-25.00 bp",
+                "precision": 2,
+                "sign_aware": True,
+            },
             "pnl_impact": "5.29823275",
             "oci_impact": "2.28468375",
             "tpl_impact": "3.01354900",
@@ -419,6 +444,10 @@ def test_bond_analytics_credit_spread_with_real_facts_returns_expected_scenario_
         "No aaa_credit curve available" in warning or "No treasury curve available" in warning
         for warning in result["warnings"]
     )
+    assert result["warning_codes"] == [
+        "credit_spread_weighted_avg_spread_input_unavailable",
+        "bond_analytics_partial_warning",
+    ]
 
 
 def test_bond_analytics_accounting_audit_with_real_facts_returns_rule_trace_rows(service_mod):

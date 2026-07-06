@@ -35,6 +35,7 @@ import type {
   SpreadAnalysisPayload,
   YieldDistributionPayload,
 } from "./contracts";
+import { parseNumericOrNull } from "./numeric";
 import { formatRawAsNumeric } from "../utils/format";
 import {
   buildMockBondTradingDeskTopHoldings,
@@ -216,21 +217,10 @@ export type BondAnalyticsClientFactoryOptions = BondDashboardClientFactoryOption
   requestActionJson: RequestActionJson;
 };
 
-function isNumeric(value: unknown): value is Numeric {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      "raw" in value &&
-      "unit" in value &&
-      "display" in value &&
-      "precision" in value &&
-      "sign_aware" in value,
-  );
-}
-
 function decimalRaw(value: unknown): number | null {
-  if (isNumeric(value)) {
-    return value.raw;
+  const parsed = parseNumericOrNull(value);
+  if (parsed) {
+    return parsed.raw;
   }
   if (value === null || value === undefined || value === "") {
     return null;
@@ -245,8 +235,9 @@ function normalizeNumeric(
   signAware: boolean,
   precision?: number,
 ): Numeric {
-  if (isNumeric(value)) {
-    return value;
+  const parsed = parseNumericOrNull(value);
+  if (parsed) {
+    return parsed;
   }
   return formatRawAsNumeric({
     raw: decimalRaw(value),
@@ -1085,45 +1076,36 @@ export function createDemoBondDashboardClient(
       await delay();
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
+      const totalMarketValue = 328_709_000_000;
+      const rows =
+        groupBy === "rating"
+          ? [
+              { category: "利率债默认 AAA", marketValue: 128_500_000_000, bondCount: 118 },
+              { category: "AAA", marketValue: 92_000_000_000, bondCount: 106 },
+              { category: "AA+", marketValue: 51_000_000_000, bondCount: 92 },
+              { category: "AA", marketValue: 36_209_000_000, bondCount: 68 },
+              { category: "未评级", marketValue: 21_000_000_000, bondCount: 44 },
+            ]
+          : [
+              { category: "政策性金融债", marketValue: 98_500_000_000, bondCount: 42 },
+              { category: "地方政府债", marketValue: 82_000_000_000, bondCount: 56 },
+              { category: "同业存单", marketValue: 71_000_000_000, bondCount: 120 },
+              { category: "信用债-企业", marketValue: 49_209_000_000, bondCount: 150 },
+              { category: "其他", marketValue: 28_000_000_000, bondCount: 60 },
+            ];
       return {
         ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.asset_structure",
           {
             report_date: reportDate,
             group_by: groupBy,
-            total_market_value: zy(328_709_000_000),
-            items: [
-              {
-                category: "政策性金融债",
-                total_market_value: zy(98_500_000_000),
-                bond_count: 42,
-                percentage: zp(29.96428571),
-              },
-              {
-                category: "地方政府债",
-                total_market_value: zy(82_000_000_000),
-                bond_count: 56,
-                percentage: zp(24.94571429),
-              },
-              {
-                category: "同业存单",
-                total_market_value: zy(71_000_000_000),
-                bond_count: 120,
-                percentage: zp(21.6),
-              },
-              {
-                category: "信用债-企业",
-                total_market_value: zy(49_209_000_000),
-                bond_count: 150,
-                percentage: zp(14.97),
-              },
-              {
-                category: "其他",
-                total_market_value: zy(26_000_000_000),
-                bond_count: 60,
-                percentage: zp(7.91),
-              },
-            ],
+            total_market_value: zy(totalMarketValue),
+            items: rows.map((row) => ({
+              category: row.category,
+              total_market_value: zy(row.marketValue),
+              bond_count: row.bondCount,
+              percentage: zp(row.marketValue / totalMarketValue),
+            })),
           },
           { basis: "formal", formal_use_allowed: true },
         ),
@@ -1243,21 +1225,28 @@ export function createDemoBondDashboardClient(
       await delay();
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
+      const totalMarketValue = 328_709_000_000;
+      const rows = [
+        { maturity_bucket: "7天内", total_market_value: 2_100_000_000, bond_count: 8 },
+        { maturity_bucket: "8-30天", total_market_value: 8_900_000_000, bond_count: 22 },
+        { maturity_bucket: "31-90天", total_market_value: 18_500_000_000, bond_count: 35 },
+        { maturity_bucket: "91天-1年", total_market_value: 62_000_000_000, bond_count: 90 },
+        { maturity_bucket: "1-3年", total_market_value: 128_000_000_000, bond_count: 145 },
+        { maturity_bucket: "3-5年", total_market_value: 72_000_000_000, bond_count: 78 },
+        { maturity_bucket: "5年以上", total_market_value: 37_209_000_000, bond_count: 50 },
+      ];
       return {
         ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.maturity_structure",
           {
             report_date: reportDate,
-            total_market_value: zy(328_709_000_000),
-            items: [
-              { maturity_bucket: "7天内", total_market_value: zy(2_100_000_000), bond_count: 8, percentage: zp(0.63871429) },
-              { maturity_bucket: "8-30天", total_market_value: zy(8_900_000_000), bond_count: 22, percentage: zp(2.707) },
-              { maturity_bucket: "31-90天", total_market_value: zy(18_500_000_000), bond_count: 35, percentage: zp(5.62857143) },
-              { maturity_bucket: "91天-1年", total_market_value: zy(62_000_000_000), bond_count: 90, percentage: zp(18.86285714) },
-              { maturity_bucket: "1-3年", total_market_value: zy(128_000_000_000), bond_count: 145, percentage: zp(38.94285714) },
-              { maturity_bucket: "3-5年", total_market_value: zy(72_000_000_000), bond_count: 78, percentage: zp(21.90428571) },
-              { maturity_bucket: "5年以上", total_market_value: zy(55_209_000_000), bond_count: 50, percentage: zp(16.79571429) },
-            ],
+            total_market_value: zy(totalMarketValue),
+            items: rows.map((row) => ({
+              maturity_bucket: row.maturity_bucket,
+              total_market_value: zy(row.total_market_value),
+              bond_count: row.bond_count,
+              percentage: zp(row.total_market_value / totalMarketValue),
+            })),
           },
           { basis: "formal", formal_use_allowed: true },
         ),
@@ -1268,18 +1257,26 @@ export function createDemoBondDashboardClient(
       await delay();
       const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
       const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
+      const totalMarketValue = 328_709_000_000;
+      const rows = [
+        { industry_name: "银行", total_market_value: 82_000_000_000, bond_count: 95 },
+        { industry_name: "城投", total_market_value: 61_000_000_000, bond_count: 72 },
+        { industry_name: "交通运输", total_market_value: 48_000_000_000, bond_count: 48 },
+        { industry_name: "电力", total_market_value: 39_000_000_000, bond_count: 40 },
+        { industry_name: "房地产", total_market_value: 28_000_000_000, bond_count: 35 },
+        { industry_name: "其他", total_market_value: 70_709_000_000, bond_count: 138 },
+      ];
       return {
         ...(await ensureMockClientBundle()).buildMockApiEnvelope(
           "bond_dashboard.industry_distribution",
           {
             report_date: reportDate,
-            items: [
-              { industry_name: "银行", total_market_value: zy(82_000_000_000), bond_count: 95, percentage: zp(24.94571429) },
-              { industry_name: "城投", total_market_value: zy(61_000_000_000), bond_count: 72, percentage: zp(18.55714286) },
-              { industry_name: "交通运输", total_market_value: zy(48_000_000_000), bond_count: 48, percentage: zp(14.60428571) },
-              { industry_name: "电力", total_market_value: zy(39_000_000_000), bond_count: 40, percentage: zp(11.86571429) },
-              { industry_name: "房地产", total_market_value: zy(28_000_000_000), bond_count: 35, percentage: zp(8.51714286) },
-            ],
+            items: rows.map((row) => ({
+              industry_name: row.industry_name,
+              total_market_value: zy(row.total_market_value),
+              bond_count: row.bond_count,
+              percentage: zp(row.total_market_value / totalMarketValue),
+            })),
           },
           { basis: "formal", formal_use_allowed: true },
         ),

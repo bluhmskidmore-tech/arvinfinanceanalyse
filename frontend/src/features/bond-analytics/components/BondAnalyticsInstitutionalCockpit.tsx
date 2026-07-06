@@ -39,12 +39,8 @@ import { formatBp, formatPct, formatWan, formatYi } from "../utils/formatters";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
 import ReactECharts from "../../../lib/echarts";
 import {
-  BOND_HOLDINGS_COCKPIT_CARD_TITLE,
   BOND_HOLDINGS_COCKPIT_SCOPE_NOTE,
   BOND_HOLDINGS_EMPTY_NOTE,
-  BOND_HOLDINGS_HOME_UNAVAILABLE_NOTE,
-  BOND_HOLDINGS_MODULE_LABEL,
-  BOND_HOLDINGS_RATING_GAP_NOTE,
 } from "../lib/bondHoldingsEvidenceCopy";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { panelStyle } from "./bondAnalyticsCockpitTokens";
@@ -58,7 +54,7 @@ const dt = designTokens;
 const IB_ACCENT_BAR = "var(--ib-accent)";
 const DONUT_CHART_COLORS = mossChartCategoricalPalette.slice(0, 5);
 const DISTRIBUTION_CHART_COLORS = [...DONUT_CHART_COLORS, ibTokens.color.gold];
-const deskPanelShadow = "none";
+const deskPanelShadow = "0 2px 6px rgba(22, 35, 46, 0.035)";
 const dashboardCardStyle: CSSProperties = {
   ...panelStyle(displayTokens.surface.section),
   border: `1px solid ${dt.color.neutral[200]}`,
@@ -69,8 +65,11 @@ const cardBodyStyle = { padding: 14 } as const;
 
 const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
 const PORTFOLIO_HEADLINES_CREDIT_NOTE = "组合信用摘要暂未返回，债券只数、集中度和 DV01 稍后补齐。";
-const TOP_HOLDINGS_HOME_NOTE = BOND_HOLDINGS_HOME_UNAVAILABLE_NOTE;
-const TOP_HOLDINGS_RATING_NOTE = BOND_HOLDINGS_RATING_GAP_NOTE;
+const TOP_HOLDINGS_CARD_TITLE = "前十大返回持仓";
+const TOP_HOLDINGS_MOBILE_LABEL = "前十大持仓";
+const TOP_HOLDINGS_COUNT_LABEL = "返回持仓";
+const TOP_HOLDINGS_HOME_NOTE = "前十大持仓暂未返回，首页先保留组合规模与浮盈快照。";
+const TOP_HOLDINGS_RATING_NOTE = "持仓明细暂未返回，评级分布稍后补齐。";
 const BOND_ANALYTICS_CURRENCY_BASIS_TEXT =
   "金额指标按人民币/CNY口径展示，外币债券市值、摊余成本、应计利息等已折算为人民币。";
 const DV01_HOME_TOP_N = 1;
@@ -663,14 +662,14 @@ function HoldingsMobileReadout({
   return (
     <div data-testid="bond-analysis-holdings-mobile-readout" className={styles.mobileTableReadout}>
       <div className={styles.mobileReadoutHeader}>
-        <span>{BOND_HOLDINGS_MODULE_LABEL}</span>
+        <span>{TOP_HOLDINGS_MOBILE_LABEL}</span>
         <strong>{statusLabel}</strong>
       </div>
       <div className={styles.mobileReadoutGrid}>
         <MobileReadoutField label="最大持仓" value={leadName} detail={leadDetail} />
         <MobileReadoutField label="评级" value={formatTextEvidenceDisplay(leadHolding?.rating)} />
         <MobileReadoutField label="市值" value={formatMoneyEvidenceDisplay(leadHolding?.market_value)} />
-        <MobileReadoutField label="YTM" value={formatPctEvidenceDisplay(leadHolding?.ytm)} />
+        <MobileReadoutField label="收益率" value={formatPctEvidenceDisplay(leadHolding?.ytm)} />
         <MobileReadoutField label="久期" value={formatNumericEvidenceDisplay(leadHolding?.modified_duration)} />
         <MobileReadoutField label="权重" value={formatPctEvidenceDisplay(leadHolding?.weight)} />
       </div>
@@ -1846,48 +1845,49 @@ export function BondAnalyticsInstitutionalCockpit({
               </div>
             </div>
           </div>
-        </section>
-
-        <aside data-testid="bond-analysis-hero-aside" className={styles.heroAside}>
-          <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
-            <div className={styles.heroGovernanceLead}>
-              <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
-              <span className={styles.heroGovernanceHeading}>首屏读面拆解</span>
-              <span className={styles.heroGovernanceDetail}>只展示后端返回事实，不补造读面。</span>
-            </div>
-            <div className={styles.heroGovernanceMetrics}>
-              <span>久期 {durationDisplay}</span>
-              <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
-              <span>信用占比 {creditWeightDisplay}</span>
-            </div>
-            <div className={styles.heroGovernanceStatus}>
-              <span>
-                报告日 {topbarReportStatus} · {topbarReportDate}
-              </span>
-              <span>
-                首屏 KPI {topbarReadoutStatus} · {topbarReadoutDetail}
-              </span>
-            </div>
-            <div className={styles.heroVerdictRow}>
-              {deskVerdictFields.map((field) => (
-                <div key={field.label} className={styles.heroVerdictField}>
-                  <span>{field.label}</span>
-                  <strong>{field.value}</strong>
-                  <small>{field.detail}</small>
-                </div>
-              ))}
+          <div className={styles.heroAside}>
+            <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
+              <div className={styles.heroGovernanceLead}>
+                <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
+                <span className={styles.heroGovernanceHeading}>首屏读面拆解</span>
+                <span className={styles.heroGovernanceDetail}>只展示后端返回事实，不补造读面。</span>
+              </div>
+              <div className={styles.heroGovernanceMetrics}>
+                <span>久期 {durationDisplay}</span>
+                <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
+                <span>信用占比 {creditWeightDisplay}</span>
+              </div>
+              <div className={styles.heroGovernanceStatus}>
+                <span>
+                  报告日 {topbarReportStatus} · {topbarReportDate}
+                </span>
+                <span>
+                  首屏 KPI {topbarReadoutStatus} · {topbarReadoutDetail}
+                </span>
+              </div>
+              <div className={styles.heroVerdictRow}>
+                {deskVerdictFields.map((field) => (
+                  <div key={field.label} className={styles.heroVerdictField}>
+                    <span>{field.label}</span>
+                    <strong>{field.value}</strong>
+                    <small>{field.detail}</small>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+        </section>
 
-          {decisionRail && onOpenModuleDetail ? (
+        {decisionRail && onOpenModuleDetail ? (
+          <aside data-testid="bond-analysis-hero-aside">
             <BondAnalyticsDecisionRail
               activeModuleContext={decisionRail.activeModuleContext}
               activeReadinessItem={decisionRail.activeReadinessItem}
               watchlistItems={decisionRail.watchlistItems}
               onOpenModuleDetail={onOpenModuleDetail}
             />
-          ) : null}
-        </aside>
+          </aside>
+        ) : null}
 
         <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
 
@@ -2023,7 +2023,7 @@ export function BondAnalyticsInstitutionalCockpit({
           <Card
             variant="borderless"
             size="small"
-            title={<SectionCardTitle eyebrow="持仓证据明细" title={BOND_HOLDINGS_COCKPIT_CARD_TITLE} />}
+            title={<SectionCardTitle eyebrow="持仓证据明细" title={TOP_HOLDINGS_CARD_TITLE} />}
             extra={
               <Button
                 size="small"
@@ -2046,7 +2046,7 @@ export function BondAnalyticsInstitutionalCockpit({
             />
             <div data-testid="bond-analysis-holdings-evidence-strip" className={styles.holdingsEvidenceStrip}>
               <div>
-                <span>{BOND_HOLDINGS_MODULE_LABEL}条数</span>
+                <span>{TOP_HOLDINGS_COUNT_LABEL}</span>
                 <strong>{topHoldingsUnavailable ? "待返回" : `${topHoldings.length} 条`}</strong>
                 <small>{BOND_HOLDINGS_COCKPIT_SCOPE_NOTE}</small>
               </div>

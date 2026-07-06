@@ -136,6 +136,7 @@ from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.services.analysis_adapters import build_bond_action_attribution_placeholder_envelope
 from backend.app.services.explicit_numeric import (
     collapse_numeric_json_to_q8_strings,
+    is_numeric_json,
     numeric_json,
     promote_flat_payload,
 )
@@ -220,6 +221,11 @@ BENCHMARK_EXCESS_SPREAD_GAP_WARNING = (
     "period dates; do not treat this component as an informed credit-spread attribution."
 )
 SPREAD_WARNING = "Spread level input unavailable; weighted_avg_spread remains 0 (curves or inputs incomplete)"
+BOND_ANALYTICS_PLACEHOLDER_WARNING_CODE = "bond_analytics_placeholder_warning"
+BOND_ANALYTICS_PARTIAL_WARNING_CODE = "bond_analytics_partial_warning"
+BOND_ANALYTICS_EMPTY_RESULT_WARNING_CODE = "bond_analytics_empty_result"
+BENCHMARK_WARNING_CODE = "benchmark_excess_benchmark_data_unavailable"
+SPREAD_WARNING_CODE = "credit_spread_weighted_avg_spread_input_unavailable"
 Q8 = Decimal("0.00000001")
 ZERO = Decimal("0")
 BENCHMARK_NAMES = {
@@ -328,15 +334,25 @@ def _text(value: Decimal) -> str:
 
 def _bond_analytics_api_payload(payload: dict[str, object]) -> dict[str, object]:
     """Bond analytics formal endpoints expose legacy Q8 strings, not governed Numeric JSON dicts."""
+    preserved_spread_changes: list[dict[str, object] | None] = []
+    raw_scenarios = payload.get("spread_scenarios")
+    if isinstance(raw_scenarios, list):
+        for row in raw_scenarios:
+            if not isinstance(row, dict):
+                preserved_spread_changes.append(None)
+                continue
+            spread_change = row.get("spread_change_bp")
+            preserved_spread_changes.append(spread_change if is_numeric_json(spread_change) else None)
+
     out = collapse_numeric_json_to_q8_strings(payload)
     scenarios = out.get("spread_scenarios")
     if isinstance(scenarios, list):
-        for row in scenarios:
+        for index, row in enumerate(scenarios):
             if not isinstance(row, dict):
                 continue
-            sc = row.get("spread_change_bp")
-            if isinstance(sc, str):
-                row["spread_change_bp"] = float(Decimal(sc))
+            preserved = preserved_spread_changes[index] if index < len(preserved_spread_changes) else None
+            if preserved is not None:
+                row["spread_change_bp"] = preserved
     return out
 
 
@@ -638,14 +654,19 @@ def _with_bond_amount_disclosure(
         return envelope
 
     foreign_codes = _foreign_currency_codes(rows)
-    if not foreign_codes:
-        return envelope
+    if foreign_codes:
+        warning = (
+            f"{BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING} "
+            f"Detected foreign currencies: {', '.join(foreign_codes)}."
+        )
+        result_payload["warnings"] = _ordered_unique_warnings([*warnings, warning])
 
-    warning = (
-        f"{BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING} "
-        f"Detected foreign currencies: {', '.join(foreign_codes)}."
-    )
-    result_payload["warnings"] = _ordered_unique_warnings([*warnings, warning])
+    existing_warning_codes = result_payload.get("warning_codes")
+    warning_codes = _warning_codes_for_payload(result_payload)
+    if isinstance(existing_warning_codes, list):
+        warning_codes = _ordered_unique_warnings([*existing_warning_codes, *warning_codes])
+    if warning_codes:
+        result_payload["warning_codes"] = warning_codes
     return envelope
 
 
@@ -1350,6 +1371,61 @@ def _ordered_unique_warnings(values: list[str | None]) -> list[str]:
         seen.add(text)
         out.append(text)
     return out
+
+
+def _matches_placeholder_warning(text: str) -> bool:
+    lowered = text.lower()
+    return any(token in lowered for token in ("not yet populated", "returning empty", "placeholder"))
+
+
+def _matches_partial_warning(text: str) -> bool:
+    lowered = text.lower()
+    return any(token in lowered for token in ("phase 3", "remain zero", "set to 0", "input unavailable"))
+
+
+def _warning_codes_for_payload(result_payload: dict[str, object]) -> list[str]:
+    warnings = result_payload.get("warnings")
+    if not isinstance(warnings, list):
+        return []
+
+    warning_details = result_payload.get("warnings_detail")
+    detail_rows = warning_details if isinstance(warning_details, list) else []
+    codes: list[str | None] = []
+
+    for warning in warnings:
+        if not isinstance(warning, str):
+            continue
+        if warning == EMPTY_WARNING:
+            codes.append(BOND_ANALYTICS_EMPTY_RESULT_WARNING_CODE)
+        if warning == BENCHMARK_WARNING:
+            codes.append(BENCHMARK_WARNING_CODE)
+        if warning == SPREAD_WARNING:
+            codes.append(SPREAD_WARNING_CODE)
+        if _matches_placeholder_warning(warning):
+            codes.append(BOND_ANALYTICS_PLACEHOLDER_WARNING_CODE)
+        if _matches_partial_warning(warning):
+            codes.append(BOND_ANALYTICS_PARTIAL_WARNING_CODE)
+
+    for detail in detail_rows:
+        if not isinstance(detail, dict):
+            continue
+        code = str(detail.get("code") or "").strip()
+        if not code:
+            continue
+        if code == RETURN_TRADING_GAP_WARNING_DETAIL["code"]:
+            codes.extend(
+                [
+                    RETURN_TRADING_GAP_WARNING_DETAIL["code"],
+                    BOND_ANALYTICS_PLACEHOLDER_WARNING_CODE,
+                    BOND_ANALYTICS_PARTIAL_WARNING_CODE,
+                ]
+            )
+            continue
+        detail_message = str(detail.get("message") or detail.get("detail") or "").strip()
+        if _matches_placeholder_warning(detail_message) or _matches_partial_warning(detail_message):
+            codes.append(code)
+
+    return _ordered_unique_warnings(codes)
 
 
 def _required_fx_currencies(rows: list[dict[str, object]]) -> set[str]:
@@ -2237,7 +2313,7 @@ def _build_credit_spread_payload(
                         promote_flat_payload(
                             {
                                 "scenario_name": f"利差{'走阔' if change_bp > 0 else '收窄'} {abs(change_bp)}bp",
-                                "spread_change_bp": float(change_bp),
+                                "spread_change_bp": numeric_json(change_bp, "bp", True),
                                 "pnl_impact": -(summary["spread_dv01"] * Decimal(str(change_bp))),
                                 "oci_impact": -(summary["oci_spread_dv01"] * Decimal(str(change_bp))),
                                 "tpl_impact": -(summary["tpl_spread_dv01"] * Decimal(str(change_bp))),

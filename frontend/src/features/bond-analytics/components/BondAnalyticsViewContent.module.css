@@ -219,3 +219,339 @@
   }
 
 }
+
+.bondWorkbenchPage {
+  --ib-paper: #07111f;
+  --ib-surface: #0b1728;
+  --ib-surface-muted: #101f33;
+  --ib-hairline: #203650;
+  --ib-rule-strong: #355a7c;
+  --ib-ink: #f3f8ff;
+  --ib-ink-secondary: #afc0d5;
+  --ib-ink-muted: #8493a7;
+  --ib-accent: #7dd3fc;
+  --ib-accent-hover: #a5e5ff;
+  --ib-accent-surface: rgba(125, 211, 252, 0.1);
+  --ib-up: #b7e08a;
+  --ib-down: #f2a0a0;
+  --ib-warn: #f6c56f;
+  --ib-gold: #f6c56f;
+  --dashboard-blue-25: rgba(125, 211, 252, 0.06);
+  --dashboard-blue-50: rgba(125, 211, 252, 0.1);
+  --dashboard-blue-100: rgba(125, 211, 252, 0.16);
+  --dashboard-blue-200: rgba(125, 211, 252, 0.28);
+  --dashboard-blue-600: var(--ib-accent);
+  --dashboard-blue-700: #eaf6ff;
+  --dashboard-red-25: rgba(242, 160, 160, 0.08);
+  --dashboard-red-50: rgba(242, 160, 160, 0.12);
+  --dashboard-red-100: rgba(242, 160, 160, 0.16);
+  --dashboard-red-200: rgba(242, 160, 160, 0.3);
+  --dashboard-red-600: var(--ib-down);
+  --dashboard-red-700: #ffd0d0;
+  --dashboard-ink: var(--ib-ink);
+  --moss-color-card-bg: var(--ib-surface);
+  --moss-color-neutral-50: var(--ib-surface-muted);
+  --moss-color-neutral-100: #1e3148;
+  --moss-color-neutral-200: var(--ib-hairline);
+  --moss-color-neutral-300: var(--ib-rule-strong);
+  --moss-color-neutral-400: #59708d;
+  --moss-color-neutral-500: var(--ib-ink-muted);
+  --moss-color-neutral-600: var(--ib-ink-secondary);
+  --moss-color-neutral-700: #d7e3f5;
+  --moss-color-neutral-800: #e6eef9;
+  --moss-color-neutral-900: var(--ib-ink);
+  --moss-color-primary-50: var(--ib-accent-surface);
+  --moss-color-primary-100: rgba(125, 211, 252, 0.16);
+  --moss-color-primary-200: rgba(125, 211, 252, 0.28);
+  --moss-color-primary-600: var(--ib-accent);
+  --moss-color-primary-700: var(--ib-accent);
+  --moss-color-primary-800: var(--ib-accent-hover);
+  --moss-color-primary-900: #eaf6ff;
+  --moss-color-info-100: rgba(125, 211, 252, 0.14);
+  --moss-color-info-300: #8ed8ff;
+  --moss-color-info-400: var(--ib-accent);
+  --moss-color-info-500: #38bdf8;
+  --moss-color-info-700: var(--ib-accent-hover);
+  --moss-color-info-900: #eaf6ff;
+  --moss-color-success-100: rgba(183, 224, 138, 0.18);
+  --moss-color-success-300: var(--ib-up);
+  --moss-color-success-500: #86d58f;
+  --moss-color-success-600: #86d58f;
+  --moss-color-success-700: var(--ib-up);
+  --moss-color-warning-50: rgba(246, 197, 111, 0.12);
+  --moss-color-warning-200: rgba(246, 197, 111, 0.3);
+  --moss-color-warning-300: var(--ib-warn);
+  --moss-color-warning-400: #f2a93b;
+  --moss-color-warning-600: var(--ib-warn);
+  --moss-color-warning-800: #ffe1a3;
+  --moss-color-danger-50: rgba(242, 160, 160, 0.12);
+  --moss-color-danger-100: rgba(242, 160, 160, 0.16);
+  --moss-color-danger-200: rgba(242, 160, 160, 0.3);
+  --moss-color-danger-500: var(--ib-down);
+  --moss-color-danger-600: var(--ib-down);
+  --moss-color-danger-800: #ffd0d0;
+  --moss-color-text-primary: var(--ib-ink);
+  --moss-color-text-secondary: var(--ib-ink-secondary);
+  --moss-color-text-muted: var(--ib-ink-muted);
+  --moss-color-border-default: var(--ib-hairline);
+  --moss-color-border-strong: var(--ib-rule-strong);
+  --moss-border-hover: rgba(125, 211, 252, 0.45);
+  --moss-shadow-card: none;
+  display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
+  gap: 14px;
+  width: min(100%, 1178px);
+  max-width: 1178px;
+  min-height: calc(100vh - 48px);
+  padding: 16px;
+  border: 1px solid #132a44;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(12, 23, 39, 0.98), var(--ib-paper) 360px),
+    var(--ib-paper);
+  color: var(--ib-ink);
+  font-family: var(--moss-font-sans);
+  font-feature-settings: "tnum" 1, "ss01" 1;
+}
+
+:global(.workbench-shell-grid--bond-analysis) {
+  background:
+    linear-gradient(180deg, rgba(9, 17, 29, 0.98), #070b12 420px),
+    #070b12 !important;
+}
+
+:global(.workbench-shell-grid--bond-analysis .workbench-main-column),
+:global(.workbench-shell-grid--bond-analysis .workbench-main-column > main) {
+  justify-items: start !important;
+}
+
+:global(.workbench-shell-grid--bond-analysis .workbench-shell-aside) {
+  border-right: 1px solid rgba(126, 157, 194, 0.18) !important;
+  background:
+    linear-gradient(180deg, rgba(17, 27, 42, 0.98), rgba(8, 13, 22, 0.98)),
+    #0a1019 !important;
+  box-shadow: none !important;
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"] {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  background:
+    linear-gradient(112deg, rgba(125, 211, 252, 0.055), rgba(125, 211, 252, 0) 38%),
+    linear-gradient(180deg, rgba(15, 31, 52, 0.98), rgba(8, 18, 32, 0.96));
+  box-shadow:
+    0 18px 38px rgba(0, 0, 0, 0.13),
+    inset 0 1px 0 rgba(232, 238, 247, 0.06);
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"]::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--ib-accent), rgba(246, 197, 111, 0.74));
+  content: "";
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-reference-topbar"] > * {
+  position: relative;
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-market-ticker"],
+.bondWorkbenchPage [data-testid="bond-analysis-kpi-ribbon"] {
+  box-shadow:
+    inset 0 1px 0 rgba(232, 238, 247, 0.045),
+    0 10px 24px rgba(0, 0, 0, 0.1);
+}
+
+.toolbarSelect {
+  border-color: var(--ib-hairline);
+  border-radius: 6px;
+  background: rgba(7, 17, 31, 0.78);
+  color: var(--ib-ink);
+  font-family: var(--moss-font-mono);
+}
+
+.toolbarSelect:focus {
+  border-color: rgba(125, 211, 252, 0.62);
+  outline: 2px solid rgba(125, 211, 252, 0.24);
+  outline-offset: 2px;
+}
+
+.refreshButton {
+  border-color: rgba(125, 211, 252, 0.44);
+  background: rgba(125, 211, 252, 0.14);
+  color: var(--ib-ink);
+}
+
+.bondWorkbenchPage :global(.ant-alert) {
+  border-color: rgba(246, 197, 111, 0.34) !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(180deg, rgba(246, 197, 111, 0.1), rgba(246, 197, 111, 0.035)),
+    var(--ib-surface) !important;
+  color: var(--ib-ink) !important;
+}
+
+.bondWorkbenchPage :global(.ant-alert-message),
+.bondWorkbenchPage :global(.ant-alert-description),
+.bondWorkbenchPage :global(.ant-card-head-title),
+.bondWorkbenchPage :global(.ant-card-extra),
+.bondWorkbenchPage :global(.ant-card-body) {
+  color: var(--ib-ink) !important;
+}
+
+.bondWorkbenchPage :global(.ant-card) {
+  border-color: var(--ib-hairline) !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(180deg, rgba(232, 238, 247, 0.024), rgba(232, 238, 247, 0.004)),
+    var(--ib-surface) !important;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(232, 238, 247, 0.055) !important;
+  color: var(--ib-ink);
+}
+
+.bondWorkbenchPage :global(.ant-card-head) {
+  border-bottom-color: rgba(126, 157, 194, 0.2) !important;
+  background: transparent !important;
+}
+
+.bondWorkbenchPage :global(.ant-btn) {
+  border-radius: 6px;
+  color: var(--ib-accent);
+  box-shadow: none;
+}
+
+.bondWorkbenchPage :global(.ant-btn-text:hover) {
+  background: var(--ib-accent-surface) !important;
+  color: var(--ib-accent) !important;
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:first-child > strong {
+  font-size: 22px;
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:nth-child(2) {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-top: 12px;
+  padding-left: 0;
+  border-top: 1px solid rgba(126, 157, 194, 0.18);
+  border-left: 0;
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:nth-child(2) strong {
+  font-size: clamp(21px, 1.75vw, 25px);
+}
+
+.bondWorkbenchPage [data-testid="bond-analysis-currency-basis-banner"] {
+  border-top-color: rgba(126, 157, 194, 0.18);
+  background:
+    linear-gradient(180deg, rgba(125, 211, 252, 0.09), rgba(125, 211, 252, 0.035)),
+    var(--ib-surface);
+  color: var(--ib-ink-secondary);
+}
+
+.fallbackWorkbench {
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.fallbackNotice,
+.fallbackMarketStrip,
+.fallbackJudgment,
+.fallbackPanel,
+.detailDrilldown,
+.detailDrilldownSummary {
+  border-color: var(--ib-hairline);
+  background:
+    linear-gradient(180deg, rgba(232, 238, 247, 0.024), rgba(232, 238, 247, 0.004)),
+    var(--ib-surface);
+  color: var(--ib-ink);
+  box-shadow: none;
+}
+
+.fallbackNotice {
+  min-height: 74px;
+  padding: 14px 16px;
+  border-color: rgba(246, 197, 111, 0.38);
+  border-radius: 8px;
+}
+
+.fallbackMarketStrip,
+.detailDrilldown {
+  border-radius: 8px;
+  background: var(--ib-hairline);
+}
+
+.fallbackTickerCell {
+  border-right-color: #1e3148;
+  background: var(--ib-surface);
+}
+
+.fallbackJudgment {
+  min-height: 72px;
+  border-left-color: var(--ib-accent);
+  border-radius: 8px;
+}
+
+.fallbackPanel {
+  min-height: 116px;
+  border-radius: 8px;
+}
+
+.stateTitle,
+.fallbackSectionTitle,
+.fallbackPanel span,
+.bondWorkbenchPage :global(.dashboard-detail-drilldown__title) {
+  color: var(--ib-ink);
+}
+
+.stateBody,
+.fallbackJudgment p,
+.fallbackPanel strong,
+.detailFallback,
+.detailDrilldownDescription {
+  color: var(--ib-ink-secondary);
+}
+
+.detailDrilldownSummary {
+  min-height: 62px;
+  border: 0;
+}
+
+.bondWorkbenchPage :global(.dashboard-home-section-eyebrow),
+.bondWorkbenchPage :global(.dashboard-progressive-disclosure__cue) {
+  color: var(--ib-accent);
+}
+
+@media (max-width: 640px) {
+  .bondWorkbenchPage {
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:nth-child(2) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+
+  .bondWorkbenchPage [data-testid="bond-analysis-cockpit-conclusion"] > div:nth-child(2) strong {
+    font-size: clamp(20px, 6vw, 23px);
+  }
+
+  .detailDrilldownSummary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

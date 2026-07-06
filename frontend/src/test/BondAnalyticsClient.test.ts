@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
+import { formatRawAsNumeric } from "../utils/format";
 
 const resultMeta: ResultMeta = {
   trace_id: "tr_credit_spread_normalize",
@@ -20,7 +21,7 @@ const resultMeta: ResultMeta = {
 };
 
 describe("BondAnalyticsClient", () => {
-  it("keeps mock action attribution in analytical formal-pending provenance", async () => {
+  it("keeps mock source surface while preserving analytical formal-pending provenance overrides", async () => {
     const client = createApiClient({ mode: "mock" });
 
     const envelope = await client.getBondAnalyticsActionAttribution("2026-04-30", "MoM");
@@ -28,7 +29,7 @@ describe("BondAnalyticsClient", () => {
     expect(envelope.result_meta.basis).toBe("analytical");
     expect(envelope.result_meta.formal_use_allowed).toBe(false);
     expect(envelope.result_meta.quality_flag).toBe("warning");
-    expect(envelope.result_meta.source_surface).toBe("bond_analytics");
+    expect(envelope.result_meta.source_surface).toBe("mock");
     expect(envelope.result_meta.requested_report_date).toBe("2026-04-30");
     expect(envelope.result_meta.resolved_report_date).toBe("2026-04-30");
     expect(envelope.result_meta.as_of_date).toBe("2026-04-30");
@@ -45,6 +46,7 @@ describe("BondAnalyticsClient", () => {
   });
 
   it("normalizes flat credit spread migration numbers into governed Numeric fields", async () => {
+    const shock25 = formatRawAsNumeric({ raw: 25, unit: "bp", sign_aware: true });
     const fetchImpl = vi.fn(async () =>
       new Response(
         JSON.stringify({
@@ -61,7 +63,7 @@ describe("BondAnalyticsClient", () => {
             spread_scenarios: [
               {
                 scenario_name: "利差走阔 25bp",
-                spread_change_bp: 25,
+                spread_change_bp: shock25,
                 pnl_impact: "-677931223.04413300",
                 oci_impact: "-303443113.49227170",
                 tpl_impact: "-39278727.02554200",
@@ -98,6 +100,7 @@ describe("BondAnalyticsClient", () => {
     expect(envelope.result.spread_dv01.display).toBe("27,117,249");
     expect(envelope.result.weighted_avg_spread.raw).toBeCloseTo(0.37853183);
     expect(envelope.result.rating_aa_and_below_weight?.raw).toBeCloseTo(0.00627209);
+    expect(envelope.result.spread_scenarios[0]?.spread_change_bp).toEqual(shock25);
     expect(envelope.result.spread_scenarios[0]?.pnl_impact.raw).toBeCloseTo(-677_931_223.044133);
     expect(envelope.result.concentration_by_rating?.top_items[0]?.market_value.raw).toBeCloseTo(
       74_417_839_294.38654,

@@ -39,18 +39,52 @@ const PARTIAL_WARNING_PATTERNS = [
   /input unavailable/i,
 ] as const;
 
-export function hasPlaceholderWarning(warnings: string[]): boolean {
+const PLACEHOLDER_WARNING_CODES = new Set([
+  "bond_analytics_placeholder_warning",
+  "bond_analytics_empty_result",
+  "return_decomposition_trading_placeholder_phase3",
+]);
+
+const PARTIAL_WARNING_CODES = new Set([
+  "bond_analytics_partial_warning",
+  "credit_spread_weighted_avg_spread_input_unavailable",
+  "benchmark_excess_benchmark_data_unavailable",
+  "return_decomposition_trading_placeholder_phase3",
+]);
+
+function hasMatchingWarningCode(
+  warningCodes: string[] | undefined,
+  recognizedCodes: ReadonlySet<string>,
+): boolean {
+  if (!warningCodes?.length) {
+    return false;
+  }
+  return warningCodes.some((code) => recognizedCodes.has(code));
+}
+
+export function hasPlaceholderWarning(
+  warnings: string[],
+  warningCodes?: string[],
+): boolean {
+  if (hasMatchingWarningCode(warningCodes, PLACEHOLDER_WARNING_CODES)) {
+    return true;
+  }
   return warnings.some((warning) =>
     PLACEHOLDER_WARNING_PATTERNS.some((pattern) => pattern.test(warning)),
   );
 }
 
-export function classifyWarningSignals(warnings: string[]) {
+export function classifyWarningSignals(
+  warnings: string[],
+  warningCodes?: string[],
+) {
   return {
-    hasPlaceholderSignals: hasPlaceholderWarning(warnings),
-    hasPartialSignals: warnings.some((warning) =>
-      PARTIAL_WARNING_PATTERNS.some((pattern) => pattern.test(warning)),
-    ),
+    hasPlaceholderSignals: hasPlaceholderWarning(warnings, warningCodes),
+    hasPartialSignals:
+      hasMatchingWarningCode(warningCodes, PARTIAL_WARNING_CODES) ||
+      warnings.some((warning) =>
+        PARTIAL_WARNING_PATTERNS.some((pattern) => pattern.test(warning)),
+      ),
     hasAnyWarnings: warnings.length > 0,
   };
 }
@@ -175,7 +209,10 @@ export function deriveActionAttributionReadiness(
   }
 
   const warnings = input.actionAttribution.warnings;
-  const warningSignals = classifyWarningSignals(warnings);
+  const warningSignals = classifyWarningSignals(
+    warnings,
+    input.actionAttribution.warning_codes,
+  );
   const hasCleanProvenance = hasPromotionSafeProvenance(input.actionAttributionMeta);
   const hasRealContent = hasRealActionAttributionContent(input.actionAttribution);
 

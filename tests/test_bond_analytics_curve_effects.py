@@ -371,6 +371,10 @@ def test_credit_spread_migration_marks_result_meta_unavailable_when_curves_missi
 
     assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert payload["result_meta"]["fallback_mode"] == "none"
+    assert payload["result"]["warning_codes"] == [
+        "credit_spread_weighted_avg_spread_input_unavailable",
+        "bond_analytics_partial_warning",
+    ]
     get_settings.cache_clear()
 
 

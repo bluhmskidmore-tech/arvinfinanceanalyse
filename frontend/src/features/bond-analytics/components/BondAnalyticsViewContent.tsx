@@ -261,7 +261,10 @@ export function BondAnalyticsViewContent() {
   const canRenderAnalytics = Boolean(effectiveReportDate) && !dateFallbackKind;
 
   return (
-    <section data-testid="bond-analysis-overview" className="dashboard-home-shell">
+    <section
+      data-testid="bond-analysis-overview"
+      className={`dashboard-home-shell ${styles.bondWorkbenchPage}`}
+    >
       <header data-testid="bond-analysis-toolbar" className="dashboard-home-toolbar">
         <div className="dashboard-home-toolbar__identity">
           <h1 className="dashboard-home-toolbar__title">债券分析</h1>

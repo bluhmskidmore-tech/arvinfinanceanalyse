@@ -52,6 +52,10 @@ def _apply_numeric_coercion(
     return out
 
 
+def _exclude_when_none(value: Any) -> bool:
+    return value is None
+
+
 class PeriodType(StrEnum):
     """Analysis period granularity."""
 
@@ -174,6 +178,11 @@ class ReturnDecompositionResponse(BaseModel):
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
     warnings_detail: list[dict[str, str]] = Field(
         default_factory=list,
         description="Structured warnings with stable codes (e.g., trading placeholder).",
@@ -247,6 +256,11 @@ class BenchmarkExcessResponse(BaseModel):
     excess_sources: list[ExcessSourceBreakdown] = Field(default_factory=list, description="Excess-source detail rows")
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "portfolio_return": ("pct", True),
@@ -373,6 +387,11 @@ class KRDCurveRiskResponse(BaseModel):
     )
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "portfolio_duration": ("ratio", False),
@@ -500,6 +519,11 @@ class CreditSpreadMigrationResponse(BaseModel):
     oci_sensitivity_25bp: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=True))
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "credit_market_value": ("yuan", False),
@@ -594,6 +618,11 @@ class ActionAttributionResponse(BaseModel):
     blocked_components: list[str] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
     warnings_detail: list[dict[str, str]] = Field(
         default_factory=list,
         description="Structured warnings with stable codes (parallel to string warnings).",
@@ -669,6 +698,11 @@ class AccountingClassAuditResponse(BaseModel):
     rows: list[AccountingClassAuditItem] = Field(default_factory=list, description="Audit detail rows")
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_market_value": ("yuan", False),
@@ -698,6 +732,11 @@ class PortfolioHeadlinesResponse(BaseModel):
     by_asset_class: list[AssetClassRiskSummary] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_market_value": ("yuan", False),
@@ -829,6 +868,11 @@ class DV01RiskResponse(BaseModel):
     top_issuers: list[DV01TopIssuerItem] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_face_value": ("yuan", False),
@@ -889,6 +933,11 @@ class DV01ReconciliationResponse(BaseModel):
     rows: list[DV01ReconciliationRow] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_face_value": ("yuan", False),
@@ -985,6 +1034,11 @@ class DV01MovementResponse(BaseModel):
     methodology_checks: list[DV01MovementBondItem] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "current_total_face_value": ("yuan", False),
@@ -1127,6 +1181,11 @@ class DV01ActionPlanResponse(BaseModel):
     bond_actions: list[DV01ActionBondItem] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_dv01": ("dv01", False),
@@ -1194,6 +1253,11 @@ class DV01LimitConfigStatusResponse(BaseModel):
     rows: list[DV01LimitConfigStatusRow] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
 
 class BondTopHoldingItem(BaseModel):
@@ -1233,6 +1297,11 @@ class BondTopHoldingsResponse(BaseModel):
     total_market_value: Numeric
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_market_value": ("yuan", False),
@@ -1289,6 +1358,11 @@ class BondPositionChangesResponse(BaseModel):
     prev_total_market_value: Numeric
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warning_codes: list[str] | None = Field(
+        default=None,
+        exclude_if=_exclude_when_none,
+        description="Stable warning codes for warnings",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_market_value": ("yuan", False),

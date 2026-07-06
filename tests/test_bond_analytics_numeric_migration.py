@@ -353,6 +353,25 @@ class TestActionAuditAndHeadlinesNumericMigration:
         restored = ActionAttributionResponse.model_validate(dumped)
         assert restored.period_start_duration.unit == "ratio"
 
+    def test_unrelated_headlines_response_omits_warning_codes_when_unset(self) -> None:
+        resp = PortfolioHeadlinesResponse(
+            report_date=date(2026, 3, 31),
+            total_market_value="500.00",
+            weighted_ytm="2.80",
+            weighted_duration="3.20",
+            weighted_coupon="2.60",
+            total_dv01="15.20",
+            bond_count=8,
+            credit_weight="0.40",
+            issuer_hhi="0.23",
+            issuer_top5_weight="0.57",
+        )
+
+        dumped = resp.model_dump(mode="json")
+
+        assert dumped["warnings"] == []
+        assert "warning_codes" not in dumped
+
     def test_audit_headlines_and_top_holdings_accept_legacy_str(self) -> None:
         audit = AccountingClassAuditItem(
             asset_class="credit",
