@@ -6,10 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.app.services.executive_service import (
-    _HOME_SNAPSHOT_CALIBERS,
-    _compute_unified_report_date,
-)
+EXPECTED_HOME_SNAPSHOT_CALIBERS = ("balance_sheet", "pnl")
 
 
 @pytest.fixture(autouse=True)
@@ -25,73 +22,129 @@ def _executive_service():
     return importlib.import_module("backend.app.services.executive_service")
 
 
-class TestComputeUnifiedReportDate:
-    def test_strict_intersection_empty_returns_none(self) -> None:
-        dates = {"balance_sheet": set(), "pnl": set()}
-        rd, missing, effective = _compute_unified_report_date(
-            requested=None, allow_partial=False, domain_dates=dates
-        )
-        assert rd is None
-        assert set(missing) == set(_HOME_SNAPSHOT_CALIBERS)
-        assert effective == {}
+def _date_context(
+    *,
+    balance: list[str],
+    pnl: list[str],
+    liability: list[str] | None = None,
+    bond: list[str] | None = None,
+) -> dict[str, list[str]]:
+    return {
+        "balance": balance,
+        "liability": balance if liability is None else liability,
+        "bond": balance if bond is None else bond,
+        "pnl": pnl,
+    }
 
-    def test_strict_intersection_nonempty_picks_max(self) -> None:
-        dates = {
-            "balance_sheet": {"2026-04-08", "2026-04-07"},
-            "pnl": {"2026-04-08", "2026-04-07", "2026-04-06"},
-        }
-        rd, missing, effective = _compute_unified_report_date(
-            requested=None, allow_partial=False, domain_dates=dates
-        )
-        assert rd == "2026-04-08"
-        assert missing == []
-        assert all(effective[d] == "2026-04-08" for d in _HOME_SNAPSHOT_CALIBERS)
 
-    def test_strict_requested_in_intersection(self) -> None:
-        dates = {
-            "balance_sheet": {"2026-04-08", "2026-04-07"},
-            "pnl": {"2026-04-08", "2026-04-07"},
-        }
-        rd, missing, effective = _compute_unified_report_date(
-            requested="2026-04-07", allow_partial=False, domain_dates=dates
-        )
-        assert rd == "2026-04-07"
-        assert missing == []
+def _home_snapshot_with_dates(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    context: dict[str, list[str]],
+    report_date: str | None = None,
+    allow_partial: bool = False,
+) -> dict[str, object]:
+    es = _executive_service()
+    monkeypatch.setattr(es, "_list_domain_date_context", lambda: context)
+    monkeypatch.setattr(
+        es,
+        "executive_overview",
+        lambda **_kwargs: {"result_meta": {}, "result": {"title": "overview", "metrics": []}},
+    )
+    monkeypatch.setattr(
+        es,
+        "executive_pnl_attribution",
+        lambda report_date=None: {
+            "result_meta": {},
+            "result": {"title": "attribution", "total": "0", "segments": []},
+        },
+    )
+    monkeypatch.setattr(es, "_build_product_category_ytd_headline", lambda _rd: None)
+    monkeypatch.setattr(es, "_build_product_category_monthly_headline", lambda _rd: None)
+    return es.home_snapshot_envelope(report_date=report_date, allow_partial=allow_partial)
 
-    def test_strict_requested_not_in_intersection_returns_none(self) -> None:
-        dates = {
-            "balance_sheet": {"2026-04-08"},
-            "pnl": {"2026-04-07"},  # no common date with balance_sheet caliber set
-        }
-        rd, missing, effective = _compute_unified_report_date(
-            requested="2026-04-08", allow_partial=False, domain_dates=dates
-        )
-        assert rd is None
-        assert set(missing) == set(_HOME_SNAPSHOT_CALIBERS)
 
-    def test_partial_requested_labels_missing_domains(self) -> None:
-        dates = {
-            "balance_sheet": {"2026-04-08", "2026-04-07"},
-            "pnl": {"2026-04-07"},  # missing 04-08
-        }
-        rd, missing, effective = _compute_unified_report_date(
-            requested="2026-04-08", allow_partial=True, domain_dates=dates
+class TestHomeSnapshotDateSelection:
+    def test_strict_intersection_empty_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(balance=[], pnl=[]),
         )
-        assert rd == "2026-04-08"
-        assert "pnl" in missing
-        assert effective["balance_sheet"] == "2026-04-08"
-        assert effective["pnl"] == "2026-04-07"  # latest available
 
-    def test_partial_no_requested_uses_union_max(self) -> None:
-        dates = {
-            "balance_sheet": {"2026-04-08"},
-            "pnl": {"2026-04-07"},
-        }
-        rd, missing, effective = _compute_unified_report_date(
-            requested=None, allow_partial=True, domain_dates=dates
+        assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
+        assert env["result"]["report_date"] == ""
+        assert set(env["result"]["domains_missing"]) == set(EXPECTED_HOME_SNAPSHOT_CALIBERS)
+        assert env["result"]["domains_effective_date"] == {}
+
+    def test_strict_intersection_nonempty_picks_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(
+                balance=["2026-04-08", "2026-04-07"],
+                pnl=["2026-04-08", "2026-04-07", "2026-04-06"],
+            ),
         )
-        assert rd == "2026-04-08"
-        assert {"pnl"} <= set(missing)
+
+        result = env["result"]
+        assert result["report_date"] == "2026-04-08"
+        assert result["domains_missing"] == []
+        assert all(
+            result["domains_effective_date"][domain] == "2026-04-08"
+            for domain in EXPECTED_HOME_SNAPSHOT_CALIBERS
+        )
+
+    def test_strict_requested_in_intersection(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(
+                balance=["2026-04-08", "2026-04-07"],
+                pnl=["2026-04-08", "2026-04-07"],
+            ),
+            report_date="2026-04-07",
+        )
+
+        result = env["result"]
+        assert result["report_date"] == "2026-04-07"
+        assert result["domains_missing"] == []
+
+    def test_strict_requested_not_in_intersection_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(balance=["2026-04-08"], pnl=["2026-04-07"]),
+            report_date="2026-04-08",
+        )
+
+        assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
+        assert env["result"]["report_date"] == ""
+        assert set(env["result"]["domains_missing"]) == set(EXPECTED_HOME_SNAPSHOT_CALIBERS)
+
+    def test_partial_requested_labels_missing_domains(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(
+                balance=["2026-04-08", "2026-04-07"],
+                pnl=["2026-04-07"],
+            ),
+            report_date="2026-04-08",
+            allow_partial=True,
+        )
+
+        result = env["result"]
+        assert result["report_date"] == "2026-04-08"
+        assert "pnl" in result["domains_missing"]
+        assert result["domains_effective_date"]["balance_sheet"] == "2026-04-08"
+        assert result["domains_effective_date"]["pnl"] == "2026-04-07"
+
+    def test_partial_no_requested_uses_union_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        env = _home_snapshot_with_dates(
+            monkeypatch,
+            context=_date_context(balance=["2026-04-08"], pnl=["2026-04-07"]),
+            allow_partial=True,
+        )
+
+        result = env["result"]
+        assert result["report_date"] == "2026-04-08"
+        assert {"pnl"} <= set(result["domains_missing"])
 
 
 class TestHomeSnapshotEnvelope:
@@ -127,7 +180,7 @@ class TestHomeSnapshotEnvelope:
             assert env["result_meta"]["quality_flag"] == "error"
             assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
             assert env["result"]["report_date"] == ""
-            assert set(env["result"]["domains_missing"]) == set(_HOME_SNAPSHOT_CALIBERS)
+            assert set(env["result"]["domains_missing"]) == set(EXPECTED_HOME_SNAPSHOT_CALIBERS)
 
     def test_strict_intersection_returns_unified_date(self) -> None:
         es = _executive_service()
