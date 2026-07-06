@@ -616,6 +616,16 @@ export default function LiabilityAnalyticsPage() {
                     <dd>{card.fallbackLabel}</dd>
                   </div>
                   <div>
+                    <dt>source</dt>
+                    <dd>{card.sourceVersion}</dd>
+                  </div>
+                  <div>
+                    <dt>vendor</dt>
+                    <dd>
+                      {card.vendorStatus} · {card.vendorVersion}
+                    </dd>
+                  </div>
+                  <div>
                     <dt>as-of</dt>
                     <dd>{card.asOfDate}</dd>
                   </div>
