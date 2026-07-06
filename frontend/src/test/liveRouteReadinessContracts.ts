@@ -41,7 +41,10 @@ export const liveRouteReadinessContracts = {
     ],
   },
   "/bond-trading-desk": {
-    sourceFiles: ["src/features/bond-trading-desk/pages/BondTradingDeskPage.tsx"],
+    sourceFiles: [
+      "src/features/bond-trading-desk/pages/BondTradingDeskPage.tsx",
+      "src/features/bond-trading-desk/components/BondTradingDeskComposeStrip.tsx",
+    ],
     sourceAnchors: [
       "bond-trading-desk-page",
       "bond-trading-desk-conclusion",
@@ -55,7 +58,10 @@ export const liveRouteReadinessContracts = {
     ],
   },
   "/cross-asset": {
-    sourceFiles: ["src/features/cross-asset/pages/CrossAssetDriversPage.tsx"],
+    sourceFiles: [
+      "src/features/cross-asset/pages/CrossAssetDriversPage.tsx",
+      "src/features/cross-asset/components/ReferencePanels.tsx",
+    ],
     sourceAnchors: ["cross-asset-drivers-page", "cross-asset-research-views"],
     verificationFiles: [
       "src/test/CrossAssetDriversRoute.test.tsx",
@@ -102,7 +108,7 @@ export const liveRouteReadinessContracts = {
   },
   "/market-data": {
     sourceFiles: ["src/features/market-data/pages/MarketDataPage.tsx"],
-    sourceAnchors: ["market-data-page", "market-data-readiness-verdict"],
+    sourceAnchors: ["market-data-page", "market-data-status-strip"],
     verificationFiles: ["src/test/MarketDataPage.test.tsx"],
   },
   "/macro-observation": {
@@ -116,7 +122,10 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/MacroToolkitPage.test.tsx"],
   },
   "/stock-analysis": {
-    sourceFiles: ["src/features/stock-analysis/pages/StockAnalysisPage.tsx"],
+    sourceFiles: [
+      "src/features/stock-analysis/pages/StockAnalysisPage.tsx",
+      "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
+    ],
     sourceAnchors: ["stock-analysis-toolbar", "stock-analysis-first-screen-main"],
     verificationFiles: ["src/test/StockAnalysisPage.test.tsx"],
   },

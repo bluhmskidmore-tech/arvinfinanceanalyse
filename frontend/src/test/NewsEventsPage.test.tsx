@@ -71,6 +71,48 @@ function makeEvent(partial: Partial<ChoiceNewsEvent> & Pick<ChoiceNewsEvent, "ev
   };
 }
 
+function makeComparePayload() {
+  return {
+    basis: "analytical" as const,
+    rule_version: "rv_research_radar_mapping_registry_v1b",
+    same_direction: [
+      {
+        event_family: "rates",
+        factor_tags: ["rate", "duration"],
+        event_count: 1,
+        source_event_ids: ["ev-1"],
+        summary: "rates 相关事件按同一规则命中，需人工判断方向是否一致。",
+      },
+    ],
+    conflicting: [
+      {
+        conflict_type: "multi_factor_review",
+        review_reason: "同一批事件命中多个风险因子，需要人工判断是否同向、对冲或互相冲突。",
+      },
+    ],
+    review_needed: [
+      {
+        event_family: "rates",
+        source_event_ids: ["ev-1"],
+        review_reason: "候选映射只表示需要复核，不代表正式风险结论或情景执行。",
+      },
+    ],
+    candidate_scenarios: [
+      {
+        event_family: "rates",
+        match_rule: "topic_or_text_contains_rates_terms",
+        factor_tags: ["rate", "duration"],
+        scenario_template_id: "candidate_rate_path_review",
+        default_shocks: ["parallel_up_25bp_candidate"],
+        rule_version: "rv_research_radar_mapping_registry_v1b",
+        human_review_required: true,
+        mapping_rule_id: "rv_research_radar_mapping_registry_v1b:rates",
+        source_event_ids: ["ev-1"],
+      },
+    ],
+  };
+}
+
 describe("NewsEventsPage", () => {
   it("renders filters, table rows, resets page on topic change, and paginates", async () => {
     const user = userEvent.setup();
@@ -86,6 +128,7 @@ describe("NewsEventsPage", () => {
             total_rows: 75,
             limit: options.limit,
             offset: options.offset,
+            compare: makeComparePayload(),
             events: page1
               ? [
                   makeEvent({
@@ -118,6 +161,11 @@ describe("NewsEventsPage", () => {
 
     expect(await screen.findByTestId("news-events-page-title")).toHaveTextContent("新闻事件");
     expect(screen.getByText("事件概览")).toBeInTheDocument();
+    expect(await screen.findByTestId("news-events-compare")).toHaveTextContent("跨篇对比");
+    expect(screen.getByText("同向线索")).toBeInTheDocument();
+    expect(screen.getByText("冲突线索")).toBeInTheDocument();
+    expect(screen.getByText("待复核")).toBeInTheDocument();
+    expect(screen.getByText(/human_review_required=true/)).toBeInTheDocument();
     expect(screen.getByText("筛选与事件列表")).toBeInTheDocument();
     expect(screen.getByLabelText("news-events-topic-code")).toBeInTheDocument();
     expect(screen.getByLabelText("news-events-error-only")).toBeInTheDocument();
@@ -181,6 +229,7 @@ describe("NewsEventsPage", () => {
         total_rows: 1,
         limit: PAGE_SIZE,
         offset: 0,
+        compare: makeComparePayload(),
         events: [
           makeEvent({
             event_key: "ev-boundary",

@@ -428,6 +428,7 @@ export default function MarketDataPage() {
     refreshError,
     handleRefresh,
     pageModel,
+    catalogQuery,
     latestQuery,
     fxAnalyticalQuery,
     fxFormalStatusQuery,
@@ -524,6 +525,19 @@ export default function MarketDataPage() {
     latestSeries,
   } = pageModel;
   const ncdFundingProxyMeta = ncdFundingProxyQuery.data?.result_meta;
+  const macroSeriesLoading = catalogQuery.isLoading || latestQuery.isLoading;
+  const macroSeriesError = catalogQuery.isError || latestQuery.isError;
+  const macroSeriesEmpty =
+    !macroSeriesLoading &&
+    !macroSeriesError &&
+    stableSeries.length === 0 &&
+    fallbackSeries.length === 0;
+  const refetchMacroSeries = () => {
+    void Promise.all([
+      catalogQuery.refetch(nonCancellingRefetchOptions),
+      latestQuery.refetch(nonCancellingRefetchOptions),
+    ]);
+  };
   const catalogVendorNames = useMemo(() => buildCatalogVendorNameMap(catalog), [catalog]);
   const filteredTickerItems = useMemo(
     () =>
@@ -1066,15 +1080,10 @@ export default function MarketDataPage() {
                       catalog={catalog}
                     />
                   }
-                  macroLoading={latestQuery.isLoading}
-                  macroError={latestQuery.isError}
-                  macroEmpty={
-                    !latestQuery.isLoading &&
-                    !latestQuery.isError &&
-                    stableSeries.length === 0 &&
-                    fallbackSeries.length === 0
-                  }
-                  onMacroRetry={() => void latestQuery.refetch(nonCancellingRefetchOptions)}
+                  macroLoading={macroSeriesLoading}
+                  macroError={macroSeriesError}
+                  macroEmpty={macroSeriesEmpty}
+                  onMacroRetry={refetchMacroSeries}
                   fxDeck={
                     <MarketDataFxSeriesDeck
                       groups={fxAnalyticalGroups}

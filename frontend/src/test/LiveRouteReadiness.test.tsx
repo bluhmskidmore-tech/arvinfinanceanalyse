@@ -2,19 +2,24 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { primaryWorkbenchNavigation } from "../mocks/navigation";
+import { primaryWorkbenchNavigation, workbenchNavigation } from "../mocks/navigation";
 import { liveRouteReadinessContracts } from "./liveRouteReadinessContracts";
 
 describe("live workbench route readiness contracts", () => {
-  const visibleLiveRoutes = primaryWorkbenchNavigation
+  const visibleLiveRoutes = primaryWorkbenchNavigation.map((section) => section.path);
+  const hiddenLiveRoutes = workbenchNavigation
     .filter((section) => section.readiness === "live")
-    .filter((section) => section.navigationVisibility !== "hidden")
+    .filter((section) => section.navigationVisibility === "hidden")
     .map((section) => section.path);
+  const contractRoutes = Object.keys(liveRouteReadinessContracts);
+  const visibleContractRoutes = contractRoutes.filter((route) => !hiddenLiveRoutes.includes(route));
 
   it("has a real page readiness contract for every visible live navigation route", () => {
-    expect(Object.keys(liveRouteReadinessContracts).sort()).toEqual(
-      [...visibleLiveRoutes].sort(),
-    );
+    expect(visibleContractRoutes.sort()).toEqual([...visibleLiveRoutes].sort());
+  });
+
+  it("keeps hidden live deep-link contracts without treating them as visible navigation routes", () => {
+    expect(contractRoutes).toEqual(expect.arrayContaining(hiddenLiveRoutes));
   });
 
   it.each(Object.entries(liveRouteReadinessContracts))(

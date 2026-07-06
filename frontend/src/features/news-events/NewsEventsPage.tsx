@@ -8,17 +8,23 @@ import { FilterBar } from "../../components/FilterBar";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { listChoiceNewsTopicFilterOptions } from "../agent/lib/choiceNewsTopicDictionary";
 import { KpiCard } from "../../components/KpiCard";
-import type { ResultMeta } from "../../api/contracts";
+import type { ChoiceNewsComparePayload, ResultMeta } from "../../api/contracts";
 
 const NEWS_EVENTS_PAGE_SIZE = 50;
 
 const sectionShell: CSSProperties = {
-  height: "100%",
+  height: "auto",
   padding: 24,
   borderRadius: 20,
   background: "#fbfcfe",
   border: "1px solid #e4ebf5",
   boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+};
+
+const compareSectionShell: CSSProperties = {
+  ...sectionShell,
+  height: "auto",
+  marginBottom: 20,
 };
 
 const sectionHeaderRow: CSSProperties = {
@@ -102,6 +108,22 @@ const metaLineStyle: CSSProperties = {
   gap: "6px 12px",
 };
 
+const compareGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: 12,
+  marginBottom: 20,
+};
+
+const compareCardStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  padding: 14,
+  borderRadius: 12,
+  border: "1px solid #d7dfea",
+  background: "#f7fbff",
+};
+
 function summarizeNewsPayload(event: {
   payload_text: string | null;
   payload_json: string | null;
@@ -159,6 +181,65 @@ function NewsEventsBoundary({ meta }: { meta: ResultMeta }) {
         <span>cache_version={meta.cache_version}</span>
         <span>tables_used={formatMetaList(meta.tables_used)}</span>
         <span>generated_at={meta.generated_at}</span>
+      </div>
+    </section>
+  );
+}
+
+function CompareBucket(props: {
+  title: string;
+  rows: ChoiceNewsComparePayload["same_direction"];
+  emptyText: string;
+}) {
+  return (
+    <div style={compareCardStyle}>
+      <strong>{props.title}</strong>
+      {props.rows.length > 0 ? (
+        <ul style={{ margin: 0, paddingLeft: 18, color: "#42526b", fontSize: 13, lineHeight: 1.6 }}>
+          {props.rows.map((row, index) => (
+            <li key={`${props.title}-${row.event_family ?? row.conflict_type ?? index}`}>
+              <span>{row.event_family ?? row.conflict_type ?? "review"}</span>
+              <span> · </span>
+              <span>{row.summary ?? row.review_reason ?? `${row.source_event_ids?.length ?? 0} 条事件`}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <span style={{ color: "#8090a8", fontSize: 13 }}>{props.emptyText}</span>
+      )}
+    </div>
+  );
+}
+
+function NewsEventsCompare({ compare }: { compare?: ChoiceNewsComparePayload }) {
+  if (!compare) {
+    return null;
+  }
+  return (
+    <section data-testid="news-events-compare" style={compareSectionShell}>
+      <div style={sectionHeaderRow}>
+        <span style={{ fontWeight: 600 }}>跨篇对比</span>
+        <span style={{ color: "#8090a8", fontSize: 12 }}>rule_version={compare.rule_version}</span>
+      </div>
+      <div style={compareGridStyle}>
+        <CompareBucket title="同向线索" rows={compare.same_direction} emptyText="暂无同向线索" />
+        <CompareBucket title="冲突线索" rows={compare.conflicting} emptyText="暂无冲突线索" />
+        <CompareBucket title="待复核" rows={compare.review_needed} emptyText="暂无待复核项" />
+      </div>
+      <div style={compareCardStyle}>
+        <strong>候选情景建议</strong>
+        {compare.candidate_scenarios.length > 0 ? (
+          <ul style={{ margin: 0, paddingLeft: 18, color: "#42526b", fontSize: 13, lineHeight: 1.6 }}>
+            {compare.candidate_scenarios.map((item) => (
+              <li key={item.mapping_rule_id}>
+                {item.event_family} · {item.scenario_template_id} · human_review_required=
+                {String(item.human_review_required)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span style={{ color: "#8090a8", fontSize: 13 }}>暂无候选情景建议</span>
+        )}
       </div>
     </section>
   );
@@ -299,6 +380,7 @@ export default function NewsEventsPage() {
         </div>
       </div>
       {resultMeta ? <NewsEventsBoundary meta={resultMeta} /> : null}
+      <NewsEventsCompare compare={eventsQuery.data?.result.compare} />
 
       <SectionLead
         eyebrow="浏览"
