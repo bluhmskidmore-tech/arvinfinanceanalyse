@@ -179,19 +179,22 @@ export type HomeResearchReportsPayload = {
   warnings: string[];
 };
 
+export type HomeIncomeTrendPointSourceStatus = "ready" | "partial";
+export type HomeIncomeTrendSourceStatus = HomeIncomeTrendPointSourceStatus | "empty";
+
 export type HomeIncomeTrendPoint = {
   date: string;
   portfolio_pnl: Numeric;
   benchmark_pnl: Numeric;
   excess_pnl: Numeric;
   basis: "product_category_pnl_monthly";
-  source_status: "ready" | "partial" | "empty" | "stale";
+  source_status: HomeIncomeTrendPointSourceStatus;
 };
 
 export type HomeIncomeTrendPayload = {
   report_date: string;
   window: number;
-  source_status: "ready" | "partial" | "empty" | "stale";
+  source_status: HomeIncomeTrendSourceStatus;
   points: HomeIncomeTrendPoint[];
   missing_components: string[];
   warnings: string[];

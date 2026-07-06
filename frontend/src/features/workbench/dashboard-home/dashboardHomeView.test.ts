@@ -1,6 +1,13 @@
-﻿import { describe, expect, it } from "vitest";
+﻿import { describe, expect, expectTypeOf, it } from "vitest";
 
-import type { ChoiceNewsEvent, VerdictPayload } from "../../../api/contracts";
+import type {
+  ChoiceNewsEvent,
+  HomeIncomeTrendPayload,
+  HomeIncomeTrendPoint,
+  HomeIncomeTrendPointSourceStatus,
+  HomeIncomeTrendSourceStatus,
+  VerdictPayload,
+} from "../../../api/contracts";
 import { mapToHomeView, stripDisplayUnit } from "./dashboardHomeView";
 
 const verdict: VerdictPayload = {
@@ -48,6 +55,19 @@ describe("stripDisplayUnit", () => {
 
   it("returns empty unit when no suffix", () => {
     expect(stripDisplayUnit("12,345")).toEqual({ value: "12,345", unit: "" });
+  });
+});
+
+describe("IncomeTrend contract", () => {
+  it("keeps point source_status aligned with backend partial output", () => {
+    expectTypeOf<HomeIncomeTrendPoint["source_status"]>().toEqualTypeOf<
+      HomeIncomeTrendPointSourceStatus
+    >();
+    expectTypeOf<HomeIncomeTrendPayload["source_status"]>().toEqualTypeOf<
+      HomeIncomeTrendSourceStatus
+    >();
+    expectTypeOf<HomeIncomeTrendPointSourceStatus>().toEqualTypeOf<"ready" | "partial">();
+    expectTypeOf<HomeIncomeTrendSourceStatus>().toEqualTypeOf<"ready" | "partial" | "empty">();
   });
 });
 

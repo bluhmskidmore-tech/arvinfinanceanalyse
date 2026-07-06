@@ -721,9 +721,7 @@ function buildIncomeTrendRows(
   const mappedState =
     payload.source_status === "partial"
       ? displayState("partial", gapLabel)
-      : payload.source_status === "stale"
-        ? displayState("stale", "收益趋势数据过期")
-        : displayState("ready", "已接入");
+      : displayState("ready", "已接入");
   return {
     state: mappedState,
     rows: payload.points.map((point) => {

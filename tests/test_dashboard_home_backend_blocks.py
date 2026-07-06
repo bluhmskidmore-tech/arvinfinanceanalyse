@@ -4,7 +4,7 @@ import json
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import duckdb
 from fastapi.testclient import TestClient
@@ -15,6 +15,10 @@ from backend.app.repositories.news_warehouse_repo import (
     upsert_news_event,
 )
 from backend.app.repositories.task_write_guard import repository_task_write_scope
+from backend.app.schemas.executive_dashboard import (
+    HomeIncomeTrendPointSourceStatus,
+    HomeIncomeTrendSourceStatus,
+)
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
@@ -450,6 +454,36 @@ def test_home_income_trend_endpoint_reads_product_category_monthly_grand_total(t
         assert result["points"][0]["basis"] == "product_category_pnl_monthly"
         assert result["points"][0]["source_status"] == "partial"
     finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_service_source_status_value_domain_matches_schema(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-source-status.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    allowed_point_statuses = set(get_args(HomeIncomeTrendPointSourceStatus))
+    allowed_payload_statuses = set(get_args(HomeIncomeTrendSourceStatus))
+
+    try:
+        service_mod.invalidate_home_snapshot_cache()
+        payload = service_mod.home_income_trend_envelope(report_date=REPORT_DATE, window=2)
+        point_statuses = [point["source_status"] for point in payload["result"]["points"]]
+
+        assert allowed_point_statuses == {"ready", "partial"}
+        assert allowed_payload_statuses == {"ready", "partial", "empty"}
+        assert payload["result"]["source_status"] in allowed_payload_statuses
+        assert point_statuses
+        assert set(point_statuses) <= allowed_point_statuses
+        assert "partial" in point_statuses
+    finally:
+        service_mod.invalidate_home_snapshot_cache()
         get_settings.cache_clear()
 
 
