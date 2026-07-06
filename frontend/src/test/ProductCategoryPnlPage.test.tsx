@@ -118,8 +118,13 @@ async function waitForTrendDiagnosticsAutoLoad() {
   });
 }
 
-function buildMockAttributionEnvelope(reportDate: string, compare: "mom" | "yoy" = "mom") {
+function buildMockAttributionEnvelope(
+  reportDate: string,
+  compare: "mom" | "yoy" = "mom",
+  options: { closureErrorYi?: number } = {},
+) {
   const priorReportDate = compare === "yoy" ? "2025-02-28" : "2026-01-31";
+  const closureErrorYi = options.closureErrorYi ?? 0;
   const effect = {
     day_effect: yuan(-0.04),
     scale_effect: yuan(0.3),
@@ -129,7 +134,7 @@ function buildMockAttributionEnvelope(reportDate: string, compare: "mom" | "yoy"
     unexplained_effect: yuan(0),
     explained_effect: yuan(0.46),
     delta_business_net_income: yuan(0.46),
-    closure_error: yuan(0),
+    closure_error: yuan(closureErrorYi),
   };
   const point = {
     report_date: reportDate,
@@ -481,6 +486,29 @@ describe("ProductCategoryPnlPage", () => {
     expect(detailRow).toHaveTextContent("0.30");
     expect(detailRow).toHaveTextContent("0.18");
     expect(pointDetails).toHaveTextContent("0.20");
+  });
+
+  it("shows a closure-error warning when attribution residual is non-zero", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+      buildMockAttributionEnvelope(options.reportDate, options.compare, { closureErrorYi: 0.02 }),
+    );
+    const client = {
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryAttribution: attributionSpy,
+    } as ReturnType<typeof createApiClient> & {
+      getProductCategoryAttribution: typeof attributionSpy;
+    };
+    renderWorkbenchAppWithClient(client);
+
+    await screen.findByTestId("product-category-attribution");
+    const warning = await screen.findByTestId("product-category-closure-error-warning");
+    expect(warning).toHaveTextContent("对账残差非零，父级自报变动与子项之和存在缺口");
   });
 
   it("places a mobile attribution comparison readout before the raw comparison table", async () => {

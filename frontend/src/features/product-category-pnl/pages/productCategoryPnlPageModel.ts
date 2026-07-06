@@ -143,6 +143,9 @@ export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
 } as const;
 
 const YUAN_PER_YI = 100_000_000;
+const PRODUCT_CATEGORY_CLOSURE_ERROR_ALERT_THRESHOLD_YUAN = 500_000;
+const PRODUCT_CATEGORY_CLOSURE_ERROR_WARNING_TEXT =
+  "对账残差非零，父级自报变动与子项之和存在缺口";
 
 export type ProductCategoryTrendSnapshot = {
   reportDate: string;
@@ -935,6 +938,28 @@ export function formatProductCategoryAttributionEffect(
   digits = 2,
 ): string {
   return formatProductCategoryValue(value, digits);
+}
+
+export type ProductCategoryClosureErrorSignal = {
+  hasMaterialGap: boolean;
+  warningText: string | null;
+};
+
+export function selectProductCategoryClosureErrorSignal(
+  value: DecimalLike | null | undefined,
+): ProductCategoryClosureErrorSignal {
+  const raw = decimalNumber(value);
+  if (raw === null) {
+    return {
+      hasMaterialGap: false,
+      warningText: null,
+    };
+  }
+  const hasMaterialGap = Math.abs(raw) >= PRODUCT_CATEGORY_CLOSURE_ERROR_ALERT_THRESHOLD_YUAN;
+  return {
+    hasMaterialGap,
+    warningText: hasMaterialGap ? PRODUCT_CATEGORY_CLOSURE_ERROR_WARNING_TEXT : null,
+  };
 }
 
 export function formatProductCategoryRowDisplayValue(

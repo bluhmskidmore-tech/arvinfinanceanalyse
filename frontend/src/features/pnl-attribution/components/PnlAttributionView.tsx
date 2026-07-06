@@ -47,6 +47,7 @@ import {
 import {
   formatProductCategoryAttributionEffect,
   formatProductCategoryRowDisplayValue,
+  selectProductCategoryClosureErrorSignal,
   formatProductCategoryValue,
   formatProductCategoryYieldValue,
 } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
@@ -421,6 +422,9 @@ function ProductCategoryAttributionMobileReadout(props: {
 }) {
   const row = pickProductCategoryAttributionHeadlineRow(props.rows);
   const largestEffect = pickLargestProductCategoryEffect(row);
+  const closureErrorSignal = selectProductCategoryClosureErrorSignal(
+    row.effects.closure_error,
+  );
   return (
     <ProductCategoryMobileReadout
       testId="pnl-attribution-product-category-attribution-mobile-readout"
@@ -446,6 +450,7 @@ function ProductCategoryAttributionMobileReadout(props: {
         {
           label: "闭合误差",
           value: productCategoryEffectDisplayValue(row.effects.closure_error),
+          note: closureErrorSignal.warningText ?? undefined,
         },
         {
           label: "状态",
@@ -629,11 +634,19 @@ function ProductCategoryAttributionTable(props: {
                 )}
               </td>
               {productCategoryEffectColumns.map(([key]) => (
-                <td
-                  key={key}
-                  className="pnl-attribution-compact-table__num"
-                >
+                <td key={key} className="pnl-attribution-compact-table__num">
                   {formatProductCategoryAttributionEffect(row.effects[key])}
+                  {key === "closure_error" &&
+                  selectProductCategoryClosureErrorSignal(row.effects.closure_error)
+                    .hasMaterialGap ? (
+                    <span
+                      className="pnl-attribution-compact-table__closure-flag"
+                      title="对账残差非零，父级自报变动与子项之和存在缺口"
+                    >
+                      {" "}
+                      ⚠
+                    </span>
+                  ) : null}
                 </td>
               ))}
             </tr>

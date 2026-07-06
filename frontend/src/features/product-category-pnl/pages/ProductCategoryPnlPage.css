@@ -2953,6 +2953,19 @@
   font-weight: 800;
 }
 
+.product-category-attribution__metric-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--moss-color-warning-700);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.product-category-attribution__metric-warning-icon {
+  font-size: 12px;
+}
+
 .product-category-attribution__table-wrap {
   overflow-x: auto;
 }

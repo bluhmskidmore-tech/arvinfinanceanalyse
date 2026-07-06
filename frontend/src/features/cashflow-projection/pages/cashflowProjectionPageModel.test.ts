@@ -5,6 +5,7 @@ import type { CashflowProjectionVM } from "../adapters/cashflowProjectionAdapter
 import {
   selectCashflowMonthlyProjectionSeries,
   selectCashflowProjectionRiskReadout,
+  selectCashflowRateSensitivitySemantic,
 } from "./cashflowProjectionPageModel";
 
 function n(partial: Partial<Numeric> = {}): Numeric {
@@ -156,6 +157,22 @@ describe("selectCashflowProjectionRiskReadout", () => {
       negativeCumulativeMonths: 0,
       worstCumulativeMonth: "2026-04",
       finalCumulativeDisplay: "60.00",
+    });
+  });
+});
+
+describe("selectCashflowRateSensitivitySemantic", () => {
+  it("marks negative 1bp sensitivity as equity-loss semantics", () => {
+    expect(selectCashflowRateSensitivitySemantic(n({ raw: -80_000_000, unit: "yuan" }))).toEqual({
+      tone: "negative",
+      detail: "利率上行 1bp → 权益减少（原始单位：元）",
+    });
+  });
+
+  it("marks positive 1bp sensitivity as equity-gain semantics", () => {
+    expect(selectCashflowRateSensitivitySemantic(n({ raw: 20_000_000, unit: "yuan" }))).toEqual({
+      tone: "positive",
+      detail: "利率上行 1bp → 权益增加（原始单位：元）",
     });
   });
 });

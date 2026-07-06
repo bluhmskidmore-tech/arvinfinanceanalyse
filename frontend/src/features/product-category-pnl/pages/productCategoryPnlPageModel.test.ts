@@ -45,6 +45,7 @@ import {
   selectProductCategoryOperatingAnalysisSurface,
   selectProductCategoryOperatingActionBacktestSurface,
   selectProductCategoryRootCauseSurface,
+  selectProductCategoryClosureErrorSignal,
   selectProductCategoryScenarioExplanation,
   selectProductCategoryScenarioSensitivitySurface,
   selectProductCategoryTplScaleYieldChart,
@@ -1629,6 +1630,20 @@ describe("productCategoryPnlPageModel", () => {
     expect(formatProductCategoryAttributionEffect(yi(0.5))).toBe("0.50");
     expect(formatProductCategoryAttributionEffect(yi(-0.25))).toBe("-0.25");
     expect(formatProductCategoryAttributionEffect(null)).toBe("-");
+  });
+
+  it("flags material closure_error residuals for display warnings", () => {
+    expect(selectProductCategoryClosureErrorSignal(yi(0.02))).toEqual({
+      hasMaterialGap: true,
+      warningText: "对账残差非零，父级自报变动与子项之和存在缺口",
+    });
+  });
+
+  it("keeps closure_error warning silent for balanced rows", () => {
+    expect(selectProductCategoryClosureErrorSignal(yi(0))).toEqual({
+      hasMaterialGap: false,
+      warningText: null,
+    });
   });
 
   it("uses baseline rows as-is when no scenario rows are passed (no re-aggregation)", () => {

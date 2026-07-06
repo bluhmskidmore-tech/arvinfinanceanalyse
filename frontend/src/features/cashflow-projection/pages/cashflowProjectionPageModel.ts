@@ -19,8 +19,48 @@ export type CashflowProjectionRiskReadout = {
   finalCumulativeDisplay: string;
 };
 
+export type CashflowRateSensitivitySemantic = {
+  tone: "default" | "positive" | "negative" | "warning";
+  detail: string;
+};
+
 function numericRawOrZero(value: Numeric): number {
   return value.raw === null || !Number.isFinite(value.raw) ? 0 : value.raw;
+}
+
+function numericRaw(value: Numeric | undefined): number | null {
+  if (!value || value.raw === null || !Number.isFinite(value.raw)) {
+    return null;
+  }
+  return value.raw;
+}
+
+export function selectCashflowRateSensitivitySemantic(
+  value: Numeric | undefined,
+): CashflowRateSensitivitySemantic {
+  const raw = numericRaw(value);
+  if (raw === null) {
+    return {
+      tone: "warning",
+      detail: "利率上行 1bp 的权益变动待确认（原始单位：元）",
+    };
+  }
+  if (raw < 0) {
+    return {
+      tone: "negative",
+      detail: "利率上行 1bp → 权益减少（原始单位：元）",
+    };
+  }
+  if (raw > 0) {
+    return {
+      tone: "positive",
+      detail: "利率上行 1bp → 权益增加（原始单位：元）",
+    };
+  }
+  return {
+    tone: "default",
+    detail: "利率上行 1bp → 权益基本不变（原始单位：元）",
+  };
 }
 
 export function selectCashflowMonthlyProjectionSeries(

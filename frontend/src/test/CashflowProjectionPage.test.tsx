@@ -193,6 +193,43 @@ describe("CashflowProjectionPage", () => {
     expect(page).not.toHaveTextContent("+125,000,000.00");
   });
 
+  it("renders negative 1bp sensitivity as equity-loss semantics", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          rate_sensitivity_1bp: {
+            raw: -80_000_000,
+            unit: "yuan",
+            display: "-80,000,000.00",
+            precision: 2,
+            sign_aware: true,
+          },
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const dv01 = await screen.findByTestId("cashflow-kpi-dv01");
+    expect(dv01).toHaveTextContent("-0.80");
+    expect(dv01).toHaveTextContent("利率上行 1bp → 权益减少");
+  });
+
   it("uses DataSection fallback banner when result_meta marks latest_snapshot fallback", async () => {
     const client = createApiClient({ mode: "mock" });
     const orig = client.getCashflowProjection.bind(client);

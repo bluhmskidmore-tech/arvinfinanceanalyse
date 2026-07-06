@@ -67,6 +67,7 @@ import {
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
   selectProductCategoryRootCauseSurface,
+  selectProductCategoryClosureErrorSignal,
   type ProductCategoryScenarioSensitivitySurface,
   type ProductCategoryScenarioExplanation,
   selectProductCategoryScenarioExplanation,
@@ -1150,6 +1151,7 @@ function ProductCategoryAttributionPanel(props: {
 
   const headlineRow = props.payload.totals?.grand_total;
   const headline = headlineRow?.effects;
+  const closureErrorSignal = selectProductCategoryClosureErrorSignal(headline?.closure_error);
   const grandTotalRow = props.payload.totals?.grand_total
     ? { ...props.payload.totals.grand_total, category_name: "全表合计" }
     : null;
@@ -1183,7 +1185,16 @@ function ProductCategoryAttributionPanel(props: {
           <AttributionMetric label="对比期净营收" value={headlineRow?.prior?.business_net_income} />
           <AttributionMetric label="已解释" value={headline.explained_effect} />
           <AttributionMetric label="未解释" value={headline.unexplained_effect} />
-          <AttributionMetric label="闭合误差" value={headline.closure_error} />
+          <AttributionMetric
+            label="闭合误差"
+            value={headline.closure_error}
+            warningText={closureErrorSignal.warningText}
+            warningTestId={
+              closureErrorSignal.hasMaterialGap
+                ? "product-category-closure-error-warning"
+                : undefined
+            }
+          />
         </div>
       ) : null}
 
@@ -2434,6 +2445,8 @@ function ProductCategoryAttributionCompareSwitch(props: {
 function AttributionMetric(props: {
   label: string;
   value: ProductCategoryAttributionRow["effects"]["scale_effect"] | null | undefined;
+  warningText?: string | null;
+  warningTestId?: string;
 }) {
   return (
     <div className="product-category-attribution__metric">
@@ -2441,6 +2454,17 @@ function AttributionMetric(props: {
       <span className="product-category-attribution__metric-value">
         {formatProductCategoryAttributionEffect(props.value)}
       </span>
+      {props.warningText ? (
+        <span
+          className="product-category-attribution__metric-warning"
+          data-testid={props.warningTestId}
+        >
+          <span className="product-category-attribution__metric-warning-icon" aria-hidden="true">
+            ⚠
+          </span>
+          {props.warningText}
+        </span>
+      ) : null}
     </div>
   );
 }

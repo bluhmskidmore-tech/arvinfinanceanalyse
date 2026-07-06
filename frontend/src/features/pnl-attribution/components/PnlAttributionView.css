@@ -427,6 +427,12 @@
   text-align: right;
 }
 
+.pnl-attribution-compact-table__closure-flag {
+  color: var(--ib-warn);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .pnl-attribution-compact-table__cell--strong {
   font-weight: 700;
 }

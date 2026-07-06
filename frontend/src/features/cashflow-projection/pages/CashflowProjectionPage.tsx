@@ -14,6 +14,7 @@ import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
 import {
   selectCashflowMonthlyProjectionSeries,
   selectCashflowProjectionRiskReadout,
+  selectCashflowRateSensitivitySemantic,
 } from "./cashflowProjectionPageModel";
 import styles from "./CashflowProjectionPage.module.css";
 
@@ -170,6 +171,10 @@ export default function CashflowProjectionPage() {
   const riskReadout = useMemo(() => selectCashflowProjectionRiskReadout(vm), [vm]);
   const projectionRail = useMemo(() => buildProjectionRail(monthlySeries), [monthlySeries]);
   const rateSensitivity1bpDisplay = formatRateSensitivityYi(vm?.kpis.rateSensitivity1bp);
+  const rateSensitivitySemantic = useMemo(
+    () => selectCashflowRateSensitivitySemantic(vm?.kpis.rateSensitivity1bp),
+    [vm?.kpis.rateSensitivity1bp],
+  );
   const kpis = useMemo<KpiSpec[]>(() => {
     if (!vm) return [];
     return [
@@ -192,8 +197,9 @@ export default function CashflowProjectionPage() {
         testId: "cashflow-kpi-dv01",
         title: "1bp 敏感度",
         value: { ...vm.kpis.rateSensitivity1bp, display: rateSensitivity1bpDisplay },
-        detail: "利率变动对估值的边际影响",
+        detail: rateSensitivitySemantic.detail,
         priority: "primary",
+        tone: rateSensitivitySemantic.tone,
       },
       {
         key: "asset-duration",
@@ -229,7 +235,7 @@ export default function CashflowProjectionPage() {
         tone: "warning",
       },
     ];
-  }, [rateSensitivity1bpDisplay, vm]);
+  }, [rateSensitivity1bpDisplay, rateSensitivitySemantic, vm]);
 
   const chartOption = useMemo((): EChartsOption | null => {
     if (!monthlySeries) {
