@@ -471,7 +471,14 @@ def test_benchmark_excess_with_curve_data(tmp_path, monkeypatch):
         _numeric_raw(result[field]) != Decimal("0")
         for field in ("duration_effect", "curve_effect", "selection_effect")
     )
-    assert result["warnings"] == []
+    # recon_error is now the unexplained residual; the material-gap warning must
+    # track its magnitude, and no other warnings are expected.
+    expected_warnings = (
+        [service_mod.BENCHMARK_EXCESS_RECON_GAP]
+        if abs(_numeric_raw(result["recon_error"])) > Decimal("0.02")
+        else []
+    )
+    assert result["warnings"] == expected_warnings
     get_settings.cache_clear()
 
 
@@ -491,7 +498,12 @@ def test_benchmark_excess_with_cdb_curve_data(tmp_path, monkeypatch):
     assert _numeric_raw(result["excess_return"]) != Decimal("0")
     assert payload["result_meta"].get("vendor_status", "ok") == "ok"
     assert "sv_cdb_current" in payload["result_meta"]["source_version"]
-    assert result["warnings"] == []
+    expected_warnings = (
+        [service_mod.BENCHMARK_EXCESS_RECON_GAP]
+        if abs(_numeric_raw(result["recon_error"])) > Decimal("0.02")
+        else []
+    )
+    assert result["warnings"] == expected_warnings
     get_settings.cache_clear()
 
 
@@ -558,7 +570,12 @@ def test_benchmark_excess_with_aaa_curve_data(tmp_path, monkeypatch):
     assert _numeric_raw(result["spread_effect"]) != Decimal("0")
     assert payload["result_meta"].get("vendor_status", "ok") == "ok"
     assert "sv_aaa_current" in payload["result_meta"]["source_version"]
-    assert result["warnings"] == []
+    expected_warnings = (
+        [service_mod.BENCHMARK_EXCESS_RECON_GAP]
+        if abs(_numeric_raw(result["recon_error"])) > Decimal("0.02")
+        else []
+    )
+    assert result["warnings"] == expected_warnings
     get_settings.cache_clear()
 
 

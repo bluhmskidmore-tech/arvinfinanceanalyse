@@ -15,6 +15,12 @@ from app.core_finance.macro.helpers import to_decimal_safe as _d
 from app.core_finance.macro.helpers import to_rounded_float as _f
 
 
+def _optional_decimal(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    return _d(value)
+
+
 def _monthly_sample(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[tuple[int, int]] = set()
     out: list[dict[str, Any]] = []
@@ -32,7 +38,7 @@ def _monthly_sample(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def _momentum(series: list[Decimal], window: int = 3) -> str | None:
+def _momentum(series: list[Decimal | None], window: int = 3) -> str | None:
     valid = [s for s in series if s is not None]
     if len(valid) < window + 1:
         return None
@@ -75,14 +81,14 @@ def compute_economic_cycle(
     monthly = _monthly_sample(wide_rows_desc)
     today = wide_rows_desc[0]
 
-    pmi_series = [_d(m.get("pmi")) for m in monthly]
-    cpi_series = [_d(m.get("cpi_yoy")) for m in monthly]
-    ppi_series = [_d(m.get("ppi_yoy")) for m in monthly]
-    m2_series = [_d(m.get("m2_yoy")) for m in monthly]
-    sf_series = [_d(m.get("social_financing_yoy")) for m in monthly]
+    pmi_series = [_optional_decimal(m.get("pmi")) for m in monthly]
+    cpi_series = [_optional_decimal(m.get("cpi_yoy")) for m in monthly]
+    ppi_series = [_optional_decimal(m.get("ppi_yoy")) for m in monthly]
+    m2_series = [_optional_decimal(m.get("m2_yoy")) for m in monthly]
+    sf_series = [_optional_decimal(m.get("social_financing_yoy")) for m in monthly]
 
-    pmi_val = _d(today.get("pmi"))
-    pmi_above_50 = pmi_val > Decimal("50") if pmi_val else False
+    pmi_val = _optional_decimal(today.get("pmi"))
+    pmi_above_50 = pmi_val is not None and pmi_val > Decimal("50")
     growth_mom = _momentum(pmi_series)
     m2_mom = _momentum(m2_series)
     sf_mom = _momentum(sf_series)
@@ -99,31 +105,34 @@ def compute_economic_cycle(
     if sf_mom == "up":
         growth_score += Decimal("15")
 
-    term_spread = _d(today.get("term_spread_10y_1y"))
-    if term_spread > Decimal("50"):
-        growth_score += Decimal("15")
-    elif term_spread > Decimal("20"):
-        growth_score += Decimal("5")
+    term_spread = _optional_decimal(today.get("term_spread_10y_1y"))
+    if term_spread is not None:
+        if term_spread > Decimal("50"):
+            growth_score += Decimal("15")
+        elif term_spread > Decimal("20"):
+            growth_score += Decimal("5")
 
     growth_score = max(Decimal("0"), min(Decimal("100"), growth_score))
 
-    cpi_val = _d(today.get("cpi_yoy"))
-    ppi_val = _d(today.get("ppi_yoy"))
+    cpi_val = _optional_decimal(today.get("cpi_yoy"))
+    ppi_val = _optional_decimal(today.get("ppi_yoy"))
     inflation_mom = _momentum(cpi_series)
     ppi_mom = _momentum(ppi_series)
 
     inflation_score = Decimal("0")
-    if cpi_val > Decimal("3"):
-        inflation_score += Decimal("40")
-    elif cpi_val > Decimal("2"):
-        inflation_score += Decimal("25")
-    elif cpi_val > Decimal("1"):
-        inflation_score += Decimal("10")
+    if cpi_val is not None:
+        if cpi_val > Decimal("3"):
+            inflation_score += Decimal("40")
+        elif cpi_val > Decimal("2"):
+            inflation_score += Decimal("25")
+        elif cpi_val > Decimal("1"):
+            inflation_score += Decimal("10")
 
-    if ppi_val > Decimal("2"):
-        inflation_score += Decimal("20")
-    elif ppi_val > Decimal("0"):
-        inflation_score += Decimal("10")
+    if ppi_val is not None:
+        if ppi_val > Decimal("2"):
+            inflation_score += Decimal("20")
+        elif ppi_val > Decimal("0"):
+            inflation_score += Decimal("10")
 
     if inflation_mom == "up":
         inflation_score += Decimal("20")
@@ -184,10 +193,10 @@ def compute_economic_cycle(
 
     history: list[dict[str, Any]] = []
     for m in monthly[:6]:
-        m_pmi = _d(m.get("pmi"))
-        m_cpi = _d(m.get("cpi_yoy"))
-        g = m_pmi > Decimal("50")
-        i_flag = m_cpi > Decimal("2")
+        m_pmi = _optional_decimal(m.get("pmi"))
+        m_cpi = _optional_decimal(m.get("cpi_yoy"))
+        g = m_pmi is not None and m_pmi > Decimal("50")
+        i_flag = m_cpi is not None and m_cpi > Decimal("2")
         if g and not i_flag:
             ph = "复苏"
         elif g and i_flag:
@@ -207,8 +216,22 @@ def compute_economic_cycle(
         )
 
     warnings: list[str] = []
+    missing_checks = (
+        ("pmi", "PMI_MISSING"),
+        ("cpi_yoy", "CPI_YOY_MISSING"),
+        ("ppi_yoy", "PPI_YOY_MISSING"),
+        ("m2_yoy", "M2_YOY_MISSING"),
+        ("social_financing_yoy", "SOCIAL_FINANCING_YOY_MISSING"),
+    )
+    for field, warning_code in missing_checks:
+        if any(row.get(field) is None for row in monthly):
+            warnings.append(warning_code)
+    if today.get("term_spread_10y_1y") is None:
+        warnings.append("TERM_SPREAD_10Y_1Y_MISSING")
     if len(monthly) < 3:
         warnings.append("MACRO_MONTHLY_SAMPLE_SHORT")
+    m2_val = _optional_decimal(today.get("m2_yoy"))
+    sf_val = _optional_decimal(today.get("social_financing_yoy"))
 
     return {
         "report_date": report_date.isoformat(),
@@ -221,14 +244,12 @@ def compute_economic_cycle(
         "inflation_momentum": inflation_mom or "flat",
         "strategy": strategy,
         "indicators": {
-            "pmi": _f(pmi_val) if today.get("pmi") is not None else None,
-            "cpi_yoy": _f(cpi_val) if today.get("cpi_yoy") is not None else None,
-            "ppi_yoy": _f(ppi_val) if today.get("ppi_yoy") is not None else None,
-            "m2_yoy": _f(_d(today.get("m2_yoy"))) if today.get("m2_yoy") is not None else None,
-            "social_financing_yoy": _f(_d(today.get("social_financing_yoy")))
-            if today.get("social_financing_yoy") is not None
-            else None,
-            "term_spread_10y_1y": _f(term_spread) if today.get("term_spread_10y_1y") is not None else None,
+            "pmi": _f(pmi_val) if pmi_val is not None else None,
+            "cpi_yoy": _f(cpi_val) if cpi_val is not None else None,
+            "ppi_yoy": _f(ppi_val) if ppi_val is not None else None,
+            "m2_yoy": _f(m2_val) if m2_val is not None else None,
+            "social_financing_yoy": _f(sf_val) if sf_val is not None else None,
+            "term_spread_10y_1y": _f(term_spread) if term_spread is not None else None,
         },
         "phase_scores": {
             "recovery": _f(max(Decimal("0"), growth_score - inflation_score + Decimal("50"))),

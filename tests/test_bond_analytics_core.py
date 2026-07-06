@@ -311,6 +311,69 @@ def test_fx_effect_positive_when_usd_appreciates() -> None:
     assert summary["bond_details"][0]["fx_effect"] == Decimal("41.35000000")
 
 
+def test_fx_effect_missing_rate_emits_fx_rate_missing_warning() -> None:
+    summary = _read_models_module().summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "USD Credit 5Y",
+                "asset_class_raw": "信用债",
+                "asset_class_std": "credit",
+                "bond_type": "企业债",
+                "accounting_class": "OCI",
+                "currency_code": "USD",
+                "face_value": Decimal("1000"),
+                "market_value_native": Decimal("1000"),
+                "market_value": Decimal("7082.70000000"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        fx_rates_current={"EUR": Decimal("7.9")},
+        fx_rates_prior={"EUR": Decimal("7.8")},
+    )
+
+    # Value still defaults to zero, but the missing FX input must be observable.
+    assert summary["fx_effect_total"] == Decimal("0")
+    assert summary["fx_rate_missing_currencies"] == ["USD"]
+    assert any("FX_RATE_MISSING" in warning for warning in summary["warnings"])
+
+
+def test_fx_effect_cny_bonds_do_not_emit_fx_rate_missing_warning() -> None:
+    summary = _read_models_module().summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "Treasury 5Y",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+    )
+
+    # CNY exposure has no FX effect and must not raise a missing-input warning.
+    assert summary["fx_effect_total"] == Decimal("0")
+    assert summary["fx_rate_missing_currencies"] == []
+    assert all("FX_RATE_MISSING" not in warning for warning in summary["warnings"])
+
+
 def test_fx_effect_zero_without_native_market_value() -> None:
     summary = _read_models_module().summarize_return_decomposition(
         [
@@ -433,7 +496,17 @@ def test_allocation_effect_uses_non_carry_sector_returns() -> None:
 
     assert summary["allocation_effect"] == Decimal("-200.0000000")
     assert summary["selection_effect"] == Decimal("200.00000000")
-    assert summary["recon_error"] == Decimal("0")
+    # recon_error is the unexplained residual: excess minus the independently
+    # computed effects (excluding the selection plug). It can be non-zero.
+    assert summary["recon_error"] == (
+        summary["excess_return"]
+        - summary["duration_effect"]
+        - summary["curve_effect"]
+        - summary["spread_effect"]
+        - summary["allocation_effect"]
+    )
+    assert summary["recon_error"] == summary["selection_effect"]
+    assert summary["recon_error"] != Decimal("0")
     assert summary["explained_excess"] == summary["excess_return"]
 
 
@@ -693,7 +766,8 @@ def test_allocation_effect_sums_correctly() -> None:
 
     assert summary["allocation_effect"] == Decimal("500.0000000")
     assert summary["selection_effect"] == Decimal("1000.00000000")
-    assert summary["recon_error"] == Decimal("0")
+    # recon_error equals the unexplained residual (== the selection plug), non-zero here.
+    assert summary["recon_error"] == Decimal("1000.00000000")
     assert summary["explained_excess"] == summary["excess_return"]
 
 

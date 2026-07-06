@@ -142,6 +142,11 @@ def build_pnl_bridge_rows(
             fx_rate_current=fx_rates_current,
             fx_rate_prior=fx_rates_prior,
         )
+        fx_rate_missing_diagnostic = _fx_rate_missing_diagnostic(
+            currency_basis=currency_basis,
+            fx_rate_current=fx_rates_current,
+            fx_rate_prior=fx_rates_prior,
+        )
         realized_trading = _coerce_decimal(raw_row.get("capital_gain_517", ZERO))
         unrealized_fv = _coerce_decimal(raw_row.get("fair_value_change_516", ZERO))
         manual_adjustment = _coerce_decimal(raw_row.get("manual_adjustment", ZERO))
@@ -203,6 +208,7 @@ def build_pnl_bridge_rows(
                         if actual_pnl_missing
                         else None
                     ),
+                    fx_rate_missing_diagnostic=fx_rate_missing_diagnostic,
                 ),
             )
         )
@@ -358,7 +364,9 @@ def _calculate_fx_translation(
     FX translation = face_value_native * (current_rate - prior_rate).
 
     - CNY/CNX/RMB rows have no FX translation.
-    - Missing FX dictionaries or missing base-currency rates default to 0.
+    - Missing FX dictionaries or missing base-currency rates default to 0 so the bridge
+      still closes; the missing-input condition is separately surfaced as a diagnostic via
+      ``_fx_rate_missing_diagnostic`` rather than being silently treated as "no FX effect".
     """
     if not fx_rate_current or not fx_rate_prior:
         return ZERO
@@ -370,6 +378,34 @@ def _calculate_fx_translation(
     if current_rate is None or prior_rate is None:
         return ZERO
     return (face_value_native * (current_rate - prior_rate)).quantize(AMOUNT_SCALE)
+
+
+def _fx_rate_missing_diagnostic(
+    *,
+    currency_basis: str,
+    fx_rate_current: dict[str, Decimal] | None,
+    fx_rate_prior: dict[str, Decimal] | None,
+) -> str | None:
+    """Distinguish "no FX exposure" (domestic row) from "missing FX input" (foreign row).
+
+    Returns a diagnostic string (including the currency) when a foreign-currency row cannot
+    be translated because the FX dictionary or the row's rate is missing. Domestic rows
+    (empty/CNY/CNX/RMB) have no FX exposure and never produce a diagnostic.
+    """
+    base = currency_basis.upper().strip()
+    if base in ("", "CNY", "CNX", "RMB"):
+        return None
+    if not fx_rate_current or not fx_rate_prior:
+        return (
+            f"FX_RATE_MISSING: currency={base}; FX rate dictionary missing; "
+            "fx_translation defaulted to 0."
+        )
+    if fx_rate_current.get(base) is None or fx_rate_prior.get(base) is None:
+        return (
+            f"FX_RATE_MISSING: currency={base}; {base} rate missing for the period; "
+            "fx_translation defaulted to 0."
+        )
+    return None
 
 
 def _curve_rate(curve: dict[str, Decimal], target_years: float) -> Decimal:
@@ -442,6 +478,7 @@ def _build_balance_diagnostics(
     current_resolution_diagnostic: str | None = None,
     prior_resolution_diagnostic: str | None = None,
     actual_pnl_diagnostic: str | None = None,
+    fx_rate_missing_diagnostic: str | None = None,
 ) -> tuple[str, ...]:
     diagnostics: list[str] = []
     if current_resolution_diagnostic:
@@ -450,6 +487,8 @@ def _build_balance_diagnostics(
         diagnostics.append(prior_resolution_diagnostic)
     if actual_pnl_diagnostic:
         diagnostics.append(actual_pnl_diagnostic)
+    if fx_rate_missing_diagnostic:
+        diagnostics.append(fx_rate_missing_diagnostic)
     if current_balance is None:
         diagnostics.append("Missing current balance row; ending_dirty_mv defaults to 0.")
     if prior_balance is None:

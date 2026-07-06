@@ -71,7 +71,16 @@ def compute_cockpit_warnings(
             ytm = normalize_bond_rate_decimal(row.get("ytm_value"))
             coupon = normalize_bond_rate_decimal(row.get("coupon_rate"))
             interest_rate_val = normalize_bond_rate_decimal(row.get("interest_rate"))
-            rate = ytm or coupon or interest_rate_val
+            # ZQTZ 源数据里 0 代表未采集/不适用（与 liability_analytics_compat.
+            # compute_liability_yield_metrics 的显式回退链保持一致），用
+            # `in (None, ZERO)` 显式判断而非 `or`，避免利率字段隐性依赖
+            # Decimal 的 falsy 语义。
+            if ytm not in (None, ZERO):
+                rate = ytm
+            elif coupon not in (None, ZERO):
+                rate = coupon
+            else:
+                rate = interest_rate_val
             asset_pairs.append((amount, rate))
 
     counterparty_totals: dict[str, Decimal] = defaultdict(lambda: ZERO)
@@ -227,7 +236,9 @@ def compute_contribution_split(
                 continue
             ytm = normalize_bond_rate_decimal(row.get("ytm_value"))
             coupon = normalize_bond_rate_decimal(row.get("coupon_rate"))
-            rate = ytm or coupon
+            # 同上：0 视为未采集，显式回退到下一候选，与
+            # liability_analytics_compat.compute_liability_yield_metrics 保持一致。
+            rate = ytm if ytm not in (None, ZERO) else coupon
             # Classify: 利率债 vs 信用债 (simplified)
             asset_class = str(row.get("asset_class") or "").strip()
             bond_type = str(row.get("bond_type") or "").strip()

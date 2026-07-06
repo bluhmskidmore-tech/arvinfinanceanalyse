@@ -339,12 +339,25 @@ def test_duration_gap_calculation_uses_full_scope_term_proxy():
 
     assert result.asset_weighted_duration == Decimal("1.147945205479452054794520548")
     assert result.liability_weighted_duration == Decimal("1.666666666666666666666666667")
-    assert result.duration_gap == Decimal("-0.518721461187214611872146119")
-    assert result.modified_duration_gap == Decimal("-0.518721461187214611872146119")
     assert result.total_asset_market_value == Decimal("200")
     assert result.total_liability_value == Decimal("150")
-    assert result.equity_duration == Decimal("-2.074885844748858447488584476")
-    assert result.rate_sensitivity_1bp == Decimal("-0.01037442922374429223744292238")
+    # ALM textbook: DGAP = D_A - (L/A) * D_L; D_E = (D_A*A - D_L*L) / E
+    total_assets = Decimal("200")
+    total_liabilities = Decimal("150")
+    equity = total_assets - total_liabilities
+    expected_gap = result.asset_weighted_duration - (
+        total_liabilities / total_assets
+    ) * result.liability_weighted_duration
+    expected_equity_duration = (
+        result.asset_weighted_duration * total_assets
+        - result.liability_weighted_duration * total_liabilities
+    ) / equity
+    assert result.duration_gap == expected_gap
+    assert result.modified_duration_gap == expected_gap
+    assert result.equity_duration == expected_equity_duration
+    # Sign convention: rates up 1bp -> equity value change = -D_E * E * 1bp
+    assert result.rate_sensitivity_1bp == -(expected_equity_duration * equity * Decimal("0.0001"))
+    assert any("remaining-term proxy" in warning for warning in result.warnings)
 
 
 def test_duration_gap_warns_when_missing_maturity_excludes_rows():
@@ -391,12 +404,13 @@ def test_duration_gap_warns_when_missing_maturity_excludes_rows():
 
     assert result.asset_weighted_duration == Decimal("3.2")
     assert result.liability_weighted_duration == Decimal("2")
-    assert result.duration_gap == Decimal("1.2")
-    assert result.modified_duration_gap == Decimal("1.2")
+    # DGAP = 3.2 - (200/300) * 2; D_E = (3.2*300 - 2*200) / 100 = 5.6
+    assert result.duration_gap == Decimal("3.2") - (Decimal("200") / Decimal("300")) * Decimal("2")
+    assert result.modified_duration_gap == result.duration_gap
     assert result.total_asset_market_value == Decimal("300")
     assert result.total_liability_value == Decimal("200")
-    assert result.equity_duration == Decimal("3.6")
-    assert result.rate_sensitivity_1bp == Decimal("0.0360")
+    assert result.equity_duration == Decimal("5.6")
+    assert result.rate_sensitivity_1bp == Decimal("-0.0560")
     assert any("missing maturity information" in warning for warning in result.warnings)
 
 

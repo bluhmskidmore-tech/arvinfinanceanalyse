@@ -49,11 +49,12 @@ def test_accepts_iso_strings_and_datetimes() -> None:
     assert result.tier == FRESHNESS_TIER_FRESH
 
 
-def test_future_dated_series_keeps_negative_age_as_fresh() -> None:
+def test_future_dated_series_keeps_negative_age_as_fresh_with_lower_confidence() -> None:
     result = assess_freshness(date(2026, 7, 3), AS_OF)
     assert result.age_days == -2
     assert result.tier == FRESHNESS_TIER_FRESH
-    assert result.confidence == Decimal("1")
+    assert result.confidence == Decimal("0.5")
+    assert result.notes == ("LOOKAHEAD_DATE_DETECTED",)
 
 
 def test_confidence_mapping() -> None:

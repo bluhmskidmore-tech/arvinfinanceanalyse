@@ -292,6 +292,18 @@ def compute_duration_gap(
     """
     Compute full-scope term-proxy duration gap, projected monthly cashflows,
     and 12-month reinvestment risk from formal balance facts.
+
+    Formulas (textbook ALM):
+    - ``duration_gap = D_A - (L / A) * D_L``
+    - ``equity_duration = (D_A * A - D_L * L) / E`` (equals ``duration_gap * A / E``)
+    - ``modified_duration_gap`` currently mirrors ``duration_gap`` (term-proxy /
+      Macaulay basis, not divided by (1 + y)); treat it as a proxy pending
+      confirmation of the modified-duration convention.
+
+    Sign convention for ``rate_sensitivity_1bp``: it is the projected change in
+    equity value for a +1bp parallel rate move, i.e.
+    ``-equity_duration * equity * 0.0001``. With a positive equity duration a
+    rate rise produces a negative sensitivity (equity value falls).
     """
 
     warnings: list[str] = []
@@ -357,8 +369,19 @@ def compute_duration_gap(
     liability_weighted_duration = (
         liability_duration_numerator / liability_duration_weight if liability_duration_weight > ZERO else ZERO
     )
-    duration_gap = asset_weighted_duration - liability_weighted_duration
+    if total_asset_market_value > ZERO:
+        duration_gap = asset_weighted_duration - (
+            total_liability_value / total_asset_market_value
+        ) * liability_weighted_duration
+    else:
+        duration_gap = asset_weighted_duration - liability_weighted_duration
     modified_duration_gap = duration_gap
+
+    if liability_duration_weight > ZERO:
+        _append_warning(
+            warnings,
+            "Liability duration uses a remaining-term proxy (years to maturity), not a cashflow-weighted duration.",
+        )
 
     if total_asset_market_value <= ZERO:
         _append_warning(warnings, "Total asset market value is zero; duration gap metrics were computed as zero.")
@@ -371,8 +394,11 @@ def compute_duration_gap(
         equity_duration = ZERO
         rate_sensitivity_1bp = ZERO
     else:
-        equity_duration = duration_gap * (total_asset_market_value / equity)
-        rate_sensitivity_1bp = equity_duration * equity * ONE_BPS
+        equity_duration = (
+            asset_weighted_duration * total_asset_market_value
+            - liability_weighted_duration * total_liability_value
+        ) / equity
+        rate_sensitivity_1bp = -(equity_duration * equity * ONE_BPS)
         if equity < ZERO:
             _append_warning(warnings, "Equity is negative; equity duration should be interpreted with caution.")
 

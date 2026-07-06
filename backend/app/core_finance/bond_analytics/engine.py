@@ -302,12 +302,18 @@ def _optional_decimal(value: Any) -> Decimal | None:
 
 
 def _normalize_rate_decimal(value: Any) -> Decimal | None:
-    dec = _optional_decimal(value)
-    if dec is None:
+    """Normalize a stored annual rate to decimal form via the shared rate_units rules.
+
+    Delegates to ``rate_units.normalize_annual_rate_to_decimal`` (threshold > 2 for
+    percent-format strays, > 20 rejected as dirty data) and converts the float
+    result back to ``Decimal`` through ``str`` to preserve precision.
+    """
+    from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
+
+    normalized = normalize_annual_rate_to_decimal(value)
+    if normalized is None:
         return None
-    if abs(dec) > Decimal("1"):
-        return dec / Decimal("100")
-    return dec
+    return Decimal(str(normalized))
 
 
 def _coerce_date(value: Any) -> date | None:

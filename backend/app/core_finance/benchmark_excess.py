@@ -67,7 +67,14 @@ def compute_benchmark_excess(
     portfolio_return_decimal = period_pnl / start_total_mv
     excess_bp = (port - bench) * 10000
     duration_effect_bp = -(D_port - D_bench) * avg_dy * 10000
-    selection_effect_bp = excess_bp - duration_effect_bp - curve_effect_bp - spread_effect_bp
+
+    Honest residual semantics:
+    - explained_excess_bp = duration_effect_bp + curve_effect_bp + spread_effect_bp
+      (only genuinely explained factors; curve/spread are 0 placeholders today).
+    - selection_effect_bp = excess_bp - explained_excess_bp is the *unexplained residual*
+      (individual selection + first-order approximation error), NOT a reconciled factor.
+    There is deliberately no always-zero recon field: excess = explained + residual holds
+    by construction, so a separate recon term would be uninformative.
     """
     profile = BENCHMARK_PROFILES.get(benchmark_id) or BENCHMARK_PROFILES["CDB_INDEX"]
     bench_name = str(profile["name"])
@@ -91,11 +98,14 @@ def compute_benchmark_excess(
 
     dur_diff = portfolio_mod_duration - d_bench
     duration_effect_bp = -dur_diff * dy * Decimal("10000")
+    # Curve (non-parallel) and spread effects are not decomposed yet without index/KRD basis.
     curve_effect_bp = Decimal("0")
     spread_effect_bp = Decimal("0")
-    selection_effect_bp = excess_bp - duration_effect_bp - curve_effect_bp - spread_effect_bp
-    explained_bp = duration_effect_bp + curve_effect_bp + spread_effect_bp + selection_effect_bp
-    recon_bp = excess_bp - explained_bp
+    warnings.append("BENCHMARK_CURVE_SPREAD_NOT_DECOMPOSED")
+    # explained = only the factors we can actually attribute today.
+    explained_bp = duration_effect_bp + curve_effect_bp + spread_effect_bp
+    # selection is the honest unexplained residual, not a reconciled factor.
+    selection_effect_bp = excess_bp - explained_bp
 
     return {
         "benchmark_name": bench_name,
@@ -108,7 +118,6 @@ def compute_benchmark_excess(
         "spread_effect_bp": float(spread_effect_bp),
         "selection_effect_bp": float(selection_effect_bp),
         "explained_excess_bp": float(explained_bp),
-        "recon_error_bp": float(recon_bp),
         "portfolio_duration": float(portfolio_mod_duration),
         "benchmark_duration": float(d_bench),
         "duration_diff": float(dur_diff),
@@ -132,7 +141,7 @@ def compute_benchmark_excess(
             {
                 "source": "selection",
                 "contribution_bp": float(selection_effect_bp),
-                "description": "残差（超额 − 已解释因子，含个券选择与近似误差）",
+                "description": "未解释残差 unexplained residual（超额 − 已解释因子，含个券选择与近似误差，非对账项）",
             },
         ],
         "warnings": warnings + ["BENCHMARK_RETURN_CURVE_PROXY_NOT_WIND_INDEX"],
@@ -152,7 +161,6 @@ def _empty_payload(bench_name: str, benchmark_id: str, warnings: list[str]) -> d
         "spread_effect_bp": z,
         "selection_effect_bp": z,
         "explained_excess_bp": z,
-        "recon_error_bp": z,
         "portfolio_duration": z,
         "benchmark_duration": z,
         "duration_diff": z,

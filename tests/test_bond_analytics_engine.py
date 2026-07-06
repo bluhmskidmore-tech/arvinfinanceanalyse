@@ -666,3 +666,77 @@ def test_compute_bond_analytics_rows_rejects_report_date_mismatch() -> None:
 
     with pytest.raises(ValueError, match="report_date"):
         module.compute_bond_analytics_rows(snapshot_rows, requested_report_date)
+
+
+def test_normalize_rate_decimal_matches_rate_units_semantics() -> None:
+    """Engine rate normalization must follow rate_units.normalize_annual_rate_to_decimal.
+
+    Snapshot rates are stored in decimal form (0.035 = 3.5%); the >2 threshold only
+    rescues obvious percent-format strays, and >20 is rejected as dirty data.
+    """
+    module = _module()
+
+    # Decimal-form values stay unchanged.
+    assert module._normalize_rate_decimal(Decimal("0.035")) == Decimal("0.035")
+    # 0.85 <= 2 is treated as an already-decimal value (0.85 = 85%), same as rate_units.
+    assert module._normalize_rate_decimal(Decimal("0.85")) == Decimal("0.85")
+    # Values in (1, 2] are decimals under rate_units (old engine threshold 1 wrongly divided).
+    assert module._normalize_rate_decimal(Decimal("1.5")) == Decimal("1.5")
+    # Percent-format strays (> 2) are divided by 100.
+    assert module._normalize_rate_decimal(Decimal("3.5")) == Decimal("0.035")
+    # > 20 is dirty data -> None (old engine turned 25 into 0.25).
+    assert module._normalize_rate_decimal(Decimal("25")) is None
+    # Negative rates are rejected as dirty data, consistent with rate_units.
+    assert module._normalize_rate_decimal(Decimal("-0.5")) is None
+    assert module._normalize_rate_decimal(None) is None
+    assert module._normalize_rate_decimal("") is None
+
+
+def test_compute_bond_analytics_rows_treats_dirty_rates_as_missing() -> None:
+    module = _module()
+    report_date = date(2026, 3, 31)
+    snapshot_rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "TB-DIRTY-001",
+            "instrument_name": "脏利率债",
+            "portfolio_name": "组合脏数据",
+            "cost_center": "CC-DIRTY",
+            "account_category": "持有至到期投资",
+            "asset_class": "债券资产",
+            "bond_type": "国债",
+            "issuer_name": "财政部",
+            "industry_name": "政府",
+            "rating": "AAA",
+            "currency_code": "CNY",
+            "face_value_native": Decimal("100"),
+            "market_value_native": Decimal("100"),
+            "amortized_cost_native": Decimal("100"),
+            "accrued_interest_native": Decimal("0"),
+            "coupon_rate": Decimal("25"),
+            "ytm_value": Decimal("25"),
+            "maturity_date": date(2031, 3, 31),
+            "interest_mode": "年付",
+            "is_issuance_like": False,
+            "source_version": "sv_snapshot_dirty",
+            "rule_version": "rv_snapshot_dirty",
+            "ingest_batch_id": "ib_dirty",
+            "trace_id": "trace_dirty",
+        }
+    ]
+
+    rows = module.compute_bond_analytics_rows(snapshot_rows, report_date)
+
+    assert len(rows) == 1
+    row = rows[0]
+    # Dirty rates (> 20) are treated as missing rather than silently divided by 100.
+    assert row.coupon_rate is None
+    assert row.ytm is None
+    expected_macaulay = common.estimate_duration(
+        date(2031, 3, 31),
+        report_date,
+        coupon_rate=Decimal("0"),
+        ytm=Decimal("0"),
+        bond_code="TB-DIRTY-001",
+    )
+    assert row.macaulay_duration == expected_macaulay

@@ -114,6 +114,12 @@ DAILY_AVG_COLUMN_MAP = [
     (29, 30, "CNY", "11d"),
 ]
 
+# 表头行位置与预期列名：固定下标读取前先校验，避免来源表头列顺序变化时静默读错列。
+_LEDGER_HEADER_ROW = 6
+_LEDGER_EXPECTED_HEADERS = ("组合科目代码", "组合科目名称", "币种", "期初余额", "本期借方", "本期贷方", "期末余额")
+_DAILY_AVG_HEADER_ROW = 3
+_DAILY_AVG_EXPECTED_BLOCK_HEADERS = ("币种", "科目", "科目日均余额")
+
 SEGMENT_BASE_SCALE_SOURCE = "分部基础数据（2026）"
 SEGMENT_BASE_SCALE_MICRO_LOAN_MISSING_SOURCE = "source_missing: 标准日均源不含80297微贷金融支行专段"
 SEGMENT_SCALE_COMPARE_SOURCE = "月度分析-分部情况：总账对账+日均同源历史月重建"
@@ -149,12 +155,50 @@ FORMAL_FINANCIAL_INDICATOR_PENDING_NAMES = [
 ]
 
 
+def _validate_ledger_header(worksheet: Any, sheet_name: str) -> None:
+    header_row = next(
+        worksheet.iter_rows(min_row=_LEDGER_HEADER_ROW, max_row=_LEDGER_HEADER_ROW, values_only=True),
+        (),
+    )
+    actual = tuple(
+        str(cell).strip() if cell is not None else None
+        for cell in header_row[: len(_LEDGER_EXPECTED_HEADERS)]
+    )
+    if actual != _LEDGER_EXPECTED_HEADERS:
+        raise ValueError(
+            f"总账对账工作表[{sheet_name}]第{_LEDGER_HEADER_ROW}行表头不符合预期："
+            f"期望 {_LEDGER_EXPECTED_HEADERS}，实际读取到 {actual}。"
+            "请确认来源表头列顺序未变化后重试。"
+        )
+
+
+def _validate_daily_avg_header(worksheet: Any, sheet_name: str) -> None:
+    header_row = next(
+        worksheet.iter_rows(min_row=_DAILY_AVG_HEADER_ROW, max_row=_DAILY_AVG_HEADER_ROW, values_only=True),
+        (),
+    )
+    for code_col, value_col, currency, level in DAILY_AVG_COLUMN_MAP:
+        marker_col = code_col - 1
+        block = (marker_col, code_col, value_col)
+        actual = tuple(
+            str(header_row[index]).strip() if index < len(header_row) and header_row[index] is not None else None
+            for index in block
+        )
+        if actual != _DAILY_AVG_EXPECTED_BLOCK_HEADERS:
+            raise ValueError(
+                f"日均工作表[{sheet_name}]第{_DAILY_AVG_HEADER_ROW}行、{currency}/{level}列块（列 {marker_col}-{value_col}）"
+                f"表头不符合预期：期望 {_DAILY_AVG_EXPECTED_BLOCK_HEADERS}，实际读取到 {actual}。"
+                "请确认来源表头列顺序未变化后重试。"
+            )
+
+
 def parse_daily_avg(filepath: str | Path) -> dict[str, list[dict[str, Any]]]:
     workbook = load_workbook(filename=str(filepath), read_only=True, data_only=True)
     try:
         result: dict[str, list[dict[str, Any]]] = {}
         for sheet_name, period_label in (("月", "月日均"), ("年", "年日均")):
             worksheet = workbook[sheet_name]
+            _validate_daily_avg_header(worksheet, sheet_name)
             for code_col, value_col, currency, level in DAILY_AVG_COLUMN_MAP:
                 key = f"{period_label}_{currency}_{level}"
                 rows: list[dict[str, Any]] = []
@@ -181,6 +225,7 @@ def parse_general_ledger(filepath: str | Path) -> dict[str, list[dict[str, Any]]
         result: dict[str, list[dict[str, Any]]] = {}
         for sheet_name in workbook.sheetnames:
             worksheet = workbook[sheet_name]
+            _validate_ledger_header(worksheet, sheet_name)
             rows: list[dict[str, Any]] = []
             for row in worksheet.iter_rows(min_row=7, values_only=True):
                 code = _normalize_account_code(row[0] if len(row) > 0 else None)
@@ -293,8 +338,8 @@ def build_qdb_gl_monthly_analysis_workbook(
     gap_rows = compute_industry_gap(merged_data)
     alert_rows = [
         *generate_alerts(merged_data, analysis_config=analysis_cfg),
-        *_position_ledger_reconciliation_alerts(
-            _qdb_gl_position_vs_ledger_check(
+        *_ledger_self_check_alerts(
+            _qdb_gl_ledger_self_check_placeholder(
                 position_totals=metrics,
                 ledger_rows_3d=m3,
             )
@@ -529,11 +574,30 @@ def _financial_indicator_status_rows(metrics: dict[str, Decimal]) -> list[dict[s
     return rows
 
 
-def _qdb_gl_position_vs_ledger_check(
+def _qdb_gl_ledger_self_check_placeholder(
     *,
     position_totals: dict[str, Any],
     ledger_rows_3d: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    """总账聚合公式自检占位，不具备独立对账能力。
+
+    历史上这里被命名/理解为"头寸台账 vs 总账"对账，但 ``position_totals``
+    （来自 ``compute_asset_liability_structure(m3)``）与本函数内部重新汇总
+    的 ``ledger_totals``（来自 ``_qdb_gl_ledger_totals(m3)``）都是对同一份
+    总账 Excel 解析结果 ``m3`` 的两条求和路径，diff 理论上恒为 0，从未真正
+    比对过独立的头寸数据源。
+
+    本模块（``parse_general_ledger`` / ``parse_daily_avg``）是纯 Excel 解析
+    流程，不接入 DuckDB 或 ZQTZ/TYW 正式余额来源（见
+    ``backend/app/AGENTS.md`` 对 ``qdb_gl_monthly_analysis`` 的排除说明，以及
+    ``tests/AGENTS.md`` 对该模块"analytical-only"的范围限定），因此无法以
+    低成本改动接入独立头寸源做真实跨源对账。
+
+    保留此函数仅作为 ``compute_asset_liability_structure`` 汇总公式的自检
+    占位：若该公式被改坏到与本函数内部的直接科目求和不一致，此处会报警；
+    但产出的告警（异动类型 ``ledger_self_check_placeholder``）不代表、也
+    不应被解读为业务口径下"头寸 vs 总账"的独立对账结论。
+    """
     ledger_totals = _qdb_gl_ledger_totals(ledger_rows_3d)
     total_assets = _as_decimal(position_totals.get("总资产")) or ZERO
     total_liabilities = _as_decimal(position_totals.get("总负债")) or ZERO
@@ -568,7 +632,7 @@ def _qdb_gl_ledger_totals(rows_3d: list[dict[str, Any]]) -> dict[str, float]:
     }
 
 
-def _position_ledger_reconciliation_alerts(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _ledger_self_check_alerts(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     alerts: list[dict[str, Any]] = []
     for check in checks:
         if not check["breached"]:
@@ -576,13 +640,13 @@ def _position_ledger_reconciliation_alerts(checks: list[dict[str, Any]]) -> list
         alerts.append(
             {
                 "科目代码": check["dimension"],
-                "科目名称": "Position vs Ledger",
+                "科目名称": "总账自检占位（不具备独立对账能力）",
                 "预警级别": "严重",
                 "期末余额(亿)": _display_number(_to_yi(Decimal(str(check["position_value"])))),
                 "月日均(亿)": _display_number(_to_yi(Decimal(str(check["ledger_value"])))),
                 "偏离额(亿)": _display_number(_to_yi(Decimal(str(check["diff"])))),
                 "偏离%": None,
-                "异动类型": "position_vs_ledger_reconciliation",
+                "异动类型": "ledger_self_check_placeholder",
             }
         )
     return alerts

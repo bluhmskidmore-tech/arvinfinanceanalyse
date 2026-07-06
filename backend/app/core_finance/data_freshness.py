@@ -43,6 +43,7 @@ class FreshnessAssessment:
     age_days: int | None
     tier: str
     confidence: Decimal
+    notes: tuple[str, ...] = ()
 
 
 def _coerce_date(value: Any) -> date | None:
@@ -76,6 +77,13 @@ def assess_freshness(
         )
     age_days = (as_of - latest).days
     key = cadence if cadence in STALE_AFTER_DAYS else "daily"
+    if age_days < 0:
+        return FreshnessAssessment(
+            age_days=age_days,
+            tier=FRESHNESS_TIER_FRESH,
+            confidence=CONFIDENCE_BY_TIER[FRESHNESS_TIER_STALE],
+            notes=("LOOKAHEAD_DATE_DETECTED",),
+        )
     if age_days > EXPIRED_AFTER_DAYS[key]:
         tier = FRESHNESS_TIER_EXPIRED
     elif age_days > STALE_AFTER_DAYS[key]:

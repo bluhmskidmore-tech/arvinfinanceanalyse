@@ -9,6 +9,9 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.core_finance.product_category_pnl_attribution import (
+    build_product_category_attribution_payload,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -16,6 +19,60 @@ from tests.helpers import load_module
 
 ZERO = Decimal("0")
 DAYS_IN_YEAR = Decimal("365")
+
+
+def test_closure_error_surfaces_real_top_down_vs_bottom_up_gap() -> None:
+    """closure_error must be a genuine reconciliation check, not an always-0 identity.
+
+    When a total's own reported delta differs from the sum of its children deltas,
+    closure_error must expose that gap (previously it was forced to 0 = fake closure).
+    """
+
+    def _row(category_id: str, side: str, bni: str) -> dict[str, object]:
+        return {
+            "category_id": category_id,
+            "category_name": category_id,
+            "side": side,
+            "level": 0,
+            "report_date": "",
+            "business_net_income": Decimal(bni),
+            "cnx_scale": ZERO,
+            "cnx_cash": ZERO,
+            "cny_ftp": ZERO,
+            "foreign_ftp": ZERO,
+            "baseline_ftp_rate_pct": ZERO,
+            "weighted_yield": None,
+            "children_json": "[]",
+        }
+
+    current_rows = [
+        _row("bond_direct", "asset", "110"),
+        _row("asset_total", "asset", "115"),
+        _row("liability_total", "liability", "0"),
+        _row("grand_total", "all", "115"),
+    ]
+    prior_rows = [
+        _row("bond_direct", "asset", "100"),
+        _row("asset_total", "asset", "100"),
+        _row("liability_total", "liability", "0"),
+        _row("grand_total", "all", "100"),
+    ]
+
+    payload = build_product_category_attribution_payload(
+        current_rows=current_rows,
+        prior_rows=prior_rows,
+        current_report_date="2026-02-28",
+        prior_report_date="2026-01-31",
+        compare="mom",
+    )
+
+    leaf = next(r for r in payload["rows"] if r["category_id"] == "bond_direct")
+    # Leaf decomposition is exact by construction -> closure ~ 0 (but a real recomputation).
+    assert abs(leaf["effects"]["closure_error"]) < Decimal("0.000001")
+
+    asset_total = payload["totals"]["asset_total"]["effects"]
+    # child bottom-up delta = 10, but asset_total's own delta = 15 -> real gap of 5.
+    assert asset_total["closure_error"] == Decimal("5")
 
 
 def test_product_category_attribution_endpoint_closes_scale_rate_day_ftp(tmp_path, monkeypatch) -> None:

@@ -32,10 +32,11 @@
 
 ## Frozen Values
 
-- `MTR-CFP-001`: `result.duration_gap.display == "+0.25"`.
+- `MTR-CFP-001`: `result.duration_gap.display == "+0.30"` (textbook gap `D_A - (L/A) * D_L`).
 - `MTR-CFP-002`: `result.asset_duration.display == "0.50"`.
 - `MTR-CFP-003`: `result.liability_duration.display == "0.25"`.
-- `MTR-CFP-004`: `result.rate_sensitivity_1bp.unit == "yuan"` and `display == "+0.03"`.
+- `MTR-CFP-004`: `result.rate_sensitivity_1bp.unit == "yuan"` and `display == "-0.03"` (equity value change for a +1bp rate move; positive equity duration implies a negative sensitivity).
+- `result.warnings` includes the liability remaining-term proxy disclosure.
 - `result.reinvestment_risk_12m.display == "100.00%"`.
 - `result.monthly_buckets[3].year_month == "2026-07"` and `net_cashflow.display == "-800.00"`.
 - `result.monthly_buckets[6].year_month == "2026-10"` and `net_cashflow.display == "+1,000.00"`.

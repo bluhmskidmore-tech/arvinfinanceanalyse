@@ -113,6 +113,128 @@ def test_fx_translation_missing_rates_returns_zero():
     assert rows[0].fx_translation == Decimal("0")
 
 
+def test_foreign_bond_missing_fx_rate_flags_diagnostic_with_currency():
+    """外币券缺 FX 输入时，必须在 balance_diagnostics 追加含币种的 FX_RATE_MISSING 标记。"""
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "USD-BOND-FLAG",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVTPL",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+                "currency_basis": "USD",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "USD-BOND-FLAG",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "USD",
+                "accounting_basis": "FVTPL",
+                "face_value_native": "1000",
+            }
+        ],
+        balance_rows_prior=[],
+        fx_rates_current=None,
+        fx_rates_prior=None,
+    )
+
+    row = rows[0]
+    assert row.fx_translation == Decimal("0")
+    assert any(
+        "FX_RATE_MISSING" in message and "USD" in message
+        for message in row.balance_diagnostics
+    )
+
+
+def test_foreign_bond_missing_single_currency_rate_flags_diagnostic():
+    """FX 字典存在但缺该币种汇率时，同样需要标记。"""
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "EUR-BOND-FLAG",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVTPL",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+                "currency_basis": "EUR",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "EUR-BOND-FLAG",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "EUR",
+                "accounting_basis": "FVTPL",
+                "face_value_native": "1000",
+            }
+        ],
+        balance_rows_prior=[],
+        fx_rates_current={"USD": Decimal("7.0827")},
+        fx_rates_prior={"USD": Decimal("7.04135")},
+    )
+
+    row = rows[0]
+    assert row.fx_translation == Decimal("0")
+    assert any(
+        "FX_RATE_MISSING" in message and "EUR" in message
+        for message in row.balance_diagnostics
+    )
+
+
+def test_domestic_bond_has_no_fx_missing_diagnostic():
+    """本币券没有 FX 敞口，不得追加 FX_RATE_MISSING 标记。"""
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "CNY-BOND-NOFLAG",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "AC",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+                "currency_basis": "CNY",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "CNY-BOND-NOFLAG",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "AC",
+                "face_value_native": "1000",
+            }
+        ],
+        balance_rows_prior=[],
+        fx_rates_current=None,
+        fx_rates_prior=None,
+    )
+
+    row = rows[0]
+    assert not any("FX_RATE_MISSING" in message for message in row.balance_diagnostics)
+
+
 def test_fx_translation_integration_with_pnl_bridge():
     """端到端：build_pnl_bridge_rows 传入 fx_rates 后 fx_translation 非零"""
     rows = build_pnl_bridge_rows(

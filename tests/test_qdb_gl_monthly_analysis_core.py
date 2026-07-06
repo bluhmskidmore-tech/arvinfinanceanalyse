@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from openpyxl import Workbook, load_workbook
 
 from tests.helpers import ROOT, load_module
@@ -134,7 +135,81 @@ def test_build_workbook_payload_computes_metrics_gap_alerts_and_foreign_split(tm
     assert foreign_rows["14401000001"]["外币部分"] == 30
 
 
-def test_qdb_gl_position_vs_ledger_check_uses_reconciliation_helper():
+def test_parse_general_ledger_raises_on_shuffled_header(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    _avg_path, ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(ledger_path)
+    worksheet = workbook["综本"]
+    # 打乱表头列顺序：把"币种"与"期初余额"互换位置。
+    worksheet.cell(row=6, column=3, value="期初余额")
+    worksheet.cell(row=6, column=4, value="币种")
+    workbook.save(ledger_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="表头不符合预期"):
+        module.parse_general_ledger(ledger_path)
+
+
+def test_parse_general_ledger_raises_on_missing_header(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    _avg_path, ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(ledger_path)
+    worksheet = workbook["综本"]
+    for column in range(1, 8):
+        worksheet.cell(row=6, column=column).value = None
+    workbook.save(ledger_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="表头不符合预期"):
+        module.parse_general_ledger(ledger_path)
+
+
+def test_parse_daily_avg_raises_on_shuffled_header(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    avg_path, _ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(avg_path)
+    worksheet = workbook["月"]
+    # 打乱第一个 CNX 3位列块的表头：把"科目"与"科目日均余额"互换位置。
+    worksheet.cell(row=3, column=2, value="科目日均余额")
+    worksheet.cell(row=3, column=3, value="科目")
+    workbook.save(avg_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="表头不符合预期"):
+        module.parse_daily_avg(avg_path)
+
+
+def test_parse_daily_avg_raises_on_missing_header(tmp_path):
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    avg_path, _ledger_path = _write_month_pair(tmp_path, "202602")
+
+    workbook = load_workbook(avg_path)
+    worksheet = workbook["月"]
+    for column in range(1, 32):
+        worksheet.cell(row=3, column=column).value = None
+    workbook.save(avg_path)
+    workbook.close()
+
+    with pytest.raises(ValueError, match="表头不符合预期"):
+        module.parse_daily_avg(avg_path)
+
+
+def test_qdb_gl_ledger_self_check_placeholder_uses_reconciliation_helper():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
         "backend/app/core_finance/qdb_gl_monthly_analysis.py",
@@ -144,7 +219,7 @@ def test_qdb_gl_position_vs_ledger_check_uses_reconciliation_helper():
         {"科目代码": "201", "期末余额": -40},
     ]
 
-    checks = module._qdb_gl_position_vs_ledger_check(
+    checks = module._qdb_gl_ledger_self_check_placeholder(
         position_totals={"总资产": 100, "总负债": 40},
         ledger_rows_3d=rows_3d,
     )
@@ -204,7 +279,7 @@ def test_asset_liability_overview_uses_financial_indicator_subject_scope():
     assert metrics["贷款减值准备率%"] == module.Decimal("18.51851851851851851851851852")
 
 
-def test_qdb_gl_workbook_alerts_position_vs_ledger_mismatch():
+def test_qdb_gl_workbook_alerts_ledger_self_check_placeholder_mismatch():
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",
         "backend/app/core_finance/qdb_gl_monthly_analysis.py",
@@ -237,11 +312,15 @@ def test_qdb_gl_workbook_alerts_position_vs_ledger_mismatch():
         module.compute_asset_liability_structure = original
 
     alerts_sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "alerts")
-    assert any(
-        row["异动类型"] == "position_vs_ledger_reconciliation"
-        and row["科目代码"] == "total_assets"
+    # 该检查现在明确标注为"总账自检占位"，不再冒充跨源的"position_vs_ledger"对账结论。
+    assert not any(row["异动类型"] == "position_vs_ledger_reconciliation" for row in alerts_sheet["rows"])
+    matching = [
+        row
         for row in alerts_sheet["rows"]
-    )
+        if row["异动类型"] == "ledger_self_check_placeholder" and row["科目代码"] == "total_assets"
+    ]
+    assert len(matching) == 1
+    assert "不具备独立对账能力" in matching[0]["科目名称"]
 
 
 def test_exported_workbook_contains_all_required_sheets(tmp_path):
@@ -1145,7 +1224,7 @@ def _write_average_workbook(path: Path) -> None:
     for worksheet in (year_sheet, month_sheet):
         worksheet.append(["机构：199200青岛银行"])
         worksheet.append(["日期：2026-02-01 至 2026-02-28"])
-        worksheet.append([None] * 31)
+        worksheet.append(_daily_avg_header_row())
 
     month_rows = [
         _avg_row(cnx_3="101", cnx_3_val=18 * B, cny_3="101", cny_3_val=18 * B),
@@ -1190,6 +1269,15 @@ def _write_average_workbook(path: Path) -> None:
         month_sheet.append(row)
 
     workbook.save(path)
+
+
+def _daily_avg_header_row() -> list:
+    row: list = [None] * 31
+    for code_col, value_col in ((1, 2), (5, 6), (9, 10), (13, 14), (17, 18), (21, 22), (25, 26), (29, 30)):
+        row[code_col - 1] = "币种"
+        row[code_col] = "科目"
+        row[value_col] = "科目日均余额"
+    return row
 
 
 def _avg_row(

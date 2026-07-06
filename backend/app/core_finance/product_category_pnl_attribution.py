@@ -172,8 +172,7 @@ def _build_effects(
     ftp_effect = -ftp_effects["rate"]
     explained = scale_effect + rate_effect + day_effect + ftp_effect
     unexplained = delta - explained
-    closure_error = delta - explained - unexplained
-    return _effect_dict(
+    effects = _effect_dict(
         day_effect=day_effect,
         scale_effect=scale_effect,
         rate_effect=rate_effect,
@@ -181,8 +180,9 @@ def _build_effects(
         unexplained_effect=unexplained,
         explained_effect=explained,
         delta_business_net_income=delta,
-        closure_error=closure_error,
     )
+    effects["closure_error"] = _closure_error(effects)
+    return effects
 
 
 def _three_factor_effects(
@@ -323,16 +323,29 @@ def _build_grand_total(
     }
 
 
+def _closure_error(effects: dict[str, Decimal]) -> Decimal:
+    """Independent cross-check: reported delta minus the sum of every attributed bucket.
+
+    This is a genuine reconciliation residual, not an identity: at leaf level it is 0 by
+    construction, but for totals it exposes any gap between a total's own reported delta and
+    the bottom-up sum of its children.
+    """
+    return effects["delta_business_net_income"] - (
+        effects["day_effect"]
+        + effects["scale_effect"]
+        + effects["rate_effect"]
+        + effects["ftp_effect"]
+        + effects["direct_effect"]
+        + effects["unexplained_effect"]
+    )
+
+
 def _sum_effects(items: list[dict[str, Any]]) -> dict[str, Decimal]:
     total = _effect_dict()
     for item in items:
         for key in total:
             total[key] += Decimal(str(item.get(key) or ZERO))
-    total["closure_error"] = (
-        total["delta_business_net_income"]
-        - total["explained_effect"]
-        - total["unexplained_effect"]
-    )
+    total["closure_error"] = _closure_error(total)
     return total
 
 
@@ -341,15 +354,11 @@ def _reconcile_effects_to_actual_delta(
     current: object | None,
     prior: object | None,
 ) -> None:
+    # Anchor the total on its own reported delta, then surface the top-down vs bottom-up
+    # gap as closure_error instead of silently absorbing it into unexplained_effect.
     actual_delta = _amount(current, "business_net_income") - _amount(prior, "business_net_income")
-    unexplained_delta = actual_delta - effects["delta_business_net_income"]
-    effects["unexplained_effect"] += unexplained_delta
     effects["delta_business_net_income"] = actual_delta
-    effects["closure_error"] = (
-        effects["delta_business_net_income"]
-        - effects["explained_effect"]
-        - effects["unexplained_effect"]
-    )
+    effects["closure_error"] = _closure_error(effects)
 
 
 def _point(row: object, days: int) -> dict[str, object]:

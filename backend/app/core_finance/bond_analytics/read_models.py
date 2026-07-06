@@ -157,6 +157,7 @@ def summarize_return_decomposition(
     convexity_effect_total = ZERO
     fx_effect_total = ZERO
     trading_total = ZERO
+    fx_rate_missing_currencies: set[str] = set()
     for row in rows:
         carry = safe_decimal(row.get("coupon_rate")) * safe_decimal(row.get("face_value")) * days / Decimal("365")
         curve_type = infer_curve_type(
@@ -203,11 +204,13 @@ def summarize_return_decomposition(
             market_value=market_value,
             curve_lookup=curve_lookup,
         )
-        fx_effect = _fx_effect(
+        fx_effect, missing_fx_currency = _fx_effect(
             row=row,
             fx_rates_current=fx_rates_current,
             fx_rates_prior=fx_rates_prior,
         )
+        if missing_fx_currency:
+            fx_rate_missing_currencies.add(missing_fx_currency)
         trading = ZERO
         carry_total += carry
         roll_down_total += roll_down
@@ -242,6 +245,11 @@ def summarize_return_decomposition(
         "bond_details": detail_rows,
         "by_asset_class": _aggregate_return(detail_rows, "asset_class_std"),
         "by_accounting_class": _aggregate_return(detail_rows, "accounting_class"),
+        "fx_rate_missing_currencies": sorted(fx_rate_missing_currencies),
+        "warnings": [
+            f"FX_RATE_MISSING: no usable FX rate for {currency}; fx_effect kept at 0 for affected rows."
+            for currency in sorted(fx_rate_missing_currencies)
+        ],
     }
 
 
@@ -351,9 +359,15 @@ def compute_benchmark_excess(
         benchmark_return=benchmark_return,
         total_market_value=total_market_value,
     )
+    # selection_effect is a balancing residual (plug), not an independently
+    # computed Brinson selection term; explained_excess therefore closes to
+    # excess_return by construction.
     selection_effect = excess_return - duration_effect - curve_effect - spread_effect - allocation_effect
     explained_excess = duration_effect + curve_effect + spread_effect + selection_effect + allocation_effect
-    recon_error = excess_return - explained_excess
+    # recon_error is the genuinely unexplained residual: excess_return minus the
+    # independently computed effects (excluding the selection plug). Numerically
+    # it equals selection_effect and can be non-zero.
+    recon_error = excess_return - duration_effect - curve_effect - spread_effect - allocation_effect
     return {
         "portfolio_return": portfolio_return,
         "benchmark_return": benchmark_return,
@@ -769,18 +783,24 @@ def _fx_effect(
     row: dict[str, Any],
     fx_rates_current: dict[str, Decimal] | None,
     fx_rates_prior: dict[str, Decimal] | None,
-) -> Decimal:
+) -> tuple[Decimal, str | None]:
+    """Return (fx_effect, missing_fx_currency).
+
+    ``missing_fx_currency`` distinguishes "no FX exposure" (CNY-family rows,
+    returns (0, None)) from "FX input missing" (non-CNY row without a usable
+    current/prior rate, returns (0, currency_code) so callers can surface it).
+    """
     currency_code = str(row.get("currency_code") or "CNY").upper().strip()
-    if currency_code in {"", "CNY", "CNX", "RMB"} or not fx_rates_current or not fx_rates_prior:
-        return ZERO
-    current_rate = safe_decimal(fx_rates_current.get(currency_code))
-    prior_rate = safe_decimal(fx_rates_prior.get(currency_code))
+    if currency_code in {"", "CNY", "CNX", "RMB"}:
+        return ZERO, None
+    current_rate = safe_decimal((fx_rates_current or {}).get(currency_code))
+    prior_rate = safe_decimal((fx_rates_prior or {}).get(currency_code))
     if current_rate == ZERO or prior_rate == ZERO:
-        return ZERO
+        return ZERO, currency_code
     market_value_native = safe_decimal(row.get("market_value_native"))
     if market_value_native == ZERO:
-        return ZERO
-    return market_value_native * (current_rate - prior_rate)
+        return ZERO, None
+    return market_value_native * (current_rate - prior_rate), None
 
 
 def _curve_rate(

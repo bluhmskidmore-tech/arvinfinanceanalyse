@@ -37,9 +37,9 @@
   "result": {
     "report_date": "2026-04-30",
     "duration_gap": {
-      "raw": 0.25205479452054796,
+      "raw": 0.3019178082191781,
       "unit": "years",
-      "display": "+0.25",
+      "display": "+0.30",
       "precision": 2,
       "sign_aware": true
     },
@@ -58,16 +58,16 @@
       "sign_aware": false
     },
     "equity_duration": {
-      "raw": 1.2602739726027397,
+      "raw": 1.5095890410958903,
       "unit": "years",
-      "display": "+1.26",
+      "display": "+1.51",
       "precision": 2,
       "sign_aware": true
     },
     "rate_sensitivity_1bp": {
-      "raw": 0.025205479452054796,
+      "raw": -0.03019178082191781,
       "unit": "yuan",
-      "display": "+0.03",
+      "display": "-0.03",
       "precision": 2,
       "sign_aware": true
     },
@@ -846,7 +846,9 @@
         "currency_code": "CNY"
       }
     ],
-    "warnings": [],
+    "warnings": [
+      "Liability duration uses a remaining-term proxy (years to maturity), not a cashflow-weighted duration."
+    ],
     "computed_at": "2026-06-09T00:00:00Z"
   }
 }

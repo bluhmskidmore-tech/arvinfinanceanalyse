@@ -10,6 +10,7 @@ from typing import Any
 from .attribution_core import get_tenor_bucket
 from .bond_duration import estimate_duration, modified_duration_from_macaulay
 from .krd import classify_asset_class, map_accounting_class
+from .rate_units import bp_to_decimal
 from .safe_decimal import safe_decimal
 
 logger = logging.getLogger(__name__)
@@ -165,19 +166,25 @@ def get_credit_spread(
     spread_curves: Mapping[str, Mapping[str, Any]] | None = None,
     report_date: date | None = None,
 ) -> Decimal:
-    rating = str(_get_value(position, "agency_rating", default="AA") or "AA")
+    raw_rating = _get_value(position, "agency_rating")
+    if raw_rating is None or not str(raw_rating).strip():
+        logger.warning("get_credit_spread: missing rating; defaulting to AA")
+        rating = "AA"
+    else:
+        rating = str(raw_rating).strip()
     tenor = _get_tenor_bucket(position, report_date=report_date)
     if spread_curves:
         curve = spread_curves.get(rating)
         if curve:
             if tenor in curve:
-                return safe_decimal(curve[tenor])
+                return bp_to_decimal(safe_decimal(curve[tenor]))
             for fallback_tenor in ("3Y", "5Y", "1Y"):
                 if fallback_tenor in curve:
-                    return safe_decimal(curve[fallback_tenor])
+                    return bp_to_decimal(safe_decimal(curve[fallback_tenor]))
 
     if rating in RATING_MAPPING:
         return Decimal(str(RATING_MAPPING[rating]["spread_basis_bp"])) / Decimal("10000")
+    logger.warning("get_credit_spread: unknown rating %s; falling back to 0.008", rating)
     return Decimal("0.008")
 
 
