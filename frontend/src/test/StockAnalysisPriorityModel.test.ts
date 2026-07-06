@@ -49,6 +49,7 @@ const trackedSnapshot = {
   horizons: {
     return_1d: { ...horizonStats, status: "complete" },
     return_5d: { ...horizonStats, status: "partial" },
+    return_10d: pendingStats,
     return_20d: pendingStats,
   },
 };
@@ -66,6 +67,7 @@ function buildPriorityRow(overrides: Partial<LivermoreStrategyScoreRow> = {}): L
     stats: {
       return_1d: horizonStats,
       return_5d: horizonStats,
+      return_10d: pendingStats,
       return_20d: pendingStats,
     },
     ...overrides,
@@ -80,6 +82,7 @@ const scorePayloadRows: LivermoreStrategyScorePayload["rows"] = [
       priority_scope_stats: {
         return_1d: horizonStats,
         return_5d: horizonStats,
+        return_10d: pendingStats,
         return_20d: pendingStats,
       },
       maturity: {
@@ -104,6 +107,7 @@ const scorePayloadRows: LivermoreStrategyScorePayload["rows"] = [
           stats: {
             return_1d: horizonStats,
             return_5d: horizonStats,
+            return_10d: pendingStats,
             return_20d: pendingStats,
           },
         },

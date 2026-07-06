@@ -10,6 +10,7 @@ import {
   buildStrategyBacktestRows,
   formatBacktestPercent,
   formatBacktestSignedPercent,
+  resolveStrategyBacktestMetricBasisLabel,
   resolveStrategyBacktestSampleCount,
   strategyBacktestHorizonLabels,
   strategyBacktestHorizonShortLabels,
@@ -44,6 +45,22 @@ const emptyStats: LivermoreCandidateHistoryHorizonStats = {
   win_rate: null,
 };
 
+const executionStats: LivermoreCandidateHistoryHorizonStats = {
+  available_count: 3,
+  missing_count: 0,
+  positive_count: 3,
+  non_positive_count: 0,
+  avg_return: 0.055,
+  win_rate: 1,
+  n: 3,
+  adj_missing_n: 0,
+  win: 1,
+  avg: 0.055,
+  median: 0.05,
+  p10: 0.03,
+  p90: 0.08,
+};
+
 function buildPayload(): LivermoreCandidateHistoryPayload {
   return {
     stock_code: null,
@@ -61,16 +78,19 @@ function buildPayload(): LivermoreCandidateHistoryPayload {
         stock_candidate: {
           return_1d: positiveStats,
           return_5d: negativeStats,
+          return_10d: emptyStats,
           return_20d: emptyStats,
         },
         factor_screen: {
           return_1d: negativeStats,
           return_5d: positiveStats,
+          return_10d: emptyStats,
           return_20d: emptyStats,
         },
         external_vendor_signal: {
           return_1d: positiveStats,
           return_5d: emptyStats,
+          return_10d: emptyStats,
           return_20d: emptyStats,
         },
       },
@@ -79,6 +99,7 @@ function buildPayload(): LivermoreCandidateHistoryPayload {
           stock_candidate: {
             return_1d: positiveStats,
             return_5d: negativeStats,
+            return_10d: emptyStats,
             return_20d: emptyStats,
           },
         },
@@ -86,6 +107,50 @@ function buildPayload(): LivermoreCandidateHistoryPayload {
           external_vendor_signal: {
             return_1d: positiveStats,
             return_5d: emptyStats,
+            return_10d: emptyStats,
+            return_20d: emptyStats,
+          },
+        },
+      },
+    },
+  };
+}
+
+function buildExecutionPayload(): LivermoreCandidateHistoryPayload {
+  const payload = buildPayload();
+  return {
+    ...payload,
+    summary: {
+      ...payload.summary!,
+      execution_usable_stats: {
+        metric_basis: "net_next_open_adj",
+        row_count: 3,
+        execution_row_count: 4,
+        entry_executable_count: 3,
+        horizon_usable_stats: {
+          return_1d: executionStats,
+          return_5d: executionStats,
+          return_10d: emptyStats,
+          return_20d: emptyStats,
+        },
+        by_signal_kind: {
+          stock_candidate: 3,
+        },
+        by_signal_kind_horizon_usable_stats: {
+          stock_candidate: {
+            return_1d: executionStats,
+            return_5d: executionStats,
+            return_10d: emptyStats,
+            return_20d: emptyStats,
+          },
+        },
+      },
+      by_market_state_signal_kind_execution_stats: {
+        HOT: {
+          stock_candidate: {
+            return_1d: executionStats,
+            return_5d: executionStats,
+            return_10d: emptyStats,
             return_20d: emptyStats,
           },
         },
@@ -126,11 +191,29 @@ describe("stockAnalysisBacktestModel", () => {
       stats: {
         return_1d: "58.3% / +2.34% / 12条",
         return_5d: "25.0% / -1.23% / 4条",
+        return_10d: "待补",
         return_20d: "待补",
       },
     });
     expect(rows.find((row) => row.kind === "external_vendor_signal")?.label).toBe("策略待确认");
     expect(resolveStrategyBacktestSampleCount(buildPayload())).toBe(28);
+  });
+
+  it("prefers execution net adjusted stats when present", () => {
+    const payload = buildExecutionPayload();
+    const rows = buildStrategyBacktestRows(payload);
+    const marketRows = buildStrategyBacktestMarketStateRows(payload);
+
+    expect(resolveStrategyBacktestMetricBasisLabel(payload)).toBe("T+1开盘成交·含费·复权");
+    expect(resolveStrategyBacktestSampleCount(payload)).toBe(3);
+    expect(rows.find((row) => row.kind === "stock_candidate")).toMatchObject({
+      count: 3,
+      stats: {
+        return_5d: "100.0% / +5.50% / 3条",
+      },
+    });
+    expect(marketRows.map((row) => `${row.marketState}:${row.kind}`)).toEqual(["HOT:stock_candidate"]);
+    expect(marketRows[0].stats.return_5d).toBe("100.0% / +5.50% / 3条");
   });
 
   it("builds market-state rows in governed order with discovered states appended", () => {
@@ -145,8 +228,9 @@ describe("stockAnalysisBacktestModel", () => {
   });
 
   it("exports horizon metadata for table rendering", () => {
-    expect(strategyBacktestHorizons).toEqual(["return_1d", "return_5d", "return_20d"]);
+    expect(strategyBacktestHorizons).toEqual(["return_1d", "return_5d", "return_10d", "return_20d"]);
     expect(strategyBacktestHorizonLabels.return_5d).toBe("T+5 胜率 / 均值 / 样本");
+    expect(strategyBacktestHorizonShortLabels.return_10d).toBe("T+10");
     expect(strategyBacktestHorizonShortLabels.return_20d).toBe("T+20");
   });
 });

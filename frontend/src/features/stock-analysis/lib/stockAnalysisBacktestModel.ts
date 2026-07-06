@@ -23,22 +23,28 @@ const strategyBacktestLabels: Record<string, string> = {
 export const strategyBacktestHorizons: LivermoreCandidateHistoryHorizonKey[] = [
   "return_1d",
   "return_5d",
+  "return_10d",
   "return_20d",
 ];
 
 export const strategyBacktestHorizonLabels: Record<LivermoreCandidateHistoryHorizonKey, string> = {
   return_1d: "T+1 胜率 / 均值 / 样本",
   return_5d: "T+5 胜率 / 均值 / 样本",
+  return_10d: "T+10 胜率 / 均值 / 样本",
   return_20d: "T+20 胜率 / 均值 / 样本",
 };
 
 export const strategyBacktestHorizonShortLabels: Record<LivermoreCandidateHistoryHorizonKey, string> = {
   return_1d: "T+1",
   return_5d: "T+5",
+  return_10d: "T+10",
   return_20d: "T+20",
 };
 
 const strategyBacktestMarketStateOrder = ["OFF", "WARM", "HOT", "OVERHEAT", "PENDING_DATA", "NO_DATA", "STALE"] as const;
+
+export const strategyBacktestExecutionBasisLabel = "T+1\u5f00\u76d8\u6210\u4ea4\u00b7\u542b\u8d39\u00b7\u590d\u6743";
+export const strategyBacktestLegacyBasisLabel = "\u4fe1\u53f7\u65e5\u6536\u76d8\u00b7\u65e7forward\u6536\u76ca";
 
 export function formatBacktestPercent(value: number | null | undefined, digits = 1): string {
   if (value == null || Number.isNaN(value)) return "待补";
@@ -59,13 +65,23 @@ export function backtestStatsText(stats: LivermoreCandidateHistoryHorizonStats |
 function resolveStrategyBacktestSignalStats(payload: LivermoreCandidateHistoryPayload | null) {
   const summary = payload?.summary ?? null;
   const decisionStats = summary?.decision_usable_stats ?? null;
+  const executionStats = summary?.execution_usable_stats ?? null;
   return (
+    executionStats?.by_signal_kind_horizon_usable_stats ??
+    executionStats?.by_signal_kind_horizon_stats ??
     decisionStats?.by_signal_kind_horizon_usable_stats ??
     summary?.by_signal_kind_horizon_usable_stats ??
     decisionStats?.by_signal_kind_horizon_stats ??
     summary?.by_signal_kind_horizon_stats ??
     {}
   );
+}
+
+export function resolveStrategyBacktestMetricBasisLabel(payload: LivermoreCandidateHistoryPayload | null): string {
+  const executionStats = payload?.summary?.execution_usable_stats ?? null;
+  if (!executionStats) return strategyBacktestLegacyBasisLabel;
+  if (executionStats.metric_basis === "net_next_open_adj") return strategyBacktestExecutionBasisLabel;
+  return executionStats.basis_label?.trim() || strategyBacktestExecutionBasisLabel;
 }
 
 export function strategyDisplayLabel(label: string | null | undefined, signalKind?: string | null): string {
@@ -94,7 +110,8 @@ export function strategyBacktestKindLabel(kind: string): string {
 export function buildStrategyBacktestRows(payload: LivermoreCandidateHistoryPayload | null) {
   const summary = payload?.summary ?? null;
   const decisionStats = summary?.decision_usable_stats ?? null;
-  const bySignalKind = summary?.by_signal_kind ?? decisionStats?.by_signal_kind ?? {};
+  const executionStats = summary?.execution_usable_stats ?? null;
+  const bySignalKind = executionStats?.by_signal_kind ?? decisionStats?.by_signal_kind ?? summary?.by_signal_kind ?? {};
   const bySignalStats = resolveStrategyBacktestSignalStats(payload);
   const discoveredKinds = Object.keys(bySignalStats).filter(
     (key) => !(strategyBacktestOrder as readonly string[]).includes(key),
@@ -108,6 +125,7 @@ export function buildStrategyBacktestRows(payload: LivermoreCandidateHistoryPayl
       stats: {
         return_1d: backtestStatsText(statsByHorizon.return_1d),
         return_5d: backtestStatsText(statsByHorizon.return_5d),
+        return_10d: backtestStatsText(statsByHorizon.return_10d),
         return_20d: backtestStatsText(statsByHorizon.return_20d),
       },
     };
@@ -117,8 +135,12 @@ export function buildStrategyBacktestRows(payload: LivermoreCandidateHistoryPayl
 export function resolveStrategyBacktestSampleCount(payload: LivermoreCandidateHistoryPayload | null): number {
   const summary = payload?.summary ?? null;
   const decisionStats = summary?.decision_usable_stats ?? null;
+  const executionStats = summary?.execution_usable_stats ?? null;
   const horizonStats =
-    decisionStats?.horizon_usable_stats ?? summary?.horizon_usable_stats ?? summary?.horizon_stats;
+    executionStats?.horizon_usable_stats ??
+    decisionStats?.horizon_usable_stats ??
+    summary?.horizon_usable_stats ??
+    summary?.horizon_stats;
 
   if (horizonStats) {
     return Math.max(
@@ -143,6 +165,7 @@ export function buildStrategyBacktestMarketStateRows(payload: LivermoreCandidate
   const summary = payload?.summary ?? null;
   const decisionStats = summary?.decision_usable_stats ?? null;
   const byMarketState =
+    summary?.by_market_state_signal_kind_execution_stats ??
     decisionStats?.by_market_state_signal_kind_horizon_stats ??
     summary?.by_market_state_signal_kind_horizon_stats ??
     {};
@@ -168,6 +191,7 @@ export function buildStrategyBacktestMarketStateRows(payload: LivermoreCandidate
           stats: {
             return_1d: backtestStatsText(statsByHorizon.return_1d),
             return_5d: backtestStatsText(statsByHorizon.return_5d),
+            return_10d: backtestStatsText(statsByHorizon.return_10d),
             return_20d: backtestStatsText(statsByHorizon.return_20d),
           },
         };

@@ -24,6 +24,7 @@ import type {
 } from "../../../api/contracts";
 import type { ConsensusSummary } from "./buildConsensusSummary";
 import type { StockDetailSource } from "./stockAnalysisDetailSelection";
+import { resolveStrategyBacktestMetricBasisLabel } from "./stockAnalysisBacktestModel";
 
 type NormalizedConfluenceReplayBlockedDate = Omit<ConfluenceReplayBlockedDate, "reason_code"> & {
   reason_code: string;
@@ -4773,6 +4774,13 @@ function formatBacktestHorizonStatsText(stats: LivermoreCandidateHistoryHorizonS
   return `胜率 ${formatBacktestRate(stats.win_rate)} / 均收益 ${formatBacktestSignedReturn(stats.avg_return)} / ${stats.available_count}条`;
 }
 
+function strategyHorizonShortLabel(horizon: LivermoreStrategyScorePayload["primary_horizon"] | null | undefined): string {
+  if (horizon === "return_1d") return "T+1";
+  if (horizon === "return_10d") return "T+10";
+  if (horizon === "return_20d") return "T+20";
+  return "T+5";
+}
+
 function pickTopPriorityRow(
   rows: LivermoreStrategyScorePayload["rows"],
 ): LivermoreStrategyScorePayload["rows"][number] | null {
@@ -5155,8 +5163,8 @@ export function buildMarketPriorityPanelSummary(input: {
         tone: status.tone,
       },
       {
-        key: "t5",
-        label: "T+5",
+        key: horizon,
+        label: strategyHorizonShortLabel(horizon),
         value: formatBacktestHorizonStatsText(horizonStats),
         tone: (horizonStats?.win_rate ?? 0) >= 0.5 ? "positive" : "neutral",
       },
@@ -5194,16 +5202,20 @@ export function buildStrategyBacktestPanelSummary(input: {
   }
   const topRow = [...input.rows].sort((left, right) => right.count - left.count)[0];
   const signalStats =
+    input.payload?.summary?.execution_usable_stats?.by_signal_kind_horizon_usable_stats?.stock_candidate
+      ?.return_5d ??
+    input.payload?.summary?.execution_usable_stats?.by_signal_kind_horizon_stats?.stock_candidate?.return_5d ??
     input.payload?.summary?.by_signal_kind_horizon_usable_stats?.stock_candidate?.return_5d ??
     input.payload?.summary?.by_signal_kind_horizon_stats?.stock_candidate?.return_5d;
   const trendT5 =
     signalStats != null
       ? formatBacktestHorizonStatsText(signalStats)
       : topRow?.stats.return_5d ?? "样本待补";
+  const metricBasisLabel = resolveStrategyBacktestMetricBasisLabel(input.payload);
 
   return {
     headline: input.sampleCount > 0 ? `有效样本 ${input.sampleCount} 条` : "暂无回溯样本",
-    detail: input.dateRangeLabel,
+    detail: [input.dateRangeLabel, metricBasisLabel].filter(Boolean).join(" · "),
     badgeLabel: input.sampleCount > 0 ? "已就绪" : "待补",
     stats: [
       {

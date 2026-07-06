@@ -150,6 +150,13 @@ export function compactStockText(text: string | null | undefined, maxLength = 28
 
 export function formatGeneratedAtLabel(value: string | null | undefined) {
   if (!value) return "";
+  const isoWallClockMatch = value.match(
+    /^\d{4}-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/,
+  );
+  if (isoWallClockMatch) {
+    const [, month, day, hour, minute] = isoWallClockMatch;
+    return `${month}-${day} ${hour}:${minute}`;
+  }
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format("MM-DD HH:mm") : compactStockText(value, 12);
 }

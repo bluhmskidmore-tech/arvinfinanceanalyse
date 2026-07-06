@@ -79,6 +79,10 @@ const STOCK_ANALYSIS_PAGE_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/pages/StockAnalysisPage.tsx",
 );
+const STOCK_ANALYSIS_PAGE_IMPL_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
+);
 const STOCK_ANALYSIS_CANDIDATE_COMPARISON_CSS_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/components/StockAnalysisCandidateComparison.css",
@@ -99,6 +103,12 @@ const EQUITY_KPI_CARD_CSS_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/components/EquityKpiCard.module.css",
 );
+
+function readStockAnalysisPageSource() {
+  return [STOCK_ANALYSIS_PAGE_PATH, STOCK_ANALYSIS_PAGE_IMPL_PATH]
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
+}
 
 vi.mock("../components/charts/BaseChart", () => ({
   BaseChart: function MockBaseChart() {
@@ -715,6 +725,14 @@ function buildCandidateHistoryPayload(
             avg_return: 0.199863,
             win_rate: 1,
           },
+          return_10d: {
+            available_count: 0,
+            missing_count: 36,
+            positive_count: 0,
+            non_positive_count: 0,
+            avg_return: null,
+            win_rate: null,
+          },
           return_20d: {
             available_count: 0,
             missing_count: 36,
@@ -740,6 +758,14 @@ function buildCandidateHistoryPayload(
             non_positive_count: 13,
             avg_return: 0.029253,
             win_rate: 0.566667,
+          },
+          return_10d: {
+            available_count: 0,
+            missing_count: 180,
+            positive_count: 0,
+            non_positive_count: 0,
+            avg_return: null,
+            win_rate: null,
           },
           return_20d: {
             available_count: 0,
@@ -786,6 +812,14 @@ function buildCandidateHistoryPayload(
               avg_return: 0.199863,
               win_rate: 1,
             },
+            return_10d: {
+              available_count: 0,
+              missing_count: 36,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
             return_20d: {
               available_count: 0,
               missing_count: 36,
@@ -811,6 +845,14 @@ function buildCandidateHistoryPayload(
               non_positive_count: 13,
               avg_return: 0.029253,
               win_rate: 0.566667,
+            },
+            return_10d: {
+              available_count: 0,
+              missing_count: 180,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
             },
             return_20d: {
               available_count: 0,
@@ -860,6 +902,14 @@ function buildStrategyScorePayload(
         avg_return: 0.024,
         win_rate: 0.6,
       },
+      return_10d: {
+        available_count: 0,
+        missing_count: 24,
+        positive_count: 0,
+        non_positive_count: 0,
+        avg_return: null,
+        win_rate: null,
+      },
       return_20d: {
         available_count: 20,
         missing_count: 4,
@@ -888,6 +938,14 @@ function buildStrategyScorePayload(
           non_positive_count: 5,
           avg_return: 0.0421,
           win_rate: 0.75,
+        },
+        return_10d: {
+          available_count: 0,
+          missing_count: 20,
+          positive_count: 0,
+          non_positive_count: 0,
+          avg_return: null,
+          win_rate: null,
         },
         return_20d: {
           available_count: 0,
@@ -945,6 +1003,15 @@ function buildStrategyScorePayload(
                 avg_return: 0.045477,
                 win_rate: 0.9,
               },
+              return_10d: {
+                status: "pending",
+                available_count: 0,
+                missing_count: 10,
+                positive_count: 0,
+                non_positive_count: 0,
+                avg_return: null,
+                win_rate: null,
+              },
               return_20d: {
                 status: "pending",
                 available_count: 0,
@@ -970,6 +1037,15 @@ function buildStrategyScorePayload(
                 win_rate: 0.6,
               },
               return_5d: {
+                status: "pending",
+                available_count: 0,
+                missing_count: 10,
+                positive_count: 0,
+                non_positive_count: 0,
+                avg_return: null,
+                win_rate: null,
+              },
+              return_10d: {
                 status: "pending",
                 available_count: 0,
                 missing_count: 10,
@@ -1025,6 +1101,14 @@ function buildStrategyScorePayload(
               avg_return: 0.02,
               win_rate: 0.8,
             },
+            return_10d: {
+              available_count: 0,
+              missing_count: 5,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
             return_20d: {
               available_count: 5,
               missing_count: 0,
@@ -1059,6 +1143,14 @@ function buildStrategyScorePayload(
               non_positive_count: 3,
               avg_return: -0.01,
               win_rate: 0.25,
+            },
+            return_10d: {
+              available_count: 0,
+              missing_count: 4,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
             },
             return_20d: {
               available_count: 0,
@@ -1099,6 +1191,14 @@ function buildStrategyScorePayload(
         non_positive_count: 12,
         avg_return: -0.02,
         win_rate: 0.455,
+      },
+      return_10d: {
+        available_count: 0,
+        missing_count: 22,
+        positive_count: 0,
+        non_positive_count: 0,
+        avg_return: null,
+        win_rate: null,
       },
       return_20d: {
         available_count: 12,
@@ -1164,6 +1264,14 @@ function buildStrategyOptimizationPayload(
       avg_return: 0.023333,
       win_rate: 0.666667,
     },
+    return_10d: {
+      available_count: 0,
+      missing_count: 30,
+      positive_count: 0,
+      non_positive_count: 0,
+      avg_return: null,
+      win_rate: null,
+    },
     return_20d: {
       available_count: 0,
       missing_count: 30,
@@ -1189,6 +1297,14 @@ function buildStrategyOptimizationPayload(
       non_positive_count: 5,
       avg_return: -0.02,
       win_rate: 0.5,
+    },
+    return_10d: {
+      available_count: 0,
+      missing_count: 10,
+      positive_count: 0,
+      non_positive_count: 0,
+      avg_return: null,
+      win_rate: null,
     },
     return_20d: {
       available_count: 0,
@@ -1216,6 +1332,14 @@ function buildStrategyOptimizationPayload(
       avg_return: 0.06,
       win_rate: 1,
     },
+    return_10d: {
+      available_count: 0,
+      missing_count: 2,
+      positive_count: 0,
+      non_positive_count: 0,
+      avg_return: null,
+      win_rate: null,
+    },
     return_20d: {
       available_count: 0,
       missing_count: 2,
@@ -1241,6 +1365,14 @@ function buildStrategyOptimizationPayload(
       positive_day_rate: 1,
       worst_day_return: 0.023333,
       best_day_return: 0.023333,
+    },
+    return_10d: {
+      available_day_count: 0,
+      candidate_row_count: 0,
+      avg_return: null,
+      positive_day_rate: null,
+      worst_day_return: null,
+      best_day_return: null,
     },
     return_20d: {
       available_day_count: 0,
@@ -3383,7 +3515,7 @@ describe("StockAnalysisPage", () => {
 
   it("keeps sector strength background detail collapsed by default", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
-    const page = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
+    const page = readStockAnalysisPageSource();
 
     expect(page).toContain('data-testid="stock-analysis-sector-detail-more"');
     expect(page).toContain("const [sectorDetailOpen, setSectorDetailOpen] = useState(false)");
@@ -3413,7 +3545,7 @@ describe("StockAnalysisPage", () => {
 
   it("keeps empty theme leader radar as a compact background cue", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
-    const page = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
+    const page = readStockAnalysisPageSource();
     const compactStart = css.indexOf("Theme leader empty-state compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -3748,7 +3880,7 @@ describe("StockAnalysisPage", () => {
 
   it("keeps collapsed strategy research cards as compact entry points", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
-    const page = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
+    const page = readStockAnalysisPageSource();
     const compactStart = css.indexOf("Strategy research cards compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -6333,6 +6465,30 @@ describe("StockAnalysisPage", () => {
     expect(page).not.toHaveTextContent("调仓");
   });
 
+  it("labels current market strategy priority with the selected T+10 horizon", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategyScore: buildStrategyScorePayload({
+          primary_horizon: "return_10d",
+          rows: buildStrategyScorePayload().rows.map((row) => ({
+            ...row,
+            reason: "T+10 sample 20, avg return pending, priority review ranking.",
+          })),
+          current_market_state_rows: buildStrategyScorePayload().current_market_state_rows.map((row) => ({
+            ...row,
+            reason: "T+10 sample 20, avg return pending, priority review ranking.",
+          })),
+        }),
+      }),
+    });
+
+    const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
+
+    await waitFor(() => expect(summary).toHaveTextContent("T+10"), { timeout: 3_000 });
+    expect(summary).toHaveTextContent("T+10 排序");
+    expect(summary).not.toHaveTextContent("T+5 排序");
+  });
+
   it("localizes candidate maturity detail source-table failures without exposing backend tables", async () => {
     const client = stockClient({
       strategy: buildStrategyPayload({
@@ -6688,6 +6844,14 @@ describe("StockAnalysisPage", () => {
             avg_return: 0.002,
             win_rate: 0.5,
           },
+          return_10d: {
+            available_count: 0,
+            missing_count: 8,
+            positive_count: 0,
+            non_positive_count: 0,
+            avg_return: null,
+            win_rate: null,
+          },
           return_20d: {
             available_count: 0,
             missing_count: 8,
@@ -6758,6 +6922,14 @@ describe("StockAnalysisPage", () => {
                     avg_return: null,
                     win_rate: null,
                   },
+                  return_10d: {
+                    available_count: 0,
+                    missing_count: 36,
+                    positive_count: 0,
+                    non_positive_count: 0,
+                    avg_return: null,
+                    win_rate: null,
+                  },
                   return_20d: {
                     available_count: 0,
                     missing_count: 36,
@@ -6786,6 +6958,14 @@ describe("StockAnalysisPage", () => {
                     avg_return: -0.0111,
                     win_rate: 0.5,
                   },
+                  return_10d: {
+                    available_count: 0,
+                    missing_count: 36,
+                    positive_count: 0,
+                    non_positive_count: 0,
+                    avg_return: null,
+                    win_rate: null,
+                  },
                   return_20d: {
                     available_count: 0,
                     missing_count: 36,
@@ -6811,6 +6991,14 @@ describe("StockAnalysisPage", () => {
                     non_positive_count: 1,
                     avg_return: -0.004,
                     win_rate: 0.5,
+                  },
+                  return_10d: {
+                    available_count: 0,
+                    missing_count: 3,
+                    positive_count: 0,
+                    non_positive_count: 0,
+                    avg_return: null,
+                    win_rate: null,
                   },
                   return_20d: {
                     available_count: 0,
@@ -6841,6 +7029,14 @@ describe("StockAnalysisPage", () => {
                       avg_return: -0.0111,
                       win_rate: 0.5,
                     },
+                    return_10d: {
+                      available_count: 0,
+                      missing_count: 36,
+                      positive_count: 0,
+                      non_positive_count: 0,
+                      avg_return: null,
+                      win_rate: null,
+                    },
                     return_20d: {
                       available_count: 0,
                       missing_count: 36,
@@ -6866,6 +7062,14 @@ describe("StockAnalysisPage", () => {
                       non_positive_count: 1,
                       avg_return: -0.004,
                       win_rate: 0.5,
+                    },
+                    return_10d: {
+                      available_count: 0,
+                      missing_count: 3,
+                      positive_count: 0,
+                      non_positive_count: 0,
+                      avg_return: null,
+                      win_rate: null,
                     },
                     return_20d: {
                       available_count: 0,
@@ -6894,6 +7098,14 @@ describe("StockAnalysisPage", () => {
                       non_positive_count: 3,
                       avg_return: 0.014,
                       win_rate: 0.5,
+                    },
+                    return_10d: {
+                      available_count: 0,
+                      missing_count: 20,
+                      positive_count: 0,
+                      non_positive_count: 0,
+                      avg_return: null,
+                      win_rate: null,
                     },
                     return_20d: {
                       available_count: 0,

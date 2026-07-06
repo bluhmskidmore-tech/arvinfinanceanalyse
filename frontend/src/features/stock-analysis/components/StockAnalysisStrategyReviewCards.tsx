@@ -17,6 +17,7 @@ import {
   strategyBacktestHorizonShortLabels,
   strategyBacktestHorizons,
   strategyDisplayLabel,
+  resolveStrategyBacktestMetricBasisLabel,
 } from "../lib/stockAnalysisBacktestModel";
 import {
   buildStrategyMaturityCandidates,
@@ -144,6 +145,10 @@ export function StockAnalysisStrategyReviewCards({
     () => buildStrategyBacktestMarketStateRows(strategyBacktestPayload),
     [strategyBacktestPayload],
   );
+  const strategyBacktestMetricBasisLabel = useMemo(
+    () => resolveStrategyBacktestMetricBasisLabel(strategyBacktestPayload),
+    [strategyBacktestPayload],
+  );
   const strategyOptimizationSlices = useMemo(
     () => strategyOptimizationSlicePair(strategyOptimizationPayload),
     [strategyOptimizationPayload],
@@ -185,11 +190,12 @@ export function StockAnalysisStrategyReviewCards({
 
   const marketPriorityBadgeLabel =
     marketPriorityPanelSummary?.badgeLabel ??
-    (strategyScorePayload?.primary_horizon === "return_1d"
-      ? "T+1"
-      : strategyScorePayload?.primary_horizon === "return_20d"
-        ? "T+20"
-        : "T+5");
+    (strategyScorePayload?.primary_horizon
+      ? strategyBacktestHorizonShortLabels[strategyScorePayload.primary_horizon]
+      : "T+5");
+  const strategyScoreHorizonLabel = strategyScorePayload?.primary_horizon
+    ? strategyBacktestHorizonShortLabels[strategyScorePayload.primary_horizon]
+    : "T+5";
   const strategyOptimizationBadgeLabel =
     strategyOptimizationPanelSummary?.badgeLabel ??
     (strategyOptimizationPayload?.primary_horizon === "return_1d"
@@ -205,7 +211,7 @@ export function StockAnalysisStrategyReviewCards({
       <StrategyModuleCard
         id="market-priority"
         title="当前市场策略优先级"
-        subtitle="T+5 排序"
+        subtitle={`${strategyScoreHorizonLabel} 排序`}
         badgeLabel={marketPriorityBadgeLabel}
         summary={marketPriorityPanelSummary}
         summaryTestId="stock-analysis-market-priority-panel-summary"
@@ -432,6 +438,7 @@ export function StockAnalysisStrategyReviewCards({
             <div className="flex gap-2 items-center text-sm mb-2">
               <span>有效样本</span>
               <strong>{strategyBacktestSampleCount} 条</strong>
+              <small>{strategyBacktestMetricBasisLabel}</small>
               <small>
                 完成日期 {strategyBacktestWindow?.replay_dates_completed ?? 0} / 待成熟{" "}
                 {strategyBacktestWindow?.replay_dates_pending ?? 0} / 不支持{" "}

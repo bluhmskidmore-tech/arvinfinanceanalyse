@@ -3663,6 +3663,14 @@ describe("stockAnalysisPageModel", () => {
               avg_return: 0.0233,
               win_rate: 0.667,
             },
+            return_10d: {
+              available_count: 30,
+              missing_count: 0,
+              positive_count: 18,
+              non_positive_count: 12,
+              avg_return: 0.028,
+              win_rate: 0.6,
+            },
             return_20d: {
               available_count: 30,
               missing_count: 0,
@@ -3724,6 +3732,14 @@ describe("stockAnalysisPageModel", () => {
               avg_return: null,
               win_rate: null,
             },
+            return_10d: {
+              available_count: 0,
+              missing_count: 6,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
             return_20d: {
               available_count: 0,
               missing_count: 6,
@@ -3768,6 +3784,14 @@ describe("stockAnalysisPageModel", () => {
         non_positive_count: 10,
         avg_return: 0.0233,
         win_rate: 0.667,
+      },
+      return_10d: {
+        available_count: 30,
+        missing_count: 0,
+        positive_count: 18,
+        non_positive_count: 12,
+        avg_return: 0.028,
+        win_rate: 0.6,
       },
       return_20d: {
         available_count: 30,
@@ -3895,6 +3919,112 @@ describe("stockAnalysisPageModel", () => {
     expect(copy).not.toContain("Failed to fetch");
     expect(copy).not.toContain("source_table");
     expect(copy).not.toContain("livermore_signal_snapshots");
+  });
+
+  it("labels strategy backtest panel summary with execution return basis", () => {
+    const executionPayload: LivermoreCandidateHistoryPayload = {
+      stock_code: null,
+      snapshot_from: "2026-06-01",
+      snapshot_to: "2026-06-12",
+      limit: 50,
+      items: [],
+      summary: {
+        row_count: 2,
+        execution_usable_stats: {
+          metric_basis: "net_next_open_adj",
+          row_count: 2,
+          horizon_usable_stats: {
+            return_1d: {
+              available_count: 2,
+              missing_count: 0,
+              positive_count: 1,
+              non_positive_count: 1,
+              avg_return: 0.01,
+              win_rate: 0.5,
+            },
+            return_5d: {
+              available_count: 2,
+              missing_count: 0,
+              positive_count: 2,
+              non_positive_count: 0,
+              avg_return: 0.04,
+              win_rate: 1,
+            },
+            return_10d: {
+              available_count: 0,
+              missing_count: 2,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
+            return_20d: {
+              available_count: 0,
+              missing_count: 2,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
+          },
+          by_signal_kind_horizon_usable_stats: {
+            stock_candidate: {
+              return_1d: {
+                available_count: 2,
+                missing_count: 0,
+                positive_count: 1,
+                non_positive_count: 1,
+                avg_return: 0.01,
+                win_rate: 0.5,
+              },
+              return_5d: {
+                available_count: 2,
+                missing_count: 0,
+                positive_count: 2,
+                non_positive_count: 0,
+                avg_return: 0.04,
+                win_rate: 1,
+              },
+              return_10d: {
+                available_count: 0,
+                missing_count: 2,
+                positive_count: 0,
+                non_positive_count: 0,
+                avg_return: null,
+                win_rate: null,
+              },
+              return_20d: {
+                available_count: 0,
+                missing_count: 2,
+                positive_count: 0,
+                non_positive_count: 0,
+                avg_return: null,
+                win_rate: null,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const summary = buildStrategyBacktestPanelSummary({
+      payload: executionPayload,
+      sampleCount: 2,
+      window: null,
+      dateRangeLabel: "2026-06-01 ~ 2026-06-12",
+      rows: [
+        {
+          kind: "stock_candidate",
+          label: "趋势突破",
+          count: 2,
+          stats: { return_1d: "legacy", return_5d: "legacy", return_10d: "legacy", return_20d: "legacy" },
+        },
+      ],
+      queryState: "ready",
+    });
+
+    expect(summary.detail).toBe("2026-06-01 ~ 2026-06-12 · T+1开盘成交·含费·复权");
+    expect(summary.stats[0].value).toBe("胜率 100.0% / 均收益 +4.0% / 2条");
   });
 
   it("keeps generic backend pending copy as confirmation status, not return maturity", () => {
