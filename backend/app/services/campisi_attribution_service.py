@@ -1811,6 +1811,8 @@ def _decision_residual_ratio(
     formal_actual_pnl: Decimal,
     residual_noise: Decimal,
 ) -> float | None:
+    # Human: caliber-formal_scenario_gate-justified -- numeric zero-guard on a PnL
+    # amount (avoids division by zero / misleading 0 ratio); not a basis/view gate.
     if formal_actual_pnl == Decimal("0"):
         return 0.0 if residual_noise == Decimal("0") else None
     return float(abs(residual_noise) / abs(formal_actual_pnl))
