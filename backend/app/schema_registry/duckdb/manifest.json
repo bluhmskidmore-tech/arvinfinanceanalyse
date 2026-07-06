@@ -99,8 +99,8 @@
     },
     {
       "path": "20_ledger_analytics.sql",
-      "ensure_module": "backend.app.repositories.ledger_analytics_repo",
-      "ensure_symbol": "ensure_ledger_analytics_tables"
+      "ensure_module": "backend.app.repositories.duckdb_migrations",
+      "ensure_symbol": "_v20_ledger_analytics"
     },
     {
       "path": "21_choice_stock.sql",
@@ -141,6 +141,16 @@
       "path": "29_commodity_futures_daily.sql",
       "ensure_module": "backend.app.tasks.commodity_daily_ingest",
       "ensure_symbol": "ensure_commodity_futures_daily_schema"
+    },
+    {
+      "path": "30_stock_adjustment_factor.sql",
+      "ensure_module": "backend.app.core_finance.adjusted_returns",
+      "ensure_symbol": "ensure_stock_adjustment_factor_schema"
+    },
+    {
+      "path": "31_livermore_matched_baseline.sql",
+      "ensure_module": "backend.app.core_finance.matched_baseline",
+      "ensure_symbol": "ensure_livermore_matched_baseline_schema"
     }
   ]
 }
