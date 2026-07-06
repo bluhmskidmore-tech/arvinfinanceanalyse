@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.liability_analytics_compat import (
@@ -39,6 +40,8 @@ from backend.app.services.formal_result_runtime import build_result_envelope
 LIABILITY_ANALYTICS_CACHE_VERSION = "cv_liability_analytics_v1"
 LIABILITY_ANALYTICS_RULE_VERSION = "rv_liability_analytics_compat_v1"
 LIABILITY_ANALYTICS_EMPTY_SOURCE_VERSION = "sv_liability_analytics_empty"
+NIM_STRESS_SHOCK_DECIMAL = Decimal("0.005")
+NIM_STRESS_DELTA_BP = Decimal("-50")
 
 _LIABILITY_MONTH_LIST_FIELDS = {
     "counterparty_top10": LiabilityMonthlyBreakdownRow,
@@ -174,6 +177,28 @@ def _parse_iso_date(value: object) -> date | None:
         return date.fromisoformat(s)
     except ValueError:
         return None
+
+
+def _raw_decimal(value: object) -> Decimal | None:
+    if isinstance(value, dict):
+        value = value.get("raw")
+    if value is None:
+        return None
+    try:
+        out = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return out if out.is_finite() else None
+
+
+def _build_nim_stress(nim: object) -> dict[str, float | None]:
+    nim_decimal = _raw_decimal(nim)
+    if nim_decimal is None:
+        return {"nim_stressed": None, "delta_bp": None}
+    return {
+        "nim_stressed": float(nim_decimal - NIM_STRESS_SHOCK_DECIMAL),
+        "delta_bp": float(NIM_STRESS_DELTA_BP),
+    }
 
 
 def _build_yield_history_series(
@@ -314,6 +339,11 @@ def liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None
         zqtz_rows,
         tyw_rows,
     )
+    kpi = payload.get("kpi")
+    if isinstance(kpi, dict):
+        kpi = dict(kpi)
+        kpi["nim_stress"] = _build_nim_stress(kpi.get("nim"))
+        payload = {**payload, "kpi": kpi}
     history_dicts = _build_yield_history_series(repo, resolved_date, max_points=72)
     scatter_dicts = _build_yield_scatter_points(zqtz_rows, resolved_date)
     merged: dict[str, object] = {

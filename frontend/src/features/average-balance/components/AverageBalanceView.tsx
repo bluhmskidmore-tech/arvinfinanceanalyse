@@ -91,6 +91,29 @@ function formatPct(value: number | null | undefined): string {
   return `${value.toFixed(2)}%`;
 }
 
+function formatRatioPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function isIncompleteRateCoverage(value: number | null | undefined): boolean {
+  return value !== null && value !== undefined && Number.isFinite(value) && value < 0.9999;
+}
+
+function buildRateCoverageWarning(data: AdbComparisonResponse | null | undefined): string | null {
+  if (!data) return null;
+  const warnings = [
+    isIncompleteRateCoverage(data.asset_rate_coverage_ratio)
+      ? `资产利率覆盖 ${formatRatioPercent(data.asset_rate_coverage_ratio)}`
+      : null,
+    isIncompleteRateCoverage(data.liability_rate_coverage_ratio)
+      ? `负债利率覆盖 ${formatRatioPercent(data.liability_rate_coverage_ratio)}`
+      : null,
+  ].filter(Boolean);
+  if (warnings.length === 0) return null;
+  return `加权利率覆盖不足：${warnings.join("，")}。收益率/付息率仅按有利率余额加权，缺失余额已从分母剔除。`;
+}
+
 function formatSignedPct(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
@@ -220,6 +243,7 @@ function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
     { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number | null) => (value === null ? "—" : (value / YI).toFixed(2)) },
     { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number) => value.toFixed(2) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
+    { title: "利率覆盖(%)", dataIndex: "rate_coverage_ratio", key: "rate_coverage_ratio", align: "right", render: (value: number | null | undefined) => formatRatioPercent(value) },
   ];
 }
 
@@ -229,6 +253,7 @@ function buildMonthlyBreakdownColumns(kind: BreakdownKind): ColumnsType<AdbMonth
     { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number | null) => formatMatrixValue(value, "amount") },
     { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number | null | undefined) => (value === null || value === undefined ? "—" : value.toFixed(2)) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
+    { title: "利率覆盖(%)", dataIndex: "rate_coverage_ratio", key: "rate_coverage_ratio", align: "right", render: (value: number | null | undefined) => formatRatioPercent(value) },
   ];
 }
 
@@ -511,6 +536,10 @@ export default function AverageBalanceView() {
     if (cov === undefined || cov === null) return false;
     return cov < d.num_days * 0.5;
   }, [comparisonQuery.data]);
+  const rateCoverageWarning = useMemo(
+    () => buildRateCoverageWarning(comparisonQuery.data),
+    [comparisonQuery.data],
+  );
 
   const coverageQuery = useQuery({
     queryKey: ["average-balance", "adb-coverage", client.mode, startDate, endDate],
@@ -826,12 +855,20 @@ export default function AverageBalanceView() {
                       description="覆盖不足时日均余额会退化为有数据日的均值（极端情况等于期末时点），请确认 fact_formal 表已对区间内每个日期执行物化。"
                     />
                   ) : null}
-                  {lowCoverageWarning && startDate && endDate ? (
+                  {(lowCoverageWarning || rateCoverageWarning) && startDate && endDate ? (
                     <div style={{ marginTop: 16 }}>
                       <AdbCoverageDiagnostics
                         loading={coverageQuery.isLoading}
                         isError={coverageQuery.isError}
                         data={coverageQuery.data}
+                        rateCoverage={
+                          rateCoverageWarning
+                            ? {
+                                assetRateCoverageRatio: dailyData?.asset_rate_coverage_ratio,
+                                liabilityRateCoverageRatio: dailyData?.liability_rate_coverage_ratio,
+                              }
+                            : undefined
+                        }
                       />
                     </div>
                   ) : null}
@@ -862,6 +899,14 @@ export default function AverageBalanceView() {
                       titleSuffix="日度区间"
                     />
                     {deviationWarning ? <Alert type="warning" showIcon message={deviationWarning} /> : null}
+                    {rateCoverageWarning ? (
+                      <Alert
+                        data-testid="adb-rate-coverage-warning"
+                        type="warning"
+                        showIcon
+                        message={rateCoverageWarning}
+                      />
+                    ) : null}
                     {priorYearRange ? (
                       <Card data-testid="adb-daily-yoy-summary" title="区间同比（去年同期对齐）" size="small">
                         <Space direction="vertical" size="small" style={{ width: "100%" }}>

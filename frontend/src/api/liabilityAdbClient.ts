@@ -173,6 +173,7 @@ function normalizeAdbComparisonResponse(
           row.weighted_rate === null || row.weighted_rate === undefined
             ? null
             : Number(row.weighted_rate),
+        rate_coverage_ratio: normalizeNullableNumber(row.rate_coverage_ratio),
       };
     });
 
@@ -223,6 +224,8 @@ function normalizeAdbComparisonResponse(
       raw.net_interest_margin === null || raw.net_interest_margin === undefined
         ? null
         : Number(raw.net_interest_margin),
+    asset_rate_coverage_ratio: normalizeNullableNumber(raw.asset_rate_coverage_ratio),
+    liability_rate_coverage_ratio: normalizeNullableNumber(raw.liability_rate_coverage_ratio),
     assets_breakdown: assetsBreakdown,
     liabilities_breakdown: liabilitiesBreakdown,
     accounting_basis_daily_avg: accountingBasisRaw
@@ -290,6 +293,7 @@ function normalizeAdbMonthlyResponse(
               breakdown.weighted_rate === null || breakdown.weighted_rate === undefined
                 ? null
                 : Number(breakdown.weighted_rate),
+            rate_coverage_ratio: normalizeNullableNumber(breakdown.rate_coverage_ratio),
           };
         });
 
@@ -311,6 +315,8 @@ function normalizeAdbMonthlyResponse(
           row.net_interest_margin === null || row.net_interest_margin === undefined
             ? null
             : Number(row.net_interest_margin),
+        asset_rate_coverage_ratio: normalizeNullableNumber(row.asset_rate_coverage_ratio),
+        liability_rate_coverage_ratio: normalizeNullableNumber(row.liability_rate_coverage_ratio),
         mom_change_assets:
           row.mom_change_assets === null || row.mom_change_assets === undefined
             ? null
@@ -344,6 +350,10 @@ function normalizeAdbMonthlyResponse(
         : Number(raw.ytd_liability_cost),
     ytd_nim:
       raw.ytd_nim === null || raw.ytd_nim === undefined ? null : Number(raw.ytd_nim),
+    ytd_asset_rate_coverage_ratio: normalizeNullableNumber(raw.ytd_asset_rate_coverage_ratio),
+    ytd_liability_rate_coverage_ratio: normalizeNullableNumber(
+      raw.ytd_liability_rate_coverage_ratio,
+    ),
     unit: raw.unit ? String(raw.unit) : undefined,
   };
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -110,6 +111,63 @@ def test_yield_by_period_returns_envelope_with_empty_periods_on_empty_db(
     assert body["result"]["year"] == 2026
     assert body["result"]["period_type"] == "monthly"
     assert body["result"]["periods"] == []
+
+
+def test_yield_metrics_payload_adds_backend_nim_stress_from_official_nim(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    service_mod = load_module(
+        "backend.app.services.liability_analytics_service_nim_stress",
+        "backend/app/services/liability_analytics_service.py",
+    )
+
+    class Repo:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2026-01-31"
+
+        def fetch_zqtz_yield_rows(self, report_date: str):
+            return [{"report_date": report_date, "source_version": "sv_zqtz"}]
+
+        def fetch_tyw_rows(self, report_date: str):
+            return [{"report_date": report_date, "source_version": "sv_tyw"}]
+
+        def list_report_dates(self):
+            return ["2026-01-31"]
+
+        def fetch_yield_rows_for_dates(self, dates):
+            return (
+                {d: [{"report_date": d, "source_version": "sv_zqtz"}] for d in dates},
+                {d: [{"report_date": d, "source_version": "sv_tyw"}] for d in dates},
+            )
+
+    def fake_compute(report_date, _zqtz_rows, _tyw_rows):
+        return {
+            "report_date": report_date,
+            "kpi": {
+                "asset_yield": 0.031,
+                "liability_cost": 0.018,
+                "market_liability_cost": 0.021,
+                "nim": 0.010,
+            },
+        }
+
+    monkeypatch.setattr(service_mod, "LiabilityAnalyticsRepository", Repo)
+    monkeypatch.setattr(service_mod, "compute_liability_yield_metrics", fake_compute)
+
+    envelope = service_mod.liability_yield_metrics_payload(
+        duckdb_path=str(tmp_path / "liability.duckdb"),
+        report_date="2026-01-31",
+    )
+
+    stress = envelope["result"]["kpi"]["nim_stress"]
+    assert stress["nim_stressed"]["unit"] == "pct"
+    assert stress["nim_stressed"]["raw"] == pytest.approx(0.005)
+    assert stress["delta_bp"]["unit"] == "bp"
+    assert stress["delta_bp"]["raw"] == pytest.approx(-50)
 
 
 def test_yield_history_uses_batch_repo_fetch(monkeypatch) -> None:

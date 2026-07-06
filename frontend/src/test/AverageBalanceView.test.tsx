@@ -793,6 +793,8 @@ describe("AverageBalanceView", () => {
           asset_yield: 2.55,
           liability_cost: 1.75,
           net_interest_margin: 0.8,
+          asset_rate_coverage_ratio: 0.5,
+          liability_rate_coverage_ratio: 1,
           assets_breakdown: [],
           liabilities_breakdown: [],
         };
@@ -814,7 +816,9 @@ describe("AverageBalanceView", () => {
     });
 
     expect(await screen.findByTestId("adb-coverage-diagnostics")).toBeInTheDocument();
+    expect(await screen.findByTestId("adb-rate-coverage-warning")).toHaveTextContent("50.0%");
     await user.click(screen.getByText("快照 vs formal 覆盖诊断（只读）"));
+    expect(await screen.findByTestId("adb-rate-coverage-diagnostics")).toHaveTextContent("50.0%");
     expect(await screen.findByTestId("adb-coverage-missing-list")).toHaveTextContent("2026-02-01");
   });
 

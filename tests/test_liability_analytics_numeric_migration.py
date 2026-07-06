@@ -7,6 +7,7 @@ from backend.app.schemas.liability_analytics import (
     LiabilityCounterpartyPayload,
     LiabilityMonthlyBreakdownRow,
     LiabilityNameAmountItem,
+    LiabilityNimStress,
     LiabilityRiskBucketsPayload,
     LiabilityYieldKpi,
     LiabilityYieldMetricsPayload,
@@ -43,6 +44,21 @@ class TestLiabilityYieldNumericMigration:
         )
         assert isinstance(kpi.asset_yield, Numeric)
         assert kpi.nim.unit == "pct"
+
+    def test_kpi_accepts_backend_nim_stress_numeric_envelope(self) -> None:
+        kpi = LiabilityYieldKpi(
+            asset_yield=0.031,
+            liability_cost=0.018,
+            market_liability_cost=0.021,
+            nim=0.010,
+            nim_stress=LiabilityNimStress(nim_stressed=0.005, delta_bp=-50),
+        )
+
+        assert kpi.nim_stress is not None
+        assert isinstance(kpi.nim_stress.nim_stressed, Numeric)
+        assert kpi.nim_stress.nim_stressed.unit == "pct"
+        assert kpi.nim_stress.delta_bp is not None
+        assert kpi.nim_stress.delta_bp.unit == "bp"
 
     def test_payload_accepts_native_numeric(self) -> None:
         payload = LiabilityYieldMetricsPayload(

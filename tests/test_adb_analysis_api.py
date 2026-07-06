@@ -586,6 +586,16 @@ def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path
             coupon_rate=Decimal("2.50"),
             ytm_value=Decimal("2.40"),
         )
+        _insert_zqtz(
+            conn,
+            report_date="2025-05-16",
+            instrument_code="B-RATE-MISSING",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=None,
+        )
     finally:
         conn.close()
 
@@ -608,7 +618,9 @@ def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path
     assert payload["simulated"] is True
     assert payload["assets_breakdown"][0]["category"] == BOND_CORP_ZQTZ_CATEGORY
     assert payload["assets_breakdown"][0]["weighted_rate"] == 2.4
+    assert payload["assets_breakdown"][0]["rate_coverage_ratio"] == 0.5
     assert payload["asset_yield"] == 2.4
+    assert payload["asset_rate_coverage_ratio"] == 0.5
 
 
 def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
@@ -712,6 +724,61 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
         if item["category"] == BOND_CERT_ZQTZ_CATEGORY
     )
     assert null_rate_item["weighted_rate"] is None
+
+
+def test_adb_monthly_excludes_missing_rate_from_denominator_and_reports_coverage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
+    db_path = tmp_path / "adb-monthly-rate-coverage.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-01-15",
+            instrument_code="B-MONTH-COVERED",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=Decimal("2.40"),
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-01-15",
+            instrument_code="B-MONTH-MISSING",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=None,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-01-15"],
+    )
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get("/api/analysis/adb/monthly", params={"year": 2025})
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    first_month = payload["months"][0]
+    assert first_month["asset_yield"] == 2.4
+    assert first_month["asset_rate_coverage_ratio"] == 0.5
+    assert payload["ytd_asset_yield"] == 2.4
+    assert payload["ytd_asset_rate_coverage_ratio"] == 0.5
+    assert first_month["breakdown_assets"][0]["weighted_rate"] == 2.4
+    assert first_month["breakdown_assets"][0]["rate_coverage_ratio"] == 0.5
 
 
 def test_adb_comparison_returns_analytical_envelope(tmp_path: Path, monkeypatch) -> None:

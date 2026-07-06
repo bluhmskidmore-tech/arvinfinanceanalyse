@@ -79,6 +79,23 @@ class LiabilityBucketAmountItem(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
+class LiabilityNimStress(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    nim_stressed: Numeric | None = None
+    delta_bp: Numeric | None = None
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "nim_stressed": ("pct", True),
+        "delta_bp": ("bp", True),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
 class LiabilityYieldKpi(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -86,6 +103,7 @@ class LiabilityYieldKpi(BaseModel):
     liability_cost: Numeric | None = None
     market_liability_cost: Numeric | None = None
     nim: Numeric | None = None
+    nim_stress: LiabilityNimStress | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "asset_yield": ("pct", True),

@@ -9,12 +9,16 @@ function governed(raw: number | null, unit: Numeric["unit"], signAware = false):
 }
 
 describe("dailyNimStressFromKpi", () => {
-  it("keeps yield metrics Numeric-native and derives projected nim in governed units", () => {
+  it("keeps yield metrics Numeric-native and displays backend projected nim in governed units", () => {
     const yieldKpi: LiabilityYieldKpi = {
       asset_yield: governed(0.031, "pct"),
       liability_cost: governed(0.018, "pct"),
       market_liability_cost: governed(0.021, "pct"),
-      nim: null,
+      nim: governed(0.01, "pct"),
+      nim_stress: {
+        nim_stressed: governed(0.005, "pct"),
+        delta_bp: governed(-50, "bp", true),
+      },
     };
 
     const out = dailyNimStressFromKpi(yieldKpi);
@@ -28,5 +32,24 @@ describe("dailyNimStressFromKpi", () => {
     expect(out.deltaBp?.unit).toBe("bp");
     expect(out.deltaBp?.raw).toBeCloseTo(-50, 8);
     expect(out.isCritical).toBe(false);
+  });
+
+  it("uses backend nim stress instead of re-deriving projected nim from ay minus mlc", () => {
+    const yieldKpi: LiabilityYieldKpi = {
+      asset_yield: governed(0.05, "pct"),
+      liability_cost: governed(0.01, "pct"),
+      market_liability_cost: governed(0.01, "pct"),
+      nim: governed(0.02, "pct"),
+      nim_stress: {
+        nim_stressed: governed(0.015, "pct"),
+        delta_bp: governed(-50, "bp", true),
+      },
+    };
+
+    const out = dailyNimStressFromKpi(yieldKpi);
+
+    expect(out.nim?.raw).toBeCloseTo(0.02, 8);
+    expect(out.projected?.raw).toBeCloseTo(0.015, 8);
+    expect(out.deltaBp?.raw).toBeCloseTo(-50, 8);
   });
 });

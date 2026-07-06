@@ -5,11 +5,22 @@ const { Text } = Typography;
 
 const MAX_DATES_SHOWN = 120;
 
+type AdbRateCoveragePayload = {
+  assetRateCoverageRatio?: number | null;
+  liabilityRateCoverageRatio?: number | null;
+};
+
 type AdbCoverageDiagnosticsProps = {
   loading: boolean;
   isError: boolean;
   data: AdbCoveragePayload | undefined;
+  rateCoverage?: AdbRateCoveragePayload;
 };
+
+function formatRatioPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+}
 
 /**
  * 只读：展示 `/api/analysis/adb/coverage` 返回的快照 vs formal 日期缺口。
@@ -18,7 +29,12 @@ export default function AdbCoverageDiagnostics({
   loading,
   isError,
   data,
+  rateCoverage,
 }: AdbCoverageDiagnosticsProps) {
+  const hasRateCoverage =
+    (rateCoverage?.assetRateCoverageRatio !== undefined && rateCoverage.assetRateCoverageRatio !== null) ||
+    (rateCoverage?.liabilityRateCoverageRatio !== undefined && rateCoverage.liabilityRateCoverageRatio !== null);
+
   return (
     <Collapse
       data-testid="adb-coverage-diagnostics"
@@ -27,7 +43,16 @@ export default function AdbCoverageDiagnostics({
           key: "coverage",
           label: "快照 vs formal 覆盖诊断（只读）",
           children: (
-            <div>
+            <Space direction="vertical" size="small" style={{ width: "100%" }}>
+              {hasRateCoverage ? (
+                <Alert
+                  data-testid="adb-rate-coverage-diagnostics"
+                  type="warning"
+                  showIcon
+                  message="加权利率覆盖"
+                  description={`资产 ${formatRatioPercent(rateCoverage?.assetRateCoverageRatio)} · 负债 ${formatRatioPercent(rateCoverage?.liabilityRateCoverageRatio)}`}
+                />
+              ) : null}
               {loading ? (
                 <Spin />
               ) : isError ? (
@@ -62,7 +87,7 @@ export default function AdbCoverageDiagnostics({
               ) : (
                 <Text type="secondary">无数据</Text>
               )}
-            </div>
+            </Space>
           ),
         },
       ]}
