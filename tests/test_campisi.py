@@ -14,10 +14,12 @@ from decimal import Decimal
 
 import pytest
 
+from backend.app.core_finance import campisi as campisi_module
 from backend.app.core_finance.campisi import (
     _coerce_percent_curve,
     benchmark_yield_change_decimal,
     campisi_attribution,
+    campisi_enhanced,
     credit_spread_change_decimal,
     infer_credit_rating_from_asset_class,
     interpolate_treasury_yield_pct,
@@ -810,3 +812,90 @@ class TestLargePortfolioAggregationPrecision:
                 sum((Decimal(str(r[key])) for r in result.by_bond), Decimal("0"))
             )
             assert result.totals[key] == pytest.approx(reconstructed, abs=1e-6)
+
+    def test_enhanced_totals_close_and_match_decimal_reconstruction(self, monkeypatch):
+        """Six-effect totals use Decimal aggregation before the float output boundary."""
+        effect_cycle = (
+            Decimal("6.82472E-13"),
+            Decimal("6.01752E-13"),
+            Decimal("-8.67655E-13"),
+            Decimal("-4.65081E-13"),
+            Decimal("-7.52706E-13"),
+            Decimal("3.9003E-14"),
+            Decimal("5.95854E-13"),
+        )
+
+        def fake_six_effects(bond, *_args, **_kwargs):
+            idx = int(str(bond["bond_code"])[3:7])
+            value = effect_cycle[idx % len(effect_cycle)]
+            return {
+                "income_return": value,
+                "treasury_effect": Decimal("0"),
+                "spread_effect": Decimal("0"),
+                "convexity_effect": Decimal("0"),
+                "cross_effect": Decimal("0"),
+                "reinvestment_effect": Decimal("0"),
+                "selection_effect": Decimal("0"),
+                "total_return": value,
+                "mod_duration": Decimal("7.7"),
+                "has_accrued_interest": False,
+                "diagnostics": [],
+            }
+
+        monkeypatch.setattr(campisi_module, "compute_bond_six_effects", fake_six_effects)
+        n = 600
+        start_date = date(2026, 4, 1)
+        end_date = date(2026, 5, 1)
+        positions = []
+        asset_classes = ["AAA credit bond", "AA+ credit bond", "AA credit bond", "treasury bond"]
+        for i in range(n):
+            positions.append(
+                {
+                    "bond_code": f"ENH{i:04d}.IB",
+                    "instrument_id": f"ENH{i:04d}.IB",
+                    "market_value_start": Decimal("0.1"),
+                    "market_value_end": Decimal("0.1"),
+                    "face_value_start": Decimal("0.1"),
+                    "coupon_rate_start": 0.027 + (i % 10) * 0.00031,
+                    "yield_to_maturity_start": 0.031 + (i % 9) * 0.00037,
+                    "asset_class_start": asset_classes[i % 4],
+                    "maturity_date_start": date(2028 + (i % 7), 1 + (i % 12), 1 + (i % 27)),
+                }
+            )
+        market_start = {
+            "treasury_1y": 2.05, "treasury_3y": 2.36, "treasury_5y": 2.82,
+            "treasury_7y": 3.04, "treasury_10y": 3.32, "treasury_30y": 3.88,
+            "credit_spread_aaa_3y": 46.0, "credit_spread_aa_plus_3y": 76.0,
+            "credit_spread_aa_3y": 106.0,
+        }
+        market_end = {
+            "treasury_1y": 2.17, "treasury_3y": 2.51, "treasury_5y": 2.99,
+            "treasury_7y": 3.19, "treasury_10y": 3.48, "treasury_30y": 4.07,
+            "credit_spread_aaa_3y": 52.0, "credit_spread_aa_plus_3y": 83.0,
+            "credit_spread_aa_3y": 115.0,
+        }
+
+        result = campisi_enhanced(positions, market_start, market_end, start_date, end_date)
+
+        keys = (
+            "income_return",
+            "treasury_effect",
+            "spread_effect",
+            "convexity_effect",
+            "cross_effect",
+            "reinvestment_effect",
+            "selection_effect",
+            "total_return",
+        )
+        sum_effects = sum(result["totals"][key] for key in keys if key != "total_return")
+        assert sum_effects == pytest.approx(result["totals"]["total_return"], abs=0.01)
+
+        expected = {key: Decimal("0") for key in (*keys, "market_value_start")}
+        for row in positions:
+            expected["market_value_start"] += Decimal(str(row.get("market_value_start") or 0))
+            value = effect_cycle[int(row["bond_code"][3:7]) % len(effect_cycle)]
+            expected["income_return"] += value
+            expected["total_return"] += value
+
+        for key, expected_value in expected.items():
+            assert result["totals"][key] == float(expected_value)

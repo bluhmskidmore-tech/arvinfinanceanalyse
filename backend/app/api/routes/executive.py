@@ -3,6 +3,7 @@ from typing import Annotated
 
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.executive_dashboard import ExecutiveOverviewEnvelope
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.executive_service import (
     executive_alerts,  # noqa: F401 - reserved route contract monkeypatch target
@@ -71,7 +72,7 @@ def _ensure_executive_read_allowed(auth: AuthContext) -> None:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/home/overview")
+@router.get("/home/overview", response_model=ExecutiveOverviewEnvelope)
 def overview(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str | None = None,
@@ -135,9 +136,12 @@ def home_snapshot(
     _ensure_executive_read_allowed(auth)
     return timed_api_call(
         "/ui/home/snapshot",
-        lambda: home_snapshot_envelope(
-            report_date=normalized_report_date,
-            allow_partial=allow_partial,
+        lambda: _require_landed_executive_surface(
+            home_snapshot_envelope(
+                report_date=normalized_report_date,
+                allow_partial=allow_partial,
+            ),
+            route_name="home_snapshot",
         ),
     )
 

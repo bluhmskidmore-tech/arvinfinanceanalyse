@@ -1,0 +1,19 @@
+{
+  "source": "backend/app/core_finance/zqtz_asset_bond_category.py",
+  "sort_order_range": [
+    83,
+    88
+  ],
+  "parents": {
+    "非底层投资资产": [
+      "信托计划",
+      "证券业资管计划"
+    ],
+    "证券业资管计划": [
+      "其中：结构化融资（券商）",
+      "其中：外币委外",
+      "其中：本币委外（市值法）",
+      "其中：本币专户（成本法）"
+    ]
+  }
+}

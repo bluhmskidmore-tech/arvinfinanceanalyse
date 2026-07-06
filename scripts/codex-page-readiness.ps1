@@ -44,6 +44,9 @@ function Write-PageReadinessReport {
   foreach ($gap in $Report.residual_gaps) {
     Write-Output "- $gap"
   }
+  if ($Report.page_slug -in @("pnl", "pnl-bridge")) {
+    Write-Output "- full data-catalog/date review required before page-level closure."
+  }
 
   if ($Report.required_commands.Count -gt 0) {
     Write-Output "Required closure commands:"

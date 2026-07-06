@@ -1,7 +1,7 @@
 import type {
   ContributionPayload,
 } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
+import { chipVariants, tableVariants } from "@heroui/styles";
 import { AsyncSection } from "./AsyncSection";
 
 type ContributionSectionProps = {
@@ -10,6 +10,8 @@ type ContributionSectionProps = {
   isError: boolean;
   onRetry: () => void;
 };
+const contributionTableSlots = tableVariants({ variant: "primary" });
+const contributionStatusChipSlots = chipVariants({ size: "sm", variant: "soft", color: "default" });
 
 export default function ContributionSection({
   data,
@@ -25,61 +27,40 @@ export default function ContributionSection({
       isEmpty={!data || data.rows.length === 0}
       onRetry={onRetry}
     >
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflowX: "auto", padding: "12px" }}>
         <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: 14,
-          }}
+          aria-label="Contribution data"
+          className={contributionTableSlots.base({ className: "min-w-full" })}
+          data-slot="table"
         >
-          <thead>
-            <tr style={{ color: "#8090a8", textAlign: "left" }}>
-              <th style={{ paddingBottom: 12 }}>名称</th>
-              <th style={{ paddingBottom: 12 }}>维度</th>
-              <th style={{ paddingBottom: 12 }}>贡献</th>
-              <th style={{ paddingBottom: 12 }}>完成度</th>
-              <th style={{ paddingBottom: 12 }}>状态</th>
+          <thead className={contributionTableSlots.header()} data-slot="table-header">
+            <tr className={contributionTableSlots.row()}>
+              <th className={contributionTableSlots.column()}>名称</th>
+              <th className={contributionTableSlots.column()}>维度</th>
+              <th className={contributionTableSlots.column()}>贡献</th>
+              <th className={contributionTableSlots.column()}>完成度</th>
+              <th className={contributionTableSlots.column()}>状态</th>
             </tr>
           </thead>
-          <tbody>
-            {data?.rows.map((row) => (
-              <tr key={row.id} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                <td style={{ paddingBlock: 14 }}>{row.name}</td>
-                <td style={{ paddingBlock: 14, color: designTokens.color.neutral[600] }}>{row.owner}</td>
-                <td style={{ paddingBlock: 14, color: designTokens.color.semantic.profit, fontWeight: 600 }}>
+          <tbody className={contributionTableSlots.body()} data-slot="table-body">
+            {(data?.rows || []).map((row) => (
+              <tr className={contributionTableSlots.row()} key={row.id}>
+                <td className={contributionTableSlots.cell()}>{row.name}</td>
+                <td className={contributionTableSlots.cell({ className: "text-default-500" })}>{row.owner}</td>
+                <td className={contributionTableSlots.cell({ className: "font-semibold text-success" })}>
                   {row.contribution.display}
                 </td>
-                <td style={{ paddingBlock: 14, minWidth: 140 }}>
-                  <div
-                    style={{
-                      height: 8,
-                      borderRadius: 999,
-                      background: designTokens.color.neutral[100],
-                      overflow: "hidden",
-                    }}
-                  >
+                <td className={contributionTableSlots.cell()}>
+                  <div className="h-2 rounded-full bg-default-100 overflow-hidden min-w-[140px]">
                     <div
-                      style={{
-                        width: `${row.completion}%`,
-                        height: "100%",
-                        borderRadius: 999,
-                        background: designTokens.color.primary[600],
-                      }}
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${row.completion}%` }}
                     />
                   </div>
                 </td>
-                <td style={{ paddingBlock: 14 }}>
-                  <span
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      background: designTokens.color.neutral[100],
-                      color: designTokens.color.neutral[600],
-                      fontSize: 12,
-                    }}
-                  >
-                    {row.status}
+                <td className={contributionTableSlots.cell()}>
+                  <span className={contributionStatusChipSlots.base()} data-slot="chip">
+                    <span className={contributionStatusChipSlots.label()}>{row.status}</span>
                   </span>
                 </td>
               </tr>

@@ -12,6 +12,7 @@ import type {
   HomeSnapshotPayload,
   OverviewPayload,
   PlaceholderSnapshot,
+  ResultMeta,
   RiskOverviewPayload,
   RiskScenarioStressPayload,
   RiskTensorDatesPayload,
@@ -89,8 +90,36 @@ export type ExecutiveClientFactoryOptions = {
   fetchImpl: FetchLike;
   baseUrl: string;
   requestJson: RequestJson;
-  getPlaceholderSnapshot: ExecutiveClientMethods["getPlaceholderSnapshot"];
 };
+
+function buildReadinessPlaceholderEnvelope(key: string): ApiEnvelope<PlaceholderSnapshot> {
+  const normalizedKey = key.trim() || "unknown";
+  const meta: ResultMeta = {
+    trace_id: `readiness_${normalizedKey}`,
+    basis: "analytical",
+    result_kind: `workbench.${normalizedKey}.readiness`,
+    formal_use_allowed: false,
+    source_version: "readiness:placeholder",
+    vendor_version: "vv_none",
+    rule_version: "rv_readiness_placeholder_v1",
+    cache_version: "cv_readiness_placeholder_v1",
+    quality_flag: "missing",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    source_surface: "workbench_placeholder",
+    scenario_flag: false,
+    generated_at: "2026-04-09T10:30:00Z",
+  };
+
+  return {
+    result_meta: meta,
+    result: {
+      title: normalizedKey === "source-preview" ? "Source Preview" : normalizedKey,
+      summary: "",
+      highlights: [],
+    },
+  };
+}
 
 export function createDemoExecutiveClient(
   delay: Delay,
@@ -439,7 +468,7 @@ export function createDemoExecutiveClient(
 export function createRealExecutiveClient(
   options: ExecutiveClientFactoryOptions,
 ): ExecutiveThinClientMethods {
-  const { fetchImpl, baseUrl, requestJson, getPlaceholderSnapshot } = options;
+  const { fetchImpl, baseUrl, requestJson } = options;
 
   return {
     getOverview: (reportDate?: string) =>
@@ -506,6 +535,8 @@ export function createRealExecutiveClient(
       ),
     getAlerts: () =>
       requestJson<AlertsPayload>(fetchImpl, baseUrl, "/ui/home/alerts"),
-    getPlaceholderSnapshot,
+    async getPlaceholderSnapshot(key: string) {
+      return buildReadinessPlaceholderEnvelope(key);
+    },
   };
 }

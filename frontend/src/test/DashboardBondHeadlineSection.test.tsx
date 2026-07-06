@@ -61,6 +61,7 @@ describe("DashboardBondHeadlineSection", () => {
     expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent(
       "持仓事实表修正久期，按 rate/credit 债券市值加权。",
     );
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("143.0 bp");
     expect(screen.queryByText(/DV01/i)).not.toBeInTheDocument();
   });
 
@@ -126,8 +127,59 @@ describe("DashboardBondHeadlineSection", () => {
     expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("67.61 亿");
     expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("2.06%");
     expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("2.09%");
-    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("2.48%");
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("247.8 bp");
     expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("1382.62 万元");
     expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("1,711");
+  });
+
+  it("keeps governed bp spreads in bp instead of coercing them into percent", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: {
+        trace_id: "tr_dashboard_bond_headline_bp_unit",
+        basis: "formal",
+        result_kind: "bond_dashboard.headline",
+        formal_use_allowed: true,
+        source_version: "sv_headline_bp",
+        vendor_version: "vv_headline_bp",
+        rule_version: "rv_headline_bp",
+        cache_version: "cv_headline_bp",
+        quality_flag: "ok",
+        vendor_status: "ok",
+        fallback_mode: "none",
+        scenario_flag: false,
+        generated_at: "2026-04-21T00:00:00Z",
+      },
+      result: {
+        report_date: "2026-03-31",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: formatRawAsNumeric({ raw: 32870900000, unit: "yuan", sign_aware: false }),
+          unrealized_pnl: formatRawAsNumeric({ raw: 128450000, unit: "yuan", sign_aware: true }),
+          weighted_ytm: formatRawAsNumeric({ raw: 0.0321, unit: "pct", sign_aware: false }),
+          weighted_duration: formatRawAsNumeric({ raw: 4.27, unit: "ratio", sign_aware: false }),
+          weighted_coupon: formatRawAsNumeric({ raw: 0.0285, unit: "pct", sign_aware: false }),
+          credit_spread_median: formatRawAsNumeric({ raw: 0.42, unit: "bp", sign_aware: false }),
+          total_dv01: formatRawAsNumeric({ raw: 987654, unit: "dv01", sign_aware: false }),
+          bond_count: 248,
+        },
+        prev_kpis: null,
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <DashboardBondHeadlineSection reportDate="2026-03-31" />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("dashboard-bond-headline-kpi")).toHaveLength(8));
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("0.4 bp");
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).not.toHaveTextContent("42.00%");
   });
 });

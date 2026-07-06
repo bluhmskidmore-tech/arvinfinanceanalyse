@@ -1,13 +1,15 @@
 import type { CSSProperties, ReactNode } from "react";
+import { cardVariants } from "@heroui/styles";
 
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { shellTokens } from "../../../theme/tokens";
 import {
   cockpitBodyStyle,
   cockpitEyebrowStyle,
-  cockpitSectionShellStyle,
   cockpitTitleStyle,
 } from "./DashboardCockpitSection.styles";
+
+const dashboardCockpitCardSlots = cardVariants({ variant: "default" });
 
 const retryButtonStyle: CSSProperties = {
   width: "fit-content",
@@ -32,24 +34,29 @@ export function DashboardCockpitSection(props: {
   testId?: string;
 }) {
   return (
-    <section data-testid={props.testId} style={cockpitSectionShellStyle}>
+    <div
+      data-testid={props.testId}
+      className={dashboardCockpitCardSlots.base({
+        className: "h-full bg-background/40 border-default-100 backdrop-blur-md shadow-sm",
+      })}
+      data-slot="card"
+    >
       <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 16,
-        }}
+        className={dashboardCockpitCardSlots.header({
+          className: "flex items-start justify-between gap-3 pb-0",
+        })}
+        data-slot="card-header"
       >
-        <div style={{ display: "grid", gap: 6 }}>
+        <div className="grid gap-1.5">
           <span style={cockpitEyebrowStyle}>{props.eyebrow}</span>
           <h2 style={cockpitTitleStyle}>{props.title}</h2>
         </div>
         {props.extra}
       </div>
-      {renderSectionBody(props.state, props.onRetry, props.children, props.emptyFooter)}
-    </section>
+      <div className={dashboardCockpitCardSlots.content()} data-slot="card-content">
+        {renderSectionBody(props.state, props.onRetry, props.children, props.emptyFooter)}
+      </div>
+    </div>
   );
 }
 

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
+import rollupFixture from "./__fixtures__/zqtzAdbAvgRollupChildren.fixture.json";
+import { ADB_AVG_ROLLUP_CHILDREN_BY_PARENT, resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 
 describe("resolveAdbAvgYuan", () => {
+  it("keeps the frontend ADB rollup tree aligned with the backend ZQTZ category fixture", () => {
+    expect(ADB_AVG_ROLLUP_CHILDREN_BY_PARENT).toEqual(rollupFixture.parents);
+  });
+
   it("uses direct category when present", () => {
     const map = new Map<string, number>([["政策性金融债", 1e9]]);
     expect(resolveAdbAvgYuan("政策性金融债", map)).toBe(1e9);
@@ -13,12 +18,12 @@ describe("resolveAdbAvgYuan", () => {
     expect(resolveAdbAvgYuan("zero-business", map)).toBe(0);
   });
 
-  it("sums known children for 非底层投资资产 when parent key missing", () => {
+  it("keeps parent rollup undefined when any required child is missing", () => {
     const map = new Map<string, number>([
       ["信托计划", 100],
       ["其中：外币委外", 300],
     ]);
-    expect(resolveAdbAvgYuan("非底层投资资产", map)).toBe(400);
+    expect(resolveAdbAvgYuan("非底层投资资产", map)).toBeUndefined();
   });
 
   it("prefers direct parent value when both parent and children could apply", () => {
@@ -59,5 +64,16 @@ describe("resolveAdbAvgYuan", () => {
       ["其中：外币委外", 300],
     ]);
     expect(resolveAdbAvgYuan("非底层投资资产", map)).toBe(500);
+  });
+
+  it("rolls parent through a fully resolved nested child tree", () => {
+    const map = new Map<string, number>([
+      ["信托计划", 100],
+      ["其中：结构化融资（券商）", 10],
+      ["其中：外币委外", 20],
+      ["其中：本币委外（市值法）", 30],
+      ["其中：本币专户（成本法）", 40],
+    ]);
+    expect(resolveAdbAvgYuan("非底层投资资产", map)).toBe(200);
   });
 });

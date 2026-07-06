@@ -14,7 +14,8 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from backend.app.schemas.common_numeric import Numeric
-from pydantic import BaseModel, Field, model_validator
+from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _coerce_display_numeric(value: Any) -> Any:
@@ -62,6 +63,13 @@ class ExecutiveMetric(BaseModel):
 class OverviewPayload(BaseModel):
     title: str
     metrics: list[ExecutiveMetric]
+
+
+class ExecutiveOverviewEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: OverviewPayload
 
 
 class SummaryPoint(BaseModel):

@@ -389,7 +389,18 @@ describe("createApiClient", () => {
           asset_yield: 3.3571,
           liability_cost: null,
           net_interest_margin: null,
-          assets_breakdown: [],
+          asset_rate_coverage_ratio: "0.5",
+          liability_rate_coverage_ratio: null,
+          assets_breakdown: [
+            {
+              category: "asset-covered",
+              spot_balance: 250000000,
+              avg_balance: 175000000,
+              proportion: 100,
+              weighted_rate: "3.3571",
+              rate_coverage_ratio: "0.5",
+            },
+          ],
           liabilities_breakdown: [],
         },
       }),
@@ -408,6 +419,9 @@ describe("createApiClient", () => {
     expect(payload.result_meta?.result_kind).toBe("adb.comparison");
     expect(payload.result_meta?.source_version).toBe("sv_adb");
     expect(payload.accounting_basis_daily_avg).toBeUndefined();
+    expect(payload.asset_rate_coverage_ratio).toBe(0.5);
+    expect(payload.liability_rate_coverage_ratio).toBeNull();
+    expect(payload.assets_breakdown[0].rate_coverage_ratio).toBe(0.5);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",
@@ -460,12 +474,14 @@ describe("createApiClient", () => {
               avg_balance: null,
               proportion: "12.5",
               weighted_rate: null,
+              rate_coverage_ratio: null,
             },
             {
               category: "asset-missing",
               spot_balance: "200000000",
               proportion: "25.5",
               weighted_rate: null,
+              rate_coverage_ratio: "0.5",
             },
             {
               category: "asset-zero",
@@ -517,6 +533,11 @@ describe("createApiClient", () => {
       0,
     ]);
     expect(payload.assets_breakdown.map((item) => item.proportion)).toEqual([12.5, 25.5, 0]);
+    expect(payload.assets_breakdown.map((item) => item.rate_coverage_ratio)).toEqual([
+      null,
+      0.5,
+      null,
+    ]);
   });
 
   it("preserves null monthly breakdown average balance instead of coercing to zero", async () => {
@@ -550,12 +571,20 @@ describe("createApiClient", () => {
               asset_yield: null,
               liability_cost: null,
               net_interest_margin: null,
+              asset_rate_coverage_ratio: "0.5",
+              liability_rate_coverage_ratio: null,
               mom_change_assets: null,
               mom_change_pct_assets: null,
               mom_change_liabilities: null,
               mom_change_pct_liabilities: null,
               breakdown_assets: [
-                { category: "asset-null", avg_balance: null, proportion: null, weighted_rate: null },
+                {
+                  category: "asset-null",
+                  avg_balance: null,
+                  proportion: null,
+                  weighted_rate: null,
+                  rate_coverage_ratio: null,
+                },
                 { category: "asset-zero", avg_balance: 0, proportion: 0, weighted_rate: null },
               ],
               breakdown_liabilities: [
@@ -569,6 +598,8 @@ describe("createApiClient", () => {
           ytd_asset_yield: null,
           ytd_liability_cost: null,
           ytd_nim: null,
+          ytd_asset_rate_coverage_ratio: "0.5",
+          ytd_liability_rate_coverage_ratio: null,
         },
       }),
     }));
@@ -585,6 +616,11 @@ describe("createApiClient", () => {
       null,
       0,
     ]);
+    expect(payload.months[0].asset_rate_coverage_ratio).toBe(0.5);
+    expect(payload.months[0].liability_rate_coverage_ratio).toBeNull();
+    expect(payload.months[0].breakdown_assets[0].rate_coverage_ratio).toBeNull();
+    expect(payload.ytd_asset_rate_coverage_ratio).toBe(0.5);
+    expect(payload.ytd_liability_rate_coverage_ratio).toBeNull();
   });
 
   it("preserves null monthly totals and accounting-basis balances instead of coercing to zero", async () => {
@@ -2710,15 +2746,15 @@ describe("createApiClient", () => {
     );
   });
 
-  it("uses real mode to fetch macro foundation preview", async () => {
+  it("uses real mode to fetch macro foundation from the formal market-data catalog", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({
         result_meta: {
-          trace_id: "tr_macro_foundation",
-          basis: "analytical",
-          result_kind: "preview.macro-foundation",
-          formal_use_allowed: false,
+          trace_id: "tr_market_data_catalog_formal",
+          basis: "formal",
+          result_kind: "market_data.catalog",
+          formal_use_allowed: true,
           source_version: "sv_macro_vendor",
           vendor_version: "vv_choice_catalog_v1",
           rule_version: "rv_phase1_macro_vendor_v1",
@@ -2726,12 +2762,26 @@ describe("createApiClient", () => {
           quality_flag: "ok",
           vendor_status: "ok",
           fallback_mode: "none",
+          source_surface: "market_data",
           scenario_flag: false,
           generated_at: "2026-04-10T09:00:00Z",
         },
         result: {
           read_target: "duckdb",
-          series: [],
+          series: [
+            {
+              series_id: "M001",
+              series_name: "Open Market 7D Reverse Repo",
+              vendor_name: "choice",
+              vendor_version: "vv_choice_catalog_v1",
+              frequency: "daily",
+              unit: "%",
+              refresh_tier: "stable",
+              fetch_mode: "date_slice",
+              fetch_granularity: "batch",
+              policy_note: "main refresh date-slice lane",
+            },
+          ],
         },
       }),
     }));
@@ -2742,14 +2792,35 @@ describe("createApiClient", () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
-    await client.getMacroFoundation();
+    const envelope = await client.getMacroFoundation();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/ui/preview/macro-foundation",
+      "http://localhost:8000/ui/market-data/catalog",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",
         }),
+      }),
+    );
+    expect(envelope.result_meta).toEqual(
+      expect.objectContaining({
+        basis: "formal",
+        formal_use_allowed: true,
+        result_kind: "market_data.catalog",
+        source_surface: "market_data",
+      }),
+    );
+    expect(envelope.result).toEqual(
+      expect.objectContaining({
+        read_target: "duckdb",
+        series: [
+          expect.objectContaining({
+            series_id: "M001",
+            refresh_tier: "stable",
+            fetch_mode: "date_slice",
+            fetch_granularity: "batch",
+          }),
+        ],
       }),
     );
   });
@@ -4536,16 +4607,18 @@ describe("createApiClient", () => {
     expect(envelope.result.supported_outputs).toEqual([
       "market_gate",
       "sector_rank",
-      "stock_candidates",
+      "fresh_trend_watchlist",
+      "factor_screen_candidates",
       "risk_exit",
     ]);
-    expect(envelope.result.stock_candidates?.candidate_count).toBe(2);
     expect(envelope.result.risk_exit?.signal_count).toBe(1);
-    expect(envelope.result.unsupported_outputs).toContainEqual({
-      key: "theme_breakout",
-      reason: "concept membership table pending",
-    });
-    expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(false);
+    expect(envelope.result.stock_candidates).toBeUndefined();
+    expect(
+      envelope.result.unsupported_outputs.find((item) => item.key === "theme_breakout")?.reason,
+    ).toContain("paused in OVERHEAT");
+    expect(
+      envelope.result.unsupported_outputs.find((item) => item.key === "stock_candidates")?.reason,
+    ).toContain("inactive in OVERHEAT");
     expect(envelope.result.unsupported_outputs.some((item) => item.key === "risk_exit")).toBe(false);
   });
 
@@ -4650,6 +4723,144 @@ describe("createApiClient", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "http://localhost:8000/ui/market-data/livermore",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("returns a stock-analysis workbench payload in mock mode", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const envelope = await client.getStockAnalysisWorkbench({
+      asOfDate: "2026-04-29",
+      include: ["signal_confluence"],
+      topK: 2,
+    });
+
+    expect(envelope.result_meta.basis).toBe("analytical");
+    expect(envelope.result_meta.formal_use_allowed).toBe(false);
+    expect(envelope.result.contract_status).toBe("observational_only");
+    expect(envelope.result.formal_use_allowed).toBe(false);
+    expect(envelope.result.as_of_date).toBe("2026-04-29");
+    expect(envelope.result.modules.main.status).toBe("ready");
+    expect(envelope.result.modules.signal_confluence?.status).toBe("deferred");
+    expect(envelope.result.links.stock_detail).toBe("/ui/market-data/livermore/stock-detail");
+  });
+
+  it("uses real mode to fetch the stock-analysis workbench with bounded include options", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_stock_analysis_workbench",
+          basis: "analytical",
+          result_kind: "market_data.stock_analysis.workbench",
+          formal_use_allowed: false,
+          source_version: "sv_livermore",
+          vendor_version: "vv_none",
+          rule_version: "rv_stock_analysis_workbench_v1",
+          cache_version: "cv_stock_analysis_workbench_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-29T00:00:00Z",
+        },
+        result: {
+          page_id: "GAP-STOCK-ANALYSIS-PAGE",
+          route: "/stock-analysis",
+          basis: "analytical",
+          contract_status: "observational_only",
+          formal_use_allowed: false,
+          requested_as_of_date: "2026-04-29",
+          as_of_date: "2026-04-29",
+          fallback_date: null,
+          stale: false,
+          page_question: {
+            question: "Can the stock analysis workbench continue candidate review today?",
+            answer_state: "review_ready",
+            answer_label: "review_ready",
+            reason: "mock",
+          },
+          decision_summary: {
+            gate_state: "WARM",
+            gate_label: "WARM",
+            can_review_candidates: true,
+            top_review_stock_code: "000001.SZ",
+            top_review_stock_name: "Alpha",
+            review_queue_count: 1,
+            evidence_closure_label: "review_ready",
+            primary_blocker: null,
+          },
+          data_status: {
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            source_version: "sv_livermore",
+            rule_version: "rv_livermore_strategy_v1",
+            cache_version: "cv_livermore_strategy_v1",
+            tables_used: [],
+            evidence_rows: 0,
+          },
+          first_screen: {
+            market_gate: { state: "WARM" },
+            review_queue: [],
+            sector_snapshot: [],
+            risk_exit_snapshot: [],
+            data_gaps: [],
+            diagnostics: [],
+            supported_outputs: [],
+            unsupported_outputs: [],
+          },
+          modules: {
+            main: {
+              key: "main",
+              label: "Livermore strategy snapshot",
+              endpoint: "/ui/market-data/livermore",
+              status: "ready",
+              result: {},
+              summary: {},
+              meta: {},
+              issues: [],
+            },
+          },
+          endpoint_evidence: [],
+          issues: [],
+          links: {
+            stock_detail: "/ui/market-data/livermore/stock-detail",
+            candidate_history: "/ui/market-data/livermore/candidate-history",
+            sector_rank_series: "/ui/market-data/livermore/sector-rank-series",
+            strategy_score: "/ui/market-data/livermore/strategy-score",
+            strategy_optimization: "/ui/market-data/livermore/strategy-optimization",
+            cycle_proxy_backtest: "/ui/market-data/livermore/cycle-proxy-backtest",
+            portfolio_backtest: "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+          },
+          include: {
+            requested: ["main", "signal_confluence"],
+            unknown: [],
+            sector_window_days: 30,
+            top_k: 3,
+          },
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const envelope = await client.getStockAnalysisWorkbench({
+      asOfDate: "2026-04-29",
+      include: ["signal_confluence"],
+      sectorWindowDays: 30,
+      topK: 3,
+    });
+
+    expect(envelope.result.route).toBe("/stock-analysis");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/stock-analysis/workbench?as_of_date=2026-04-29&include=signal_confluence&sector_window_days=30&top_k=3",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),

@@ -1574,6 +1574,7 @@ def executive_overview(
     ytd_raw: float | None = None
     nim_raw: float | None = None
     dv01_raw: float | None = None
+    duration_raw: float | None = None
     overview_source_versions: list[object] = [_DEFAULT_SOURCE]
     overview_rule_versions: list[object] = [_DEFAULT_RULE]
     aum_delta: Numeric = Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
@@ -1584,6 +1585,8 @@ def executive_overview(
     ytd_history: list[float] | None = None
     nim_history: list[float] | None = None
     dv01_history: list[float] | None = None
+    duration_history: list[float] | None = None
+    duration_delta: Numeric = Numeric(raw=None, unit="ratio", display="N/A", precision=2, sign_aware=True)
     row: dict[str, object] | None = None
 
     def load_aum_state() -> dict[str, object]:
@@ -1805,6 +1808,10 @@ def executive_overview(
             "raw": None,
             "delta": Numeric(raw=None, unit="pct", display="N/A", precision=2, sign_aware=True),
             "history": None,
+            "duration_raw": None,
+            "duration_delta": Numeric(raw=None, unit="ratio", display="N/A", precision=2, sign_aware=True),
+            "duration_history": None,
+            "duration_source": None,
             "source_versions": [],
             "rule_versions": [],
             "missing_lineage": False,
@@ -1827,12 +1834,63 @@ def executive_overview(
                 n=history_points,
             )
             state["history"] = history
+            previous_report_date = _previous_report_date(
+                bond_report_dates,
+                current_report_date,
+            )
+            fetch_headline = getattr(bond_repo, "fetch_dashboard_headline_kpis", None)
+            if callable(fetch_headline) and current_report_date is not None:
+                try:
+                    headline_payload = fetch_headline(
+                        current_report_date,
+                        prev_report_date=previous_report_date,
+                    )
+                    current_headline = (
+                        headline_payload.get("current")
+                        if isinstance(headline_payload, dict)
+                        else None
+                    )
+                    previous_headline = (
+                        headline_payload.get("previous")
+                        if isinstance(headline_payload, dict)
+                        else None
+                    )
+                    if (
+                        isinstance(current_headline, dict)
+                        and current_headline.get("weighted_duration") is not None
+                    ):
+                        duration = float(current_headline["weighted_duration"])
+                        state["duration_raw"] = duration
+                        state["duration_source"] = "headline"
+                        if (
+                            isinstance(previous_headline, dict)
+                            and previous_headline.get("weighted_duration") is not None
+                        ):
+                            previous_duration = float(previous_headline["weighted_duration"])
+                            duration_change = duration - previous_duration
+                            duration_sign = "+" if duration_change >= 0 else ""
+                            state["duration_delta"] = Numeric(
+                                raw=duration_change,
+                                unit="ratio",
+                                display=f"{duration_sign}{duration_change:.2f}",
+                                precision=2,
+                                sign_aware=True,
+                            )
+                            state["duration_history"] = [previous_duration, duration]
+                except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                    pass
             snapshot = snapshots_by_date.get(current_report_date) if current_report_date else None
             source_versions: list[object] = []
             rule_versions: list[object] = []
             if snapshot is not None and snapshot.get("portfolio_dv01") is not None:
                 raw = float(snapshot["portfolio_dv01"])
                 state["raw"] = raw
+                if (
+                    state.get("duration_raw") is None
+                    and snapshot.get("portfolio_modified_duration") is not None
+                ):
+                    state["duration_raw"] = float(snapshot["portfolio_modified_duration"])
+                    state["duration_source"] = "risk_snapshot"
                 if governance_dir:
                     current_lineage = _bond_analytics_lineage_from_rows(
                         cache_build_runs,
@@ -1845,10 +1903,6 @@ def executive_overview(
                         rule_versions.append(current_lineage.get("rule_version"))
                     else:
                         state["missing_lineage"] = True
-                previous_report_date = _previous_report_date(
-                    bond_report_dates,
-                    current_report_date,
-                )
                 if previous_report_date is not None:
                     previous_snapshot = snapshots_by_date.get(previous_report_date)
                     if previous_snapshot is not None and previous_snapshot.get("portfolio_dv01") is not None:
@@ -1868,6 +1922,26 @@ def executive_overview(
                             raw,
                             float(previous_snapshot["portfolio_dv01"]),
                         )
+                        if (
+                            state.get("duration_source") != "headline"
+                            and state.get("duration_raw") is not None
+                            and previous_snapshot.get("portfolio_modified_duration") is not None
+                        ):
+                            duration_change = float(state["duration_raw"]) - float(
+                                previous_snapshot["portfolio_modified_duration"]
+                            )
+                            duration_sign = "+" if duration_change >= 0 else ""
+                            state["duration_delta"] = Numeric(
+                                raw=duration_change,
+                                unit="ratio",
+                                display=f"{duration_sign}{duration_change:.2f}",
+                                precision=2,
+                                sign_aware=True,
+                            )
+                            state["duration_history"] = [
+                                float(previous_snapshot["portfolio_modified_duration"]),
+                                float(state["duration_raw"]),
+                            ]
             state["source_versions"] = source_versions
             state["rule_versions"] = rule_versions
         except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
@@ -1948,6 +2022,9 @@ def executive_overview(
     dv01_raw = dv01_state.get("raw")  # type: ignore[assignment]
     dv01_delta = dv01_state.get("delta")  # type: ignore[assignment]
     dv01_history = dv01_state.get("history")  # type: ignore[assignment]
+    duration_raw = dv01_state.get("duration_raw")  # type: ignore[assignment]
+    duration_delta = dv01_state.get("duration_delta")  # type: ignore[assignment]
+    duration_history = dv01_state.get("duration_history")  # type: ignore[assignment]
     overview_source_versions.extend(list(dv01_state.get("source_versions", [])))  # type: ignore[arg-type]
     overview_rule_versions.extend(list(dv01_state.get("rule_versions", [])))  # type: ignore[arg-type]
 
@@ -2038,6 +2115,33 @@ def executive_overview(
                     else f"来自 bond analytics 风险快照，在 {current_bond_report_date} 的全量组合 DV01；含 AC/OCI/TPL，拆分见风险全景。"
                 ),
                 history=dv01_history,
+            )
+        )
+    if duration_raw is not None:
+        metrics.append(
+            ExecutiveMetric(
+                id="duration",
+                label="加权久期",
+                caliber_label="利率风险资产口径",
+                value=Numeric(
+                    raw=duration_raw,
+                    unit="ratio",
+                    display=f"{duration_raw:,.2f}",
+                    precision=2,
+                    sign_aware=False,
+                ),
+                delta=duration_delta,
+                tone="warning",
+                detail=(
+                    f"来自 bond dashboard headline，在 {normalized_report_date} 的 weighted_duration；"
+                    "按 rate/credit 债券投资范围内的市值加权修正久期。"
+                    if normalized_report_date is not None
+                    else (
+                        f"来自 bond dashboard headline，在 {current_bond_report_date} 的 weighted_duration；"
+                        "按 rate/credit 债券投资范围内的市值加权修正久期。"
+                    )
+                ),
+                history=duration_history,
             )
         )
     kpi_dsn = str(

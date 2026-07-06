@@ -98,7 +98,10 @@ function formatYi(value: number): string {
   return `${amount >= 0 ? "+" : ""}${amount.toFixed(2)} 亿`;
 }
 
-function formatPct(value: number): string {
+function formatPct(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
   return `${(value * 100).toFixed(1)}%`;
 }
 

@@ -36,14 +36,14 @@ function resolveAdbAvgYuanFromRollup(
   }
   visiting.add(businessType);
   let sum = 0;
-  let resolvedChildCount = 0;
   for (const label of children) {
     const v = resolveAdbAvgYuanFromRollup(label, directMap, visiting);
-    if (v !== undefined) {
-      resolvedChildCount += 1;
-      sum += v;
+    if (v === undefined) {
+      visiting.delete(businessType);
+      return undefined;
     }
+    sum += v;
   }
   visiting.delete(businessType);
-  return resolvedChildCount > 0 ? sum : undefined;
+  return sum;
 }

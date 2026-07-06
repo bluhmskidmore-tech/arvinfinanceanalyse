@@ -5,6 +5,7 @@ import { useApiClient } from "../../../api/client";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { shellTokens } from "../../../theme/tokens";
 import { formatNumeric, formatRawAsNumeric } from "../../../utils/format";
+import { toBp } from "../../bond-analytics/lib/bondAnalyticsHomeCalculations";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { nativeToNumber } from "../../bond-dashboard/utils/format";
 import {
@@ -40,6 +41,21 @@ function parseHeadlineValue(
     return parsed;
   }
   return nativeToNumber(value as Parameters<typeof nativeToNumber>[0]) ?? 0;
+}
+
+function formatSpreadHeadlineValue(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number") {
+    const rawPct = parseHeadlineValue(value, "pct");
+    return formatNumeric(formatRawAsNumeric({ raw: rawPct * 10_000, unit: "bp", sign_aware: false }));
+  }
+
+  return formatNumeric(
+    formatRawAsNumeric({
+      raw: toBp(value as Parameters<typeof toBp>[0]),
+      unit: "bp",
+      sign_aware: false,
+    }),
+  );
 }
 
 type HeadlineCell = {
@@ -91,7 +107,7 @@ export function DashboardBondHeadlineSection({
     const weightedYtm = parseHeadlineValue(kpis.weighted_ytm, "pct");
     const weightedDuration = parseHeadlineValue(kpis.weighted_duration);
     const weightedCoupon = parseHeadlineValue(kpis.weighted_coupon, "pct");
-    const spreadMedian = parseHeadlineValue(kpis.credit_spread_median, "pct");
+    const spreadMedian = formatSpreadHeadlineValue(kpis.credit_spread_median);
     const rateSensitivity = parseHeadlineValue(kpis.total_dv01) / 10_000;
     const bondCount = parseHeadlineValue(kpis.bond_count);
 
@@ -140,7 +156,7 @@ export function DashboardBondHeadlineSection({
         },
         {
           label: "信用利差中位数",
-          value: formatNumeric(formatRawAsNumeric({ raw: spreadMedian, unit: "pct", sign_aware: false })),
+          value: spreadMedian,
           detail: "信用估值区间",
         },
         {

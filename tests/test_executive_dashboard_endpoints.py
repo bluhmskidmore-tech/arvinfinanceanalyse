@@ -51,15 +51,23 @@ def _load_executive_routes_module():
 
 
 def _ok_payload(result_kind: str) -> dict[str, object]:
+    result: dict[str, object] = {}
+    if result_kind == "executive.overview":
+        result = {"title": "overview", "metrics": []}
     return {
         "result_meta": {
+            "trace_id": f"tr_{result_kind}",
             "result_kind": result_kind,
             "basis": "analytical",
             "formal_use_allowed": False,
             "scenario_flag": False,
             "vendor_status": "ok",
+            "source_version": f"sv_{result_kind}",
+            "rule_version": f"rv_{result_kind}",
+            "cache_version": f"cv_{result_kind}",
+            "source_surface": "executive_analytical",
         },
-        "result": {},
+        "result": result,
     }
 
 
@@ -167,6 +175,7 @@ def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_a
         "/ui/home/overview",
         "/ui/home/summary",
         "/ui/pnl/attribution",
+        "/ui/home/snapshot",
     ]
     kinds: list[str] = []
     for path in ok_paths:
@@ -178,10 +187,14 @@ def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_a
         assert meta.get("basis") == "analytical"
         assert meta.get("formal_use_allowed") is False
         assert meta.get("scenario_flag") is False
+        assert meta.get("source_version")
+        assert meta.get("rule_version")
+        assert meta.get("cache_version")
         kinds.append(str(meta.get("result_kind", "")))
     assert "executive.overview" in kinds
     assert "executive.summary" in kinds
     assert "executive.pnl-attribution" in kinds
+    assert "home.snapshot" in kinds
 
     for path in (
         "/ui/risk/overview",
@@ -226,6 +239,29 @@ def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailabl
         with pytest.raises(HTTPException) as exc_info:
             getattr(module, name)(auth=auth)
         assert exc_info.value.status_code == 503
+
+
+def test_home_snapshot_route_rejects_vendor_unavailable_envelope(monkeypatch):
+    module = _load_executive_routes_module()
+    auth = AuthContext(user_id="executive-read-user", role="viewer", identity_source="header")
+    monkeypatch.setattr(module, "_ensure_executive_read_allowed", lambda _auth: None)
+    monkeypatch.setattr(
+        module,
+        "home_snapshot_envelope",
+        lambda **_kwargs: {
+            "result_meta": {
+                "result_kind": "home.snapshot",
+                "vendor_status": "vendor_unavailable",
+            },
+            "result": {},
+        },
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        module.home_snapshot(auth=auth)
+
+    assert exc_info.value.status_code == 503
+    assert "governed data" in str(exc_info.value.detail)
 
 
 def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeypatch):

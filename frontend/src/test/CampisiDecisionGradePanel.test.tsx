@@ -151,4 +151,22 @@ describe("CampisiDecisionGradePanel", () => {
     expect(screen.getByText("剩余/选券只作为代理指标")).toBeInTheDocument();
     expect(screen.queryByText("交易员能力")).not.toBeInTheDocument();
   });
+
+  it("renders unavailable residual ratio as a dash", () => {
+    render(
+      <CampisiDecisionGradePanel
+        data={{
+          ...decisionGradePayload,
+          summary: {
+            ...decisionGradePayload.summary,
+            residual_ratio: null,
+          },
+        }}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("campisi-decision-formal-view")).toHaveTextContent("—");
+  });
 });

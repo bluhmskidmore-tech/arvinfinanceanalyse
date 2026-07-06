@@ -1,5 +1,5 @@
 import type { SummaryPayload } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
+import { cardVariants, chipVariants } from "@heroui/styles";
 import { AsyncSection } from "./AsyncSection";
 
 type SummarySectionProps = {
@@ -12,10 +12,11 @@ type SummarySectionProps = {
 };
 
 const toneMap = {
-  positive: { bg: designTokens.color.success[50], fg: designTokens.color.success[600] },
-  neutral: { bg: designTokens.color.neutral[100], fg: designTokens.color.neutral[600] },
-  warning: { bg: designTokens.color.warning[50], fg: designTokens.color.warning[700] },
+  positive: "success",
+  neutral: "default",
+  warning: "warning",
 } as const;
+const summaryCardSlots = cardVariants({ variant: "default" });
 
 export function SummarySection({
   data,
@@ -47,29 +48,22 @@ export function SummarySection({
         {data?.points.map((item) => (
           <div
             key={item.id}
-            style={{
-              display: "grid",
-              gap: 8,
-              padding: 14,
-              borderRadius: 16,
-              background: "#ffffff",
-              border: "1px solid #e8edf5",
-            }}
+            className={summaryCardSlots.base({
+              className: "bg-background/40 border-default-100 backdrop-blur-md shadow-sm",
+            })}
+            data-slot="card"
           >
-            <span
-              style={{
-                width: "fit-content",
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: toneMap[item.tone].bg,
-                color: toneMap[item.tone].fg,
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              {item.label}
-            </span>
-            <span style={{ color: "#5c6b82", lineHeight: 1.7 }}>{item.text}</span>
+            <div className={summaryCardSlots.content({ className: "grid gap-2 p-3.5" })} data-slot="card-content">
+              <div className="w-fit">
+                <span
+                  className={chipVariants({ size: "sm", variant: "soft", color: toneMap[item.tone] }).base()}
+                  data-slot="chip"
+                >
+                  <span className={chipVariants().label()}>{item.label}</span>
+                </span>
+              </div>
+              <span className="text-default-500 leading-relaxed">{item.text}</span>
+            </div>
           </div>
         ))}
       </div>

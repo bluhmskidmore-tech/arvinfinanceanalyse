@@ -9,7 +9,7 @@ import type { LiabilityYieldHistoryPoint, Numeric, PnlV1DetailRow } from "../../
 import { fmtPct, formatNumeric, formatPercent } from "../../utils/format";
 import { BaseChart } from "../../components/charts/BaseChart";
 import { mossChartCategoricalPalette } from "../../components/charts/chartTheme";
-import { ibTokens } from "../../theme/designSystem";
+import { designTokens, ibTokens } from "../../theme/designSystem";
 import { runPollingTask } from "../../app/jobs/polling";
 import { PnlFilterBar } from "./yieldAnalysis/PnlFilterBar";
 import { RankingBarsCard } from "./yieldAnalysis/RankingBarsCard";
@@ -78,9 +78,9 @@ function pnlTone(value: number) {
 }
 
 const chartAxisMuted = ibTokens.color.inkMuted;
-const chartMarketCost = ibTokens.color.accent;
+const chartMarketCost = designTokens.color.info[600];
 const chartSpread = ibTokens.color.gold;
-const chartAssetYield = ibTokens.color.ink;
+const chartAssetYield = designTokens.color.primary[600];
 const chartLiabilityDash = ibTokens.color.inkSecondary;
 const chartScatter = mossChartCategoricalPalette[1];
 
@@ -487,6 +487,7 @@ export default function YieldAnalysisPage() {
                         ? "yield-analysis-plain-meta__delta--up"
                         : "yield-analysis-plain-meta__delta--down"
                   }
+                  style={nimDelta != null && nimUp ? { color: designTokens.color.success[600] } : undefined}
                 >
                   NIM 日变动：{nimDelta == null ? "—" : formatPercent(nimDelta, false)}
                 </span>

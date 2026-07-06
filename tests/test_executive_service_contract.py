@@ -105,8 +105,16 @@ def _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, g
         "_fetch_dv01_context",
         lambda *_a, **_k: (
             {
-                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 30.0},
-                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 20.0},
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "portfolio_dv01": 30.0,
+                    "portfolio_modified_duration": 4.37,
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "portfolio_dv01": 20.0,
+                    "portfolio_modified_duration": 4.42,
+                },
             },
             [20.0, 30.0],
         ),
@@ -305,6 +313,7 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
             return {
                 "report_date": "2030-03-15",
                 "portfolio_dv01": 1234567.8,
+                "portfolio_modified_duration": 4.37,
             }
 
         def list_report_dates(self):
@@ -312,12 +321,14 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
 
         def fetch_risk_overview_snapshot(self, *, report_date: str):
             values = {
-                "2030-03-15": 1234567.8,
-                "2030-02-28": 1000000.0,
+                "2030-03-15": (1234567.8, 4.37),
+                "2030-02-28": (1000000.0, 4.42),
             }
+            dv01, duration = values[report_date]
             return {
                 "report_date": report_date,
-                "portfolio_dv01": values[report_date],
+                "portfolio_dv01": dv01,
+                "portfolio_modified_duration": duration,
             }
 
     class FixedDate:
@@ -407,7 +418,7 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
         "rv-liab__rv_balance_union__rv_bond_analytics__rv_exec_dashboard_v1__rv_pnl_formal"
     )
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert set(metrics) == {"aum", "yield", "nim", "dv01", "goal", "risk-budget"}
+    assert set(metrics) == {"aum", "yield", "nim", "dv01", "duration", "goal", "risk-budget"}
     assert metrics["aum"]["label"] == "总资产规模"
     assert metrics["aum"]["caliber_label"] == "本币资产口径"
     _assert_numeric_json_shape(metrics["aum"]["value"])
@@ -419,6 +430,9 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     assert metrics["nim"]["value"]["display"] == "+0.38%"
     _assert_numeric_json_shape(metrics["dv01"]["value"])
     assert metrics["dv01"]["value"]["display"] == "1,234,568"
+    _assert_numeric_json_shape(metrics["duration"]["value"])
+    assert metrics["duration"]["value"]["raw"] == pytest.approx(4.37)
+    assert metrics["duration"]["value"]["display"] == "4.37"
     _assert_numeric_json_shape(metrics["aum"]["delta"])
     assert metrics["aum"]["delta"]["display"] == "+2.35%"
     _assert_numeric_json_shape(metrics["yield"]["delta"])
@@ -427,6 +441,8 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     assert metrics["nim"]["delta"]["display"] == "+0.05pp"
     _assert_numeric_json_shape(metrics["dv01"]["delta"])
     assert metrics["dv01"]["delta"]["display"] == "+23.46%"
+    _assert_numeric_json_shape(metrics["duration"]["delta"])
+    assert metrics["duration"]["delta"]["display"] == "-0.05"
     _assert_numeric_json_shape(metrics["goal"]["value"])
     assert metrics["goal"]["value"]["display"] == "92.20%"
     _assert_numeric_json_shape(metrics["risk-budget"]["value"])
@@ -948,8 +964,16 @@ def test_executive_overview_uses_parallel_domain_contexts_when_dates_are_prelist
         assert current_report_date == "2026-04-30"
         return (
             {
-                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 300.0},
-                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 200.0},
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "portfolio_dv01": 300.0,
+                    "portfolio_modified_duration": 4.37,
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "portfolio_dv01": 200.0,
+                    "portfolio_modified_duration": 4.42,
+                },
             },
             [200.0, 300.0],
         )
@@ -981,7 +1005,7 @@ def test_executive_overview_uses_parallel_domain_contexts_when_dates_are_prelist
     )
 
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert set(metrics) == {"aum", "yield", "nim", "dv01"}
+    assert set(metrics) == {"aum", "yield", "nim", "dv01", "duration"}
     assert entered == {"aum", "pnl", "nim", "dv01"}
 
 

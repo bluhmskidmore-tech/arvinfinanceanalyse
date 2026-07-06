@@ -454,37 +454,51 @@ def campisi_enhanced(
             "bond_code": bond["bond_code"],
             "asset_class": row.get("asset_class_start"),
             "maturity_bucket": _maturity_bucket(years),
-            "market_value_start": float(row.get("market_value_start") or 0),
-            "income_return": float(sx["income_return"]),
-            "treasury_effect": float(sx["treasury_effect"]),
-            "spread_effect": float(sx["spread_effect"]),
-            "convexity_effect": float(sx["convexity_effect"]),
-            "cross_effect": float(sx["cross_effect"]),
-            "reinvestment_effect": float(sx["reinvestment_effect"]),
-            "selection_effect": float(sx["selection_effect"]),
-            "total_return": float(sx["total_return"]),
-            "mod_duration": float(sx["mod_duration"]),
+            "market_value_start": Decimal(str(row.get("market_value_start") or 0)),
+            "income_return": sx["income_return"],
+            "treasury_effect": sx["treasury_effect"],
+            "spread_effect": sx["spread_effect"],
+            "convexity_effect": sx["convexity_effect"],
+            "cross_effect": sx["cross_effect"],
+            "reinvestment_effect": sx["reinvestment_effect"],
+            "selection_effect": sx["selection_effect"],
+            "total_return": sx["total_return"],
+            "mod_duration": sx["mod_duration"],
             "has_accrued_interest": bool(sx["has_accrued_interest"]),
         }
         by_bond.append(rec)
 
+    _ZERO = Decimal("0")
     totals = {
-        "income_return": sum(r["income_return"] for r in by_bond),
-        "treasury_effect": sum(r["treasury_effect"] for r in by_bond),
-        "spread_effect": sum(r["spread_effect"] for r in by_bond),
-        "convexity_effect": sum(r["convexity_effect"] for r in by_bond),
-        "cross_effect": sum(r["cross_effect"] for r in by_bond),
-        "reinvestment_effect": sum(r["reinvestment_effect"] for r in by_bond),
-        "selection_effect": sum(r["selection_effect"] for r in by_bond),
-        "total_return": sum(r["total_return"] for r in by_bond),
-        "market_value_start": sum(r["market_value_start"] for r in by_bond),
+        "income_return": float(sum((r["income_return"] for r in by_bond), _ZERO)),
+        "treasury_effect": float(sum((r["treasury_effect"] for r in by_bond), _ZERO)),
+        "spread_effect": float(sum((r["spread_effect"] for r in by_bond), _ZERO)),
+        "convexity_effect": float(sum((r["convexity_effect"] for r in by_bond), _ZERO)),
+        "cross_effect": float(sum((r["cross_effect"] for r in by_bond), _ZERO)),
+        "reinvestment_effect": float(sum((r["reinvestment_effect"] for r in by_bond), _ZERO)),
+        "selection_effect": float(sum((r["selection_effect"] for r in by_bond), _ZERO)),
+        "total_return": float(sum((r["total_return"] for r in by_bond), _ZERO)),
+        "market_value_start": float(sum((r["market_value_start"] for r in by_bond), _ZERO)),
     }
     by_class = _aggregate_by_class_six(by_bond)
+    _NUMERIC_BOND_KEYS = (
+        "market_value_start",
+        "income_return",
+        "treasury_effect",
+        "spread_effect",
+        "convexity_effect",
+        "cross_effect",
+        "reinvestment_effect",
+        "selection_effect",
+        "total_return",
+        "mod_duration",
+    )
+    by_bond_out = [{**r, **{k: float(r[k]) for k in _NUMERIC_BOND_KEYS}} for r in by_bond]
     return {
         "num_days": num_days,
         "totals": totals,
         "by_asset_class": by_class,
-        "by_bond": by_bond,
+        "by_bond": by_bond_out,
         "diagnostics": accrued_diagnostics,
     }
 
