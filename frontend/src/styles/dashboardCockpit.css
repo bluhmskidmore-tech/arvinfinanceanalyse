@@ -2993,10 +2993,23 @@
   box-shadow: var(--moss-shadow-institutional-active) !important;
 }
 
-.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child {
-  color: var(--ib-rail-section-label) !important;
-  font-family: var(--moss-font-mono);
-  font-variant-numeric: tabular-nums;
+.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] .workbench-shell-group-count {
+  color: var(--ib-rail-text) !important;
+  font-family: var(--moss-font-sans);
+  font-variant-numeric: normal;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__badge[data-readiness-tone="live"] {
+  color: #6fc492;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__badge[data-readiness-tone="placeholder"] {
+  color: var(--ib-rail-text);
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__badge[data-readiness-tone="gated"],
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__badge[data-readiness-tone="warning"] {
+  color: #d3a45d;
 }
 
 .workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] {
@@ -3036,7 +3049,7 @@
 }
 
 .workbench-shell-grid--bond-analysis {
-  /* 188px keeps nav labels like「组合工作台 15」on one line; 154px caused wrapping. */
+  /* 188px keeps homepage-first rail labels like「组合工作台 首页」on one line. */
   grid-template-columns: 188px minmax(0, 1fr) !important;
   gap: 14px !important;
   padding: 30px 16px 18px !important;

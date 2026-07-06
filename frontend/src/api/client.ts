@@ -520,7 +520,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       fetchImpl,
       baseUrl,
       requestJson,
-      getPlaceholderSnapshot: mockClient.getPlaceholderSnapshot,
     }),
     ...dashboardWorkbenchLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
     ...bondDashboardLiveEndpoints({ fetchImpl, baseUrl, requestJson }),

@@ -167,10 +167,10 @@ export function WorkbenchShell() {
   const agentWorkbenchActive = agentWorkbenchSection
     ? pathMatchesWorkbenchSection(agentWorkbenchSection.path, pathnameResolved)
     : false;
-  const agentNavSectionLabel = isStockAnalysisShell ? "复核" : "Agent";
+  const agentNavSectionLabel = isStockAnalysisShell ? "复核" : "对话";
   const agentNavLabel = isStockAnalysisShell ? "复核助手" : agentWorkbenchSection?.label;
   const agentNavBadgeLabel = isStockAnalysisShell ? "可用" : agentWorkbenchSection?.readinessLabel;
-  const agentNavHint = isStockAnalysisShell ? "跨页证据" : "Hermes Agent";
+  const agentNavHint = isStockAnalysisShell ? "跨页证据" : "直接提问";
   const currentGroup = currentRouteKnown
     ? (primaryWorkbenchNavigationGroups.find(
         (group) => group.key === resolveWorkbenchGroupKey(currentSection),
@@ -202,15 +202,18 @@ export function WorkbenchShell() {
   const isPnlAttributionShell = currentSection.key === "pnl-attribution";
   /** 资产负债页以正式内容为主：壳层只保留页面顶栏，不再重复大号标题与市场条。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
+  const isStockAnalysisMinimalShell = currentSection.key === "stock-analysis";
   const useCockpitShellFrame =
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
+    isStockAnalysisMinimalShell ||
     isBalanceAnalysisCompactChrome ||
     isProductCategoryPnlShell ||
     isModuleHomePage;
   const showShellTerminalBar =
     !isDashboardCockpitShell &&
     !isBondAnalysisMinimalShell &&
+    !isStockAnalysisMinimalShell &&
     !isBalanceAnalysisCompactChrome &&
     !isModuleHomePage;
   const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
@@ -229,6 +232,7 @@ export function WorkbenchShell() {
   const isMinimalMainChrome =
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
+    isStockAnalysisMinimalShell ||
     isCrossAssetImmersiveMain ||
     isMarketDataTerminalMain ||
     isPortfolioPageOwnedChrome ||
@@ -236,6 +240,7 @@ export function WorkbenchShell() {
   const showFullWorkspaceGuidance =
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
+    !isStockAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
     !isMarketDataTerminalMain &&
     !isBalanceMovementAnalysisCompactChrome &&
@@ -246,6 +251,7 @@ export function WorkbenchShell() {
     isPortfolioGroup &&
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
+    !isStockAnalysisMinimalShell &&
     !isPortfolioPageOwnedChrome;
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
@@ -351,7 +357,7 @@ export function WorkbenchShell() {
                     {group.label}
                   </span>
                   <span className="workbench-shell-group-count">
-                    {String(group.sections.length).padStart(2, "0")}
+                    首页
                   </span>
                 </NavLink>
               );
@@ -743,6 +749,7 @@ export function WorkbenchShell() {
 
           {!isDashboardCockpitShell &&
           !isBondAnalysisMinimalShell &&
+          !isStockAnalysisMinimalShell &&
           !isBalanceAnalysisCompactChrome &&
           !isMarketDataTerminalMain &&
           !isModuleHomePage &&

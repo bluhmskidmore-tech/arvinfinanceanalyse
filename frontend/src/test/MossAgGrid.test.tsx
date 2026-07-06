@@ -17,6 +17,11 @@ vi.mock("ag-grid-react", () => ({
   ),
 }));
 
+type SampleRow = {
+  id: string;
+  amount: number;
+};
+
 describe("MossAgGrid", () => {
   it("exposes shared grid defaults and numeric column helpers", () => {
     expect(mossGridDefaultColDef).toMatchObject({
@@ -29,16 +34,16 @@ describe("MossAgGrid", () => {
     expect(mossGridLocaleText.noRowsToShow).toBe("暂无数据");
     expect(mossGridLocaleText.loadingOoo).toBe("加载中...");
 
-    const col = numericCol({ field: "amount", headerName: "金额" });
+    const col = numericCol<SampleRow, number>({ field: "amount", headerName: "金额" });
     expect(col.headerClass).toContain("ag-right-aligned-header");
     expect(col.cellClass).toContain(mossGridNumericCellClass);
   });
 
   it("renders one legacy themed grid shell with unified height and loading defaults", () => {
     render(
-      <MossAgGrid
+      <MossAgGrid<SampleRow>
         rowData={[{ id: "A", amount: 1 }]}
-        columnDefs={[numericCol({ field: "amount" })]}
+        columnDefs={[numericCol<SampleRow, number>({ field: "amount" })]}
         getRowId={(params) => String(params.data.id)}
         loading
         height={240}

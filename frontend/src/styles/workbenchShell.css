@@ -395,11 +395,11 @@ select {
 
 .workbench-shell-group-count {
   color: var(--ib-rail-section-label);
-  font-family: var(--moss-font-mono);
+  font-family: var(--moss-font-sans);
   font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  font-variant-numeric: normal;
+  letter-spacing: 0;
   background: transparent;
 }
 

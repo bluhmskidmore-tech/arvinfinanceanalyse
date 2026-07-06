@@ -6,6 +6,7 @@ const FRONTEND_ROOT = process.cwd();
 const PACKAGE_JSON_PATH = resolve(FRONTEND_ROOT, "package.json");
 const VITE_CONFIG_PATH = resolve(FRONTEND_ROOT, "vite.config.ts");
 const GLOBAL_CSS_PATH = resolve(FRONTEND_ROOT, "src/styles/global.css");
+const TAILWIND_CSS_PATH = resolve(FRONTEND_ROOT, "src/styles/tailwind.css");
 
 describe("Tailwind integration", () => {
   it("wires Tailwind v4 through Vite without enabling Preflight resets", () => {
@@ -15,7 +16,8 @@ describe("Tailwind integration", () => {
     };
     const viteConfig = readFileSync(VITE_CONFIG_PATH, "utf8");
     const globalCss = readFileSync(GLOBAL_CSS_PATH, "utf8");
-    const normalizedGlobalCss = globalCss.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+    const tailwindCss = readFileSync(TAILWIND_CSS_PATH, "utf8");
+    const normalizedTailwindCss = tailwindCss.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 
     expect({
       ...packageJson.dependencies,
@@ -26,14 +28,19 @@ describe("Tailwind integration", () => {
     });
     expect(viteConfig).toContain('import tailwindcss from "@tailwindcss/vite";');
     expect(viteConfig).toContain("tailwindcss()");
+    expect(globalCss).toContain('@import "./tailwind.css";');
+    expect(globalCss).not.toContain('@import "tailwindcss/theme.css" layer(theme);');
+    expect(globalCss).not.toContain('@import "tailwindcss/utilities.css" layer(utilities);');
+    expect(globalCss).not.toContain("tailwindcss/preflight.css");
+    expect(globalCss).not.toContain('@import "tailwindcss";');
     expect(
-      normalizedGlobalCss.startsWith(
+      normalizedTailwindCss.startsWith(
         '@layer theme, base, components, utilities;\n@import "tailwindcss/theme.css" layer(theme);\n@import "tailwindcss/utilities.css" layer(utilities);\n',
       ),
     ).toBe(true);
-    expect(globalCss).toContain('@import "tailwindcss/theme.css" layer(theme);');
-    expect(globalCss).toContain('@import "tailwindcss/utilities.css" layer(utilities);');
-    expect(globalCss).not.toContain("tailwindcss/preflight.css");
-    expect(globalCss).not.toContain('@import "tailwindcss";');
+    expect(tailwindCss).toContain('@import "tailwindcss/theme.css" layer(theme);');
+    expect(tailwindCss).toContain('@import "tailwindcss/utilities.css" layer(utilities);');
+    expect(tailwindCss).not.toContain("tailwindcss/preflight.css");
+    expect(tailwindCss).not.toContain('@import "tailwindcss";');
   });
 });

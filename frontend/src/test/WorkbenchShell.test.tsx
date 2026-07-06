@@ -315,13 +315,15 @@ describe("WorkbenchShell", () => {
     );
   });
 
-  it("shows the Hermes Agent workbench in visible shell navigation", async () => {
+  it("shows MOSS Chat in visible shell navigation", async () => {
     renderShellAt("/");
 
     const agentNav = await screen.findByTestId("workbench-agent-nav");
-    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
+    const agentLink = within(agentNav).getByRole("link", { name: /MOSS Chat/ });
     expect(agentLink).toHaveAttribute("href", "/agent");
-    expect(agentLink).toHaveTextContent("Hermes");
+    expect(agentNav).toHaveTextContent("对话");
+    expect(agentLink).toHaveTextContent("可用");
+    expect(agentNav).toHaveTextContent("直接提问");
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
@@ -840,7 +842,7 @@ describe("WorkbenchShell", () => {
 
     expect(await screen.findByText("agent body")).toBeInTheDocument();
     const agentNav = screen.getByTestId("workbench-agent-nav");
-    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
+    const agentLink = within(agentNav).getByRole("link", { name: /MOSS Chat/ });
     expect(agentLink).toHaveAttribute("href", "/agent");
     expect(agentLink).toHaveAttribute("data-active", "true");
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
@@ -891,6 +893,10 @@ describe("WorkbenchShell", () => {
         "/reports",
       ]),
     );
+    const groupBadges = Array.from(
+      navigation.querySelectorAll(".workbench-shell-group-count"),
+    ).map((badge) => badge.textContent);
+    expect(groupBadges).toEqual(["首页", "首页", "首页", "首页", "首页", "首页"]);
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 });

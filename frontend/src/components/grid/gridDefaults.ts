@@ -1,7 +1,5 @@
 import type {
-  CellClassParams,
   ColDef,
-  HeaderClassParams,
   ValueFormatterParams,
 } from "ag-grid-community";
 
@@ -24,22 +22,31 @@ export const mossGridLocaleText = {
 export const mossGridNumericCellClass = "moss-ag-grid__cell--numeric";
 export const mossGridNumericHeaderClass = "moss-ag-grid__header--numeric";
 
-type GridClassInput<TData, TValue> =
-  | string
-  | string[]
-  | ((params: CellClassParams<TData, TValue> | HeaderClassParams<TData>) => string | string[] | null | undefined)
-  | null
-  | undefined;
-
 function normalizeClassValue(value: string | string[] | null | undefined): string[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
 }
 
-function mergeGridClass<TData, TValue>(
-  existing: GridClassInput<TData, TValue>,
+function mergeHeaderClass<TData, TValue>(
+  existing: ColDef<TData, TValue>["headerClass"],
   classNames: string[],
-): GridClassInput<TData, TValue> {
+): ColDef<TData, TValue>["headerClass"] {
+  if (!existing) {
+    return classNames;
+  }
+  if (typeof existing === "string") {
+    return [existing, ...classNames];
+  }
+  if (Array.isArray(existing)) {
+    return [...existing, ...classNames];
+  }
+  return (params) => [...normalizeClassValue(existing(params)), ...classNames];
+}
+
+function mergeCellClass<TData, TValue>(
+  existing: ColDef<TData, TValue>["cellClass"],
+  classNames: string[],
+): ColDef<TData, TValue>["cellClass"] {
   if (!existing) {
     return classNames;
   }
@@ -67,11 +74,11 @@ export function numericCol<TData = unknown, TValue = unknown>(
 ): ColDef<TData, TValue> {
   return {
     ...colDef,
-    headerClass: mergeGridClass(colDef.headerClass, [
+    headerClass: mergeHeaderClass(colDef.headerClass, [
       "ag-right-aligned-header",
       mossGridNumericHeaderClass,
     ]),
-    cellClass: mergeGridClass(colDef.cellClass, [
+    cellClass: mergeCellClass(colDef.cellClass, [
       "ag-right-aligned-cell",
       mossGridNumericCellClass,
     ]),
