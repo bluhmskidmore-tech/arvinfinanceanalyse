@@ -1348,7 +1348,11 @@ function summaryMetricValue(metrics: readonly HomeRiskExposureMetric[], id: stri
 
 function RiskExposureGapLedger({ state, reportDate }: { state: HomeTerminalListState; reportDate: string }) {
   return (
-    <div className={styles.dhApiRiskGapLedger} data-state={state.kind}>
+    <div
+      className={styles.dhApiRiskGapLedger}
+      data-state={state.kind}
+      data-source="bond-dashboard.home-summary.risk"
+    >
       <div className={styles.dhApiRiskGapPrimary}>
         <span className={styles.dhTerminalStateIcon}>
           <StateIcon kind={state.kind} />
@@ -1357,10 +1361,6 @@ function RiskExposureGapLedger({ state, reportDate }: { state: HomeTerminalListS
         <small>{STATE_HINT[state.kind]}</small>
       </div>
       <dl>
-        <div>
-          <dt>数据路径</dt>
-          <dd>bond-dashboard.home-summary.risk</dd>
-        </div>
         <div>
           <dt>报告日</dt>
           <dd>{reportDate}</dd>
@@ -1377,10 +1377,13 @@ function RiskExposureGapLedger({ state, reportDate }: { state: HomeTerminalListS
 function RiskSummaryPanel({ view }: { view: DashboardHomeBodyView }) {
   const hasRows = view.riskExposureMetrics.length > 0;
   return (
-    <article data-testid="dashboard-home-risk-exposure" className={`${styles.dhApiModule} ${styles.dhApiRiskSummary}`}>
+    <article
+      data-testid="dashboard-home-risk-exposure"
+      data-source="bond-dashboard.home-summary.risk"
+      className={`${styles.dhApiModule} ${styles.dhApiRiskSummary}`}
+    >
       <div className={styles.dhApiModuleHead}>
         <h3>风险暴露</h3>
-        <span>bond-dashboard.home-summary.risk</span>
       </div>
       {hasRows ? (
         <div className={styles.dhApiRiskPairGrid}>

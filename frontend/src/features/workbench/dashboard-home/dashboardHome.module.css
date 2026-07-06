@@ -7106,8 +7106,8 @@
   background: var(--dh-api-panel-2);
   border-bottom: 1px solid rgba(36, 49, 73, 0.46);
   display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, max-content) 56px;
   min-height: 38px;
   padding: 8px 12px;
 }
@@ -7129,6 +7129,8 @@
 .dhApiMarketRows b,
 .dhApiMarketRows code {
   font-family: var(--dh-font-mono);
+  justify-self: end;
+  text-align: right;
 }
 
 .dhApiMarketRows b {
@@ -7452,13 +7454,6 @@
     min-height: 0;
   }
 
-  .dhApiMarketRows div {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .dhApiMarketRows code {
-    grid-column: 1 / -1;
-  }
 }
 
 /* Dashboard home lower-half closure: formal empty states and unified ledgers. */
@@ -8200,7 +8195,19 @@
 }
 
 .dhApiMarketRows div {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(72px, max-content) 56px;
+}
+
+@media (max-width: 720px) {
+  .dhApiMarketRows div {
+    grid-template-columns: minmax(0, 1fr) minmax(72px, max-content);
+  }
+
+  .dhApiMarketRows code {
+    grid-column: 1 / -1;
+    justify-self: start;
+    text-align: left;
+  }
 }
 
 .dhApiHomeBody .dhTerminalReportStack {
