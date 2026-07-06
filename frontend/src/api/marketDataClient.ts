@@ -9,7 +9,9 @@ import type {
   FxAnalyticalPayload,
   FxFormalStatusPayload,
   MarketDataBondFuturesRankingsPayload,
+  MarketDataCatalogPayload,
   MarketDataCoverageSummaryPayload,
+  LivermoreCandidateHistoryHorizonKey,
   LivermoreCandidateHistoryPortfolioBacktestPayload,
   LivermoreManualPositionInput,
   LivermoreCandidateHistoryPayload,
@@ -73,7 +75,7 @@ export type MarketDataClientMethods = {
     limit: number;
     offset: number;
   }) => Promise<ApiEnvelope<SourcePreviewTracesPayload>>;
-  getMacroFoundation: () => Promise<ApiEnvelope<MacroVendorPayload>>;
+  getMacroFoundation: () => Promise<ApiEnvelope<MarketDataCatalogPayload>>;
   getChoiceMacroLatest: () => Promise<ApiEnvelope<ChoiceMacroLatestPayload>>;
   getExternalDataWatermarks: () => Promise<ExternalDataWatermarkLedger>;
   getMacroBondLinkageAnalysis: (options: {
@@ -119,14 +121,14 @@ export type MarketDataClientMethods = {
     snapshotTo?: string;
     currentMarketState?: string;
     minSample?: number;
-    primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+    primaryHorizon?: LivermoreCandidateHistoryHorizonKey;
   }) => Promise<ApiEnvelope<LivermoreStrategyScorePayload>>;
   getLivermoreStrategyOptimization: (options?: {
     snapshotFrom?: string;
     snapshotTo?: string;
     currentMarketState?: string;
     minSample?: number;
-    primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+    primaryHorizon?: LivermoreCandidateHistoryHorizonKey;
   }) => Promise<ApiEnvelope<LivermoreStrategyOptimizationPayload>>;
   getLivermoreCycleProxyBacktest: (options?: {
     snapshotFrom?: string;
@@ -181,7 +183,7 @@ export type MarketDataClientMethods = {
     endDate?: string;
   }) => Promise<ResearchCalendarEvent[]>;
   getMarketDataRates: () => Promise<ApiEnvelope<ChoiceMacroLatestPayload>>;
-  getMarketDataCatalog: () => Promise<ApiEnvelope<MacroVendorPayload>>;
+  getMarketDataCatalog: () => Promise<ApiEnvelope<MarketDataCatalogPayload>>;
 };
 
 export type MarketDataDomainClientMethods = MarketDataClientMethods;
@@ -1785,7 +1787,7 @@ function buildStrategyScoreQuery(options?: {
   snapshotTo?: string;
   currentMarketState?: string;
   minSample?: number;
-  primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+  primaryHorizon?: LivermoreCandidateHistoryHorizonKey;
 }) {
   const params = new URLSearchParams();
   const sf = options?.snapshotFrom?.trim();
@@ -2048,9 +2050,9 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
     },
     async getMacroFoundation() {
       await delay();
-      return buildMockApiEnvelope("preview.macro-foundation", MOCK_MACRO_FOUNDATION_PAYLOAD, {
-        basis: "analytical",
-        formal_use_allowed: false,
+      return buildMockApiEnvelope("market_data.catalog", MOCK_MACRO_FOUNDATION_PAYLOAD, {
+        basis: "formal",
+        formal_use_allowed: true,
         source_version: "sv_macro_vendor_mock",
         vendor_version: "vv_choice_catalog_v1",
         rule_version: "rv_phase1_macro_vendor_v1",
@@ -2645,11 +2647,19 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
       snapshotTo?: string;
       currentMarketState?: string;
       minSample?: number;
-      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+      primaryHorizon?: LivermoreCandidateHistoryHorizonKey;
     }) {
       await delay();
       const state = options?.currentMarketState?.trim() || "WARM";
       const primaryHorizon = options?.primaryHorizon ?? "return_5d";
+      const primaryHorizonLabel =
+        primaryHorizon === "return_1d"
+          ? "T+1"
+          : primaryHorizon === "return_10d"
+            ? "T+10"
+            : primaryHorizon === "return_20d"
+              ? "T+20"
+              : "T+5";
       const minSample = Math.max(options?.minSample ?? 30, 30);
       const stats = {
         return_1d: {
@@ -2670,6 +2680,15 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           median_return: 0.024,
           win_rate: 0.6,
         },
+        return_10d: {
+          available_count: 30,
+          missing_count: 0,
+          positive_count: 18,
+          non_positive_count: 12,
+          avg_return: 0.028,
+          median_return: 0.025,
+          win_rate: 0.6,
+        },
         return_20d: {
           available_count: 30,
           missing_count: 0,
@@ -2688,7 +2707,7 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         priority_score: 62.4,
         priority_rank: 1,
         priority_label: "优先复核",
-        reason: "T+5 样本 24，胜率 60.0%，均值 +2.40%，评分 62.40。仅用于优先复核排序。",
+        reason: `${primaryHorizonLabel} sample 30, avg return +2.40%, win rate 60.0%, priority review ranking.`,
         stats,
         diagnostics: {
           priority_scope: null,
@@ -2729,7 +2748,7 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
       snapshotTo?: string;
       currentMarketState?: string;
       minSample?: number;
-      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+      primaryHorizon?: LivermoreCandidateHistoryHorizonKey;
     }) {
       await delay();
       const state = options?.currentMarketState?.trim() || "WARM";
@@ -3000,7 +3019,7 @@ export function createRealMarketDataClient({
         `/ui/preview/source-foundation/${encodeURIComponent(sourceFamily)}/traces?ingest_batch_id=${encodeURIComponent(ingestBatchId)}&limit=${limit}&offset=${offset}`,
       ),
     getMacroFoundation: () =>
-      requestJson<MacroVendorPayload>(fetchImpl, baseUrl, "/ui/preview/macro-foundation"),
+      requestJson<MarketDataCatalogPayload>(fetchImpl, baseUrl, "/ui/market-data/catalog"),
     getChoiceMacroLatest: () =>
       requestJson<ChoiceMacroLatestPayload>(fetchImpl, baseUrl, "/ui/macro/choice-series/latest"),
     getExternalDataWatermarks: () =>
@@ -3114,7 +3133,7 @@ export function createRealMarketDataClient({
       snapshotTo?: string;
       currentMarketState?: string;
       minSample?: number;
-      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+      primaryHorizon?: LivermoreCandidateHistoryHorizonKey;
     }) =>
       requestJson<LivermoreStrategyScorePayload>(
         fetchImpl,
@@ -3126,7 +3145,7 @@ export function createRealMarketDataClient({
       snapshotTo?: string;
       currentMarketState?: string;
       minSample?: number;
-      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+      primaryHorizon?: LivermoreCandidateHistoryHorizonKey;
     }) =>
       requestJson<LivermoreStrategyOptimizationPayload>(
         fetchImpl,
@@ -3304,7 +3323,7 @@ export function createRealMarketDataClient({
         "/ui/market-data/rates",
       ),
     getMarketDataCatalog: () =>
-      requestJson<MacroVendorPayload>(
+      requestJson<MarketDataCatalogPayload>(
         fetchImpl,
         baseUrl,
         "/ui/market-data/catalog",
