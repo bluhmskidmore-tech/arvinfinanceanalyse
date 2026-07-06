@@ -66,13 +66,16 @@ def test_uptrend_momentum_selects_stacked_ma_breakouts_without_chasing_extended_
     assert item["score"] > 0
 
 
-def test_uptrend_momentum_pauses_when_market_is_off() -> None:
-    result = compute_uptrend_momentum_candidates(
-        as_of_date="2026-06-18",
-        market_state="OFF",
-        snapshots=[_snapshot("000001.SZ", [100.0 + i for i in range(121)])],
-    )
+def test_uptrend_momentum_pauses_when_market_is_off_or_overheat() -> None:
+    snapshots = [_snapshot("000001.SZ", [100.0 + i * 0.5 for i in range(121)])]
 
-    assert result.payload["candidate_count"] == 0
-    assert result.payload["input_stock_count"] == 1
-    assert result.payload["excluded_stock_count"] == 1
+    for market_state in ("OFF", "OVERHEAT"):
+        result = compute_uptrend_momentum_candidates(
+            as_of_date="2026-06-18",
+            market_state=market_state,
+            snapshots=snapshots,
+        )
+
+        assert result.payload["candidate_count"] == 0
+        assert result.payload["input_stock_count"] == 1
+        assert result.payload["excluded_stock_count"] == 1

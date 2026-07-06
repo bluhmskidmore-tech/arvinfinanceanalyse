@@ -87,6 +87,8 @@ def test_compute_risk_exit_does_not_trigger_when_price_breaks_but_volume_is_low(
     watch_item = watch_items[0]
     assert watch_item["price_below_ema"] is True
     assert watch_item["volume_confirmed"] is False
+    assert watch_item["fallback_ma20_break"] is True
+    assert watch_item["fallback_would_trigger"] is True
     assert watch_item["triggered"] is False
 
 

@@ -4,7 +4,9 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-FORMULA_VERSION = "rv_livermore_risk_exit_ema10_volume_v2"
+from backend.app.core_finance.strategy_policy import POLICY
+
+FORMULA_VERSION = "rv_livermore_risk_exit_ema10_volume_obsfallback_v3"
 MVP_RULE_LABEL = "10EMA invalidation + volume confirmation"
 REQUIRED_INPUTS: tuple[str, ...] = (
     "positions",
@@ -13,10 +15,10 @@ REQUIRED_INPUTS: tuple[str, ...] = (
     "close_history",
     "volume_history",
 )
-MIN_HISTORY = 21
-EMA_WINDOW = 10
-VOLUME_MA_WINDOW = 20
-VOLUME_CONFIRMATION_RATIO = 1.3
+MIN_HISTORY = POLICY.risk_exit.min_history
+EMA_WINDOW = POLICY.risk_exit.ema_window
+VOLUME_MA_WINDOW = POLICY.risk_exit.volume_ma_window
+VOLUME_CONFIRMATION_RATIO = POLICY.risk_exit.volume_confirmation_ratio
 
 
 @dataclass(frozen=True)
@@ -87,6 +89,10 @@ def _watch_item(
     price_below_ema = latest_close < latest_ema10 and prior_close < prior_ema10
     volume_confirmed = volume_ratio >= VOLUME_CONFIRMATION_RATIO
     triggered = price_below_ema and volume_confirmed
+    latest_ma20 = sum(closes[-VOLUME_MA_WINDOW:]) / float(VOLUME_MA_WINDOW)
+    prior_ma20 = sum(closes[-(VOLUME_MA_WINDOW + 1) : -1]) / float(VOLUME_MA_WINDOW)
+    fallback_ma20_break = latest_close < latest_ma20 and prior_close < prior_ma20
+    fallback_would_trigger = fallback_ma20_break and not triggered
 
     return {
         "stock_code": snapshot.stock_code,
@@ -100,8 +106,12 @@ def _watch_item(
         "latest_volume": round(latest_volume, 6),
         "volume_ma20": round(volume_ma20, 6),
         "volume_ratio": round(volume_ratio, 6),
+        "latest_ma20": round(latest_ma20, 6),
+        "prior_ma20": round(prior_ma20, 6),
         "price_below_ema": price_below_ema,
         "volume_confirmed": volume_confirmed,
+        "fallback_ma20_break": fallback_ma20_break,
+        "fallback_would_trigger": fallback_would_trigger,
         "exit_watch_price": round(latest_ema10, 6),
         "triggered": triggered,
     }

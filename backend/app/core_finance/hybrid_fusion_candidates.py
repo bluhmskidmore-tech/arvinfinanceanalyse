@@ -8,10 +8,14 @@ from backend.app.core_finance.hybrid_fusion_config import (
     HybridFusionThresholds,
     load_hybrid_fusion_thresholds,
 )
+from backend.app.core_finance.strategy_policy import POLICY
 
 FORMULA_VERSION = "rv_hybrid_fusion_candidates_v3"
-ACTIVE_MARKET_STATES = {"WARM", "HOT"}
+ACTIVE_MARKET_STATES = POLICY.hybrid_fusion_active_states
 MAX_CANDIDATES = 10
+MACRO_PENDING_BLOCK_REASON = "macro_score_missing"
+MACRO_PENDING_CYCLE_STATUS = "macro_pending"
+MACRO_LANDED_CYCLE_STATUS = "macro_landed"
 
 
 @dataclass(frozen=True)
@@ -80,6 +84,7 @@ def compute_hybrid_fusion_candidates(
         theme_row = theme_rows.get(stock_code)
         stock_row = stock_rows.get(stock_code)
         price_confirm_score = _price_confirm_score(stock_row=stock_row, theme_row=theme_row)
+        macro_pending = macro_score is None
         cycle_score = _cycle_score(
             macro_score=macro_score,
             sector_score=sector_score,
@@ -128,6 +133,12 @@ def compute_hybrid_fusion_candidates(
                 "hygiene_score": round(hygiene_score, 6),
                 "regime_score": round(regime_score, 6),
                 "confidence": _confidence(source_kinds),
+                "trade_eligible": False,
+                "trade_eligibility_reason": (
+                    MACRO_PENDING_BLOCK_REASON if macro_pending else "hybrid_fusion_observation_only"
+                ),
+                "cycle_score_status": MACRO_PENDING_CYCLE_STATUS if macro_pending else MACRO_LANDED_CYCLE_STATUS,
+                "block_reason": MACRO_PENDING_BLOCK_REASON if macro_pending else None,
                 "reason": _reason(
                     cycle_score=cycle_score,
                     lifecourt_proxy_score=lifecourt_proxy_score,
@@ -150,6 +161,8 @@ def compute_hybrid_fusion_candidates(
                         "lifecourt": resolved_thresholds.fusion_life_weight,
                     },
                     "macro_score": macro_score,
+                    "cycle_score_status": MACRO_PENDING_CYCLE_STATUS if macro_pending else MACRO_LANDED_CYCLE_STATUS,
+                    "block_reason": MACRO_PENDING_BLOCK_REASON if macro_pending else None,
                     "cycle_formula": (
                         "0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 Valuation"
                         if macro_score is not None
@@ -163,10 +176,14 @@ def compute_hybrid_fusion_candidates(
     stance_thresholds = _stance_thresholds(scored, thresholds=resolved_thresholds)
     for row in scored:
         row["life_long_pass"] = _life_long_pass(row, thresholds=life_long_thresholds)
-        row["fusion_action"] = _fusion_action(
-            cycle_score=cast(float, row["cycle_score"]),
-            lifecourt_proxy_score=cast(float, row["lifecourt_proxy_score"]),
-            stance_thresholds=stance_thresholds,
+        row["fusion_action"] = (
+            "monitor_only"
+            if macro_score is None
+            else _fusion_action(
+                cycle_score=cast(float, row["cycle_score"]),
+                lifecourt_proxy_score=cast(float, row["lifecourt_proxy_score"]),
+                stance_thresholds=stance_thresholds,
+            )
         )
         row["reason"] = _reason(
             cycle_score=cast(float, row["cycle_score"]),

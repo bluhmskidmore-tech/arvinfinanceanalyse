@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any, cast
 
+from backend.app.core_finance import factor_screen_candidates as factor_module
 from backend.app.core_finance.factor_screen_candidates import (
     ACTIVE_MARKET_STATES,
     FORMULA_VERSION,
@@ -41,6 +43,12 @@ def test_valid_rows_produce_candidates() -> None:
     assert FORMULA_VERSION in str(payload["formula_version"])
     assert payload["candidate_count"] >= 1
     assert payload["input_stock_count"] == 25
+
+
+def test_factor_screen_selection_is_local_to_module() -> None:
+    source = inspect.getsource(factor_module)
+    assert "macro.equity_strategies" not in source
+    assert "def _multi_factor_selection" in source
 
 
 def test_empty_rows_returns_empty() -> None:

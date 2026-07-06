@@ -119,11 +119,15 @@ def test_hybrid_fusion_scores_dedupes_and_orders_existing_signal_sources() -> No
     assert items[0]["vcov_score"] == items[0]["attention_score"]
     assert items[0]["consensus_score"] == 1.0
     assert items[0]["life_long_pass"] is True
-    assert items[0]["fusion_action"] in {"core_plus_trading", "core_reduce_trading", "satellite_trial"}
+    assert items[0]["fusion_action"] == "monitor_only"
+    assert items[0]["trade_eligible"] is False
+    assert items[0]["cycle_score_status"] == "macro_pending"
+    assert items[0]["block_reason"] == "macro_score_missing"
     assert items[0]["attention_score"] > 0
     assert items[0]["price_confirm_score"] > 0
     assert items[0]["confidence"] == "high"
     assert set(items[0]["evidence"]["source_kinds"]) == {"stock_candidate", "factor_screen", "theme_breakout"}
+    assert items[0]["evidence"]["cycle_score_status"] == "macro_pending"
     assert items[2]["crowding_penalty"] > 0
     assert "observation-only" in str(payload).lower()
     assert "buy" not in str(payload).lower()
@@ -201,6 +205,10 @@ def test_hybrid_fusion_uses_macro_score_when_landed() -> None:
     without_macro = compute_hybrid_fusion_candidates(macro_score=None, **common_kwargs).payload["items"][0]
     with_macro = compute_hybrid_fusion_candidates(macro_score=0.2, **common_kwargs).payload["items"][0]
     assert without_macro["cycle_score"] != with_macro["cycle_score"]
+    assert without_macro["fusion_action"] == "monitor_only"
+    assert without_macro["block_reason"] == "macro_score_missing"
+    assert with_macro["cycle_score_status"] == "macro_landed"
+    assert with_macro["block_reason"] is None
     assert str(with_macro["evidence"]["cycle_formula"]).startswith("0.30 Macro")
 
 

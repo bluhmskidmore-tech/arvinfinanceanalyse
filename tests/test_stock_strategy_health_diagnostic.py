@@ -37,11 +37,29 @@ def _create_db(path: Path) -> duckdb.DuckDBPyConnection:
           trade_date varchar,
           stock_code varchar,
           close_value double,
-          volume double
+          volume double,
+          source_version varchar,
+          vendor_version varchar
         )
         """
     )
     return conn
+
+
+def _create_execution_history_table(conn: duckdb.DuckDBPyConnection) -> None:
+    conn.execute(
+        """
+        create table livermore_candidate_execution_history (
+          signal_date varchar,
+          stock_code varchar,
+          signal_kind varchar,
+          market_state varchar,
+          entry_executable boolean,
+          return_5d_net_adj double,
+          return_20d_net_adj double
+        )
+        """
+    )
 
 
 def _create_position_table(conn: duckdb.DuckDBPyConnection) -> None:
@@ -50,7 +68,14 @@ def _create_position_table(conn: duckdb.DuckDBPyConnection) -> None:
         create table livermore_position_snapshot (
           as_of_date varchar,
           stock_code varchar,
-          position_status varchar
+          stock_name varchar,
+          entry_cost double,
+          bars_since_entry integer,
+          entry_date varchar,
+          position_quantity double,
+          position_status varchar,
+          source_version varchar,
+          vendor_version varchar
         )
         """
     )
@@ -104,13 +129,98 @@ def _seed_candidate(
     )
 
 
+def _seed_execution_candidate(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    signal_date: str,
+    code: str,
+    signal_kind: str = "stock_candidate",
+    market_state: str = "WARM",
+    entry_executable: bool = True,
+    return_5d_net_adj: float | None = 0.02,
+    return_20d_net_adj: float | None = 0.01,
+) -> None:
+    conn.execute(
+        """
+        insert into livermore_candidate_execution_history values
+        (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            signal_date,
+            code,
+            signal_kind,
+            market_state,
+            entry_executable,
+            return_5d_net_adj,
+            return_20d_net_adj,
+        ],
+    )
+
+
 def _seed_daily(conn: duckdb.DuckDBPyConnection, *, trade_date: str) -> None:
     conn.execute(
         """
-        insert into choice_stock_daily_observation values (?, '000001.SZ', 10.0, 100.0)
+        insert into choice_stock_daily_observation (trade_date, stock_code, close_value, volume)
+        values (?, '000001.SZ', 10.0, 100.0)
         """,
         [trade_date],
     )
+
+
+def test_health_report_defaults_to_execution_net_adjusted_basis(tmp_path: Path) -> None:
+    module = _load_module()
+    db_path = tmp_path / "moss.duckdb"
+    conn = _create_db(db_path)
+    try:
+        _seed_daily(conn, trade_date="2026-06-12")
+        _seed_candidate(conn, snapshot_date="2026-06-12", code="000001.SZ", return_5d=-0.50)
+        _create_execution_history_table(conn)
+        _seed_execution_candidate(conn, signal_date="2026-06-12", code="000001.SZ", return_5d_net_adj=0.08)
+        _seed_execution_candidate(conn, signal_date="2026-06-12", code="000002.SZ", return_5d_net_adj=-0.02)
+        _seed_execution_candidate(
+            conn,
+            signal_date="2026-06-12",
+            code="000003.SZ",
+            entry_executable=False,
+            return_5d_net_adj=0.99,
+        )
+    finally:
+        conn.close()
+
+    report = module.build_stock_strategy_health_report(duckdb_path=db_path, as_of_date="2026-06-12")
+
+    stats = report["performance_by_signal"]["stock_candidate"]["return_5d"]
+    assert report["metric_basis"] == "net_next_open_adj"
+    assert report["threshold_recalibration_due"] == "上线后20个交易日"
+    assert report["performance_by_signal"]["stock_candidate"]["row_count"] == 2
+    assert stats["count"] == 2
+    assert stats["avg_return"] == 0.03
+    assert stats["win_rate"] == 0.5
+
+
+def test_health_report_legacy_basis_keeps_signal_close_forward_returns(tmp_path: Path) -> None:
+    module = _load_module()
+    db_path = tmp_path / "moss.duckdb"
+    conn = _create_db(db_path)
+    try:
+        _seed_daily(conn, trade_date="2026-06-12")
+        _seed_candidate(conn, snapshot_date="2026-06-12", code="000001.SZ", return_5d=-0.50)
+        _create_execution_history_table(conn)
+        _seed_execution_candidate(conn, signal_date="2026-06-12", code="000001.SZ", return_5d_net_adj=0.08)
+    finally:
+        conn.close()
+
+    report = module.build_stock_strategy_health_report(
+        duckdb_path=db_path,
+        as_of_date="2026-06-12",
+        legacy_basis=True,
+    )
+
+    stats = report["performance_by_signal"]["stock_candidate"]["return_5d"]
+    assert report["metric_basis"] == "legacy_signal_close_forward"
+    assert stats["count"] == 1
+    assert stats["avg_return"] == -0.5
+    assert stats["win_rate"] == 0.0
 
 
 def test_health_report_surfaces_absent_stock_candidates_on_policy_active_date_and_overheat_drag(tmp_path: Path) -> None:
@@ -310,6 +420,49 @@ def test_health_report_marks_risk_exit_blocked_without_active_positions(tmp_path
     assert report["risk_exit"]["status"] == "blocked"
     assert "livermore_position_snapshot" in report["risk_exit"]["reason"]
     assert "risk_exit_blocked" in {finding["code"] for finding in report["findings"]}
+
+
+def test_health_report_includes_overheat_holding_context_counts(tmp_path: Path) -> None:
+    module = _load_module()
+    db_path = tmp_path / "moss.duckdb"
+    conn = _create_db(db_path)
+    try:
+        _create_position_table(conn)
+        for offset in range(25):
+            _seed_daily(conn, trade_date=f"2026-06-{offset + 1:02d}")
+        _seed_candidate(
+            conn,
+            snapshot_date="2026-06-21",
+            code="000001.SZ",
+            market_state="OVERHEAT",
+        )
+        conn.execute(
+            """
+            insert into livermore_position_snapshot (
+              as_of_date,
+              stock_code,
+              stock_name,
+              entry_cost,
+              bars_since_entry,
+              entry_date,
+              position_quantity,
+              position_status
+            )
+            values ('2026-06-21', '000001.SZ', 'Alpha', 10.0, 21, null, 1.0, 'ACTIVE')
+            """
+        )
+    finally:
+        conn.close()
+
+    report = module.build_stock_strategy_health_report(duckdb_path=db_path, as_of_date="2026-06-21")
+
+    context = report["overheat_holding_context"]
+    assert context["status"] == "ready"
+    assert context["market_state"] == "OVERHEAT"
+    assert context["overheat_signal_detected"] is True
+    assert context["active_holding_count"] == 1
+    assert context["risk_exit_watch_count"] == 1
+    assert context["risk_exit_triggered_count"] == 0
 
 
 def test_health_report_flags_factor_screen_coverage_below_primary_threshold(tmp_path: Path) -> None:

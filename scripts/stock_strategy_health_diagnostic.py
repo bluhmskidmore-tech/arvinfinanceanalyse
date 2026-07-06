@@ -20,8 +20,11 @@ from backend.app.core_finance.livermore_stock_candidates import (  # noqa: E402
     diagnose_stock_candidate_filters,
     stock_candidate_policy_active_market_states,
 )
+from backend.app.core_finance.livermore_risk_exit import compute_risk_exit  # noqa: E402
 from backend.app.core_finance.livermore_sector_rank import compute_sector_rank  # noqa: E402
+from backend.app.core_finance.strategy_policy import POLICY  # noqa: E402
 from backend.app.services.market_data_livermore_service import (  # noqa: E402
+    _load_risk_exit_snapshots,
     _load_sector_rank_inputs,
     _load_stock_candidate_snapshots,
 )
@@ -30,22 +33,31 @@ from scripts.run_livermore_daily_pretrade_refresh import (  # noqa: E402
 )
 
 TABLE_HIST = "livermore_candidate_history"
+TABLE_EXECUTION_HIST = "livermore_candidate_execution_history"
 TABLE_DAILY = "choice_stock_daily_observation"
 TABLE_POSITION = "livermore_position_snapshot"
 TABLE_FACTOR = "choice_stock_factor_snapshot"
 TABLE_UNIVERSE = "choice_stock_universe"
 HORIZONS = ("return_5d", "return_20d")
+EXECUTION_HORIZON_COLUMNS = {
+    "return_5d": "return_5d_net_adj",
+    "return_20d": "return_20d_net_adj",
+}
+EXECUTION_METRIC_BASIS = "net_next_open_adj"
+LEGACY_METRIC_BASIS = "legacy_signal_close_forward"
+THRESHOLD_RECALIBRATION_DUE = "\u4e0a\u7ebf\u540e20\u4e2a\u4ea4\u6613\u65e5"
 STOCK_CANDIDATE_POLICY = EXP3B_STOCK_CANDIDATE_POLICY
 SHADOW_STOCK_CANDIDATE_POLICY = EXP3C_SHADOW_STOCK_CANDIDATE_POLICY
-FACTOR_SCREEN_PRIMARY_COVERAGE_THRESHOLD = 0.8
-FACTOR_SCREEN_PARTIAL_COVERAGE_THRESHOLD = 0.5
-FACTOR_SCREEN_FRESHNESS_THRESHOLD_DAYS = 3
+FACTOR_SCREEN_PRIMARY_COVERAGE_THRESHOLD = POLICY.monitoring_thresholds.factor_screen_primary_coverage_threshold
+FACTOR_SCREEN_PARTIAL_COVERAGE_THRESHOLD = POLICY.monitoring_thresholds.factor_screen_partial_coverage_threshold
+FACTOR_SCREEN_FRESHNESS_THRESHOLD_DAYS = POLICY.monitoring_thresholds.factor_screen_freshness_threshold_days
 
 
 def build_stock_strategy_health_report(
     *,
     duckdb_path: str | Path,
     as_of_date: str | None = None,
+    legacy_basis: bool = False,
 ) -> dict[str, Any]:
     path = _resolve_duckdb_path(duckdb_path)
     if not path.exists():
@@ -81,6 +93,19 @@ def build_stock_strategy_health_report(
                 "status": "unavailable",
                 "reason": f"DuckDB file not found: {path}",
             },
+            "overheat_holding_context": {
+                "status": "blocked",
+                "reason": f"DuckDB file not found: {path}",
+                "as_of_date": _normalize_optional_date(as_of_date),
+                "market_state": None,
+                "overheat_signal_detected": False,
+                "active_holding_count": 0,
+                "risk_exit_watch_count": 0,
+                "risk_exit_triggered_count": 0,
+                "blockers": ["duckdb_missing"],
+            },
+            "metric_basis": LEGACY_METRIC_BASIS if legacy_basis else EXECUTION_METRIC_BASIS,
+            "threshold_recalibration_due": THRESHOLD_RECALIBRATION_DUE,
         }
 
     conn = duckdb.connect(str(path), read_only=True)
@@ -88,6 +113,8 @@ def build_stock_strategy_health_report(
         tables = _table_names(conn)
         freshness = _data_freshness(conn, tables=tables)
         report_as_of = _report_as_of_date(freshness, as_of_date)
+        use_execution_basis = not legacy_basis and TABLE_EXECUTION_HIST in tables
+        metric_basis = EXECUTION_METRIC_BASIS if use_execution_basis else LEGACY_METRIC_BASIS
         findings: list[dict[str, Any]] = []
         if TABLE_HIST not in tables:
             findings.append(
@@ -100,8 +127,11 @@ def build_stock_strategy_health_report(
             performance_by_signal: dict[str, Any] = {}
             performance_by_market_state_signal: dict[str, Any] = {}
         else:
-            performance_by_signal = _performance_by_signal(conn)
-            performance_by_market_state_signal = _performance_by_market_state_signal(conn)
+            performance_by_signal = _performance_by_signal(conn, use_execution_basis=use_execution_basis)
+            performance_by_market_state_signal = _performance_by_market_state_signal(
+                conn,
+                use_execution_basis=use_execution_basis,
+            )
             findings.extend(
                 _strategy_findings(
                     freshness=freshness,
@@ -123,6 +153,13 @@ def build_stock_strategy_health_report(
                 }
             )
         market_state = _market_state_for_date(conn, tables=tables, as_of_date=report_as_of)
+        overheat_holding_context = _overheat_holding_context(
+            path,
+            conn,
+            tables=tables,
+            as_of_date=report_as_of,
+            market_state=market_state,
+        )
     finally:
         conn.close()
 
@@ -150,9 +187,12 @@ def build_stock_strategy_health_report(
         "pretrade_readiness": pretrade_readiness,
         "candidate_filter_diagnostic": candidate_filter_diagnostic,
         "shadow_candidate_filter_diagnostic": shadow_candidate_filter_diagnostic,
+        "metric_basis": metric_basis,
+        "threshold_recalibration_due": THRESHOLD_RECALIBRATION_DUE,
         "performance_by_signal": performance_by_signal,
         "performance_by_market_state_signal": performance_by_market_state_signal,
         "risk_exit": risk_exit,
+        "overheat_holding_context": overheat_holding_context,
         "findings": findings,
         "recommended_next_actions": _recommended_next_actions(findings, as_of_date=report_as_of),
     }
@@ -259,7 +299,13 @@ def _stock_candidate_policy_context(conn: duckdb.DuckDBPyConnection | None) -> d
     return context
 
 
-def _performance_by_signal(conn: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+def _performance_by_signal(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    use_execution_basis: bool,
+) -> dict[str, Any]:
+    if use_execution_basis:
+        return _execution_performance_by_signal(conn)
     rows = conn.execute(
         f"""
         select signal_kind, count(*) as row_count
@@ -277,7 +323,13 @@ def _performance_by_signal(conn: duckdb.DuckDBPyConnection) -> dict[str, Any]:
     }
 
 
-def _performance_by_market_state_signal(conn: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+def _performance_by_market_state_signal(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    use_execution_basis: bool,
+) -> dict[str, Any]:
+    if use_execution_basis:
+        return _execution_performance_by_market_state_signal(conn)
     rows = conn.execute(
         f"""
         select coalesce(market_state, 'unknown') as market_state, signal_kind, count(*) as row_count
@@ -293,6 +345,50 @@ def _performance_by_market_state_signal(conn: duckdb.DuckDBPyConnection) -> dict
         grouped.setdefault(state_key, {})[signal_key] = {
             "row_count": int(row_count or 0),
             **_horizon_stats(
+                conn,
+                where_sql="coalesce(market_state, 'unknown') = ? and signal_kind = ?",
+                params=[state_key, signal_kind],
+            ),
+        }
+    return grouped
+
+
+def _execution_performance_by_signal(conn: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    rows = conn.execute(
+        f"""
+        select signal_kind, count(*) as row_count
+        from {TABLE_EXECUTION_HIST}
+        where entry_executable = true
+        group by signal_kind
+        order by signal_kind
+        """
+    ).fetchall()
+    return {
+        str(signal_kind or "unknown"): {
+            "row_count": int(row_count or 0),
+            **_execution_horizon_stats(conn, where_sql="signal_kind = ?", params=[signal_kind]),
+        }
+        for signal_kind, row_count in rows
+    }
+
+
+def _execution_performance_by_market_state_signal(conn: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    rows = conn.execute(
+        f"""
+        select coalesce(market_state, 'unknown') as market_state, signal_kind, count(*) as row_count
+        from {TABLE_EXECUTION_HIST}
+        where entry_executable = true
+        group by market_state, signal_kind
+        order by market_state, signal_kind
+        """
+    ).fetchall()
+    grouped: dict[str, Any] = {}
+    for market_state, signal_kind, row_count in rows:
+        state_key = str(market_state or "unknown")
+        signal_key = str(signal_kind or "unknown")
+        grouped.setdefault(state_key, {})[signal_key] = {
+            "row_count": int(row_count or 0),
+            **_execution_horizon_stats(
                 conn,
                 where_sql="coalesce(market_state, 'unknown') = ? and signal_kind = ?",
                 params=[state_key, signal_kind],
@@ -317,6 +413,36 @@ def _horizon_stats(
               sum(case when {horizon} > 0 then 1 else 0 end)::integer
             from {TABLE_HIST}
             where {where_sql}
+            """,
+            params,
+        ).fetchone()
+        count = int(n or 0)
+        win_count = int(wins or 0)
+        stats[horizon] = {
+            "count": count,
+            "avg_return": None if avg_return is None else float(avg_return),
+            "win_rate": None if count == 0 else win_count / count,
+        }
+    return stats
+
+
+def _execution_horizon_stats(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    where_sql: str,
+    params: list[Any],
+) -> dict[str, Any]:
+    stats: dict[str, Any] = {}
+    for horizon, column in EXECUTION_HORIZON_COLUMNS.items():
+        n, avg_return, wins = conn.execute(
+            f"""
+            select
+              count({column})::integer,
+              avg({column}),
+              sum(case when {column} > 0 then 1 else 0 end)::integer
+            from {TABLE_EXECUTION_HIST}
+            where entry_executable = true
+              and {where_sql}
             """,
             params,
         ).fetchone()
@@ -382,6 +508,89 @@ def _risk_exit_status(
         "reason": "",
         "latest_active_as_of_date": _date_text(latest_active),
         "active_rows": int(active_rows or 0),
+    }
+
+
+def _overheat_holding_context(
+    path: Path,
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    as_of_date: str | None,
+    market_state: str | None,
+) -> dict[str, Any]:
+    blockers: list[str] = []
+    if not as_of_date:
+        blockers.append("as_of_date_unavailable")
+    if TABLE_POSITION not in tables:
+        blockers.append("livermore_position_snapshot_missing")
+    if TABLE_DAILY not in tables:
+        blockers.append("choice_stock_daily_observation_missing")
+
+    active_holding_count = 0
+    latest_active_as_of_date: str | None = None
+    if TABLE_POSITION in tables:
+        try:
+            latest_active_as_of_date = _date_text(
+                conn.execute(
+                    f"""
+                    select max(as_of_date)
+                    from {TABLE_POSITION}
+                    where upper(coalesce(position_status, 'ACTIVE')) = 'ACTIVE'
+                    """
+                ).fetchone()[0]
+            )
+            if as_of_date:
+                active_holding_count = int(
+                    conn.execute(
+                        f"""
+                        select count(*)::integer
+                        from {TABLE_POSITION}
+                        where as_of_date = ?
+                          and upper(coalesce(position_status, 'ACTIVE')) = 'ACTIVE'
+                        """,
+                        [as_of_date],
+                    ).fetchone()[0]
+                    or 0
+                )
+        except duckdb.Error:
+            blockers.append("livermore_position_snapshot_unreadable")
+    if as_of_date and TABLE_POSITION in tables and active_holding_count <= 0:
+        blockers.append("active_holding_rows_unavailable")
+
+    risk_exit_watch_count = 0
+    risk_exit_triggered_count = 0
+    risk_exit_insufficient_history_count = 0
+    if not blockers:
+        try:
+            snapshots, _tables_used, _sources, _vendors = _load_risk_exit_snapshots(
+                duckdb_path=str(path),
+                as_of_date=as_of_date,
+            )
+            if snapshots:
+                payload = compute_risk_exit(as_of_date=as_of_date, snapshots=snapshots).payload
+                risk_exit_watch_count = len(payload.get("watch_items") or [])
+                risk_exit_triggered_count = int(payload.get("signal_count") or 0)
+                risk_exit_insufficient_history_count = int(payload.get("insufficient_history_count") or 0)
+            else:
+                blockers.append("risk_exit_snapshot_inputs_unavailable")
+        except Exception:
+            blockers.append("risk_exit_snapshot_inputs_unreadable")
+
+    overheat_signal_detected = market_state == "OVERHEAT"
+    status = "blocked" if blockers else ("ready" if overheat_signal_detected else "inactive")
+    return {
+        "status": status,
+        "reason": "; ".join(blockers),
+        "as_of_date": as_of_date,
+        "market_state": market_state,
+        "overheat_signal_detected": overheat_signal_detected,
+        "latest_active_as_of_date": latest_active_as_of_date,
+        "active_holding_count": active_holding_count,
+        "risk_exit_watch_count": risk_exit_watch_count,
+        "risk_exit_triggered_count": risk_exit_triggered_count,
+        "risk_exit_insufficient_history_count": risk_exit_insufficient_history_count,
+        "blockers": blockers,
     }
 
 
@@ -950,11 +1159,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build a local MOSS stock strategy health diagnostic report.")
     parser.add_argument("--duckdb-path", default="data/moss.duckdb")
     parser.add_argument("--as-of-date")
+    parser.add_argument(
+        "--legacy-basis",
+        action="store_true",
+        help="Use legacy signal-date close forward returns instead of execution net adjusted returns.",
+    )
     args = parser.parse_args(argv)
 
     report = build_stock_strategy_health_report(
         duckdb_path=args.duckdb_path,
         as_of_date=args.as_of_date,
+        legacy_basis=args.legacy_basis,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True, default=str))
     return 0

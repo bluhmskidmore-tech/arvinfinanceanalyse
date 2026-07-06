@@ -5,9 +5,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
+from backend.app.core_finance.strategy_policy import POLICY
+
 EPS = 1e-12
 FORMULA_VERSION = "rv_mean_reversion_candidates_v2"
-ACTIVE_MARKET_STATES = frozenset({"WARM"})
+ACTIVE_MARKET_STATES = POLICY.mean_reversion_active_states
 # 60 个交易日高点窗口需要「今日收盘价之前」一共 60 根；加上今日至少共 61 根。
 MIN_HISTORY_BARS = 61
 MAX_RANKED = 20

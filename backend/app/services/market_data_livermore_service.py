@@ -1390,6 +1390,11 @@ def _load_stock_candidate_snapshots(
             if factor_snapshot_date is not None
             else ""
         )
+        daily_amount_select = (
+            "daily.amount"
+            if _table_has_columns(conn, "choice_stock_daily_observation", ["amount"])
+            else "cast(null as double) as amount"
+        )
         params: list[object] = [membership_snapshot_date, as_of_date, limit_snapshot_date]
         if factor_snapshot_date is not None:
             params.append(factor_snapshot_date)
@@ -1417,7 +1422,8 @@ def _load_stock_candidate_snapshots(
               daily.vendor_version,
               limits.source_version,
               limits.vendor_version,
-              {factor_select}
+              {factor_select},
+              {daily_amount_select}
             from choice_stock_universe universe
             join choice_stock_sector_membership membership
               on membership.stock_code = universe.stock_code
@@ -1527,6 +1533,7 @@ def _load_stock_candidate_snapshots(
                 close_value=row[7],
                 turnover_free=row[8],
                 limit_ratio=limit_ratio,
+                daily_amount=row[29],
                 one_word_board=one_word_board,
                 closed_up_limit=closed_up_limit,
                 close_history=history["close"],
