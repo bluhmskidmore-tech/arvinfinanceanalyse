@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { theme } from "antd";
 import { describe, expect, it } from "vitest";
 
@@ -12,15 +12,17 @@ function ThemeTokenProbe() {
 }
 
 describe("AppProviders theme boundary", () => {
-  it("exposes the workbench AntD theme from the application root", () => {
+  it("exposes the workbench AntD theme from the application root", async () => {
     render(
-      <AppProviders>
+      <AppProviders loadAntdTheme>
         <ThemeTokenProbe />
       </AppProviders>,
     );
 
-    expect(screen.getByTestId("root-color-primary")).toHaveTextContent(
-      String(workbenchTheme.token?.colorPrimary),
-    );
+    await waitFor(() => {
+      expect(screen.getByTestId("root-color-primary")).toHaveTextContent(
+        String(workbenchTheme.token?.colorPrimary),
+      );
+    });
   });
 });

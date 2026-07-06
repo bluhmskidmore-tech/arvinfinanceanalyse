@@ -82,17 +82,38 @@ export function sampleDailyChangesResult(overrides?: Partial<DailyChangesResult>
 
 export const sampleBondBusinessTypeMetricRows: BondBusinessTypeMetricItem[] = [
   {
-    name: "利率债",
-    market_value: "5000000000.00",
-    weighted_avg_ytm_pct: "2.55",
-    weighted_avg_duration: "3.21",
+    name: "政策性金融债",
+    market_value: "98500000000.00",
+    weighted_avg_ytm_pct: "2.72",
+    weighted_avg_duration: "3.82",
     duration_source: "formal",
   },
   {
-    name: "信用债",
-    market_value: "3000000000.00",
-    weighted_avg_ytm_pct: "3.10",
-    weighted_avg_duration: "2.80",
+    name: "地方政府债",
+    market_value: "82000000000.00",
+    weighted_avg_ytm_pct: "2.65",
+    weighted_avg_duration: "4.18",
+    duration_source: "formal",
+  },
+  {
+    name: "同业存单",
+    market_value: "71000000000.00",
+    weighted_avg_ytm_pct: "2.68",
+    weighted_avg_duration: "0.74",
+    duration_source: "formal",
+  },
+  {
+    name: "信用债-企业",
+    market_value: "49209000000.00",
+    weighted_avg_ytm_pct: "3.41",
+    weighted_avg_duration: "2.95",
+    duration_source: "formal",
+  },
+  {
+    name: "其他",
+    market_value: "28000000000.00",
+    weighted_avg_ytm_pct: "2.89",
+    weighted_avg_duration: "2.36",
     duration_source: "formal",
   },
 ];

@@ -542,14 +542,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "agent",
-    label: "智能体工作台",
+    label: "MOSS Chat",
     path: "/agent",
     icon: "agent",
-    description: "智能体分析工作台：面向证据问答、GitNexus 仓库图谱和后续页面助手。",
+    description: "像聊天一样提问，需要时再展开证据、运行细节和页面上下文。",
     readiness: "live",
-    readinessLabel: "Hermes",
-    readinessNote:
-      "Hermes Agent is available through /api/agent/query when MOSS_AGENT_PROVIDER=hermes.",
+    readinessLabel: "可用",
+    readinessNote: "通过 /api/agent/query 提供对话、证据问答和页面助手能力。",
   },
 ];
 

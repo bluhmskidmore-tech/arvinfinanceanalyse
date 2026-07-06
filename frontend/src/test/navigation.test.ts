@@ -18,11 +18,12 @@ describe("workbench navigation mocks", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it("shows the live Hermes Agent route in primary navigation", () => {
+  it("shows the live MOSS Chat route in primary navigation", () => {
     const agent = workbenchNavigation.find((s) => s.key === "agent");
     expect(agent).toBeDefined();
+    expect(agent?.label).toBe("MOSS Chat");
     expect(agent?.readiness).toBe("live");
-    expect(agent?.readinessLabel).toBe("Hermes");
+    expect(agent?.readinessLabel).toBe("可用");
     expect(agent?.navigationVisibility).toBeUndefined();
     expect(agent?.path).toBe("/agent");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);

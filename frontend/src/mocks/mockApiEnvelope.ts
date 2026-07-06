@@ -13,6 +13,7 @@ export function buildMockMeta(resultKind: string): ResultMeta {
     quality_flag: "ok",
     vendor_status: "ok",
     fallback_mode: "none",
+    source_surface: "mock",
     scenario_flag: false,
     generated_at: "2026-04-09T10:30:00Z",
   };
@@ -24,7 +25,11 @@ export function buildMockApiEnvelope<T>(
   metaOverrides?: Partial<ResultMeta>,
 ): ApiEnvelope<T> {
   return {
-    result_meta: { ...buildMockMeta(resultKind), ...metaOverrides },
+    result_meta: {
+      ...buildMockMeta(resultKind),
+      ...metaOverrides,
+      source_surface: "mock",
+    },
     result,
   };
 }
