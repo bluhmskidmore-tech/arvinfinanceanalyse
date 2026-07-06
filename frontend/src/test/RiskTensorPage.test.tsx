@@ -31,7 +31,7 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta, RiskTensorPayload } from "../api/contracts";
+import type { ResultMeta, RiskScenarioStressPayload, RiskTensorPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
 import { displayTokens } from "../theme/displayTokens";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
@@ -63,6 +63,15 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
     fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-04-12T08:00:00Z",
+  };
+}
+
+function buildScenarioMeta(resultKind: string, traceId: string): ResultMeta {
+  return {
+    ...buildMeta(resultKind, traceId),
+    basis: "scenario",
+    formal_use_allowed: false,
+    scenario_flag: true,
   };
 }
 
@@ -164,6 +173,113 @@ function tensorResult(reportDate: string): RiskTensorPayload {
         },
       ],
     },
+  };
+}
+
+function scenarioStressResult(reportDate: string): RiskScenarioStressPayload {
+  const yuan = (raw: number | null, display = raw === null ? "待接入" : `${raw}`) => ({
+    raw,
+    unit: "yuan" as const,
+    display,
+    precision: 2,
+    sign_aware: true,
+  });
+  const bp = (raw: number) => ({
+    raw,
+    unit: "bp" as const,
+    display: `${raw > 0 ? "+" : ""}${raw} bp`,
+    precision: 0,
+    sign_aware: true,
+  });
+  const pct = (raw: number | null) => ({
+    raw,
+    unit: "pct" as const,
+    display: raw === null ? "待接入" : `${(raw * 100).toFixed(1)}%`,
+    precision: 1,
+    sign_aware: true,
+  });
+  return {
+    report_date: reportDate,
+    basis: "scenario",
+    scenario_set_id: "standard_risk_tensor_scenario_v1",
+    rule_version: "rv_risk_tensor_scenario_stress_v1",
+    source: {
+      result_kind: "risk.tensor",
+      trace_id: "tr_tensor_source",
+      source_version: "sv_tensor_test",
+      rule_version: "rv_tensor_test",
+      cache_version: "cv_tensor_test",
+      quality_flag: "warning",
+    },
+    summary: {
+      scenario_count: 4,
+      available_count: 3,
+      review_required_count: 4,
+      worst_estimated_impact: yuan(-308.5, "-308.50"),
+      worst_scenario_key: "rate_parallel_up_25bp",
+      message: "已生成标准多情景压力估算；所有结果均为情景口径，需复核后再用于经营判断。",
+    },
+    scenarios: [
+      {
+        scenario_key: "rate_parallel_up_25bp",
+        category: "rate",
+        label: "利率平行上行 25bp",
+        source_field: "regulatory_dv01",
+        shock: bp(25),
+        estimated_impact: yuan(-308.5, "-308.50"),
+        measure: "estimated_pnl_impact",
+        calculation: "-regulatory_dv01 * shock_bp",
+        interpretation: "利率上行时，按监管口径 DV01 估算组合价格影响。",
+        data_status: "available",
+        human_review_required: true,
+      },
+      {
+        scenario_key: "credit_spread_widen_25bp",
+        category: "credit",
+        label: "信用利差走阔 25bp",
+        source_field: "cs01",
+        shock: bp(25),
+        estimated_impact: yuan(-222, "-222.00"),
+        measure: "estimated_pnl_impact",
+        calculation: "-cs01 * shock_bp",
+        interpretation: "信用利差走阔时，按 CS01 估算信用敏感性影响。",
+        data_status: "available",
+        human_review_required: true,
+      },
+      {
+        scenario_key: "liquidity_30d_cashflow_10pct",
+        category: "liquidity",
+        label: "30天现金流压力 10%",
+        source_field: "asset_cashflow_30d/liability_cashflow_30d/liquidity_gap_30d",
+        shock: pct(0.1),
+        estimated_impact: yuan(-50, "-50.00"),
+        measure: "stressed_30d_liquidity_gap_delta",
+        calculation:
+          "asset_cashflow_30d * (1 - shock_pct) - liability_cashflow_30d * (1 + shock_pct) - liquidity_gap_30d",
+        interpretation: "现金流压力下的30天流动性缺口变化；负值表示缓冲收窄。",
+        data_status: "available",
+        human_review_required: true,
+        baseline_value: yuan(100, "100.00"),
+        stressed_value: yuan(50, "50.00"),
+        baseline_ratio: pct(0.05),
+        stressed_ratio: pct(0.025),
+      },
+      {
+        scenario_key: "fx_usdcny_move_candidate",
+        category: "fx",
+        label: "汇率波动情景",
+        source_field: "fx_exposure",
+        shock: pct(null),
+        estimated_impact: yuan(null),
+        measure: "estimated_pnl_impact",
+        calculation: "fx_exposure * fx_shock",
+        interpretation: "当前风险张量未提供汇率敞口，需接入 FX exposure 后再估算。",
+        data_status: "source_missing",
+        human_review_required: true,
+      },
+    ],
+    warnings: ["情景压力结果为基于正式风险张量的敏感性覆盖层，不是正式损益、正式限额判定或交易建议。"],
+    source_warnings: [],
   };
 }
 
@@ -273,6 +389,40 @@ describe("RiskTensorPage", () => {
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent(
       new RegExp(`3\\.00\\s*${WAN_YUAN_UNIT}`),
     );
+  });
+
+  it("renders scenario-basis stress tests from the selected risk tensor date", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_stress_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+    const getRiskScenarioStress = vi.fn(async (reportDate: string) => ({
+      result_meta: buildScenarioMeta("risk.tensor.scenario_stress", `tr_scenario_stress_${reportDate}`),
+      result: scenarioStressResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+      getRiskScenarioStress,
+    });
+
+    const panel = await screen.findByTestId("risk-tensor-scenario-stress");
+    expect(getRiskScenarioStress).toHaveBeenCalledWith("2026-02-28");
+    expect(panel).toHaveTextContent("多情景压力测试");
+    expect(panel).toHaveTextContent("利率平行上行 25bp");
+    expect(panel).toHaveTextContent("信用利差走阔 25bp");
+    expect(panel).toHaveTextContent("30天现金流压力 10%");
+    expect(panel).toHaveTextContent("汇率波动情景");
+    expect(panel).toHaveTextContent("human_review_required=true");
+    expect(panel).toHaveTextContent("scenario_set_id standard_risk_tensor_scenario_v1");
+    expect(await screen.findByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_scenario_stress_2026-02-28");
   });
 
   it("surfaces the backend rate-risk duration denominator scope", async () => {

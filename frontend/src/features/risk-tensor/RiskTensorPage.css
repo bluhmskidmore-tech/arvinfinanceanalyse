@@ -1011,6 +1011,224 @@ button.risk-tensor-prior-change__metric:focus-visible {
   border-top: 1px solid var(--moss-color-neutral-200);
 }
 
+.risk-tensor-scenario-stress {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: 8px;
+  background: var(--moss-color-card-bg);
+  box-shadow: 0 10px 24px rgba(22, 35, 46, 0.05);
+}
+
+.risk-tensor-scenario-stress__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.risk-tensor-scenario-stress__header span,
+.risk-tensor-scenario-stress__summary span,
+.risk-tensor-scenario-stress__card-head span {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-tensor-scenario-stress__header h2 {
+  margin: 4px 0 0;
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.risk-tensor-scenario-stress__header p {
+  max-width: 900px;
+  margin: 6px 0 0;
+  color: var(--moss-color-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.risk-tensor-scenario-stress__header > strong {
+  padding: 7px 10px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: 8px;
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-600);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.risk-tensor-scenario-stress__summary,
+.risk-tensor-scenario-stress__grid {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-tensor-scenario-stress__summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.risk-tensor-scenario-stress__summary > div,
+.risk-tensor-scenario-stress__card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 8px;
+  background: var(--moss-color-neutral-50);
+}
+
+.risk-tensor-scenario-stress__summary strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--moss-color-text-primary);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-scenario-stress__summary p,
+.risk-tensor-scenario-stress__card p,
+.risk-tensor-scenario-stress__card small,
+.risk-tensor-scenario-stress__empty p,
+.risk-tensor-scenario-stress__footer span {
+  margin: 6px 0 0;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-scenario-stress__warning,
+.risk-tensor-scenario-stress__empty {
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-left: 4px solid var(--moss-color-warning-600);
+  border-radius: 8px;
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.risk-tensor-scenario-stress__empty span {
+  color: var(--moss-color-warning-600);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.risk-tensor-scenario-stress__grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.risk-tensor-scenario-stress__card {
+  display: grid;
+  gap: 8px;
+  background: var(--moss-color-card-bg);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="danger"] {
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="warning"] {
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="ok"] {
+  border-color: var(--moss-color-success-200);
+  background: var(--moss-color-success-50);
+}
+
+.risk-tensor-scenario-stress__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.risk-tensor-scenario-stress__card-head strong {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.risk-tensor-scenario-stress__card h3 {
+  margin: 0;
+  color: var(--moss-color-text-primary);
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.risk-tensor-scenario-stress__impact {
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-scenario-stress__card[data-tone="danger"] .risk-tensor-scenario-stress__impact {
+  color: var(--moss-color-danger-600);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="warning"] .risk-tensor-scenario-stress__impact {
+  color: var(--moss-color-warning-600);
+}
+
+.risk-tensor-scenario-stress__card[data-tone="ok"] .risk-tensor-scenario-stress__impact {
+  color: var(--moss-color-success-600);
+}
+
+.risk-tensor-scenario-stress__card dl {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.risk-tensor-scenario-stress__card dl div {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.risk-tensor-scenario-stress__card dt,
+.risk-tensor-scenario-stress__card dd {
+  margin: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.risk-tensor-scenario-stress__card dd {
+  color: var(--moss-color-text-primary);
+}
+
+.risk-tensor-scenario-stress__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.risk-tensor-scenario-stress__footer span {
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 8px;
+  background: var(--moss-color-neutral-50);
+}
+
 @media (max-width: 1180px) {
   .risk-tensor-brief__tiles {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1021,6 +1239,10 @@ button.risk-tensor-prior-change__metric:focus-visible {
   }
 
   .risk-tensor-dv01-controls__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .risk-tensor-scenario-stress__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1050,7 +1272,9 @@ button.risk-tensor-prior-change__metric:focus-visible {
   .risk-tensor-brief__tiles,
   .risk-tensor-dv01-controls__grid,
   .risk-tensor-dv01-controls__stress,
-  .risk-tensor-dv01-controls__actions {
+  .risk-tensor-dv01-controls__actions,
+  .risk-tensor-scenario-stress__summary,
+  .risk-tensor-scenario-stress__grid {
     grid-template-columns: 1fr;
   }
 }

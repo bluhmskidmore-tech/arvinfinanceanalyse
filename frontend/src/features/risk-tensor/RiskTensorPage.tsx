@@ -9,7 +9,14 @@ import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
-import type { Numeric, ResultMeta, RiskTensorChangeMetric, RiskTensorPayload } from "../../api/contracts";
+import type {
+  Numeric,
+  ResultMeta,
+  RiskScenarioStressPayload,
+  RiskScenarioStressRow,
+  RiskTensorChangeMetric,
+  RiskTensorPayload,
+} from "../../api/contracts";
 import {
   toneFromSignedDisplayString,
 } from "../workbench/components/kpiFormat";
@@ -579,6 +586,157 @@ function dv01ControlActionStatusLabel(status: string) {
   return "待核对";
 }
 
+function scenarioStressCategoryLabel(category: RiskScenarioStressRow["category"]) {
+  if (category === "rate") return "利率";
+  if (category === "credit") return "信用";
+  if (category === "liquidity") return "流动性";
+  if (category === "fx") return "汇率";
+  return category;
+}
+
+function scenarioStressDataStatusLabel(status: RiskScenarioStressRow["data_status"]) {
+  return status === "available" ? "已估算" : "待接入";
+}
+
+function scenarioStressTone(row: RiskScenarioStressRow) {
+  if (row.data_status !== "available") {
+    return "warning";
+  }
+  const raw = riskTensorRawOrNull(row.estimated_impact);
+  if (raw === null) {
+    return "warning";
+  }
+  return raw < 0 ? "danger" : "ok";
+}
+
+function RiskScenarioStressPanel({
+  payload,
+  meta,
+  isLoading,
+  error,
+  reportDate,
+  onRetry,
+  onMetaJump,
+}: {
+  payload?: RiskScenarioStressPayload;
+  meta?: ResultMeta;
+  isLoading: boolean;
+  error: unknown;
+  reportDate: string;
+  onRetry: () => void;
+  onMetaJump: () => void;
+}) {
+  const errorMessage = error ? errorEvidenceMessage(error) : "";
+
+  return (
+    <section className="risk-tensor-scenario-stress" data-testid="risk-tensor-scenario-stress">
+      <div className="risk-tensor-scenario-stress__header">
+        <div>
+          <span>情景压力</span>
+          <h2>多情景压力测试</h2>
+          <p>基于当前正式风险张量生成 scenario 口径估算；用于复核利率、信用、流动性和汇率输入缺口。</p>
+        </div>
+        <strong>{meta?.basis ?? payload?.basis ?? "scenario"}</strong>
+      </div>
+
+      {isLoading ? (
+        <div className="risk-tensor-scenario-stress__empty">
+          <span>正在读取压力测试</span>
+          <p>报告日 {reportDate || "未选择"}；等待后端按正式风险张量生成情景覆盖层。</p>
+        </div>
+      ) : error ? (
+        <div className="risk-tensor-scenario-stress__empty" data-testid="risk-tensor-scenario-stress-error">
+          <span>压力测试暂不可用</span>
+          <p>{errorMessage || "后端未返回压力测试结果。"}</p>
+          <div className="risk-tensor-quality-detail__trace-actions">
+            <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={onRetry}>
+              重试压力测试
+            </button>
+            <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={onMetaJump}>
+              定位元数据
+            </button>
+          </div>
+        </div>
+      ) : payload ? (
+        <>
+          <div className="risk-tensor-scenario-stress__summary">
+            <div>
+              <span>情景数量</span>
+              <strong>{payload.summary.scenario_count}</strong>
+              <p>{payload.summary.review_required_count} 个需要人工复核</p>
+            </div>
+            <div>
+              <span>可估算情景</span>
+              <strong>{payload.summary.available_count}</strong>
+              <p>汇率等缺口会单独显示待接入</p>
+            </div>
+            <div>
+              <span>最不利估算</span>
+              <strong>{yuanAsWanWithUnit(payload.summary.worst_estimated_impact)}</strong>
+              <p>{payload.summary.worst_scenario_key ?? "暂无可估算情景"}</p>
+            </div>
+          </div>
+
+          {payload.warnings.length > 0 ? (
+            <div className="risk-tensor-scenario-stress__warning">{payload.warnings.join(" / ")}</div>
+          ) : null}
+
+          <div className="risk-tensor-scenario-stress__grid">
+            {payload.scenarios.map((row) => (
+              <article
+                className="risk-tensor-scenario-stress__card"
+                data-tone={scenarioStressTone(row)}
+                data-testid={`risk-scenario-stress-row-${row.scenario_key}`}
+                key={row.scenario_key}
+              >
+                <div className="risk-tensor-scenario-stress__card-head">
+                  <span>{scenarioStressCategoryLabel(row.category)}</span>
+                  <strong>{scenarioStressDataStatusLabel(row.data_status)}</strong>
+                </div>
+                <h3>{row.label}</h3>
+                <div className="risk-tensor-scenario-stress__impact">
+                  {row.data_status === "available"
+                    ? yuanAsWanWithUnit(row.estimated_impact)
+                    : displayStr(row.estimated_impact)}
+                </div>
+                <p>{row.interpretation}</p>
+                <dl>
+                  <div>
+                    <dt>冲击</dt>
+                    <dd>{displayStr(row.shock)}</dd>
+                  </div>
+                  <div>
+                    <dt>来源</dt>
+                    <dd>{row.source_field}</dd>
+                  </div>
+                  {row.baseline_value && row.stressed_value ? (
+                    <div>
+                      <dt>压力后</dt>
+                      <dd>{yuanAsWanWithUnit(row.stressed_value)}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                <small>{row.human_review_required ? "human_review_required=true" : "human_review_required=false"}</small>
+              </article>
+            ))}
+          </div>
+
+          <div className="risk-tensor-scenario-stress__footer">
+            <span>scenario_set_id {payload.scenario_set_id}</span>
+            <span>rule_version {payload.rule_version}</span>
+            <span>source_trace_id {payload.source.trace_id ?? "未提供"}</span>
+          </div>
+        </>
+      ) : (
+        <div className="risk-tensor-scenario-stress__empty">
+          <span>暂无压力测试结果</span>
+          <p>等待正式风险张量读取成功后生成情景覆盖层。</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function RiskTensorPage() {
   const client = useApiClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -680,6 +838,13 @@ export default function RiskTensorPage() {
     queryKey: ["risk-tensor", reportDate],
     queryFn: () => client.getRiskTensor(reportDate),
     enabled: tensorQueryEnabled,
+    retry: false,
+  });
+
+  const scenarioStressQuery = useQuery({
+    queryKey: ["risk-tensor", "scenario-stress", reportDate],
+    queryFn: () => client.getRiskScenarioStress(reportDate),
+    enabled: tensorQueryEnabled && tensorQuery.isSuccess,
     retry: false,
   });
 
@@ -3084,6 +3249,18 @@ export default function RiskTensorPage() {
               </section>
             ) : null}
 
+            {result ? (
+              <RiskScenarioStressPanel
+                payload={scenarioStressQuery.data?.result}
+                meta={scenarioStressQuery.data?.result_meta}
+                isLoading={scenarioStressQuery.isLoading}
+                error={scenarioStressQuery.error}
+                reportDate={reportDate}
+                onRetry={() => void scenarioStressQuery.refetch()}
+                onMetaJump={() => handleSectionJump("risk-tensor-result-meta-panel")}
+              />
+            ) : null}
+
             <div style={chartRowStyle}>
               <div style={chartColumnStyle}>
                 <div data-testid="risk-tensor-radar-card" style={radarCardStyle}>
@@ -3563,6 +3740,7 @@ export default function RiskTensorPage() {
         sections={[
           { key: "dates", title: "风险报告日列表", meta: datesQuery.data?.result_meta },
           { key: "tensor", title: "风险张量主读面", meta: envelope?.result_meta },
+          { key: "scenario", title: "风险情景压力", meta: scenarioStressQuery.data?.result_meta },
         ]}
       />
     </section>
