@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -13,9 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import duckdb
+import duckdb  # noqa: E402
 
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock  # noqa: E402
 
 
 FACT_TABLE = "fact_choice_macro_daily"
@@ -80,9 +81,16 @@ def backfill_csi300_benchmark_from_backup(
     series_ids: Iterable[str] | None = None,
     dry_run: bool = False,
     governance_dir: str | Path | None = None,
+    target_backup_path: str | Path | None = None,
+    require_target_backup: bool = False,
+    block_on_lineage_conflict: bool = False,
 ) -> dict[str, object]:
     resolved_duckdb_path = _resolve_existing_path(duckdb_path, field_name="duckdb_path")
     resolved_backup_path = _resolve_existing_path(backup_duckdb_path, field_name="backup_duckdb_path")
+    target_backup_metadata = _target_backup_metadata(
+        target_backup_path,
+        require_target_backup=require_target_backup,
+    )
     parsed_start = _parse_iso_date(start_date, field_name="start_date")
     parsed_end = _parse_iso_date(end_date, field_name="end_date")
     if parsed_end < parsed_start:
@@ -112,9 +120,14 @@ def backfill_csi300_benchmark_from_backup(
             end_date=parsed_end.isoformat(),
             source="target",
         )
-        conflicts = _find_conflicts(source_rows, target_rows)
-        if conflicts:
-            sample = ", ".join(f"{series_id}@{trade_date}" for series_id, trade_date in conflicts[:5])
+        overlap_differences = _find_overlap_differences(
+            source_rows,
+            target_rows,
+            block_on_lineage_conflict=block_on_lineage_conflict,
+        )
+        blocking_conflicts = [item for item in overlap_differences if item["blocking"]]
+        if blocking_conflicts:
+            sample = "; ".join(_format_difference_sample(item) for item in blocking_conflicts[:5])
             raise ValueError(f"Refusing backfill: found conflicting existing rows ({sample}).")
 
         missing_rows = [row for key, row in source_rows.items() if key not in target_rows]
@@ -136,9 +149,14 @@ def backfill_csi300_benchmark_from_backup(
         "end_date": parsed_end.isoformat(),
         "series_ids": list(normalized_series_ids),
         "tables_used": [FACT_TABLE],
+        "target_backup_before_write": target_backup_metadata,
+        "block_on_lineage_conflict": block_on_lineage_conflict,
         "source_rows": len(source_rows),
         "target_existing_rows": len(target_rows),
         "conflict_count": 0,
+        "overlap_difference_count": len(overlap_differences),
+        "nonblocking_lineage_difference_count": sum(1 for item in overlap_differences if not item["blocking"]),
+        "overlap_differences_sample": overlap_differences[:10],
         "would_insert_count": len(missing_rows),
         "inserted_count": len(report_rows),
         "inserted_by_series": dict(Counter(row.series_id for row in report_rows)),
@@ -156,10 +174,41 @@ def _resolve_existing_path(path_value: str | Path, *, field_name: str) -> Path:
     return path
 
 
+def _target_backup_metadata(
+    path_value: str | Path | None,
+    *,
+    require_target_backup: bool,
+) -> dict[str, object]:
+    if path_value is None:
+        if require_target_backup:
+            raise ValueError("target_backup_path is required when require_target_backup is set.")
+        return {"status": "not_provided"}
+    path = _resolve_existing_path(path_value, field_name="target_backup_path")
+    stat = path.stat()
+    return {
+        "status": "verified",
+        "path": str(path),
+        "size_bytes": stat.st_size,
+        "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(timespec="seconds"),
+        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+        "sha256": _sha256_file(path),
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _parse_iso_date(value: str, *, field_name: str) -> date:
     text = str(value or "").strip()
     if not text:
         raise ValueError(f"{field_name} is required.")
+    if len(text) != 10 or text[4] != "-" or text[7] != "-":
+        raise ValueError(f"{field_name} must be YYYY-MM-DD.")
     try:
         return date.fromisoformat(text)
     except ValueError as exc:
@@ -240,32 +289,117 @@ def _load_rows(
     return keyed
 
 
-def _find_conflicts(
+def _find_overlap_differences(
     source_rows: dict[tuple[str, str], MacroDailyRow],
     target_rows: dict[tuple[str, str], MacroDailyRow],
-) -> list[tuple[str, str]]:
-    conflicts: list[tuple[str, str]] = []
+    *,
+    block_on_lineage_conflict: bool,
+) -> list[dict[str, object]]:
+    differences: list[dict[str, object]] = []
     for key, source_row in source_rows.items():
         target_row = target_rows.get(key)
         if target_row is None:
             continue
-        if abs(float(source_row.value_numeric) - float(target_row.value_numeric)) > VALUE_TOLERANCE:
-            conflicts.append(key)
-            continue
-        if source_row.frequency != target_row.frequency or source_row.unit != target_row.unit:
-            conflicts.append(key)
-    return conflicts
+        field_diffs: list[dict[str, object]] = []
+        _append_float_difference(
+            field_diffs,
+            "value_numeric",
+            source_row.value_numeric,
+            target_row.value_numeric,
+            blocking=True,
+        )
+        for field_name in ("frequency", "unit"):
+            _append_text_difference(
+                field_diffs,
+                field_name,
+                getattr(source_row, field_name),
+                getattr(target_row, field_name),
+                blocking=True,
+            )
+        for field_name in ("source_version", "vendor_version", "rule_version"):
+            _append_text_difference(
+                field_diffs,
+                field_name,
+                getattr(source_row, field_name),
+                getattr(target_row, field_name),
+                blocking=block_on_lineage_conflict,
+            )
+        if field_diffs:
+            differences.append(
+                {
+                    "series_id": key[0],
+                    "trade_date": key[1],
+                    "blocking": any(bool(item["blocking"]) for item in field_diffs),
+                    "differences": field_diffs,
+                }
+            )
+    return differences
+
+
+def _append_float_difference(
+    out: list[dict[str, object]],
+    field_name: str,
+    source_value: float,
+    target_value: float,
+    *,
+    blocking: bool,
+) -> None:
+    if abs(float(source_value) - float(target_value)) <= VALUE_TOLERANCE:
+        return
+    out.append(
+        {
+            "field": field_name,
+            "source": source_value,
+            "target": target_value,
+            "blocking": blocking,
+        }
+    )
+
+
+def _append_text_difference(
+    out: list[dict[str, object]],
+    field_name: str,
+    source_value: str,
+    target_value: str,
+    *,
+    blocking: bool,
+) -> None:
+    if source_value == target_value:
+        return
+    out.append(
+        {
+            "field": field_name,
+            "source": source_value,
+            "target": target_value,
+            "blocking": blocking,
+        }
+    )
+
+
+def _format_difference_sample(item: dict[str, object]) -> str:
+    fields = ", ".join(
+        str(diff.get("field"))
+        for diff in item.get("differences", [])
+        if isinstance(diff, dict) and diff.get("blocking")
+    )
+    return f"{item.get('series_id')}@{item.get('trade_date')} [{fields}]"
 
 
 def _insert_rows(conn: duckdb.DuckDBPyConnection, rows: list[MacroDailyRow]) -> None:
     placeholders = ", ".join("?" for _ in FACT_COLUMNS)
-    conn.executemany(
-        f"""
-        insert into {FACT_TABLE} ({", ".join(FACT_COLUMNS)})
-        values ({placeholders})
-        """,
-        [row.as_insert_tuple() for row in rows],
-    )
+    conn.execute("begin transaction")
+    try:
+        conn.executemany(
+            f"""
+            insert into {FACT_TABLE} ({", ".join(FACT_COLUMNS)})
+            values ({placeholders})
+            """,
+            [row.as_insert_tuple() for row in rows],
+        )
+    except Exception:
+        conn.execute("rollback")
+        raise
+    conn.execute("commit")
 
 
 def _min_trade_date(rows: list[MacroDailyRow]) -> str | None:
@@ -289,6 +423,17 @@ def main() -> int:
     )
     parser.add_argument("--governance-dir", default=None, help="Directory for the DuckDB write lock.")
     parser.add_argument("--dry-run", action="store_true", help="Report rows that would be inserted without writing.")
+    parser.add_argument("--target-backup-path", default=None, help="Optional target DuckDB backup made before writing.")
+    parser.add_argument(
+        "--require-target-backup",
+        action="store_true",
+        help="Require --target-backup-path and include its SHA-256/size/timestamps in the result.",
+    )
+    parser.add_argument(
+        "--block-on-lineage-conflict",
+        action="store_true",
+        help="Treat source_version/vendor_version/rule_version differences on overlapping rows as blocking conflicts.",
+    )
     args = parser.parse_args()
 
     try:
@@ -300,6 +445,9 @@ def main() -> int:
             series_ids=args.series_ids.split(","),
             dry_run=args.dry_run,
             governance_dir=args.governance_dir,
+            target_backup_path=args.target_backup_path,
+            require_target_backup=args.require_target_backup,
+            block_on_lineage_conflict=args.block_on_lineage_conflict,
         )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

@@ -36,16 +36,19 @@ def _insert_fact_row(
     series_id: str = "CA.CSI300",
     trade_date: str,
     value_numeric: float,
+    frequency: str = "daily",
+    unit: str = "index",
     source_version: str = "sv_source",
     vendor_version: str = "vv_source",
+    rule_version: str = "rv_source",
     run_id: str = "run-source",
 ) -> None:
     conn.execute(
         """
         insert into fact_choice_macro_daily values
-          (?, 'CSI300 Close', ?, ?, 'daily', 'index', ?, ?, 'rv_source', 'ok', ?)
+          (?, 'CSI300 Close', ?, ?, ?, ?, ?, ?, ?, 'ok', ?)
         """,
-        [series_id, trade_date, value_numeric, source_version, vendor_version, run_id],
+        [series_id, trade_date, value_numeric, frequency, unit, source_version, vendor_version, rule_version, run_id],
     )
 
 
@@ -94,6 +97,8 @@ def test_csi300_backfill_inserts_only_missing_rows_and_preserves_lineage(tmp_pat
 
     assert result["status"] == "completed"
     assert result["inserted_count"] == 1
+    assert result["overlap_difference_count"] == 1
+    assert result["nonblocking_lineage_difference_count"] == 1
     assert result["inserted_by_series"] == {"CA.CSI300": 1}
     assert result["inserted_min_date"] == "2026-01-01"
     assert result["inserted_max_date"] == "2026-01-01"
@@ -114,6 +119,45 @@ def test_csi300_backfill_inserts_only_missing_rows_and_preserves_lineage(tmp_pat
         ("CA.CSI300", "2026-01-01", pytest.approx(99.0), "sv_source", "vv_source", "run-source"),
         ("CA.CSI300", "2026-01-02", pytest.approx(100.0), "sv_current", "vv_current", "run-current"),
     ]
+
+
+def test_csi300_backfill_rerun_is_idempotent(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.backfill_csi300_benchmark_from_backup",
+        "scripts/backfill_csi300_benchmark_from_backup.py",
+    )
+    target_path = tmp_path / "current.duckdb"
+    source_path = tmp_path / "backup.duckdb"
+    _open_macro_db(target_path).close()
+    source = _open_macro_db(source_path)
+    try:
+        _insert_fact_row(source, trade_date="2026-01-01", value_numeric=99.0)
+    finally:
+        source.close()
+
+    first = module.backfill_csi300_benchmark_from_backup(
+        duckdb_path=target_path,
+        backup_duckdb_path=source_path,
+        start_date="2026-01-01",
+        end_date="2026-01-01",
+        governance_dir=tmp_path / "governance",
+    )
+    second = module.backfill_csi300_benchmark_from_backup(
+        duckdb_path=target_path,
+        backup_duckdb_path=source_path,
+        start_date="2026-01-01",
+        end_date="2026-01-01",
+        governance_dir=tmp_path / "governance",
+    )
+
+    assert first["inserted_count"] == 1
+    assert second["inserted_count"] == 0
+    assert second["would_insert_count"] == 0
+    conn = duckdb.connect(str(target_path), read_only=True)
+    try:
+        assert conn.execute("select count(*) from fact_choice_macro_daily").fetchone()[0] == 1
+    finally:
+        conn.close()
 
 
 def test_csi300_backfill_dry_run_does_not_write(tmp_path: Path) -> None:
@@ -182,6 +226,161 @@ def test_csi300_backfill_rejects_overlapping_value_conflicts(tmp_path: Path) -> 
         assert conn.execute("select count(*) from fact_choice_macro_daily").fetchone()[0] == 1
     finally:
         conn.close()
+
+
+def test_csi300_backfill_reports_lineage_differences_and_can_block_them(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.backfill_csi300_benchmark_from_backup",
+        "scripts/backfill_csi300_benchmark_from_backup.py",
+    )
+    target_path = tmp_path / "current.duckdb"
+    source_path = tmp_path / "backup.duckdb"
+    target = _open_macro_db(target_path)
+    try:
+        _insert_fact_row(target, trade_date="2026-01-02", value_numeric=100.0, source_version="sv_current")
+    finally:
+        target.close()
+    source = _open_macro_db(source_path)
+    try:
+        _insert_fact_row(source, trade_date="2026-01-02", value_numeric=100.0, source_version="sv_source")
+    finally:
+        source.close()
+
+    result = module.backfill_csi300_benchmark_from_backup(
+        duckdb_path=target_path,
+        backup_duckdb_path=source_path,
+        start_date="2026-01-02",
+        end_date="2026-01-02",
+    )
+    assert result["overlap_difference_count"] == 1
+    assert result["nonblocking_lineage_difference_count"] == 1
+    assert result["overlap_differences_sample"][0]["differences"][0]["field"] == "source_version"
+
+    with pytest.raises(ValueError, match="source_version"):
+        module.backfill_csi300_benchmark_from_backup(
+            duckdb_path=target_path,
+            backup_duckdb_path=source_path,
+            start_date="2026-01-02",
+            end_date="2026-01-02",
+            block_on_lineage_conflict=True,
+        )
+
+
+def test_csi300_backfill_rejects_duplicate_source_rows(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.backfill_csi300_benchmark_from_backup",
+        "scripts/backfill_csi300_benchmark_from_backup.py",
+    )
+    target_path = tmp_path / "current.duckdb"
+    source_path = tmp_path / "backup.duckdb"
+    _open_macro_db(target_path).close()
+    source = _open_macro_db(source_path)
+    try:
+        _insert_fact_row(source, trade_date="2026-01-02", value_numeric=100.0)
+        _insert_fact_row(source, trade_date="2026-01-02", value_numeric=100.0, run_id="run-source-2")
+    finally:
+        source.close()
+
+    with pytest.raises(ValueError, match="duplicate fact_choice_macro_daily rows"):
+        module.backfill_csi300_benchmark_from_backup(
+            duckdb_path=target_path,
+            backup_duckdb_path=source_path,
+            start_date="2026-01-02",
+            end_date="2026-01-02",
+        )
+
+
+def test_csi300_backfill_rejects_missing_required_columns(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.backfill_csi300_benchmark_from_backup",
+        "scripts/backfill_csi300_benchmark_from_backup.py",
+    )
+    target_path = tmp_path / "current.duckdb"
+    source_path = tmp_path / "backup.duckdb"
+    _open_macro_db(target_path).close()
+    conn = duckdb.connect(str(source_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(RuntimeError, match="missing columns"):
+        module.backfill_csi300_benchmark_from_backup(
+            duckdb_path=target_path,
+            backup_duckdb_path=source_path,
+            start_date="2026-01-02",
+            end_date="2026-01-02",
+        )
+
+
+def test_csi300_backfill_rejects_invalid_date_range(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.backfill_csi300_benchmark_from_backup",
+        "scripts/backfill_csi300_benchmark_from_backup.py",
+    )
+    target_path = tmp_path / "current.duckdb"
+    source_path = tmp_path / "backup.duckdb"
+    _open_macro_db(target_path).close()
+    _open_macro_db(source_path).close()
+
+    with pytest.raises(ValueError, match="start_date must be YYYY-MM-DD"):
+        module.backfill_csi300_benchmark_from_backup(
+            duckdb_path=target_path,
+            backup_duckdb_path=source_path,
+            start_date="20260102",
+            end_date="2026-01-02",
+        )
+    with pytest.raises(ValueError, match="end_date must be on or after start_date"):
+        module.backfill_csi300_benchmark_from_backup(
+            duckdb_path=target_path,
+            backup_duckdb_path=source_path,
+            start_date="2026-01-03",
+            end_date="2026-01-02",
+        )
+
+
+def test_csi300_backfill_requires_and_reports_target_backup_metadata(tmp_path: Path) -> None:
+    module = load_module(
+        "scripts.backfill_csi300_benchmark_from_backup",
+        "scripts/backfill_csi300_benchmark_from_backup.py",
+    )
+    target_path = tmp_path / "current.duckdb"
+    source_path = tmp_path / "backup.duckdb"
+    backup_path = tmp_path / "current.before.duckdb"
+    _open_macro_db(target_path).close()
+    _open_macro_db(source_path).close()
+    backup_path.write_bytes(target_path.read_bytes())
+
+    with pytest.raises(ValueError, match="target_backup_path is required"):
+        module.backfill_csi300_benchmark_from_backup(
+            duckdb_path=target_path,
+            backup_duckdb_path=source_path,
+            start_date="2026-01-01",
+            end_date="2026-01-01",
+            require_target_backup=True,
+        )
+
+    result = module.backfill_csi300_benchmark_from_backup(
+        duckdb_path=target_path,
+        backup_duckdb_path=source_path,
+        start_date="2026-01-01",
+        end_date="2026-01-01",
+        target_backup_path=backup_path,
+        require_target_backup=True,
+    )
+    metadata = result["target_backup_before_write"]
+    assert metadata["status"] == "verified"
+    assert metadata["size_bytes"] == backup_path.stat().st_size
+    assert len(metadata["sha256"]) == 64
 
 
 def test_csi300_backfill_main_emits_json(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
