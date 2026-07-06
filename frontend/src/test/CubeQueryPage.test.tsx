@@ -96,4 +96,51 @@ describe("CubeQueryPage", () => {
     expect(await screen.findByText("1,234.5678")).toBeInTheDocument();
     expect(await screen.findByTestId("cube-result-meta")).toHaveTextContent("tr_cube_test");
   });
+
+  it("surfaces cube result_meta basis, formal-use, vendor, fallback and generated time", async () => {
+    const user = userEvent.setup();
+    const client = createApiClient({ mode: "mock" });
+    const execSpy = vi.spyOn(client, "executeCubeQuery");
+    const sample: CubeQueryResult = {
+      report_date: "2025-12-31",
+      fact_table: "bond_analytics",
+      measures: ["sum(market_value)"],
+      dimensions: ["rating"],
+      rows: [],
+      total_rows: 0,
+      drill_paths: [],
+      result_meta: {
+        ...resultMeta,
+        basis: "analytical",
+        formal_use_allowed: false,
+        quality_flag: "stale",
+        vendor_status: "vendor_stale",
+        fallback_mode: "latest_snapshot",
+        generated_at: "2026-04-13T09:30:00Z",
+      },
+    };
+    execSpy.mockResolvedValue(sample);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CubeQueryPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("asset_class_std");
+    await user.click(screen.getByTestId("cube-execute"));
+
+    const meta = await screen.findByTestId("cube-result-meta");
+    expect(meta).toHaveTextContent("basis=analytical");
+    expect(meta).toHaveTextContent("formal_use_allowed=false");
+    expect(meta).toHaveTextContent("vendor_status=vendor_stale");
+    expect(meta).toHaveTextContent("fallback_mode=latest_snapshot");
+    expect(meta).toHaveTextContent("generated_at=2026-04-13T09:30:00Z");
+  });
 });
