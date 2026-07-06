@@ -56,6 +56,7 @@ import {
 } from "./adapters/buildHomeResearchCalendarModel";
 import { mapMarketTape, type HomeMarketTicker } from "./dashboardHomeMarket";
 import { todayIsoDate as resolveTodayIsoDate } from "../pages/dashboardPageHelpers";
+import { formatDv01Wan } from "../../bond-dashboard/utils/format";
 
 export type HomeDeltaTone = "up" | "down" | "flat" | "muted" | "warn";
 
@@ -633,6 +634,11 @@ function numericValueOrGap(value: NumericLike, unitHint?: string): string {
   return numericDisplay(value, GAP, unitHint);
 }
 
+function dv01WanValueOrGap(value: NumericLike): string {
+  const formatted = formatDv01Wan(typeof value === "string" ? undefined : value);
+  return formatted === GAP ? GAP : `${formatted} 万`;
+}
+
 function buildFormalAttributionExtremes(input: {
   campisiFourEffects: CampisiFourEffectsPayload | null | undefined;
   returnDecomposition: ReturnDecompositionPayload | null | undefined;
@@ -1056,11 +1062,11 @@ function buildRiskExposureMetrics(
   return {
     state,
     metrics: [
-      { id: "dv01", label: "利率风险 DV01", value: numericValueOrGap(payload.total_dv01, "dv01") },
+      { id: "dv01", label: "利率风险 DV01", value: dv01WanValueOrGap(payload.total_dv01) },
       { id: "duration", label: "加权久期", value: numericValueOrGap(payload.weighted_duration, "ratio") },
       { id: "credit", label: "信用占比", value: numericValueOrGap(ratioAsPercentNumeric(payload.credit_ratio), "pct") },
       { id: "convexity", label: "加权凸性", value: numericValueOrGap(payload.weighted_convexity, "ratio") },
-      { id: "spread-dv01", label: "利差 DV01", value: numericValueOrGap(payload.total_spread_dv01, "dv01") },
+      { id: "spread-dv01", label: "利差 DV01", value: dv01WanValueOrGap(payload.total_spread_dv01) },
       { id: "reinvestment", label: "1年再投资", value: numericValueOrGap(payload.reinvestment_ratio_1y, "ratio") },
     ],
   };

@@ -234,6 +234,8 @@ describe("TerminalHomeContent drilldowns", () => {
     expect(screen.getByText("1.5%-2.0%")).toBeInTheDocument();
     expect(screen.getByText("FIOA")).toBeInTheDocument();
     expect(screen.getByText("总市值")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-home-risk-exposure")).toHaveTextContent("10,622.44 万");
+    expect(screen.getByTestId("dashboard-home-risk-exposure")).toHaveTextContent("2,633.27 万");
     expect(screen.getAllByText(/quality warning/).length).toBeGreaterThan(0);
   });
 

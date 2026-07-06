@@ -42,6 +42,50 @@ const HOLDINGS_MAX_VISIBLE_ROWS = 12;
 const ReactECharts = lazy(() => import("../../../lib/echarts"));
 const CHART_REVEAL_KEYS = new Set(["ArrowDown", "PageDown", "End", " ", "Space"]);
 
+type IncomeTrendTooltipParam = {
+  axisValue?: string | number;
+  axisValueLabel?: string;
+  data?: unknown;
+  marker?: string;
+  seriesName?: string;
+  value?: unknown;
+};
+
+function incomeTrendRawValue(value: unknown): number | null {
+  const candidate =
+    typeof value === "object" && value !== null && "value" in value
+      ? (value as { value?: unknown }).value
+      : value;
+  const raw = Array.isArray(candidate) ? Number(candidate[candidate.length - 1]) : Number(candidate);
+  return Number.isFinite(raw) ? raw : null;
+}
+
+function formatIncomeTrendYi(value: unknown, options: { digits?: number; sign?: boolean } = {}): string {
+  const raw = incomeTrendRawValue(value);
+  if (raw == null) {
+    return "";
+  }
+  const scaled = raw / 100_000_000;
+  const sign = options.sign === false || scaled < 0 ? "" : "+";
+  return `${sign}${scaled.toFixed(options.digits ?? 1)}亿`;
+}
+
+function incomeTrendTooltipFormatter(params: unknown): string {
+  const rows = Array.isArray(params) ? params : [params];
+  const typedRows = rows.filter((row): row is IncomeTrendTooltipParam => typeof row === "object" && row !== null);
+  const title = typedRows[0]?.axisValueLabel ?? typedRows[0]?.axisValue ?? "";
+  const body = typedRows
+    .map((row) => {
+      const formatted = formatIncomeTrendYi(row.value ?? row.data, { digits: 2 });
+      if (!formatted) {
+        return "";
+      }
+      return `${row.marker ?? ""}${row.seriesName ?? ""}: ${formatted}`;
+    })
+    .filter(Boolean);
+  return [title, ...body].join("<br/>");
+}
+
 function CustomBadge({ children, kind }: { children?: React.ReactNode; kind: string }) {
   return (
     <span className={styles.dhInlineStatus} data-kind={kind}>
@@ -511,13 +555,7 @@ function buildSeriesData(
         fontSize: 10,
         fontWeight: 700,
         padding: [2, 5],
-        formatter: (params: { value?: unknown } | undefined) => {
-          const scaled = Number(params?.value) / 100_000_000;
-          if (!Number.isFinite(scaled)) {
-            return "";
-          }
-          return `${scaled >= 0 ? "+" : ""}${scaled.toFixed(1)}亿`;
-        },
+        formatter: (params: { value?: unknown } | undefined) => formatIncomeTrendYi(params?.value),
       },
     };
   });
@@ -611,6 +649,7 @@ function buildIncomeTrendOption(points: DashboardHomeBodyView["incomeTrend"]): E
       trigger: "axis",
       confine: true,
       order: "seriesDesc",
+      formatter: incomeTrendTooltipFormatter,
       backgroundColor: HOME_CHART_TOOLTIP_BG,
       borderColor: HOME_CHART_TOOLTIP_BORDER,
       borderWidth: 1,
@@ -649,7 +688,7 @@ function buildIncomeTrendOption(points: DashboardHomeBodyView["incomeTrend"]): E
       axisLabel: {
         fontSize: 10,
         color: HOME_CHART_AXIS_COLOR,
-        formatter: (value: number) => `${(Number(value) / 100_000_000).toFixed(1)}亿`,
+        formatter: (value: number) => formatIncomeTrendYi(value, { sign: false }),
       },
       axisLine: { show: false },
       axisTick: { show: false },

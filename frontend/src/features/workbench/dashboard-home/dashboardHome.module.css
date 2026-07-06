@@ -3787,13 +3787,17 @@
   display: grid;
   align-content: center;
   gap: 1px;
+  height: auto;
+  min-height: 37px;
   line-height: 1.08;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .dhTerminalTable td:first-child b {
   color: var(--dh-ink);
   font-size: 12px;
-  line-height: 1.08;
+  line-height: 1.16;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3803,7 +3807,7 @@
   color: var(--dh-muted);
   font-size: 12px;
   font-weight: 600;
-  line-height: 1.08;
+  line-height: 1.16;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3981,9 +3985,9 @@
 
 .dhTerminalChangeRow {
   display: grid;
-  grid-template-columns: minmax(94px, 1fr) auto minmax(82px, auto) minmax(74px, auto);
+  grid-template-columns: minmax(94px, 1fr) auto minmax(82px, max-content) minmax(78px, max-content);
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   min-height: 42px;
   padding: 7px 0;
   border-bottom: 1px solid var(--dh-line-soft);
@@ -4065,8 +4069,7 @@
   text-align: right;
   font-size: 12px;
   font-weight: 850;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
   white-space: nowrap;
 }
 
@@ -4086,6 +4089,7 @@
   font-size: 11px;
   font-weight: 750;
   line-height: 1;
+  white-space: normal;
 }
 
 .dhTerminalChangeCurrent {
@@ -4405,7 +4409,7 @@
 
 .dhTerminalIncomeTrend {
   display: grid;
-  grid-template-columns: minmax(118px, 1fr) minmax(104px, 0.68fr);
+  grid-template-columns: minmax(118px, 1fr) minmax(132px, 0.76fr);
   gap: var(--dh-space-2);
   align-items: stretch;
   min-height: 112px;
@@ -4460,10 +4464,11 @@
 }
 
 .dhTerminalIncomeLedgerMetrics div {
-  align-items: baseline;
-  display: flex;
+  align-content: center;
+  align-items: end;
+  display: grid;
   gap: 5px;
-  justify-content: space-between;
+  justify-items: end;
   min-width: 0;
 }
 
@@ -4472,9 +4477,10 @@
   color: var(--dh-muted);
   font-size: 11px;
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: right;
+  white-space: normal;
 }
 
 .dhTerminalIncomeLedgerMetrics small {
@@ -4486,10 +4492,10 @@
   font-weight: 800;
   line-height: 1.1;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
+  overflow-wrap: anywhere;
   text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .dhTerminalGapList {
@@ -5228,7 +5234,7 @@
   --dh-api-line-soft: rgba(103, 119, 142, 0.22);
   --dh-api-ink: #e8eef7;
   --dh-api-soft: #a9b6c7;
-  --dh-api-muted: #8593a8;
+  --dh-api-muted: #9aa8bb;
   --dh-api-blue: #72a7dc;
   --dh-api-green: #66b98b;
   --dh-api-amber: #c9a565;
@@ -6250,8 +6256,8 @@
 }
 
 .dhApiSideStack .dhTerminalChangeRow {
-  gap: 6px 8px;
-  grid-template-columns: minmax(0, 1fr) auto minmax(78px, auto) minmax(64px, auto);
+  gap: 6px;
+  grid-template-columns: minmax(72px, 1fr) auto minmax(72px, max-content) minmax(78px, max-content);
   min-height: 0;
   padding: 7px 9px;
 }
@@ -6262,11 +6268,12 @@
 }
 
 .dhApiSideStack .dhTerminalChangeValue {
-  min-width: 78px;
+  min-width: 72px;
 }
 
 .dhApiSideStack .dhTerminalChangeCurrent {
-  min-width: 64px;
+  justify-items: end;
+  min-width: 78px;
 }
 
 .dhApiSideStack .dhTerminalChangeList {
@@ -6291,7 +6298,15 @@
 }
 
 .dhApiHomeBody .dhTerminalHoldings .dhTerminalTable td {
-  height: 37px;
+  height: auto;
+  min-height: 42px;
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable td:first-child {
+  height: auto;
+  min-height: 42px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .dhApiHomeBody .dhTerminalHoldings .dhTerminalTable tbody tr:nth-child(-n + 3) td:first-child {
@@ -6434,25 +6449,36 @@
 
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics {
   gap: 6px;
+  grid-template-columns: repeat(2, minmax(96px, 1fr));
 }
 
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics div {
+  align-content: center;
+  align-items: end;
   background: rgba(8, 18, 32, 0.52);
   border: 1px solid rgba(45, 66, 96, 0.42);
   border-radius: 4px;
-  min-height: 24px;
+  display: grid;
+  justify-items: end;
+  min-height: 42px;
   padding: 4px 6px;
 }
 
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics small {
-  color: rgba(154, 176, 200, 0.78);
+  color: var(--dh-api-soft);
   font-family: var(--dh-font-mono);
   font-size: 11px;
   font-weight: 760;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics strong {
   color: #cbd8ea;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics [data-series="excess"] strong {
@@ -7850,7 +7876,7 @@
   --dh-api-line-soft: rgba(103, 119, 142, 0.22);
   --dh-api-ink: #e8eef7;
   --dh-api-soft: #a9b6c7;
-  --dh-api-muted: #8593a8;
+  --dh-api-muted: #9aa8bb;
   --dh-api-blue: #72a7dc;
   --dh-api-green: #66b98b;
   --dh-api-amber: #c9a565;
@@ -7931,7 +7957,7 @@
 .dhApiStructureFooter small,
 .dhApiCoverageGapBand > span small,
 .dhApiCoverageGapBand small {
-  color: rgba(169, 182, 199, 0.82);
+  color: var(--dh-api-soft);
   font-size: 11px;
   letter-spacing: 0;
 }
@@ -7973,6 +7999,12 @@
   background: rgba(7, 12, 20, 0.24);
   border: 1px solid rgba(126, 157, 194, 0.16);
   color: var(--dh-api-muted);
+}
+
+.dhApiHomeBody .dhInlineStatus,
+.dhApiStatusText {
+  font-size: 12px;
+  min-height: 22px;
 }
 
 .dhSourceGateTableWrap,
@@ -8018,7 +8050,15 @@
 }
 
 .dhApiHomeBody .dhTerminalHoldings .dhTerminalTable td {
-  height: 34px;
+  height: auto;
+  min-height: 42px;
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable td:first-child {
+  height: auto;
+  min-height: 42px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .dhApiRiskPairGrid span,
@@ -8029,6 +8069,11 @@
 .dhApiHomeBody .dhTerminalIncomeLedgerMetrics div {
   min-height: 34px;
   padding: 7px 10px;
+}
+
+.dhApiHomeBody .dhTerminalIncomeLedgerMetrics div {
+  min-height: 42px;
+  padding: 4px 6px;
 }
 
 .dhApiRiskPairGrid,

@@ -1093,11 +1093,15 @@ describe("mapToHomeView", () => {
 
     const pnl = view.terminalKpis.find((kpi) => kpi.id === "day-pnl");
     const creditRatio = view.terminalKpis.find((kpi) => kpi.id === "credit-ratio");
+    const riskExposureDv01 = view.riskExposureMetrics.find((metric) => metric.id === "dv01");
     const riskExposureCreditRatio = view.riskExposureMetrics.find((metric) => metric.id === "credit");
+    const riskExposureSpreadDv01 = view.riskExposureMetrics.find((metric) => metric.id === "spread-dv01");
 
     expect(pnl?.label).toBe("月度盈亏（本月）");
     expect(creditRatio?.value).toBe("29.54");
     expect(creditRatio?.unit).toBe("%");
+    expect(riskExposureDv01?.value).toBe("10,823.09 万");
     expect(riskExposureCreditRatio?.value).toBe("29.54%");
+    expect(riskExposureSpreadDv01?.value).toBe("2,711.72 万");
   });
 });

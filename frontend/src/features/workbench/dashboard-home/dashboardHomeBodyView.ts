@@ -48,6 +48,7 @@ import {
 import type { HomeSnapshotPnlAttributionVM } from "./dashboardHomeSnapshotAdapter";
 import { mapMarketTape, type HomeMarketTicker } from "./dashboardHomeMarket";
 import type { HomeDataStateKind, HomeDeltaTone } from "./dashboardHomeFirstScreenTypes";
+import { formatDv01Wan } from "../../bond-dashboard/utils/format";
 
 export type { HomeDataStateKind, HomeDeltaTone } from "./dashboardHomeFirstScreenTypes";
 export { resolveDeltaClass } from "./dashboardHomeFirstScreenTypes";
@@ -344,6 +345,11 @@ function numericDisplay(value: NumericLike, fallback = GAP, unitHint?: string): 
 
 function numericValueOrGap(value: NumericLike, unitHint?: string): string {
   return numericDisplay(value, GAP, unitHint);
+}
+
+function dv01WanValueOrGap(value: NumericLike): string {
+  const formatted = formatDv01Wan(typeof value === "string" ? undefined : value);
+  return formatted === GAP ? GAP : `${formatted} 万`;
 }
 
 function ratioAsPercentNumeric(value: NumericLike): NumericLike {
@@ -776,11 +782,11 @@ function buildRiskExposureMetrics(
     state: stateWithSourceMeta(state, meta),
     metrics: [
       { id: "market-value", label: "总市值", value: numericValueOrGap(payload.total_market_value, "yuan") },
-      { id: "dv01", label: "利率风险 DV01", value: numericValueOrGap(payload.total_dv01, "dv01") },
+      { id: "dv01", label: "利率风险 DV01", value: dv01WanValueOrGap(payload.total_dv01) },
       { id: "duration", label: "加权久期", value: numericValueOrGap(payload.weighted_duration, "ratio") },
       { id: "credit", label: "信用债占比", value: numericValueOrGap(ratioAsPercentNumeric(payload.credit_ratio), "pct") },
       { id: "convexity", label: "加权凸性", value: numericValueOrGap(payload.weighted_convexity, "ratio") },
-      { id: "spread-dv01", label: "利差 DV01", value: numericValueOrGap(payload.total_spread_dv01, "dv01") },
+      { id: "spread-dv01", label: "利差 DV01", value: dv01WanValueOrGap(payload.total_spread_dv01) },
       { id: "reinvestment", label: "1年再投资", value: numericValueOrGap(payload.reinvestment_ratio_1y, "ratio") },
     ],
   };
