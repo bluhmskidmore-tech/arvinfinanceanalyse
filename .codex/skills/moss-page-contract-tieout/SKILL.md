@@ -1,6 +1,6 @@
 ---
 name: moss-page-contract-tieout
-description: Use when implementing, reviewing, or closing a MOSS page contract, page-visible metric, endpoint DTO, loading/empty/stale/fallback state, or browser-visible business workflow.
+description: "【MOSS页面契约核对】用于实现、审查或收口MOSS页面契约、页面指标、接口DTO和可见业务流程。"
 ---
 
 # MOSS Page Contract Tie-Out

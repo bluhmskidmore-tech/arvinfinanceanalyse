@@ -1,6 +1,6 @@
 ---
 name: moss-metric-audit
-description: Use when changing, reviewing, or debugging MOSS business metrics, metric dictionaries, adapters, selectors, formal finance calculations, golden samples, or displayed metric values.
+description: "【MOSS指标审计】用于修改、审查或调试MOSS业务指标、指标字典、适配器、选择器和正式金融计算。"
 ---
 
 # MOSS Metric Audit
