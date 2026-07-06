@@ -1,5 +1,6 @@
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -20,9 +21,12 @@ import type {
 } from "../api/macroToolkitClient";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+import type { ModuleHomeDistributionPanel } from "../features/workbench/module-home/moduleHomeModel";
+import { PortfolioDistributionPanel } from "../features/workbench/module-home/PortfolioDistributionPanel";
 import { PORTFOLIO_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/portfolioModuleDrilldowns";
 import { MARKET_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/marketModuleDrilldowns";
 import { MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT } from "../features/workbench/module-home/useMarketHomeQueries";
+import { refetchAfterMarketRefresh } from "../features/workbench/module-home/MarketHomePage";
 import { formatRawAsNumeric } from "../utils/format";
 
 vi.mock("../lib/echarts", () => ({
@@ -1134,6 +1138,40 @@ describe("PortfolioHomePage", () => {
     });
   });
 
+  it("keeps the standalone distribution view-all link styled", () => {
+    const panel: ModuleHomeDistributionPanel = {
+      key: "rating",
+      title: "评级分布",
+      meta: "来源 bond-dashboard",
+      subtitle: "Top5",
+      totalDisplay: "100.00 亿",
+      stateLabel: "已返回",
+      stateDetail: "正式数据已返回。",
+      tone: "ok",
+      viewAllPath: "/bond-dashboard",
+      rows: [
+        {
+          key: "aaa",
+          label: "AAA",
+          marketValue: "66.21 亿元",
+          share: "66.21%",
+          barPct: 66.21,
+          tone: "ok",
+        },
+      ],
+    };
+
+    render(
+      <MemoryRouter>
+        <PortfolioDistributionPanel panel={panel} />
+      </MemoryRouter>,
+    );
+
+    const viewAllLink = screen.getByRole("link", { name: "查看全部" });
+    expect(viewAllLink).toHaveAttribute("href", "/bond-dashboard");
+    expect(viewAllLink.getAttribute("class")).toContain("distViewAll");
+  });
+
   it("fails closed when holdings structure returns no asset type rows", async () => {
     const summary = realPortfolioHomeSummary();
     const summaryWithEmptyAssetType: BondDashboardHomeSummaryPayload = {
@@ -1920,6 +1958,14 @@ describe("MarketHomePage", () => {
     expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("refetches a market home query once when refresh completes during an active fetch", async () => {
+    const refetch = vi.fn(async () => undefined);
+
+    await refetchAfterMarketRefresh({ fetchStatus: "fetching", refetch });
+
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it("treats partial market refresh as backup success and reloads the overview data", async () => {

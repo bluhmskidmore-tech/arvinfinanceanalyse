@@ -46,11 +46,8 @@ function formatChoiceMacroRefreshError(error: unknown) {
   return message || "刷新市场数据失败";
 }
 
-async function refetchAfterMarketRefresh(query: RefreshableMarketHomeQuery | undefined) {
+export async function refetchAfterMarketRefresh(query: RefreshableMarketHomeQuery | undefined) {
   if (!query) return;
-  if (query.fetchStatus === "fetching") {
-    await query.refetch();
-  }
   await query.refetch();
 }
 
