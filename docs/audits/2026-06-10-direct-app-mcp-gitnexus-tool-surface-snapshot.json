@@ -1,6 +1,6 @@
 {
   "report_kind": "direct_app_mcp_gitnexus_tool_surface_snapshot",
-  "generated_at": "2026-06-10T21:25:00+08:00",
+  "generated_at": "2026-06-27T13:05:14+08:00",
   "repo_root": "F:\\MOSS-V3",
   "audit_date": "2026-06-10",
   "refresh_command": "python scripts\\refresh_direct_app_mcp_gitnexus_tool_surface_snapshot.py",
@@ -19,7 +19,7 @@
   "tool_discovery": {
     "tool": "tool_search",
     "query": "moss metric contracts lineage evidence data catalog gitnexus MCP tools",
-    "checked_at": "2026-06-10T21:25:00+08:00",
+    "checked_at": "2026-06-27T13:05:14+08:00",
     "discovered_tool_count": 0,
     "discovered_tools": [],
     "relevant_direct_tool_count": 0
@@ -28,32 +28,16 @@
     {
       "tool": "tool_search",
       "query": "gitnexus MCP impact call path symbol repository evidence",
-      "checked_at": "2026-06-10T21:25:00+08:00",
-      "returned_tool_count": 3,
-      "returned_tools": [
-        {
-          "name": "codex_app.handoff_thread",
-          "classification": "codex_app_thread_management",
-          "relevant_direct_moss_or_gitnexus_evidence": false
-        },
-        {
-          "name": "codex_app.fork_thread",
-          "classification": "codex_app_thread_management",
-          "relevant_direct_moss_or_gitnexus_evidence": false
-        },
-        {
-          "name": "codex_app.automation_update",
-          "classification": "codex_app_automation_management",
-          "relevant_direct_moss_or_gitnexus_evidence": false
-        }
-      ],
+      "checked_at": "2026-06-27T13:05:14+08:00",
+      "returned_tool_count": 0,
+      "returned_tools": [],
       "relevant_direct_tool_count": 0,
-      "interpretation": "query returned only Codex App thread or automation management tools; no direct GitNexus or MOSS evidence tools exposed"
+      "interpretation": "no direct MOSS MCP evidence tools exposed"
     },
     {
       "tool": "tool_search",
       "query": "moss metric contracts lineage evidence data catalog MCP tools",
-      "checked_at": "2026-06-10T21:25:00+08:00",
+      "checked_at": "2026-06-27T13:05:14+08:00",
       "returned_tool_count": 0,
       "returned_tools": [],
       "relevant_direct_tool_count": 0,
@@ -62,7 +46,7 @@
     {
       "tool": "tool_search",
       "query": "moss-data-catalog moss-lineage-evidence moss-metric-contracts",
-      "checked_at": "2026-06-10T21:25:00+08:00",
+      "checked_at": "2026-06-27T13:05:14+08:00",
       "returned_tool_count": 0,
       "returned_tools": [],
       "relevant_direct_tool_count": 0,

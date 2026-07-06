@@ -162,6 +162,19 @@ PnL Bridge 结构：
 = 期末变化解释值
 ```
 
+Sign convention:
+- `roll_down = ((current_curve_rate - rolled_curve_rate) / 100) * modified_duration * market_value`.
+- Upward-sloping curves (`current_curve_rate > rolled_curve_rate`) produce positive roll-down return.
+- The three implementations (`pnl_bridge`, `bond_analytics read_models`, and `attribution_daily`) must use the same sign convention.
+
+Time-anchor convention:
+- Owner decision 2026-07-03 selected Gate 1 Option A for formal `MTR-BRG-004`.
+- `current_curve_rate` uses the period-end/report-date curve at current/end remaining tenor.
+- `rolled_curve_rate` uses the same period-end/report-date curve at `current_remaining_tenor - elapsed_days / 365`.
+- `elapsed_days` is exclusive (`period_end - period_start`), matching `pnl_bridge` current/prior balance date difference.
+- `modified_duration` and `market_value` use current/end exposure.
+- Gate 2 decision: `bond_analytics read_models` and `attribution_daily` follow the same roll-down sign and time-anchor convention.
+
 要求：
 - `explained_pnl`
 - `actual_pnl`

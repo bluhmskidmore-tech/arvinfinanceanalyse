@@ -15,14 +15,16 @@
 | `06_FINANCIAL_LOGIC_AUDIT.md` | 金融计算关注点清单 |
 | `07_RISK_AND_BUG_SCAN.md` | 静态风险与疑点汇总 |
 | `08_RUN_AND_TEST.md` | 启动方式、环境与最近验证命令输出 |
+| `09_WEB_PRO_ARCHITECTURE_AUDIT_PROMPT.md` | 网页端 Pro 模型可直接复制粘贴的架构审计提示词 |
 | `source_snapshot/` | 关键源码与配置快照（**无** node_modules / venv；`.env` 仅脱敏副本见 `source_snapshot/redacted_env/`）|
 | `_generate_tree.py` | 生成目录树用辅助脚本 |
 
 ## 使用建议
 
-1. 先阅读 `02` + `08` 建立上下文，再按需深入 `03`–`07`。
-2. 与代码对照时直接使用 `source_snapshot/`，路径与仓库内一致。
-3. 真实密钥、数据库口令、外部 Token **不在包内**；脱敏变量见 `redacted_env`。
+1. 网页端 Pro 模型建议先上传压缩包，再复制 `09_WEB_PRO_ARCHITECTURE_AUDIT_PROMPT.md`。
+2. 先阅读 `02` + `08` 建立上下文，再按需深入 `03`–`07`。
+3. 与代码对照时直接使用 `source_snapshot/`，路径与仓库内一致。
+4. 真实密钥、数据库口令、外部 Token **不在包内**；脱敏变量见 `redacted_env`。
 
 ## 压缩包产物
 

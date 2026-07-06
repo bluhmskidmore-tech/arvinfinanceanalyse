@@ -18,3 +18,9 @@ review and comparison, but they are not product requirements by themselves.
 - Keep source-of-truth UI behavior in the application code and applicable page
   contracts.
 - Preserve artifact provenance when adding new captures or references.
+
+## Reference Lists
+
+- [Finance Figma frontend kit shortlist](finance-figma-frontend-kits.md):
+  GitHub-sourced supporting references for building a MOSS financial frontend
+  kit in Figma.

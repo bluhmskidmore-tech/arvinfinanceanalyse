@@ -26,6 +26,36 @@ Key rules:
 - Missing required formal middle-rates must fail closed.
 - Non-middle-rate FX observations such as RMB indices or FX swap curves stay analytical-only and must not backflow into `fx_daily_mid`.
 
+## CFETS FX Business Calendar
+
+Formal carry-forward is governed by the CFETS/ChinaMoney annual interbank FX
+currency holiday table, not by a generic weekend-only calendar.
+
+Current executable calendar source:
+
+- `backend/app/core_finance/fx_calendar.py`
+- official notice:
+  `https://www.chinamoney.com.cn/chinese/rdgz/20251218/3254567.html`
+- cross-check surface:
+  `https://www.shclearing.cn/qsywzq/whzq/`
+
+The 2026 table was published by China Foreign Exchange Trade System and Shanghai
+Clearing House on 2025-12-18. The attachment excludes weekends and lists
+currency-specific holidays. Code therefore treats a date as non-business when
+either side of the currency pair is on its CFETS holiday list, or when the date
+falls on that currency's weekend convention.
+
+Formal rule:
+
+- same-date official middle rate is accepted;
+- prior observed date is accepted only when the requested report date is a
+  confirmed CFETS non-business day for the currency pair;
+- ordinary weekday vendor misses still fail closed.
+
+Residual operational rule: the CFETS notice says temporary 2026 currency-holiday
+adjustments will be announced separately. Those notices must be ingested into the
+calendar before relying on carry-forward for affected dates.
+
 ## Choice Authority Source
 
 Current authority files:
