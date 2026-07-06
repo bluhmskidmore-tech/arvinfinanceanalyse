@@ -35,6 +35,8 @@ from backend.app.core_finance.campisi import (
     campisi_enhanced,
     infer_credit_rating_from_asset_class,
     maturity_bucket_attribution,
+    treasury_tenor_coverage,
+    usable_spread_bp,
 )
 from backend.app.core_finance.campisi_decision_grade import (
     compute_decision_grade_row,
@@ -748,6 +750,22 @@ def _add_market_curve_quality(
             "Campisi credit spread curve coverage is incomplete for ratings "
             f"{ratings}; spread effect may be understated because missing spread inputs are unavailable."
         )
+    tenors = coverage["treasury_tenors"]
+    if tenors["shared_positive_tenors"] < 2:
+        input_quality["warnings"].append(
+            "Campisi treasury curve has fewer than 2 shared positive tenors between period "
+            "start and end; treasury effect and roll-down degrade to 0 for this period."
+        )
+    elif tenors["start_missing"] or tenors["end_missing"]:
+        missing_desc = "; ".join(
+            f"{side} missing {', '.join(keys)}"
+            for side, keys in (("start", tenors["start_missing"]), ("end", tenors["end_missing"]))
+            if keys
+        )
+        input_quality["warnings"].append(
+            f"Campisi treasury curve tenor coverage is incomplete ({missing_desc}); "
+            "interpolation degrades to the shared-tenor subset and long-end effects may be understated."
+        )
     return input_quality
 
 
@@ -782,8 +800,8 @@ def _market_curve_coverage(
         if row is None:
             continue
         field = row["field"]
-        start_available = _market_has_field(market_start, field)
-        end_available = _market_has_field(market_end, field)
+        start_available = usable_spread_bp(market_start, rating) is not None
+        end_available = usable_spread_bp(market_end, rating) is not None
         out = {
             "rating": rating,
             "field": field,
@@ -804,11 +822,8 @@ def _market_curve_coverage(
     return {
         "required_credit_spread_3y": required_rows,
         "missing_credit_spread_3y": missing_rows,
+        "treasury_tenors": treasury_tenor_coverage(market_start, market_end),
     }
-
-
-def _market_has_field(market: dict[str, Any], field: str) -> bool:
-    return field in market and not _is_missing(market.get(field))
 
 
 def _side_input_quality(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1390,7 +1405,7 @@ def _empty_decision_grade_payload(start: str, end: str, warnings: list[str] | No
             "formal_actual_pnl": 0.0,
             "explained_pnl": 0.0,
             "residual_noise": 0.0,
-            "residual_ratio": 0.0,
+            "residual_ratio": None,
             "valuation_change_516": 0.0,
             "fvoci_valuation_change_516": 0.0,
             "fvtpl_valuation_change_516": 0.0,
@@ -1791,6 +1806,16 @@ def _decision_float_components(components: dict[str, Decimal]) -> dict[str, floa
     return {key: float(components.get(key, Decimal("0"))) for key in _DECISION_EFFECT_LABELS}
 
 
+def _decision_residual_ratio(
+    *,
+    formal_actual_pnl: Decimal,
+    residual_noise: Decimal,
+) -> float | None:
+    if formal_actual_pnl == Decimal("0"):
+        return 0.0 if residual_noise == Decimal("0") else None
+    return float(abs(residual_noise) / abs(formal_actual_pnl))
+
+
 def _decision_effect_rows(components: dict[str, Decimal]) -> list[dict[str, Any]]:
     rows = []
     for key, amount in components.items():
@@ -2048,14 +2073,16 @@ def campisi_decision_grade_envelope(
                 missing_curve_count += 1
             if "missing_credit_curve" in reasons:
                 missing_spread_count += 1
-            component_dv01 += abs(_decimal_value(row.get("market_value"))) * Decimal("0")
 
         for row in analytics_rows:
             component_dv01 += _decimal_value(row.get("dv01"))
             component_cs01 += _decimal_value(row.get("spread_dv01"))
 
         residual_noise = totals["residual_noise"]
-        residual_ratio = float(abs(residual_noise) / abs(formal_actual_pnl)) if formal_actual_pnl else 0.0
+        residual_ratio = _decision_residual_ratio(
+            formal_actual_pnl=formal_actual_pnl,
+            residual_noise=residual_noise,
+        )
         quality_flag = "warning" if warnings or abs(residual_noise) > Decimal("0.01") else "ok"
         risk_tensor_check = _fetch_decision_risk_tensor_check(
             conn,

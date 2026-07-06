@@ -15,6 +15,7 @@ from backend.app.repositories.yield_curve_repo import (
 from backend.app.services import campisi_attribution_service as campisi_svc
 from backend.app.services.campisi_attribution_service import (
     _add_market_curve_quality,
+    _decision_residual_ratio,
     _build_formal_closure,
     _build_input_quality,
     _fetch_spread_data,
@@ -260,7 +261,63 @@ def test_input_quality_reports_missing_credit_spread_curve_coverage():
     assert missing[0]["field"] == "credit_spread_aa_plus_3y"
     assert missing[0]["missing_sides"] == ["start", "end"]
     assert missing[1]["field"] == "credit_spread_aa_3y"
-    assert "AA+, AA" in quality["warnings"][-1]
+    assert any("AA+, AA" in warning for warning in quality["warnings"])
+
+
+def test_input_quality_reports_treasury_tenor_coverage_gaps():
+    rows_start = [
+        _bond_row(code="BOND_AAA", rating="AAA", asset_class="credit", market_value=Decimal("100")),
+    ]
+    rows_end = [
+        _bond_row(code="BOND_AAA", rating="AAA", asset_class="credit", market_value=Decimal("110")),
+    ]
+    positions = _merge_positions(rows_start, rows_end)
+    quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
+    full_curve = {
+        "treasury_1y": 2.0,
+        "treasury_3y": 2.5,
+        "treasury_5y": 3.0,
+        "treasury_7y": 3.2,
+        "treasury_10y": 3.5,
+        "treasury_30y": 4.5,
+        "credit_spread_aaa_3y": 60.0,
+    }
+    end_missing_30y = {key: value for key, value in full_curve.items() if key != "treasury_30y"}
+
+    _add_market_curve_quality(
+        quality,
+        positions=positions,
+        market_start=full_curve,
+        market_end=end_missing_30y,
+    )
+
+    tenors = quality["market_curve_coverage"]["treasury_tenors"]
+    assert tenors["start_missing"] == []
+    assert tenors["end_missing"] == ["treasury_30y"]
+    assert tenors["shared_positive_tenors"] == 5
+    assert any("shared-tenor subset" in warning for warning in quality["warnings"])
+
+
+def test_input_quality_flags_degraded_treasury_period_below_two_shared_tenors():
+    rows_start = [
+        _bond_row(code="BOND_AAA", rating="AAA", asset_class="credit", market_value=Decimal("100")),
+    ]
+    rows_end = [
+        _bond_row(code="BOND_AAA", rating="AAA", asset_class="credit", market_value=Decimal("110")),
+    ]
+    positions = _merge_positions(rows_start, rows_end)
+    quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
+
+    _add_market_curve_quality(
+        quality,
+        positions=positions,
+        market_start={"treasury_1y": 2.0, "credit_spread_aaa_3y": 60.0},
+        market_end={"treasury_30y": 4.5, "credit_spread_aaa_3y": 61.0},
+    )
+
+    tenors = quality["market_curve_coverage"]["treasury_tenors"]
+    assert tenors["shared_positive_tenors"] == 0
+    assert any("degrade to 0" in warning for warning in quality["warnings"])
 
 
 def test_four_effects_envelope_anchors_dates_aggregates_and_surfaces_warnings(
@@ -972,6 +1029,33 @@ def test_build_formal_closure_reports_residual_to_actual_pnl():
         + closure["residual_to_formal_pnl"]
         - closure["formal_actual_pnl"]
     ) < 0.01
+
+
+def test_decision_residual_ratio_is_null_when_actual_zero_and_residual_nonzero():
+    ratio = _decision_residual_ratio(
+        formal_actual_pnl=Decimal("0"),
+        residual_noise=Decimal("10"),
+    )
+
+    assert ratio is None
+
+
+def test_decision_residual_ratio_is_zero_when_actual_and_residual_zero():
+    ratio = _decision_residual_ratio(
+        formal_actual_pnl=Decimal("0"),
+        residual_noise=Decimal("0"),
+    )
+
+    assert ratio == 0.0
+
+
+def test_decision_residual_ratio_uses_absolute_actual_pnl():
+    ratio = _decision_residual_ratio(
+        formal_actual_pnl=Decimal("-100"),
+        residual_noise=Decimal("10"),
+    )
+
+    assert ratio == pytest.approx(0.1)
 
 
 def _seed_formal_curve(duckdb_path, rows: list[tuple[object, ...]]) -> None:

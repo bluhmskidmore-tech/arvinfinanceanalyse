@@ -4,6 +4,10 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.pnl_attribution import (
+    CampisiAttributionEnvelope,
+    PnlAttributionAnalysisSummaryEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.pnl_attribution_service import (
     advanced_attribution_summary_envelope,
@@ -70,7 +74,11 @@ def composition(
     )
 
 
-@router.get("/summary")
+@router.get(
+    "/summary",
+    response_model=PnlAttributionAnalysisSummaryEnvelope,
+    response_model_exclude_unset=True,
+)
 def summary(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str | None = Query(None),
@@ -117,7 +125,11 @@ def advanced_summary(
     return advanced_attribution_summary_envelope(report_date=report_date)
 
 
-@router.get("/advanced/campisi")
+@router.get(
+    "/advanced/campisi",
+    response_model=CampisiAttributionEnvelope,
+    response_model_exclude_unset=True,
+)
 def campisi(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     start_date: str | None = Query(None),

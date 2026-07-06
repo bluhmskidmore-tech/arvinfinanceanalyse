@@ -11,7 +11,8 @@ from __future__ import annotations
 from typing import Any, ClassVar, Literal
 
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
-from pydantic import BaseModel, model_validator
+from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -279,6 +280,8 @@ class PnlCompositionPayload(BaseModel):
 
 
 class PnlAttributionAnalysisSummary(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     report_date: str
     primary_driver: Literal["volume", "rate", "market", "unknown"]
     primary_driver_pct: Numeric
@@ -294,6 +297,13 @@ class PnlAttributionAnalysisSummary(BaseModel):
     @classmethod
     def _coerce(cls, data: Any) -> Any:
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class PnlAttributionAnalysisSummaryEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: PnlAttributionAnalysisSummary
 
 
 # =========================================================================
@@ -577,6 +587,8 @@ class CampisiAttributionItem(BaseModel):
 
 
 class CampisiAttributionPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     report_date: str
     period_start: str
     period_end: str
@@ -614,3 +626,10 @@ class CampisiAttributionPayload(BaseModel):
     @classmethod
     def _coerce(cls, data: Any) -> Any:
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class CampisiAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: CampisiAttributionPayload
