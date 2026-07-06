@@ -5,29 +5,61 @@ from __future__ import annotations
 
 import logging
 import math
+import sys
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 YI = Decimal("100000000")
+_ZERO_FALLBACK_WARNING_KEYS: set[tuple[str, str, str, str]] = set()
+
+
+def _warn_to_decimal_zero_fallback(reason: str, value: Any) -> None:
+    try:
+        frame = sys._getframe(2)
+        while frame is not None and frame.f_code.co_filename == __file__:
+            frame = frame.f_back
+        if frame is None:
+            caller = "unknown"
+        else:
+            caller = f"{frame.f_code.co_filename}:{frame.f_lineno}:{frame.f_code.co_name}"
+    except ValueError:
+        caller = "unknown"
+    input_type = type(value).__name__
+    warning_bucket = reason
+    if reason == "non_finite" and isinstance(value, float):
+        warning_bucket = "nan" if math.isnan(value) else "inf"
+    warning_key = (reason, warning_bucket, input_type, caller)
+    if warning_key in _ZERO_FALLBACK_WARNING_KEYS:
+        return
+    _ZERO_FALLBACK_WARNING_KEYS.add(warning_key)
+    logger.warning(
+        "to_decimal coerced %s to Decimal('0'); reason=%s bucket=%s caller=%s first_occurrence=true",
+        input_type,
+        reason,
+        warning_bucket,
+        caller,
+    )
 
 
 def to_decimal(x: Any) -> Decimal:
     """宽松转换：None/NaN/异常 → Decimal("0")。新代码优先用 to_decimal_strict。"""
     if x is None:
+        _warn_to_decimal_zero_fallback("missing", x)
         return Decimal("0")
     if isinstance(x, Decimal):
         return x
     try:
         if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
+            _warn_to_decimal_zero_fallback("non_finite", x)
             return Decimal("0")
     except (TypeError, ValueError, OverflowError):
         pass
     try:
         return Decimal(str(x))
     except (TypeError, ValueError, ArithmeticError):
-        logger.exception("to_decimal: failed to convert %r", type(x).__name__)
+        _warn_to_decimal_zero_fallback("invalid", x)
         return Decimal("0")
 
 
