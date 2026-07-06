@@ -30,6 +30,7 @@ const BOND_NEWS_FEED_TIMEOUT_FALLBACK_MS = 900;
 const FORMAL_CONTEXT_IDLE_MIN_DELAY_MS = 1_000;
 const FORMAL_CONTEXT_IDLE_TIMEOUT_MS = 1_200;
 const FORMAL_CONTEXT_TIMEOUT_FALLBACK_MS = 900;
+const HOME_TOP_HOLDINGS_FETCH_LIMIT = 14;
 
 function useDeferredReportDateGate(
   reportDate: string | undefined,
@@ -247,12 +248,12 @@ export function useDashboardHomeViewModel(
     queryFn: () => dataClient.getBondDashboardHomeSummary(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const topHoldingsQuery = useQuery({
-    queryKey: apiQueryKeys.bondAnalyticsTopHoldings(dataClient.mode, supplementalReportDate, 8),
-    queryFn: () => dataClient.getBondAnalyticsTopHoldings(supplementalReportDate ?? "", 8),
+    queryKey: apiQueryKeys.bondAnalyticsTopHoldings(dataClient.mode, supplementalReportDate, HOME_TOP_HOLDINGS_FETCH_LIMIT),
+    queryFn: () => dataClient.getBondAnalyticsTopHoldings(supplementalReportDate ?? "", HOME_TOP_HOLDINGS_FETCH_LIMIT),
     retry: false,
     staleTime: 60_000,
     enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
@@ -307,8 +308,7 @@ export function useDashboardHomeViewModel(
     macroNewsQueries.every((query) => query.isError) &&
     macroNewsFallbackQueries.every((query) => query.isError);
 
-  const effectiveReportDate =
-    snapshotReportDate || initialEffectiveReportDate;
+  const effectiveReportDate = snapshotReportDate || initialEffectiveReportDate;
   const view = useMemo(
     () =>
       mapToHomeBodyView({
@@ -324,6 +324,15 @@ export function useDashboardHomeViewModel(
         ratingStructure: homeSummaryQuery.data?.result.asset_rating ?? null,
         maturityStructure: homeSummaryQuery.data?.result.maturity ?? null,
         industryDistribution: homeSummaryQuery.data?.result.industry ?? null,
+        homeSummaryMeta: homeSummaryQuery.data?.result_meta ?? null,
+        homeSummaryLoading:
+          hasDeferredSupplementalReportDate &&
+          !homeSummaryQuery.data &&
+          !homeSummaryQuery.isError,
+        yieldDistribution: homeSummaryQuery.data?.result.yield_distribution ?? null,
+        portfolioComparison: homeSummaryQuery.data?.result.portfolio_comparison ?? null,
+        spreadAnalysis: homeSummaryQuery.data?.result.spread ?? null,
+        businessType: homeSummaryQuery.data?.result.business_type ?? null,
         riskIndicators: homeSummaryQuery.data?.result.risk ?? null,
         topHoldings: topHoldingsQuery.data?.result ?? null,
         topHoldingsLoading: topHoldingsQuery.isLoading,
@@ -357,11 +366,9 @@ export function useDashboardHomeViewModel(
       marketRatesQuery.data?.result.series,
       returnDecompositionQuery.data?.result,
       campisiFourEffectsQuery.data?.result,
-      homeSummaryQuery.data?.result.asset_type,
-      homeSummaryQuery.data?.result.asset_rating,
-      homeSummaryQuery.data?.result.maturity,
-      homeSummaryQuery.data?.result.industry,
-      homeSummaryQuery.data?.result.risk,
+      hasDeferredSupplementalReportDate,
+      homeSummaryQuery.data,
+      homeSummaryQuery.isError,
       topHoldingsQuery.data?.result,
       topHoldingsQuery.isLoading,
       topHoldingsQuery.isError,

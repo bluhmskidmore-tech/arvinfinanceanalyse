@@ -3,12 +3,10 @@ import { Link } from "react-router-dom";
 import { LightIcon, type LightIconName } from "../../../components/LightIcon";
 import type { DashboardHomeBodyView } from "./dashboardHomeBodyView";
 import { BondNewsSection } from "./sections/BondNewsSection";
-import { ResearchCalendarSection } from "./sections/ResearchCalendarSection";
 import styles from "./dashboardHome.module.css";
 
 type TerminalHomeDeferredSectionsProps = {
   view: DashboardHomeBodyView;
-  focusPolicyFunding?: boolean;
 };
 
 function QuickDrilldowns({ view }: { view: DashboardHomeBodyView }) {
@@ -33,15 +31,10 @@ function QuickDrilldowns({ view }: { view: DashboardHomeBodyView }) {
 
 export function TerminalHomeDeferredSections({
   view,
-  focusPolicyFunding = false,
 }: TerminalHomeDeferredSectionsProps) {
   return (
     <>
       <BondNewsSection bondNews={view.bondNews} />
-      <ResearchCalendarSection
-        macroBriefing={view.macroBriefing}
-        focusPolicyFunding={focusPolicyFunding}
-      />
       <QuickDrilldowns view={view} />
     </>
   );

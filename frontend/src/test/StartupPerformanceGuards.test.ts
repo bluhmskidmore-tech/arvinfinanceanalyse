@@ -29,6 +29,10 @@ const WORKBENCH_SHELL_MARKET_TICKER_PATH = resolve(
   "src/layouts/WorkbenchShellMarketTicker.tsx",
 );
 const GLOBAL_CSS_PATH = resolve(FRONTEND_ROOT, "src/styles/global.css");
+const DASHBOARD_COCKPIT_CSS_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/styles/dashboardCockpit.css",
+);
 const AGENT_WORKBENCH_PAGE_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/agent/AgentWorkbenchPage.tsx",
@@ -230,6 +234,9 @@ describe("startup performance guards", () => {
 
   it("keeps overridden cockpit rail rules from returning to the global startup stylesheet", () => {
     const globalCss = readFileSync(GLOBAL_CSS_PATH, "utf8");
+    const dashboardCockpitCss = readFileSync(DASHBOARD_COCKPIT_CSS_PATH, "utf8");
+
+    expect(globalCss).toContain('@import "./dashboardCockpit.css";');
 
     for (const selector of [
       ".workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child",
@@ -241,11 +248,16 @@ describe("startup performance guards", () => {
       '.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"]',
       '.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child',
     ]) {
-      expect(countCssSelectorLines(globalCss, selector)).toBe(1);
+      expect(countCssSelectorLines(globalCss, selector)).toBe(0);
+      expect(countCssSelectorLines(dashboardCockpitCss, selector)).toBe(1);
     }
 
-    expect(globalCss).toContain('.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"]');
-    expect(globalCss).toContain('.workbench-shell-grid--cockpit [data-testid="workbench-support-nav"]');
+    expect(dashboardCockpitCss).toContain(
+      '.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"]',
+    );
+    expect(dashboardCockpitCss).toContain(
+      '.workbench-shell-grid--cockpit [data-testid="workbench-support-nav"]',
+    );
   });
 
   it("does not statically import ECharts in the terminal home content", () => {

@@ -1207,6 +1207,8 @@ export type MacroVendorPayload = {
   series: MacroVendorSeries[];
 };
 
+export type MarketDataCatalogPayload = MacroVendorPayload;
+
 export type ChoiceMacroLatestPoint = {
   series_id: string;
   series_name: string;

@@ -4,7 +4,7 @@
   height: 16px;
   padding: 0 6px;
   border-radius: 2px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--dh-amber);
@@ -14,7 +14,7 @@
 }
 
 .dhBadgePlaceholderInline {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--ib-warn);
   font-weight: 700;
 }
@@ -25,7 +25,7 @@
 }
 
 .dhInlineHint {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--ib-ink-muted);
   font-style: italic;
   padding: 4px 0;
@@ -99,6 +99,103 @@
   }
 }
 
+/* Dashboard home research calendar polish: remove stretched blank space and tighten news rows. */
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingGrid {
+  align-items: start;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingPane {
+  align-self: start;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseInsight {
+  align-self: start;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryList {
+  gap: 0;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryRow {
+  gap: 8px 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 10px 0;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryRow:first-child {
+  padding-top: 4px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryMetric {
+  align-self: start;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryTitle {
+  grid-column: 1 / -1;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryMetric b {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryNote {
+  gap: 4px 8px;
+  line-height: 1.35;
+  margin-top: -2px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup {
+  gap: 7px;
+  padding: 10px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroBriefingList {
+  gap: 6px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroNewsItem {
+  align-items: start;
+  gap: 8px;
+  grid-template-columns: minmax(58px, 72px) minmax(0, 1fr);
+  min-height: 50px;
+  padding: 8px 9px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroNewsTopic {
+  overflow: hidden;
+  padding-top: 1px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroNewsTitle {
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.32;
+  text-align: left;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroBriefingMeta {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+@media (max-width: 720px) {
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryRow {
+    gap: 7px;
+    grid-template-columns: 1fr;
+    padding: 9px 0;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroNewsItem {
+    grid-template-columns: minmax(54px, 0.28fr) minmax(0, 1fr);
+    min-height: 46px;
+    padding: 7px 8px;
+  }
+}
+
 .dhMain {
   min-width: 0;
 }
@@ -108,16 +205,18 @@
 }
 
 .dhCard {
-  background: var(--dh-card);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.015) 0%, rgba(255, 255, 255, 0.002) 100%), var(--dh-card);
   border: 1px solid var(--dh-line);
-  border-radius: var(--dh-radius-lg);
-  box-shadow: none;
-  transition: border-color 180ms ease;
+  border-radius: 8px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
 }
 
 .dhCard:hover {
-  border-color: var(--dh-line-strong);
-  box-shadow: none;
+  border-color: rgba(201, 168, 92, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.35), 0 0 15px rgba(201, 168, 92, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .dhCardSecondary {
@@ -703,7 +802,7 @@
 .dhRiskMiniFoot {
   grid-column: 1 / -1;
   margin-top: 2px;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.3;
   font-weight: 600;
   white-space: pre-line;
@@ -739,7 +838,7 @@
 }
 
 .dhTickerName {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--dh-muted);
   font-weight: 600;
   white-space: nowrap;
@@ -757,7 +856,7 @@
 }
 
 .dhTickerChg {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   margin-top: 3px;
   font-feature-settings: "tnum" 1;
@@ -819,7 +918,7 @@
 }
 
 .dhStatLabel {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--dh-muted);
   font-weight: 600;
   margin-bottom: 5px;
@@ -846,7 +945,7 @@
   align-items: center;
   gap: 7px;
   margin: 10px 0;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .dhTrack {
@@ -904,7 +1003,7 @@
   place-items: center;
   z-index: 2;
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   color: #64748b;
 }
 
@@ -1001,7 +1100,7 @@
   border-radius: var(--dh-radius);
   padding: var(--dh-space-2) var(--dh-space-3);
   margin-top: var(--dh-space-2);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.55;
   color: var(--ib-accent);
 }
@@ -1041,14 +1140,14 @@
   align-items: center;
   justify-content: space-between;
   height: 22px;
-  font-size: 10.5px;
+  font-size: 11px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
 }
 
 .dhPriorityHi {
   color: var(--ib-down);
   background: var(--moss-color-danger-50);
-  font-size: 10px;
+  font-size: 11px;
   padding: 0 6px;
   border-radius: 5px;
   font-weight: 800;
@@ -1119,7 +1218,7 @@
   display: flex;
   justify-content: space-between;
   height: 20px;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 /* Bottom */
@@ -1138,6 +1237,70 @@
   display: grid;
   gap: 12px;
   padding: 18px;
+  background: var(--dh-card);
+  color: var(--dh-ink);
+  border: 1px solid var(--dh-line);
+}
+
+.dhMacroDecisionStrip {
+  align-items: center;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--dh-line);
+}
+
+.dhMacroDecisionStrip > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dhMacroDecisionStrip span {
+  color: var(--dh-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dhMacroDecisionStrip strong {
+  color: var(--dh-ink);
+  font-size: 14px;
+  font-weight: 780;
+  line-height: 1.25;
+}
+
+.dhMacroDecisionStats {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  min-width: 0;
+}
+
+.dhMacroDecisionStats span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--dh-line);
+  background: var(--dh-card-soft);
+}
+
+.dhMacroDecisionStats b {
+  color: var(--dh-ink);
+  font-family: var(--dh-font-mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.dhMacroDecisionStats small {
+  color: var(--dh-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .dhMacroBriefingGrid {
@@ -1151,7 +1314,7 @@
   padding: 14px;
   border: 1px solid var(--dh-line);
   border-radius: 2px;
-  background: var(--ib-surface);
+  background: var(--dh-card-soft);
 }
 
 .dhMacroBriefingHeader {
@@ -1160,13 +1323,13 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-  color: var(--dh-text, var(--ib-accent));
+  color: var(--dh-ink);
   font-size: 13px;
   font-weight: 700;
 }
 
 .dhMacroBriefingHeader small {
-  color: var(--dh-text-muted, rgba(0, 0, 0, 0.45));
+  color: var(--dh-muted);
   font-size: 11px;
   font-weight: 500;
 }
@@ -1225,8 +1388,8 @@
 }
 
 .dhMacroReleaseFilterBar small {
-  color: var(--ib-ink-muted);
-  font-size: 10px;
+  color: var(--dh-muted);
+  font-size: 11px;
   font-weight: 400;
   opacity: 1;
 }
@@ -1302,7 +1465,7 @@
 
 .dhMacroReleaseDate small {
   color: var(--ib-ink-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
 }
 
@@ -1328,7 +1491,7 @@
 
 .dhMacroNewsTopic small {
   color: var(--ib-ink-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
 }
 
@@ -1492,7 +1655,7 @@
 
 .dhMacroReleaseInsightHeader small {
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
   line-height: 1.3;
   text-align: right;
@@ -1523,7 +1686,7 @@
 .dhMacroReleaseInsightMetric span {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -1544,11 +1707,101 @@
 .dhMacroReleaseInsightMetric small {
   overflow: hidden;
   color: var(--dh-text-muted, rgba(0, 0, 0, 0.48));
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 650;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dhMacroReleaseHistoryList {
+  display: grid;
+  gap: 8px;
+}
+
+.dhMacroReleaseHistoryRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(0, 0.75fr));
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(53, 103, 155, 0.12);
+}
+
+.dhMacroReleaseHistoryTitle {
+  overflow: hidden;
+  color: var(--dh-blue-deep);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.dhMacroReleaseHistoryMetric {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dhMacroReleaseHistoryMetric small {
+  overflow: hidden;
+  color: var(--dh-text-muted, rgba(0, 0, 0, 0.48));
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseHistoryMetric b {
+  overflow: hidden;
+  color: var(--dh-blue-deep);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhMacroReleaseHistoryMetric[data-tone="up"] b {
+  color: var(--ib-up);
+}
+
+.dhMacroReleaseHistoryMetric[data-tone="down"] b {
+  color: var(--ib-down);
+}
+
+.dhMacroReleaseHistoryMetric[data-tone="flat"] b {
+  color: var(--ib-warn);
+}
+
+.dhMacroReleaseHistoryNote,
+.dhMacroReleaseHistoryMessage {
+  margin: 0;
+  color: var(--dh-text-muted, rgba(0, 0, 0, 0.48));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.dhMacroReleaseHistoryNote {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dhMacroReleaseHistoryNote small {
+  color: var(--ib-ink-muted);
+  font-size: inherit;
+}
+
+.dhMacroReleaseHistoryNote small::before {
+  content: "来源：";
 }
 
 .dhMacroReleaseActionHint {
@@ -1597,7 +1850,7 @@
   border-radius: 6px;
   background: rgba(24, 80, 161, 0.08);
   color: var(--dh-blue-deep);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
   line-height: 1.3;
 }
@@ -1623,7 +1876,7 @@
 .dhMacroReleaseDetailHero small {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -1647,7 +1900,7 @@
 
 .dhMacroReleaseDetailFacts small {
   color: var(--dh-muted);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -1666,7 +1919,7 @@
   width: fit-content;
   max-width: 100%;
   color: var(--dh-blue);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 850;
   line-height: 1.3;
   overflow-wrap: anywhere;
@@ -1706,7 +1959,7 @@
 .dhMacroReleaseQualityGrid small {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 850;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -1770,7 +2023,7 @@
 .dhMacroReleaseSubhead small {
   flex-shrink: 0;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1.25;
 }
@@ -1802,13 +2055,13 @@
 }
 
 .dhMacroReleaseTimelineItem > span b {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 850;
 }
 
 .dhMacroReleaseTimelineItem > span small {
   color: var(--dh-muted);
-  font-size: 8.5px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -1836,7 +2089,7 @@
 .dhMacroReleaseQueueItem p small {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -1849,7 +2102,7 @@
   border-radius: 6px;
   background: rgba(24, 80, 161, 0.08);
   color: var(--dh-blue-deep);
-  font-size: 9.5px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 850;
   line-height: 1.35;
@@ -1875,7 +2128,7 @@
 
 .dhMacroReleaseQueueItem > span {
   color: var(--dh-red);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
   line-height: 1.25;
   white-space: nowrap;
@@ -1884,7 +2137,7 @@
 .dhMacroReleaseWorkbenchMessage {
   margin: 0;
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
   line-height: 1.45;
 }
@@ -1894,7 +2147,7 @@
 .dhMacroReleaseQualityIssues p {
   margin: 0;
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -1932,7 +2185,7 @@
   border-radius: 6px;
   background: rgba(24, 80, 161, 0.09);
   color: var(--dh-blue);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
   line-height: 1;
 }
@@ -1957,7 +2210,7 @@
 .dhMacroReleaseFocusRow small {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -1978,7 +2231,7 @@
   border-radius: 6px;
   color: var(--dh-blue-deep);
   font: inherit;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 850;
   background: rgba(24, 80, 161, 0.08);
   cursor: pointer;
@@ -1995,7 +2248,7 @@
 
 .dhMacroReleaseFocusActions span {
   color: var(--dh-green);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 850;
 }
 
@@ -2008,7 +2261,7 @@
   border-radius: 7px;
   color: var(--dh-ink-2);
   font-family: var(--dh-font-sans);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.5;
   background: rgba(255, 255, 255, 0.82);
 }
@@ -2023,7 +2276,7 @@
 .dhMacroReleaseChecklist li,
 .dhMacroReleaseBoundary p {
   color: var(--dh-ink-2);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -2069,6 +2322,7 @@
 }
 
 .dhPolicyFundingPane {
+  align-self: start;
   scroll-margin-top: 18px;
 }
 
@@ -2149,7 +2403,7 @@
 .dhPolicyFundingCoverage small {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 850;
   line-height: 1.1;
   text-overflow: ellipsis;
@@ -2189,7 +2443,7 @@
 
 .dhPolicyFundingDiagnosticsHeader small {
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.45;
 }
@@ -2243,7 +2497,7 @@
 .dhPolicyFundingDiagnosticMetrics small {
   overflow: hidden;
   color: var(--ib-ink-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 1.1;
   text-overflow: ellipsis;
@@ -2271,7 +2525,7 @@
 .dhPolicyFundingDiagnosticHint {
   margin: -1px 0 0;
   color: var(--dh-amber);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
   line-height: 1.45;
 }
@@ -2328,7 +2582,7 @@
 .dhPolicyFundingDiagnosticReasons b {
   color: currentColor;
   font-family: var(--dh-font-mono);
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .dhPolicyFundingGroups {
@@ -2367,7 +2621,7 @@
 .dhPolicyFundingGroupHeader small {
   flex-shrink: 0;
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -2472,10 +2726,15 @@
   gap: 6px;
   min-width: 0;
   min-height: 120px;
-  padding: 8px 9px;
+  padding: 10px 12px;
   border: 1px solid var(--dh-line);
-  border-radius: 2px;
-  background: var(--ib-surface);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.008);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.dhBondNewsGroup:hover {
+  background: rgba(255, 255, 255, 0.016);
+  border-color: rgba(255, 255, 255, 0.07);
 }
 
 .dhBondNewsGroupHeader {
@@ -2499,7 +2758,7 @@
 .dhBondNewsGroupHeader small {
   flex-shrink: 0;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -2515,9 +2774,20 @@
   gap: 8px;
   align-items: start;
   min-width: 0;
-  padding: 7px 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.78);
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.024);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.dhBondNewsItem + .dhBondNewsItem {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.dhBondNewsItem:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 .dhBondNewsTopic {
@@ -2529,7 +2799,7 @@
   border-radius: 8px;
   background: rgba(53, 103, 155, 0.12);
   color: var(--dh-blue);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1.25;
   white-space: nowrap;
@@ -2556,7 +2826,7 @@
 .dhBondNewsBody small {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 650;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -2564,17 +2834,21 @@
 }
 
 .dhBondNewsEmpty {
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  margin: 0;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: rgba(53, 103, 155, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 80px;
+  gap: 6px;
+  margin: auto 0;
+  padding: 12px 8px;
   color: var(--dh-muted);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
+  opacity: 0.55;
   line-height: 1.35;
+  text-align: center;
 }
 
 .dhMarketContext {
@@ -2608,7 +2882,10 @@
 .dhMarketContextGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
+  border: 1px solid var(--dh-line);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
 .dhMarketContextBlock {
@@ -2616,11 +2893,15 @@
   gap: 5px;
   align-content: start;
   min-width: 0;
-  min-height: 88px;
+  min-height: 76px;
   padding: 10px 11px;
-  border-radius: 2px;
-  border: 1px solid var(--dh-line);
+  border: 0;
+  border-left: 1px solid var(--dh-line-soft);
   background: var(--ib-surface);
+}
+
+.dhMarketContextBlock:first-child {
+  border-left: 0;
 }
 
 .dhMarketContextBlock span {
@@ -2751,6 +3032,10 @@
     grid-template-columns: 1fr;
   }
 
+  .dhMacroReleaseHistoryRow {
+    grid-template-columns: 1fr;
+  }
+
   .dhMacroReleaseWorkbench {
     grid-template-columns: 1fr;
   }
@@ -2809,7 +3094,7 @@
 
 .dhLiabilityBasisNote {
   margin: 4px 0 8px;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--dh-text-muted, rgba(0, 0, 0, 0.45));
   line-height: 1.4;
 }
@@ -2838,7 +3123,7 @@
   text-align: right;
   background: var(--dh-card-soft);
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -2945,9 +3230,9 @@
 }
 
 .dhTerminalDeferredPlaceholder {
-  min-height: 360px;
+  min-height: 1px;
   margin-top: var(--dh-space-2);
-  border-radius: 8px;
+  border-radius: 2px;
 }
 
 .dhTerminalJudgement,
@@ -3022,7 +3307,7 @@
   gap: var(--dh-space-1);
   align-items: center;
   color: var(--dh-ink-2);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -3052,7 +3337,7 @@
 
 .dhTerminalKpiDelta {
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3066,7 +3351,9 @@
   margin-top: 4px;
 }
 
-.dhTerminalState {
+/* 这些类挂在共享 StatusPill（.status-pill[data-status]，特异性 0-2-0）上；
+   选择器带 [data-status] 提到 0-3-0，否则浅色主题的胶囊底色会压过本页深色覆盖。 */
+.dhTerminalState[data-status] {
   display: inline-flex;
   align-items: center;
   min-height: 18px;
@@ -3083,38 +3370,42 @@
   text-overflow: ellipsis;
 }
 
-.dhTerminalStateReady {
-  color: var(--ib-ink-secondary);
+.dhTerminalState.dhTerminalStateReady[data-status] {
+  color: rgba(62, 142, 126, 0.85); /* Deep muted green */
   background: transparent;
-  border: 0;
+  border: 1px solid rgba(62, 142, 126, 0.2);
+  border-radius: 99px;
   font-size: 11px;
-  font-weight: 400;
+  font-weight: 500;
   min-height: auto;
-  padding: 0;
+  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .dhTerminalStateReady::before {
-  background: var(--dh-green);
+  background: rgba(62, 142, 126, 0.4);
   border-radius: 50%;
   content: "";
   flex-shrink: 0;
-  height: 6px;
-  width: 6px;
+  height: 4px;
+  width: 4px;
 }
 
-.dhTerminalStateMuted {
+.dhTerminalState.dhTerminalStateMuted[data-status] {
   color: var(--dh-muted);
   background: transparent;
   border-color: var(--dh-muted-2);
 }
 
-.dhTerminalStateStale {
+.dhTerminalState.dhTerminalStateStale[data-status] {
   color: var(--dh-amber);
   background: transparent;
   border-color: var(--dh-amber);
 }
 
-.dhTerminalStateWarn {
+.dhTerminalState.dhTerminalStateWarn[data-status] {
   color: var(--dh-red);
   background: transparent;
   border-color: var(--dh-red);
@@ -3132,25 +3423,29 @@
   gap: var(--dh-space-2);
   min-width: 0;
   margin-bottom: var(--dh-space-2);
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .dhTerminalPanelHead h3 {
   margin: 0;
-  color: var(--ib-ink);
+  color: var(--dh-ink);
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .dhTerminalPanelHead h3::before {
   content: "";
-  width: 2px;
-  height: 14px;
-  border-radius: 0;
-  background: var(--ib-accent);
-  box-shadow: none;
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--ib-gold), rgba(201, 168, 92, 0.4));
+  box-shadow: 0 0 10px rgba(201, 168, 92, 0.5);
 }
 
 .dhPanelHeaderActions {
@@ -3206,7 +3501,7 @@
 
 .dhTerminalRiskCell span {
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -3221,7 +3516,7 @@
 
 .dhTerminalRiskCell em {
   font-style: normal;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -3232,10 +3527,190 @@
   margin-bottom: var(--dh-space-2);
 }
 
+.dhTerminalGridUnavailable {
+  grid-template-columns: 1fr;
+}
+
+.dhServiceStatusPanel {
+  background: var(--ib-surface);
+  border: 1px solid rgba(20, 35, 55, 0.16);
+  border-radius: 2px;
+  border-top: 3px solid #7a5300;
+  overflow: hidden;
+}
+
+.dhServiceStatusHeader {
+  align-items: start;
+  background: #fbfaf6;
+  border-bottom: 1px solid rgba(20, 35, 55, 0.1);
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  padding: 14px 16px 12px;
+}
+
+.dhServiceStatusKicker {
+  color: #315070;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  margin-bottom: 5px;
+}
+
+.dhServiceStatusHeader h3 {
+  color: #102033;
+  font-family: var(--dh-font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.dhServiceStatusHeader p {
+  color: var(--dh-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 6px 0 0;
+  max-width: 760px;
+}
+
+.dhServiceStatusSummary {
+  border-left: 1px solid rgba(20, 35, 55, 0.12);
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding-left: 14px;
+}
+
+.dhServiceStatusSummary div {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 3px 0;
+}
+
+.dhServiceStatusSummary dt {
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.dhServiceStatusSummary dd {
+  color: var(--ib-ink);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhServiceStatusTableWrap {
+  overflow-x: auto;
+}
+
+.dhServiceStatusLedger {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 920px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.dhServiceStatusLedger th {
+  background: #f7f8fa;
+  border-bottom: 1px solid rgba(20, 35, 55, 0.14);
+  color: var(--ib-ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  height: 32px;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.dhServiceStatusLedger th:nth-child(1) {
+  width: 18%;
+}
+
+.dhServiceStatusLedger th:nth-child(2) {
+  width: 92px;
+}
+
+.dhServiceStatusLedger th:nth-child(3) {
+  width: 32%;
+}
+
+.dhServiceStatusLedger td {
+  border-bottom: 1px solid rgba(20, 35, 55, 0.07);
+  color: var(--dh-ink-2);
+  height: 36px;
+  line-height: 1.4;
+  padding: 0 12px;
+  vertical-align: middle;
+}
+
+.dhServiceStatusLedger tr:last-child td {
+  border-bottom: 0;
+}
+
+.dhServiceStatusLedger td:first-child {
+  color: var(--dh-ink);
+  font-weight: 700;
+}
+
+.dhServiceStatusFailed {
+  color: #8a1f11;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dhServiceStatusDeferred {
+  color: #8a5a00;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dhServiceStatusEndpoint {
+  color: var(--ib-ink-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhServiceStatusDetails {
+  border-top: 1px solid rgba(20, 35, 55, 0.1);
+  color: var(--dh-muted);
+  font-size: 12px;
+  padding: 9px 12px;
+}
+
+.dhServiceStatusDetails summary {
+  color: var(--dh-ink-2);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.dhServiceStatusDetails p {
+  line-height: 1.55;
+  margin: 8px 0 0;
+}
+
 .dhTerminalPanel {
   min-height: 214px;
   padding: 12px 14px;
   overflow: hidden;
+}
+
+.dhTerminalPanel:has(.dhTerminalStateSurface) {
+  min-height: 116px;
 }
 
 .dhTerminalPanelWide {
@@ -3250,7 +3725,7 @@
   width: 100%;
   border-collapse: collapse;
   color: var(--dh-ink-2);
-  font-size: 10px;
+  font-size: 12px;
   table-layout: fixed;
 }
 
@@ -3271,14 +3746,15 @@
 }
 
 .dhTerminalTable th {
-  height: 24px;
-  padding: 0 6px;
+  height: 31px;
+  padding: 0 8px;
   color: var(--dh-muted);
-  background: var(--dh-card-soft);
+  background: rgba(16, 27, 44, 0.94);
   border-bottom: 1px solid var(--dh-line);
   text-align: right;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
 }
 
 .dhTerminalTable th:first-child,
@@ -3287,14 +3763,24 @@
 }
 
 .dhTerminalTable td {
-  height: 31px;
-  padding: 0 6px;
-  border-bottom: 1px solid var(--dh-line-soft);
+  height: 37px;
+  padding: 0 8px;
+  border-bottom: 1px solid rgba(36, 49, 73, 0.42);
   text-align: right;
   font-weight: 650;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Zebra striping */
+.dhTerminalTable tbody tr:nth-child(even) td {
+  background: rgba(16, 27, 44, 0.24);
+}
+
+.dhTerminalTable tbody tr:hover td {
+  background: rgba(20, 34, 54, 0.58);
 }
 
 .dhTerminalTable td:first-child {
@@ -3306,7 +3792,7 @@
 
 .dhTerminalTable td:first-child b {
   color: var(--dh-ink);
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 1.08;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3315,7 +3801,7 @@
 
 .dhTerminalTable td:first-child span {
   color: var(--dh-muted);
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.08;
   overflow: hidden;
@@ -3325,14 +3811,35 @@
 
 .dhTerminalDistribution {
   display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
-  gap: var(--dh-space-2);
-  align-items: center;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
   min-height: 154px;
 }
 
+.dhTerminalDistributionBarLayout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 154px;
+  width: 100%;
+}
+
+.dhTerminalDistributionListOnly {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
 .dhTerminalChart {
-  height: 132px;
+  height: 130px;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+}
+
+.dhTerminalChartFull {
+  width: 100%;
+  height: 110px;
   min-width: 0;
 }
 
@@ -3350,78 +3857,95 @@
 }
 
 .dhTerminalDistributionList {
-  display: grid;
-  gap: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   min-width: 0;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.dhTerminalDistributionGridList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
 }
 
 .dhTerminalDistributionRow {
+  position: relative;
   display: grid;
-  grid-template-columns: 8px minmax(42px, 1fr) minmax(58px, auto) minmax(42px, auto);
+  grid-template-columns: 6px 1fr 72px 42px;
   align-items: center;
-  gap: 6px;
-  font-size: 10px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(var(--dh-row-bar-color-rgb), 0.04) 0%, rgba(var(--dh-row-bar-color-rgb), 0.04) var(--dh-row-bar-pct), rgba(255, 255, 255, 0.01) var(--dh-row-bar-pct), rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  gap: 7px;
+  font-size: 11px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.dhTerminalDistributionListOnly .dhTerminalDistributionRow {
+  grid-template-columns: 6px 1fr 72px 42px;
+}
+
+.dhTerminalDistributionRow:hover {
+  background: linear-gradient(90deg, rgba(var(--dh-row-bar-color-rgb), 0.08) 0%, rgba(var(--dh-row-bar-color-rgb), 0.08) var(--dh-row-bar-pct), rgba(255, 255, 255, 0.02) var(--dh-row-bar-pct), rgba(255, 255, 255, 0.02) 100%);
+  border-color: rgba(var(--dh-row-bar-color-rgb), 0.22);
+  box-shadow: 0 0 8px rgba(var(--dh-row-bar-color-rgb), 0.12);
+  transform: translateX(1.5px);
+}
+
+.dhTerminalDistributionRow::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 1.5px;
+  width: var(--dh-row-bar-pct, 0%);
+  background: linear-gradient(90deg, rgba(var(--dh-row-bar-color-rgb), 0.4), var(--dh-row-bar-color));
+  opacity: 0.9;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  box-shadow: 0 0 3px var(--dh-row-bar-color);
+}
+
+.dhTerminalLegendDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px var(--dh-row-bar-color);
 }
 
 .dhTerminalDistributionName {
-  color: var(--dh-ink-2);
-  font-weight: 750;
+  color: var(--dh-ink);
+  font-weight: 600;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.dhTerminalDistributionValue,
-.dhTerminalDistributionPct {
-  color: var(--dh-muted);
-  font-weight: 750;
+.dhTerminalDistributionValue {
+  color: var(--dh-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dhTerminalDistributionTrack {
-  grid-column: 2 / -1;
-  height: 5px;
-  border-radius: 999px;
-  background: var(--dh-line-soft);
+.dhTerminalDistributionPct {
+  color: var(--dh-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
   overflow: hidden;
-}
-
-.dhTerminalDistributionFill {
-  display: block;
-  width: var(--dh-terminal-bar-width);
-  height: 100%;
-  border-radius: inherit;
-  background: var(--dh-dist-blue);
-}
-
-.dhTerminalLegendDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--dh-dist-blue);
-}
-
-.dhTerminalLegendDot[data-color-index="1"] {
-  background: var(--dh-dist-cyan);
-}
-
-.dhTerminalLegendDot[data-color-index="2"] {
-  background: var(--dh-dist-teal);
-}
-
-.dhTerminalLegendDot[data-color-index="3"] {
-  background: var(--dh-dist-green);
-}
-
-.dhTerminalLegendDot[data-color-index="4"] {
-  background: var(--dh-dist-red);
-}
-
-.dhTerminalLegendDot[data-color-index="5"] {
-  background: var(--dh-dist-neutral);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dhTerminalExposureGrid {
@@ -3441,7 +3965,7 @@
 
 .dhTerminalExposureItem span {
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -3457,17 +3981,16 @@
 
 .dhTerminalChangeRow {
   display: grid;
-  grid-template-columns: minmax(92px, 1fr) auto minmax(58px, 0.8fr) minmax(68px, auto) minmax(68px, auto);
+  grid-template-columns: minmax(94px, 1fr) auto minmax(82px, auto) minmax(74px, auto);
   align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding-bottom: 6px;
+  gap: 9px;
+  min-height: 42px;
+  padding: 7px 0;
   border-bottom: 1px solid var(--dh-line-soft);
 }
 
 .dhTerminalChangeRow:last-child {
   border-bottom: 0;
-  padding-bottom: 0;
 }
 
 .dhTerminalChangeBond {
@@ -3486,7 +4009,7 @@
 .dhTerminalChangeBond small,
 .dhTerminalReportItem small {
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3502,7 +4025,7 @@
   place-items: center;
   color: var(--dh-green);
   background: var(--dh-green-soft);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
   white-space: nowrap;
 }
@@ -3518,9 +4041,10 @@
 }
 
 .dhTerminalChangeBar {
-  height: 6px;
+  grid-column: 1 / -1;
+  height: 7px;
   border-radius: 999px;
-  background: var(--dh-line-soft);
+  background: rgba(36, 49, 73, 0.82);
   overflow: hidden;
 }
 
@@ -3539,7 +4063,7 @@
 .dhTerminalChangeValue,
 .dhTerminalChangeCurrent {
   text-align: right;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3553,12 +4077,13 @@
 .dhTerminalChangeValue {
   display: grid;
   gap: 1px;
+  justify-items: end;
 }
 
 .dhTerminalChangeValue small,
 .dhTerminalChangeCurrent small {
   color: var(--dh-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
   line-height: 1;
 }
@@ -3566,6 +4091,10 @@
 .dhTerminalChangeCurrent {
   display: grid;
   gap: 1px;
+}
+
+.dhTerminalChangeCurrentInline {
+  color: var(--dh-muted);
 }
 
 .dhTerminalReportStack {
@@ -3628,7 +4157,7 @@
 
 .dhTerminalReportFeaturedDate small {
   color: var(--dh-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -3672,7 +4201,7 @@
 .dhTerminalReportMetaText {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3698,7 +4227,7 @@
 
 .dhTerminalReportCompactDate {
   color: var(--dh-blue-deep);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 850;
   white-space: nowrap;
 }
@@ -3716,7 +4245,7 @@
 .dhTerminalReportCompactInstitution {
   overflow: hidden;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3731,7 +4260,7 @@
   height: 18px;
   padding: 0 6px;
   border-radius: 6px;
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 850;
   white-space: nowrap;
 }
@@ -3780,7 +4309,7 @@
   justify-content: space-between;
   gap: 8px;
   color: var(--dh-blue-deep);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
 }
 
@@ -3814,7 +4343,7 @@
 
 .dhTerminalIncomeSummary small {
   color: var(--dh-muted);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -3832,7 +4361,7 @@
   justify-content: space-between;
   gap: 8px;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -3848,7 +4377,7 @@
   flex-wrap: wrap;
   gap: 6px 10px;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 850;
 }
 
@@ -3907,10 +4436,11 @@
   padding-bottom: 0;
 }
 
-.dhTerminalIncomeRow span {
+.dhTerminalIncomeRow time {
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
+  line-height: 1.2;
 }
 
 .dhTerminalIncomeRow b {
@@ -3921,12 +4451,43 @@
   white-space: nowrap;
 }
 
+.dhTerminalIncomeLedgerMetrics {
+  display: grid;
+  gap: 4px;
+  grid-column: 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.dhTerminalIncomeLedgerMetrics div {
+  align-items: baseline;
+  display: flex;
+  gap: 5px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
 .dhTerminalIncomeRow small {
   grid-column: 2;
   color: var(--dh-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhTerminalIncomeLedgerMetrics small {
+  grid-column: auto;
+}
+
+.dhTerminalIncomeLedgerMetrics strong {
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3962,7 +4523,7 @@
 
 .dhTerminalGap span {
   color: var(--dh-red);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 850;
 }
 
@@ -3970,17 +4531,17 @@
   grid-column: 1 / -1;
   color: var(--dh-muted);
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .dhTerminalStateSurface {
-  min-height: 128px;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px dashed var(--dh-line-strong);
+  min-height: 78px;
+  padding: 14px;
+  border-radius: 2px;
+  border: 1px solid var(--dh-line);
   background: var(--dh-card-soft);
   color: var(--dh-muted);
   display: grid;
@@ -3992,22 +4553,22 @@
 
 .dhTerminalStateSurface[data-state="loading"] {
   color: var(--dh-blue-deep);
-  border-color: rgba(24, 80, 161, 0.24);
-  background: var(--moss-color-info-50);
+  border-color: rgba(24, 80, 161, 0.18);
+  background: var(--dh-card-soft);
 }
 
 .dhTerminalStateSurface[data-state="partial"],
 .dhTerminalStateSurface[data-state="stale"] {
   color: var(--dh-amber);
-  border-color: var(--moss-color-warning-200);
-  background: var(--dh-amber-soft);
+  border-color: rgba(156, 101, 29, 0.24);
+  background: var(--dh-card-soft);
 }
 
 .dhTerminalStateSurface[data-state="error"],
 .dhTerminalStateSurface[data-state="backend-gap"] {
   color: var(--dh-red);
-  border-color: var(--moss-color-danger-200);
-  background: var(--dh-red-soft);
+  border-color: rgba(167, 69, 48, 0.24);
+  background: var(--dh-card-soft);
 }
 
 .dhTerminalStateSurfaceCompact {
@@ -4019,13 +4580,13 @@
 }
 
 .dhTerminalStateIcon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 2px;
   display: grid;
   place-items: center;
   color: currentColor;
-  background: rgba(255, 255, 255, 0.62);
+  background: transparent;
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
 }
 
@@ -4038,7 +4599,7 @@
 
 .dhTerminalStateSurface small {
   color: currentColor;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
   line-height: 1.35;
 }
@@ -4065,6 +4626,28 @@
   font-size: 12px;
   font-weight: 700;
   text-align: center;
+}
+
+/* Extracted Utility Classes */
+.dhSurfaceCard {
+  background: var(--dh-card);
+  border: 1px solid var(--dh-line);
+}
+
+.dhGridFullRow {
+  grid-column: 1 / -1;
+}
+
+.dhFlexRowCol2 {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.dhFlex1Min0 {
+  flex: 1;
+  min-width: 0;
 }
 
 .dhTerminalBottom {
@@ -4277,7 +4860,7 @@
   border-radius: 5px;
   background: rgba(255, 255, 255, 0.12);
   color: var(--dh-card);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -4441,6 +5024,10 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .dhTerminalGridUnavailable {
+    grid-template-columns: 1fr;
+  }
+
   .dhBondNewsGrid {
     grid-template-columns: 1fr;
   }
@@ -4484,6 +5071,22 @@
   }
 }
 
+@media (max-width: 1500px) {
+  .dhTerminalGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhTerminalGridUnavailable {
+    grid-template-columns: 1fr;
+  }
+
+  .dhTerminalPanelWide,
+  .dhTerminalHoldings,
+  .dhGridFullRow {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 720px) {
   .dhTopbar {
     flex-direction: column;
@@ -4521,6 +5124,32 @@
 
   .dhTerminalPanelWide {
     grid-column: auto;
+  }
+
+  .dhTerminalGrid,
+  .dhGridFullRow,
+  .dhFlexRowCol2 {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .dhFlexRowCol2 {
+    flex-direction: column;
+  }
+
+  .dhServiceStatusHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .dhServiceStatusSummary {
+    border-left: 0;
+    border-top: 1px solid rgba(20, 35, 55, 0.12);
+    padding-left: 0;
+    padding-top: 8px;
+  }
+
+  .dhServiceStatusLedger {
+    min-width: 760px;
   }
 
   .dhTerminalRiskGrid {
@@ -4587,5 +5216,3100 @@
     width: 100%;
     height: 56px;
     margin-top: var(--dh-space-2);
+  }
+}
+
+/* API-backed Figma body: evidence-led homepage modules */
+.dhApiHomeBody {
+  --dh-api-panel: #0c1421;
+  --dh-api-panel-2: #101a2a;
+  --dh-api-panel-3: #132033;
+  --dh-api-line: rgba(103, 119, 142, 0.34);
+  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
+  --dh-api-ink: #e8eef7;
+  --dh-api-soft: #a9b6c7;
+  --dh-api-muted: #8593a8;
+  --dh-api-blue: #72a7dc;
+  --dh-api-green: #66b98b;
+  --dh-api-amber: #c9a565;
+  --dh-api-red: #d47a72;
+  --dh-api-blue-soft: rgba(114, 167, 220, 0.12);
+  --dh-api-green-soft: rgba(102, 185, 139, 0.12);
+  --dh-api-amber-soft: rgba(201, 165, 101, 0.13);
+  --dh-api-red-soft: rgba(212, 122, 114, 0.13);
+  --dh-card: var(--dh-api-panel);
+  --dh-card-soft: var(--dh-api-panel-2);
+  --dh-line: var(--dh-api-line-soft);
+  --dh-line-strong: var(--dh-api-line);
+  --dh-ink: var(--dh-api-ink);
+  --dh-ink-2: #c6d1dd;
+  --dh-muted: var(--dh-api-muted);
+  --dh-muted-2: var(--dh-api-soft);
+  --dh-blue: var(--dh-api-blue);
+  --dh-blue-deep: var(--dh-api-blue);
+  --dh-blue-soft: var(--dh-api-blue-soft);
+  --dh-green: var(--dh-api-green);
+  --dh-green-soft: var(--dh-api-green-soft);
+  --dh-red: var(--dh-api-red);
+  --dh-red-soft: var(--dh-api-red-soft);
+  --dh-amber: var(--dh-api-amber);
+  --dh-amber-soft: var(--dh-api-amber-soft);
+  color: var(--dh-api-ink);
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.dhApiHomeBody .dhNum {
+  letter-spacing: 0;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhCalendarSection {
+  margin-top: 0;
+  min-width: 0;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingCard {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)), var(--dh-api-panel);
+  border-color: var(--dh-api-line-soft);
+  border-radius: 6px;
+  box-shadow: none;
+  color: var(--dh-api-ink);
+  gap: 15px;
+  padding: 17px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroDecisionStrip {
+  border-bottom-color: rgba(36, 49, 73, 0.62);
+  padding-bottom: 12px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroDecisionStrip span,
+:global([data-testid="dashboard-home-page"]) .dhMacroDecisionStats small {
+  color: var(--dh-api-muted);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroDecisionStrip strong {
+  color: #eef4ff;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroDecisionStats span {
+  background: var(--dh-api-panel-2);
+  border-color: rgba(36, 49, 73, 0.58);
+  border-radius: 4px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroDecisionStats b {
+  color: var(--dh-api-ink);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingGrid {
+  grid-template-columns: minmax(0, 1.36fr) minmax(280px, 0.64fr);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingPane {
+  background: var(--dh-api-panel-2);
+  border-color: rgba(36, 49, 73, 0.58);
+  border-radius: 6px;
+  padding: 14px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingPane {
+  background: var(--dh-api-panel-3);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingHeader {
+  border-bottom: 1px solid rgba(36, 49, 73, 0.58);
+  color: var(--dh-api-ink);
+  margin-bottom: 11px;
+  padding-bottom: 9px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingHeader small,
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingMeta,
+:global([data-testid="dashboard-home-page"]) .dhMacroNewsTopic,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseDate small,
+:global([data-testid="dashboard-home-page"]) .dhMacroImportanceTag {
+  color: var(--dh-api-muted);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseItem,
+:global([data-testid="dashboard-home-page"]) .dhMacroNewsItem {
+  background: rgba(11, 18, 32, 0.72);
+  border-color: rgba(36, 49, 73, 0.48);
+  border-radius: 4px;
+  padding: 9px 10px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseItem:hover {
+  background: rgba(16, 27, 44, 0.92);
+  border-color: rgba(87, 166, 216, 0.32);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseDate b,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseTitle,
+:global([data-testid="dashboard-home-page"]) .dhMacroNewsTitle,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingHeadline,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroupHeader span {
+  color: var(--dh-api-ink);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroRegionTag {
+  color: var(--dh-api-green);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseInsight,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnostics {
+  background: rgba(11, 18, 32, 0.72);
+  border-color: rgba(36, 49, 73, 0.58);
+  border-radius: 5px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseInsightHeader span,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryTitle,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryMetric b,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticsHeader span,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics b {
+  color: #eef4ff;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseInsightHeader small,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryMetric small,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryNote,
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryMessage,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticsHeader small,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticNarratives p,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics small,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroupHeader small {
+  color: var(--dh-api-muted);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryRow {
+  border-top-color: rgba(36, 49, 73, 0.58);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingChips span,
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticReasons span,
+:global([data-testid="dashboard-home-page"]) .dhMacroTrustStrip span,
+:global([data-testid="dashboard-home-page"]) .dhMacroSupplyStrip span {
+  background: transparent;
+  border-color: rgba(36, 49, 73, 0.58);
+  color: var(--dh-api-soft);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroNewsStale {
+  background: var(--dh-api-amber-soft);
+  border-color: rgba(201, 165, 101, 0.3);
+  color: var(--dh-api-amber);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingHeadline {
+  background: rgba(7, 11, 21, 0.54);
+  border: 1px solid rgba(36, 49, 73, 0.62);
+  border-radius: 5px;
+  color: #eef4ff;
+  padding: 10px 11px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroTrustStrip {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroTrustStrip span {
+  background: rgba(11, 18, 32, 0.62);
+  border: 1px solid rgba(36, 49, 73, 0.5);
+  border-radius: 4px;
+  color: var(--dh-api-soft);
+  display: block;
+  font-size: 11px;
+  line-height: 1.45;
+  min-width: 0;
+  overflow: hidden;
+  padding: 6px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroTrustStrip span + span::before {
+  content: none;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingChips {
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingChips span {
+  align-items: center;
+  border: 1px solid rgba(36, 49, 73, 0.58);
+  border-radius: 999px;
+  color: var(--dh-api-soft);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 760;
+  min-height: 24px;
+  padding: 0 9px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingChips span + span::before {
+  content: none;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnostics {
+  background: rgba(7, 11, 21, 0.5);
+  border-color: rgba(36, 49, 73, 0.62);
+  border-radius: 5px;
+  padding: 10px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticNarratives p {
+  border-left-color: rgba(87, 166, 216, 0.38);
+  color: var(--dh-api-soft);
+  font-weight: 650;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics {
+  gap: 1px;
+  overflow: hidden;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics span {
+  background: var(--dh-api-panel-3);
+  border-color: rgba(36, 49, 73, 0.58);
+  border-radius: 0;
+  padding: 7px 8px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics small {
+  color: var(--dh-api-muted);
+  font-weight: 650;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics b {
+  color: #eef4ff;
+  font-weight: 760;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticHint {
+  color: var(--dh-api-amber);
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup {
+  background: rgba(11, 18, 32, 0.72);
+  border-color: rgba(36, 49, 73, 0.52);
+  border-radius: 5px;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroupHeader span {
+  color: #eef4ff;
+}
+
+:global([data-testid="dashboard-home-page"]) .dhMacroSupplyStrip {
+  border-top: 1px solid rgba(36, 49, 73, 0.58);
+  padding-top: 12px;
+}
+
+@media (min-width: 1181px) {
+  :global([data-testid="dashboard-home-page"]) .dhMacroBriefingCard {
+    gap: 12px;
+    padding: 15px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroDecisionStrip {
+    padding-bottom: 9px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroBriefingGrid {
+    align-items: start;
+    gap: 12px;
+    grid-template-columns: minmax(0, 1.28fr) minmax(360px, 0.72fr);
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroBriefingPane {
+    padding: 12px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroBriefingHeader {
+    margin-bottom: 8px;
+    padding-bottom: 7px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroBriefingList {
+    gap: 6px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseItem {
+    align-items: center;
+    gap: 8px;
+    min-height: 0;
+    padding: 7px 9px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseDate {
+    min-width: 38px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseDate b {
+    font-size: 11.5px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseTitle {
+    font-size: 12px;
+    line-height: 1.26;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseMetaRow {
+    gap: 6px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseInsight {
+    gap: 7px;
+    margin-top: 10px;
+    padding: 9px 10px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryRow {
+    gap: 5px 12px;
+    padding: 7px 0;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryTitle {
+    font-size: 11px;
+    line-height: 1.26;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryMetric b {
+    font-size: 11px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryNote {
+    font-size: 11px;
+    line-height: 1.28;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingChips {
+    gap: 5px;
+    margin-bottom: 8px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingChips span {
+    font-size: 11px;
+    min-height: 20px;
+    padding: 0 7px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingHeadline {
+    font-size: 12.5px;
+    line-height: 1.34;
+    margin-bottom: 8px;
+    padding: 8px 9px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroTrustStrip {
+    display: grid;
+    gap: 4px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 8px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroTrustStrip span {
+    font-size: 11px;
+    line-height: 1.24;
+    padding: 5px 7px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnostics {
+    gap: 6px;
+    margin-bottom: 8px;
+    padding: 8px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticsHeader {
+    align-items: baseline;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticsHeader small {
+    overflow: hidden;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticNarratives {
+    gap: 3px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticNarratives p {
+    font-size: 11px;
+    line-height: 1.32;
+    padding-left: 7px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticMetrics span {
+    padding: 5px 6px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingDiagnosticReasons {
+    gap: 4px 8px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroups {
+    gap: 7px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroNewsItem {
+    gap: 7px;
+    grid-template-columns: minmax(52px, 66px) minmax(0, 1fr);
+    min-height: 0;
+    padding: 6px 7px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroNewsTitle {
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingGroup .dhMacroBriefingMeta {
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroSupplyStrip {
+    padding-top: 9px;
+  }
+}
+
+.dhApiHomeBody .dhCard,
+.dhApiHomeBody .dhTerminalPanel,
+.dhApiModule {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)), var(--dh-api-panel);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: 6px;
+  box-shadow: none;
+  color: var(--dh-api-ink);
+}
+
+.dhApiHomeBody .dhCard:hover,
+.dhApiHomeBody .dhTerminalPanel:hover,
+.dhApiModule:hover {
+  border-color: var(--dh-api-line);
+  box-shadow: none;
+  transform: none;
+}
+
+.dhApiModule {
+  box-sizing: border-box;
+  display: grid;
+  gap: 14px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 17px;
+  width: 100%;
+}
+
+.dhApiHomeBody > *,
+.dhApiHomeBody .dhApiLedgerGrid,
+.dhApiHomeBody .dhApiContextGrid {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.dhApiModuleHead,
+.dhApiHomeBody .dhTerminalPanelHead {
+  align-items: center;
+  border-bottom: 1px solid rgba(36, 49, 73, 0.58);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding-bottom: 9px;
+}
+
+.dhApiModuleHead h3,
+.dhApiHomeBody .dhTerminalPanelHead h3 {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.dhApiHomeBody .dhTerminalPanelHead h3::before {
+  display: none;
+}
+
+.dhApiModuleHead span,
+.dhApiHomeBody .dhTerminalPanelHead span {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhApiModuleHead .dhInlineStatus,
+.dhApiHomeBody .dhTerminalPanelHead .dhInlineStatus,
+.dhApiHomeBody .dhInlineStatus {
+  align-items: center;
+  color: var(--dh-api-muted);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 7px;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.dhApiHomeBody .dhInlineStatusDot,
+.dhInlineStatusDot {
+  background: var(--dh-api-muted);
+  border-radius: 999px;
+  flex: 0 0 auto;
+  height: 6px;
+  width: 6px;
+}
+
+.dhApiHomeBody .dhInlineStatus[data-kind="ready"],
+.dhInlineStatus[data-kind="ready"] {
+  color: var(--dh-api-green);
+}
+
+.dhApiHomeBody .dhInlineStatus[data-kind="ready"] .dhInlineStatusDot,
+.dhInlineStatus[data-kind="ready"] .dhInlineStatusDot {
+  background: var(--dh-api-green);
+}
+
+.dhApiHomeBody .dhInlineStatus[data-kind="partial"],
+.dhApiHomeBody .dhInlineStatus[data-kind="stale"],
+.dhInlineStatus[data-kind="partial"],
+.dhInlineStatus[data-kind="stale"] {
+  color: var(--dh-api-amber);
+}
+
+.dhApiHomeBody .dhInlineStatus[data-kind="partial"] .dhInlineStatusDot,
+.dhApiHomeBody .dhInlineStatus[data-kind="stale"] .dhInlineStatusDot,
+.dhInlineStatus[data-kind="partial"] .dhInlineStatusDot,
+.dhInlineStatus[data-kind="stale"] .dhInlineStatusDot {
+  background: var(--dh-api-amber);
+}
+
+.dhApiHomeBody .dhInlineStatus[data-kind="error"],
+.dhApiHomeBody .dhInlineStatus[data-kind="backend-gap"],
+.dhInlineStatus[data-kind="error"],
+.dhInlineStatus[data-kind="backend-gap"] {
+  color: var(--dh-api-red);
+}
+
+.dhApiHomeBody .dhInlineStatus[data-kind="error"] .dhInlineStatusDot,
+.dhApiHomeBody .dhInlineStatus[data-kind="backend-gap"] .dhInlineStatusDot,
+.dhInlineStatus[data-kind="error"] .dhInlineStatusDot,
+.dhInlineStatus[data-kind="backend-gap"] .dhInlineStatusDot {
+  background: var(--dh-api-red);
+}
+
+.dhApiHomeBody .dhInlineStatus[data-kind="empty"],
+.dhApiHomeBody .dhInlineStatus[data-kind="loading"],
+.dhInlineStatus[data-kind="empty"],
+.dhInlineStatus[data-kind="loading"] {
+  color: var(--dh-api-muted);
+}
+
+.dhApiDirectoryPanel {
+  padding-bottom: 13px;
+}
+
+.dhApiDirectoryTableWrap,
+.dhApiHomeBody .dhMetricTableWrap {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.dhApiDirectoryTable {
+  border-collapse: collapse;
+  min-width: 860px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.dhApiDirectoryTable th,
+.dhApiDirectoryTable td {
+  border-bottom: 1px solid rgba(36, 49, 73, 0.46);
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.dhApiDirectoryTable th {
+  color: var(--dh-api-muted);
+  font-weight: 760;
+}
+
+.dhApiDirectoryTable td {
+  color: #bfccd9;
+}
+
+.dhApiDirectoryTable tbody tr:hover td {
+  background: rgba(16, 27, 44, 0.36);
+}
+
+.dhApiDirectoryTable td:nth-child(2),
+.dhApiDirectoryTable td:nth-child(4) {
+  color: var(--dh-api-ink);
+  font-family: var(--dh-font-mono);
+}
+
+.dhApiStatusText {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1;
+  min-height: 18px;
+  opacity: 0.9;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.dhApiHomeBody .dhTerminalState.dhTerminalStateReady[data-status] {
+  background: transparent;
+  border-color: rgba(77, 168, 117, 0.34);
+  color: var(--dh-api-green);
+}
+
+.dhApiHomeBody .dhTerminalState.dhTerminalStateWarn[data-status] {
+  background: transparent;
+  border-color: rgba(196, 154, 86, 0.34);
+  color: var(--dh-api-amber);
+}
+
+.dhApiHomeBody .dhTerminalState.dhTerminalStateStale[data-status] {
+  background: transparent;
+  border-color: rgba(196, 154, 86, 0.34);
+  color: var(--dh-api-amber);
+}
+
+.dhApiHomeBody .dhTerminalState.dhTerminalStateMuted[data-status] {
+  background: transparent;
+  border-color: rgba(102, 115, 134, 0.52);
+  color: var(--dh-api-muted);
+}
+
+.dhSourceGateTableWrap {
+  align-items: center;
+  display: grid;
+  flex: 1 1 auto;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+.dhSourceGateTable {
+  border-collapse: collapse;
+  color: var(--dh-api-soft);
+  min-width: 780px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.dhSourceGateTable th,
+.dhSourceGateTable td {
+  border-bottom: 1px solid rgba(36, 49, 73, 0.46);
+  font-size: 12px;
+  line-height: 1.32;
+  padding: 10px 0;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.dhSourceGateTable th {
+  color: var(--dh-api-muted);
+  font-weight: 720;
+}
+
+.dhSourceGateTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dhSourceGateTable tbody tr:hover td {
+  background: rgba(16, 27, 44, 0.38);
+}
+
+.dhSourceGateTable th:first-child,
+.dhSourceGateTable td:first-child {
+  padding-left: 0;
+  width: 13%;
+}
+
+.dhSourceGateTable th:nth-child(2),
+.dhSourceGateTable td:nth-child(2) {
+  width: 31%;
+}
+
+.dhSourceGateTable th[data-align="center"],
+.dhSourceGateTable td[data-align="center"] {
+  text-align: center;
+}
+
+.dhSourceGateTable th[data-align="right"],
+.dhSourceGateTable td[data-align="right"] {
+  padding-right: 0;
+  text-align: right;
+}
+
+.dhSourceGatePrimary {
+  color: var(--dh-api-ink);
+  font-weight: 780;
+}
+
+.dhSourceGateBasis {
+  color: #c9d4e1;
+  font-family: var(--dh-font-mono);
+  font-weight: 660;
+}
+
+.dhSourceGateTrace {
+  align-items: center;
+  background: var(--dh-api-amber-soft);
+  border: 1px solid rgba(201, 165, 101, 0.28);
+  border-radius: 4px;
+  color: var(--dh-api-amber);
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.dhApiLedgerGrid {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.42fr) minmax(340px, 0.58fr);
+}
+
+.dhApiSideStack {
+  align-items: stretch;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-height: 0;
+}
+
+.dhApiLedgerGrid > [data-testid="dashboard-home-income-trend"] {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 1181px) {
+  .dhApiLedgerGrid {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 0.44fr);
+  }
+
+  .dhApiSideStack {
+    min-height: 0;
+  }
+
+  .dhApiRiskSummary {
+    min-height: 0;
+  }
+}
+
+.dhApiHomeBody .dhTerminalHoldings,
+.dhApiHomeBody .dhTerminalPanelWide,
+.dhApiHomeBody .dhGridFullRow {
+  grid-column: auto;
+}
+
+@media (min-width: 1181px) {
+  .dhApiHomeBody .dhApiLedgerGrid > [data-testid="dashboard-home-income-trend"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+.dhApiHomeBody .dhTerminalPanel,
+.dhApiRiskSummary,
+.dhApiMarketContext {
+  align-self: start;
+  min-height: 0;
+  padding: 17px;
+}
+
+.dhApiLedgerGrid .dhTerminalHoldings,
+.dhApiSideStack .dhApiRiskSummary,
+.dhApiSideStack .dhTerminalPanel {
+  align-self: start;
+  height: auto;
+}
+
+.dhApiSideStack .dhApiRiskSummary,
+.dhApiSideStack .dhTerminalPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.dhApiRiskPairGrid {
+  display: grid;
+  border: 1px solid rgba(36, 49, 73, 0.38);
+  border-radius: 4px;
+  gap: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  height: 100%;
+  overflow: hidden;
+}
+
+.dhApiRiskPairGrid span {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.014), rgba(255, 255, 255, 0)), var(--dh-api-panel-2);
+  border-bottom: 1px solid rgba(36, 49, 73, 0.38);
+  border-right: 1px solid rgba(36, 49, 73, 0.38);
+  display: grid;
+  gap: 6px;
+  min-height: 54px;
+  padding: 10px 12px;
+}
+
+.dhApiRiskPairGrid span:nth-child(2n + 1) {
+  border-right: 0;
+}
+
+.dhApiRiskPairGrid span:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.dhApiRiskPairGrid .dhApiRiskPairPrimary {
+  grid-column: 1 / -1;
+  min-height: 64px;
+}
+
+.dhApiRiskPairGrid small {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dhApiRiskPairGrid b {
+  color: #f3f7ff;
+  font-size: 13px;
+  font-weight: 720;
+  line-height: 1.15;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.dhApiRiskPairPrimary b {
+  font-size: 18px;
+}
+
+.dhApiRiskGapLedger {
+  align-content: stretch;
+  background: rgba(36, 49, 73, 0.44);
+  border: 1px solid rgba(103, 119, 142, 0.24);
+  border-radius: 4px;
+  display: grid;
+  gap: 1px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dhApiRiskGapPrimary,
+.dhApiRiskGapLedger dl > div {
+  background: var(--dh-api-panel-2);
+}
+
+.dhApiRiskGapPrimary {
+  align-content: center;
+  display: grid;
+  gap: 6px 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 82px;
+  padding: 12px;
+}
+
+.dhApiRiskGapPrimary .dhTerminalStateIcon {
+  grid-row: span 2;
+}
+
+.dhApiRiskGapPrimary b {
+  color: #f3f7ff;
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.25;
+}
+
+.dhApiRiskGapPrimary small {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 680;
+  line-height: 1.35;
+}
+
+.dhApiRiskGapLedger dl {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  min-height: 0;
+}
+
+.dhApiRiskGapLedger dl > div {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.dhApiRiskGapLedger dt,
+.dhApiRiskGapLedger dd {
+  min-width: 0;
+}
+
+.dhApiRiskGapLedger dt {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.dhApiRiskGapLedger dd {
+  color: var(--dh-api-ink);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 720;
+  margin: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhApiRiskGapLedger[data-state="partial"] .dhApiRiskGapPrimary b,
+.dhApiRiskGapLedger[data-state="stale"] .dhApiRiskGapPrimary b {
+  color: var(--dh-api-amber);
+}
+
+.dhApiRiskGapLedger[data-state="error"] .dhApiRiskGapPrimary b,
+.dhApiRiskGapLedger[data-state="backend-gap"] .dhApiRiskGapPrimary b {
+  color: var(--dh-api-red);
+}
+
+.dhApiHomeBody .dhTerminalHoldingRow,
+.dhApiHomeBody .dhTerminalChangeRow,
+.dhApiHomeBody .dhTerminalReportCompactRow,
+.dhApiHomeBody .dhTerminalReportFeatured,
+.dhApiHomeBody .dhTerminalReportItem {
+  background: var(--dh-api-panel-2);
+  border-color: rgba(36, 49, 73, 0.54);
+  border-radius: 4px;
+}
+
+.dhApiHomeBody .dhTerminalHoldingName,
+.dhApiHomeBody .dhTerminalChangeName,
+.dhApiHomeBody .dhTerminalReportFeaturedTitle,
+.dhApiHomeBody .dhTerminalReportCompactTitle,
+.dhApiHomeBody .dhTerminalReportItem b {
+  color: var(--dh-api-ink);
+}
+
+.dhApiHomeBody .dhTerminalHoldingMeta,
+.dhApiHomeBody .dhTerminalChangeMeta,
+.dhApiHomeBody .dhTerminalReportFeaturedSummary,
+.dhApiHomeBody .dhTerminalReportMetaText,
+.dhApiHomeBody .dhTerminalReportCompactInstitution {
+  color: var(--dh-api-muted);
+}
+
+.dhApiSideStack .dhTerminalChangeRow {
+  gap: 6px 8px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(78px, auto) minmax(64px, auto);
+  min-height: 0;
+  padding: 7px 9px;
+}
+
+.dhApiSideStack .dhTerminalChangeBar {
+  grid-column: 1 / -1;
+  height: 5px;
+}
+
+.dhApiSideStack .dhTerminalChangeValue {
+  min-width: 78px;
+}
+
+.dhApiSideStack .dhTerminalChangeCurrent {
+  min-width: 64px;
+}
+
+.dhApiSideStack .dhTerminalChangeList {
+  align-content: start;
+  display: grid;
+  gap: 6px;
+  height: auto;
+}
+
+.dhApiHomeBody .dhTerminalTable th {
+  background: rgba(19, 32, 51, 0.86);
+  border-bottom-color: rgba(103, 119, 142, 0.26);
+  color: var(--dh-api-muted);
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable th {
+  height: 31px;
+}
+
+.dhApiHomeBody .dhTerminalTable td {
+  border-bottom-color: rgba(103, 119, 142, 0.18);
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable td {
+  height: 37px;
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable tbody tr:nth-child(-n + 3) td:first-child {
+  box-shadow: inset 2px 0 0 rgba(114, 167, 220, 0.72);
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable tbody tr:nth-child(-n + 3) td:first-child b {
+  color: #f4f8ff;
+}
+
+.dhApiHomeBody .dhTerminalTable tbody tr:nth-child(even) td {
+  background: rgba(19, 32, 51, 0.24);
+}
+
+.dhApiHomeBody .dhTerminalTable tbody tr:hover td {
+  background: rgba(26, 42, 66, 0.62);
+}
+
+.dhApiHomeBody .dhTerminalChangeReason {
+  background: rgba(102, 185, 139, 0.1);
+  border: 1px solid rgba(102, 185, 139, 0.4);
+  border-radius: 3px;
+  color: var(--dh-api-green);
+  height: 19px;
+  padding: 0 8px;
+}
+
+.dhApiHomeBody .dhTerminalChangeReason[data-direction="increase"] {
+  background: rgba(212, 122, 114, 0.1);
+  border-color: rgba(212, 122, 114, 0.42);
+  color: var(--dh-api-red);
+}
+
+.dhApiHomeBody .dhTerminalChangeReason[data-direction="flat"] {
+  background: rgba(114, 167, 220, 0.1);
+  border-color: rgba(114, 167, 220, 0.42);
+  color: var(--dh-api-blue);
+}
+
+.dhApiHomeBody .dhTerminalChangeBar {
+  background: rgba(103, 119, 142, 0.22);
+}
+
+.dhApiHomeBody .dhTerminalChangeFill {
+  background: linear-gradient(90deg, rgba(212, 122, 114, 0.74), var(--dh-api-red));
+}
+
+.dhApiHomeBody .dhTerminalChangeFill[data-direction="decrease"] {
+  background: linear-gradient(90deg, rgba(102, 185, 139, 0.74), var(--dh-api-green));
+}
+
+.dhApiHomeBody .dhTerminalChangeCurrent {
+  color: var(--dh-api-muted);
+}
+
+.dhApiHomeBody .dhTerminalChangeCurrent small {
+  color: var(--dh-api-muted);
+}
+
+.dhApiHomeBody .dhTerminalIncomeSummary,
+.dhApiHomeBody .dhTerminalReportCompactList {
+  background: rgba(103, 119, 142, 0.2);
+}
+
+.dhApiHomeBody .dhTerminalIncomeTrend {
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1.78fr) minmax(270px, 0.72fr);
+  min-height: 188px;
+}
+
+.dhApiHomeBody .dhTerminalIncomeChart,
+.dhApiHomeBody .dhTerminalChartMount {
+  background:
+    linear-gradient(180deg, rgba(114, 167, 220, 0.035), rgba(114, 167, 220, 0)),
+    var(--dh-api-panel-2);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.dhApiHomeBody .dhTerminalIncomeChart {
+  height: 204px;
+}
+
+.dhApiHomeBody .dhTerminalChartPlaceholder {
+  background: var(--dh-api-panel-2);
+  border: 1px solid rgba(36, 49, 73, 0.5);
+  border-radius: 5px;
+}
+
+.dhApiHomeBody .dhTerminalChartMount :global(canvas),
+.dhApiHomeBody .dhTerminalChartMount :global(svg) {
+  background: transparent !important;
+}
+
+.dhApiHomeBody .dhTerminalIncomeSummary span,
+.dhApiHomeBody .dhTerminalIncomeRow {
+  background: var(--dh-api-panel-2);
+  border-bottom-color: rgba(36, 49, 73, 0.5);
+}
+
+.dhApiHomeBody .dhTerminalIncomeList {
+  align-content: stretch;
+  background: rgba(36, 49, 73, 0.5);
+  border: 1px solid rgba(36, 49, 73, 0.52);
+  border-radius: 5px;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.dhApiHomeBody .dhTerminalIncomeRow {
+  align-content: center;
+  border-bottom: 0;
+  grid-template-columns: 52px minmax(0, 1fr);
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.dhApiHomeBody .dhTerminalIncomeRow[data-current="true"] {
+  background:
+    linear-gradient(90deg, rgba(114, 167, 220, 0.1), rgba(114, 167, 220, 0)),
+    var(--dh-api-panel-2);
+  box-shadow: inset 2px 0 0 var(--dh-api-blue);
+}
+
+.dhApiHomeBody .dhTerminalIncomeRow[data-current="true"] time,
+.dhApiHomeBody .dhTerminalIncomeRow[data-current="true"] b,
+.dhApiHomeBody .dhTerminalIncomeRow[data-current="true"] small,
+.dhApiHomeBody .dhTerminalIncomeRow[data-current="true"] strong {
+  color: #f4f8ff;
+}
+
+.dhApiHomeBody .dhTerminalIncomeSummary b,
+.dhApiHomeBody .dhTerminalIncomeRow b {
+  color: #f3f7ff;
+}
+
+.dhApiHomeBody .dhTerminalIncomeRow[data-tone="negative"] small {
+  color: var(--dh-api-amber);
+}
+
+.dhApiHomeBody .dhTerminalIncomeLedgerMetrics {
+  gap: 6px;
+}
+
+.dhApiHomeBody .dhTerminalIncomeLedgerMetrics div {
+  background: rgba(8, 18, 32, 0.52);
+  border: 1px solid rgba(45, 66, 96, 0.42);
+  border-radius: 4px;
+  min-height: 24px;
+  padding: 4px 6px;
+}
+
+.dhApiHomeBody .dhTerminalIncomeLedgerMetrics small {
+  color: rgba(154, 176, 200, 0.78);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.dhApiHomeBody .dhTerminalIncomeLedgerMetrics strong {
+  color: #cbd8ea;
+}
+
+.dhApiHomeBody .dhTerminalIncomeLedgerMetrics [data-series="excess"] strong {
+  color: #d4a85f;
+}
+
+.dhApiHomeBody .dhTerminalIncomeRow[data-tone="negative"] .dhTerminalIncomeLedgerMetrics [data-series="excess"] strong {
+  color: #d66b62;
+}
+
+.dhApiHomeBody .dhTerminalIncomeLegend span::before {
+  background: #7aa7ff;
+}
+
+.dhApiHomeBody .dhTerminalIncomeLegend span[data-series="benchmark"]::before {
+  background: #9db2ca;
+}
+
+.dhApiHomeBody .dhTerminalIncomeLegend span[data-series="excess"]::before {
+  background: #d4a85f;
+}
+
+.dhApiHomeBody .dhTerminalStateSurface {
+  background: var(--dh-api-panel-2);
+  border-color: var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+}
+
+.dhApiHomeBody .dhTerminalStateIcon {
+  background: transparent;
+}
+
+.dhApiStructureBoard {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 18px;
+}
+
+.dhApiCoverageMap {
+  align-items: stretch;
+  background: #091321;
+  border: 1px solid rgba(46, 67, 98, 0.82);
+  border-radius: 8px;
+  display: grid;
+  gap: 1px;
+  grid-template-columns: 154px minmax(0, 1fr) 220px;
+  overflow: hidden;
+  padding: 1px;
+}
+
+.dhApiCoverageScore {
+  background:
+    linear-gradient(180deg, rgba(105, 184, 230, 0.08), rgba(105, 184, 230, 0)),
+    #0b1726;
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+  padding: 15px 16px;
+}
+
+.dhApiCoverageScore small,
+.dhApiCoverageScore span {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.dhApiCoverageScore b {
+  color: #f5f8ff;
+  font-size: 27px;
+  font-weight: 820;
+  line-height: 1;
+}
+
+.dhApiCoverageDomains {
+  align-content: center;
+  background: #0b1726;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  min-width: 0;
+  padding: 11px;
+}
+
+.dhApiCoverageDomains span {
+  background: rgba(8, 18, 32, 0.74);
+  border: 1px solid rgba(45, 66, 96, 0.68);
+  border-radius: 6px;
+  display: grid;
+  gap: 7px;
+  min-height: 70px;
+  min-width: 0;
+  padding: 11px 10px 10px;
+  position: relative;
+}
+
+.dhApiCoverageDomains span::before {
+  background: var(--dh-api-muted);
+  content: "";
+  height: 2px;
+  inset: 0;
+  position: absolute;
+}
+
+.dhApiCoverageDomains span[data-state="ready"]::before {
+  background: #57b77f;
+}
+
+.dhApiCoverageDomains span[data-state="partial"]::before {
+  background: #d4a85f;
+}
+
+.dhApiCoverageDomains span[data-state="blocked"]::before {
+  background: #d4a85f;
+}
+
+.dhApiCoverageDomains b {
+  color: #edf3fb;
+  font-size: 11px;
+  font-weight: 790;
+  line-height: 1.25;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhApiCoverageDomains small {
+  align-items: center;
+  border: 1px solid rgba(103, 119, 142, 0.3);
+  border-radius: 999px;
+  color: var(--dh-api-muted);
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  justify-self: start;
+  line-height: 1;
+  min-height: 20px;
+  padding: 0 8px;
+}
+
+.dhApiCoverageDomains span[data-state="ready"] small {
+  background: rgba(30, 76, 58, 0.36);
+  border-color: rgba(82, 193, 132, 0.34);
+  color: #57b77f;
+}
+
+.dhApiCoverageDomains span[data-state="partial"] small {
+  background: rgba(73, 51, 20, 0.42);
+  border-color: rgba(211, 164, 93, 0.34);
+  color: #d4a85f;
+}
+
+.dhApiCoverageDomains span[data-state="blocked"] small {
+  background: rgba(73, 51, 20, 0.42);
+  border-color: rgba(211, 164, 93, 0.34);
+  color: #d4a85f;
+}
+
+.dhApiCoverageStats {
+  background: #0b1726;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.dhApiCoverageStats div {
+  align-content: center;
+  border-right: 1px solid rgba(45, 66, 96, 0.62);
+  display: grid;
+  gap: 3px;
+  padding: 12px 13px;
+}
+
+.dhApiCoverageStats div:last-child {
+  border-right: 0;
+}
+
+.dhApiCoverageStats dt {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.dhApiCoverageStats dd {
+  color: #edf3fb;
+  font-size: 19px;
+  font-weight: 820;
+  margin: 0;
+}
+
+.dhApiStructureGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dhApiStructureCard {
+  --dh-structure-accent: #69b8e6;
+  background: #0b1726;
+  border: 1px solid #20324a;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.18);
+  display: grid;
+  gap: 12px;
+  min-height: 210px;
+  overflow: hidden;
+  padding: 18px 20px 14px;
+  position: relative;
+}
+
+.dhApiStructureCard::before {
+  background: var(--dh-structure-accent);
+  content: "";
+  height: 2px;
+  inset: 0 0 auto;
+  opacity: 0.95;
+  position: absolute;
+}
+
+.dhApiStructureCard[data-domain="rating"] {
+  --dh-structure-accent: #8ea7ff;
+}
+
+.dhApiStructureCard[data-domain="maturity"] {
+  --dh-structure-accent: #9ab0c8;
+}
+
+.dhApiStructureCard[data-domain="industry"] {
+  --dh-structure-accent: #69cbbb;
+}
+
+.dhApiStructureCard[data-domain="ytm"] {
+  --dh-structure-accent: #d3a45d;
+}
+
+.dhApiStructureCard[data-domain="portfolio"] {
+  --dh-structure-accent: #78b7e4;
+}
+
+.dhApiStructureCard[data-state="partial"] {
+  border-color: rgba(211, 164, 93, 0.58);
+}
+
+.dhApiStructureHead {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.dhApiStructureHead h4 {
+  color: #eef5ff;
+  font-size: 16px;
+  font-weight: 820;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.dhApiStructureCard .dhInlineStatus {
+  background: rgba(11, 34, 28, 0.9);
+  border: 1px solid rgba(29, 76, 59, 0.92);
+  border-radius: 999px;
+  color: #52c184;
+  font-size: 11px;
+  min-height: 24px;
+  padding: 0 10px;
+}
+
+.dhApiStructureCard .dhInlineStatusDot {
+  background: currentColor;
+  height: 5px;
+  width: 5px;
+}
+
+.dhApiStructureCard .dhInlineStatus[data-kind="partial"],
+.dhApiStructureCard .dhInlineStatus[data-kind="stale"],
+.dhApiStructureCard .dhInlineStatus[data-kind="backend-gap"] {
+  background: rgba(50, 35, 17, 0.78);
+  border-color: rgba(211, 164, 93, 0.62);
+  color: #d3a45d;
+}
+
+.dhApiStructureCard .dhInlineStatus[data-kind="error"] {
+  background: rgba(55, 23, 27, 0.72);
+  border-color: rgba(214, 107, 98, 0.58);
+  color: #d66b62;
+}
+
+.dhApiStructureCard .dhInlineStatus[data-kind="empty"],
+.dhApiStructureCard .dhInlineStatus[data-kind="loading"] {
+  background: rgba(37, 54, 80, 0.34);
+  border-color: rgba(103, 119, 142, 0.34);
+  color: var(--dh-api-muted);
+}
+
+.dhApiStructureSource {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  margin: -4px 0 2px;
+}
+
+.dhApiStructureRows {
+  display: grid;
+  gap: 10px;
+}
+
+.dhApiStructureRow {
+  display: grid;
+  gap: 7px 12px;
+  grid-template-columns: minmax(0, 1fr) 110px;
+}
+
+.dhApiStructureRow span {
+  color: #a9b8cb;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhApiStructureRow b {
+  color: #eef5ff;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.dhApiStructureRow i {
+  background: rgba(37, 54, 80, 0.92);
+  border-radius: 999px;
+  grid-column: 1 / -1;
+  height: 4px;
+  position: relative;
+}
+
+.dhApiStructureRow i::after {
+  background: var(--dh-structure-accent);
+  border-radius: inherit;
+  content: "";
+  height: 4px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: var(--dh-api-bar-width);
+}
+
+.dhApiStructureRow:nth-child(n + 2) i::after {
+  opacity: 0.78;
+}
+
+.dhApiStructureFooter {
+  align-items: end;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: auto;
+  min-width: 0;
+}
+
+.dhApiStructureFooter small {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  min-width: 0;
+}
+
+.dhApiStructureFooter small:last-child {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.dhApiCoverageGapBand {
+  align-items: start;
+  background: #091321;
+  border: 1px solid rgba(46, 67, 98, 0.78);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 168px minmax(0, 1fr);
+  padding: 16px;
+}
+
+.dhApiCoverageGapBand > span {
+  align-content: start;
+  background:
+    linear-gradient(180deg, rgba(211, 164, 93, 0.055), rgba(211, 164, 93, 0)),
+    rgba(12, 25, 42, 0.72);
+  border: 1px solid rgba(55, 73, 104, 0.48);
+  border-radius: 6px;
+  display: grid;
+  gap: 7px;
+  min-height: 0;
+  padding: 13px 14px;
+}
+
+.dhApiCoverageGapBand > span b {
+  color: #e8eef7;
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.dhApiCoverageGapBand > span small {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.dhApiCoverageGapBand > div {
+  background: transparent;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dhApiCoverageGapBand em {
+  background: rgba(12, 25, 42, 0.74);
+  border: 1px solid rgba(45, 66, 96, 0.58);
+  border-left: 2px solid #d4a85f;
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  font-style: normal;
+  gap: 5px 12px;
+  min-height: 52px;
+  padding: 10px 11px 9px;
+}
+
+.dhApiCoverageGapBand strong {
+  color: #edf3fb;
+  font-size: 11px;
+  font-weight: 780;
+  line-height: 1.25;
+}
+
+.dhApiCoverageGapBand code {
+  align-items: center;
+  background: rgba(73, 51, 20, 0.44);
+  border: 1px solid rgba(211, 164, 93, 0.32);
+  border-radius: 999px;
+  color: #d4a85f;
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1;
+  min-height: 19px;
+  padding: 0 8px;
+}
+
+.dhApiCoverageGapBand em[data-state="503"] {
+  border-left-color: #d66b62;
+}
+
+.dhApiCoverageGapBand em[data-state="503"] code {
+  background: rgba(55, 23, 27, 0.56);
+  border-color: rgba(214, 107, 98, 0.36);
+  color: #d66b62;
+}
+
+.dhApiCoverageGapBand small {
+  color: var(--dh-api-muted);
+  grid-column: 1 / -1;
+  font-size: 11px;
+  line-height: 1.35;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhApiContextGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.dhApiContextGrid .dhTerminalReportsPanel {
+  grid-column: auto;
+}
+
+.dhApiHomeBody .dhTerminalReportsPanel {
+  min-height: 0;
+}
+
+.dhApiHomeBody .dhTerminalReportStack {
+  gap: 10px;
+}
+
+.dhApiHomeBody .dhTerminalReportFeatured {
+  background: linear-gradient(180deg, rgba(201, 165, 101, 0.045), rgba(201, 165, 101, 0)), var(--dh-api-panel-2);
+  border: 1px solid rgba(36, 49, 73, 0.62);
+  border-left: 2px solid var(--dh-api-amber);
+  border-radius: 5px;
+  grid-template-columns: 118px minmax(0, 1fr);
+  min-height: 88px;
+  padding: 12px 13px;
+}
+
+.dhApiHomeBody .dhTerminalReportFeatured:hover,
+.dhApiHomeBody .dhTerminalReportCompactRow:hover {
+  background: rgba(16, 27, 44, 0.72);
+  border-color: rgba(87, 166, 216, 0.34);
+}
+
+.dhApiHomeBody .dhTerminalReportFeaturedDate {
+  align-content: center;
+  background: rgba(87, 166, 216, 0.09);
+  border: 1px solid rgba(87, 166, 216, 0.2);
+  border-radius: 4px;
+  color: var(--dh-api-blue);
+  min-height: 42px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.dhApiHomeBody .dhTerminalReportFeaturedDate b {
+  font-size: 12px;
+}
+
+.dhApiHomeBody .dhTerminalReportFeaturedDate small {
+  color: var(--dh-api-muted);
+}
+
+.dhApiHomeBody .dhTerminalReportFeaturedTitle {
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.dhApiHomeBody .dhTerminalReportCompactList {
+  background: rgba(36, 49, 73, 0.58);
+  border: 1px solid rgba(36, 49, 73, 0.52);
+  border-radius: 5px;
+}
+
+.dhApiHomeBody .dhTerminalReportCompactRow {
+  border: 0;
+  grid-template-columns: 76px minmax(0, 1fr) minmax(110px, 0.32fr) auto auto;
+  min-height: 34px;
+  padding: 8px 10px;
+}
+
+.dhApiHomeBody .dhTerminalReportCompactDate {
+  color: var(--dh-api-blue);
+  font-family: var(--dh-font-mono);
+}
+
+.dhApiHomeBody .dhTerminalReportTypeTag,
+.dhApiHomeBody .dhTerminalReportPdfTag {
+  background: transparent;
+  border: 1px solid rgba(87, 166, 216, 0.28);
+  border-radius: 4px;
+  color: var(--dh-api-blue);
+  min-width: 54px;
+}
+
+.dhApiHomeBody .dhTerminalReportPdfTag {
+  border-color: rgba(77, 168, 117, 0.32);
+  color: var(--dh-api-green);
+}
+
+.dhApiHomeBody .dhTerminalReportFallback {
+  border-left-color: var(--dh-api-amber);
+  border-style: solid;
+}
+
+.dhApiMarketContext p {
+  color: #bfccd9;
+  font-size: 12px;
+  line-height: 1.62;
+  margin: 0;
+}
+
+.dhApiMarketContext p:first-of-type {
+  border-left: 2px solid var(--dh-api-blue);
+  color: #eef4ff;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.4;
+  padding-left: 10px;
+}
+
+.dhApiMarketContext p:nth-of-type(2) {
+  background: linear-gradient(180deg, rgba(114, 167, 220, 0.035), rgba(114, 167, 220, 0)), var(--dh-api-panel-2);
+  border: 1px solid rgba(36, 49, 73, 0.56);
+  border-radius: 5px;
+  min-height: 58px;
+  padding: 12px;
+}
+
+.dhApiMarketContext .dhPanelDrillLink {
+  align-items: center;
+  border: 1px solid rgba(87, 166, 216, 0.24);
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  min-height: 32px;
+}
+
+.dhApiMarketRows {
+  border: 1px solid rgba(36, 49, 73, 0.52);
+  border-radius: 5px;
+  display: grid;
+  margin-top: 2px;
+  overflow: hidden;
+}
+
+.dhApiMarketRows div {
+  align-items: center;
+  background: var(--dh-api-panel-2);
+  border-bottom: 1px solid rgba(36, 49, 73, 0.46);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.dhApiMarketRows div:last-child {
+  border-bottom: 0;
+}
+
+.dhApiMarketRows span,
+.dhApiMarketRows code {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhApiMarketRows b,
+.dhApiMarketRows code {
+  font-family: var(--dh-font-mono);
+}
+
+.dhApiMarketRows b {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+}
+
+.dhApiEvidenceRail {
+  padding-bottom: 18px;
+}
+
+.dhApiEvidenceRows {
+  border: 1px solid rgba(36, 49, 73, 0.58);
+  border-radius: 5px;
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.dhApiEvidenceRow {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.014), rgba(255, 255, 255, 0)), var(--dh-api-panel-2);
+  border: 0;
+  border-left: 2px solid transparent;
+  border-right: 1px solid rgba(36, 49, 73, 0.58);
+  display: grid;
+  gap: 8px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 128px;
+  padding: 13px 14px;
+}
+
+.dhApiEvidenceRow:last-child {
+  border-right: 0;
+}
+
+.dhApiEvidenceRow[data-tone="ready"] {
+  border-left-color: var(--dh-api-green);
+}
+
+.dhApiEvidenceRow[data-tone="partial"],
+.dhApiEvidenceRow[data-tone="empty"] {
+  border-left-color: var(--dh-api-amber);
+}
+
+.dhApiEvidenceRow[data-tone="error"],
+.dhApiEvidenceRow[data-tone="backend-gap"] {
+  border-left-color: var(--dh-api-red);
+}
+
+.dhApiEvidenceRow span {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  gap: 6px;
+  justify-self: start;
+  line-height: 1;
+  min-height: 20px;
+  padding: 0 8px;
+}
+
+.dhApiEvidenceRow span::before {
+  background: currentColor;
+  border-radius: 999px;
+  content: "";
+  height: 5px;
+  width: 5px;
+}
+
+.dhApiEvidenceRow b {
+  color: #eef4ff;
+  font-size: 13px;
+  font-weight: 780;
+  line-height: 1.3;
+}
+
+.dhApiEvidenceRow code {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.dhApiEvidenceRow strong {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  justify-self: start;
+  line-height: 1;
+  min-height: 20px;
+  padding: 0 8px;
+  width: max-content;
+}
+
+.dhApiMobileFold {
+  background: transparent;
+  border: 0;
+  display: block;
+}
+
+.dhApiMobileFoldSummary {
+  display: none;
+}
+
+.dhApiMobileFoldBody {
+  display: grid;
+  gap: 18px;
+}
+
+.dhApiStateBad {
+  color: var(--dh-api-red);
+}
+
+.dhCompatibilityProbe {
+  border: 0 !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  height: 1px !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  position: absolute !important;
+  white-space: nowrap !important;
+  width: 1px !important;
+}
+
+@media (max-width: 1180px) {
+  .dhApiLedgerGrid,
+  .dhApiContextGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .dhApiCoverageMap {
+    grid-template-columns: 146px minmax(0, 1fr);
+  }
+
+  .dhApiCoverageStats {
+    border-left: 0;
+    border-top: 1px solid rgba(55, 73, 104, 0.58);
+    grid-column: 1 / -1;
+  }
+
+  .dhApiStructureGrid,
+  .dhApiEvidenceRows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroBriefingGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .dhApiHomeBody {
+    gap: 12px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroBriefingCard {
+    gap: 12px;
+    padding: 13px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroDecisionStrip {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroDecisionStats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroDecisionStats span {
+    padding: 7px 6px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseMetaRow {
+    align-items: start;
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseHistoryRow {
+    grid-template-columns: 1fr;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhMacroReleaseInsight {
+    max-height: none;
+    overflow: visible;
+  }
+
+  :global([data-testid="dashboard-home-page"]) .dhPolicyFundingPane {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .dhApiMobileFold {
+    background: var(--dh-api-panel);
+    border: 1px solid var(--dh-api-line);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+
+  .dhApiMobileFoldSummary {
+    align-items: center;
+    color: var(--dh-api-ink);
+    cursor: pointer;
+    display: flex;
+    font-size: 12px;
+    font-weight: 780;
+    justify-content: space-between;
+    letter-spacing: 0;
+    line-height: 1.25;
+    min-height: 48px;
+    padding: 0 13px;
+    user-select: none;
+  }
+
+  .dhApiMobileFoldSummary::-webkit-details-marker {
+    display: none;
+  }
+
+  .dhApiMobileFoldSummary::after {
+    color: var(--dh-api-muted);
+    content: "+";
+    font-family: var(--dh-font-mono);
+    font-size: 15px;
+    font-weight: 760;
+    margin-left: 10px;
+  }
+
+  .dhApiMobileFold[open] .dhApiMobileFoldSummary::after {
+    content: "-";
+  }
+
+  .dhApiMobileFoldSummary b {
+    color: var(--dh-api-muted);
+    font-family: var(--dh-font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: auto;
+    text-align: right;
+  }
+
+  .dhApiMobileFoldBody {
+    border-top: 1px solid rgba(36, 49, 73, 0.58);
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .dhApiModule,
+  .dhApiHomeBody .dhTerminalPanel,
+  .dhApiRiskSummary,
+  .dhApiMarketContext {
+    padding: 13px;
+  }
+
+  .dhApiSideStack,
+  .dhApiStructureGrid,
+  .dhApiContextGrid,
+  .dhApiEvidenceRows {
+    grid-template-columns: 1fr;
+  }
+
+  .dhApiCoverageMap,
+  .dhApiCoverageGapBand {
+    grid-template-columns: 1fr;
+  }
+
+  .dhApiCoverageScore,
+  .dhApiCoverageStats {
+    border-right: 0;
+  }
+
+  .dhApiCoverageDomains {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhApiCoverageGapBand > div {
+    grid-template-columns: 1fr;
+  }
+
+  .dhApiCoverageGapBand em,
+  .dhApiCoverageGapBand em:nth-child(3n),
+  .dhApiCoverageGapBand em:nth-last-child(-n + 3) {
+    border-bottom: 1px solid rgba(55, 73, 104, 0.34);
+    border-right: 0;
+  }
+
+  .dhApiCoverageGapBand em:last-child {
+    border-bottom: 0;
+  }
+
+  .dhApiLedgerGrid {
+    gap: 12px;
+    grid-template-columns: 1fr;
+  }
+
+  .dhApiRiskPairGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhApiHomeBody .dhTerminalIncomeTrend {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .dhApiHomeBody .dhTerminalIncomeChart {
+    height: 160px;
+  }
+
+  .dhApiHomeBody .dhTerminalIncomeList {
+    min-height: 0;
+  }
+
+  .dhApiMarketRows div {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .dhApiMarketRows code {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Dashboard home lower-half closure: formal empty states and unified ledgers. */
+.dhApiHomeBody .dhTerminalStateSurface {
+  align-content: center;
+  background:
+    linear-gradient(135deg, rgba(114, 167, 220, 0.055), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0)),
+    var(--dh-api-panel-2);
+  border-color: rgba(55, 73, 104, 0.72);
+  border-left: 2px solid rgba(126, 157, 194, 0.42);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(232, 238, 247, 0.055);
+  gap: 5px 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-items: start;
+  min-height: 132px;
+  padding: 16px;
+  place-items: initial;
+  position: relative;
+  text-align: left;
+}
+
+.dhApiHomeBody .dhTerminalStateSurface::after {
+  align-items: center;
+  background: rgba(7, 12, 20, 0.26);
+  border: 1px solid rgba(126, 157, 194, 0.14);
+  border-radius: 999px;
+  color: var(--dh-api-muted);
+  content: "source check pending";
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  grid-column: 1 / -1;
+  line-height: 1;
+  margin-top: 7px;
+  min-height: 22px;
+  padding: 0 9px;
+  text-transform: uppercase;
+}
+
+.dhApiHomeBody .dhTerminalStateSurface[data-state="empty"]::after {
+  content: "source not landed";
+}
+
+.dhApiHomeBody .dhTerminalStateSurface[data-state="backend-gap"]::after,
+.dhApiHomeBody .dhTerminalStateSurface[data-state="error"]::after {
+  content: "reserved gap / no frontend inference";
+}
+
+.dhApiHomeBody .dhTerminalStateSurface[data-state="partial"]::after,
+.dhApiHomeBody .dhTerminalStateSurface[data-state="stale"]::after {
+  content: "decision needs review";
+}
+
+.dhApiHomeBody .dhTerminalStateSurface[data-state="loading"]::after {
+  content: "reading governed source";
+}
+
+.dhApiHomeBody .dhTerminalStateSurface[data-state="empty"] {
+  border-left-color: rgba(201, 165, 101, 0.56);
+}
+
+.dhApiHomeBody .dhTerminalStateSurface[data-state="partial"],
+.dhApiHomeBody .dhTerminalStateSurface[data-state="stale"] {
+  border-left-color: rgba(201, 165, 101, 0.72);
+}
+
+.dhApiHomeBody .dhTerminalStateSurface[data-state="backend-gap"],
+.dhApiHomeBody .dhTerminalStateSurface[data-state="error"] {
+  border-left-color: rgba(212, 122, 114, 0.72);
+}
+
+.dhApiHomeBody .dhTerminalStateSurfaceCompact {
+  min-height: 56px;
+  padding: 10px 12px;
+}
+
+.dhApiHomeBody .dhTerminalStateSurfaceCompact::after {
+  display: none;
+}
+
+.dhApiHomeBody .dhTerminalStateIcon {
+  align-self: start;
+  background: rgba(7, 12, 20, 0.28);
+  border: 1px solid rgba(126, 157, 194, 0.16);
+  border-radius: 5px;
+  color: currentColor;
+  height: 26px;
+  width: 26px;
+}
+
+.dhApiHomeBody .dhTerminalStateSurface b {
+  color: #edf3fb;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.dhApiHomeBody .dhTerminalStateSurface small {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 680;
+  line-height: 1.42;
+}
+
+.dhApiHomeBody .dhTerminalStateSurfaceCompact b,
+.dhApiHomeBody .dhTerminalStateSurfaceCompact small {
+  white-space: nowrap;
+}
+
+.dhApiHomeBody .dhTerminalEmpty,
+.dhApiHomeBody .dhEmpty,
+.dhApiHomeBody .dhBondNewsEmpty {
+  background:
+    linear-gradient(135deg, rgba(201, 165, 101, 0.052), transparent 40%),
+    var(--dh-api-panel-2);
+  border: 1px solid rgba(55, 73, 104, 0.62);
+  border-left: 2px solid rgba(201, 165, 101, 0.62);
+  border-radius: 6px;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.dhApiHomeBody .dhApiModule,
+.dhApiHomeBody .dhTerminalPanel,
+.dhApiRiskSummary,
+.dhApiMarketContext {
+  background:
+    linear-gradient(180deg, rgba(232, 238, 247, 0.024), rgba(232, 238, 247, 0.004)),
+    var(--dh-api-panel);
+  border-color: rgba(55, 73, 104, 0.72);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(232, 238, 247, 0.055);
+}
+
+.dhApiModuleHead,
+.dhApiHomeBody .dhTerminalPanelHead {
+  border-bottom-color: rgba(126, 157, 194, 0.2);
+  min-height: 30px;
+}
+
+.dhApiModuleHead h3,
+.dhApiHomeBody .dhTerminalPanelHead h3 {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+
+.dhApiModuleHead h3::before,
+.dhApiHomeBody .dhTerminalPanelHead h3::before {
+  background: linear-gradient(180deg, rgba(201, 165, 101, 0.95), rgba(114, 167, 220, 0.34));
+  border-radius: 999px;
+  content: "";
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 12px;
+  width: 3px;
+}
+
+.dhApiModuleHead span,
+.dhApiHomeBody .dhTerminalPanelHead span {
+  color: rgba(169, 182, 199, 0.82);
+}
+
+.dhSourceGateTableWrap,
+.dhApiDirectoryTableWrap,
+.dhApiHomeBody .dhMetricTableWrap {
+  background: rgba(7, 12, 20, 0.18);
+  border: 1px solid rgba(55, 73, 104, 0.48);
+  border-radius: 6px;
+}
+
+.dhSourceGateTable,
+.dhApiDirectoryTable {
+  min-width: min(860px, 100%);
+}
+
+.dhApiDirectoryTableWrap {
+  overflow-x: hidden;
+}
+
+.dhApiDirectoryTable {
+  max-width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.dhApiDirectoryTable th:first-child,
+.dhApiDirectoryTable td:first-child {
+  width: 44px;
+}
+
+.dhApiDirectoryTable th:nth-child(2),
+.dhApiDirectoryTable td:nth-child(2) {
+  width: 28%;
+}
+
+.dhApiDirectoryTable th:nth-child(3),
+.dhApiDirectoryTable td:nth-child(3) {
+  width: 28%;
+}
+
+.dhApiDirectoryTable th:nth-child(4),
+.dhApiDirectoryTable td:nth-child(4) {
+  width: 102px;
+}
+
+.dhSourceGateTable th,
+.dhSourceGateTable td,
+.dhApiDirectoryTable th,
+.dhApiDirectoryTable td {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.dhApiDirectoryTable th,
+.dhApiDirectoryTable td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dhSourceGateTable tbody tr:hover td,
+.dhApiDirectoryTable tbody tr:hover td {
+  background: rgba(114, 167, 220, 0.065);
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable {
+  background: rgba(7, 12, 20, 0.18);
+  border: 1px solid rgba(55, 73, 104, 0.48);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.dhApiHomeBody .dhTerminalTable th:first-child,
+.dhApiHomeBody .dhTerminalTable td:first-child {
+  padding-left: 10px;
+}
+
+.dhApiHomeBody .dhTerminalTable th:last-child,
+.dhApiHomeBody .dhTerminalTable td:last-child {
+  padding-right: 10px;
+}
+
+.dhApiCoverageMap,
+.dhApiCoverageGapBand,
+.dhApiEvidenceRows,
+.dhApiMarketRows {
+  border-color: rgba(55, 73, 104, 0.72);
+  box-shadow: inset 0 1px 0 rgba(232, 238, 247, 0.045);
+}
+
+.dhApiCoverageGapBand {
+  background:
+    linear-gradient(135deg, rgba(201, 165, 101, 0.045), transparent 42%),
+    #091321;
+}
+
+.dhApiCoverageGapBand em,
+.dhApiEvidenceRow,
+.dhApiMarketRows div {
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.dhApiCoverageGapBand em:hover,
+.dhApiEvidenceRow:hover,
+.dhApiMarketRows div:hover {
+  background: rgba(16, 27, 44, 0.82);
+  border-color: rgba(114, 167, 220, 0.26);
+}
+
+.dhApiEvidenceRow[data-tone="empty"] {
+  background:
+    linear-gradient(180deg, rgba(201, 165, 101, 0.035), rgba(201, 165, 101, 0)),
+    var(--dh-api-panel-2);
+}
+
+.dhApiMobileFold {
+  border-color: rgba(55, 73, 104, 0.72);
+}
+
+.dhApiMobileFoldSummary {
+  background:
+    linear-gradient(90deg, rgba(201, 165, 101, 0.09), transparent 48%),
+    rgba(7, 12, 20, 0.18);
+}
+
+.dhApiMobileFoldSummary b {
+  background: rgba(7, 12, 20, 0.22);
+  border: 1px solid rgba(126, 157, 194, 0.14);
+  border-radius: 999px;
+  color: var(--dh-api-muted);
+  min-height: 20px;
+  padding: 0 8px;
+}
+
+.dhTerminalBottom {
+  gap: 10px;
+}
+
+.dhTerminalQuick {
+  background:
+    linear-gradient(180deg, rgba(232, 238, 247, 0.022), rgba(232, 238, 247, 0.004)),
+    var(--dh-api-panel);
+  border-color: rgba(55, 73, 104, 0.66);
+  border-radius: 6px;
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+.dhTerminalQuick span {
+  background: rgba(7, 12, 20, 0.28);
+  border-color: rgba(126, 157, 194, 0.16);
+}
+
+.dhTerminalQuick em {
+  background: rgba(7, 12, 20, 0.22);
+  border-color: rgba(126, 157, 194, 0.16);
+  color: var(--dh-api-muted);
+}
+
+@media (max-width: 720px) {
+  .dhApiHomeBody .dhTerminalStateSurface {
+    min-height: 104px;
+    padding: 13px;
+  }
+
+  .dhApiHomeBody .dhTerminalStateSurfaceCompact {
+    min-height: 54px;
+  }
+
+  .dhApiModuleHead,
+  .dhApiHomeBody .dhTerminalPanelHead {
+    align-items: start;
+    display: grid;
+    gap: 6px;
+  }
+
+  .dhApiModuleHead span,
+  .dhApiHomeBody .dhTerminalPanelHead span {
+    white-space: normal;
+  }
+
+  .dhSourceGateTable {
+    min-width: 0;
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .dhSourceGateTable th,
+  .dhSourceGateTable td {
+    overflow-wrap: anywhere;
+    padding-left: 6px;
+    padding-right: 6px;
+    word-break: break-word;
+  }
+
+  .dhSourceGateTable th:first-child,
+  .dhSourceGateTable td:first-child {
+    width: 24%;
+  }
+
+  .dhSourceGateTable th:nth-child(3),
+  .dhSourceGateTable td:nth-child(3),
+  .dhSourceGateTable th:nth-child(4),
+  .dhSourceGateTable td:nth-child(4) {
+    width: 68px;
+  }
+
+  .dhApiDirectoryTable {
+    min-width: 0;
+  }
+
+  .dhApiDirectoryTable th,
+  .dhApiDirectoryTable td {
+    font-size: 12px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .dhApiDirectoryTable th:first-child,
+  .dhApiDirectoryTable td:first-child {
+    width: 30px;
+  }
+
+  .dhApiDirectoryTable th:nth-child(4),
+  .dhApiDirectoryTable td:nth-child(4) {
+    width: 74px;
+  }
+
+  .dhTerminalBottom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Dashboard home page density normalization: align lower modules to the first-screen cockpit. */
+.dhApiHomeBody {
+  gap: 14px;
+}
+
+.dhApiHomeBody,
+.dhBondNewsSection,
+.dhTerminalBottom {
+  --dh-api-panel: #0c1421;
+  --dh-api-panel-2: #101a2a;
+  --dh-api-panel-3: #132033;
+  --dh-api-line: rgba(103, 119, 142, 0.34);
+  --dh-api-line-soft: rgba(103, 119, 142, 0.22);
+  --dh-api-ink: #e8eef7;
+  --dh-api-soft: #a9b6c7;
+  --dh-api-muted: #8593a8;
+  --dh-api-blue: #72a7dc;
+  --dh-api-green: #66b98b;
+  --dh-api-amber: #c9a565;
+  --dh-api-red: #d47a72;
+  --dh-density-panel-bg:
+    linear-gradient(145deg, rgba(232, 238, 247, 0.054), rgba(232, 238, 247, 0.01) 44%, rgba(7, 12, 20, 0.2)),
+    linear-gradient(180deg, rgba(114, 167, 220, 0.032), rgba(255, 255, 255, 0)),
+    rgba(10, 17, 29, 0.82);
+  --dh-density-inner-bg: rgba(7, 12, 20, 0.24);
+  --dh-density-border: rgba(126, 157, 194, 0.28);
+  --dh-density-border-soft: rgba(55, 73, 104, 0.5);
+  --dh-density-divider: rgba(126, 157, 194, 0.18);
+}
+
+.dhApiHomeBody .dhApiModule,
+.dhApiHomeBody .dhTerminalPanel,
+.dhBondNewsCard,
+.dhTerminalQuick {
+  background: var(--dh-density-panel-bg);
+  border: 1px solid var(--dh-density-border);
+  border-radius: 6px;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(232, 238, 247, 0.07);
+  color: var(--dh-api-ink);
+}
+
+.dhApiHomeBody .dhApiModule,
+.dhApiHomeBody .dhTerminalPanel,
+.dhBondNewsCard {
+  gap: 12px;
+  padding: 14px;
+}
+
+.dhApiModuleHead,
+.dhApiHomeBody .dhTerminalPanelHead,
+.dhBondNewsHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--dh-density-divider);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin: 0;
+  min-height: 29px;
+  padding-bottom: 8px;
+}
+
+.dhApiModuleHead h3,
+.dhApiHomeBody .dhTerminalPanelHead h3,
+.dhBondNewsHeader span,
+.dhBondNewsGroupHeader span,
+.dhApiStructureHead h4 {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.dhApiModuleHead h3::before,
+.dhApiHomeBody .dhTerminalPanelHead h3::before,
+.dhBondNewsHeader span::before {
+  background: linear-gradient(180deg, rgba(201, 165, 101, 0.95), rgba(114, 167, 220, 0.34));
+  border-radius: 999px;
+  content: "";
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 12px;
+  margin-right: 7px;
+  vertical-align: -1px;
+  width: 3px;
+}
+
+.dhApiModuleHead span,
+.dhApiHomeBody .dhTerminalPanelHead span,
+.dhBondNewsHeader small,
+.dhApiStructureSource,
+.dhApiStructureFooter small,
+.dhApiCoverageGapBand > span small,
+.dhApiCoverageGapBand small {
+  color: rgba(169, 182, 199, 0.82);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.dhApiHomeBody .dhInlineStatus,
+.dhApiStatusText,
+.dhSourceGateTrace,
+.dhBondNewsTopic,
+.dhBondNewsGroupHeader small,
+.dhTerminalReportTypeTag,
+.dhTerminalReportPdfTag,
+.dhApiCoverageDomains small,
+.dhApiCoverageGapBand code,
+.dhApiEvidenceRow span,
+.dhApiEvidenceRow strong,
+.dhApiMobileFoldSummary b,
+.dhTerminalQuick em,
+.dhApiStructureCard .dhInlineStatus {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 760;
+  gap: 6px;
+  justify-content: center;
+  letter-spacing: 0;
+  line-height: 1;
+  min-height: 20px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.dhApiHomeBody .dhInlineStatus,
+.dhApiStatusText,
+.dhBondNewsGroupHeader small,
+.dhTerminalQuick em,
+.dhApiMobileFoldSummary b {
+  background: rgba(7, 12, 20, 0.24);
+  border: 1px solid rgba(126, 157, 194, 0.16);
+  color: var(--dh-api-muted);
+}
+
+.dhSourceGateTableWrap,
+.dhApiDirectoryTableWrap,
+.dhApiHomeBody .dhMetricTableWrap,
+.dhApiMarketRows,
+.dhApiEvidenceRows,
+.dhApiCoverageMap,
+.dhApiCoverageGapBand,
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable,
+.dhBondNewsGroup,
+.dhBondNewsItem,
+.dhApiStructureCard {
+  background: var(--dh-density-inner-bg);
+  border-color: var(--dh-density-border-soft);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(232, 238, 247, 0.04);
+}
+
+.dhApiLedgerGrid,
+.dhApiSideStack,
+.dhApiContextGrid,
+.dhApiStructureGrid,
+.dhBondNewsGrid,
+.dhApiMobileFoldBody {
+  gap: 12px;
+}
+
+.dhApiDirectoryTable th,
+.dhApiDirectoryTable td,
+.dhSourceGateTable th,
+.dhSourceGateTable td,
+.dhApiHomeBody .dhTerminalTable th,
+.dhApiHomeBody .dhTerminalTable td {
+  font-size: 12px;
+  line-height: 1.32;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable th {
+  height: 28px;
+}
+
+.dhApiHomeBody .dhTerminalHoldings .dhTerminalTable td {
+  height: 34px;
+}
+
+.dhApiRiskPairGrid span,
+.dhApiRiskGapLedger dl > div,
+.dhApiMarketRows div,
+.dhApiCoverageStats div,
+.dhApiHomeBody .dhTerminalIncomeRow,
+.dhApiHomeBody .dhTerminalIncomeLedgerMetrics div {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.dhApiRiskPairGrid,
+.dhApiRiskGapLedger,
+.dhApiHomeBody .dhTerminalIncomeList,
+.dhApiHomeBody .dhTerminalReportCompactList {
+  border-color: var(--dh-density-border-soft);
+  border-radius: 6px;
+  gap: 1px;
+}
+
+.dhApiRiskPairGrid b,
+.dhApiCoverageStats dd,
+.dhApiHomeBody .dhTerminalIncomeSummary b,
+.dhApiHomeBody .dhTerminalIncomeRow b {
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.dhApiRiskPairPrimary b,
+.dhApiCoverageScore b {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dhApiStructureBoard {
+  gap: 12px;
+  padding-bottom: 14px;
+}
+
+.dhApiCoverageMap {
+  grid-template-columns: 138px minmax(0, 1fr) 190px;
+}
+
+.dhApiCoverageScore {
+  gap: 4px;
+  padding: 12px;
+}
+
+.dhApiCoverageDomains {
+  gap: 6px;
+  padding: 9px;
+}
+
+.dhApiCoverageDomains span {
+  border-radius: 5px;
+  gap: 5px;
+  min-height: 58px;
+  padding: 9px 8px 8px;
+}
+
+.dhApiCoverageDomains b,
+.dhApiStructureRow span,
+.dhApiStructureRow b,
+.dhApiCoverageGapBand strong,
+.dhApiEvidenceRow b {
+  font-size: 12px;
+}
+
+.dhApiStructureCard {
+  gap: 9px;
+  min-height: 168px;
+  padding: 13px;
+}
+
+.dhApiStructureRows {
+  gap: 7px;
+}
+
+.dhApiStructureRow {
+  gap: 5px 10px;
+  grid-template-columns: minmax(0, 1fr) 92px;
+}
+
+.dhApiStructureFooter {
+  gap: 8px;
+}
+
+.dhApiCoverageGapBand {
+  gap: 12px;
+  grid-template-columns: 148px minmax(0, 1fr);
+  padding: 12px;
+}
+
+.dhApiCoverageGapBand > span {
+  border-radius: 5px;
+  gap: 5px;
+  padding: 10px;
+}
+
+.dhApiCoverageGapBand > div {
+  gap: 7px;
+}
+
+.dhApiCoverageGapBand em {
+  border-radius: 5px;
+  gap: 4px 9px;
+  min-height: 46px;
+  padding: 8px 9px;
+}
+
+.dhApiEvidenceRows {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dhApiEvidenceRow {
+  gap: 7px;
+  min-height: 108px;
+  padding: 11px;
+}
+
+.dhApiEvidenceRow code {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dhApiMarketContext p:first-of-type {
+  font-size: 12px;
+}
+
+.dhApiMarketContext p:nth-of-type(2) {
+  min-height: 50px;
+  padding: 10px;
+}
+
+.dhApiMarketRows div {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.dhApiHomeBody .dhTerminalReportStack {
+  gap: 8px;
+}
+
+.dhApiHomeBody .dhTerminalReportFeatured {
+  border-radius: 6px;
+  grid-template-columns: 104px minmax(0, 1fr);
+  min-height: 78px;
+  padding: 10px;
+}
+
+.dhApiHomeBody .dhTerminalReportCompactRow {
+  min-height: 31px;
+  padding: 7px 9px;
+}
+
+.dhApiHomeBody .dhTerminalReportFeaturedTitle,
+.dhApiHomeBody .dhTerminalReportCompactTitle,
+.dhBondNewsBody strong {
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.34;
+}
+
+.dhApiHomeBody .dhTerminalReportFeaturedSummary,
+.dhApiHomeBody .dhTerminalReportMetaText,
+.dhBondNewsBody small {
+  font-size: 11px;
+}
+
+.dhBondNewsSection {
+  margin-bottom: 0;
+}
+
+.dhBondNewsCard {
+  display: grid;
+}
+
+.dhBondNewsHeader > div {
+  gap: 0;
+}
+
+.dhBondNewsGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dhBondNewsGroup {
+  gap: 7px;
+  min-height: 112px;
+  padding: 10px;
+}
+
+.dhBondNewsItem {
+  gap: 7px;
+  padding: 7px;
+}
+
+.dhBondNewsTopic {
+  background: rgba(114, 167, 220, 0.1);
+  border: 1px solid rgba(114, 167, 220, 0.22);
+  color: var(--dh-api-blue);
+  min-width: 50px;
+}
+
+.dhApiHomeBody .dhTerminalStateSurface,
+.dhApiHomeBody .dhTerminalEmpty,
+.dhApiHomeBody .dhEmpty,
+.dhApiHomeBody .dhBondNewsEmpty,
+.dhBondNewsEmpty {
+  border-radius: 6px;
+  min-height: 72px;
+  padding: 12px;
+}
+
+.dhTerminalBottom {
+  gap: 8px;
+  margin-top: 0;
+}
+
+.dhTerminalQuick {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 54px;
+  padding: 8px 10px;
+}
+
+.dhTerminalQuick span {
+  border-radius: 4px;
+  height: 24px;
+  width: 24px;
+}
+
+.dhTerminalQuick b {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+@media (max-width: 1180px) {
+  .dhApiCoverageMap {
+    grid-template-columns: 132px minmax(0, 1fr);
+  }
+
+  .dhApiStructureGrid,
+  .dhApiEvidenceRows,
+  .dhBondNewsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .dhApiHomeBody,
+  .dhApiMobileFoldBody {
+    gap: 10px;
+  }
+
+  .dhApiHomeBody .dhApiModule,
+  .dhApiHomeBody .dhTerminalPanel,
+  .dhBondNewsCard {
+    padding: 12px;
+  }
+
+  .dhApiModuleHead,
+  .dhApiHomeBody .dhTerminalPanelHead,
+  .dhBondNewsHeader {
+    min-height: 27px;
+  }
+
+  .dhApiCoverageMap,
+  .dhApiCoverageGapBand,
+  .dhApiCoverageGapBand > div,
+  .dhBondNewsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .dhApiCoverageScore {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dhApiCoverageDomains {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhApiStructureGrid,
+  .dhApiEvidenceRows {
+    grid-template-columns: 1fr;
+  }
+
+  .dhApiEvidenceRow {
+    min-height: 96px;
+  }
+
+  .dhBondNewsGroup {
+    min-height: 94px;
   }
 }

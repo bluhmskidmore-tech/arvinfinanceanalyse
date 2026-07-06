@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ChoiceNewsEvent } from "../../../../api/contracts";
 import {
+  buildHomeMacroBriefingModel,
   buildPolicyFundingSummary,
   resolveHomeMacroNewsBriefing,
   shouldRequestHomeMacroNewsFallback,
@@ -808,5 +809,43 @@ describe("buildPolicyFundingSummary", () => {
     expect(stale.groups).toHaveLength(0);
     expect(stale.chips.map((chip) => chip.label)).toContain("新闻源偏旧");
     expect(stale.chips.map((chip) => chip.label)).toContain("暂无更新");
+  });
+});
+
+describe("buildHomeMacroBriefingModel release history", () => {
+  it("surfaces maintained history for every visible forward release", () => {
+    const result = buildHomeMacroBriefingModel({
+      todayIsoDate: "2026-06-28",
+      newsEvents: [],
+      fallbackNewsEvents: [],
+      newsLoading: false,
+      newsError: false,
+      supplyCalendar: {
+        items: [],
+        status: "empty",
+        windowLabel: "2026-06-28 至 2026-08-12",
+        message: null,
+      },
+    });
+
+    expect(result.releaseItems).toHaveLength(6);
+    expect(result.releaseItems.map((item) => item.id)).toEqual([
+      "nbs-pmi-2026-06",
+      "ism-manufacturing-pmi-2026-07",
+      "bls-employment-situation-2026-06",
+      "ism-services-pmi-2026-07",
+      "nbs-cpi-ppi-2026-06",
+      "bls-cpi-2026-06",
+    ]);
+    expect(result.releaseItems.every((item) => item.history)).toBe(true);
+    expect(result.releaseItems[0]?.history).toMatchObject({
+      latestValue: "5月 50.0",
+      previousValue: "4月 50.3",
+      changeValue: "-0.3",
+    });
+    expect(result.releaseItems[4]?.history).toMatchObject({
+      latestValue: "5月 CPI +1.2% / PPI +3.9%",
+      previousValue: "4月 CPI +1.2% / PPI +2.8%",
+    });
   });
 });

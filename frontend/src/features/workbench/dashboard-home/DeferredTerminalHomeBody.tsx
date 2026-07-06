@@ -5,11 +5,13 @@ import { useDashboardHomeViewModel } from "./useDashboardHomeViewModel";
 type DeferredTerminalHomeBodyProps = {
   snapshotBoundary: DashboardHomeSnapshotBoundary;
   focusPolicyFunding?: boolean;
+  homeAvailabilityKind?: "normal" | "serviceUnavailable";
 };
 
 export function DeferredTerminalHomeBody({
   snapshotBoundary,
   focusPolicyFunding = false,
+  homeAvailabilityKind = "normal",
 }: DeferredTerminalHomeBodyProps) {
   const { view } = useDashboardHomeViewModel(snapshotBoundary, {
     eagerEventFeeds: focusPolicyFunding,
@@ -20,6 +22,7 @@ export function DeferredTerminalHomeBody({
       view={view}
       showFirstScreen={false}
       focusPolicyFunding={focusPolicyFunding}
+      homeAvailabilityKind={homeAvailabilityKind}
     />
   );
 }

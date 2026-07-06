@@ -177,7 +177,7 @@ describe("mapToHomeView", () => {
     expect(view.macroBriefing.newsAsOfLabel).toBe("数据截至 05-20 09:00");
     expect(view.macroBriefing.newsStatusLabel).toBe("来源状态：偏旧");
     expect(view.macroBriefing.newsRefreshLabel).toBe("刷新：随页面查询读取已落库数据");
-    expect(view.macroBriefing.supplyItems[0]?.label).toBe("供给/招标：当前窗口无事件");
+    expect(view.macroBriefing.supplyItems[0]?.label).toBe("供给/招标：已查询当前窗口，暂无事件");
   });
 
   it("builds bond news from holding matches and bond-relevant topics", () => {

@@ -46,24 +46,29 @@ export function DashboardHomeToolbar({
       <div className={styles.dhTopbarLeft}>
         <div className={styles.dhTitleBrand}>
           <h1 className={styles.dhTitle}>{title}</h1>
+          <span className={styles.dhTitleCaption}>PORTFOLIO DAILY</span>
         </div>
-        <span className={styles.dhDateLabel}>报告日</span>
-        <label className={styles.dhDateSelect}>
-          <LightIcon className={styles.dhDateSelectIcon} name="calendar" />
-          <input
-            aria-label="报告日"
-            type="date"
-            placeholder="2026-04-30"
-            value={reportDateInput}
-            onClick={(event) => event.currentTarget.showPicker?.()}
-            onChange={(event) => onReportDateChange(event.target.value)}
-          />
-        </label>
+
+        <div className={styles.dhToolbarControl}>
+          <span className={styles.dhDateLabel}>报告日</span>
+          <label className={styles.dhDateSelect}>
+            <LightIcon className={styles.dhDateSelectIcon} name="calendar" />
+            <input
+              aria-label="报告日"
+              type="date"
+              placeholder="2026-04-30"
+              value={reportDateInput}
+              onClick={(event) => event.currentTarget.showPicker?.()}
+              onChange={(event) => onReportDateChange(event.target.value)}
+            />
+          </label>
+        </div>
+
         <label className={styles.dhSearch}>
           <LightIcon className={styles.dhSearchIcon} name="search" />
           <input
-            aria-label="搜索指标 / 报表 / 功能"
-            placeholder="检索指标、报表或入口"
+            aria-label="搜索指标 / 报告 / 动作"
+            placeholder="搜索指标、报告或动作入口"
             value={toolbarSearch}
             onChange={(event) => onSearchChange(event.target.value)}
           />
@@ -77,11 +82,8 @@ export function DashboardHomeToolbar({
             data-status-kind={headerStatus.dataStatusKind}
             className={statusPillClass(headerStatus.dataStatusKind)}
           >
-            <i
-              className={statusDotClass(headerStatus.dataStatusKind)}
-              aria-hidden="true"
-            />
-            {headerStatus.dataSyncPrefix}{" "}
+            <i className={statusDotClass(headerStatus.dataStatusKind)} aria-hidden="true" />
+            {headerStatus.dataSyncPrefix}
             <span className={styles.dhNum}>{headerStatus.dataUpdatedAt}</span>
           </span>
           <span className={styles.dhStatusPill}>

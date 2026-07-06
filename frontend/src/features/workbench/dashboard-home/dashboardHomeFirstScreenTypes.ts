@@ -10,7 +10,7 @@ export type HomeDataStateKind =
   | "backend-gap";
 
 export type HomeHeaderStatus = {
-  dataStatusKind: "ok" | "stale" | "error";
+  dataStatusKind: "ok" | "stale" | "loading" | "error";
   dataUpdatedAt: string;
   marketStatus: string;
   valuationLabel: string;

@@ -306,21 +306,49 @@ export function buildHomeBondNewsModel(input: {
   const staleDays = latestDate ? daysBetween(input.todayIsoDate, latestDate) : null;
   const isStale = staleDays != null && staleDays > BOND_NEWS_STALE_DAYS;
   const latestTimeLabel = latestIncludedReceivedAt ? dateLabel(latestIncludedReceivedAt) : "";
+  const latestQueriedTimeLabel = sortedEvents[0]?.received_at
+    ? dateLabel(sortedEvents[0].received_at)
+    : "";
+  const includedNewsCount =
+    holdingHits.length + marketNews.length + creditAndIssuanceNews.length;
+  const queriedNewsCount = sortedEvents.length;
+  const noBondNewsButQueried = includedNewsCount === 0 && queriedNewsCount > 0;
 
   return {
     holdingHits: holdingHits.slice(0, HOLDING_HIT_LIMIT),
     marketNews: marketNews.slice(0, MARKET_NEWS_LIMIT),
     creditAndIssuanceNews: creditAndIssuanceNews.slice(0, CREDIT_NEWS_LIMIT),
-    holdingMessage: holdingHits.length > 0 ? null : "持仓命中：当前无相关新闻",
-    marketMessage: marketNews.length > 0 ? null : "债券市场：暂无相关新闻",
-    creditMessage: creditAndIssuanceNews.length > 0 ? null : "发行/评级：暂无相关新闻",
+    holdingMessage:
+      holdingHits.length > 0
+        ? null
+        : noBondNewsButQueried
+          ? `持仓命中：已查询 ${queriedNewsCount} 条新闻，未命中当前持仓或发行人。`
+          : "持仓命中：当前无相关新闻",
+    marketMessage:
+      marketNews.length > 0
+        ? null
+        : noBondNewsButQueried
+          ? `债券市场：已查询 ${queriedNewsCount} 条新闻，未筛出债券市场相关内容。`
+          : "债券市场：暂无相关新闻",
+    creditMessage:
+      creditAndIssuanceNews.length > 0
+        ? null
+        : noBondNewsButQueried
+          ? `发行/评级：已查询 ${queriedNewsCount} 条新闻，未筛出债券发行或评级内容。`
+          : "发行/评级：暂无相关新闻",
     sourceLabel: BOND_NEWS_SOURCE_LABEL,
-    asOfLabel: latestTimeLabel ? `数据截至 ${latestTimeLabel}` : "数据截至：暂无",
+    asOfLabel: latestTimeLabel
+      ? `数据截至 ${latestTimeLabel}`
+      : latestQueriedTimeLabel
+        ? `已查询至 ${latestQueriedTimeLabel}`
+        : "数据截至：暂无",
     statusLabel:
-      holdingHits.length + marketNews.length + creditAndIssuanceNews.length > 0
+      includedNewsCount > 0
         ? isStale
           ? "来源状态：偏旧"
           : "来源状态：正常"
+        : noBondNewsButQueried
+          ? "来源状态：未命中债券相关内容"
         : "来源状态：暂无数据",
     refreshLabel: BOND_NEWS_REFRESH_LABEL,
   };

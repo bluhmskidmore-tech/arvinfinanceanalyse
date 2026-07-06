@@ -4,18 +4,22 @@ import type {
   AssetStructurePayload,
   BondPortfolioHeadlinesPayload,
   CockpitWarningsPayload,
+  ChoiceNewsEvent,
   DailyChangesResult,
   PortfolioComparisonPayload,
   ProductCategoryMonthlyHeadlinePayload,
   ProductCategoryYtdHeadlinePayload,
+  YieldDistributionPayload,
 } from "../../../../api/contracts";
 import { buildHomeAttributionTabs } from "./buildHomeAttributionTabs";
+import { buildHomeBondNewsModel } from "./buildHomeBondNewsModel";
 import { buildHomeResearchCalendarModel } from "./buildHomeResearchCalendarModel";
 import { mapAssetStructureToHomeAssetBars } from "./mapAssetStructureToHomeAssetBars";
 import {
   mapCockpitWarningsToRiskCards,
   mapCockpitWarningsToWatchlist,
 } from "./mapCockpitWarningsToHomeRisk";
+import { mapHomeSummaryDistributions } from "./mapHomeSummaryDistributions";
 import { mapHomeRiskRadar } from "./mapHomeRiskRadar";
 import { mapPortfolioComparisonToExposureRows } from "./mapPortfolioComparisonToExposureRows";
 import { buildRiskRadarFromRiskItems } from "./riskRadarFromRiskItems";
@@ -27,6 +31,23 @@ function numeric(raw: number, display: string, unit: "yuan" | "pct" | "bp" | "ra
     display,
     precision: 2,
     sign_aware: false,
+  };
+}
+
+function newsEvent(
+  partial: Partial<ChoiceNewsEvent> &
+    Pick<ChoiceNewsEvent, "event_key" | "received_at" | "topic_code" | "payload_text">,
+): ChoiceNewsEvent {
+  return {
+    group_id: "tushare_news",
+    content_type: "news",
+    serial_id: 1,
+    request_id: 1,
+    error_code: 0,
+    error_msg: "",
+    item_index: 0,
+    payload_json: null,
+    ...partial,
   };
 }
 
@@ -52,6 +73,57 @@ describe("dashboard-home adapter helpers", () => {
     expect(bars[0]?.label).toBe("gov");
     expect(bars[0]?.pct).toBe(40);
     expect(bars[3]?.pct).toBeCloseTo(10, 1);
+  });
+
+  it("maps home summary distributions without inventing missing percentages", () => {
+    const assetPayload: AssetStructurePayload = {
+      report_date: "2026-04-30",
+      group_by: "bond_type",
+      total_market_value: numeric(20_000_000_000, "200.00 yi"),
+      items: [
+        {
+          category: "credit",
+          total_market_value: numeric(12_000_000_000, "120.00 yi"),
+          bond_count: 4,
+          percentage: numeric(0.6, "60%", "pct"),
+        },
+      ],
+    };
+    const yieldPayload: YieldDistributionPayload = {
+      report_date: "2026-04-30",
+      weighted_ytm: numeric(0.028, "2.80%", "pct"),
+      items: [
+        {
+          yield_bucket: "2.5%-3.0%",
+          total_market_value: numeric(12_000_000_000, "120.00 yi"),
+          bond_count: 4,
+        },
+      ],
+    };
+
+    const sections = mapHomeSummaryDistributions({
+      report_date: "2026-04-30",
+      asset_type: assetPayload,
+      yield_distribution: yieldPayload,
+    });
+
+    const assetSection = sections.find((section) => section.key === "asset_type");
+    const yieldSection = sections.find((section) => section.key === "yield_distribution");
+
+    expect(assetSection?.rows[0]).toMatchObject({
+      label: "credit",
+      valueRaw: 12_000_000_000,
+      valueDisplay: "120.00 yi",
+      percentageRaw: 0.6,
+      percentageDisplay: "60%",
+      count: 4,
+    });
+    expect(yieldSection?.rows[0]).toMatchObject({
+      label: "2.5%-3.0%",
+      valueDisplay: "120.00 yi",
+      percentageRaw: null,
+      count: 4,
+    });
   });
 
   it("builds attribution tabs from daily changes and product-category headlines", () => {
@@ -163,6 +235,35 @@ describe("dashboard-home adapter helpers", () => {
     expect(empty.status).toBe("empty");
     expect(ready.status).toBe("ready");
     expect(ready.items.map((item) => item.id)).toEqual(["high", "mid"]);
+  });
+
+  it("explains bond news source returns that do not pass the bond filter", () => {
+    const model = buildHomeBondNewsModel({
+      todayIsoDate: "2026-06-01",
+      events: [
+        newsEvent({
+          event_key: "broad-equity",
+          received_at: "2026-06-01T12:00:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "A股市场成交额放大，科技板块走强。",
+        }),
+        newsEvent({
+          event_key: "commodity",
+          received_at: "2026-06-01T11:50:00+08:00",
+          topic_code: "tushare.major_news",
+          payload_text: "国际油价震荡上行。",
+        }),
+      ],
+    });
+
+    expect(model.holdingHits).toHaveLength(0);
+    expect(model.marketNews).toHaveLength(0);
+    expect(model.creditAndIssuanceNews).toHaveLength(0);
+    expect(model.asOfLabel).toBe("已查询至 06-01 12:00");
+    expect(model.statusLabel).toBe("来源状态：未命中债券相关内容");
+    expect(model.holdingMessage).toBe("持仓命中：已查询 2 条新闻，未命中当前持仓或发行人。");
+    expect(model.marketMessage).toBe("债券市场：已查询 2 条新闻，未筛出债券市场相关内容。");
+    expect(model.creditMessage).toBe("发行/评级：已查询 2 条新闻，未筛出债券发行或评级内容。");
   });
 
   it("maps cockpit warnings to watchlist and risk counts", () => {

@@ -23,6 +23,7 @@ import type {
   YieldCurveTermStructurePayload,
 } from "./contracts";
 import { readHttpJsonDetail } from "./httpResponseError";
+import { parseNumericOrNull } from "./numeric";
 import { formatRawAsNumeric } from "../utils/format";
 
 type FetchLike = typeof fetch;
@@ -112,21 +113,10 @@ function buildCampisiQuery(options?: {
   return query ? `?${query}` : "";
 }
 
-function isNumeric(value: unknown): value is Numeric {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      "raw" in value &&
-      "unit" in value &&
-      "display" in value &&
-      "precision" in value &&
-      "sign_aware" in value,
-  );
-}
-
 function decimalRaw(value: unknown): number | null {
-  if (isNumeric(value)) {
-    return value.raw;
+  const parsed = parseNumericOrNull(value);
+  if (parsed) {
+    return parsed.raw;
   }
   if (value === null || value === undefined || value === "") {
     return null;
@@ -141,8 +131,9 @@ function normalizeNumeric(
   signAware: boolean,
   precision?: number,
 ): Numeric {
-  if (isNumeric(value)) {
-    return value;
+  const parsed = parseNumericOrNull(value);
+  if (parsed) {
+    return parsed;
   }
   return formatRawAsNumeric({
     raw: decimalRaw(value),

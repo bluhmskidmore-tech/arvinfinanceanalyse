@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import styles from "./dashboardHomeShell.module.css";
+import { DeferredEvidenceIndexPreview } from "./DeferredEvidenceIndexPreview";
 import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen";
 import type {
   DashboardHomeFirstScreenHydration,
@@ -21,6 +22,12 @@ const HOME_DEFERRED_CONTENT_IDLE_MIN_DELAY_MS = 800;
 const HOME_DEFERRED_CONTENT_IDLE_TIMEOUT_MS = 1_200;
 const HOME_DEFERRED_CONTENT_TIMEOUT_FALLBACK_MS = 600;
 const POLICY_FUNDING_DEEP_LINK_PATH = "/政策与资金面";
+const HOME_COMMANDS = [
+  { label: "组合变动", to: "/bond-analysis" },
+  { label: "久期分析", to: "/risk-overview" },
+  { label: "收益归因", to: "/pnl-attribution" },
+  { label: "待办管理", to: "/decision-items" },
+];
 
 const DeferredTerminalHomeContent = lazy(() =>
   import("./DeferredTerminalHomeContent").then((module) => ({
@@ -36,8 +43,6 @@ type HydratedFirstScreenState = {
 function firstScreenHydrationSignature(hydration: DashboardHomeFirstScreenHydration): string {
   return JSON.stringify({
     reportDate: hydration.reportDate,
-    headerStatus: hydration.headerStatus,
-    decisionRail: hydration.decisionRail,
     terminalKpis: hydration.terminalKpis.map((kpi) => ({
       id: kpi.id,
       value: kpi.value,
@@ -61,6 +66,45 @@ function isPolicyFundingDeepLink(pathname: string): boolean {
   } catch {
     return pathname === POLICY_FUNDING_DEEP_LINK_PATH;
   }
+}
+
+function reportDateCommandPath(path: string, reportDate: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
+    return path;
+  }
+  const params = new URLSearchParams({ report_date: reportDate });
+  return `${path}?${params.toString()}`;
+}
+
+function HomeCommandDock({
+  reportDate,
+  dataSyncPrefix,
+}: {
+  reportDate: string;
+  dataSyncPrefix: string;
+}) {
+  return (
+    <nav className={styles.dhCommandDock} data-testid="dashboard-home-command-dock" aria-label="日报快捷命令">
+      <span className={styles.dhCommandLabel}>CMD</span>
+      <div className={styles.dhCommandList}>
+        {HOME_COMMANDS.map((command) => (
+          <Link
+            key={command.to}
+            className={styles.dhCommandItem}
+            to={reportDateCommandPath(command.to, reportDate)}
+          >
+            <span>{command.label}</span>
+          </Link>
+        ))}
+      </div>
+      <span className={styles.dhCommandStatus}>
+        <span className={styles.dhCommandStatusDot} aria-hidden="true" />
+        <span className={styles.dhCommandStatusSynced}>SYNCED</span>
+        <span aria-hidden="true">·</span>
+        <span>{dataSyncPrefix}</span>
+      </span>
+    </nav>
+  );
 }
 
 function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
@@ -187,6 +231,10 @@ export default function DashboardHomePage() {
     shouldLoad: loadDeferredContent,
     userReachedDeferredContent,
   } = useDeferredHomeContent(!snapshotQuery.isFetching, shouldFocusPolicyFunding);
+  const homeAvailabilityKind =
+    snapshotBoundary.displayMode === "real" && snapshotQuery.isError && !snapshotBoundary.snapshotResult
+      ? "serviceUnavailable"
+      : "normal";
   const [hydratedFirstScreen, setHydratedFirstScreen] =
     useState<HydratedFirstScreenState | null>(null);
   const activeReportDate = view.reportDate;
@@ -215,17 +263,29 @@ export default function DashboardHomePage() {
       hydratedFirstScreen && hydratedFirstScreen.view.reportDate === activeReportDate
         ? {
             ...view,
-            headerStatus: hydratedFirstScreen.view.headerStatus,
-            decisionRail: hydratedFirstScreen.view.decisionRail,
             terminalKpis: hydratedFirstScreen.view.terminalKpis,
             keyRiskStrip: hydratedFirstScreen.view.keyRiskStrip,
           }
         : view,
     [activeReportDate, hydratedFirstScreen, view],
   );
+  const deferredHomeContent = loadDeferredContent ? (
+    <Suspense fallback={<DeferredEvidenceIndexPreview />}>
+      <DeferredTerminalHomeContent
+        snapshotBoundary={snapshotBoundary}
+        userReachedDeferredContent={userReachedDeferredContent}
+        focusPolicyFunding={shouldFocusPolicyFunding}
+        homeAvailabilityKind={homeAvailabilityKind}
+        onFirstScreenHydrated={handleFirstScreenHydrated}
+      />
+    </Suspense>
+  ) : (
+    <DeferredEvidenceIndexPreview />
+  );
 
   return (
-    <section data-testid="dashboard-home-page" className={styles.dhPage}>
+    <div className="dark text-foreground bg-background min-h-screen">
+        <section data-testid="dashboard-home-page" className={`${styles.dhPage} ${styles.dhApiBackedHome}`}>
       <DashboardHomeToolbar
         title="组合经营日报"
         headerStatus={firstScreenView.headerStatus}
@@ -240,20 +300,9 @@ export default function DashboardHomePage() {
       />
 
       <div className={styles.dhLayout}>
-        <main className={styles.dhMain}>
+        <main className={`${styles.dhMain} flex flex-col gap-4`}>
           <TerminalHomeFirstScreen view={firstScreenView} />
-          {loadDeferredContent ? (
-            <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
-              <DeferredTerminalHomeContent
-                snapshotBoundary={snapshotBoundary}
-                userReachedDeferredContent={userReachedDeferredContent}
-                focusPolicyFunding={shouldFocusPolicyFunding}
-                onFirstScreenHydrated={handleFirstScreenHydrated}
-              />
-            </Suspense>
-          ) : (
-            <div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />
-          )}
+          {deferredHomeContent}
         </main>
 
         <DecisionRailSection
@@ -264,6 +313,11 @@ export default function DashboardHomePage() {
           snapshotMeta={snapshotBoundary.snapshotMeta}
         />
       </div>
-    </section>
+        <HomeCommandDock
+          reportDate={firstScreenView.reportDate}
+          dataSyncPrefix={firstScreenView.headerStatus.dataSyncPrefix}
+        />
+      </section>
+      </div>
   );
 }

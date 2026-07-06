@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import type { DashboardHomeFirstScreenHydration } from "./dashboardHomeFirstScreenTypes";
+import { DeferredEvidenceIndexPreview } from "./DeferredEvidenceIndexPreview";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 import { useDashboardHomeSupplementalHydration } from "./useDashboardHomeSupplementalHydration";
-import styles from "./dashboardHomeShell.module.css";
 
 const DeferredTerminalHomeBody = lazy(() =>
   import("./DeferredTerminalHomeBody").then((module) => ({
@@ -24,6 +24,7 @@ type DeferredTerminalHomeContentProps = {
   snapshotBoundary: DashboardHomeSnapshotBoundary;
   userReachedDeferredContent: boolean;
   focusPolicyFunding?: boolean;
+  homeAvailabilityKind?: "normal" | "serviceUnavailable";
   onFirstScreenHydrated?: (hydration: DashboardHomeFirstScreenHydration) => void;
 };
 
@@ -53,6 +54,7 @@ export function DeferredTerminalHomeContent({
   snapshotBoundary,
   userReachedDeferredContent,
   focusPolicyFunding = false,
+  homeAvailabilityKind = "normal",
   onFirstScreenHydrated,
 }: DeferredTerminalHomeContentProps) {
   const [loadFirstScreenHydration, setLoadFirstScreenHydration] = useState(false);
@@ -152,14 +154,15 @@ export function DeferredTerminalHomeContent({
   }, [loadBody]);
 
   if (!loadBody) {
-    return <div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />;
+    return <DeferredEvidenceIndexPreview />;
   }
 
   return (
-    <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
+    <Suspense fallback={<DeferredEvidenceIndexPreview />}>
       <DeferredTerminalHomeBody
         snapshotBoundary={snapshotBoundary}
         focusPolicyFunding={focusPolicyFunding}
+        homeAvailabilityKind={homeAvailabilityKind}
       />
     </Suspense>
   );

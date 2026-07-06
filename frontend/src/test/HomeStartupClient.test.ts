@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDeferredApiClient } from "../api/clientContext";
+import { formatRawAsNumeric } from "../utils/format";
 
 describe("home startup deferred client", () => {
   it("routes home supplemental reads through the lightweight home supplemental client", async () => {
@@ -118,6 +119,57 @@ describe("home startup deferred client", () => {
       raw: 1500000000,
       unit: "yuan",
       sign_aware: false,
+      display: expect.any(String),
+    });
+  });
+
+  it("preserves governed Numeric spread_change_bp through the deferred home supplemental client", async () => {
+    const spreadChange = formatRawAsNumeric({ raw: 25, unit: "bp", sign_aware: true });
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "formal" },
+          result: {
+            report_date: "2026-04-30",
+            credit_market_value: "1500000000",
+            credit_weight: "0.25",
+            spread_dv01: "25000",
+            weighted_avg_spread: "80",
+            weighted_avg_spread_duration: "4.2",
+            spread_scenarios: [
+              {
+                scenario_name: "+25bp",
+                spread_change_bp: spreadChange,
+                pnl_impact: "-1200000",
+                oci_impact: "-800000",
+                tpl_impact: "-100000",
+              },
+            ],
+            migration_scenarios: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    const creditSpread = await client.getBondAnalyticsCreditSpreadMigration("2026-04-30");
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/api/bond-analytics/credit-spread-migration?report_date=2026-04-30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(creditSpread.result.spread_scenarios[0]?.spread_change_bp).toEqual(spreadChange);
+    expect(creditSpread.result.spread_scenarios[0]?.pnl_impact).toMatchObject({
+      raw: -1200000,
+      unit: "yuan",
+      sign_aware: true,
       display: expect.any(String),
     });
   });

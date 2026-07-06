@@ -161,6 +161,34 @@ function splitNumericDisplay(value: NumericLike, fallback = GAP, unitHint?: stri
   };
 }
 
+/**
+ * 水平值（如组合YTM）不是涨跌变化，展示层不带正号；
+ * 后端 Numeric 因 sign_aware=true 会在 display 里带 "+"，这里剥掉。
+ */
+function levelDisplayNumeric(value: NumericLike): NumericLike {
+  if (!isNumericObject(value)) {
+    return value;
+  }
+  return {
+    ...value,
+    sign_aware: false,
+    display: value.display?.replace(/^\+/, ""),
+  };
+}
+
+/**
+ * 首屏"规模"语义同时存在 zqtz 资产口径（snapshot overview aum）与
+ * 债券持仓市值口径（bond-dashboard headline），标签必须带口径说明。
+ */
+function metricWithCaliberLabel(
+  metric: HomeSnapshotOverviewMetricVM,
+): HomeSnapshotOverviewMetricVM {
+  if (!metric.caliberLabel || metric.label.includes(metric.caliberLabel)) {
+    return metric;
+  }
+  return { ...metric, label: `${metric.label}（${metric.caliberLabel}）` };
+}
+
 function ratioAsPercentNumeric(value: NumericLike): NumericLike {
   const raw = numericRaw(value);
   if (raw == null) {
@@ -309,10 +337,10 @@ function buildDecisionActions(args: {
     return [
       {
         id: "snapshot-unavailable",
-        title: "主快照不可用",
+        title: "首页数据服务不可达",
         priority: "high",
-        sourceLabel: "主快照",
-        reason: "等待主快照恢复后再复核",
+        sourceLabel: "数据服务",
+        reason: "恢复首页数据服务后刷新日报",
         to: undefined,
         statusKind: "backend-gap",
       },
@@ -410,6 +438,7 @@ function buildTerminalKpis(args: {
   yieldMetric: HomeSnapshotOverviewMetricVM | undefined;
   nimMetric: HomeSnapshotOverviewMetricVM | undefined;
   dv01Metric: HomeSnapshotOverviewMetricVM | undefined;
+  durationMetric: HomeSnapshotOverviewMetricVM | undefined;
   headline: BondDashboardHeadlinePayload | null;
   portfolio: BondPortfolioHeadlinesPayload | null;
   attribution: HomeSnapshotPnlAttributionVM | null;
@@ -417,6 +446,7 @@ function buildTerminalKpis(args: {
   const totalMarketValue =
     args.headline?.kpis.total_market_value ?? args.portfolio?.total_market_value ?? args.aumMetric?.value;
   const duration =
+    args.durationMetric?.value ??
     args.headline?.kpis.weighted_duration ??
     args.portfolio?.weighted_duration;
   const ytm = args.headline?.kpis.weighted_ytm ?? args.portfolio?.weighted_ytm;
@@ -425,7 +455,7 @@ function buildTerminalKpis(args: {
 
   const kpis: HomeTerminalKpi[] = [
     args.aumMetric
-      ? terminalKpiFromSnapshotMetric(args.aumMetric)
+      ? terminalKpiFromSnapshotMetric(metricWithCaliberLabel(args.aumMetric))
       : terminalKpiFromNumeric({
       id: "aum",
       label: "组合市值",
@@ -445,6 +475,9 @@ function buildTerminalKpis(args: {
   if (args.dv01Metric) {
     kpis.push(terminalKpiFromSnapshotMetric(args.dv01Metric));
   }
+  if (args.durationMetric) {
+    kpis.push(terminalKpiFromSnapshotMetric(args.durationMetric));
+  }
 
   if (args.attribution?.total) {
     kpis.push(
@@ -462,7 +495,7 @@ function buildTerminalKpis(args: {
     kpis.push(
       terminalKpiFromNumeric({
         id: "bond-market-value",
-        label: "债券市值",
+        label: "债券市值（持仓口径）",
         value: args.headline.kpis.total_market_value,
         previous: args.headline.prev_kpis?.total_market_value,
         sparkline: flatSparkline(1.2),
@@ -475,7 +508,7 @@ function buildTerminalKpis(args: {
     kpis.push(
       terminalKpiFromNumeric({
         id: "unrealized-pnl",
-        label: "持仓收益（当日）",
+        label: "未实现损益（存量）",
         value: args.headline.kpis.unrealized_pnl,
         previous: args.headline.prev_kpis?.unrealized_pnl,
         sparkline: flatSparkline(0.8),
@@ -484,7 +517,7 @@ function buildTerminalKpis(args: {
     );
   }
 
-  if (duration) {
+  if (duration && !args.durationMetric) {
     kpis.push(
       terminalKpiFromNumeric({
         id: "duration",
@@ -502,7 +535,7 @@ function buildTerminalKpis(args: {
       terminalKpiFromNumeric({
         id: "ytm",
         label: "组合YTM",
-        value: ytm,
+        value: levelDisplayNumeric(ytm),
         previous: args.headline?.prev_kpis?.weighted_ytm,
         sparkline: flatSparkline(1.1),
         unitHint: "pct",
@@ -604,7 +637,7 @@ function buildDecisionSummary(verdict: VerdictPayload | null, terminalKpis: read
   if (!conclusion) {
     return kpiSummary
       ? `${kpiSummary}。`
-      : "主快照未返回可摘录的经营读数";
+      : "当前报告日暂无经营读数";
   }
   if (isGenericVerdictConclusion(conclusion)) {
     return kpiSummary
@@ -630,9 +663,9 @@ export function mapToHomeFirstScreenView(
 ): DashboardHomeFirstScreenView {
   const reportDate = cleanDate(input.reportDate) || GAP;
   const dataStatusKind =
-    input.snapshotUnavailable || input.snapshotLoading ? "error" : input.snapshotStale ? "stale" : "ok";
+    input.snapshotUnavailable ? "error" : input.snapshotLoading ? "loading" : input.snapshotStale ? "stale" : "ok";
   const dataSyncPrefix = input.snapshotUnavailable
-    ? "主快照不可用"
+    ? "首页数据服务不可达"
     : input.snapshotLoading
       ? "主快照读取中"
     : input.snapshotStale
@@ -646,6 +679,11 @@ export function mapToHomeFirstScreenView(
   const yieldMetric = findMetric(input.metrics, ["yield"]);
   const nimMetric = findMetric(input.metrics, ["nim"]);
   const dv01Metric = findMetric(input.metrics, ["dv01"]);
+  const durationMetric = findMetric(input.metrics, [
+    "duration",
+    "weighted_duration",
+    "portfolio_modified_duration",
+  ]);
   const headlineOk = isSameReportDate(reportDate, input.bondHeadline?.report_date);
   const portfolioOk = isSameReportDate(reportDate, input.portfolio?.report_date);
   const headline = headlineOk ? input.bondHeadline : null;
@@ -658,6 +696,7 @@ export function mapToHomeFirstScreenView(
     yieldMetric,
     nimMetric,
     dv01Metric,
+    durationMetric,
     headline,
     portfolio,
     attribution: input.attribution,
@@ -671,14 +710,14 @@ export function mapToHomeFirstScreenView(
       dataStatusKind,
       dataUpdatedAt,
       marketStatus: input.snapshotUnavailable
-        ? "数据未同步"
+        ? "服务未连接"
         : input.snapshotLoading
           ? "等待数据"
         : input.snapshotStale
           ? "新报告日失败"
           : "市场已收盘",
       valuationLabel: input.snapshotUnavailable
-        ? "等待主快照"
+        ? "无可用快照"
         : input.snapshotLoading
           ? "读取中"
         : input.snapshotStale
@@ -690,13 +729,19 @@ export function mapToHomeFirstScreenView(
       dataSyncPrefix,
     },
     decisionRail: {
-      conclusion: buildDecisionSummary(verdict, terminalKpis),
+      conclusion: input.snapshotUnavailable ? "首页数据服务不可达" : buildDecisionSummary(verdict, terminalKpis),
       maxDragLabel: GAP,
       maxDragValue: GAP,
       maxContributionLabel: GAP,
       maxContributionValue: GAP,
-      keyRisk: formatVerdictReason(verdict?.reasons?.[0]),
-      suggestions: suggestions.length > 0 ? suggestions : ["数据待同步"],
+      keyRisk: input.snapshotUnavailable
+        ? "未执行：风险核验依赖主快照，当前服务不可达"
+        : formatVerdictReason(verdict?.reasons?.[0]),
+      suggestions: input.snapshotUnavailable
+        ? ["恢复首页数据服务后刷新日报"]
+        : suggestions.length > 0
+          ? suggestions
+          : ["数据待同步"],
       actions: buildDecisionActions({
         verdict,
         alertCount: input.alertCount,

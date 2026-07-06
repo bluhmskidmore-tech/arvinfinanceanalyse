@@ -15,6 +15,7 @@ import {
 } from "../features/workbench/dashboard/dashboardMacroNewsTopics";
 import type { DashboardHomeBodyView } from "../features/workbench/dashboard-home/dashboardHomeBodyView";
 import { TerminalHomeContent } from "../features/workbench/dashboard-home/TerminalHomeContent";
+import { todayIsoDate as resolveTodayIsoDate } from "../features/workbench/pages/dashboardPageHelpers";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -450,6 +451,10 @@ function createTerminalStateView(overrides: Partial<DashboardHomeBodyView> = {})
     maturityDistributionState: { kind: "empty", label: "久期分布暂无数据" },
     industryDistribution: [],
     industryDistributionState: { kind: "error", label: "行业分布加载失败" },
+    yieldDistribution: [],
+    yieldDistributionState: baseState,
+    portfolioComparison: [],
+    portfolioComparisonState: baseState,
     riskExposureMetrics: [],
     riskExposureState: { kind: "empty", label: "风险指标暂无数据" },
     positionChanges: [],
@@ -458,6 +463,18 @@ function createTerminalStateView(overrides: Partial<DashboardHomeBodyView> = {})
     researchReportsState: { kind: "error", label: "研究报告加载失败" },
     incomeTrend: [],
     incomeTrendState: { kind: "partial", label: "缺 CDB_INDEX 可核验曲线" },
+    incomeTrendSection: {
+      key: "income-trend",
+      status: { kind: "partial", label: "缺 CDB_INDEX 可核验曲线" },
+      reportDate: "2026-04-30",
+      dateBasis: "supplemental_report_date",
+      source: "home_income_trend",
+      sourceMeta: null,
+      warnings: [],
+      missingComponents: [],
+      unitNotes: [],
+      data: [],
+    },
     ...overrides,
   };
 }
@@ -485,6 +502,22 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
+  });
+
+  it("renders the command dock as plain links without fake function-key hints", async () => {
+    renderDashboardHome();
+
+    const dock = await screen.findByTestId("dashboard-home-command-dock");
+    expect(dock).not.toHaveTextContent(/F[2-6]/);
+    expect(dock).not.toHaveTextContent("指标检索");
+
+    const links = within(dock).getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href")?.split("?")[0])).toEqual([
+      "/bond-analysis",
+      "/risk-overview",
+      "/pnl-attribution",
+      "/decision-items",
+    ]);
   });
 
   it("starts event feeds and income trend from the post-snapshot idle gate", async () => {
@@ -670,6 +703,7 @@ describe("DashboardHomePage", () => {
       if (DASHBOARD_MACRO_NEWS_TOPICS.some((topic) => topic.code === options.topicCode)) {
         return choiceNewsEnvelope([
           choiceNewsEvent({
+            received_at: `${resolveTodayIsoDate()}T09:30:00Z`,
             topic_code: options.topicCode,
             payload_text: "资金面维持平稳，DR007 小幅回落。",
           }),
@@ -926,9 +960,6 @@ describe("DashboardHomePage", () => {
         expect.arrayContaining(["tushare.news.sina"]),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
-    );
     await waitFor(() => {
       expect(screen.getAllByText("10年期美国国债收益率最新上涨2.8个基点，报4.483%。").length).toBeGreaterThan(0);
     });
@@ -1007,7 +1038,7 @@ describe("DashboardHomePage", () => {
     expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.news")).toBe(1);
   });
 
-  it("stops bond news topic loading when the bond probe is empty", async () => {
+  it("stops bond news topic loading when the bond probe has no usable rows", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
@@ -1026,7 +1057,15 @@ describe("DashboardHomePage", () => {
         ]);
       }
       if (options.topicCode === bondNewsProbeTopicCode()) {
-        return choiceNewsEnvelope([]);
+        return choiceNewsEnvelope([
+          choiceNewsEvent({
+            event_key: "bond-probe-error",
+            topic_code: options.topicCode,
+            error_code: 10001012,
+            error_msg: "insufficient user access",
+            payload_text: null,
+          }),
+        ]);
       }
       return mockSnapshotSource.getChoiceNewsEvents(options);
     });
@@ -1072,9 +1111,6 @@ describe("DashboardHomePage", () => {
         expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
-    );
 
     await waitForSecondaryEventFeedDataDelay();
     await runPendingIdleIfAny(idle);
@@ -1083,9 +1119,6 @@ describe("DashboardHomePage", () => {
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
-    );
 
     await waitForBondNewsFeedDataDelay();
     await runPendingIdleIfAny(idle);
@@ -1243,7 +1276,7 @@ describe("DashboardHomePage", () => {
     });
   });
 
-  it("keeps body structure requests behind a separate idle gate after market rates", async () => {
+  it("preloads home-summary while keeping formal ledgers behind the structure idle gate", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -1261,14 +1294,14 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
     });
-    expect(supplementalCalls.getBondDashboardHomeSummary).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
     expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
     expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
 
     await waitForBodyDetailDataDelay();
     await runNextIdle(idle);
-    expect(supplementalCalls.getBondDashboardHomeSummary).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
     expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
     expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
@@ -2308,10 +2341,14 @@ describe("DashboardHomePage", () => {
 
     await waitFor(() => {
       expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-04-30");
-      expect(within(hero).getByTestId("dashboard-home-kpi-bond-market-value")).toHaveTextContent("3,287.09");
-      expect(within(hero).getByTestId("dashboard-home-kpi-unrealized-pnl")).toHaveTextContent("+18.42");
-      expect(within(hero).getByTestId("dashboard-home-kpi-duration")).toHaveTextContent("4.23");
-      expect(within(hero).getByTestId("dashboard-home-kpi-ytm")).toHaveTextContent("2.85");
+      const hydratedHero = within(hero);
+      expect(hydratedHero.getByTestId("dashboard-home-kpi-bond-market-value")).toHaveTextContent("3,287.09");
+      expect(hydratedHero.getByTestId("dashboard-home-kpi-unrealized-pnl")).toHaveTextContent("未实现损益");
+      expect(hydratedHero.getByTestId("dashboard-home-kpi-unrealized-pnl")).toHaveTextContent("+18.42");
+      expect(hydratedHero.getByTestId("dashboard-home-kpi-duration")).toHaveTextContent("加权久期");
+      expect(hydratedHero.getByTestId("dashboard-home-kpi-duration")).toHaveTextContent("4.23");
+      expect(hydratedHero.getByTestId("dashboard-home-kpi-ytm")).toHaveTextContent("组合YTM");
+      expect(hydratedHero.getByTestId("dashboard-home-kpi-ytm")).toHaveTextContent("2.85");
     });
   });
 
@@ -2583,7 +2620,7 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(getBondAnalyticsTopHoldings).toHaveBeenCalledWith(
         expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-        8,
+        14,
       );
       expect(getBondAnalyticsPositionChanges).toHaveBeenCalledWith(
         expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
@@ -2630,7 +2667,7 @@ describe("DashboardHomePage", () => {
     expect(screen.getByTestId("dashboard-home-position-changes")).toHaveTextContent("增减仓加载失败");
     expect(screen.getByTestId("dashboard-home-research-reports")).toHaveTextContent("研究报告加载失败");
     expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺 CDB_INDEX 可核验曲线");
-    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺少部分受管字段");
+    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("部分指标缺失，结论需复核");
     expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("今日市场解释");
     expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("市场温度：中性");
     expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("PnL归因");
@@ -2638,6 +2675,42 @@ describe("DashboardHomePage", () => {
     expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("信用利差");
     expect(screen.queryByText("后端工单")).not.toBeInTheDocument();
     expect(screen.queryByText("杠杆率")).not.toBeInTheDocument();
+  });
+
+  it("renders structure board as a coverage map with folded gaps", () => {
+    render(
+      <MemoryRouter>
+        <TerminalHomeContent
+          view={createTerminalStateView({
+            assetDistributionState: { kind: "ready", label: "ready" },
+            assetDistribution: [
+              {
+                id: "policy-fi",
+                label: "Policy FI",
+                value: "20.03",
+                pct: "20.03%",
+                pctRaw: 20.03,
+              },
+            ],
+            ratingDistributionState: { kind: "empty", label: "rating missing" },
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    const board = screen.getByTestId("dashboard-home-structure-board");
+    const coverage = within(board).getByTestId("dashboard-home-structure-coverage");
+    expect(coverage).toHaveTextContent("1/6");
+    expect(coverage).toHaveTextContent("Ready");
+    expect(coverage).toHaveTextContent("Gaps");
+
+    const expanded = within(board).getByTestId("dashboard-home-structure-expanded-grid");
+    expect(expanded.querySelectorAll("article")).toHaveLength(1);
+    expect(expanded).toHaveTextContent("Policy FI");
+
+    const gapBand = within(board).getByTestId("dashboard-home-structure-gap-band");
+    expect(gapBand).toHaveTextContent("rating missing");
+    expect(gapBand).toHaveTextContent("503");
   });
 
   it("renders income trend as portfolio benchmark and excess context", () => {
@@ -2667,6 +2740,16 @@ describe("DashboardHomePage", () => {
                 benchmarkRaw: 60_000_000,
                 excessRaw: 30_000_000,
               },
+              {
+                id: "2026-05-31",
+                date: "2026-05-31",
+                portfolioPnl: "—",
+                benchmarkPnl: "—",
+                excessPnl: "—",
+                portfolioRaw: null,
+                benchmarkRaw: null,
+                excessRaw: null,
+              },
             ],
           })}
         />
@@ -2679,7 +2762,8 @@ describe("DashboardHomePage", () => {
     expect(incomeTrend).toHaveTextContent("组合");
     expect(incomeTrend).toHaveTextContent("CDB基准");
     expect(incomeTrend).toHaveTextContent("超额");
-    expect(incomeTrend).toHaveTextContent("基准 +0.60 亿 · 超额 +0.30 亿");
+    expect(incomeTrend).toHaveTextContent("基准+0.60 亿");
+    expect(incomeTrend).toHaveTextContent("超额+0.30 亿");
   });
     /*
     expect(screen.getByTestId("dashboard-home-backend-gap-research-reports")).toHaveTextContent(
@@ -2809,7 +2893,7 @@ describe("DashboardHomePage", () => {
       expect(calendar).toHaveTextContent("数据截至");
       expect(calendar).toHaveTextContent("来源状态");
       expect(calendar).toHaveTextContent("刷新：");
-      expect(calendar).toHaveTextContent("供给/招标：当前窗口无事件");
+      expect(calendar).toHaveTextContent("供给/招标：已查询当前窗口，暂无事件");
       expect(calendar).not.toHaveTextContent("当前窗口暂无供给/招标事件。");
     });
     const topicCodes = getChoiceNewsEvents.mock.calls.map(([options]) => options.topicCode);

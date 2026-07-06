@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
+import { todayIsoDate } from "../pages/dashboardPageHelpers";
 import { useDashboardSnapshotBoundary } from "../pages/useDashboardSnapshotBoundary";
 import {
   mapToHomeFirstScreenView,
@@ -34,8 +35,12 @@ export function useDashboardHomeFirstScreenViewModel() {
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
   const requestedReportDate = reportDate.trim();
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
+  const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
   const effectiveReportDate =
-    snapshotReportDate || initialEffectiveReportDate || requestedReportDate;
+    snapshotReportDate ||
+    initialEffectiveReportDate ||
+    requestedReportDate ||
+    dashboardTodayIsoDate;
   const snapshotUnavailable =
     dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
   const snapshotLoading =

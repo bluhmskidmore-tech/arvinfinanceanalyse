@@ -143,6 +143,7 @@ function buildMockChoiceNewsEnvelope(options: {
     total_rows: filtered.length,
     limit: options.limit,
     offset: options.offset,
+    compare: buildMockChoiceNewsCompare(filtered),
     events: filtered.slice(options.offset, options.offset + options.limit),
   };
   if (stockCode) {
@@ -151,6 +152,48 @@ function buildMockChoiceNewsEnvelope(options: {
     result.stock_filter_tokens = [stockCode, stockCode.split(".", 1)[0]].filter(Boolean);
   }
   return buildMockApiEnvelope("news.choice.latest", result);
+}
+
+function buildMockChoiceNewsCompare(
+  events: ChoiceNewsEventsPayload["events"],
+): NonNullable<ChoiceNewsEventsPayload["compare"]> {
+  const sourceEventIds = events.map((event) => event.event_key);
+  return {
+    basis: "analytical",
+    rule_version: "rv_research_radar_mapping_registry_v1b_mock",
+    same_direction: [
+      {
+        event_family: "rates",
+        factor_tags: ["rates", "duration"],
+        event_count: sourceEventIds.length,
+        source_event_ids: sourceEventIds,
+        summary: "mock 事件共同指向利率与久期复核。",
+      },
+    ],
+    conflicting: [],
+    review_needed: [
+      {
+        event_family: "fx",
+        factor_tags: ["fx"],
+        event_count: 1,
+        source_event_ids: sourceEventIds.slice(0, 1),
+        review_reason: "mock 数据未接入汇率敞口，需人工确认。",
+      },
+    ],
+    candidate_scenarios: [
+      {
+        event_family: "rates",
+        match_rule: "keyword_any",
+        factor_tags: ["rates", "duration"],
+        scenario_template_id: "rate_parallel_up_candidate",
+        default_shocks: ["parallel_up_25bp_candidate"],
+        rule_version: "rv_research_radar_mapping_registry_v1b_mock",
+        human_review_required: true,
+        mapping_rule_id: "mock_rates_duration",
+        source_event_ids: sourceEventIds,
+      },
+    ],
+  };
 }
 
 function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarEvent[] {

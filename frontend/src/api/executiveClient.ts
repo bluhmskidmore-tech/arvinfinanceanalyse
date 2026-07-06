@@ -13,6 +13,7 @@ import type {
   OverviewPayload,
   PlaceholderSnapshot,
   RiskOverviewPayload,
+  RiskScenarioStressPayload,
   RiskTensorDatesPayload,
   RiskTensorPayload,
   SummaryPayload,
@@ -36,6 +37,7 @@ export type ExecutiveClientMethods = {
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
   getRiskTensorDates: () => Promise<ApiEnvelope<RiskTensorDatesPayload>>;
   getRiskTensor: (reportDate: string) => Promise<ApiEnvelope<RiskTensorPayload>>;
+  getRiskScenarioStress: (reportDate: string) => Promise<ApiEnvelope<RiskScenarioStressPayload>>;
   getContribution: () => Promise<ApiEnvelope<ContributionPayload>>;
   getAlerts: () => Promise<ApiEnvelope<AlertsPayload>>;
   getPlaceholderSnapshot: (key: string) => Promise<ApiEnvelope<PlaceholderSnapshot>>;
@@ -54,6 +56,7 @@ type ExecutiveThinClientMethods = Pick<
   | "getRiskOverview"
   | "getRiskTensorDates"
   | "getRiskTensor"
+  | "getRiskScenarioStress"
   | "getContribution"
   | "getAlerts"
   | "getPlaceholderSnapshot"
@@ -166,6 +169,9 @@ export function createDemoExecutiveClient(
           report_date: reportDate,
           portfolio_dv01: "120000.00000000",
           regulatory_dv01: "120000.00000000",
+          ac_dv01: "70000.00000000",
+          oci_dv01: "30000.00000000",
+          tpl_dv01: "20000.00000000",
           krd_1y: "25000.00000000",
           krd_3y: "50000.00000000",
           krd_5y: "30000.00000000",
@@ -296,6 +302,119 @@ export function createDemoExecutiveClient(
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getRiskScenarioStress(reportDate: string) {
+      await delay();
+      const bundle = await ensureBundle();
+      const yuan = (raw: number | null, display?: string) => ({
+        raw,
+        unit: "yuan" as const,
+        display: display ?? (raw === null ? "待接入" : raw.toLocaleString("zh-CN", { maximumFractionDigits: 2 })),
+        precision: 2,
+        sign_aware: true,
+      });
+      const bp = (raw: number) => ({
+        raw,
+        unit: "bp" as const,
+        display: `${raw > 0 ? "+" : ""}${raw} bp`,
+        precision: 0,
+        sign_aware: true,
+      });
+      const pct = (raw: number | null) => ({
+        raw,
+        unit: "pct" as const,
+        display: raw === null ? "待接入" : `${(raw * 100).toFixed(1)}%`,
+        precision: 1,
+        sign_aware: true,
+      });
+      const scenarios = [
+        {
+          scenario_key: "rate_parallel_up_25bp",
+          category: "rate" as const,
+          label: "利率平行上行 25bp",
+          source_field: "regulatory_dv01",
+          shock: bp(25),
+          estimated_impact: yuan(-3_000_000),
+          measure: "estimated_pnl_impact",
+          calculation: "-regulatory_dv01 * shock_bp",
+          interpretation: "利率上行时，按监管口径 DV01 估算组合价格影响。",
+          data_status: "available" as const,
+          human_review_required: true,
+        },
+        {
+          scenario_key: "credit_spread_widen_25bp",
+          category: "credit" as const,
+          label: "信用利差走阔 25bp",
+          source_field: "cs01",
+          shock: bp(25),
+          estimated_impact: yuan(-450_000),
+          measure: "estimated_pnl_impact",
+          calculation: "-cs01 * shock_bp",
+          interpretation: "信用利差走阔时，按 CS01 估算信用敏感性影响。",
+          data_status: "available" as const,
+          human_review_required: true,
+        },
+        {
+          scenario_key: "liquidity_30d_cashflow_10pct",
+          category: "liquidity" as const,
+          label: "30天现金流压力 10%",
+          source_field: "asset_cashflow_30d/liability_cashflow_30d/liquidity_gap_30d",
+          shock: pct(0.1),
+          estimated_impact: yuan(-50_000_000),
+          measure: "stressed_30d_liquidity_gap_delta",
+          calculation:
+            "asset_cashflow_30d * (1 - shock_pct) - liability_cashflow_30d * (1 + shock_pct) - liquidity_gap_30d",
+          interpretation: "现金流压力下的30天流动性缺口变化；负值表示缓冲收窄。",
+          data_status: "available" as const,
+          human_review_required: true,
+          baseline_value: yuan(100_000_000),
+          stressed_value: yuan(50_000_000),
+          baseline_ratio: pct(0.05),
+          stressed_ratio: pct(0.025),
+        },
+        {
+          scenario_key: "fx_usdcny_move_candidate",
+          category: "fx" as const,
+          label: "汇率波动情景",
+          source_field: "fx_exposure",
+          shock: pct(null),
+          estimated_impact: yuan(null),
+          measure: "estimated_pnl_impact",
+          calculation: "fx_exposure * fx_shock",
+          interpretation: "当前风险张量未提供汇率敞口，需接入 FX exposure 后再估算。",
+          data_status: "source_missing" as const,
+          human_review_required: true,
+        },
+      ];
+      return bundle.buildMockApiEnvelope(
+        "risk.tensor.scenario_stress",
+        {
+          report_date: reportDate,
+          basis: "scenario",
+          scenario_set_id: "standard_risk_tensor_scenario_v1",
+          rule_version: "rv_risk_tensor_scenario_stress_v1",
+          source: {
+            result_kind: "risk.tensor",
+            trace_id: `mock_risk.tensor_${reportDate}`,
+            source_version: "sv_mock_dashboard_v2",
+            rule_version: "rv_risk_tensor_formal_materialize_v2",
+            cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
+            quality_flag: "warning",
+          },
+          summary: {
+            scenario_count: scenarios.length,
+            available_count: 3,
+            review_required_count: scenarios.length,
+            worst_estimated_impact: yuan(-3_000_000),
+            worst_scenario_key: "rate_parallel_up_25bp",
+            message: "已生成标准多情景压力估算；所有结果均为情景口径，需复核后再用于经营判断。",
+          },
+          scenarios,
+          warnings: ["情景压力结果为基于正式风险张量的敏感性覆盖层，不是正式损益、正式限额判定或交易建议。"],
+          source_warnings: [],
+        },
+        { basis: "scenario", formal_use_allowed: false, scenario_flag: true },
+      );
+    },
     async getContribution() {
       await delay();
       const bundle = await ensureBundle();
@@ -372,6 +491,12 @@ export function createRealExecutiveClient(
         fetchImpl,
         baseUrl,
         `/api/risk/tensor?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getRiskScenarioStress: (reportDate: string) =>
+      requestJson<RiskScenarioStressPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/risk/scenario-stress?report_date=${encodeURIComponent(reportDate)}`,
       ),
     getContribution: () =>
       requestJson<ContributionPayload>(

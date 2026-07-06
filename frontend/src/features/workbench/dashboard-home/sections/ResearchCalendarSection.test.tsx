@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import type { HomeMacroBriefingModel } from "../adapters/buildHomeMacroBriefingModel";
 import { ResearchCalendarSection } from "./ResearchCalendarSection";
 
 const singlePolicyFundingNewsItem = {
@@ -118,12 +119,15 @@ describe("ResearchCalendarSection", () => {
           newsStatusLabel: "来源状态：正常",
           newsRefreshLabel: "刷新：随页面查询读取已落库数据",
           policyFundingSummary: singlePolicyFundingSummary,
-          supplyItems: [{ id: "supply-empty", label: "供给/招标：当前窗口无事件" }],
+          supplyItems: [{ id: "supply-empty", label: "供给/招标：已查询当前窗口，暂无事件" }],
         }}
       />,
     );
 
     expect(screen.getByTestId("dashboard-home-research-calendar")).toBeInTheDocument();
+    expect(screen.getByText("宏观 / 日历上下文")).toBeInTheDocument();
+    expect(screen.getByLabelText("宏观上下文摘要")).toBeInTheDocument();
+    expect(screen.getByText("发布项")).toBeInTheDocument();
     expect(screen.getByText("重大信息发布日期前瞻")).toBeInTheDocument();
     expect(screen.getByText("未来 45 天 · 1 项")).toBeInTheDocument();
     expect(screen.getByText("政策与资金面")).toBeInTheDocument();
@@ -135,7 +139,7 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("明日")).toBeInTheDocument();
     expect(screen.getByText("高优先级")).toBeInTheDocument();
     expect(screen.getByText("央行开展逆回购操作，DR007 小幅下行")).toBeInTheDocument();
-    expect(screen.getByText("供给/招标：当前窗口无事件")).toBeInTheDocument();
+    expect(screen.getByText("供给/招标：已查询当前窗口，暂无事件")).toBeInTheDocument();
     expect(screen.queryByText("当前窗口暂无供给/招标事件。")).not.toBeInTheDocument();
   });
 
@@ -180,5 +184,63 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("展示")).toBeInTheDocument();
     expect(screen.getByText("非政策/资金面")).toBeInTheDocument();
     expect(screen.getByText("超过展示上限")).toBeInTheDocument();
+  });
+
+  it("surfaces maintained release history below the forward calendar", () => {
+    const macroBriefing = {
+      releaseItems: [
+        {
+          id: "nbs-pmi-2026-06",
+          date: "2026-06-30",
+          dateLabel: "06-30",
+          daysUntilLabel: "2天后",
+          region: "国内",
+          title: "中国官方 PMI（2026年6月）",
+          category: "PMI",
+          importance: "high",
+          importanceLabel: "高优先级",
+          timeLabel: "09:30 CST",
+          sourceName: "NBS",
+          sourceUrl: "https://www.stats.gov.cn/",
+          history: {
+            latestLabel: "最近一期",
+            latestValue: "5月 49.5",
+            previousLabel: "前值",
+            previousValue: "4月 49.0",
+            changeLabel: "较前值",
+            changeValue: "+0.5",
+            changeTone: "up",
+            note: "制造业景气回升但仍低于荣枯线。",
+            sourceLabel: "NBS 发布稿",
+          },
+        },
+      ],
+      releaseWindowLabel: "未来 45 天 · 1 项",
+      releaseMessage: null,
+      newsItems: [],
+      newsMessage: "政策与资金面：暂无债券相关更新",
+      newsStale: false,
+      newsFreshnessLabel: "暂无更新",
+      newsSourceLabel: "来源：Choice 宏观新闻",
+      newsAsOfLabel: "数据截至：暂无",
+      newsStatusLabel: "来源状态：暂无数据",
+      newsRefreshLabel: "刷新：随页面查询读取已落库数据",
+      policyFundingSummary: {
+        headline: "暂无可展示的政策与资金面快讯。",
+        chips: [],
+        groups: [],
+      },
+      supplyItems: [],
+    } as unknown as HomeMacroBriefingModel;
+
+    render(<ResearchCalendarSection macroBriefing={macroBriefing} />);
+
+    const history = screen.getByLabelText("重大信息过往数据与变动");
+    expect(within(history).getByText("过往数据与变动")).toBeInTheDocument();
+    expect(within(history).getByText("中国官方 PMI（2026年6月）")).toBeInTheDocument();
+    expect(within(history).getByText("5月 49.5")).toBeInTheDocument();
+    expect(within(history).getByText("4月 49.0")).toBeInTheDocument();
+    expect(within(history).getByText("+0.5")).toBeInTheDocument();
+    expect(within(history).getByText("制造业景气回升但仍低于荣枯线。")).toBeInTheDocument();
   });
 });

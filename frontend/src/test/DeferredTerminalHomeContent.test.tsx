@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DashboardHomeFirstScreenHydration } from "../features/workbench/dashboard-home/dashboardHomeFirstScreenTypes";
@@ -71,6 +71,23 @@ function createHydration(
 describe("DeferredTerminalHomeContent", () => {
   beforeEach(() => {
     mockedUseDashboardHomeSupplementalHydration.mockReset();
+  });
+
+  it("shows the below-fold evidence index before deferred sections render", () => {
+    mockedUseDashboardHomeSupplementalHydration.mockReturnValue(createHydration());
+
+    render(
+      <DeferredTerminalHomeContent
+        snapshotBoundary={{} as DashboardHomeSnapshotBoundary}
+        userReachedDeferredContent={false}
+      />,
+    );
+
+    const index = screen.getByTestId("dashboard-home-deferred-index");
+    expect(index).toHaveTextContent("证据索引");
+    expect(index).toHaveTextContent("下半屏模块按来源延迟展开");
+    expect(index).toHaveTextContent("持仓账本");
+    expect(index).toHaveTextContent("凭证链路");
   });
 
   it("emits equivalent first-screen hydration only once across rerenders", async () => {
