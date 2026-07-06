@@ -919,7 +919,11 @@ def test_real_tyw_parse_marks_tongye_cunfang_as_liability():
     assert all(str(row["position_side"]) == "liability" for row in cunfang_rows[:10])
 
 
-def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monkeypatch):
+def test_balance_analysis_workbook_api_returns_governed_sections(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -983,6 +987,7 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
 def test_balance_analysis_workbook_contract_keeps_generated_decision_items_in_operational_sections(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -1038,7 +1043,11 @@ def test_governed_workbook_inventory_matches_spec_contract():
     assert "advanced_attribution_bundle" in NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS
 
 
-def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(tmp_path, monkeypatch):
+def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1073,7 +1082,11 @@ def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(
     get_settings.cache_clear()
 
 
-def test_maturity_gap_includes_issuance_and_full_scope_liabilities(tmp_path, monkeypatch):
+def test_maturity_gap_includes_issuance_and_full_scope_liabilities(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1111,7 +1124,11 @@ def test_maturity_gap_includes_issuance_and_full_scope_liabilities(tmp_path, mon
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_cashflow_calendar_section(tmp_path, monkeypatch):
+def test_workbook_exposes_cashflow_calendar_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1157,7 +1174,11 @@ def test_workbook_exposes_cashflow_calendar_section(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_liquidity_layers_section(tmp_path, monkeypatch):
+def test_workbook_exposes_liquidity_layers_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1219,7 +1240,11 @@ def test_workbook_exposes_liquidity_layers_section(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_issuer_concentration_section(tmp_path, monkeypatch):
+def test_workbook_exposes_issuer_concentration_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1261,7 +1286,11 @@ def test_workbook_exposes_issuer_concentration_section(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_rule_reference_section(tmp_path, monkeypatch):
+def test_workbook_exposes_rule_reference_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1301,7 +1330,11 @@ def test_workbook_exposes_rule_reference_section(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_ifrs9_classification_section(tmp_path, monkeypatch):
+def test_workbook_exposes_ifrs9_classification_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1364,7 +1397,11 @@ def test_workbook_exposes_ifrs9_classification_section(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_workbook_exposes_account_category_comparison_section(tmp_path, monkeypatch):
+def test_workbook_exposes_account_category_comparison_section(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
