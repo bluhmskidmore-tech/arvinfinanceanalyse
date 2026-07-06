@@ -21,6 +21,8 @@ from backend.app.core_finance.campisi import (
     credit_spread_change_decimal,
     infer_credit_rating_from_asset_class,
     interpolate_treasury_yield_pct,
+    treasury_tenor_coverage,
+    usable_spread_bp,
 )
 
 
@@ -331,6 +333,86 @@ class TestCreditSpreadChange:
         result = credit_spread_change_decimal(None, None, "AAA")
         assert result == Decimal("0")
 
+    def test_one_sided_missing_spread_is_not_a_spread_change(self, caplog):
+        """Start=60bp / end missing must not become a fictitious -60bp change."""
+        caplog.set_level("WARNING", logger="backend.app.core_finance.campisi")
+
+        result = credit_spread_change_decimal({"credit_spread_aaa_3y": 60.0}, {}, "AAA")
+
+        assert result == Decimal("0")
+        assert any("on both sides" in record.message for record in caplog.records)
+
+    def test_one_sided_missing_spread_start_side(self):
+        result = credit_spread_change_decimal({}, {"credit_spread_aaa_3y": 60.0}, "AAA")
+        assert result == Decimal("0")
+
+    def test_zero_spread_value_treated_as_unavailable(self):
+        result = credit_spread_change_decimal(
+            {"credit_spread_aa_3y": 0.0},
+            {"credit_spread_aa_3y": 120.0},
+            "AA",
+        )
+        assert result == Decimal("0")
+
+    def test_unparseable_spread_value_treated_as_unavailable(self, caplog):
+        caplog.set_level("WARNING", logger="backend.app.core_finance.campisi")
+
+        result = credit_spread_change_decimal(
+            {"credit_spread_aaa_3y": "n/a"},
+            {"credit_spread_aaa_3y": 60.0},
+            "AAA",
+        )
+
+        assert result == Decimal("0")
+        assert any("Unparseable credit spread" in record.message for record in caplog.records)
+
+    def test_usable_spread_bp_validity_rule(self):
+        assert usable_spread_bp({"credit_spread_aaa_3y": 60.0}, "AAA") == 60.0
+        assert usable_spread_bp({"credit_spread_aaa_3y": 0.0}, "AAA") is None
+        assert usable_spread_bp({"credit_spread_aaa_3y": -5.0}, "AAA") is None
+        assert usable_spread_bp({"credit_spread_aaa_3y": None}, "AAA") is None
+        assert usable_spread_bp({}, "AAA") is None
+        assert usable_spread_bp(None, "AAA") is None
+        assert usable_spread_bp({"credit_spread_aaa_3y": 60.0}, "GOV") is None
+
+
+class TestTreasuryTenorCoverage:
+    """Coverage helper must apply the same validity rule as interpolation."""
+
+    _FULL = {
+        "treasury_1y": 2.0,
+        "treasury_3y": 2.5,
+        "treasury_5y": 3.0,
+        "treasury_7y": 3.2,
+        "treasury_10y": 3.5,
+        "treasury_30y": 4.5,
+    }
+
+    def test_full_coverage(self):
+        coverage = treasury_tenor_coverage(self._FULL, self._FULL)
+
+        assert coverage["start_missing"] == []
+        assert coverage["end_missing"] == []
+        assert coverage["shared_positive_tenors"] == 6
+
+    def test_missing_and_zero_tenors_reported_per_side(self):
+        start = {k: v for k, v in self._FULL.items() if k != "treasury_30y"}
+        end = dict(self._FULL, treasury_1y=0.0)
+
+        coverage = treasury_tenor_coverage(start, end)
+
+        assert coverage["start_missing"] == ["treasury_30y"]
+        assert coverage["end_missing"] == ["treasury_1y"]
+        assert coverage["shared_positive_tenors"] == 4
+
+    def test_degraded_period_flagged_below_two_shared_tenors(self):
+        coverage = treasury_tenor_coverage(
+            {"treasury_10y": 3.5},
+            {"treasury_1y": 2.0},
+        )
+
+        assert coverage["shared_positive_tenors"] == 0
+
 
 class TestCreditRatingInference:
     """Test infer_credit_rating_from_asset_class."""
@@ -609,3 +691,122 @@ class TestFullCampisiAttribution:
             + result.totals["selection_effect"]
         )
         assert abs(sum_effects - result.totals["total_return"]) < 1.0
+
+
+class TestLargePortfolioAggregationPrecision:
+    """Regression guard for the by_bond -> totals aggregation precision fix.
+
+    `campisi_attribution` used to build `by_bond` records with each effect
+    independently cast to float, then aggregate `totals` with Python's
+    built-in `sum()` over those already-rounded floats. Per-bond, the four
+    effects sum *exactly* to `total_return` in the Decimal domain (selection
+    is defined as the residual), but once each effect is rounded to float
+    independently, the four rounded floats no longer sum to exactly the
+    rounded `total_return`; with many bonds, naive float accumulation can
+    compound this drift.
+
+    Note: on Python >= 3.12, CPython's built-in `sum()` for floats already
+    uses a compensated (Neumaier) summation algorithm, which absorbs most of
+    this drift in practice — this test's 0.01-yuan tolerance therefore does
+    not reliably fail on unfixed code under every Python runtime. This repo's
+    `backend/pyproject.toml` declares `requires-python = ">=3.11"`, where the
+    built-in `sum()` has no such compensation and the drift is real. The fix
+    (aggregating in the Decimal domain end-to-end and converting to float
+    only at the `CampisiResult` boundary) removes the dependency on the
+    Python runtime's `sum()` implementation entirely.
+    """
+
+    def test_500_plus_bonds_effects_sum_closes_to_total_return(self):
+        """Combined four effects must close to total_return within 1 fen (0.01 yuan)."""
+        n = 600
+        positions = []
+        ratings_cycle = ["AAA企业债", "AA+企业债", "AA企业债", "国债"]
+        for i in range(n):
+            # Deliberately non-binary-friendly fractions (0.1 / 0.03 style cents).
+            mv = 1_000_000.1 + (i % 97) * 733.03 + (i % 7) * 0.03
+            positions.append(
+                {
+                    "bond_code": f"BOND{i:04d}.IB",
+                    "instrument_id": f"BOND{i:04d}.IB",
+                    "market_value_start": mv,
+                    "market_value_end": mv * (1.001 + (i % 5) * 0.0001 - 0.0003),
+                    "face_value_start": mv,
+                    "coupon_rate_start": 0.031 + (i % 11) * 0.0003,
+                    "yield_to_maturity_start": 0.035 + (i % 13) * 0.0002,
+                    "asset_class_start": ratings_cycle[i % 4],
+                    "maturity_date_start": date(2027 + (i % 6), 1 + (i % 12), 1 + (i % 27)),
+                }
+            )
+
+        market_start = {
+            "treasury_1y": 2.0, "treasury_3y": 2.5, "treasury_5y": 3.0,
+            "treasury_7y": 3.2, "treasury_10y": 3.5, "treasury_30y": 4.0,
+            "credit_spread_aaa_3y": 50.0, "credit_spread_aa_plus_3y": 80.0,
+            "credit_spread_aa_3y": 110.0,
+        }
+        market_end = {
+            "treasury_1y": 2.13, "treasury_3y": 2.67, "treasury_5y": 3.21,
+            "treasury_7y": 3.38, "treasury_10y": 3.71, "treasury_30y": 4.23,
+            "credit_spread_aaa_3y": 57.0, "credit_spread_aa_plus_3y": 88.0,
+            "credit_spread_aa_3y": 121.0,
+        }
+
+        result = campisi_attribution(
+            positions, market_start, market_end, date(2026, 1, 1), date(2026, 1, 31)
+        )
+
+        assert len(result.by_bond) == n
+        totals = result.totals
+        sum_effects = (
+            totals["income_return"]
+            + totals["treasury_effect"]
+            + totals["spread_effect"]
+            + totals["selection_effect"]
+        )
+        assert sum_effects == pytest.approx(totals["total_return"], abs=0.01)
+
+    def test_totals_match_independent_decimal_reconstruction(self):
+        """totals must equal a from-scratch Decimal-domain re-aggregation of by_bond.
+
+        This is runtime-independent: it does not rely on any particular
+        Python `sum()` implementation to happen to mask the old bug.
+        """
+        n = 500
+        positions = []
+        for i in range(n):
+            mv = 2_000_000.03 + (i % 53) * 1_111.1
+            positions.append(
+                {
+                    "bond_code": f"B{i:04d}.IB",
+                    "instrument_id": f"B{i:04d}.IB",
+                    "market_value_start": mv,
+                    "market_value_end": mv * (1.0005 + (i % 9) * 0.0001),
+                    "face_value_start": mv,
+                    "coupon_rate_start": 0.028 + (i % 7) * 0.0003,
+                    "yield_to_maturity_start": 0.032 + (i % 5) * 0.0004,
+                    "asset_class_start": ["AAA企业债", "AA+企业债", "AA企业债"][i % 3],
+                    "maturity_date_start": date(2028 + (i % 4), 1 + (i % 12), 1 + (i % 27)),
+                }
+            )
+        market_start = {
+            "treasury_1y": 2.1, "treasury_3y": 2.4, "treasury_5y": 2.9,
+            "treasury_7y": 3.1, "treasury_10y": 3.4, "treasury_30y": 3.9,
+            "credit_spread_aaa_3y": 45.0, "credit_spread_aa_plus_3y": 75.0,
+            "credit_spread_aa_3y": 105.0,
+        }
+        market_end = {
+            "treasury_1y": 1.98, "treasury_3y": 2.29, "treasury_5y": 2.77,
+            "treasury_7y": 2.96, "treasury_10y": 3.27, "treasury_30y": 3.76,
+            "credit_spread_aaa_3y": 41.0, "credit_spread_aa_plus_3y": 70.0,
+            "credit_spread_aa_3y": 99.0,
+        }
+
+        result = campisi_attribution(
+            positions, market_start, market_end, date(2026, 3, 1), date(2026, 3, 31)
+        )
+
+        for key in ("income_return", "treasury_effect", "spread_effect", "selection_effect", "total_return"):
+            reconstructed = float(
+                sum((Decimal(str(r[key])) for r in result.by_bond), Decimal("0"))
+            )
+            assert result.totals[key] == pytest.approx(reconstructed, abs=1e-6)

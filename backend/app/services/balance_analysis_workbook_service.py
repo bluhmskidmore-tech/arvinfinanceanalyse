@@ -71,15 +71,46 @@ def _build_balance_workbook_payload(
             currency_basis="CNY",
         )
     ]
+    # Cross-scope tables (maturity gap, regulatory limits, cashflow calendar, rate
+    # distribution, counterparty types, cards, right-rail sections) need both asset and
+    # liability rows. When the caller narrows position_scope we fetch the unfiltered
+    # native rows once more and hand them to the builder so the missing side is not
+    # silently reported as 0. scope="all" reuses the already-fetched rows.
+    if position_scope == "all":
+        zqtz_full_native_rows = zqtz_native_rows
+        tyw_full_native_rows = tyw_native_rows
+    else:
+        zqtz_full_native_rows = [
+            _to_formal_zqtz_fact_row(row)
+            for row in repo.fetch_formal_zqtz_rows(
+                report_date=report_date,
+                position_scope="all",
+                currency_basis="native",
+            )
+        ]
+        tyw_full_native_rows = [
+            _to_formal_tyw_fact_row(row)
+            for row in repo.fetch_formal_tyw_rows(
+                report_date=report_date,
+                position_scope="all",
+                currency_basis="native",
+            )
+        ]
     workbook_mod = import_module_fn(workbook_module_name)
     workbook_mod = reload_module_fn(workbook_mod)
     workbook = workbook_mod.build_balance_analysis_workbook_payload(
-        report_date=zqtz_native_rows[0].report_date if zqtz_native_rows else tyw_native_rows[0].report_date,
+        report_date=(
+            zqtz_full_native_rows[0].report_date
+            if zqtz_full_native_rows
+            else tyw_full_native_rows[0].report_date
+        ),
         position_scope=position_scope,
         currency_basis=currency_basis,
         zqtz_rows=zqtz_native_rows,
         tyw_rows=tyw_native_rows,
         zqtz_currency_rows=zqtz_currency_rows,
+        zqtz_full_rows=zqtz_full_native_rows,
+        tyw_full_rows=tyw_full_native_rows,
     )
     return workbook, resolve_completed_formal_build_lineage_fn(
         governance_dir=governance_dir,

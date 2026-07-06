@@ -134,6 +134,26 @@ SPREAD_FIELD = {
 _SPREAD_FIELD = SPREAD_FIELD
 
 
+def usable_spread_bp(market: dict[str, Any] | None, rating: str) -> float | None:
+    """Return the rating's 3Y spread in bp when present, parseable, and positive."""
+    key = _SPREAD_FIELD.get(rating)
+    if not key or not market:
+        return None
+    value = market.get(key)
+    if value in (None, ""):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Unparseable credit spread value for %s: %r; treated as unavailable.",
+            key,
+            value,
+        )
+        return None
+    return numeric if numeric > 0 else None
+
+
 def credit_spread_change_decimal(
     market_start: dict[str, Any] | None,
     market_end: dict[str, Any] | None,
@@ -144,9 +164,32 @@ def credit_spread_change_decimal(
     key = _SPREAD_FIELD.get(rating)
     if not key:
         return Decimal("0")
-    s0 = float((market_start or {}).get(key) or 0)
-    s1 = float((market_end or {}).get(key) or 0)
+    s0 = usable_spread_bp(market_start, rating)
+    s1 = usable_spread_bp(market_end, rating)
+    if s0 is None or s1 is None:
+        logger.warning(
+            "Credit spread change requires positive %s on both sides; start=%s, end=%s. Returning 0.",
+            key,
+            "present" if s0 is not None else "unavailable",
+            "present" if s1 is not None else "unavailable",
+        )
+        return Decimal("0")
     return Decimal(str((s1 - s0) / 10000.0))
+
+
+def treasury_tenor_coverage(
+    market_start: dict[str, Any] | None,
+    market_end: dict[str, Any] | None,
+) -> dict[str, Any]:
+    start_curve = _coerce_percent_curve(market_start)
+    end_curve = _coerce_percent_curve(market_end)
+    shared = [k for k in _TREASURY_KEYS if k in start_curve and k in end_curve]
+    return {
+        "required_keys": list(_TREASURY_KEYS),
+        "start_missing": [k for k in _TREASURY_KEYS if k not in start_curve],
+        "end_missing": [k for k in _TREASURY_KEYS if k not in end_curve],
+        "shared_positive_tenors": len(shared),
+    }
 
 
 def infer_credit_rating_from_asset_class(asset_class: str | None) -> str:
@@ -315,35 +358,49 @@ def campisi_attribution(
         bond_label = str(bond.get("bond_code") or bond.get("instrument_id") or "UNKNOWN")
         for d in fx.get("diagnostics") or []:
             accrued_diagnostics.append(f"{bond_label}: {d}")
+        # Keep Decimal precision here; by_bond is aggregated into totals below in the
+        # Decimal domain to avoid float sum() error accumulation across many bonds.
+        # Converted to float only at the CampisiResult output boundary.
         rec = {
             "bond_code": bond["bond_code"],
             "asset_class": row.get("asset_class_start"),
             "maturity_bucket": _maturity_bucket(years),
-            "market_value_start": float(row.get("market_value_start") or 0),
-            "income_return": float(fx["income_return"]),
-            "treasury_effect": float(fx["treasury_effect"]),
-            "spread_effect": float(fx["spread_effect"]),
-            "selection_effect": float(fx["selection_effect"]),
-            "total_return": float(fx["total_return"]),
-            "mod_duration": float(fx["mod_duration"]),
+            "market_value_start": Decimal(str(row.get("market_value_start") or 0)),
+            "income_return": fx["income_return"],
+            "treasury_effect": fx["treasury_effect"],
+            "spread_effect": fx["spread_effect"],
+            "selection_effect": fx["selection_effect"],
+            "total_return": fx["total_return"],
+            "mod_duration": fx["mod_duration"],
             "has_accrued_interest": bool(fx["has_accrued_interest"]),
         }
         by_bond.append(rec)
 
+    _ZERO = Decimal("0")
     totals = {
-        "income_return": sum(r["income_return"] for r in by_bond),
-        "treasury_effect": sum(r["treasury_effect"] for r in by_bond),
-        "spread_effect": sum(r["spread_effect"] for r in by_bond),
-        "selection_effect": sum(r["selection_effect"] for r in by_bond),
-        "total_return": sum(r["total_return"] for r in by_bond),
-        "market_value_start": sum(r["market_value_start"] for r in by_bond),
+        "income_return": float(sum((r["income_return"] for r in by_bond), _ZERO)),
+        "treasury_effect": float(sum((r["treasury_effect"] for r in by_bond), _ZERO)),
+        "spread_effect": float(sum((r["spread_effect"] for r in by_bond), _ZERO)),
+        "selection_effect": float(sum((r["selection_effect"] for r in by_bond), _ZERO)),
+        "total_return": float(sum((r["total_return"] for r in by_bond), _ZERO)),
+        "market_value_start": float(sum((r["market_value_start"] for r in by_bond), _ZERO)),
     }
     by_class = _aggregate_by_class(by_bond)
+    _NUMERIC_BOND_KEYS = (
+        "market_value_start",
+        "income_return",
+        "treasury_effect",
+        "spread_effect",
+        "selection_effect",
+        "total_return",
+        "mod_duration",
+    )
+    by_bond_out = [{**r, **{k: float(r[k]) for k in _NUMERIC_BOND_KEYS}} for r in by_bond]
     return CampisiResult(
         num_days=num_days,
         totals=totals,
         by_asset_class=by_class,
-        by_bond=by_bond,
+        by_bond=by_bond_out,
         diagnostics=accrued_diagnostics,
     )
 

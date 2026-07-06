@@ -367,6 +367,25 @@ STANDARD_SCENARIOS: list[dict] = [
     {"name": "parallel_up_100bp", "description": "平行上移 100bp", "shocks": {"all": 100}},
     {"name": "parallel_down_25bp", "description": "平行下移 25bp", "shocks": {"all": -25}},
     {"name": "parallel_down_50bp", "description": "平行下移 50bp", "shocks": {"all": -50}},
-    {"name": "steepening_50bp", "description": "陡峭化 50bp", "shocks": {"1Y": -25, "10Y": 25, "30Y": 50}},
-    {"name": "flattening_50bp", "description": "平坦化 50bp", "shocks": {"1Y": 25, "10Y": -25, "30Y": -50}},
+    # 陡峭化/平坦化需覆盖 get_tenor_bucket 的全部桶，否则中间期限桶冲击为 0、
+    # 情景损益被低估。非锚点桶按 1Y/10Y/30Y 锚点线性插值（取整 bp），
+    # 端点外（6M）沿用最近锚点（1Y）值。
+    # 口径说明（2026-07 经确认并存，勿擅自统一）：krd.py 的 STANDARD_KRD_SCENARIOS
+    # 同名情景为 1Y∓25bp / 30Y±25bp 驼峰形，与此处 30Y±50bp 线性版本是两套已知口径。
+    {
+        "name": "steepening_50bp",
+        "description": "陡峭化 50bp",
+        "shocks": {
+            "6M": -25, "1Y": -25, "2Y": -19, "3Y": -14, "5Y": -3,
+            "7Y": 8, "10Y": 25, "20Y": 38, "30Y": 50,
+        },
+    },
+    {
+        "name": "flattening_50bp",
+        "description": "平坦化 50bp",
+        "shocks": {
+            "6M": 25, "1Y": 25, "2Y": 19, "3Y": 14, "5Y": 3,
+            "7Y": -8, "10Y": -25, "20Y": -38, "30Y": -50,
+        },
+    },
 ]

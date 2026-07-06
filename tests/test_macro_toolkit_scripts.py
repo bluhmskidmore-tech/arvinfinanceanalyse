@@ -195,7 +195,15 @@ def test_crisis_score_payload_matches_migrated_script_formula(monkeypatch) -> No
 
     legacy_score = legacy.compute_crisis_score(legacy_indicators, z_window=120)
     score = compute_crisis_score(indicators, z_window=120, min_z_observations=60)
-    pd.testing.assert_frame_equal(score, legacy_score, check_exact=False, check_freq=False, rtol=1e-12, atol=1e-12)
+    complete_component_rows = score[[column for column in score.columns if column.endswith("_z")]].notna().all(axis=1)
+    pd.testing.assert_frame_equal(
+        score.loc[complete_component_rows],
+        legacy_score.loc[complete_component_rows],
+        check_exact=False,
+        check_freq=False,
+        rtol=1e-12,
+        atol=1e-12,
+    )
 
     latest_score = float(legacy_score["crisis_score"].dropna().iloc[-1])
     payload = compute_crisis_score_payload(series_data, report_date=dates[-1].date())
@@ -206,6 +214,61 @@ def test_crisis_score_payload_matches_migrated_script_formula(monkeypatch) -> No
     assert payload["regime"] == legacy.classify_regime(latest_score)[0]
     for sample_score in (-0.1, 0.5, 1.5, 2.5, 3.5):
         assert classify_crisis_score(sample_score)[0] == legacy.classify_regime(sample_score)[0]
+
+
+def test_crisis_score_renormalizes_available_component_weights() -> None:
+    dates = pd.date_range("2026-01-01", periods=5, freq="D")
+    indicators = pd.DataFrame(
+        {
+            "equity_vol": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "credit_spread": [10.0, 11.0, None, 13.0, 14.0],
+        },
+        index=dates,
+    )
+
+    score = compute_crisis_score(
+        indicators,
+        z_window=3,
+        min_z_observations=2,
+        weights={"equity_vol": 0.75, "credit_spread": 0.25},
+    )
+
+    missing_credit_date = dates[2]
+    assert pd.isna(score.loc[missing_credit_date, "credit_spread_z"])
+    assert score.loc[missing_credit_date, "crisis_score"] == pytest.approx(
+        score.loc[missing_credit_date, "equity_vol_z"]
+    )
+    assert score.loc[missing_credit_date, "crisis_score"] != pytest.approx(
+        0.75 * score.loc[missing_credit_date, "equity_vol_z"]
+    )
+
+
+def test_crisis_score_flags_stale_component_after_ffill_limit() -> None:
+    dates = [sample_date.date() for sample_date in pd.date_range("2026-01-01", periods=30, freq="D")]
+    aa_stop_index = 18
+
+    series_data = {
+        "hs300": [(sample_date, 4000.0 + idx * 2.0 + (idx % 2) * 8.0) for idx, sample_date in enumerate(dates)],
+        "aa_5y": [(sample_date, 2.9 + idx * 0.01) for idx, sample_date in enumerate(dates[:aa_stop_index])],
+        "gov_5y": [(sample_date, 2.2 + idx * 0.005) for idx, sample_date in enumerate(dates)],
+        "usdcny": [(sample_date, 7.0 + idx * 0.002 + (idx % 2) * 0.01) for idx, sample_date in enumerate(dates)],
+        "nanhua": [(sample_date, 1000.0 + idx * 3.0 + (idx % 2) * 10.0) for idx, sample_date in enumerate(dates)],
+        "dr007": [(sample_date, 1.8 + idx * 0.01) for idx, sample_date in enumerate(dates)],
+        "reverse_repo_7d": [(sample_date, 1.7) for sample_date in dates],
+    }
+
+    payload = compute_crisis_score_payload(
+        series_data,
+        report_date=dates[-1],
+        vol_window=2,
+        z_window=5,
+        min_z_observations=3,
+    )
+
+    component_keys = {item["key"] for item in payload["components"]}
+    assert "credit_spread" not in component_keys
+    assert "CREDIT_SPREAD_STALE" in payload["warnings"]
+    assert payload["crisis_score"] is not None
 
 
 def test_merrill_clock_calculations_match_documented_formula(monkeypatch) -> None:

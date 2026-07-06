@@ -30,15 +30,43 @@ DEFAULT_HYBRID_FUSION_THRESHOLDS = HybridFusionThresholds()
 def load_hybrid_fusion_thresholds(yaml_path: Path | None = None) -> HybridFusionThresholds:
     path = yaml_path or DEFAULT_STRATEGY_YAML
     if not path.exists():
+        validate_thresholds(DEFAULT_HYBRID_FUSION_THRESHOLDS)
         return DEFAULT_HYBRID_FUSION_THRESHOLDS
     parsed = _parse_threshold_yaml(path)
     if not parsed:
+        validate_thresholds(DEFAULT_HYBRID_FUSION_THRESHOLDS)
         return DEFAULT_HYBRID_FUSION_THRESHOLDS
     kwargs: dict[str, float] = {}
     for field in fields(HybridFusionThresholds):
         if field.name in parsed:
             kwargs[field.name] = parsed[field.name]
-    return HybridFusionThresholds(**kwargs)
+    thresholds = HybridFusionThresholds(**kwargs)
+    validate_thresholds(thresholds)
+    return thresholds
+
+
+def validate_thresholds(thresholds: HybridFusionThresholds) -> None:
+    weight_groups = (
+        ("fusion_cycle_weight", "fusion_life_weight"),
+        ("cycle_macro_weight", "cycle_industry_weight", "cycle_market_flow_weight", "cycle_valuation_weight"),
+        ("legacy_cycle_sector_weight", "legacy_cycle_factor_weight"),
+    )
+    for group in weight_groups:
+        total = sum(getattr(thresholds, field_name) for field_name in group)
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError(f"{', '.join(group)} must sum to 1.0, got {total:.6f}")
+
+    for field in fields(HybridFusionThresholds):
+        if field.name.endswith("_q"):
+            value = getattr(thresholds, field.name)
+            if not 0.0 < value < 1.0:
+                raise ValueError(f"{field.name} must be in (0, 1), got {value}")
+
+    if thresholds.stance_strong_q < thresholds.stance_neutral_q:
+        raise ValueError(
+            "stance_strong_q must be greater than or equal to stance_neutral_q, "
+            f"got {thresholds.stance_strong_q} < {thresholds.stance_neutral_q}"
+        )
 
 
 def _parse_threshold_yaml(path: Path) -> dict[str, float]:

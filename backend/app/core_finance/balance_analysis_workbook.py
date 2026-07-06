@@ -88,16 +88,24 @@ def build_balance_analysis_workbook_payload(
     zqtz_rows: list[FormalZqtzBalanceFactRow],
     tyw_rows: list[FormalTywBalanceFactRow],
     zqtz_currency_rows: list[FormalZqtzBalanceFactRow] | None = None,
+    zqtz_full_rows: list[FormalZqtzBalanceFactRow] | None = None,
+    tyw_full_rows: list[FormalTywBalanceFactRow] | None = None,
 ) -> dict[str, Any]:
+    # ``zqtz_rows`` / ``tyw_rows`` honor the caller's ``position_scope`` filter and feed
+    # single-scope tables. Cross-scope tables (that mix asset & liability rows internally)
+    # must use the unfiltered ``*_full_rows`` so a scope filter cannot silently degrade the
+    # liability / gap / spread columns to 0. When scope="all" the callers pass identical rows.
     zqtz_currency_rows = zqtz_currency_rows or zqtz_rows
-    cards = _build_cards(zqtz_rows, tyw_rows)
+    zqtz_full_rows = zqtz_rows if zqtz_full_rows is None else zqtz_full_rows
+    tyw_full_rows = tyw_rows if tyw_full_rows is None else tyw_full_rows
+    cards = _build_cards(zqtz_full_rows, tyw_full_rows)
     tables = [
         _build_bond_business_type_table(zqtz_rows),
-        _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows),
-        _build_cashflow_calendar_table(report_date, zqtz_rows, tyw_rows),
+        _build_maturity_gap_table(report_date, zqtz_full_rows, tyw_full_rows),
+        _build_cashflow_calendar_table(report_date, zqtz_full_rows, tyw_full_rows),
         _build_issuer_concentration_table(zqtz_rows),
         _build_liquidity_layers_table(zqtz_rows),
-        _build_regulatory_limits_table(report_date, zqtz_rows, tyw_rows),
+        _build_regulatory_limits_table(report_date, zqtz_full_rows, tyw_full_rows),
         _build_overdue_credit_quality_detail_table(zqtz_rows),
         _build_overdue_credit_quality_rating_table(zqtz_rows),
         _build_vintage_analysis_table(zqtz_rows),
@@ -111,15 +119,15 @@ def build_balance_analysis_workbook_payload(
         _build_issuance_business_type_table(zqtz_rows),
         _build_currency_split_table(zqtz_currency_rows),
         _build_rating_table(zqtz_rows),
-        _build_rate_distribution_table(zqtz_rows, tyw_rows),
+        _build_rate_distribution_table(zqtz_full_rows, tyw_full_rows),
         _build_industry_table(zqtz_rows),
-        _build_counterparty_type_table(tyw_rows),
+        _build_counterparty_type_table(tyw_full_rows),
         _build_campisi_table(zqtz_rows),
         _build_cross_analysis_table(zqtz_rows),
         _build_interest_mode_table(zqtz_rows),
-        _build_decision_items_table(report_date, zqtz_rows, tyw_rows),
-        _build_event_calendar_table(report_date, zqtz_rows, tyw_rows),
-        _build_risk_alerts_table(report_date, zqtz_rows, tyw_rows),
+        _build_decision_items_table(report_date, zqtz_full_rows, tyw_full_rows),
+        _build_event_calendar_table(report_date, zqtz_full_rows, tyw_full_rows),
+        _build_risk_alerts_table(report_date, zqtz_full_rows, tyw_full_rows),
     ]
     return {
         "report_date": report_date.isoformat(),

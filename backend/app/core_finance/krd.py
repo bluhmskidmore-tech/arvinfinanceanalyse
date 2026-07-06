@@ -46,6 +46,10 @@ STANDARD_KRD_SCENARIOS = (
         "description": "Parallel -25bp",
         "shocks": {tenor: -25 for tenor in KRD_TENORS},
     },
+    # 口径说明（2026-07 经确认并存，勿擅自统一）：本文件 KRD 情景的陡峭化/平坦化
+    # 幅度为 1Y∓25bp / 30Y±25bp（10Y 后回落的驼峰形），而 bond_analytics/common.py
+    # 的 STANDARD_SCENARIOS 同名情景为 1Y∓25bp / 30Y±50bp 线性插值。两套服务于
+    # 不同展示场景，数值差异属已知口径差异。
     {
         "name": "steepening_50bp",
         "description": "Curve steepening",

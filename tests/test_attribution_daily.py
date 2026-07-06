@@ -466,6 +466,63 @@ def test_multiple_positions_aggregation():
     assert aggregate["total_return"] == pytest.approx(5000.0)
 
 
+class TestLargeBatchAggregationPrecision:
+    """Regression guard for the Decimal-domain residual fix in compute_daily_attribution_row.
+
+    `residual_return = total - carry - rolldown - spread - curve - fx` used to be
+    computed entirely in float. This test aggregates 500+ per-bond rows (each with
+    non-binary-friendly fractional amounts) the way a batch caller would, and checks
+    that the aggregate identity still closes within 1 fen (0.01 yuan).
+    """
+
+    def test_500_plus_rows_residual_identity_closes_in_aggregate(self):
+        n = 520
+        aggregate = {
+            "carry_return": 0.0,
+            "rolldown_return": 0.0,
+            "spread_return": 0.0,
+            "curve_return": 0.0,
+            "fx_return": 0.0,
+            "total_return": 0.0,
+            "residual_return": 0.0,
+        }
+        for i in range(n):
+            mv_start = 1_000_000.1 + (i % 71) * 907.03 + (i % 3) * 0.03
+            position = {
+                "bond_code": f"ROW{i:04d}.IB",
+                "asset_class_start": ["国债", "AAA企业债", "AA+企业债", "AA企业债"][i % 4],
+                "market_value_start": mv_start,
+                "market_value_end": mv_start * (1.0006 + (i % 5) * 0.0001),
+                "face_value_start": mv_start,
+                "coupon_rate_start": 0.027 + (i % 9) * 0.0003,
+                "yield_to_maturity_start": 0.031 + (i % 11) * 0.0002,
+                "maturity_date_start": date(2027 + (i % 5), 1 + (i % 12), 1 + (i % 27)),
+                "accrued_interest_start": None,
+                "accrued_interest_end": None,
+            }
+            row = compute_daily_attribution_row(
+                position,
+                MARKET_START,
+                MARKET_END,
+                PREV_DATE,
+                REPORT_DATE,
+                total_pnl=float(i) * 3.03 - 100.1,
+                fx_pnl=0.01 * (i % 7),
+            )
+            for key in aggregate:
+                aggregate[key] += row[key]
+
+        reconstructed = (
+            aggregate["carry_return"]
+            + aggregate["rolldown_return"]
+            + aggregate["spread_return"]
+            + aggregate["curve_return"]
+            + aggregate["fx_return"]
+            + aggregate["residual_return"]
+        )
+        assert reconstructed == pytest.approx(aggregate["total_return"], abs=0.01)
+
+
 def test_multiple_positions_carry_scales_with_face_value():
     """Verify carry is proportional to face value across positions."""
     position_small = {

@@ -835,3 +835,76 @@ def test_rebucket_return_decomposition_aggregates_trading() -> None:
     assert rate["trading"] == Decimal("3")
     assert credit["trading"] == Decimal("7")
     assert sum((b["trading"] for b in by_acc), Decimal("0")) == Decimal("10")
+
+
+# --- Standard curve scenarios: full tenor-bucket coverage ---
+
+# Buckets produced by common.get_tenor_bucket (the active bond-analytics path).
+_ALL_TENOR_BUCKETS = ("6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y")
+
+
+def _scenario(name: str) -> dict:
+    return next(s for s in common.STANDARD_SCENARIOS if s["name"] == name)
+
+
+def _risk_row(tenor_bucket: str) -> dict:
+    return {
+        "tenor_bucket": tenor_bucket,
+        "market_value": Decimal("1000000"),
+        "modified_duration": Decimal("4"),
+        "convexity": Decimal("20"),
+        "asset_class_std": "rate",
+        "accounting_class": "OCI",
+    }
+
+
+def test_steepening_flattening_scenarios_cover_all_tenor_buckets() -> None:
+    for name in ("steepening_50bp", "flattening_50bp"):
+        shocks = _scenario(name)["shocks"]
+        missing = [t for t in _ALL_TENOR_BUCKETS if not shocks.get(t)]
+        assert not missing, f"{name} has zero/missing shocks for buckets: {missing}"
+
+
+def test_steepening_flattening_anchor_shocks_unchanged() -> None:
+    steepening = _scenario("steepening_50bp")["shocks"]
+    flattening = _scenario("flattening_50bp")["shocks"]
+    assert (steepening["1Y"], steepening["10Y"], steepening["30Y"]) == (-25, 25, 50)
+    assert (flattening["1Y"], flattening["10Y"], flattening["30Y"]) == (25, -25, -50)
+
+
+def test_steepening_shocks_monotonic_and_flattening_is_mirror() -> None:
+    steepening = _scenario("steepening_50bp")["shocks"]
+    flattening = _scenario("flattening_50bp")["shocks"]
+    values = [steepening[t] for t in _ALL_TENOR_BUCKETS]
+    assert values == sorted(values), "steepening shocks should be non-decreasing along the curve"
+    assert steepening["2Y"] < 0 and steepening["7Y"] > 0
+    for tenor in _ALL_TENOR_BUCKETS:
+        assert flattening[tenor] == -steepening[tenor]
+
+
+def test_build_curve_scenarios_shocks_middle_buckets() -> None:
+    rm = _read_models_module()
+    rows = [_risk_row(t) for t in ("2Y", "5Y", "7Y")]
+    scenarios = {s["scenario_name"]: s for s in rm.build_curve_scenarios(rows)}
+    for name in ("steepening_50bp", "flattening_50bp"):
+        assert scenarios[name]["pnl_economic"] != Decimal("0"), (
+            f"{name} must shock middle tenor buckets (2Y/5Y/7Y)"
+        )
+    # Steepening on this short/mid book (negative shocks) should be a gain; flattening a loss.
+    assert scenarios["steepening_50bp"]["pnl_economic"] > Decimal("0")
+    assert scenarios["flattening_50bp"]["pnl_economic"] < Decimal("0")
+
+
+def test_parallel_scenarios_shock_every_bucket_equally() -> None:
+    rm = _read_models_module()
+    single = {
+        s["scenario_name"]: s["pnl_economic"]
+        for s in rm.build_curve_scenarios([_risk_row("6M")])
+    }
+    for tenor in _ALL_TENOR_BUCKETS[1:]:
+        other = {
+            s["scenario_name"]: s["pnl_economic"]
+            for s in rm.build_curve_scenarios([_risk_row(tenor)])
+        }
+        for name in ("parallel_up_25bp", "parallel_up_100bp", "parallel_down_50bp"):
+            assert other[name] == single[name], f"{name} shock differs for bucket {tenor}"

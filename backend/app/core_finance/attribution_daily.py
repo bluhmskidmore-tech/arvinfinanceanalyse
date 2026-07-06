@@ -77,18 +77,22 @@ def compute_daily_attribution_row(
     fx = compute_bond_four_effects(
         bond, num_days, bench_dec, spread_dec, prev_date, coupon_frequency=cf
     )
-    carry = float(fx["income_return"])
-    curve = float(fx["treasury_effect"])
-    spread = float(fx["spread_effect"])
+    # Effects and residual are combined in the Decimal domain to avoid float
+    # subtraction error in the residual identity; converted to float only at
+    # the returned dict boundary (output contract stays float, per callers).
+    carry_dec = fx["income_return"]
+    curve_dec = fx["treasury_effect"]
+    spread_ret_dec = fx["spread_effect"]
+    _ZERO = Decimal("0")
     if infer_accounting_class(merged_position.get("asset_class_start")) == ACCOUNTING_BASIS_AC:
-        rolldown = 0.0
+        rolldown_dec = _ZERO
     elif not market_end or mat_d is None:
-        rolldown = 0.0
+        rolldown_dec = _ZERO
     else:
         period_days = max((report_date - prev_date).days, 0)
         current_years = _years_to_maturity(mat_d, report_date)
         if period_days <= 0 or current_years <= 0:
-            rolldown = 0.0
+            rolldown_dec = _ZERO
         else:
             rolled_years = max(float(current_years) - (period_days / 365), 0.0)
             current_rate = interpolate_treasury_yield_pct(market_end, current_years)
@@ -102,23 +106,23 @@ def compute_daily_attribution_row(
                 coupon_frequency=cf,
             )
             rate_delta = Decimal(str((current_rate - rolled_rate) / 100.0))
-            rolldown = float(
+            rolldown_dec = (
                 safe_decimal(roll_fx["mod_duration"])
                 * rate_delta
                 * safe_decimal(merged_position.get("market_value_end"))
             )
-    fx_ret = float(fx_pnl or 0.0)
+    fx_ret_dec = safe_decimal(fx_pnl)
     if total_pnl is not None:
-        total = float(total_pnl)
+        total_dec = safe_decimal(total_pnl)
     else:
-        total = float(fx["total_return"])
-    residual = total - carry - rolldown - spread - curve - fx_ret
+        total_dec = fx["total_return"]
+    residual_dec = total_dec - carry_dec - rolldown_dec - spread_ret_dec - curve_dec - fx_ret_dec
     return {
-        "carry_return": carry,
-        "rolldown_return": rolldown,
-        "spread_return": spread,
-        "curve_return": curve,
-        "fx_return": fx_ret,
-        "total_return": total,
-        "residual_return": residual,
+        "carry_return": float(carry_dec),
+        "rolldown_return": float(rolldown_dec),
+        "spread_return": float(spread_ret_dec),
+        "curve_return": float(curve_dec),
+        "fx_return": float(fx_ret_dec),
+        "total_return": float(total_dec),
+        "residual_return": float(residual_dec),
     }
