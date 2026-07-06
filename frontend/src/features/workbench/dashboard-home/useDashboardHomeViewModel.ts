@@ -148,8 +148,6 @@ export function useDashboardHomeViewModel(
   snapshotBoundary: DashboardHomeSnapshotBoundary,
   options: { eagerEventFeeds?: boolean } = {},
 ) {
-  const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
-
   const {
     dataClient,
     snapshotQuery,
@@ -163,11 +161,7 @@ export function useDashboardHomeViewModel(
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
-  const hasDeferredSupplementalData =
-    hasSupplementalReportDate &&
-    supplementalDataReportDate === supplementalReportDate;
-  const hasDeferredSupplementalReportDate =
-    hasDeferredSupplementalData && hasSupplementalReportDate;
+  const hasDeferredSupplementalReportDate = hasSupplementalReportDate;
   const hasBodyDetailData = useBodyDetailDataGate(
     hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
   );
@@ -205,15 +199,6 @@ export function useDashboardHomeViewModel(
     Boolean(supplementalReportDate);
   const hasDeferredFormalContext = hasDeferredIncomeTrendData;
 
-  useEffect(() => {
-    setSupplementalDataReportDate(null);
-    if (!supplementalReportDate) {
-      return;
-    }
-
-    setSupplementalDataReportDate(supplementalReportDate);
-  }, [supplementalReportDate]);
-
   const {
     marketRatesQuery,
     creditSpreadMigrationQuery,
@@ -229,7 +214,7 @@ export function useDashboardHomeViewModel(
   } = useDashboardHomeBodyData({
     dataClient,
     supplementalReportDate,
-    loadBasicData: hasDeferredSupplementalData,
+    loadBasicData: hasDeferredSupplementalReportDate,
     loadEventFeeds: hasDeferredSupplementalReportDate && eventFeedsReady,
     loadSecondaryEventFeeds:
       hasDeferredSupplementalReportDate &&
