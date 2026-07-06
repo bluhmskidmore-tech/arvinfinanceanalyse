@@ -284,6 +284,17 @@ export function useDashboardHomeViewModel(
     ],
     [bondNewsQueries, macroNewsFallbackEvents],
   );
+  const bondNewsPayloads = useMemo(
+    () => [
+      ...macroNewsFallbackQueries.flatMap((query) =>
+        query.data?.result ? [query.data.result] : [],
+      ),
+      ...bondNewsQueries.flatMap((query) =>
+        query.data?.result ? [query.data.result] : [],
+      ),
+    ],
+    [bondNewsQueries, macroNewsFallbackQueries],
+  );
   const macroNewsLoading =
     macroNewsQueries.some((query) => query.isLoading) ||
     macroNewsFallbackQueries.some((query) => query.isLoading);
@@ -340,12 +351,14 @@ export function useDashboardHomeViewModel(
         macroNewsEvents,
         macroNewsFallbackEvents,
         bondNewsEvents,
+        bondNewsPayloads,
         macroNewsLoading,
         macroNewsError,
       }),
     [
       adapterOutput.attribution.vm,
       bondNewsEvents,
+      bondNewsPayloads,
       creditSpreadMigrationQuery.data?.result,
       effectiveReportDate,
       marketRatesQuery.data?.result.series,

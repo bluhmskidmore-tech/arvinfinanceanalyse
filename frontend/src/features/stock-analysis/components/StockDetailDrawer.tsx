@@ -204,6 +204,19 @@ function formatChoiceNewsReceivedAt(iso: string): string {
   return t || "—";
 }
 
+function formatChoiceNewsDataDate(
+  asOfDate: string | null | undefined,
+  excludedFutureRows: number | null | undefined,
+): string {
+  const dateLabel = asOfDate?.trim() || "待确认";
+  const futureRows = Number.isFinite(excludedFutureRows)
+    ? Number(excludedFutureRows)
+    : 0;
+  return futureRows > 0
+    ? `数据日期 ${dateLabel} · 已剔除未来 ${futureRows} 条`
+    : `数据日期 ${dateLabel}`;
+}
+
 function truncateChoiceNewsText(text: string | null, maxLen: number): string {
   if (text == null || text === "") return "—";
   const s = text.trim();
@@ -490,6 +503,10 @@ export function StockDetailDrawer({
     "先看 K 线，再核公告/新闻边界",
   );
   const eventBoundaryEvents = choiceNewsQuery.data?.result?.events ?? [];
+  const choiceNewsDataDateLabel = formatChoiceNewsDataDate(
+    choiceNewsQuery.data?.result?.as_of_date,
+    choiceNewsQuery.data?.result?.excluded_future_rows,
+  );
   const meta =
     detailQuery.data?.result == null
       ? null
@@ -1036,7 +1053,7 @@ export function StockDetailDrawer({
                       role="note"
                       data-testid="stock-detail-market-events-banner"
                     >
-                      市场事件 · 公告财报待补
+                      市场事件 · 公告财报待补 · {choiceNewsDataDateLabel}
                     </div>
                     {choiceNewsQuery.isLoading ? (
                       <p

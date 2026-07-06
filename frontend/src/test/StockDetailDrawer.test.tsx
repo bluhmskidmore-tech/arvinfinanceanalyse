@@ -741,6 +741,8 @@ describe("StockDetailDrawer", () => {
           total_rows: 2,
           limit: 10,
           offset: 0,
+          as_of_date: "2026-05-08",
+          excluded_future_rows: 1,
           events: [
             {
               event_key: "e1",
@@ -825,6 +827,8 @@ describe("StockDetailDrawer", () => {
           total_rows: 2,
           limit: 10,
           offset: 0,
+          as_of_date: "2026-05-08",
+          excluded_future_rows: 1,
           events: [
             {
               event_key: "e1",
@@ -885,6 +889,12 @@ describe("StockDetailDrawer", () => {
     );
 
     const list = await screen.findByTestId("stock-detail-market-events-list");
+    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent(
+      "数据日期 2026-05-08",
+    );
+    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent(
+      "已剔除未来 1 条",
+    );
     expect(list.querySelectorAll("li")).toHaveLength(3);
     expect(screen.getAllByText("行业新闻")).toHaveLength(2);
     expect(screen.getByText("事件分类待确认")).toBeInTheDocument();

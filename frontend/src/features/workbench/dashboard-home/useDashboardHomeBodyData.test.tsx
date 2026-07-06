@@ -49,6 +49,8 @@ function choiceNewsEnvelope(events: ChoiceNewsEvent[]): ApiEnvelope<ChoiceNewsEv
       total_rows: events.length,
       limit: events.length,
       offset: 0,
+      as_of_date: "2026-06-04",
+      excluded_future_rows: 0,
       events,
     },
   };

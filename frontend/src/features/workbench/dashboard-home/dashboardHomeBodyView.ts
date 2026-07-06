@@ -6,6 +6,7 @@ import type {
   CampisiFourEffectsPayload,
   ChoiceMacroLatestPoint,
   ChoiceNewsEvent,
+  ChoiceNewsEventsPayload,
   CreditSpreadMigrationPayload,
   HomeIncomeTrendPayload,
   HomeResearchReportsPayload,
@@ -221,6 +222,7 @@ export type MapToHomeBodyViewInput = {
   macroNewsEvents?: readonly ChoiceNewsEvent[] | null;
   macroNewsFallbackEvents?: readonly ChoiceNewsEvent[] | null;
   bondNewsEvents?: readonly ChoiceNewsEvent[] | null;
+  bondNewsPayloads?: readonly ChoiceNewsEventsPayload[] | null;
   macroNewsLoading?: boolean;
   macroNewsError?: boolean;
 };
@@ -1002,6 +1004,7 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
   const bondNews = buildHomeBondNewsModel({
     todayIsoDate,
     events: input.bondNewsEvents,
+    choiceNewsPayloads: input.bondNewsPayloads,
     topHoldings: input.topHoldings,
     positionChanges: input.positionChanges,
     industryDistribution: input.industryDistribution,

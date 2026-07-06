@@ -143,6 +143,8 @@ function buildMockChoiceNewsEnvelope(options: {
     total_rows: filtered.length,
     limit: options.limit,
     offset: options.offset,
+    as_of_date: "2026-04-23",
+    excluded_future_rows: 0,
     compare: buildMockChoiceNewsCompare(filtered),
     events: filtered.slice(options.offset, options.offset + options.limit),
   };

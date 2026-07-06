@@ -2,6 +2,7 @@ import type {
   BondPositionChangesPayload,
   BondTopHoldingsPayload,
   ChoiceNewsEvent,
+  ChoiceNewsEventsPayload,
   IndustryDistPayload,
 } from "../../../../api/contracts";
 import { dashboardMacroNewsTopicLabel } from "../../dashboard/dashboardMacroNewsTopics";
@@ -143,6 +144,25 @@ function daysBetween(leftIso: string, rightIso: string): number | null {
   return Math.floor((left.getTime() - right.getTime()) / 86_400_000);
 }
 
+function latestChoiceNewsPayloadAsOfDate(
+  payloads: readonly ChoiceNewsEventsPayload[] | null | undefined,
+): string {
+  return (payloads ?? [])
+    .map((payload) => payload.as_of_date?.trim() ?? "")
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? "";
+}
+
+function excludedFutureRowsTotal(
+  payloads: readonly ChoiceNewsEventsPayload[] | null | undefined,
+): number {
+  return (payloads ?? []).reduce(
+    (total, payload) => total + payload.excluded_future_rows,
+    0,
+  );
+}
+
 function eventText(event: ChoiceNewsEvent): string {
   return `${event.payload_text ?? ""} ${event.payload_json ?? ""}`;
 }
@@ -256,6 +276,7 @@ function toBondNewsItem(
 
 export function buildHomeBondNewsModel(input: {
   events?: readonly ChoiceNewsEvent[] | null;
+  choiceNewsPayloads?: readonly ChoiceNewsEventsPayload[] | null;
   todayIsoDate: string;
   topHoldings?: BondTopHoldingsPayload | null;
   positionChanges?: BondPositionChangesPayload | null;
@@ -313,6 +334,13 @@ export function buildHomeBondNewsModel(input: {
     holdingHits.length + marketNews.length + creditAndIssuanceNews.length;
   const queriedNewsCount = sortedEvents.length;
   const noBondNewsButQueried = includedNewsCount === 0 && queriedNewsCount > 0;
+  const payloadAsOfDate = latestChoiceNewsPayloadAsOfDate(input.choiceNewsPayloads);
+  const excludedFutureRows = excludedFutureRowsTotal(input.choiceNewsPayloads);
+  const payloadAsOfLabel = payloadAsOfDate
+    ? excludedFutureRows > 0
+      ? `数据日期 ${payloadAsOfDate} · 已剔除未来 ${excludedFutureRows} 条`
+      : `数据日期 ${payloadAsOfDate}`
+    : "";
 
   return {
     holdingHits: holdingHits.slice(0, HOLDING_HIT_LIMIT),
@@ -337,11 +365,13 @@ export function buildHomeBondNewsModel(input: {
           ? `发行/评级：已查询 ${queriedNewsCount} 条新闻，未筛出债券发行或评级内容。`
           : "发行/评级：暂无相关新闻",
     sourceLabel: BOND_NEWS_SOURCE_LABEL,
-    asOfLabel: latestTimeLabel
-      ? `数据截至 ${latestTimeLabel}`
-      : latestQueriedTimeLabel
-        ? `已查询至 ${latestQueriedTimeLabel}`
-        : "数据截至：暂无",
+    asOfLabel:
+      payloadAsOfLabel ||
+      (latestTimeLabel
+        ? `数据截至 ${latestTimeLabel}`
+        : latestQueriedTimeLabel
+          ? `已查询至 ${latestQueriedTimeLabel}`
+          : "数据截至：暂无"),
     statusLabel:
       includedNewsCount > 0
         ? isStale

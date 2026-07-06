@@ -2669,6 +2669,8 @@ describe("createApiClient", () => {
     });
 
     expect(filtered.result.total_rows).toBe(1);
+    expect(filtered.result.as_of_date).toBe("2026-04-23");
+    expect(filtered.result.excluded_future_rows).toBe(0);
     expect(filtered.result.events[0]?.topic_code).toBe("S888010007API");
     expect(paged.result.total_rows).toBe(8);
     expect(paged.result.events[0]?.event_key).toBe("ce_mock_003");

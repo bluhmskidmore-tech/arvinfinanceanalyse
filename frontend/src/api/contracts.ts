@@ -1535,6 +1535,8 @@ export type ChoiceNewsEventsPayload = {
   total_rows: number;
   limit: number;
   offset: number;
+  as_of_date: string | null;
+  excluded_future_rows: number;
   stock_code?: string | null;
   stock_filter_mode?: string | null;
   stock_filter_tokens?: string[];
