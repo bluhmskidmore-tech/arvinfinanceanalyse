@@ -2,6 +2,8 @@ import { useCallback, useDeferredValue, useEffect, useRef, useState, type FormEv
 
 import { CheckOutlined, CloseOutlined, CopyOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
+import { AgentApiError, AgentDisabledError } from "../../api/agentClient";
+import { useApiClient } from "../../api/client";
 import type {
   AgentConversationContext,
   AgentPageContext,
@@ -457,19 +459,6 @@ function isAgentQueryError(value: unknown): value is AgentQueryError {
   return value.kind === "disabled" && typeof value.detail === "string" && typeof value.phase === "string";
 }
 
-function isDisabledPayload(value: unknown): value is {
-  enabled: false;
-  phase: string;
-  detail: string;
-} {
-  return (
-    isRecord(value) &&
-    value.enabled === false &&
-    typeof value.phase === "string" &&
-    typeof value.detail === "string"
-  );
-}
-
 function getManagedRunRequiresHermesDetail(value: unknown) {
   if (!isRecord(value) || typeof value.detail !== "string") {
     return null;
@@ -632,6 +621,14 @@ function buildErrorMessage(error: unknown) {
     return error.message;
   }
   return "智能体查询失败，请稍后重试。";
+}
+
+function getAgentApiErrorPayload(error: unknown) {
+  return error instanceof AgentApiError ? error.payload : null;
+}
+
+function getAgentApiErrorStatus(error: unknown) {
+  return error instanceof AgentApiError ? error.status : null;
 }
 
 function isFetchNetworkError(error: unknown) {
@@ -1576,6 +1573,7 @@ export function EmbeddedAgentCopilot({
   readOnly = true,
   defaultQuestion = "",
 }: EmbeddedAgentCopilotProps = {}) {
+  const apiClient = useApiClient();
   const isEmbedded = variant === "embedded";
   const shouldPersistConversation = variant === "workbench";
   const resolvedShowHeader = showHeader ?? !isEmbedded;
@@ -2042,12 +2040,15 @@ export function EmbeddedAgentCopilot({
   }, []);
 
   async function fetchAgentRunStatus(runId: string): Promise<AgentRunPayload> {
-    const response = await fetch(`/api/agent/runs/${encodeURIComponent(runId)}`, {
-      method: "GET",
-    });
-    const payload = (await response.json()) as unknown;
-    if (!response.ok) {
-      throw new Error(`智能体任务状态获取失败（${response.status}）`);
+    let payload: unknown;
+    try {
+      payload = await apiClient.getAgentRun(runId);
+    } catch (requestError) {
+      const status = getAgentApiErrorStatus(requestError);
+      if (status !== null) {
+        throw new Error(`智能体任务状态获取失败（${status}）`);
+      }
+      throw requestError;
     }
     if (!isAgentRunPayload(payload)) {
       throw new Error("智能体返回结果格式无效。");
@@ -2056,26 +2057,24 @@ export function EmbeddedAgentCopilot({
   }
 
   async function createAgentRun(requestBody: AgentQueryRequest): Promise<AgentRunPayload> {
-    const response = await fetch("/api/agent/runs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
-    const payload = (await response.json()) as unknown;
-
-    if (response.status === 503 && isDisabledPayload(payload)) {
-      throw new AgentDisabledQueryError(payload.detail, payload.phase);
-    }
-
-    const managedRunRequiresHermesDetail = response.status === 400 ? getManagedRunRequiresHermesDetail(payload) : null;
-    if (managedRunRequiresHermesDetail) {
-      throw new AgentManagedRunRequiresHermesError(managedRunRequiresHermesDetail);
-    }
-
-    if (!response.ok) {
-      throw new Error(`智能体查询失败（${response.status}）`);
+    let payload: unknown;
+    try {
+      payload = await apiClient.createAgentRun(requestBody);
+    } catch (requestError) {
+      if (requestError instanceof AgentDisabledError) {
+        throw new AgentDisabledQueryError(requestError.message, requestError.phase);
+      }
+      const status = getAgentApiErrorStatus(requestError);
+      const apiPayload = getAgentApiErrorPayload(requestError);
+      const managedRunRequiresHermesDetail =
+        status === 400 ? getManagedRunRequiresHermesDetail(apiPayload) : null;
+      if (managedRunRequiresHermesDetail) {
+        throw new AgentManagedRunRequiresHermesError(managedRunRequiresHermesDetail);
+      }
+      if (status !== null) {
+        throw new Error(`智能体查询失败（${status}）`);
+      }
+      throw requestError;
     }
 
     if (isAgentQueryResult(payload)) {
@@ -2098,7 +2097,24 @@ export function EmbeddedAgentCopilot({
 
     return normalizeAgentRunPayload(payload);
   }
-
+  async function queryAgentResult(requestBody: AgentQueryRequest): Promise<AgentQueryResult> {
+    try {
+      const payload = await apiClient.queryAgent(requestBody);
+      if (!isAgentQueryResult(payload)) {
+        throw new Error("智能体返回结果格式无效。");
+      }
+      return normalizeAgentResult(payload);
+    } catch (requestError) {
+      if (requestError instanceof AgentDisabledError) {
+        throw new AgentDisabledQueryError(requestError.message, requestError.phase);
+      }
+      const status = getAgentApiErrorStatus(requestError);
+      if (status !== null) {
+        throw new Error(`智能体查询失败（${status}）`);
+      }
+      throw requestError;
+    }
+  }
   async function executeManagedAgentRun(
     question: string,
     turnId: string,
@@ -2244,40 +2260,7 @@ export function EmbeddedAgentCopilot({
         contextPatch,
       );
 
-      const response = await fetch("/api/agent/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const payload = (await response.json()) as unknown;
-
-      if (response.status === 503 && isDisabledPayload(payload)) {
-        if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
-          return;
-        }
-        const disabledError: AgentQueryError = {
-          kind: "disabled",
-          detail: payload.detail,
-          phase: payload.phase,
-        };
-        setError(disabledError);
-        if (turnId) {
-          updateConversationTurn(turnId, (turn) => ({ ...turn, error: disabledError }));
-        }
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`智能体查询失败（${response.status}）`);
-      }
-
-      if (!isAgentQueryResult(payload)) {
-        throw new Error("智能体返回结果格式无效。");
-      }
-      normalizeAgentResult(payload);
+      const payload = await queryAgentResult(requestBody);
 
       const nextProcesses = extractProcessNames(payload.cards);
       if (nextProcesses.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
@@ -2296,6 +2279,21 @@ export function EmbeddedAgentCopilot({
       }
       return payload;
     } catch (requestError) {
+      if (requestError instanceof AgentDisabledQueryError) {
+        if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
+          return undefined;
+        }
+        const disabledError: AgentQueryError = {
+          kind: "disabled",
+          detail: requestError.detail,
+          phase: requestError.phase,
+        };
+        setError(disabledError);
+        if (turnId) {
+          updateConversationTurn(turnId, (turn) => ({ ...turn, error: disabledError }));
+        }
+        return undefined;
+      }
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
         const nextError: AgentQueryError = {
           kind: "request",
@@ -2662,37 +2660,7 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
 
     try {
-      const response = await fetch("/api/agent/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(buildFinancialWorkflowRequestBody(workflow, pageContext)),
-      });
-      const payload = (await response.json()) as unknown;
-
-      if (response.status === 503 && isDisabledPayload(payload)) {
-        const disabledError: AgentQueryError = {
-          kind: "disabled",
-          detail: payload.detail,
-          phase: payload.phase,
-        };
-        setError(disabledError);
-        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
-        setComposerAssistHint("Workflow 执行失败 · 可重新点击或手动提问");
-        shouldFocusComposerRef.current = true;
-        window.setTimeout(focusComposerInput, 0);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`智能体查询失败（${response.status}）`);
-      }
-
-      if (!isAgentQueryResult(payload)) {
-        throw new Error("智能体返回结果格式无效。");
-      }
-      normalizeAgentResult(payload);
+      const payload = await queryAgentResult(buildFinancialWorkflowRequestBody(workflow, pageContext));
 
       const workflowRun: AgentRunPayload = {
         run_id: `agent_run:workflow:${workflow.id}`,
@@ -2718,6 +2686,19 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
+      if (requestError instanceof AgentDisabledQueryError) {
+        const disabledError: AgentQueryError = {
+          kind: "disabled",
+          detail: requestError.detail,
+          phase: requestError.phase,
+        };
+        setError(disabledError);
+        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
+        setComposerAssistHint("Workflow 执行失败 · 可重新点击或手动提问");
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
+        return;
+      }
       const nextError: AgentQueryError = {
         kind: "request",
         message: buildErrorMessage(requestError),
@@ -2760,37 +2741,7 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
 
     try {
-      const response = await fetch("/api/agent/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(buildResearchRequestBody(shortcut, pageContext)),
-      });
-      const payload = (await response.json()) as unknown;
-
-      if (response.status === 503 && isDisabledPayload(payload)) {
-        const disabledError: AgentQueryError = {
-          kind: "disabled",
-          detail: payload.detail,
-          phase: payload.phase,
-        };
-        setError(disabledError);
-        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
-        setComposerAssistHint("研究快捷入口失败 · 可重新点击或手动提问");
-        shouldFocusComposerRef.current = true;
-        window.setTimeout(focusComposerInput, 0);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`智能体查询失败（${response.status}）`);
-      }
-
-      if (!isAgentQueryResult(payload)) {
-        throw new Error("智能体返回结果格式无效。");
-      }
-      normalizeAgentResult(payload);
+      const payload = await queryAgentResult(buildResearchRequestBody(shortcut, pageContext));
 
       const researchRun: AgentRunPayload = {
         run_id: `agent_run:research:${shortcut.id}`,
@@ -2817,6 +2768,19 @@ export function EmbeddedAgentCopilot({
       shouldFocusComposerRef.current = true;
       window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
+      if (requestError instanceof AgentDisabledQueryError) {
+        const disabledError: AgentQueryError = {
+          kind: "disabled",
+          detail: requestError.detail,
+          phase: requestError.phase,
+        };
+        setError(disabledError);
+        updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
+        setComposerAssistHint("研究快捷入口失败 · 可重新点击或手动提问");
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
+        return;
+      }
       const nextError: AgentQueryError = {
         kind: "request",
         message: buildErrorMessage(requestError),
@@ -2862,23 +2826,7 @@ export function EmbeddedAgentCopilot({
         ...(pageContext ? { page_context: pageContext } : {}),
       };
 
-      const response = await fetch("/api/agent/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const payload = (await response.json()) as unknown;
-      if (!response.ok || !isAgentQueryResult(payload)) {
-        throw new Error(
-          !response.ok
-            ? `智能体查询失败（${response.status}）`
-            : "智能体返回结果格式无效。",
-        );
-      }
-      normalizeAgentResult(payload);
+      const payload = await queryAgentResult(requestBody);
 
       const nextProcesses = extractProcessNames(payload.cards);
       if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {

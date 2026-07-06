@@ -1,9 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createRealAgentClient } from "../api/agentClient";
+import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import AgentWorkbenchPage, { AgentPanel } from "../features/agent/AgentWorkbenchPage";
 
 const AGENT_WORKBENCH_CSS_PATH = resolve(process.cwd(), "src/features/agent/AgentWorkbenchPage.css");
@@ -121,6 +124,16 @@ function buildManagedRunPayload(result: unknown, runId = "agent_run:test", provi
     toolsets: "file",
     elapsed_seconds: 1,
     result,
+  };
+}
+
+function buildAgentWorkbenchClient(fetchImpl: ReturnType<typeof vi.fn>): ApiClient {
+  return {
+    ...createApiClient({ mode: "mock" }),
+    ...createRealAgentClient({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      baseUrl: "",
+    }),
   };
 }
 
@@ -493,10 +506,21 @@ function buildResearchRadarResult() {
 
 describe("AgentWorkbenchPage", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
+  let globalFetchMock: ReturnType<typeof vi.fn>;
+
+  function render(ui: ReactElement, options?: Parameters<typeof rtlRender>[1]) {
+    return rtlRender(
+      <ApiClientProvider client={buildAgentWorkbenchClient(fetchMock)}>
+        {ui}
+      </ApiClientProvider>,
+      options,
+    );
+  }
 
   beforeEach(() => {
     fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    globalFetchMock = vi.fn();
+    vi.stubGlobal("fetch", globalFetchMock);
   });
 
   afterEach(() => {
@@ -1072,6 +1096,25 @@ describe("AgentWorkbenchPage", () => {
     expect(JSON.parse(String(options?.body))).toMatchObject({
       question: "hi",
     });
+  });
+
+  it("routes agent query requests through ApiClient instead of global fetch", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildLocalOrdinaryTextResult("client boundary answer")));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "hi");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    expect(await screen.findByText("client boundary answer")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agent/query",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(
+      globalFetchMock.mock.calls.some(([url]) => typeof url === "string" && url.startsWith("/api/agent")),
+    ).toBe(false);
   });
 
   it("renders the local analysis-chat fallback with evidence and suggested actions", async () => {
