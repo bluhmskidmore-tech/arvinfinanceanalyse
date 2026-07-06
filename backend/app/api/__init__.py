@@ -22,6 +22,7 @@ from backend.app.api.routes.ledger import router as ledger_router
 from backend.app.api.routes.ledger_pnl import router as ledger_pnl_router
 from backend.app.api.routes.liability_analytics import router as liability_analytics_router
 from backend.app.api.routes.macro_bond_linkage import router as macro_bond_linkage_router
+from backend.app.api.routes.macro_etf_strategy import router as macro_etf_strategy_router
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.api.routes.macro_vendor import router as macro_vendor_router
 from backend.app.api.routes.market_data_livermore import router as market_data_livermore_router
@@ -115,6 +116,7 @@ ROUTE_REGISTRY: tuple[RouteRegistryEntry, ...] = (
     RouteRegistryEntry("liability_analytics", liability_analytics_router, "formal_mainline", ("liability-analytics",), "Liability analytics owner"),
     RouteRegistryEntry("macro_vendor", macro_vendor_router, "macro_market", ("macro-preview",), "Macro observation owner"),
     RouteRegistryEntry("macro_bond_linkage", macro_bond_linkage_router, "macro_market", ("macro-analysis",), "Market analytics owner"),
+    RouteRegistryEntry("macro_etf_strategy", macro_etf_strategy_router, "macro_market", ("market-data",), "Market data owner"),
     RouteRegistryEntry("macro_toolkit", macro_toolkit_router, "macro_market", ("macro-toolkit",), "Macro tooling owner"),
     RouteRegistryEntry("market_data_livermore", market_data_livermore_router, "macro_market", ("market-data",), "Market data owner"),
     RouteRegistryEntry("market_data_ncd_proxy", market_data_ncd_proxy_router, "macro_market", ("market-data",), "Market data owner"),

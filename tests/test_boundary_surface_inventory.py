@@ -586,7 +586,7 @@ def test_api_router_registry_classifies_every_included_router() -> None:
     missing_tags = [entry.name for entry in registry if not entry.tags]
     missing_owner = [entry.name for entry in registry if not entry.owner.strip()]
 
-    assert len(registry) == 33
+    assert len(registry) == 34
     assert len({entry.name for entry in registry}) == len(registry)
     assert missing_tags == []
     assert missing_owner == []
@@ -599,6 +599,7 @@ def test_api_router_registry_classifies_every_included_router() -> None:
     }
     assert entries_by_name["agent"].group == "agent_experimental"
     assert entries_by_name["source_preview"].group == "preview"
+    assert entries_by_name["macro_etf_strategy"].group == "macro_market"
     assert entries_by_name["macro_toolkit"].group == "macro_market"
     assert entries_by_name["pnl"].group == "formal_mainline"
 
