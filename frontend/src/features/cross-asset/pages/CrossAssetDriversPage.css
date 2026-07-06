@@ -139,13 +139,8 @@
 .cross-asset-class-analysis__cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: auto minmax(0, 1fr);
-  align-items: start;
+  align-items: stretch;
   gap: 12px;
-}
-
-.cross-asset-class-analysis__cards > .cross-asset-class-analysis__card:first-child {
-  grid-row: span 2;
 }
 
 .cross-asset-class-analysis__card,
@@ -5754,7 +5749,7 @@
 
 .cross-asset-transmission-axes__grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
