@@ -39,6 +39,14 @@ function formatCardType(type: string) {
   return typeLabels[type] ?? type;
 }
 
+function safeInternalHref(value: unknown) {
+  if (typeof value !== "string") {
+    return "#";
+  }
+  const href = value.trim();
+  return href.startsWith("/") ? href : "#";
+}
+
 function renderStructuredCard(card: AgentGenericCard, formatValue: (value: unknown) => string) {
   const columns = columnsForCard(card);
   const rows = Array.isArray(card.data)
@@ -129,6 +137,80 @@ function renderStructuredCard(card: AgentGenericCard, formatValue: (value: unkno
   );
 }
 
+function renderLinkListCard(card: AgentGenericCard) {
+  const rows = Array.isArray(card.data) ? card.data : [];
+
+  return (
+    <div
+      key={`${card.title}-${card.type}`}
+      style={{
+        padding: 16,
+        borderRadius: 16,
+        border: `1px solid ${t.colorBorderSoft}`,
+        background: t.colorBgCanvas,
+      }}
+    >
+      <div
+        style={{
+          color: t.colorTextPrimary,
+          fontSize: 15,
+          fontWeight: 600,
+          marginBottom: 10,
+        }}
+      >
+        {card.title}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        {rows.map((row, index) => {
+          const label = typeof row.label === "string" ? row.label : `Link ${index + 1}`;
+          const href = safeInternalHref(row.href);
+          const description = typeof row.description === "string" ? row.description : "";
+          return (
+            <div
+              key={`${card.title}-link-${index}`}
+              style={{
+                borderRadius: 12,
+                background: t.colorBgSurface,
+                padding: 10,
+                display: "grid",
+                gap: 4,
+              }}
+            >
+              <a
+                href={href}
+                style={{
+                  color: t.colorAccent,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                {label}
+              </a>
+              {description ? (
+                <div
+                  style={{
+                    color: t.colorTextSecondary,
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {description}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function renderScalarCard(card: AgentGenericCard) {
   return (
     <div
@@ -194,6 +276,9 @@ export function AgentGenericCardsGrid({
       }}
     >
       {cards.map((card) => {
+        if (card.type === "link_list") {
+          return renderLinkListCard(card);
+        }
         if (card.type === "table" || card.type === "resource" || card.data !== undefined) {
           return renderStructuredCard(card, formatValue);
         }

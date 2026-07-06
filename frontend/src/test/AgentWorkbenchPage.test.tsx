@@ -8,9 +8,9 @@ import AgentWorkbenchPage, { AgentPanel } from "../features/agent/AgentWorkbench
 
 const AGENT_WORKBENCH_CSS_PATH = resolve(process.cwd(), "src/features/agent/AgentWorkbenchPage.css");
 const AGENT_PLACEHOLDER =
-  "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？";
+  "随便问一句，例如：今天哪里最值得看？久期风险在哪？";
 const PAGE_CONTEXT_PLACEHOLDER =
-  "直接问当前页：主要结论？异常点？下一步复核什么？";
+  "问当前页：主要结论？异常点？下一步复核什么？";
 const GITNEXUS_STATUS_BUTTON = "GitNexus 状态";
 const GITNEXUS_CONTEXT_BUTTON = "GitNexus 上下文";
 const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
@@ -37,7 +37,7 @@ const AGENT_QUEUED_QUERIES_KEY = "moss.agent.queuedQueries.v1";
 const MAX_PINNED_REPO_PATHS = 5;
 
 function openGitNexusTools() {
-  const summary = screen.getByText("GitNexus 工具");
+  const summary = screen.getByText("工具", { selector: "summary" });
   const details = summary.closest("details");
   if (!details?.hasAttribute("open")) {
     fireEvent.click(summary);
@@ -55,7 +55,7 @@ function openProcessTools() {
 }
 
 function openShortcutDrawer() {
-  const summary = screen.getByText("快捷入口");
+  const summary = screen.getByText("常用入口", { selector: "summary *" });
   const details = summary.closest("details");
   if (!details?.hasAttribute("open")) {
     fireEvent.click(summary);
@@ -377,6 +377,120 @@ function buildDexterResearchResult(domain: "stock" | "macro", answer: string) {
   };
 }
 
+function buildResearchRadarResult() {
+  return {
+    answer: "解释：当前事件先看利率与信用线索，再决定是否进入正式风险检查。",
+    cards: [
+      {
+        title: "边界说明",
+        type: "notice",
+        value: "分析口径 / 非正式指标 / 非投资建议 / 需人工确认后再进入情景测算",
+      },
+      {
+        title: "原始事件证据",
+        type: "table",
+        data: [
+          {
+            received_at: "2026-06-22T09:00:00Z",
+            topic_code: "rates",
+            headline: "央行表态引发利率预期调整",
+            event_key: "evt-1",
+          },
+        ],
+        spec: {
+          columns: ["received_at", "topic_code", "headline", "event_key"],
+        },
+      },
+      {
+        title: "重点观察",
+        type: "table",
+        data: [
+          {
+            lens: "利率",
+            review_needed: "确认是否改变利率路径、期限结构或久期暴露假设。",
+          },
+        ],
+        spec: {
+          columns: ["lens", "review_needed"],
+        },
+      },
+      {
+        title: "跨篇对比",
+        type: "table",
+        data: [
+          {
+            bucket: "same_direction",
+            event_family: "rates",
+            summary: "rates 相关事件按同一规则命中，需人工判断方向是否一致。",
+          },
+        ],
+        spec: {
+          columns: ["bucket", "event_family", "summary"],
+        },
+      },
+      {
+        title: "候选情景建议",
+        type: "table",
+        data: [
+          {
+            event_family: "rates",
+            factor_tags: ["rate", "duration"],
+            scenario_template_id: "candidate_rate_path_review",
+            default_shocks: ["parallel_up_25bp_candidate"],
+            human_review_required: true,
+            source_event_ids: ["evt-1"],
+          },
+        ],
+        spec: {
+          columns: [
+            "event_family",
+            "factor_tags",
+            "scenario_template_id",
+            "default_shocks",
+            "human_review_required",
+            "source_event_ids",
+          ],
+        },
+      },
+      {
+        title: "下一步检查",
+        type: "link_list",
+        data: [
+          {
+            label: "新闻事件",
+            href: "/news-events",
+            description: "回看原始事件、主题归类和明细来源。",
+          },
+        ],
+        spec: {
+          columns: ["label", "href", "description"],
+        },
+      },
+    ],
+    evidence: {
+      tables_used: ["choice_news_event"],
+      filters_applied: {
+        provider: "local",
+        transport: "sync",
+        model: "moss_local",
+        toolsets: "research_radar",
+        intent: "research_radar_brief",
+      },
+      evidence_rows: 1,
+      quality_flag: "ok",
+    },
+    result_meta: {
+      trace_id: "tr_agent_research_radar",
+      basis: "analytical",
+      result_kind: "agent.research_radar_brief",
+      formal_use_allowed: false,
+      scenario_flag: false,
+    },
+    next_drill: [{ dimension: "route", label: "/news-events" }],
+    suggested_actions: [],
+  };
+}
+
 describe("AgentWorkbenchPage", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -401,6 +515,17 @@ describe("AgentWorkbenchPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the empty agent page chat-first without default technical labels", () => {
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByText("MOSS Chat")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "今天想看什么？" })).toBeInTheDocument();
+    expect(screen.getByText("常用入口")).toBeInTheDocument();
+    expect(screen.queryByText("Agent Workbench")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Research \/ MOSS intents/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新对话" })).not.toBeInTheDocument();
+  });
+
   it("keeps the page shell while exposing AgentPanel as the reusable copilot body", () => {
     render(<AgentPanel />);
 
@@ -410,14 +535,16 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText(REPO_PATH_LABEL)).toBeInTheDocument();
   });
 
-  it("shows financial workflow shortcuts without expanding the drawer first", () => {
+  it("keeps shortcut cards tucked away until the user opens the drawer", () => {
     render(<AgentWorkbenchPage />);
 
-    const shortcutDrawer = screen.getByText("快捷入口").closest("details");
+    const shortcutDrawer = screen.getByText("常用入口").closest("details");
+    expect(shortcutDrawer).not.toBeNull();
+    expect(shortcutDrawer).not.toHaveAttribute("open");
+
+    openShortcutDrawer();
     const stockResearchButton = screen.getByText("股票研究").closest("button");
     const portfolioReviewButton = screen.getByText("组合复核").closest("button");
-    expect(shortcutDrawer).not.toBeNull();
-    expect(shortcutDrawer).toHaveAttribute("open");
     expect(stockResearchButton).not.toBeNull();
     expect(portfolioReviewButton).not.toBeNull();
     expect(stockResearchButton).toBeVisible();
@@ -429,7 +556,7 @@ describe("AgentWorkbenchPage", () => {
   it("renders explicit repo_path input and GitNexus quick examples", () => {
     render(<AgentWorkbenchPage />);
 
-    const advancedDetails = screen.getByText("GitNexus 工具").closest("details");
+    const advancedDetails = screen.getByText("工具").closest("details");
     expect(advancedDetails).not.toBeNull();
     expect(advancedDetails).not.toHaveAttribute("open");
     openGitNexusTools();
@@ -516,6 +643,66 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: /股票研究/ }));
 
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
+  });
+
+  it("renders the research radar shortcut in the quick-entry drawer", () => {
+    render(<AgentWorkbenchPage />);
+    openShortcutDrawer();
+
+    expect(screen.getByRole("button", { name: /研究速读/ })).toBeInTheDocument();
+  });
+
+  it("submits the research radar shortcut with explicit local intent context", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildResearchRadarResult()));
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /研究速读/ }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/query",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      question: "研究速读",
+      basis: "analytical",
+      filters: {},
+      context: {
+        intent: "research_radar_brief",
+        workflow_id: "research_radar_brief",
+      },
+    });
+  });
+
+  it("renders research radar evidence before interpretation with boundary text and next link", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildResearchRadarResult()));
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /研究速读/ }));
+
+    const evidenceTitle = await screen.findByText("原始事件证据");
+    const interpretation = await screen.findByText("解释：当前事件先看利率与信用线索，再决定是否进入正式风险检查。");
+    expect(evidenceTitle.compareDocumentPosition(interpretation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("跨篇对比")).toBeInTheDocument();
+    expect(screen.getByText("候选情景建议")).toBeInTheDocument();
+    expect(screen.getByText("human_review_required:")).toBeInTheDocument();
+    expect(screen.getAllByText("true").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("分析口径 / 非正式指标 / 非投资建议 / 需人工确认后再进入情景测算"),
+    ).toBeInTheDocument();
+    const newsLink = screen.getByRole("link", { name: "新闻事件" });
+    expect(newsLink).toHaveAttribute("href", "/news-events");
+    expect(screen.queryByText(/scenario impact/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/PnL estimate/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/DV01 loss/i)).not.toBeInTheDocument();
   });
 
   it("submits the stock research shortcut with the stock research domain filter", async () => {
@@ -757,8 +944,8 @@ describe("AgentWorkbenchPage", () => {
 
     const status = await findAgentTurnStatus();
     expect(status).toHaveTextContent("Workflow 执行进行中");
-    expect(status).toHaveTextContent("准备本地 workflow");
-    expect(status).toHaveTextContent("本地 workflow 正在准备，本页会直接显示结果。");
+    expect(status).toHaveTextContent("正在准备本地模板");
+    expect(status).toHaveTextContent("本地模板正在准备，结果会直接出现在这里。");
     expect(status).not.toHaveTextContent("正在交给托管运行时");
     expect(screen.getByText("正在执行 Workflow · 可继续输入下一句")).toBeInTheDocument();
   });
@@ -839,6 +1026,54 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("sync");
   });
 
+  it("routes governed portfolio overview questions directly to local agent query", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildGovernedPortfolioOverviewResult()));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "组合概览");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("正式组合概览结果：资产规模和风险摘要已返回。")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agent/query",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      question: "组合概览",
+      basis: "formal",
+      filters: {},
+      position_scope: "all",
+      currency_basis: "CNY",
+      context: {
+        intent: "portfolio_overview",
+      },
+    });
+    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("local");
+  });
+
+  it("routes short open chat directly to local agent query without a managed run", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildLocalOrdinaryTextResult("local open chat answer")));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "hi");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    expect(await screen.findByText("local open chat answer")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/agent/query");
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/agent/runs")).toBe(false);
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      question: "hi",
+    });
+  });
+
   it("renders the local analysis-chat fallback with evidence and suggested actions", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()));
@@ -862,8 +1097,15 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("组合概览")).toBeInTheDocument();
     expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("local");
     expect(getAgentTurnStatus()).toHaveTextContent("本地查询完成");
+    const resultDrawer = screen.getByText("查看依据 · 2 项").closest("details");
+    expect(resultDrawer).not.toBeNull();
+    expect(resultDrawer).not.toHaveAttribute("open");
     const resultDetails = screen.getByLabelText(AGENT_RESULT_DETAILS_LABEL);
     expect(resultDetails).toHaveClass("agent-result-side");
+    expect(resultDetails).not.toBeVisible();
+    fireEvent.click(screen.getByText("查看依据 · 2 项"));
+    expect(resultDrawer).toHaveAttribute("open");
+    expect(resultDetails).toBeVisible();
     expect(resultDetails).toHaveTextContent("回答依据");
     expect(resultDetails).toHaveTextContent("运行信息");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -894,7 +1136,7 @@ describe("AgentWorkbenchPage", () => {
       await user.click(screen.getByRole("button", { name: "发送" }));
 
       expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
-      const resultDrawer = screen.getByText("依据与运行信息 · 2 项").closest("details");
+      const resultDrawer = screen.getByText("查看依据 · 2 项").closest("details");
       expect(resultDrawer).not.toBeNull();
       if (!resultDrawer) {
         throw new Error("Expected compact result details drawer to exist");
@@ -904,7 +1146,7 @@ describe("AgentWorkbenchPage", () => {
       expect(resultDetails).not.toBeVisible();
 
       scrollTargets.length = 0;
-      fireEvent.click(screen.getByText("依据与运行信息 · 2 项"));
+      fireEvent.click(screen.getByText("查看依据 · 2 项"));
       expect(resultDrawer).toHaveAttribute("open");
       expect(resultDetails).toBeVisible();
       expect(resultDetails).toHaveTextContent("回答依据");
@@ -1992,11 +2234,11 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("正在查看 GitNexus 流程 · 可继续输入")).toBeInTheDocument();
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
 
-    await screen.findByText("本地同步查询正在准备，本页会直接显示结果。");
+    await screen.findByText("正在准备快速回答，结果会直接出现在这里。");
     const status = getAgentTurnStatus();
     expect(status).toHaveTextContent("本地查询进行中");
     expect(status).toHaveTextContent("准备本地查询");
-    expect(status).toHaveTextContent("本地同步查询正在准备，本页会直接显示结果。");
+    expect(status).toHaveTextContent("正在准备快速回答，结果会直接出现在这里。");
     expect(status).not.toHaveTextContent("正在交给托管运行时");
   });
 
@@ -2757,13 +2999,13 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ping");
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed provider task");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("Hermes 托管任务完成。")).toBeInTheDocument();
     expect(getAgentTurnStatus()).toHaveTextContent("agent_run:test");
     expect(getAgentTurnStatus()).toHaveTextContent("已完成");
-    expect(getAgentTurnStatus()).toHaveAccessibleName("回答状态：ping");
+    expect(getAgentTurnStatus()).toHaveAccessibleName("回答状态：managed provider task");
     expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("gpt-5.5");
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -2775,6 +3017,45 @@ describe("AgentWorkbenchPage", () => {
       "/api/agent/runs/agent_run%3Atest",
       expect.objectContaining({ method: "GET" }),
     );
+  });
+
+  it("records request-to-run-id latency in runtime details", async () => {
+    vi.useFakeTimers();
+    let resolveQueuedRun!: (value: Response) => void;
+    const queuedRunResponse = new Promise<Response>((resolve) => {
+      resolveQueuedRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(queuedRunResponse).mockReturnValue(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    fireEvent.change(screen.getByPlaceholderText(AGENT_PLACEHOLDER), {
+      target: { value: "measure run connection" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    act(() => {
+      vi.advanceTimersByTime(1_200);
+    });
+
+    await act(async () => {
+      resolveQueuedRun(
+        buildJsonResponse({
+          run_id: "agent_run:latency",
+          status: "running",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      );
+    });
+
+    const runtimeDetails = screen.getByText("运行细节").closest("details");
+    expect(runtimeDetails).not.toBeNull();
+    expect(runtimeDetails).toHaveTextContent("run_id: agent_run:latency");
+    expect(runtimeDetails).toHaveTextContent("连接耗时 1.2 秒");
   });
 
   it("shows visible managed run progress while the answer is still running", async () => {
@@ -2816,9 +3097,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     const progress = await screen.findByLabelText("回答进度：show progress while running");
-    expect(progress).toHaveTextContent("已提交");
-    expect(progress).toHaveTextContent("排队中");
-    expect(progress).toHaveTextContent("分析中");
+    expect(progress).toHaveTextContent("收到问题");
+    expect(progress).toHaveTextContent("选择路径");
+    expect(progress).toHaveTextContent("整理回答");
     expect(progress).toBeVisible();
     const runtimeDetailsSummary = screen.getByText("运行细节");
     expect(runtimeDetailsSummary).toHaveAccessibleName("运行细节：show progress while running");
@@ -2826,7 +3107,7 @@ describe("AgentWorkbenchPage", () => {
     expect(runtimeDetails).not.toBeNull();
     expect(runtimeDetails).not.toHaveAttribute("open");
     await waitFor(() => {
-      expect(progress.querySelector('[data-current="true"]')).toHaveTextContent("分析中");
+      expect(progress.querySelector('[data-current="true"]')).toHaveTextContent("整理回答");
     });
     fireEvent.click(runtimeDetailsSummary);
     expect(runtimeDetails).toHaveAttribute("open");
@@ -3307,22 +3588,22 @@ describe("AgentWorkbenchPage", () => {
     try {
       render(<AgentWorkbenchPage />);
 
-      await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "duration risk follow-up check");
+      await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed follow-up check");
       await user.click(screen.getByRole("button", { name: "发送" }));
       expect(await screen.findByText("回答完成，可以继续追问。")).toBeInTheDocument();
-      const resultDrawer = screen.getByText("依据与运行信息 · 2 项").closest("details");
+      const resultDrawer = screen.getByText("查看依据 · 2 项").closest("details");
       expect(resultDrawer).not.toBeNull();
       if (!resultDrawer) {
         throw new Error("Expected compact result details drawer to exist");
       }
-      fireEvent.click(screen.getByText("依据与运行信息 · 2 项"));
+      fireEvent.click(screen.getByText("查看依据 · 2 项"));
       expect(resultDrawer).toHaveAttribute("open");
 
       const copyButton = screen.getByRole("button", { name: /复制回答/ });
-      expect(copyButton).toHaveAccessibleName(/duration risk follow-up check/);
+      expect(copyButton).toHaveAccessibleName(/managed follow-up check/);
       await user.click(copyButton);
       const copiedButton = screen.getByRole("button", { name: /已复制/ });
-      expect(copiedButton).toHaveAccessibleName(/duration risk follow-up check/);
+      expect(copiedButton).toHaveAccessibleName(/managed follow-up check/);
       copiedButton.focus();
       expect(document.activeElement).toBe(copiedButton);
       const moreSuggestedActions = screen.getByText("更多建议 · 1 项").closest("details");
@@ -3370,7 +3651,7 @@ describe("AgentWorkbenchPage", () => {
         }),
       });
       const continueFollowUpChip = screen.getByRole("button", { name: /继续输入/ });
-      expect(continueFollowUpChip).toHaveAccessibleName(/duration risk follow-up check/);
+      expect(continueFollowUpChip).toHaveAccessibleName(/managed follow-up check/);
       await user.click(continueFollowUpChip);
 
       expect(input).toHaveValue(draft);
@@ -4325,6 +4606,22 @@ describe("AgentWorkbenchPage", () => {
     expect(cssText).toMatch(/\.agent-chat-composer__hint\s*\{[^}]*white-space:\s*normal/s);
   });
 
+  it("keeps the agent page visually conversation-first", () => {
+    const cssText = readFileSync(AGENT_WORKBENCH_CSS_PATH, "utf8");
+
+    expect(cssText).toMatch(/\.agent-workbench-shell:not\(\.agent-workbench-shell--embedded\)\s*\{[^}]*width:\s*min\(100%,\s*1040px\)/s);
+    expect(cssText).toMatch(/\.agent-workbench-shell:not\(\.agent-workbench-shell--embedded\)\s*>\s*\.agent-chat-composer\s*\{[^}]*order:\s*2/s);
+    expect(cssText).toMatch(/\.agent-workbench-shell:not\(\.agent-workbench-shell--embedded\)\s*>\s*\.agent-runtime-strip\s*\{[^}]*clip-path:\s*inset\(50%\)/s);
+    expect(cssText).toMatch(/\.agent-workbench-shell:not\(\.agent-workbench-shell--embedded\)\s*>\s*\.agent-conversation\s*\{[^}]*order:\s*5/s);
+    expect(cssText).toMatch(/\.agent-workbench-shell:not\(\.agent-workbench-shell--embedded\)\s*>\s*\.agent-composer-dock\s*\{[^}]*order:\s*6/s);
+    expect(cssText).toMatch(/\.agent-workbench-header\s*\{[^}]*justify-content:\s*center/s);
+    expect(cssText).not.toContain("agent-workbench-header__cue");
+    expect(cssText).toMatch(/\.agent-quick-entry\s*\{[^}]*border:\s*0/s);
+    expect(cssText).toMatch(/\.agent-conversation\s*\{[^}]*border:\s*0/s);
+    expect(cssText).toMatch(/\.agent-answer-message\s*\{[^}]*background:\s*transparent/s);
+    expect(cssText).toMatch(/\.agent-chat-composer\s*\{[^}]*border-radius:\s*24px/s);
+  });
+
   it("queues a multiline typed follow-up with Enter while the current answer is still running", async () => {
     const user = userEvent.setup();
     fetchMock.mockReturnValueOnce(new Promise(() => undefined));
@@ -5071,10 +5368,10 @@ describe("AgentWorkbenchPage", () => {
 
       const conversation = await screen.findByLabelText(AGENT_CONVERSATION_LABEL);
       expect(conversation).toHaveTextContent("先给我一个响应");
-      expect(conversation).toHaveTextContent("正在思考");
-      expect(conversation).toHaveTextContent("我先接住问题，拿到运行状态后继续更新。");
+      expect(conversation).toHaveTextContent("已收到");
+      expect(conversation).toHaveTextContent("我先判断该直接回答，还是先查证据。");
       expect(conversation).toHaveTextContent("已收到问题");
-      expect(conversation).toHaveTextContent("正在交给托管运行时");
+      expect(conversation).toHaveTextContent("正在选择回答路径");
       expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("");
       expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
       const bottomScrollIndex = scrollTargets.findIndex(
@@ -5766,24 +6063,38 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     fireEvent.change(screen.getByPlaceholderText(AGENT_PLACEHOLDER), {
-      target: { value: "ping" },
+      target: { value: "managed provider task" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     const waitStatus = getAgentTurnStatus();
     expect(waitStatus).toHaveTextContent("已收到问题");
+    expect(waitStatus).toHaveTextContent("已收到");
+    expect(waitStatus).toHaveTextContent("我先判断该直接回答，还是先查证据。");
 
     const runtimeDetails = screen.getByText("运行细节").closest("details");
     expect(runtimeDetails).not.toBeNull();
     expect(runtimeDetails).not.toHaveAttribute("open");
-    expect(runtimeDetails).toHaveTextContent("正在交给托管运行时");
+    expect(runtimeDetails).toHaveTextContent("正在选择回答路径");
     expect(runtimeDetails).toHaveTextContent("已等待 0 秒");
 
     act(() => {
-      vi.advanceTimersByTime(12_000);
+      vi.advanceTimersByTime(6_000);
     });
 
+    expect(waitStatus).toHaveTextContent("连接中");
+    expect(waitStatus).toHaveTextContent("还在连接回答通道，页面会继续自动更新。");
+    expect(runtimeDetails).toHaveTextContent("已等待 6 秒");
+    expect(runtimeDetails).toHaveTextContent("还在连接回答通道；拿到状态后会继续更新。");
+
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    expect(waitStatus).toHaveTextContent("还在连接");
+    expect(waitStatus).toHaveTextContent("还没拿到运行状态，可以停止，或继续输入下一句。");
     expect(runtimeDetails).toHaveTextContent("已等待 12 秒");
+    expect(runtimeDetails).toHaveTextContent("还没拿到运行状态，可以停止后重试，或继续输入下一句。");
   });
 
   it("renders answer, cards, evidence, next_drill, and result_meta on success", async () => {
@@ -5843,7 +6154,7 @@ describe("AgentWorkbenchPage", () => {
       screen.getByPlaceholderText(
         AGENT_PLACEHOLDER,
       ),
-      "久期",
+      "managed result detail check",
     );
     await user.click(screen.getByRole("button", { name: "发送" }));
 
@@ -5853,6 +6164,14 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("组合久期")).toBeInTheDocument();
     expect(screen.getByText("4.27")).toBeInTheDocument();
     expect(screen.getAllByText("久期").length).toBeGreaterThan(0);
+    const resultDrawer = screen.getByText("查看依据 · 2 项").closest("details");
+    expect(resultDrawer).not.toBeNull();
+    expect(resultDrawer).not.toHaveAttribute("open");
+    const resultDetails = screen.getByLabelText(AGENT_RESULT_DETAILS_LABEL);
+    expect(resultDetails).not.toBeVisible();
+    fireEvent.click(screen.getByText("查看依据 · 2 项"));
+    expect(resultDrawer).toHaveAttribute("open");
+    expect(resultDetails).toBeVisible();
     const evidencePanel = screen.getByText("回答依据").closest(".agent-side-panel");
     expect(evidencePanel).not.toBeNull();
     expect(evidencePanel).toHaveTextContent("来源");
@@ -5958,7 +6277,7 @@ describe("AgentWorkbenchPage", () => {
     });
   });
 
-  it("accepts Hermes cards with nullable data and spec fields", async () => {
+  it("renders Hermes chat answers without provider cards or runtime detail panels", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
       buildJsonResponse({
@@ -5989,12 +6308,19 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "在吗");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    await screen.findByText("Hermes Agent");
+    expect(await screen.findByText("pong")).toBeInTheDocument();
     expect(screen.getAllByText("pong").length).toBeGreaterThan(0);
-    expect(screen.getByText("Hermes Agent")).toBeInTheDocument();
-    expect(screen.getByText("Provider")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("查看全部运行信息"));
-    expect(screen.getByText("agent.hermes")).toBeVisible();
+    expect(screen.queryByText("Hermes Agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Provider")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(AGENT_RESULT_DETAILS_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /回答状态/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/回答进度/)).not.toBeInTheDocument();
+    expect(screen.queryByText("收到问题")).not.toBeInTheDocument();
+    expect(screen.queryByText("选择路径")).not.toBeInTheDocument();
+    expect(screen.queryByText("整理回答")).not.toBeInTheDocument();
+    expect(screen.queryByText("运行细节")).not.toBeInTheDocument();
+    expect(screen.queryByText("查看全部运行信息")).not.toBeInTheDocument();
+    expect(screen.queryByText("agent.hermes")).not.toBeInTheDocument();
     expect(screen.queryByText("智能体返回结果格式无效。")).not.toBeInTheDocument();
   });
 
@@ -6030,7 +6356,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ping{Enter}");
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed provider task{Enter}");
 
     const runtimeStatus = await screen.findByLabelText(AGENT_RUNTIME_STATUS_LABEL);
     expect(runtimeStatus).toHaveTextContent("Hermes");
@@ -6071,7 +6397,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ping");
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed provider task");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("Dexter managed run complete.")).toBeInTheDocument();

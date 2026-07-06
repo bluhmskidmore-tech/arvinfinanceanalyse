@@ -85,6 +85,7 @@ type AgentConversationTurn = {
   conversationContext?: AgentConversationContext;
   retryMode?: "ordinary";
   stopped?: boolean;
+  runRequestLatencyMs?: number;
   agentRun: AgentRunPayload | null;
   result: AgentQueryResult | null;
   error: AgentQueryError | null;
@@ -123,7 +124,11 @@ type ResearchShortcut = {
   title: string;
   question: string;
   description: string;
-  domain: ResearchDomain;
+  domain?: ResearchDomain;
+  basis?: "formal" | "analytical";
+  filters?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  commandLabel?: string;
 };
 
 class AgentDisabledQueryError extends Error {
@@ -165,7 +170,6 @@ const MAX_AGENT_QUEUED_QUERIES = 4;
 const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
 const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
 const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
-const AGENT_NARROW_VIEWPORT_QUERY = "(max-width: 720px)";
 const AGENT_STICKY_BOTTOM_THRESHOLD_PX = 96;
 const latestAgentRunStatusRequests = new Map<string, Promise<AgentRunPayload>>();
 const ANALYSIS_CHAT_PATTERNS = [
@@ -235,30 +239,61 @@ const GOVERNED_AGENT_PATTERNS = [
   "headline",
   "latest news",
 ];
+const LOCAL_AGENT_QUERY_INTENT_PATTERNS = [
+  {
+    intent: "portfolio_overview",
+    patterns: [
+      "组合概览",
+      "资产规模",
+      "总览",
+      "portfolio overview",
+      "market value",
+      "portfolio value",
+      "asset size",
+    ],
+  },
+];
+const LOCAL_OPEN_CHAT_EXACT = new Set([
+  "?",
+  "??",
+  "在吗",
+  "在么",
+  "你好",
+  "您好",
+  "hello",
+  "hi",
+  "hey",
+  "ping",
+]);
+const LOCAL_OPEN_CHAT_PATTERNS = [
+  "你能做什么",
+  "能做什么",
+  "你会什么",
+  "怎么用",
+  "如何使用",
+  "你是谁",
+  "闲聊",
+  "随便聊聊",
+  "聊聊天",
+  "帮我想想",
+  "给点建议",
+  "有什么建议",
+  "该关注什么",
+  "需要关注什么",
+  "早上好",
+  "晚上好",
+  "谢谢",
+  "没事",
+  "what can you do",
+  "who are you",
+  "how do i use",
+  "help me think",
+  "chat",
+];
+const PROVIDER_CHAT_CARD_TITLES = new Set(["Hermes Agent", "Provider", "Model"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function useAgentNarrowViewport() {
-  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return;
-    }
-    const mediaQuery = window.matchMedia(AGENT_NARROW_VIEWPORT_QUERY);
-    const syncNarrowViewport = () => setIsNarrowViewport(mediaQuery.matches);
-    syncNarrowViewport();
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", syncNarrowViewport);
-      return () => mediaQuery.removeEventListener("change", syncNarrowViewport);
-    }
-    mediaQuery.addListener(syncNarrowViewport);
-    return () => mediaQuery.removeListener(syncNarrowViewport);
-  }, []);
-
-  return isNarrowViewport;
 }
 
 function isAgentQueryResult(value: unknown): value is AgentQueryResult {
@@ -347,6 +382,36 @@ function isPlainAnalysisConversationQuestion(question: string) {
   );
 }
 
+function isLocalOpenChatQuestion(question: string) {
+  const normalized = question.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  const compact = normalized.replace(/\s+/g, "");
+  if (LOCAL_OPEN_CHAT_EXACT.has(compact)) {
+    return true;
+  }
+  if (GOVERNED_AGENT_PATTERNS.some((pattern) => normalized.includes(pattern) || compact.includes(pattern))) {
+    return false;
+  }
+  return (
+    compact.length <= 32 &&
+    LOCAL_OPEN_CHAT_PATTERNS.some((pattern) => normalized.includes(pattern) || compact.includes(pattern))
+  );
+}
+
+function getLocalAgentQueryIntent(question: string) {
+  const normalized = question.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return (
+    LOCAL_AGENT_QUERY_INTENT_PATTERNS.find(({ patterns }) =>
+      patterns.some((pattern) => normalized.includes(pattern)),
+    )?.intent ?? null
+  );
+}
+
 function shouldUseLocalAnalysisConversation(
   question: string,
   conversationContext?: AgentConversationContext,
@@ -360,6 +425,10 @@ function shouldUseLocalAnalysisConversation(
   }
   const latestTurn = recentTurns[recentTurns.length - 1];
   return latestTurn?.result_kind === "agent.analysis_chat";
+}
+
+function isResearchRadarResult(result: AgentQueryResult) {
+  return result.result_meta.result_kind === "agent.research_radar_brief";
 }
 
 function isAgentConversationContext(value: unknown): value is AgentConversationContext {
@@ -596,6 +665,22 @@ function hasRenderableResult(result: AgentQueryResult) {
   );
 }
 
+function isCompactProviderChatResult(result: AgentQueryResult) {
+  const resultKind = String(result.result_meta.result_kind ?? "").trim();
+  if (resultKind === "agent.hermes_fallback" || resultKind === "agent.local_chat") {
+    return true;
+  }
+  return (
+    resultKind === "agent.hermes" &&
+    result.cards.length > 0 &&
+    result.cards.every((card) => PROVIDER_CHAT_CARD_TITLES.has(card.title.trim()))
+  );
+}
+
+function isCompactProviderChatTurn(turn: AgentConversationTurn) {
+  return Boolean(turn.result && isCompactProviderChatResult(turn.result));
+}
+
 function buildResultMetaEntries(resultMeta: Record<string, unknown>) {
   const orderedKeys = ["trace_id", "basis", "generated_at"];
   const seen = new Set<string>();
@@ -736,18 +821,18 @@ function formatAgentTurnWaitTitle(agentRun: AgentRunPayload | null) {
 function formatAgentWaitPhase(agentRun: AgentRunPayload | null) {
   if (agentRun?.run_kind === "workflow") {
     if (agentRun.status === "running") {
-      return "本地 workflow 执行中";
+      return "正在执行本地模板";
     }
     if (agentRun.status === "starting") {
-      return "准备本地 workflow";
+      return "正在准备本地模板";
     }
     if (agentRun.status === "queued") {
-      return "等待本地 workflow";
+      return "等待本地模板";
     }
   }
   if (agentRun?.run_kind === "sync") {
     if (agentRun.status === "running") {
-      return "同步处理中";
+      return "正在快速整理";
     }
     if (agentRun.status === "starting") {
       return "准备本地查询";
@@ -758,7 +843,16 @@ function formatAgentWaitPhase(agentRun: AgentRunPayload | null) {
   }
   const status = agentRun?.status;
   if (!status) {
-    return "正在交给托管运行时";
+    return "正在选择回答路径";
+  }
+  if (status === "queued") {
+    return "等待开始";
+  }
+  if (status === "starting") {
+    return "正在准备";
+  }
+  if (status === "running") {
+    return "正在整理回答";
   }
   return formatAgentRunStatusLabel(status, "运行中");
 }
@@ -770,16 +864,39 @@ function formatAgentRunElapsed(agentRun: AgentRunPayload | null, fallbackSeconds
   return fallbackSeconds;
 }
 
+function normalizeAgentRunRequestLatencyMs(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.round(value);
+}
+
+function getAgentRequestClockMs() {
+  return Date.now();
+}
+
+function formatAgentConnectionElapsed(latencyMs: number | undefined) {
+  const normalizedLatencyMs = normalizeAgentRunRequestLatencyMs(latencyMs);
+  if (normalizedLatencyMs === undefined) {
+    return null;
+  }
+  const seconds = normalizedLatencyMs / 1000;
+  if (seconds < 10) {
+    return `${seconds.toFixed(1)} 秒`;
+  }
+  return `${Math.round(seconds)} 秒`;
+}
+
 function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSeconds: number) {
   if (agentRun?.run_kind === "workflow") {
     if (agentRun.status === "queued" || agentRun.status === "starting") {
-      return "本地 workflow 正在准备，本页会直接显示结果。";
+      return "本地模板正在准备，结果会直接出现在这里。";
     }
     if (agentRun.status === "running" && waitSeconds >= 10) {
-      return "本地 workflow 仍在处理，复杂问题通常会多等一会儿。";
+      return "本地模板还在处理，复杂问题通常会多等一会儿。";
     }
     if (agentRun.status === "running") {
-      return "本地 workflow 正在生成结果，本页会直接更新答案。";
+      return "本地模板正在生成结果，页面会自动更新。";
     }
     if (agentRun.status === "completed") {
       return "结果已返回，可以继续追问。";
@@ -790,13 +907,13 @@ function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSeconds: numb
   }
   if (agentRun?.run_kind === "sync") {
     if (agentRun.status === "queued" || agentRun.status === "starting") {
-      return "本地同步查询正在准备，本页会直接显示结果。";
+      return "正在准备快速回答，结果会直接出现在这里。";
     }
     if (agentRun.status === "running" && waitSeconds >= 10) {
-      return "本地查询仍在处理，复杂问题通常会多等一会儿。";
+      return "本地查询还在处理，复杂问题通常会多等一会儿。";
     }
     if (agentRun.status === "running") {
-      return "本地查询正在生成结果，本页会直接更新答案。";
+      return "正在快速整理，页面会自动更新。";
     }
     if (agentRun.status === "completed") {
       return "结果已返回，可以继续追问。";
@@ -807,26 +924,25 @@ function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSeconds: numb
   }
   const status = agentRun?.status;
   if (!status) {
-    return "先把问题放进队列，拿到 run_id 后会继续更新。";
+    if (waitSeconds >= 12) {
+      return "还没拿到运行状态，可以停止后重试，或继续输入下一句。";
+    }
+    if (waitSeconds >= 6) {
+      return "还在连接回答通道；拿到状态后会继续更新。";
+    }
+    return "已收到，我正在判断是直接回答还是先查证据。";
   }
   if (status === "queued") {
-    return "任务已入队；如果前面还有回答，会按顺序处理。";
+    return "已排队；如果前面还有回答，会按顺序处理。";
   }
   if (status === "starting") {
-    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
-    return providerLabel ? `${providerLabel} 正在准备运行环境。` : "托管任务正在准备运行环境。";
+    return "正在准备回答环境，马上开始整理。";
   }
   if (status === "running" && waitSeconds >= 10) {
-    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
-    return providerLabel
-      ? `${providerLabel} 还在思考，复杂问题通常会多等一会儿。`
-      : "托管任务仍在处理中，复杂问题通常会多等一会儿。";
+    return "还在查证据和组织回答，复杂问题通常会多等一会儿。";
   }
   if (status === "running") {
-    const providerLabel = formatManagedProviderLabel(agentRun?.provider);
-    return providerLabel
-      ? `${providerLabel} 正在分析，本页会自动更新结果。`
-      : "托管任务正在分析，本页会自动更新结果。";
+    return "正在查证据并整理回答，页面会自动更新。";
   }
   if (status === "completed") {
     return "可以离开或刷新，回来后会继续显示这次结果。";
@@ -837,12 +953,62 @@ function formatAgentWaitHint(agentRun: AgentRunPayload | null, waitSeconds: numb
   return "可以离开或刷新，回来后会继续显示这次结果。";
 }
 
-function getAgentRunProgressIndex(agentRun: AgentRunPayload | null) {
+function formatAgentThinkingLabel(agentRun: AgentRunPayload | null, waitSeconds: number) {
   if (!agentRun?.status) {
-    return 0;
+    if (waitSeconds >= 12) {
+      return "还在连接";
+    }
+    if (waitSeconds >= 6) {
+      return "连接中";
+    }
+    return "已收到";
+  }
+  if (agentRun.status === "queued" || agentRun.status === "starting") {
+    return "正在准备";
+  }
+  if (agentRun.status === "running") {
+    return "正在整理";
+  }
+  return "正在更新";
+}
+
+function formatAgentThinkingText(agentRun: AgentRunPayload | null, waitSeconds: number) {
+  if (!agentRun?.status) {
+    if (waitSeconds >= 12) {
+      return "还没拿到运行状态，可以停止，或继续输入下一句。";
+    }
+    if (waitSeconds >= 6) {
+      return "还在连接回答通道，页面会继续自动更新。";
+    }
+    return "我先判断该直接回答，还是先查证据。";
+  }
+  if (agentRun.run_kind === "sync") {
+    return waitSeconds >= 6 ? "正在快速整理，稍后直接给你结果。" : "走快速回答通道，正在整理。";
+  }
+  if (agentRun.run_kind === "workflow") {
+    return waitSeconds >= 10 ? "本地模板还在处理，可以继续输入下一句。" : "本地模板已开始处理。";
   }
   if (agentRun.status === "queued") {
+    return "已经排上队，轮到后会自动更新。";
+  }
+  if (agentRun.status === "starting") {
+    return "正在准备回答环境。";
+  }
+  if (agentRun.status === "running" && waitSeconds >= 10) {
+    return "还在查证据，复杂问题会多等一会儿。";
+  }
+  if (agentRun.status === "running") {
+    return "正在查证据并组织回答。";
+  }
+  return "状态有更新，我会继续刷新这一轮。";
+}
+
+function getAgentRunProgressIndex(agentRun: AgentRunPayload | null) {
+  if (!agentRun?.status) {
     return 1;
+  }
+  if (agentRun.status === "queued") {
+    return 2;
   }
   if (agentRun.status === "starting") {
     return 2;
@@ -953,11 +1119,25 @@ const FINANCIAL_WORKFLOWS: FinancialWorkflowShortcut[] = [
 
 const RESEARCH_SHORTCUTS: ResearchShortcut[] = [
   {
+    id: "research_radar_brief",
+    title: "研究速读",
+    question: "研究速读",
+    description: "分析口径的新闻速读入口，先看原始事件证据，再看解释和后续检查链接。",
+    basis: "analytical",
+    filters: {},
+    context: {
+      intent: "research_radar_brief",
+      workflow_id: "research_radar_brief",
+    },
+    commandLabel: "local analytical",
+  },
+  {
     id: "stock_research",
     title: "股票研究",
     question: "Review landed stock research context",
     description: "复核已刷新的股票数据、证据和限制。",
     domain: "stock",
+    filters: { research_domain: "stock" },
   },
   {
     id: "macro_research",
@@ -965,6 +1145,7 @@ const RESEARCH_SHORTCUTS: ResearchShortcut[] = [
     question: "Review landed macro research context",
     description: "复核已刷新的宏观序列、证据和限制。",
     domain: "macro",
+    filters: { research_domain: "macro" },
   },
 ];
 
@@ -1046,12 +1227,13 @@ function buildResearchRequestBody(
 ): AgentQueryRequest {
   return {
     question: shortcut.question,
-    basis: "formal",
-    filters: { research_domain: shortcut.domain },
+    basis: shortcut.basis ?? "formal",
+    filters: shortcut.filters ?? (shortcut.domain ? { research_domain: shortcut.domain } : {}),
     position_scope: "all",
     currency_basis: "CNY",
     context: {
       user_id: "web-user",
+      ...(shortcut.context ?? {}),
     },
     ...(pageContext ? { page_context: pageContext } : {}),
   };
@@ -1155,12 +1337,14 @@ function normalizeStoredConversationTurns(value: unknown): AgentConversationTurn
       const conversationContext = isAgentConversationContext(item.conversationContext)
         ? item.conversationContext
         : undefined;
+      const runRequestLatencyMs = normalizeAgentRunRequestLatencyMs(item.runRequestLatencyMs);
       return [
         {
           id: item.id,
           question: item.question,
           conversationContext,
           retryMode: item.retryMode === "ordinary" ? "ordinary" : undefined,
+          ...(runRequestLatencyMs !== undefined ? { runRequestLatencyMs } : {}),
           agentRun,
           result,
           error,
@@ -1191,6 +1375,7 @@ function serializeConversationTurn(turn: AgentConversationTurn) {
     question: turn.question,
     ...(turn.conversationContext ? { conversationContext: turn.conversationContext } : {}),
     ...(turn.retryMode ? { retryMode: turn.retryMode } : {}),
+    ...(turn.runRequestLatencyMs !== undefined ? { runRequestLatencyMs: turn.runRequestLatencyMs } : {}),
     ...(turn.agentRun ? { agentRun: turn.agentRun } : {}),
     ...(turn.result ? { result: turn.result } : {}),
     ...(turn.error ? { error: turn.error } : {}),
@@ -1442,7 +1627,6 @@ export function EmbeddedAgentCopilot({
   const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
   const submitQueuedQueryRef = useRef<(question: string) => Promise<void>>(async () => undefined);
   const [copyFeedback, setCopyFeedback] = useState<AgentCopyFeedback | null>(null);
-  const isNarrowAgentViewport = useAgentNarrowViewport();
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
     processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
@@ -1937,14 +2121,20 @@ export function EmbeddedAgentCopilot({
     try {
       const finalPayload = await runPollingTask<AgentRunPayload>({
         start: async () => {
+          const runRequestStartedAtMs = getAgentRequestClockMs();
           const payload = await createAgentRun(requestBody);
+          const runRequestLatencyMs = normalizeAgentRunRequestLatencyMs(
+            getAgentRequestClockMs() - runRequestStartedAtMs,
+          );
           if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
             return payload;
           }
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
           setConversationTurns((currentTurns) => {
-            const nextTurns = currentTurns.map((turn) => (turn.id === turnId ? { ...turn, agentRun: payload } : turn));
+            const nextTurns = currentTurns.map((turn) =>
+              turn.id === turnId ? { ...turn, agentRun: payload, runRequestLatencyMs } : turn,
+            );
             if (shouldPersistConversation) {
               persistStoredConversationTurns(nextTurns);
             }
@@ -2204,6 +2394,17 @@ export function EmbeddedAgentCopilot({
     turnId: string,
     conversationContext?: AgentConversationContext,
   ) {
+    if (isLocalOpenChatQuestion(question)) {
+      await executeLocalSyncConversation(question, turnId, conversationContext);
+      return;
+    }
+    const localQueryIntent = getLocalAgentQueryIntent(question);
+    if (localQueryIntent) {
+      await executeLocalSyncConversation(question, turnId, conversationContext, {
+        intent: localQueryIntent,
+      });
+      return;
+    }
     if (shouldUseLocalAnalysisConversation(question, conversationContext)) {
       await executeLocalSyncConversation(question, turnId, conversationContext);
       return;
@@ -2990,7 +3191,7 @@ export function EmbeddedAgentCopilot({
         <div className="agent-financial-workflows__header">
           <div>
             <div className="agent-financial-workflows__eyebrow">金融工作流</div>
-            <h2>本地 MOSS intents 快捷入口</h2>
+            <h2>本地分析模板</h2>
           </div>
           <span>不接外部数据</span>
         </div>
@@ -3033,7 +3234,7 @@ export function EmbeddedAgentCopilot({
               disabled={loading}
             >
               <span className="agent-financial-workflows__title">{shortcut.title}</span>
-              <span className="agent-financial-workflows__command">{shortcut.domain}</span>
+              <span className="agent-financial-workflows__command">{shortcut.commandLabel ?? shortcut.domain ?? "research"}</span>
               <span className="agent-financial-workflows__description">{shortcut.description}</span>
             </button>
           ))}
@@ -3045,10 +3246,10 @@ export function EmbeddedAgentCopilot({
   function renderShortcutDrawer() {
     const shortcutCount = RESEARCH_SHORTCUTS.length + FINANCIAL_WORKFLOWS.length;
     return (
-      <details className="agent-quick-entry" open>
+      <details className="agent-quick-entry">
         <summary>
-          <span className="agent-quick-entry__title">快捷入口</span>
-          <span className="agent-quick-entry__meta">Research / MOSS intents · {shortcutCount} 项</span>
+          <span className="agent-quick-entry__title">常用入口</span>
+          <span className="agent-quick-entry__meta">{shortcutCount} 个模板</span>
         </summary>
         <div className="agent-quick-entry__content">
           {renderFinancialWorkflowPanel()}
@@ -3132,10 +3333,6 @@ export function EmbeddedAgentCopilot({
       </aside>
     );
 
-    if (!isNarrowAgentViewport) {
-      return resultSide;
-    }
-
     return (
       <details
         className="agent-result-side-drawer"
@@ -3145,7 +3342,7 @@ export function EmbeddedAgentCopilot({
           }
         }}
       >
-        <summary>依据与运行信息 · {detailSectionCount} 项</summary>
+        <summary>查看依据 · {detailSectionCount} 项</summary>
         {resultSide}
       </details>
     );
@@ -3156,75 +3353,80 @@ export function EmbeddedAgentCopilot({
     if (!turnResult) {
       return null;
     }
+    const researchRadarResult = isResearchRadarResult(turnResult);
+    const compactProviderChatResult = isCompactProviderChatResult(turnResult);
     const copyStatus = copyFeedback?.turnId === turn.id ? copyFeedback.status : null;
     const copyLabel = copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制回答";
     const copyStatusMessage =
       copyStatus === "success" ? "回答已复制" : copyStatus === "error" ? "复制失败，请手动选择回答文本。" : "";
     const resultMetaEntries = buildResultMetaEntries(turnResult.result_meta);
+    const visibleCards = compactProviderChatResult ? [] : turnResult.cards;
+    const gitNexusCards = isGitNexusResult(turnResult)
+      ? visibleCards
+      : visibleCards.filter(isGitNexusCard);
+    const genericCards = isGitNexusResult(turnResult)
+      ? []
+      : visibleCards.filter((card) => !isGitNexusCard(card));
+    const resultCards =
+      visibleCards.length > 0 ? (
+        <div className="agent-result-card-stack">
+          {gitNexusCards.length > 0 ? <AgentGitNexusResultView cards={gitNexusCards} /> : null}
+          <AgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
+        </div>
+      ) : null;
+    const answerMessage = turnResult.answer.trim() ? (
+      <div className="agent-answer-message">
+        <AgentAnswerPanel
+          answer={turnResult.answer}
+          testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
+        />
+        {!researchRadarResult ? (
+          <div className="agent-result-toolbar" aria-label="回答操作">
+            {canRegenerateAgentTurn(turn) ? (
+              <button
+                type="button"
+                className="agent-result-toolbar__button"
+                aria-label={`重新生成：${turn.question}`}
+                onClick={() => void regenerateAgentTurn(turn)}
+                disabled={loading}
+              >
+                <ReloadOutlined aria-hidden="true" />
+                <span>重新生成</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="agent-result-toolbar__button"
+              aria-label={`${copyLabel}：${turn.question}`}
+              onClick={() => void copyAgentAnswer(turn)}
+              disabled={!turnResult.answer.trim()}
+            >
+              {copyStatus === "success" ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
+              <span>{copyLabel}</span>
+            </button>
+            {copyStatus ? (
+              <span
+                aria-label="复制状态"
+                aria-live="polite"
+                aria-atomic="true"
+                role="status"
+                className={`agent-copy-feedback agent-copy-feedback--${copyStatus}`}
+              >
+                {copyStatusMessage}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    ) : null;
 
     return (
       <div className="agent-result-shell">
         {hasRenderableResult(turnResult) ? (
           <div className="agent-result-grid">
             <div className="agent-result-main">
-              <div className="agent-answer-message">
-                <AgentAnswerPanel
-                  answer={turnResult.answer}
-                  testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
-                />
-                <div className="agent-result-toolbar" aria-label="回答操作">
-                  {canRegenerateAgentTurn(turn) ? (
-                    <button
-                      type="button"
-                      className="agent-result-toolbar__button"
-                      aria-label={`重新生成：${turn.question}`}
-                      onClick={() => void regenerateAgentTurn(turn)}
-                      disabled={loading}
-                    >
-                      <ReloadOutlined aria-hidden="true" />
-                      <span>重新生成</span>
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="agent-result-toolbar__button"
-                    aria-label={`${copyLabel}：${turn.question}`}
-                    onClick={() => void copyAgentAnswer(turn)}
-                    disabled={!turnResult.answer.trim()}
-                  >
-                    {copyStatus === "success" ? <CheckOutlined aria-hidden="true" /> : <CopyOutlined aria-hidden="true" />}
-                    <span>{copyLabel}</span>
-                  </button>
-                  {copyStatus ? (
-                    <span
-                      aria-label="复制状态"
-                      aria-live="polite"
-                      aria-atomic="true"
-                      role="status"
-                      className={`agent-copy-feedback agent-copy-feedback--${copyStatus}`}
-                    >
-                      {copyStatusMessage}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              {turnResult.cards.length > 0 ? (
-                (() => {
-                  const gitNexusCards = isGitNexusResult(turnResult)
-                    ? turnResult.cards
-                    : turnResult.cards.filter(isGitNexusCard);
-                  const genericCards = isGitNexusResult(turnResult)
-                    ? []
-                    : turnResult.cards.filter((card) => !isGitNexusCard(card));
-                  return (
-                    <div className="agent-result-card-stack">
-                      {gitNexusCards.length > 0 ? <AgentGitNexusResultView cards={gitNexusCards} /> : null}
-                      <AgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
-                    </div>
-                  );
-                })()
-              ) : null}
+              {researchRadarResult ? resultCards : answerMessage}
+              {researchRadarResult ? answerMessage : resultCards}
 
               {turnResult.next_drill.length > 0 ? (
                 <div className="agent-next-drill-row">
@@ -3277,7 +3479,7 @@ export function EmbeddedAgentCopilot({
               </div>
             </div>
 
-            {renderAgentResultSide(turnResult, resultMetaEntries)}
+            {compactProviderChatResult ? null : renderAgentResultSide(turnResult, resultMetaEntries)}
           </div>
         ) : (
           <div className="agent-callout agent-callout--empty" role="status" aria-label="空结果状态">
@@ -3323,7 +3525,7 @@ export function EmbeddedAgentCopilot({
 
   function renderAgentRunProgress(agentRun: AgentRunPayload | null, question: string) {
     const currentIndex = getAgentRunProgressIndex(agentRun);
-    const stages = ["已提交", "排队中", "分析中"];
+    const stages = ["收到问题", "选择路径", "整理回答"];
 
     return (
       <div className="agent-run-progress" aria-label={`回答进度：${question}`}>
@@ -3438,25 +3640,24 @@ export function EmbeddedAgentCopilot({
       {!isEmbedded && resolvedShowHeader ? (
         <header className="agent-workbench-header">
           <div>
-            <div className="agent-workbench-header__eyebrow">Agent Workbench</div>
-            <h1>智能体对话</h1>
-            <p>像聊天一样提问；智能体只读取已有分析服务和证据，返回结论、依据、页面上下文和下一步建议。</p>
+            <div className="agent-workbench-header__eyebrow">MOSS Chat</div>
+            <h1>今天想看什么？</h1>
+            <p>先把问题丢给我。需要证据、运行细节或正式口径时，再展开查看。</p>
           </div>
-          <div className="agent-workbench-header__actions">
-            <button
-              type="button"
-              className="agent-workbench-header__new-chat"
-              aria-label="新对话"
-              onClick={startFreshConversation}
-              disabled={loading || !hasConversation}
-            >
-              <PlusOutlined aria-hidden="true" />
-              <span>新对话</span>
-            </button>
-            <div className="agent-workbench-header__cue" aria-hidden="true">
-              MOSS / Agent
+          {hasConversation ? (
+            <div className="agent-workbench-header__actions">
+              <button
+                type="button"
+                className="agent-workbench-header__new-chat"
+                aria-label="新对话"
+                onClick={startFreshConversation}
+                disabled={loading}
+              >
+                <PlusOutlined aria-hidden="true" />
+                <span>新对话</span>
+              </button>
             </div>
-          </div>
+          ) : null}
         </header>
       ) : null}
 
@@ -3589,11 +3790,15 @@ export function EmbeddedAgentCopilot({
           {conversationTurns.map((turn) => {
             const isLatestLoadingTurn = turn === latestConversationTurn && loading;
             const showThinkingPlaceholder = isLatestLoadingTurn && !turn.result && !turn.error;
+            const shouldShowRunStatus = (isLatestLoadingTurn || turn.agentRun) && !isCompactProviderChatTurn(turn);
             const conversationContextBadge = formatConversationContextBadge(turn.conversationContext);
             const waitElapsedSeconds = formatAgentRunElapsed(
               turn.agentRun,
               isLatestLoadingTurn ? agentWaitSeconds : 0,
             );
+            const thinkingLabel = formatAgentThinkingLabel(turn.agentRun, waitElapsedSeconds);
+            const thinkingText = formatAgentThinkingText(turn.agentRun, waitElapsedSeconds);
+            const runConnectionElapsed = formatAgentConnectionElapsed(turn.runRequestLatencyMs);
             return (
               <div key={turn.id} className="agent-turn">
                 <div className="agent-message agent-message--user">
@@ -3621,7 +3826,7 @@ export function EmbeddedAgentCopilot({
                 <div className="agent-message agent-message--assistant">
                   <div className="agent-message__speaker">智能体</div>
                   <div className="agent-message__body">
-                    {isLatestLoadingTurn || turn.agentRun ? (
+                    {shouldShowRunStatus ? (
                       <div
                         className="agent-wait-status"
                         role="status"
@@ -3631,8 +3836,8 @@ export function EmbeddedAgentCopilot({
                         <div className="agent-wait-status__copy">
                           {showThinkingPlaceholder ? (
                             <div className="agent-thinking">
-                              <span className="agent-thinking__label">正在思考</span>
-                              <span className="agent-thinking__text">我先接住问题，拿到运行状态后继续更新。</span>
+                              <span className="agent-thinking__label">{thinkingLabel}</span>
+                              <span className="agent-thinking__text">{thinkingText}</span>
                               <span className="agent-thinking__dots" aria-hidden="true">
                                 <span />
                                 <span />
@@ -3649,6 +3854,7 @@ export function EmbeddedAgentCopilot({
                             <div className="agent-wait-status__detail-list">
                               <span>{formatAgentWaitPhase(turn.agentRun)}</span>
                               <span>已等待 {waitElapsedSeconds} 秒</span>
+                              {runConnectionElapsed ? <span>连接耗时 {runConnectionElapsed}</span> : null}
                               {shouldDisplayAgentRunId(turn.agentRun) ? (
                                 <span>run_id: {turn.agentRun?.run_id}</span>
                               ) : null}

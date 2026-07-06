@@ -1,4 +1,5 @@
 @import "./tailwind.css";
+@import "@heroui/styles";
 @import "./tokens.css";
 @import "./workbenchShell.css";
 @import "./antdOverrides.css";
