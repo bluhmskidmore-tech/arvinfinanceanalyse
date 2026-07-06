@@ -117,8 +117,21 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "{ id: ",
         "label: ",
     ),
+    "features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx": (
+        "<span",
+        "<td",
+        "{ label: ",
+    ),
+    "features/workbench/dashboard-home/TerminalHomeWorkGrid.tsx": (
+        "<small>",
+        "note: ",
+    ),
     "features/workbench/dashboard-home/sections/BottomGridSection.tsx": (
         "<th>",
+    ),
+    "features/workbench/module-home/ModuleWorkbenchHomePage.tsx": (
+        "if (title === ",
+        "return ",
     ),
     "features/workbench/module-home/moduleHomeConfig.ts": (
         "briefingTitles: ",
@@ -130,17 +143,44 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "source: ",
         "key: ",
         "title: ",
+        "subtitle: ",
         "detail: ",
         "evidence: ",
         "value: ",
+        "? ",
         "? `",
         "//",
         "const RISK_KRD_FIELDS:",
+        "const RISK_ACCOUNTING_DV01_FIELDS:",
         "{ key: ",
         "for (const field of RISK_KRD_FIELDS)",
+        "for (const field of RISK_ACCOUNTING_DV01_FIELDS)",
+        "const raw = nativeToNumber(",
         "pushRiskTensorDetailRow(",
         '"',
         "tensor.",
+    ),
+    "features/workbench/module-home/PortfolioHoldingsHeroBand.tsx": (
+        "<th>",
+        "row.dv01Display ? ",
+    ),
+    "features/workbench/module-home/PortfolioHomeLayout.tsx": (
+        # Label alias map for backend-provided fact KPIs; display copy only.
+        "DV01: ",
+    ),
+    "features/workbench/module-home/PortfolioStructureTabPanel.tsx": (
+        # Compact list header cell and source-string cleanup; display copy only.
+        "<span>",
+        "const fallbackMetric = ",
+    ),
+    "features/workbench/module-home/portfolioHomeQuickAccess.ts": (
+        "description: ",
+    ),
+    "features/workbench/module-home/riskHomeAdapter.ts": (
+        "const RISK_KRD_FIELDS",
+        "{ key: ",
+        "for (const field of RISK_KRD_FIELDS)",
+        "title: ",
     ),
 }
 
