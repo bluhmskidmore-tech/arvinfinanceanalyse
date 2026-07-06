@@ -86,6 +86,16 @@
   box-shadow: var(--mh-shadow-card);
 }
 
+.riskReviewDesk {
+  display: grid;
+  gap: var(--mh-space-2);
+}
+
+.riskReadoutBand {
+  display: grid;
+  gap: var(--mh-space-2);
+}
+
 .decisionMain {
   display: grid;
   align-content: center;
@@ -546,6 +556,21 @@
   padding: var(--mh-space-2);
   border-radius: var(--ib-radius);
   background: var(--mh-card-soft);
+}
+
+.detailSections {
+  display: grid;
+  gap: var(--mh-space-2);
+}
+
+.detailSection {
+  display: grid;
+  gap: var(--mh-space-1);
+}
+
+.detailSectionHeader {
+  display: grid;
+  gap: 2px;
 }
 
 .detailHead {

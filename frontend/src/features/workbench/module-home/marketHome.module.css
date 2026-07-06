@@ -180,6 +180,11 @@
   white-space: nowrap;
 }
 
+.macroTickerMissing {
+  color: var(--ib-ink-muted, #8a8f98);
+  opacity: 0.6;
+}
+
 .macroTickerValueRow {
   display: flex;
   align-items: center;
@@ -5515,8 +5520,17 @@
   padding: 8px 10px;
   border: 0;
   border-bottom: 1px solid #edf1f5;
-  border-radius: 0;
+  border-radius: 4px;
   background: var(--ib-surface);
+  transition: all 0.2s ease;
+}
+
+.marketCockpitCohesion .actionQueueTableRow:hover {
+  background: rgba(24, 80, 161, 0.04);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  border-bottom-color: transparent;
+  z-index: 1;
 }
 
 .marketCockpitCohesion .actionQueueTableRow[data-tone="error"] {
@@ -5567,7 +5581,16 @@
   align-self: center;
   justify-self: end;
   border-radius: var(--ib-radius);
-  background: transparent;
+  background: rgba(24, 80, 161, 0.05);
+  color: var(--ib-accent);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.marketCockpitCohesion .actionQueueTableRow:hover .actionQueueTableTarget {
+  background: rgba(24, 80, 161, 0.1);
 }
 
 .marketCockpitCohesion .actionQueueMetaGrid {
@@ -6286,6 +6309,125 @@
 
 .marketStatusItem[data-tone="error"] {
   color: var(--ib-down);
+}
+
+.marketTopbarRefresh {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas:
+    "button link"
+    "feedback feedback";
+  align-items: center;
+  gap: 4px 8px;
+  min-width: min(280px, 100%);
+}
+
+.marketTopbarMeta {
+  align-items: center;
+}
+
+.marketStatusItem,
+.topbarDateGroup {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.topbarDateGroup span {
+  white-space: nowrap;
+}
+
+.marketRefreshButton {
+  grid-area: button;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--ib-accent);
+  border-radius: var(--ib-radius);
+  background: var(--ib-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.marketRefreshButton:hover:not(:disabled),
+.marketRefreshButton:focus-visible {
+  background: var(--ib-accent-hover);
+  border-color: var(--ib-accent-hover);
+}
+
+.marketRefreshButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.marketRefreshSecondaryLink {
+  grid-area: link;
+  color: var(--ib-accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.marketRefreshSecondaryLink:hover {
+  color: var(--ib-accent-hover);
+}
+
+.marketRefreshFeedback {
+  grid-area: feedback;
+  min-width: 0;
+  max-width: 280px;
+  overflow: hidden;
+  color: var(--ib-ink-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketRefreshFeedback[data-tone="ok"] {
+  color: var(--ib-up);
+}
+
+.marketRefreshFeedback[data-tone="error"] {
+  color: var(--ib-down);
+}
+
+.evidenceRailRefreshButton {
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.evidenceRailRefreshButton:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+@media (max-width: 640px) {
+  .marketTopbarRefresh {
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .marketRefreshFeedback {
+    max-width: 100%;
+  }
+
+  .marketTopbarMeta {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: 100%;
+  }
 }
 
 .marketStatusOutline {
@@ -7296,10 +7438,10 @@
 
 .macroSignalCard {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   height: 100%;
   min-height: 108px;
-  padding: 10px 11px 9px;
+  padding: 12px 14px 10px;
   border: 1px solid var(--ib-hairline);
   border-radius: var(--ib-radius, 2px);
   background: var(--ib-surface);
@@ -7670,9 +7812,18 @@
 
 .marketCrisisWarnings {
   margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.marketCrisisWarningItem {
   color: #b54708;
   font-size: 11px;
   line-height: 1.4;
+  background: rgba(181, 71, 8, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .marketCrisisExplainMeta {

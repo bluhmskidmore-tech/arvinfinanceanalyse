@@ -4,6 +4,7 @@ import { moduleWorkbenchHomeConfigs } from "./moduleHomeConfig";
 import PortfolioHomeLayout from "./PortfolioHomeLayout";
 import { usePortfolioHomeQueries } from "./usePortfolioHomeQueries";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import styles from "./portfolioHome.module.css";
 
 export default function PortfolioHomePage() {
   const client = useApiClient();
@@ -14,7 +15,7 @@ export default function PortfolioHomePage() {
   const bondReportDate = queries.bondDates?.data?.result.report_dates[0] ?? "";
 
   return (
-    <section data-testid="module-workbench-home" className={dhStyles.dhPage}>
+    <section data-testid="module-workbench-home" className={`${dhStyles.dhPage} ${styles.portfolioPage}`}>
       <PortfolioHomeLayout
         view={view}
         config={config}

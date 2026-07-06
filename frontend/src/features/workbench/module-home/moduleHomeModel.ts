@@ -580,8 +580,11 @@ function buildDetailPanel(args: {
   rows: ModuleHomeDetailRow[];
   sections?: ModuleHomeDetailSection[];
   chart?: ModuleHomeDetailChart;
+  showRowsWhenWarning?: boolean;
 }): ModuleHomeDetailPanel {
-  const ready = args.status.tone === "ok";
+  const ready =
+    args.status.tone === "ok" ||
+    (args.showRowsWhenWarning === true && args.status.tone === "watch" && args.rows.length > 0);
   const sections = ready ? args.sections : undefined;
   return {
     key: args.key,
@@ -2352,6 +2355,8 @@ function portfolioView(
   const formalBond = metaIsFormalDecisionSource(bondMeta) ? bond : undefined;
   const formalRisk = metaIsFormalDecisionSource(riskMeta) ? risk : undefined;
   const formalBondKpis = formalBond?.kpis;
+  const visibleBondKpis = bondKpis;
+  const visibleRisk = risk;
 
   const creditRatio = risk ? nativeToNumber(risk.credit_ratio) : null;
   const creditTone =
@@ -2418,8 +2423,12 @@ function portfolioView(
     {
       key: "bond-credit-ratio",
       label: "信用占比",
-      customValue: formalRisk ? `${formatRatePercent(formalRisk.credit_ratio)}%` : "-",
-      detail: formalRisk ? "风险指标口径。" : "风险指标未达到正式决策口径，未纳入 KPI。",
+      customValue: visibleRisk ? `${formatRatePercent(visibleRisk.credit_ratio)}%` : "-",
+      detail: formalRisk
+        ? "风险指标口径。"
+        : visibleRisk
+          ? "风险指标为分析/复核口径，仅展示读数，不纳入风险 ticker 或闭合判断。"
+          : "风险指标未返回，未纳入 KPI。",
       tone: formalRisk ? "ok" : "watch",
     },
     {
@@ -2447,16 +2456,20 @@ function portfolioView(
           tone: def.tone ?? (def.customValue === "-" ? "watch" : "ok"),
         };
       }
-      const raw = formalBondKpis?.[def.field!];
+      const raw = visibleBondKpis?.[def.field!];
       return {
         key: def.key,
         label: def.label,
-        value: formalBondKpis ? formatBondHeadlineKpi(def.field!, raw) : "-",
-        detail: formalBondKpis ? def.detail : "债券总览未达到正式决策口径，未纳入 KPI。",
+        value: visibleBondKpis ? formatBondHeadlineKpi(def.field!, raw) : "-",
+        detail: formalBondKpis
+          ? def.detail
+          : visibleBondKpis
+            ? `${def.detail} 分析/复核口径，仅展示读数，不形成调仓建议。`
+            : "债券总览未返回，未纳入 KPI。",
         tone: formalBondKpis ? "ok" : "watch",
       };
     }),
-    formalBond,
+    bond,
     bondKpiDefs,
   );
 
@@ -2664,6 +2677,7 @@ function portfolioView(
       meta: bondDashboardMeta(risk?.report_date ?? bondDate),
       status: riskStatus,
       rows: riskRows,
+      showRowsWhenWarning: Boolean(risk),
     }),
     buildDetailPanel({
       key: "portfolio-comparison",
@@ -2764,6 +2778,10 @@ function portfolioView(
             ? `债券组合 ${formatBondHeadlineKpi("total_market_value", formalBondKpis.total_market_value)}，资产侧 ${formatYiFromYuan(
                 balance.asset_total_market_value_amount,
               )}，负债侧 ${formatYiFromYuan(balance.liability_total_market_value_amount)}。`
+            : bondKpis && balance
+              ? `债券组合 ${formatBondHeadlineKpi("total_market_value", bondKpis.total_market_value)}，资产侧 ${formatYiFromYuan(
+                  balance.asset_total_market_value_amount,
+                )}，负债侧 ${formatYiFromYuan(balance.liability_total_market_value_amount)}。`
             : balance
               ? `资产侧 ${formatYiFromYuan(balance.asset_total_market_value_amount)}，负债侧 ${formatYiFromYuan(
                   balance.liability_total_market_value_amount,
@@ -2782,9 +2800,18 @@ function portfolioView(
                 "total_dv01",
                 formalBondKpis.total_dv01,
               )}，${creditTone}（信用占比 ${formatRatePercent(formalRisk.credit_ratio)}%）。`
+            : bondKpis && risk
+              ? `久期 ${formatBondHeadlineKpi("weighted_duration", bondKpis.weighted_duration)}，DV01 ${formatBondHeadlineKpi(
+                  "total_dv01",
+                  bondKpis.total_dv01,
+                )}，${creditTone}（信用占比 ${formatRatePercent(risk.credit_ratio)}%，仅分析/复核）。`
             : formalRisk
               ? `久期 ${formatYears(formalRisk.weighted_duration)} 年，DV01 ${formatDv01Wan(formalRisk.total_dv01)} 万元，${creditTone}。`
-              : "正式风险读数暂未返回或未允许正式使用。",
+              : risk
+                ? `久期 ${formatYears(risk.weighted_duration)} 年，DV01 ${formatDv01Wan(
+                    risk.total_dv01,
+                  )} 万元，${creditTone}（仅分析/复核）。`
+                : "风险读数暂未返回。",
         evidence: "直接展示 headline / risk-indicators 字段，不以前端估算监管 DV01。",
         tone: formalBondKpis || formalRisk ? "ok" : "watch",
       },
@@ -2794,10 +2821,10 @@ function portfolioView(
           ? `主驱动 ${pnlDriverLabel(pnlSummary.primary_driver)}（${bondNumericDisplay(
               pnlSummary.primary_driver_pct,
             )}）；${pnlSummary.key_findings[0] ?? "详见归因摘要。"}`
-          : formalBondKpis
-            ? `未实现损益 ${formatBondHeadlineKpi("unrealized_pnl", formalBondKpis.unrealized_pnl)}，加权 YTM ${formatBondHeadlineKpi(
+          : bondKpis
+            ? `未实现损益 ${formatBondHeadlineKpi("unrealized_pnl", bondKpis.unrealized_pnl)}，加权 YTM ${formatBondHeadlineKpi(
                 "weighted_ytm",
-                formalBondKpis.weighted_ytm,
+                bondKpis.weighted_ytm,
               )}。`
             : "收益解释需要进入损益归因下钻页。",
         evidence: pnlSummary

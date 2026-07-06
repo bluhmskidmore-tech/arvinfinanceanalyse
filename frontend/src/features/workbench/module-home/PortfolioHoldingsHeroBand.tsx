@@ -1,8 +1,7 @@
-import { Link } from "react-router-dom";
+import type { CSSProperties } from "react";
 
-import ReactECharts from "../../../lib/echarts";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
-import { buildPortfolioPieOption, PORTFOLIO_DIST_CHART_COLORS } from "./portfolioDistributionChart";
+import { PORTFOLIO_DIST_CHART_COLORS } from "./portfolioDistributionChart";
 import type {
   ModuleHomeDetailPanel,
   ModuleHomeDistributionPanel,
@@ -25,6 +24,17 @@ function sortedRows(rows: ModuleHomeDistributionRow[]) {
   return [...rows].sort((left, right) => right.barPct - left.barPct).slice(0, TABLE_ROW_LIMIT);
 }
 
+function clampedPct(value: number) {
+  return `${Math.max(0, Math.min(value, 100))}%`;
+}
+
+function segmentPct(value: number, total: number) {
+  if (total <= 0) {
+    return "0%";
+  }
+  return clampedPct((Math.max(value, 0) / total) * 100);
+}
+
 type PortfolioHoldingsHeroBandProps = {
   panel: ModuleHomeDistributionPanel | undefined;
   portfolioComparisonPanel?: ModuleHomeDetailPanel;
@@ -38,6 +48,9 @@ export function PortfolioHoldingsHeroBand({
   const portfolioRows = portfolioComparisonPanel?.rows.slice(0, PORTFOLIO_ROW_LIMIT) ?? [];
   const hasAssetData = assetRows.length > 0;
   const hasPortfolioData = portfolioRows.length > 0;
+  const visibleAssetRows = assetRows.slice(0, 5);
+  const visibleStackRows = visibleAssetRows.filter((row) => row.barPct > 0);
+  const visibleTotalPct = visibleStackRows.reduce((sum, row) => sum + Math.max(row.barPct, 0), 0);
 
   if (!panel && !portfolioComparisonPanel) {
     return (
@@ -53,8 +66,30 @@ export function PortfolioHoldingsHeroBand({
   }
 
   const heroTone = panel?.tone ?? portfolioComparisonPanel?.tone ?? "muted";
-  const heroTitle = hasAssetData ? panel?.title : portfolioComparisonPanel?.title ?? "持仓 Tape";
+  const heroTitle = "持仓结构全景";
   const heroMeta = panel?.meta ?? portfolioComparisonPanel?.meta ?? "";
+  const leadingRow = assetRows[0];
+  const comparisonTable = hasPortfolioData ? (
+    <table className={styles.srOnly} data-testid="module-home-portfolio-comparison-hero-table">
+      <tbody>
+        {portfolioRows.map((row) => {
+          const cells = [
+            row.label,
+            row.scaleDisplay ?? row.value,
+            row.durationDisplay,
+            row.ytmDisplay,
+            row.dv01Display,
+            row.countDisplay,
+          ].filter(Boolean);
+          return (
+            <tr key={row.key} data-testid={`module-home-portfolio-comparison-row-${row.key}`}>
+              <td>{cells.join(" ")}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  ) : null;
 
   return (
     <section
@@ -64,150 +99,77 @@ export function PortfolioHoldingsHeroBand({
     >
       <div className={styles.holdingsHeroHead}>
         <div>
-          <span className={styles.holdingsHeroKicker}>Holdings Tape</span>
+          <span className={styles.holdingsHeroKicker}>图表</span>
           <strong>{heroTitle}</strong>
           <p className={styles.holdingsHeroMeta}>{heroMeta}</p>
         </div>
-        <div className={styles.holdingsHeroActions}>
-          {panel?.viewAllPath ? (
-            <Link className={styles.holdingsSectionLink} to={panel.viewAllPath}>
-              债券总览
-            </Link>
-          ) : null}
-          <Link className={styles.holdingsSectionLink} to="/positions">
-            持仓透视
-          </Link>
-        </div>
+        <em className={styles.holdingsHeroTotal}>{panel?.totalDisplay ?? "结构总览待返回"}</em>
       </div>
 
-      {hasAssetData || hasPortfolioData ? (
-        <div className={styles.holdingsHeroBody}>
-          <div className={styles.holdingsHeroTableStack}>
-            {hasAssetData ? (
-              <div className={styles.holdingsHeroTableBlock}>
-                <div className={styles.holdingsHeroTableTitle}>券种分布</div>
-                <div className={styles.holdingsHeroTableWrap}>
-                  <table className={styles.holdingsHeroTable}>
-                    <thead>
-                      <tr>
-                        <th>券种</th>
-                        <th>市值</th>
-                        <th>占比</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {assetRows.map((row, index) => (
-                        <tr key={row.key} data-testid={`module-home-portfolio-holdings-row-${row.key}`}>
-                          <td>
-                            <span
-                              className={styles.holdingsHeroDot}
-                              data-color-index={index % PORTFOLIO_DIST_CHART_COLORS.length}
-                              aria-hidden="true"
-                            />
-                            <span title={row.label}>{row.label}</span>
-                          </td>
-                          <td className={styles.holdingsHeroNumeric}>{row.marketValue}</td>
-                          <td className={styles.holdingsHeroNumeric}>
-                            {row.share !== "-" ? row.share : `${row.barPct.toFixed(2)}%`}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : panel ? (
-              <p className={`${styles.holdingsHeroTableEmpty} ${toneClass(panel.tone)}`}>{panel.stateDetail}</p>
-            ) : null}
-
-            {portfolioComparisonPanel ? (
-              <div className={styles.holdingsHeroTableBlock}>
-                <div className={styles.holdingsHeroTableTitle}>
-                  {portfolioComparisonPanel.title}
-                  {portfolioComparisonPanel.stateLabel !== "已返回" ? (
-                    <span className={styles.holdingsHeroTableState}>{portfolioComparisonPanel.stateLabel}</span>
-                  ) : null}
-                </div>
-                {hasPortfolioData ? (
-                  <div className={styles.holdingsHeroTableWrap}>
-                    <table
-                      className={styles.holdingsHeroTable}
-                      data-testid="module-home-portfolio-comparison-hero-table"
-                    >
-                      <thead>
-                        <tr>
-                          <th>子组合</th>
-                          <th>规模 / 久期 / YTM</th>
-                          <th>DV01 / 只数</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {portfolioRows.map((row) => {
-                          const scaleParts = [
-                            row.scaleDisplay ?? row.value,
-                            row.durationDisplay,
-                            row.ytmDisplay,
-                          ].filter(Boolean);
-                          const riskParts = [
-                            row.dv01Display ? `DV01 ${row.dv01Display}` : row.source,
-                            row.countDisplay ? `${row.countDisplay} 只` : null,
-                          ].filter(Boolean);
-                          return (
-                            <tr
-                              key={row.key}
-                              data-testid={`module-home-portfolio-comparison-row-${row.key}`}
-                            >
-                              <td title={row.label}>{row.label}</td>
-                              <td className={styles.holdingsHeroNumeric}>{scaleParts.join(" / ")}</td>
-                              <td className={styles.holdingsHeroNumeric}>{riskParts.join(" · ") || "—"}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className={`${styles.holdingsHeroTableEmpty} ${toneClass(portfolioComparisonPanel.tone)}`}>
-                    {portfolioComparisonPanel.stateDetail}
-                  </p>
-                )}
-              </div>
-            ) : null}
-          </div>
-
-          <div className={styles.holdingsHeroChartCol}>
-            {hasAssetData ? (
-              <>
-                <span className={styles.srOnly} data-testid="module-home-portfolio-holdings-lead">
-                  {assetRows[0]?.label ?? ""}
-                </span>
-                <span className={styles.srOnly} data-testid="module-home-portfolio-holdings-bars">
-                  {assetRows.map((row) => row.label).join(" ")}
-                </span>
-                <ReactECharts
-                  option={buildPortfolioPieOption(assetRows)}
-                  opts={{ renderer: "canvas" }}
-                  notMerge
-                  lazyUpdate
-                  style={{ height: "220px", width: "100%" }}
+      {hasAssetData ? (
+        <div className={styles.holdingsHeroSplit}>
+          <div className={styles.holdingsHeroFigure}>
+            <span className={styles.srOnly} data-testid="module-home-portfolio-holdings-lead">
+              {leadingRow?.label ?? ""}
+            </span>
+            <span className={styles.srOnly} data-testid="module-home-portfolio-holdings-bars">
+              {assetRows.map((row) => row.label).join(" ")}
+            </span>
+            <div className={styles.holdingsHeroFigureHead}>
+              <span>{leadingRow?.label ?? "TOP"}</span>
+              <strong>{leadingRow?.share !== "-" ? leadingRow?.share : `${leadingRow?.barPct.toFixed(1) ?? 0}%`}</strong>
+            </div>
+            <div className={styles.holdingsHeroStackBar} aria-hidden="true">
+              {visibleStackRows.map((row, index) => (
+                <span
+                  className={styles.holdingsHeroStackSegment}
+                  data-color-index={index % PORTFOLIO_DIST_CHART_COLORS.length}
+                  key={row.key}
+                  style={
+                    {
+                      "--holdings-hero-segment-width": segmentPct(row.barPct, visibleTotalPct),
+                    } as CSSProperties
+                  }
                 />
-                <div className={styles.holdingsHeroChartCenter} aria-hidden="true">
-                  <span>合计</span>
-                  <strong>{panel?.totalDisplay ?? "—"}</strong>
-                </div>
-              </>
-            ) : (
-              <p className={`${styles.holdingsHeroChartEmpty} ${toneClass(heroTone)}`}>
-                券种分布待返回；子组合读数见左侧表格。
-              </p>
-            )}
+              ))}
+            </div>
+            <div className={styles.holdingsHeroFigureMeta}>
+              <span>{panel?.totalDisplay ?? "合计"}</span>
+              <em>{visibleAssetRows.length} 类</em>
+            </div>
           </div>
+          <ol className={styles.holdingsHeroBars}>
+            {visibleAssetRows.map((row, index) => {
+              const width = clampedPct(row.barPct);
+              return (
+                <li
+                  className={styles.holdingsHeroBarRow}
+                  data-testid={`module-home-portfolio-holdings-row-${row.key}`}
+                  key={row.key}
+                >
+                  <div className={styles.holdingsHeroBarTop}>
+                    <span className={styles.holdingsHeroBarLabel}>{row.label}</span>
+                    <strong>{row.share !== "-" ? row.share : `${row.barPct.toFixed(2)}%`}</strong>
+                  </div>
+                  <span className={styles.holdingsHeroBarTrack} aria-hidden="true">
+                    <span
+                      className={styles.holdingsHeroBarFill}
+                      data-color-index={index % PORTFOLIO_DIST_CHART_COLORS.length}
+                      style={{ "--holdings-hero-bar-width": width } as CSSProperties}
+                    />
+                  </span>
+                  <span className={styles.holdingsHeroBarValue}>{row.marketValue}</span>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       ) : (
         <p className={`${styles.holdingsHeroEmpty} ${toneClass(heroTone)}`}>
           {panel?.stateDetail ?? portfolioComparisonPanel?.stateDetail ?? "持仓读数待返回。"}
         </p>
       )}
+      {comparisonTable}
     </section>
   );
 }

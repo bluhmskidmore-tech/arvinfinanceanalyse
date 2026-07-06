@@ -238,6 +238,11 @@ describe("Portfolio home cross-page consistency", () => {
       /\u4ec5\u4f9b\u5206\u6790|\u4ec5\u4f9b\u76d1\u63a7|\u4e0d\u53ef\u7528\u4e8e\u4e1a\u52a1\u51b3\u7b56|\u5f85\u590d\u6838/,
     );
     expect(useLevel).not.toHaveTextContent(/Approved|Full closure/i);
+    const kpiScopeNote = within(kpis).getByTestId("module-home-portfolio-kpi-scope-note");
+    expect(kpiScopeNote).toHaveTextContent("债券总览");
+    const bondMarketDetail = within(kpis).getByTestId("module-home-portfolio-kpi-bond-market-detail");
+    expect(bondMarketDetail.textContent?.length ?? 0).toBeLessThan(72);
+    expect(bondMarketDetail).toHaveAttribute("title", expect.stringContaining("债券总览口径"));
 
     const briefing = within(page).getByTestId("module-home-briefing");
     expect(briefing).toHaveTextContent("\u7ec4\u5408");
@@ -247,10 +252,33 @@ describe("Portfolio home cross-page consistency", () => {
     expect(briefing).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.balanceLiabilityYi);
     expect(briefing).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.pnlDriverRatio);
 
-    const structureTerminal = within(page).getByTestId("module-home-portfolio-terminal");
-    expect(structureTerminal).toHaveTextContent("\u7ed3\u6784");
-    expect(structureTerminal).toHaveTextContent("\u7ed3\u6784\u62c6\u89e3");
+    const dataWorkbench = within(page).getByTestId("module-home-portfolio-data-workbench");
+    const sourceWorkbench = within(dataWorkbench).getByTestId("module-home-portfolio-source-workbench");
+    expect(within(sourceWorkbench).getByTestId("module-home-holdings-structure")).toBeInTheDocument();
+    expect(sourceWorkbench).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.ratingName);
+    expect(sourceWorkbench).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.maturityName);
+    expect(sourceWorkbench).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.industryName);
+    expect(within(sourceWorkbench).getByTestId("module-home-briefing")).toBe(briefing);
+    expect(within(sourceWorkbench).getByTestId("module-home-status-strip")).toBeInTheDocument();
+    expect(within(dataWorkbench).getByTestId("module-home-portfolio-data-nav")).toBeInTheDocument();
+
+    const holdingsWorkbench = within(dataWorkbench).getByTestId("module-home-portfolio-holdings-workbench");
+    expect(within(holdingsWorkbench).getByTestId("module-home-portfolio-holdings-hero")).toBeInTheDocument();
+    expect(within(holdingsWorkbench).getByTestId("module-home-portfolio-exposure-workbench")).toHaveTextContent(
+      PORTFOLIO_CROSS_PAGE_EXPECTED.bondDv01Wan,
+    );
+
+    const structureWorkbench = within(dataWorkbench).getByTestId("module-home-portfolio-structure-workbench");
+    const structureTerminal = within(structureWorkbench).getByTestId("module-home-portfolio-terminal");
+    expect(structureWorkbench).toHaveTextContent("\u7ed3\u6784");
     expect(structureTerminal).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.portfolioName);
+    expect(structureTerminal).toHaveTextContent("banking-book");
+    expect(within(structureTerminal).getByTestId("module-home-analysis-tab-portfolio-comparison")).toHaveTextContent("4");
+    expect(within(structureTerminal).getByTestId("module-home-analysis-tab-yield-distribution")).toHaveTextContent("6");
+    expect(within(structureTerminal).getByTestId("module-home-analysis-tab-spread-analysis")).toHaveTextContent("4");
+    expect(within(structureTerminal).getByTestId("module-home-analysis-tab-business-type-metrics")).toHaveTextContent("4");
+    expect(within(dataWorkbench).getByTestId("module-home-portfolio-closure-band")).toBeInTheDocument();
+    expect(within(dataWorkbench).getByTestId("module-home-portfolio-action-workbench")).toBeInTheDocument();
 
     const riskPanel = within(page).getByTestId("module-home-portfolio-risk");
     expect(riskPanel).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.bondDv01Wan);
@@ -259,7 +287,14 @@ describe("Portfolio home cross-page consistency", () => {
     expect(pnlPanel).toHaveTextContent("primary_driver");
     expect(pnlPanel).toHaveTextContent(PORTFOLIO_CROSS_PAGE_EXPECTED.pnlFinding);
 
+    const basisPanel = within(page).getByTestId("module-home-balance-basis");
+    expect(basisPanel).toHaveTextContent("FVOCI");
+    expect(basisPanel).toHaveTextContent("FVTPL");
+
     const dataNote = within(page).getByTestId("module-home-data-note");
+    expect(dataNote.tagName.toLowerCase()).toBe("details");
+    expect(dataNote.querySelector("summary")).toHaveTextContent("来源证据摘要");
+    expect(dataNote.querySelector("summary")).toHaveTextContent(`日期 ${PORTFOLIO_CROSS_PAGE_REPORT_DATE}`);
     expect(dataNote).toHaveTextContent(`report_date=${PORTFOLIO_CROSS_PAGE_REPORT_DATE}`);
     expect(dataNote).toHaveTextContent("fact_formal_bond_analytics_daily");
     expect(dataNote).toHaveTextContent("fact_formal_zqtz_balance_daily");
@@ -296,23 +331,46 @@ describe("Portfolio home cross-page consistency", () => {
 
     await within(firstScreen).findByTestId("module-home-decision");
 
-    const orderedSections = Array.from(
+    const orderedFirstScreenSections = Array.from(
       firstScreen.querySelectorAll(
         [
           '[data-testid="module-home-decision"]',
           '[data-testid="module-home-kpi-strip"]',
           '[data-testid="module-home-portfolio-risk-ticker"]',
-          '[data-testid="module-home-portfolio-holdings-hero"]',
         ].join(", "),
       ),
     ).map((node) => node.getAttribute("data-testid"));
 
-    expect(orderedSections).toEqual([
+    expect(orderedFirstScreenSections).toEqual([
       "module-home-decision",
       "module-home-kpi-strip",
       "module-home-portfolio-risk-ticker",
-      "module-home-portfolio-holdings-hero",
     ]);
+    expect(within(firstScreen).queryByTestId("module-home-portfolio-holdings-hero")).not.toBeInTheDocument();
+
+    const dataWorkbench = within(page).getByTestId("module-home-portfolio-data-workbench");
+    const orderedWorkbenchSections = Array.from(
+      dataWorkbench.querySelectorAll(
+        [
+          '[data-testid="module-home-portfolio-source-workbench"]',
+          '[data-testid="module-home-portfolio-data-nav"]',
+          '[data-testid="module-home-portfolio-holdings-workbench"]',
+          '[data-testid="module-home-portfolio-structure-workbench"]',
+          '[data-testid="module-home-portfolio-closure-band"]',
+          '[data-testid="module-home-portfolio-action-workbench"]',
+        ].join(", "),
+      ),
+    ).map((node) => node.getAttribute("data-testid"));
+
+    expect(orderedWorkbenchSections).toEqual([
+      "module-home-portfolio-data-nav",
+      "module-home-portfolio-holdings-workbench",
+      "module-home-portfolio-structure-workbench",
+      "module-home-portfolio-closure-band",
+      "module-home-portfolio-source-workbench",
+      "module-home-portfolio-action-workbench",
+    ]);
+    expect(within(dataWorkbench).getByTestId("module-home-portfolio-holdings-hero")).toBeInTheDocument();
 
     const undefinedClassNodes = Array.from(page.querySelectorAll("[class]"))
       .filter((node) => (node.getAttribute("class") ?? "").includes("undefined"))

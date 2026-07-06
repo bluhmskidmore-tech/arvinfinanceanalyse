@@ -238,16 +238,20 @@ export function MarketCrisisExplainBand({ explain }: MarketCrisisExplainBandProp
         <p className={marketStyles.panelEmpty}>Crisis Score 组件尚未返回。</p>
       )}
       {explain.warnings.length > 0 ? (
-        <p className={marketStyles.marketCrisisWarnings} data-testid="module-home-market-crisis-warnings">
-          {explain.warnings.join(" · ")}
-        </p>
+        <div className={marketStyles.marketCrisisWarnings} data-testid="module-home-market-crisis-warnings">
+          {explain.warnings.map(w => {
+            const warningText = w === "CREDIT_SPREAD_UNAVAILABLE" ? "信用利差数据不足，已降级降波" :
+                               w === "COMMODITY_VOL_UNAVAILABLE" ? "商品降波数据待接入" : w;
+            return <span key={w} className={marketStyles.marketCrisisWarningItem}>{warningText}</span>;
+          })}
+        </div>
       ) : null}
       <p className={marketStyles.marketCrisisExplainMeta} data-testid="module-home-market-commodity-shadow-link">
         商品旁证与影子评估仅供研究，完整口径见{" "}
         <Link to="/macro-toolkit#macro-toolkit-crisis-detail">宏观工具 · Crisis Score</Link>。
       </p>
       {explain.dataStatus ? (
-        <footer className={marketStyles.marketCrisisExplainMeta}>data_status: {explain.dataStatus}</footer>
+        <footer className={marketStyles.marketCrisisExplainMeta}>数据状态: {explain.dataStatus === "degraded" ? "部分因子降级" : explain.dataStatus === "stale" ? "结果非最新" : explain.dataStatus}</footer>
       ) : null}
     </section>
   );

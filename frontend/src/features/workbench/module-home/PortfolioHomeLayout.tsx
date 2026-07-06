@@ -8,13 +8,13 @@ import dhStyles from "../dashboard-home/dashboardHome.module.css";
 import type {
   ModuleHomeDetailPanel,
   ModuleHomeDistributionPanel,
+  ModuleHomeKpi,
   ModuleHomeTone,
   ModuleHomeView,
 } from "./moduleHomeModel";
 import type { ModuleWorkbenchHomeConfig } from "./moduleHomeConfig";
 import { MarketHomeKpiSparkline } from "./MarketHomeKpiSparkline";
 import { marketChangePresentation, resolveMarketChangeDirection } from "./marketHomeChangeTone";
-import { PortfolioDistributionPanel } from "./PortfolioDistributionPanel";
 import { PortfolioHoldingsHeroBand } from "./PortfolioHoldingsHeroBand";
 import { PORTFOLIO_QUICK_ACCESS_TILES } from "./portfolioHomeQuickAccess";
 import { PortfolioRiskTickerBar } from "./PortfolioRiskTickerBar";
@@ -51,6 +51,13 @@ const DRILL_ICON_MAP: Record<string, ReactNode> = {
   reports: <LightIcon name="file-text" />,
   agent: <LightIcon name="bar-chart" />,
 };
+
+const WORKBENCH_NAV_ITEMS = [
+  { href: "#portfolio-holdings-workbench", code: "H", label: "持仓结构", detail: "全景" },
+  { href: "#portfolio-risk-workbench", code: "G", label: "收益/风险", detail: "闭合前门" },
+  { href: "#portfolio-structure-workbench", code: "S", label: "结构拆解", detail: "表格" },
+  { href: "#portfolio-action-workbench", code: "A", label: "明细入口", detail: "入口" },
+] as const;
 
 type PortfolioHomeLayoutProps = {
   view: ModuleHomeView;
@@ -141,24 +148,6 @@ function DetailPanelBody({
   return body;
 }
 
-function DetailPanelCard({
-  panel,
-  testId,
-}: {
-  panel: ModuleHomeDetailPanel;
-  testId: string;
-}) {
-  return (
-    <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalPanel}`} data-testid={testId}>
-      <DetailPanelBody panel={panel} />
-    </article>
-  );
-}
-
-function DistributionPanelCard({ panel }: { panel: ModuleHomeDistributionPanel }) {
-  return <PortfolioDistributionPanel panel={panel} />;
-}
-
 function snapshotRows(panel: ModuleHomeDistributionPanel) {
   return [...panel.rows].sort((left, right) => right.barPct - left.barPct).slice(0, 3);
 }
@@ -180,11 +169,19 @@ function PortfolioChartSnapshot({ panels }: { panels: ModuleHomeDistributionPane
         {visiblePanels.map((panel) => {
           const rows = snapshotRows(panel);
           return (
-            <article className={styles.chartSnapshotCard} data-tone={panel.tone} key={panel.key}>
+            <article
+              className={styles.chartSnapshotCard}
+              data-tone={panel.tone}
+              data-testid={`module-home-distribution-${panel.key}`}
+              key={panel.key}
+            >
               <div className={styles.chartSnapshotCardHead}>
                 <span title={panel.title}>{panel.title}</span>
                 <strong>{panel.totalDisplay ?? panel.stateLabel}</strong>
               </div>
+              <span className={styles.srOnly}>
+                {[panel.meta, panel.stateDetail].filter(Boolean).join(" ")}
+              </span>
               {rows.length > 0 ? (
                 <div className={styles.chartMiniBars}>
                   {rows.map((row, index) => {
@@ -223,74 +220,118 @@ function PortfolioChartSnapshot({ panels }: { panels: ModuleHomeDistributionPane
   );
 }
 
-function PortfolioAiDecisionRail({ view }: { view: ModuleHomeView }) {
-  const decision = view.decision;
-  const actions = decision?.actions ?? [];
-  const leadingBriefing = view.briefings[0];
-
-  return (
-    <aside data-testid="module-home-portfolio-ai-rail" className={styles.aiDecisionRail}>
-      <div className={styles.aiRailHeader}>
-        <span>AI 决策舱</span>
-        <strong data-tone={decision?.tone ?? "muted"}>{decision ? decisionUseLabel(decision) : view.stateLabel}</strong>
-      </div>
-      <p className={styles.aiRailState}>{view.stateDetail}</p>
-
-      <div className={styles.aiRailMetricGrid}>
-        {view.kpis.slice(0, 4).map((item) => (
-          <div className={styles.aiRailMetric} data-tone={item.tone} key={item.key}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </div>
-        ))}
-      </div>
-
-      {decision ? (
-        <section className={styles.aiRailCard} data-tone={decision.tone}>
-          <span className={styles.aiRailLabel}>{decision.title}</span>
-          <strong>{decision.conclusion}</strong>
-          <p>{compactDecisionDetail(decision.detail) || decision.detail}</p>
-        </section>
-      ) : null}
-
-      {leadingBriefing ? (
-        <section className={styles.aiRailCard} data-tone={leadingBriefing.tone}>
-          <span className={styles.aiRailLabel}>{leadingBriefing.title}</span>
-          <strong>{leadingBriefing.conclusion}</strong>
-          <p>{leadingBriefing.evidence}</p>
-        </section>
-      ) : null}
-
-      <section className={styles.aiRailCard}>
-        <span className={styles.aiRailLabel}>Source Gate</span>
-        <div className={styles.aiRailStatusList}>
-          {view.statuses.slice(0, 5).map((item) => (
-            <span data-tone={item.tone} key={item.key}>
-              {item.label}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {actions.length > 0 ? (
-        <nav className={styles.aiRailActionList} aria-label="组合决策动作">
-          {actions.map((action) => (
-            <Link className={styles.aiRailLink} to={action.path} data-tone={action.tone} key={action.title}>
-              <span>{action.title}</span>
-              <strong>{action.label ?? "下钻"}</strong>
-            </Link>
-          ))}
-        </nav>
-      ) : null}
-    </aside>
-  );
-}
-
 function SectionHead({ label, title }: { label: string; title: string }) {
   return (
     <div className={styles.sectionHead}>
       <span>{label}</span>
       <strong>{title}</strong>
+    </div>
+  );
+}
+
+function WorkbenchSectionHead({
+  titleId,
+  code,
+  title,
+  detail,
+  meta,
+  action,
+}: {
+  titleId: string;
+  code: string;
+  title: string;
+  detail: string;
+  meta?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className={styles.workbenchSectionHead}>
+      <div>
+        <span>{code}</span>
+        <h2 id={titleId}>{title}</h2>
+        <p>{detail}</p>
+      </div>
+      {meta || action ? (
+        <div className={styles.workbenchSectionMeta}>
+          {meta ? <em>{meta}</em> : null}
+          {action}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const FACT_KPI_LABEL_MAP: Record<string, string> = {
+  信用占比: "信用占比",
+  DV01: "DV01 合计",
+};
+
+function isEmptyReading(value: string) {
+  return value === "-" || value === "—";
+}
+
+function PortfolioExposureLedger({ view }: { view: ModuleHomeView }) {
+  const exposureFacts = view.decision ? splitDecisionFacts(view.decision.facts).exposure : [];
+  const matchedKpiLabels = new Set<string>();
+
+  const factRows = exposureFacts.map((fact) => {
+    const mappedLabel = FACT_KPI_LABEL_MAP[fact.label];
+    const matchedKpi = mappedLabel ? view.kpis.find((item) => item.label === mappedLabel) : undefined;
+    if (matchedKpi) {
+      matchedKpiLabels.add(matchedKpi.label);
+    }
+    const fallbackKpi =
+      isEmptyReading(fact.value) && matchedKpi && !isEmptyReading(matchedKpi.value)
+        ? matchedKpi
+        : undefined;
+    const value = fallbackKpi ? fallbackKpi.value : compactFactValue(fact);
+    const tone = fallbackKpi ? fallbackKpi.tone : fact.tone;
+    return {
+      key: `fact-${fact.label}`,
+      label: fact.label,
+      value,
+      tone,
+      state: tone === "ok" ? "可读" : tone === "error" ? "阻断" : "仅分析",
+      action: tone === "ok" ? "持仓透视" : "风险复核",
+    };
+  });
+
+  const kpiRows = view.kpis
+    .filter((item) => !matchedKpiLabels.has(item.label))
+    .slice(0, 5)
+    .map((item) => ({
+      key: `kpi-${item.key}`,
+      label: item.label,
+      value: item.value,
+      tone: item.tone,
+      state: item.tone === "ok" ? "可读" : item.tone === "error" ? "阻断" : "仅分析",
+      action: item.detail || "组合复核",
+    }));
+
+  const rows = [...factRows, ...kpiRows].slice(0, 5);
+
+  return (
+    <div data-testid="module-home-portfolio-exposure-ledger" className={styles.exposureLedger}>
+      {rows.length > 0 ? (
+        <div className={styles.exposureLedgerTable} role="table" aria-label="关键暴露账本">
+          <div className={styles.exposureLedgerHeader} role="row">
+            <span role="columnheader">维度</span>
+            <span role="columnheader">读数</span>
+            <span role="columnheader">状态</span>
+            <span role="columnheader">动作</span>
+          </div>
+          {rows.map((row) => (
+            <div className={styles.exposureLedgerRow} data-tone={row.tone} role="row" key={row.key}>
+              <span role="cell">{row.label}</span>
+              <strong className={toneClass(row.tone)} role="cell">{row.value}</strong>
+              <span role="cell">{row.state}</span>
+              <em role="cell">{compactActionEvidence(row.action)}</em>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className={`${styles.dataNote} ${styles.toneWatch}`}>当前无可用暴露事实；不展示样例读数。</p>
+      )}
     </div>
   );
 }
@@ -368,6 +409,116 @@ function compactActionEvidence(evidence: string) {
     .replace(/bond-dashboard 的 result_meta、正式使用许可、质量标记和报告日/g, "债券总览的来源版本、使用许可、质量标记和报告日")
     .replace(/pnl-attribution 的正式口径、质量标记和报告日/g, "收益归因的正式口径、质量标记和报告日")
     .replace(/result_meta/g, "来源元数据");
+}
+
+function uniqueTextParts(parts: Array<string | null | undefined | false>) {
+  return Array.from(new Set(parts.filter((part): part is string => Boolean(part))));
+}
+
+function compactKpiDetail(detail: string) {
+  const movement = detail.match(/(?:环比|较前日)\s*[+＋−-]?\d+(?:\.\d+)?\s*(?:%|只|bp)?/)?.[0];
+  const parts = uniqueTextParts([
+    detail.includes("资产负债口径") ? "资产负债口径" : null,
+    detail.includes("风险指标") ? "风险指标" : null,
+    detail.includes("按亿元展示") ? "亿元" : null,
+    detail.includes("按万元展示") ? "万元" : null,
+    detail.includes("未返回") ? "未返回" : null,
+    movement,
+  ]);
+
+  return parts.join(" · ");
+}
+
+const PRIMARY_KPI_KEYS = ["bond-market", "bond-duration", "bond-ytm", "bond-dv01", "bond-credit-ratio"] as const;
+
+function splitKpisByPriority(kpis: ModuleHomeKpi[]) {
+  const primaryKeySet = new Set<string>(PRIMARY_KPI_KEYS);
+  const primary = PRIMARY_KPI_KEYS.map((key) => kpis.find((item) => item.key === key)).filter(
+    (item): item is ModuleHomeKpi => Boolean(item),
+  );
+  const secondary = kpis.filter((item) => !primaryKeySet.has(item.key));
+  return { primary, secondary };
+}
+
+function kpiScopeNote(kpis: ModuleHomeKpi[]) {
+  const text = kpis.map((item) => item.detail).join(" ");
+  return uniqueTextParts([
+    text.includes("债券总览") ? "债券总览" : null,
+    text.includes("分析/复核口径") ? "分析/复核口径" : null,
+    text.includes("仅展示读数") ? "仅展示读数" : null,
+    text.includes("不形成调仓建议") ? "不形成调仓建议" : null,
+    text.includes("不纳入风险 ticker") ? "不纳入风险 ticker" : null,
+  ]).join(" · ");
+}
+
+function PortfolioKpiCard({ item, variant }: { item: ModuleHomeKpi; variant: "primary" | "secondary" }) {
+  const value = splitKpiValue(item.value);
+  const missingValue = value.number === "-" || value.number === "—";
+  const changeDirection = resolveMarketChangeDirection(item.detail, item.sparkline);
+  const detail = compactKpiDetail(item.detail);
+  const variantClass = variant === "primary" ? styles.kpiCardPrimary : styles.kpiCardSecondary;
+
+  return (
+    <article
+      className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi} ${styles.kpiCard} ${variantClass}`}
+      data-tone={item.tone}
+      data-empty={missingValue ? "true" : undefined}
+      data-testid={`module-home-portfolio-kpi-${item.key}`}
+    >
+      <div className={dhStyles.dhTerminalKpiTop}>
+        <span className={styles.kpiLabel}>{item.label}</span>
+      </div>
+      <div className={styles.portfolioKpiValueRow}>
+        <div
+          className={`${styles.kpiValue} ${toneClass(item.tone)}`}
+          data-empty={missingValue ? "true" : undefined}
+        >
+          <span>{missingValue ? "待核验" : value.number}</span>
+          {value.unit ? (
+            <>
+              {" "}
+              <small>{value.unit}</small>
+            </>
+          ) : null}
+        </div>
+        {item.sparkline && item.sparkline.length >= 2 ? (
+          <MarketHomeKpiSparkline
+            values={item.sparkline}
+            tone={item.tone}
+            changeDirection={changeDirection}
+            className={styles.portfolioKpiSparkline}
+          />
+        ) : null}
+      </div>
+      {detail ? (
+        <div
+          className={`${styles.kpiDetail} ${marketChangePresentation(
+            item.detail,
+            item.sparkline,
+            PORTFOLIO_KPI_CHANGE_CLASSES,
+          ).className}`}
+          data-testid={`module-home-portfolio-kpi-${item.key}-detail`}
+          data-change={changeDirection ?? "flat"}
+          title={item.detail}
+          aria-label={`${item.label}: ${item.detail}`}
+        >
+          {detail}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function sourceEvidenceSummary(lines: string[]) {
+  const text = lines.join(" ");
+  const reportDate = text.match(/report_date=\d{4}-\d{2}-\d{2}/)?.[0];
+  const sources = Array.from(new Set(Array.from(text.matchAll(/\bfact_[a-z0-9_]+/g), (match) => match[0])));
+  const fallback = text.includes("fallback=none") ? "无回退" : null;
+  return uniqueTextParts([
+    reportDate ? reportDate.replace("report_date=", "日期 ") : null,
+    sources.length > 0 ? `${sources.length} 个正式来源` : `${lines.length} 条证据`,
+    fallback,
+  ]).join(" · ");
 }
 
 function splitKpiValue(value: string) {
@@ -569,6 +720,15 @@ export default function PortfolioHomeLayout({
   const riskTickerUnavailableDetail = riskClosureBlocked
     ? `${readiness?.riskClosureFact ?? "风险闭合证据未返回"}，闭合状态已阻断。`
     : riskPanel?.stateDetail;
+  const workbenchMeta = [
+    `${secondaryDistributionPanels.length} 个结构面板`,
+    `${view.statuses.length} 条来源状态`,
+    riskClosureBlocked ? "风险闭合待复核" : "风险闭合可用",
+  ];
+  const kpiGroups = useMemo(() => {
+    const { primary, secondary } = splitKpisByPriority(view.kpis);
+    return { primary, secondary, scopeNote: kpiScopeNote(view.kpis) };
+  }, [view.kpis]);
 
   const structureTabs = useMemo<PortfolioStructureTab[]>(() => {
     const map = new Map(view.detailPanels?.map((panel) => [panel.key, panel]) ?? []);
@@ -635,55 +795,22 @@ export default function PortfolioHomeLayout({
 
                 <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
                   <SectionHead label="指标" title="核心指标" />
+                  {kpiGroups.scopeNote ? (
+                    <p className={styles.kpiScopeNote} data-testid="module-home-portfolio-kpi-scope-note">
+                      {kpiGroups.scopeNote}
+                    </p>
+                  ) : null}
                   <div className={styles.kpiGridTape}>
-                  <div className={styles.kpiGrid}>
-                    {view.kpis.map((item) => {
-                      const value = splitKpiValue(item.value);
-                      const changeDirection = resolveMarketChangeDirection(item.detail, item.sparkline);
-                      return (
-                        <article
-                          className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi} ${styles.kpiCard}`}
-                          data-tone={item.tone}
-                          key={item.key}
-                          data-testid={`module-home-portfolio-kpi-${item.key}`}
-                        >
-                          <div className={dhStyles.dhTerminalKpiTop}>
-                            <span className={styles.kpiLabel}>{item.label}</span>
-                          </div>
-                          <div className={styles.portfolioKpiValueRow}>
-                            <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>
-                              <span>{value.number}</span>
-                              {value.unit ? (
-                                <>
-                                  {" "}
-                                  <small>{value.unit}</small>
-                                </>
-                              ) : null}
-                            </div>
-                            {item.sparkline && item.sparkline.length >= 2 ? (
-                              <MarketHomeKpiSparkline
-                                values={item.sparkline}
-                                tone={item.tone}
-                                changeDirection={changeDirection}
-                                className={styles.portfolioKpiSparkline}
-                              />
-                            ) : null}
-                          </div>
-                          <div
-                            className={`${styles.kpiDetail} ${marketChangePresentation(
-                              item.detail,
-                              item.sparkline,
-                              PORTFOLIO_KPI_CHANGE_CLASSES,
-                            ).className}`}
-                            data-testid={`module-home-portfolio-kpi-${item.key}-detail`}
-                            data-change={changeDirection ?? "flat"}
-                          >
-                            {item.detail}
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
+                    <div className={styles.kpiGrid}>
+                      {kpiGroups.primary.map((item) => (
+                        <PortfolioKpiCard item={item} variant="primary" key={item.key} />
+                      ))}
+                    </div>
+                    <div className={`${styles.kpiGrid} ${styles.kpiGridSecondary}`}>
+                      {kpiGroups.secondary.map((item) => (
+                        <PortfolioKpiCard item={item} variant="secondary" key={item.key} />
+                      ))}
+                    </div>
                   </div>
                 </section>
 
@@ -693,186 +820,269 @@ export default function PortfolioHomeLayout({
                   unavailableTitle={riskTickerUnavailableTitle}
                   unavailableDetail={compactActionEvidence(riskTickerUnavailableDetail ?? "")}
                 />
+              </div>
+            </section>
 
-                <PortfolioHoldingsHeroBand
-                  panel={assetTypePanel}
-                  portfolioComparisonPanel={portfolioComparisonPanel}
-                />
-
-                <PortfolioChartSnapshot panels={secondaryDistributionPanels} />
-
-                <section data-testid="module-home-briefing" className={styles.sectionBlock}>
-                  <SectionHead label="组合" title="组合摘要" />
-                  <div className={styles.briefGrid}>
-                    {view.briefings.map((item, index) => (
-                      <article
-                        className={`${dhStyles.dhCard} ${briefCardClass(item.tone, index === 0)}`}
-                        key={item.title}
-                      >
-                        <span className={styles.briefTitle}>{item.title}</span>
-                        <strong className={`${styles.briefConclusion} ${toneClass(item.tone)}`}>
-                          {item.conclusion}
-                        </strong>
-                        <span className={styles.briefEvidence}>{item.evidence}</span>
-                      </article>
+            <section data-testid="module-home-portfolio-data-workbench" className={styles.portfolioDataWorkbench}>
+              <div className={styles.workbenchMain}>
+                  <nav
+                    data-testid="module-home-portfolio-data-nav"
+                    className={styles.workbenchNav}
+                    aria-label="组合数据工作台"
+                  >
+                    <strong className={styles.workbenchNavTitle}>组合复盘驾驶舱</strong>
+                    {WORKBENCH_NAV_ITEMS.map((item) => (
+                      <a href={item.href} key={item.href}>
+                        <span>{item.code}</span>
+                        <strong>{item.label}</strong>
+                        <em>{item.detail}</em>
+                      </a>
                     ))}
-                  </div>
-                </section>
-              </div>
+                    <p>结构、归因、明细按业务动作串联，保留来源状态与复核入口。</p>
+                  </nav>
 
-              <PortfolioAiDecisionRail view={view} />
-            </section>
-
-            <section
-              data-testid="module-home-status-strip"
-              className={`${dhStyles.dhCard} ${dhStyles.dhTerminalRiskStrip} ${styles.statusStrip} ${styles.sectionBlock}`}
-            >
-              <div className={styles.sectionHead}>
-                <span>来源链路</span>
-                <strong>读链路状态</strong>
-                <span className={styles.statusScope}>{view.sourceScope}</span>
-              </div>
-              <div className={styles.statusGrid}>
-                {view.statuses.map((item) => (
-                  <div className={styles.statusCell} key={item.key}>
-                    <span>{item.label}</span>
-                    <b className={toneClass(item.tone)}>{item.value}</b>
-                    <em>{item.detail}</em>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </section>
-
-          <section data-testid="module-home-portfolio-structure-workbench" className={styles.portfolioStructureWorkbench}>
-          {secondaryDistributionPanels.length > 0 ? (
-            <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
-              <div className={styles.sectionHead}>
-                <span>持仓</span>
-                <strong>结构分布</strong>
-                <Link className={styles.holdingsSectionLink} to="/positions">
-                  持仓透视
-                </Link>
-              </div>
-              <div className={`${styles.holdingsGrid} ${styles.holdingsGridSecondary}`}>
-                {secondaryDistributionPanels.map((panel) => (
-                  <DistributionPanelCard panel={panel} key={panel.key} />
-                ))}
-              </div>
-            </section>
-          ) : !view.distributionPanels?.length ? (
-            <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
-              <div className={styles.sectionHead}>
-                <span>持仓</span>
-                <strong>持仓结构</strong>
-              </div>
-              <p className={`${styles.dataNote} ${styles.toneWatch}`}>
-                当前无可用正式持仓结构读数；样例明细不展示为组合事实。
-              </p>
-            </section>
-          ) : null}
-
-          <section
-            data-testid="module-home-portfolio-terminal"
-            className={`${dhStyles.dhCard} ${styles.terminalCard} ${styles.sectionBlock}`}
-          >
-            <SectionHead label="结构" title="结构拆解" />
-            <div
-              className={styles.structureStatusBar}
-              data-testid="module-home-structure-status-summary"
-            >
-              {structureStatusSummary(structureTabs)}
-            </div>
-            {structureGapTabs.length > 0 ? (
-              <div className={styles.structureGapActions} data-testid="module-home-structure-gap-actions">
-                {structureGapTabs.map((tab) => (
-                  <Link
-                    key={tab.key}
-                    className={styles.structureGapAction}
-                    to={`/bond-dashboard?report_date=${encodeURIComponent(bondReportDate || "-")}#${tab.key}`}
-                    data-testid={`module-home-structure-gap-action-${tab.key}`}
+                  <section
+                    id="portfolio-holdings-workbench"
+                    aria-labelledby="portfolio-holdings-workbench-title"
+                    data-testid="module-home-portfolio-holdings-workbench"
+                    className={`${styles.workbenchSection} ${styles.holdingsWorkbenchSection}`}
                   >
-                    {tab.label}为空 · 复核 {tab.key}
-                  </Link>
-                ))}
-              </div>
-            ) : null}
-            <Tabs items={tabItems} />
-          </section>
-          </section>
+                    <WorkbenchSectionHead
+                      titleId="portfolio-holdings-workbench-title"
+                      code="图表"
+                      title="持仓结构全景"
+                      detail="券种、子组合与关键暴露并排复核。"
+                      meta={assetTypePanel?.totalDisplay ?? "结构总览待返回"}
+                    />
+                    <div className={styles.holdingsPanoramaGrid}>
+                      <PortfolioHoldingsHeroBand
+                        panel={assetTypePanel}
+                        portfolioComparisonPanel={portfolioComparisonPanel}
+                      />
+                      <section
+                        id="portfolio-exposure-workbench"
+                        aria-labelledby="portfolio-exposure-workbench-title"
+                        data-testid="module-home-portfolio-exposure-workbench"
+                        className={styles.exposureWorkbenchSection}
+                      >
+                        <div className={styles.exposureWorkbenchHead}>
+                          <span>持仓</span>
+                          <h2 id="portfolio-exposure-workbench-title">关键暴露账本</h2>
+                          <p>评级、期限、品种集中在一个可扫区域。</p>
+                        </div>
+                        <PortfolioExposureLedger view={view} />
+                      </section>
+                    </div>
+                  </section>
 
-          <section data-testid="module-home-portfolio-closure-band" className={styles.portfolioClosureBand}>
-          <PortfolioClosureGate decision={view.decision} />
-          <section className={`${styles.sectionBlock} ${styles.riskAttributionBlock}`}>
-            <SectionHead
-              label="归因"
-              title={riskClosureBlocked || analyticalOnlySource ? "分析读数与归因" : "风险与归因"}
-            />
-            <div className={styles.detailGrid}>
-              {riskPanel ? (
-                <DetailPanelCard panel={riskPanel} testId={detailPanelTestId(riskPanel.key)} />
-              ) : null}
-              {pnlPanel ? (
-                <DetailPanelCard panel={pnlPanel} testId={detailPanelTestId(pnlPanel.key)} />
-              ) : null}
-              {basisPanel ? (
-                <DetailPanelCard panel={basisPanel} testId={detailPanelTestId(basisPanel.key)} />
-              ) : null}
-            </div>
-          </section>
-
-          <section
-            data-testid="module-home-portfolio-quick-access"
-            className={`${styles.sectionBlock} ${styles.quickAccessBlock}`}
-          >
-            <SectionHead label="快捷" title="分析入口" />
-            <div className={styles.quickAccessGrid}>
-              {PORTFOLIO_QUICK_ACCESS_TILES.map((tile) => (
-                <Link
-                  key={tile.key}
-                  to={tile.path}
-                  className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.quickAccessCard}`}
-                  title={tile.description}
-                  data-testid={`module-home-portfolio-quick-${tile.key}`}
-                >
-                  <span>{tile.icon}</span>
-                  <b>{tile.label}</b>
-                  <em>{tile.badge}</em>
-                </Link>
-              ))}
-            </div>
-          </section>
-
-          <section data-testid="module-home-drilldowns" className={`${styles.sectionBlock} ${styles.drilldownBlock}`}>
-            <SectionHead label="明细" title="全部分组入口" />
-            <div className={styles.drillGrid}>
-              {config.drilldowns.map((item) => {
-                const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <LightIcon name="arrow-right" />;
-                const isCurrentHome = item.key === "portfolio-home";
-                return (
-                  <Link
-                    key={item.key}
-                    to={item.path}
-                    aria-current={isCurrentHome ? "page" : undefined}
-                    className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.drillCard} ${
-                      isCurrentHome ? styles.drillCardCurrent : ""
-                    }`}
-                    title={item.description}
+                  <section
+                    id="portfolio-structure-workbench"
+                    aria-labelledby="portfolio-structure-workbench-title"
+                    data-testid="module-home-portfolio-structure-workbench"
+                    className={`${styles.portfolioStructureWorkbench} ${styles.workbenchSection}`}
                   >
-                    <span>{icon}</span>
-                    <b>{item.label}</b>
-                    <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
-                  </Link>
-                );
-              })}
-            </div>
-            {view.dataNote.lines.length > 0 ? (
-              <p className={styles.dataNote} data-testid="module-home-data-note">
-                {compactActionEvidence(view.dataNote.lines.join(" "))}
-              </p>
-            ) : null}
+                    <WorkbenchSectionHead
+                      titleId="portfolio-structure-workbench-title"
+                      code="结构"
+                      title="结构拆解工作台"
+                      detail="子组合、收益率、利差、业务类型统一按表格核对。"
+                      meta={`${structureTabs.length} 个结构维度`}
+                    />
+                    <section
+                      data-testid="module-home-portfolio-terminal"
+                      className={`${dhStyles.dhCard} ${styles.terminalCard} ${styles.sectionBlock} ${styles.structureTableWorkbench}`}
+                    >
+                      <div className={styles.structureTableHead}>
+                        <div
+                          className={styles.structureStatusBar}
+                          data-testid="module-home-structure-status-summary"
+                        >
+                          {structureStatusSummary(structureTabs)}
+                        </div>
+                        <span>结构明细按页签核对</span>
+                      </div>
+                      {structureGapTabs.length > 0 ? (
+                        <div className={styles.structureGapActions} data-testid="module-home-structure-gap-actions">
+                          {structureGapTabs.map((tab) => (
+                            <Link
+                              key={tab.key}
+                              className={styles.structureGapAction}
+                              to={`/bond-dashboard?report_date=${encodeURIComponent(bondReportDate || "-")}#${tab.key}`}
+                              data-testid={`module-home-structure-gap-action-${tab.key}`}
+                            >
+                              {tab.label}为空 · 去债券总览复核
+                            </Link>
+                          ))}
+                        </div>
+                      ) : null}
+                      <Tabs items={tabItems} />
+                    </section>
+                  </section>
+
+                  <section
+                    id="portfolio-risk-workbench"
+                    aria-labelledby="portfolio-risk-workbench-title"
+                    data-testid="module-home-portfolio-closure-band"
+                    className={`${styles.portfolioClosureBand} ${styles.workbenchSection}`}
+                  >
+                    <WorkbenchSectionHead
+                      titleId="portfolio-risk-workbench-title"
+                      code="收益"
+                      title={riskClosureBlocked || analyticalOnlySource ? "分析读数与归因" : "收益与风险"}
+                      detail="闭合前门、风险读数、收益归因和日期闭合线并排复核。"
+                      meta={riskClosureBlocked ? "闭合阻断" : "可进入复核"}
+                    />
+                    <div className={styles.closureWorkbenchGrid}>
+                      <PortfolioClosureGate decision={view.decision} />
+                      {riskPanel ? (
+                        <article className={`${styles.closureReviewCard} ${styles.closureReviewCardRisk}`} data-testid={detailPanelTestId(riskPanel.key)}>
+                          <SectionHead label="风险" title="风险读数" />
+                          <DetailPanelBody panel={riskPanel} embedded />
+                        </article>
+                      ) : null}
+                      {pnlPanel ? (
+                        <article className={styles.closureReviewCard} data-testid={detailPanelTestId(pnlPanel.key)}>
+                          <SectionHead label="归因" title="收益归因" />
+                          <DetailPanelBody panel={pnlPanel} embedded />
+                        </article>
+                      ) : null}
+                      {basisPanel ? (
+                        <article className={styles.closureReviewCard} data-testid={detailPanelTestId(basisPanel.key)}>
+                          <SectionHead label="来源" title="日期闭合线" />
+                          <DetailPanelBody panel={basisPanel} embedded />
+                        </article>
+                      ) : null}
+                    </div>
+                  </section>
+
+                  <section
+                    id="portfolio-source-workbench"
+                    aria-labelledby="portfolio-source-workbench-title"
+                    data-testid="module-home-portfolio-source-workbench"
+                    className={`${styles.sourceWorkbenchSection} ${styles.workbenchSection}`}
+                  >
+                    <h2 id="portfolio-source-workbench-title" className={styles.srOnly}>
+                      组合复盘摘要
+                    </h2>
+                    <section data-testid="module-home-holdings-structure" className={styles.summaryLedgerCard}>
+                      <SectionHead label="复盘" title="评级 / 期限 / 行业分布" />
+                      <PortfolioChartSnapshot panels={secondaryDistributionPanels} />
+                    </section>
+
+                    <section data-testid="module-home-briefing" className={styles.summaryLedgerCard}>
+                      <SectionHead label="复盘" title="组合摘要" />
+                      <div className={styles.briefGrid} data-testid="module-home-briefing-ledger">
+                        {view.briefings.map((item, index) => (
+                          <article
+                            className={`${dhStyles.dhCard} ${briefCardClass(item.tone, index === 0)}`}
+                            key={item.title}
+                          >
+                            <span className={styles.briefTitle}>{item.title}</span>
+                            <strong className={`${styles.briefConclusion} ${toneClass(item.tone)}`}>
+                              {item.conclusion}
+                            </strong>
+                            <span className={styles.briefEvidence}>{item.evidence}</span>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section
+                      data-testid="module-home-status-strip"
+                      className={`${dhStyles.dhCard} ${styles.summaryLedgerCard} ${styles.statusStrip}`}
+                    >
+                      <SectionHead label="复盘" title="来源与状态" />
+                      <div className={styles.statusGrid} data-testid="module-home-status-ledger">
+                        {view.statuses.slice(0, 4).map((item) => (
+                          <div className={styles.statusCell} key={item.key}>
+                            <span>{item.label}</span>
+                            <b className={toneClass(item.tone)}>{item.value}</b>
+                            <em>{item.detail}</em>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  </section>
+
+                  <section
+                    id="portfolio-action-workbench"
+                    aria-labelledby="portfolio-action-workbench-title"
+                    data-testid="module-home-portfolio-action-workbench"
+                    className={`${styles.workbenchSection} ${styles.actionWorkbenchSection}`}
+                  >
+                    <WorkbenchSectionHead
+                      titleId="portfolio-action-workbench-title"
+                      code="入口"
+                      title="快捷分析入口 / 全部明细入口"
+                      detail="按业务动作而不是页面名称分组。"
+                      meta={workbenchMeta.join(" · ")}
+                    />
+                    <div className={styles.actionMatrixGrid}>
+                      <section
+                        data-testid="module-home-portfolio-quick-access"
+                        className={`${styles.sectionBlock} ${styles.quickAccessBlock}`}
+                      >
+                        <SectionHead label="快捷" title="分析入口" />
+                        <div className={styles.quickAccessGrid}>
+                          {PORTFOLIO_QUICK_ACCESS_TILES.map((tile) => (
+                            <Link
+                              key={tile.key}
+                              to={tile.path}
+                              className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.quickAccessCard}`}
+                              title={tile.description}
+                              data-testid={`module-home-portfolio-quick-${tile.key}`}
+                            >
+                              <span>{tile.icon}</span>
+                              <b>{tile.label}</b>
+                              <em>{tile.badge}</em>
+                            </Link>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section data-testid="module-home-drilldowns" className={`${styles.sectionBlock} ${styles.drilldownBlock}`}>
+                        <SectionHead label="明细" title="全部分组入口" />
+                        <div className={styles.drillGrid}>
+                          {config.drilldowns.map((item) => {
+                            const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <LightIcon name="arrow-right" />;
+                            const isCurrentHome = item.key === "portfolio-home";
+                            return (
+                              <Link
+                                key={item.key}
+                                to={item.path}
+                                aria-current={isCurrentHome ? "page" : undefined}
+                                className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.drillCard} ${
+                                  isCurrentHome ? styles.drillCardCurrent : ""
+                                }`}
+                                title={item.description}
+                              >
+                                <span>{icon}</span>
+                                <b>{item.label}</b>
+                                <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    </div>
+                    {view.dataNote.lines.length > 0 ? (
+                      <details
+                        className={`${styles.dataNote} ${styles.dataNoteDisclosure}`}
+                        data-testid="module-home-data-note"
+                      >
+                        <summary>
+                          <span>来源证据摘要</span>
+                          <strong>{sourceEvidenceSummary(view.dataNote.lines)}</strong>
+                        </summary>
+                        <span className={styles.dataNoteBody}>
+                          {compactActionEvidence(view.dataNote.lines.join(" "))}
+                        </span>
+                      </details>
+                    ) : null}
+                  </section>
+                </div>
+            </section>
           </section>
-        </section>
         </section>
       </main>
     </>

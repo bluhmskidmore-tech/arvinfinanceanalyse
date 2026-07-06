@@ -147,7 +147,7 @@ export function MarketMacroTickerBar({
                 <span className={marketStyles.macroTickerLabel}>{row.label}</span>
                 <div className={marketStyles.macroTickerValueRow}>
                   <strong className={`${dhStyles.dhNum} ${marketStyles.marketMetricNum} ${marketStyles.macroTickerValue}`}>
-                    {row.value}
+                    {row.value === "缺省值" || !row.value ? <span className={marketStyles.macroTickerMissing}>--</span> : row.value}
                   </strong>
                   {row.sparkline && row.sparkline.length >= 2 ? (
                     <MarketHomeKpiSparkline
@@ -162,7 +162,7 @@ export function MarketMacroTickerBar({
                   className={`${dhStyles.dhNum} ${marketStyles.marketMetricNum} ${marketStyles.macroTickerChange} ${tickerChangeClass(row.detail, row.sparkline)}`}
                   data-change={changeDirection ?? "flat"}
                 >
-                  {row.detail ?? "—"}
+                  {row.detail === "缺省值" || !row.detail ? "--" : row.detail}
                 </small>
                 {dateLabel ? <span className={marketStyles.macroTickerDate}>{dateLabel}</span> : null}
               </div>

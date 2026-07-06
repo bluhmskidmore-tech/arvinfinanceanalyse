@@ -168,8 +168,65 @@ function mockView(): ModuleHomeViewBody {
       tone: "ok",
       facts: [],
     },
-    distributionPanels: [],
-    detailPanels: [],
+    distributionPanels: [
+      {
+        key: "asset-type",
+        title: "券种分布",
+        meta: "mock",
+        stateLabel: "已返回",
+        stateDetail: "sample structure",
+        rows: [
+          {
+            key: "policy-bank",
+            label: "policy-bank",
+            marketValue: "10.00 亿元",
+            share: "20.00%",
+            barPct: 20,
+            tone: "ok",
+          },
+        ],
+        tone: "ok",
+        totalDisplay: "10.00 亿",
+      },
+    ],
+    detailPanels: [
+      {
+        key: "portfolio-comparison",
+        title: "子组合对比",
+        meta: "mock",
+        stateLabel: "已返回",
+        stateDetail: "sample comparison",
+        rows: [
+          {
+            key: "portfolio-sample",
+            label: "sample",
+            value: "10.00 亿",
+            tradeDate: "2026-05-31",
+            source: "mock",
+            tone: "ok",
+          },
+        ],
+        tone: "ok",
+      },
+      {
+        key: "risk-indicators-detail",
+        title: "风险指标",
+        meta: "mock",
+        stateLabel: "已返回",
+        stateDetail: "sample risk",
+        rows: [
+          {
+            key: "risk-credit",
+            label: "信用占比",
+            value: "42.00%",
+            tradeDate: "2026-05-31",
+            source: "mock",
+            tone: "ok",
+          },
+        ],
+        tone: "ok",
+      },
+    ],
     dataNote: {
       title: "数据说明",
       lines: ["sample"],
@@ -252,6 +309,14 @@ describe("portfolio decision model", () => {
     expect(guarded.decision?.detail).not.toContain("42.00%");
     expect(guarded.decision?.actions).toEqual([]);
     expect(guarded.detailPanels?.[0]?.key).toBe("mock-portfolio-guard");
+    expect(guarded.detailPanels?.map((panel) => panel.key)).toEqual([
+      "mock-portfolio-guard",
+      "portfolio-comparison",
+    ]);
+    expect(guarded.detailPanels?.[1]?.stateLabel).toBe("模拟数据");
+    expect(JSON.stringify(guarded.detailPanels)).not.toContain("42.00%");
+    expect(guarded.distributionPanels?.[0]?.stateLabel).toBe("模拟数据");
+    expect(guarded.distributionPanels?.[0]?.rows).toHaveLength(1);
     expect(guarded.dataNote.lines.join(" ")).toContain("不可用于业务决策");
     const text = [
       guarded.stateLabel,

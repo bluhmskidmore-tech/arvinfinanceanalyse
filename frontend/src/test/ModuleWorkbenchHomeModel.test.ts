@@ -1569,7 +1569,7 @@ describe("ModuleWorkbenchHome model", () => {
     expect(view.stateLabel).toBe("已接入");
     expect(view.decision?.conclusion).not.toContain("仅供分析");
     expect(view.decision?.detail).toContain("同日闭合 2026-05-31");
-    expect(view.decision?.actions?.map((action) => action.title)).toContain("子组合返回为空");
+    expect(view.decision?.actions?.map((action) => action.title)).toContain("子组合分层核验");
   });
 
   it("guards mock portfolio samples from decision-grade conclusions", () => {

@@ -1,5 +1,6 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ReloadOutlined } from "@ant-design/icons";
 import { Collapse, Tabs } from "antd";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
@@ -199,6 +200,10 @@ type MarketHomeLayoutProps = {
   config: ModuleWorkbenchHomeConfig;
   latestTradeDate: string;
   formalTradeDate: string;
+  isRefreshing: boolean;
+  refreshStatus: string;
+  refreshError: string;
+  onRefreshData: () => void;
 };
 
 export default function MarketHomeLayout({
@@ -206,6 +211,10 @@ export default function MarketHomeLayout({
   config,
   latestTradeDate,
   formalTradeDate,
+  isRefreshing,
+  refreshStatus,
+  refreshError,
+  onRefreshData,
 }: MarketHomeLayoutProps) {
   const stateTone: ModuleHomeTone =
     view.stateLabel === "读取失败"
@@ -235,8 +244,12 @@ export default function MarketHomeLayout({
   const macroShadowPanel = panelByKey(view.detailPanels, "macro-toolkit-shadow");
   const macroRuntimePanel = panelByKey(view.detailPanels, "macro-toolkit-runtime");
   const newsEventsPanel = panelByKey(view.detailPanels, "news-events-snapshot");
-  const spreadRows = SPREAD_KPI_KEYS.map((key) => keyRatePanel?.rows.find((row) => row.key === key)).filter(
-    (row): row is ModuleHomeDetailRow => Boolean(row),
+  const spreadRows = useMemo(
+    () =>
+      SPREAD_KPI_KEYS.map((key) => keyRatePanel?.rows.find((row) => row.key === key)).filter(
+        (row): row is ModuleHomeDetailRow => Boolean(row),
+      ),
+    [keyRatePanel],
   );
   const { termSpreadRows, creditSpreadRow } = buildMarketCurveSpreadRows(keyRatePanel);
   const spreadLinkageKeys = useMemo(() => {
@@ -265,64 +278,81 @@ export default function MarketHomeLayout({
   const sourceScopeSegments = sourceSegments(view.sourceScope);
   const visibleSourceScope =
     sourceScopeSegments.length > 0 ? sourceScopeSegments.slice(0, 3).join(" / ") : view.sourceScope;
+  const marketDataHref = marketDataPageHref("/market-data", latestTradeDate);
+  const refreshFeedback = refreshError || refreshStatus || "同步 Choice 宏观与市场快照";
+  const refreshFeedbackTone = refreshError ? "error" : refreshStatus ? "ok" : "muted";
   const marketJudgementCue = marketCue(
     compactMarketParts([tenYearRow ? "10Y" : null, liquidityRow?.label]),
     csiRow?.label,
   );
-  const marketKpis = [
-    {
-      key: "ten-year",
-      label: "10Y国债",
-      value: tenYearRow?.value ?? "待返回",
-      detail: compactMarketParts([tenYearRow?.detail, tenYearRow?.tradeDate]).join(" / "),
-      tone: tenYearRow?.tone ?? keyRatePanel?.tone ?? "muted",
-      sparkline: tenYearRow?.sparkline,
-    },
-    {
-      key: "liquidity",
-      label: liquidityRow?.label ?? "DR007",
-      value: liquidityRow?.value ?? "待返回",
-      detail: compactMarketParts([liquidityRow?.detail, liquidityRow?.tradeDate]).join(" / "),
-      tone: liquidityRow?.tone ?? keyRatePanel?.tone ?? "muted",
-      sparkline: liquidityRow?.sparkline,
-    },
-    {
-      key: "equity",
-      label: csiRow?.label ?? "沪深300",
-      value: csiRow?.value ?? "待返回",
-      detail: compactMarketParts([csiRow?.detail, csiRow?.tradeDate]).join(" / "),
-      tone: csiRow?.tone ?? macroPanel?.tone ?? "muted",
-      sparkline: csiRow?.sparkline ?? csiChangeRow?.sparkline,
-    },
-    {
-      key: "macro",
-      label: "宏观立场",
-      value: macroStanceRow?.value ?? "观察",
-      detail: compactMarketParts([macroStanceRow?.detail, macroStanceRow?.tradeDate]).join(" / "),
-      tone: macroStanceRow?.tone ?? macroOverviewPanel?.tone ?? "muted",
-      sparkline: undefined,
-    },
-    ...(spreadRows.map((row) => ({
-      key: row.key,
-      label: row.label,
-      value: row.value,
-      detail: compactMarketParts([row.detail, row.tradeDate]).join(" / "),
-      tone: row.tone,
-      sparkline: row.sparkline,
-    }))),
-    ...(aShareRiskRow
-      ? [
-          {
-            key: "a-share-risk",
-            label: aShareRiskRow.label,
-            value: aShareRiskRow.value,
-            detail: compactMarketParts([aShareRiskRow.detail, aShareRiskRow.tradeDate]).join(" / "),
-            tone: aShareRiskRow.tone,
-            sparkline: aShareRiskRow.sparkline,
-          },
-        ]
-      : []),
-  ];
+  const marketKpis = useMemo(
+    () => [
+      {
+        key: "ten-year",
+        label: "10Y国债",
+        value: tenYearRow?.value ?? "待返回",
+        detail: compactMarketParts([tenYearRow?.detail, tenYearRow?.tradeDate]).join(" / "),
+        tone: tenYearRow?.tone ?? keyRatePanel?.tone ?? "muted",
+        sparkline: tenYearRow?.sparkline,
+      },
+      {
+        key: "liquidity",
+        label: liquidityRow?.label ?? "DR007",
+        value: liquidityRow?.value ?? "待返回",
+        detail: compactMarketParts([liquidityRow?.detail, liquidityRow?.tradeDate]).join(" / "),
+        tone: liquidityRow?.tone ?? keyRatePanel?.tone ?? "muted",
+        sparkline: liquidityRow?.sparkline,
+      },
+      {
+        key: "equity",
+        label: csiRow?.label ?? "沪深300",
+        value: csiRow?.value ?? "待返回",
+        detail: compactMarketParts([csiRow?.detail, csiRow?.tradeDate]).join(" / "),
+        tone: csiRow?.tone ?? macroPanel?.tone ?? "muted",
+        sparkline: csiRow?.sparkline ?? csiChangeRow?.sparkline,
+      },
+      {
+        key: "macro",
+        label: "宏观立场",
+        value: macroStanceRow?.value ?? "观察",
+        detail: compactMarketParts([macroStanceRow?.detail, macroStanceRow?.tradeDate]).join(" / "),
+        tone: macroStanceRow?.tone ?? macroOverviewPanel?.tone ?? "muted",
+        sparkline: undefined,
+      },
+      ...(spreadRows.map((row) => ({
+        key: row.key,
+        label: row.label,
+        value: row.value,
+        detail: compactMarketParts([row.detail, row.tradeDate]).join(" / "),
+        tone: row.tone,
+        sparkline: row.sparkline,
+      }))),
+      ...(aShareRiskRow
+        ? [
+            {
+              key: "a-share-risk",
+              label: aShareRiskRow.label,
+              value: aShareRiskRow.value,
+              detail: compactMarketParts([aShareRiskRow.detail, aShareRiskRow.tradeDate]).join(" / "),
+              tone: aShareRiskRow.tone,
+              sparkline: aShareRiskRow.sparkline,
+            },
+          ]
+        : []),
+    ],
+    [
+      aShareRiskRow,
+      csiChangeRow,
+      csiRow,
+      keyRatePanel?.tone,
+      liquidityRow,
+      macroOverviewPanel?.tone,
+      macroPanel?.tone,
+      macroStanceRow,
+      spreadRows,
+      tenYearRow,
+    ],
+  );
   const newsHeadlineRows =
     newsEventsPanel?.rows.filter((row) => row.key.startsWith("news-event-")).slice(0, 5) ?? [];
   const marketFocusReadings: MarketFocusReading[] = [
@@ -431,7 +461,16 @@ export default function MarketHomeLayout({
               </section>
               <div className={marketStyles.evidenceRailScrollBlock} data-testid="module-home-market-evidence-rail-actions-scroll">
                 <nav aria-label="市场模块入口" className={marketStyles.evidenceRailActionList}>
-                  <Link to={marketDataPageHref("/market-data", latestTradeDate)} className={marketStyles.evidenceRailLink}>市场数据</Link>
+                  <Link to={marketDataHref} className={marketStyles.evidenceRailLink}>市场数据</Link>
+                  <button
+                    type="button"
+                    className={`${marketStyles.evidenceRailLink} ${marketStyles.evidenceRailRefreshButton}`}
+                    data-testid="module-home-market-evidence-refresh"
+                    disabled={isRefreshing}
+                    onClick={() => void onRefreshData()}
+                  >
+                    {isRefreshing ? "刷新中" : "刷新数据"}
+                  </button>
                   <Link to="/macro-toolkit" className={marketStyles.evidenceRailLink}>宏观工具</Link>
                   <Link to="/cross-asset" className={marketStyles.evidenceRailLink}>跨资产</Link>
                 </nav>
@@ -440,7 +479,7 @@ export default function MarketHomeLayout({
             <section className={marketStyles.marketDepthZone} data-testid="module-home-market-depth-zone">
               <div className={dhStyles.dhSectionTitle}>
                 <span>深度数据</span>
-                <Link to={marketDataPageHref("/market-data", latestTradeDate)} className={dhStyles.dhLink}>完整市场数据 →</Link>
+                <Link to={marketDataHref} className={dhStyles.dhLink}>完整市场数据 →</Link>
               </div>
               <div
                 className={`${marketStyles.marketDeskPanel} ${marketStyles.terminalCard} ${marketStyles.marketAnalysisRates} ${isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""}`}
@@ -487,6 +526,7 @@ export default function MarketHomeLayout({
     [
       auditTabItems,
       formalTradeDate,
+      isRefreshing,
       isMarketTerminalDefaultEmpty,
       keyRatePanel,
       latestTradeDate,
@@ -500,7 +540,9 @@ export default function MarketHomeLayout({
       macroShadowPanel,
       macroSignalPanel,
       macroStrategyPanel,
+      marketDataHref,
       marketKpis,
+      onRefreshData,
       stateTone,
       view,
       visibleSourceScope,
@@ -548,6 +590,28 @@ export default function MarketHomeLayout({
           </div>
         </div>
         <div className={`${dhStyles.dhTopbarRight} ${marketStyles.marketTopbarMeta}`} data-testid="module-home-market-topbar-audit-meta">
+          <div className={marketStyles.marketTopbarRefresh} data-testid="module-home-market-refresh-panel">
+            <button
+              type="button"
+              className={marketStyles.marketRefreshButton}
+              data-testid="module-home-market-refresh-button"
+              disabled={isRefreshing}
+              onClick={() => void onRefreshData()}
+            >
+              <ReloadOutlined aria-hidden />
+              {isRefreshing ? "刷新中" : "刷新数据"}
+            </button>
+            <Link to={marketDataHref} className={marketStyles.marketRefreshSecondaryLink}>
+              市场数据页
+            </Link>
+            <span
+              className={marketStyles.marketRefreshFeedback}
+              data-testid="module-home-market-refresh-feedback"
+              data-tone={refreshFeedbackTone}
+            >
+              {refreshFeedback}
+            </span>
+          </div>
           <span className={marketStyles.marketStatusItem} data-tone={stateTone}>
             <i className={`${dhStyles.dhDot} ${marketStatusDotClass(stateTone)}`} aria-hidden="true" />
             {view.stateLabel}
@@ -565,7 +629,7 @@ export default function MarketHomeLayout({
       <main className={`${dhStyles.dhMain} ${marketStyles.marketPageMain}`}>
         <section data-testid="module-home-market-cockpit" className={`${marketStyles.marketInstitutionalCockpit} ${marketStyles.marketCockpitCohesion}`}>
           <MarketMacroTickerBar keyRatePanel={keyRatePanel} macroPanel={macroPanel} macroOverviewPanel={macroOverviewPanel} />
-          <section data-testid="module-home-market-primary-grid" className={marketStyles.marketPrimaryStack}>
+          <section data-testid="module-home-market-primary-grid" className={marketStyles.marketHero}>
             <section data-testid="module-home-briefing" className={marketStyles.marketThesisSection}>
               {primaryBriefing ? (
                 <article className={`${marketStyles.marketThesisHero} ${marketStyles.marketJudgementHero} ${marketStyles.marketDeskPanel}`}>

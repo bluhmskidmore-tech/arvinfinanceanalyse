@@ -36,7 +36,7 @@ export function PortfolioRiskTickerBar({
         aria-label="组合风险指标条"
       >
         <div className={styles.portfolioRiskTickerHead}>
-          <span>Key Risks</span>
+          <span>风险口径</span>
           <strong>{unavailable ? unavailableTitle ?? "风险读数不可用" : "风险读数待返回"}</strong>
         </div>
         <p className={styles.portfolioRiskTickerEmpty}>
@@ -55,7 +55,7 @@ export function PortfolioRiskTickerBar({
       aria-label="组合风险指标条"
     >
       <div className={styles.portfolioRiskTickerHead}>
-        <span>Key Risks</span>
+        <span>风险口径</span>
         <strong>风险读数</strong>
       </div>
       <div className={styles.portfolioRiskTickerTrack}>

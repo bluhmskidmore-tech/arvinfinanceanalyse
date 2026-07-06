@@ -146,6 +146,8 @@ function spreadOrTenYearMoved(keyRatePanel?: ModuleHomeDetailPanel): boolean {
   return [...termSpreadRows, creditSpreadRow].some((row) => rowIndicatesMovement(row));
 }
 
+// Shared queue builder is imported by the view-model tests on purpose.
+// eslint-disable-next-line react-refresh/only-export-components
 export function buildActionQueue({
   view,
   keyRatePanel,

@@ -1,12 +1,12 @@
 import type { EChartsOption } from "../../../lib/echarts";
 import type { ModuleHomeDistributionRow } from "./moduleHomeModel";
 
-export const PORTFOLIO_DIST_CHART_COLORS = ["#1850a1", "#2563eb", "#2d8a5e", "#d97706", "#ef4444"];
+export const PORTFOLIO_DIST_CHART_COLORS = ["#9fb4c7", "#688bb2", "#7d9a7f", "#b09261", "#aa7778"];
 
 export function buildPortfolioPieOption(rows: ModuleHomeDistributionRow[]): EChartsOption {
   return {
     color: PORTFOLIO_DIST_CHART_COLORS,
-    animationDuration: 420,
+    animationDuration: 180,
     tooltip: {
       trigger: "item",
       backgroundColor: "rgba(8, 25, 47, 0.94)",
@@ -27,7 +27,7 @@ export function buildPortfolioPieOption(rows: ModuleHomeDistributionRow[]): ECha
     series: [
       {
         type: "pie",
-        radius: ["50%", "82%"],
+        radius: ["58%", "84%"],
         center: ["50%", "50%"],
         startAngle: 104,
         minAngle: 4,
@@ -35,17 +35,13 @@ export function buildPortfolioPieOption(rows: ModuleHomeDistributionRow[]): ECha
         label: { show: false },
         labelLine: { show: false },
         itemStyle: {
-          borderColor: "#f8fafc",
-          borderWidth: 3,
-          shadowBlur: 8,
-          shadowColor: "rgba(15, 23, 42, 0.12)",
+          borderColor: "#0b1728",
+          borderWidth: 2,
         },
         emphasis: {
-          scale: true,
-          scaleSize: 6,
+          scale: false,
           itemStyle: {
-            shadowBlur: 14,
-            shadowColor: "rgba(15, 23, 42, 0.22)",
+            borderColor: "#d7e3f5",
           },
         },
         data: rows.map((row, index) => ({

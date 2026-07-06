@@ -77,6 +77,45 @@ function governanceDetailPanelTestId(panelKey: string) {
   return "module-home-detail-panels";
 }
 
+function normalizedDetailSectionTitle(title: string) {
+  if (title === "KRD 明细") {
+    return "KRD 分布";
+  }
+  if (title === "会计分类 DV01") {
+    return "DV01 构成";
+  }
+  if (title === "现金流预测") {
+    return "久期与敏感度";
+  }
+  return title;
+}
+
+function normalizedDetailPanelTitle(title: string) {
+  if (title === "现金流与缺口") {
+    return "现金流预测";
+  }
+  return title;
+}
+
+function DetailRows({ rows }: { rows: ModuleHomeDetailPanel["rows"] }) {
+  return (
+    <ul className={styles.detailList}>
+      {rows.map((row) => (
+        <li className={styles.detailRow} key={row.key}>
+          <div className={styles.detailRowTop}>
+            <span className={styles.detailLabel}>{row.label}</span>
+            <span className={`${styles.detailValue} ${styles.num} ${toneClassName(row.tone)}`}>
+              {row.value}
+            </span>
+            <span className={`${styles.detailDate} ${styles.num}`}>{row.tradeDate}</span>
+          </div>
+          <span className={styles.detailSource}>{row.source}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function DetailPanelBody({
   panel,
   variant = "nested",
@@ -84,12 +123,15 @@ function DetailPanelBody({
   panel: ModuleHomeDetailPanel;
   variant?: "nested" | "standalone";
 }) {
+  const sections = panel.sections?.filter((section) => section.rows.length > 0) ?? [];
+  const hasSections = sections.length > 0;
+
   return (
     <article className={styles.detailPanel}>
       {variant === "nested" ? (
         <>
           <div className={styles.detailHead}>
-            <span className={styles.detailTitle}>{panel.title}</span>
+            <span className={styles.detailTitle}>{normalizedDetailPanelTitle(panel.title)}</span>
             <span className={`${styles.detailState} ${toneClassName(panel.tone)}`}>
               {panel.stateLabel}
             </span>
@@ -103,21 +145,24 @@ function DetailPanelBody({
           </span>
         </div>
       )}
-      {panel.rows.length > 0 ? (
-        <ul className={styles.detailList}>
-          {panel.rows.map((row) => (
-            <li className={styles.detailRow} key={row.key}>
-              <div className={styles.detailRowTop}>
-                <span className={styles.detailLabel}>{row.label}</span>
-                <span className={`${styles.detailValue} ${styles.num} ${toneClassName(row.tone)}`}>
-                  {row.value}
+      {hasSections ? (
+        <div className={styles.detailSections}>
+          {sections.map((section) => (
+            <section className={styles.detailSection} key={section.key}>
+              <div className={styles.detailSectionHeader}>
+                <span className={styles.detailTitle}>
+                  {normalizedDetailSectionTitle(section.title)}
                 </span>
-                <span className={`${styles.detailDate} ${styles.num}`}>{row.tradeDate}</span>
+                {section.subtitle ? (
+                  <span className={styles.detailMeta}>{section.subtitle}</span>
+                ) : null}
               </div>
-              <span className={styles.detailSource}>{row.source}</span>
-            </li>
+              <DetailRows rows={section.rows} />
+            </section>
           ))}
-        </ul>
+        </div>
+      ) : panel.rows.length > 0 ? (
+        <DetailRows rows={panel.rows} />
       ) : (
         <p className={`${styles.detailEmpty} ${toneClassName(panel.tone)}`}>{panel.stateDetail}</p>
       )}
@@ -250,6 +295,56 @@ export default function ModuleWorkbenchHomePage({
   };
   const config = moduleWorkbenchHomeConfigs[kind];
   const view = buildModuleHomeView(kind, client, queries);
+  const isRiskView = view.kind === "risk";
+  const decisionBand = view.decision ? (
+    <section className={styles.decisionBand} data-testid="module-home-decision">
+      <div className={styles.decisionMain}>
+        <span className={`${styles.decisionKicker} ${toneClassName(view.decision.tone)}`}>
+          {view.decision.title}
+        </span>
+        <strong className={`${styles.decisionConclusion} ${toneClassName(view.decision.tone)}`}>
+          {view.decision.conclusion}
+        </strong>
+        <span className={styles.decisionDetail}>{view.decision.detail}</span>
+      </div>
+      <div className={styles.decisionFacts}>
+        {view.decision.facts.map((fact) => (
+          <span className={styles.decisionFact} key={fact.label}>
+            <span>{fact.label}</span>
+            <strong className={`${styles.num} ${toneClassName(fact.tone)}`}>{fact.value}</strong>
+          </span>
+        ))}
+      </div>
+    </section>
+  ) : null;
+  const kpiStrip = (
+    <section className={styles.kpiStrip} data-testid="module-home-kpi-strip">
+      {view.kpis.map((item) => (
+        <article className={styles.kpi} key={item.key}>
+          <span className={styles.kpiLabel}>{item.label}</span>
+          <strong className={`${styles.kpiValue} ${styles.num} ${toneClassName(item.tone)}`}>
+            {item.value}
+          </strong>
+          <span className={styles.kpiDetail}>{item.detail}</span>
+        </article>
+      ))}
+    </section>
+  );
+  const statusStrip = (
+    <section className={styles.statusStrip} data-testid="module-home-status-strip">
+      {view.statuses.map((item) => (
+        <article className={styles.statusItem} key={item.key}>
+          <div className={styles.statusTop}>
+            <span className={styles.statusLabel}>{item.label}</span>
+            <strong className={`${styles.statusValue} ${styles.num} ${toneClassName(item.tone)}`}>
+              {item.value}
+            </strong>
+          </div>
+          <span className={styles.statusDetail}>{item.detail}</span>
+        </article>
+      ))}
+    </section>
+  );
   const stateTone =
     view.stateLabel === "读取失败"
       ? "error"
@@ -283,59 +378,25 @@ export default function ModuleWorkbenchHomePage({
         </div>
       </header>
 
-      {view.decision ? (
-        <section className={styles.decisionBand} data-testid="module-home-decision">
-          <div className={styles.decisionMain}>
-            <span className={`${styles.decisionKicker} ${toneClassName(view.decision.tone)}`}>
-              {view.decision.title}
-            </span>
-            <strong className={`${styles.decisionConclusion} ${toneClassName(view.decision.tone)}`}>
-              {view.decision.conclusion}
-            </strong>
-            <span className={styles.decisionDetail}>{view.decision.detail}</span>
+      {isRiskView ? (
+        <div className={styles.riskReviewDesk} data-testid="module-home-risk-review-desk">
+          {decisionBand ? (
+            <div data-testid="module-home-risk-decision-zone">{decisionBand}</div>
+          ) : null}
+          <div className={styles.riskReadoutBand} data-testid="module-home-risk-readout-band">
+            <div data-testid="module-home-risk-summary-cards">{kpiStrip}</div>
+            {statusStrip}
           </div>
-          <div className={styles.decisionFacts}>
-            {view.decision.facts.map((fact) => (
-              <span className={styles.decisionFact} key={fact.label}>
-                <span>{fact.label}</span>
-                <strong className={`${styles.num} ${toneClassName(fact.tone)}`}>{fact.value}</strong>
-              </span>
-            ))}
-          </div>
-        </section>
-      ) : null}
+        </div>
+      ) : (
+        decisionBand
+      )}
 
       <div className={styles.layout}>
         <main className={styles.main}>
-          <section className={styles.kpiStrip} data-testid="module-home-kpi-strip">
-            {view.kpis.map((item) => (
-              <article className={styles.kpi} key={item.key}>
-                <span className={styles.kpiLabel}>{item.label}</span>
-                <strong
-                  className={`${styles.kpiValue} ${styles.num} ${toneClassName(item.tone)}`}
-                >
-                  {item.value}
-                </strong>
-                <span className={styles.kpiDetail}>{item.detail}</span>
-              </article>
-            ))}
-          </section>
+          {isRiskView ? null : kpiStrip}
 
-          <section className={styles.statusStrip} data-testid="module-home-status-strip">
-            {view.statuses.map((item) => (
-              <article className={styles.statusItem} key={item.key}>
-                <div className={styles.statusTop}>
-                  <span className={styles.statusLabel}>{item.label}</span>
-                  <strong
-                    className={`${styles.statusValue} ${styles.num} ${toneClassName(item.tone)}`}
-                  >
-                    {item.value}
-                  </strong>
-                </div>
-                <span className={styles.statusDetail}>{item.detail}</span>
-              </article>
-            ))}
-          </section>
+          {isRiskView ? null : statusStrip}
 
           <section className={styles.card} data-testid="module-home-briefing">
             <div className={styles.sectionTitle}>
@@ -409,7 +470,9 @@ export default function ModuleWorkbenchHomePage({
             view.kind === "risk" ? (
               <section className={styles.card} data-testid="module-home-risk-evidence">
                 <div className={styles.sectionTitle}>
-                  <span>风险证据面板</span>
+                  <span data-testid="module-home-risk-evidence-heading">
+                    风险证据板
+                  </span>
                   <span className={styles.sectionMeta}>字段级读数，不在首页补算</span>
                 </div>
                 <div className={styles.detailGrid}>
