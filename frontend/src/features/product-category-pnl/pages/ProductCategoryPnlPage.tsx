@@ -27,6 +27,7 @@ import {
   type ProductCategoryInterestSpreadAttributionSelection,
   type ProductCategoryInterestSpreadAttributionSurface,
   type ProductCategoryInterestSpreadBasis,
+  type ProductCategoryCandidateMetricStatus,
   buildProductCategoryDiagnosticsSurface,
   buildProductCategoryLiabilitySideTrendSurface,
   buildProductCategoryTrendSnapshot,
@@ -116,6 +117,21 @@ const SCENARIO_ACTION_CLOSURE_STATUS_OPTIONS: ReadonlyArray<
   ["closed", "已关闭"],
   ["issue", "有差异"],
 ];
+
+function ProductCategoryCandidateMetricNotice(props: {
+  testId: string;
+  title: string;
+  status: ProductCategoryCandidateMetricStatus;
+}) {
+  return (
+    <PageStateSurface
+      variant="definition-pending"
+      testId={props.testId}
+      title={props.title}
+      description={`${props.status.label}：${props.status.disclaimer} status=${props.status.status}; formal_use_allowed=${props.status.formalUseAllowed ? "true" : "false"}; pending_confirmation=${props.status.pendingConfirmation ? "true" : "false"}。`}
+    />
+  );
+}
 
 function formatProductCategoryRefreshStatusLine(
   snapshot: { status: string; run_id?: string } | null,
@@ -1257,6 +1273,11 @@ function ProductCategoryOperatingAnalysisPanel(props: {
           全表净营收 {props.surface.contribution.grandTotalLabel ?? "-"} 亿元
         </span>
       </div>
+      <ProductCategoryCandidateMetricNotice
+        testId="product-category-operating-analysis-candidate-notice"
+        title="经营分析为候选指标"
+        status={props.surface.metricStatus}
+      />
       <div className="product-category-operating-analysis__grid">
         <article
           className="product-category-operating-analysis__panel"
@@ -1441,6 +1462,11 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
           待观察 {props.surface.summary.latestPendingCount} 条
         </span>
       </div>
+      <ProductCategoryCandidateMetricNotice
+        testId="product-category-operating-action-backtest-candidate-notice"
+        title="动作回测为候选复核"
+        status={props.surface.metricStatus}
+      />
       {!props.isHistoryLoaded ? (
         <div className="product-category-action-backtest__empty">
           选择报表日期后，可用历史月度快照回测动作信号。
@@ -2073,6 +2099,11 @@ function ProductCategoryFinancialAnalysisPanel(props: {
           基线总净营收 {props.scenarioSensitivity.baselineGrandTotalLabel ?? "-"} 亿元
         </span>
       </div>
+      <ProductCategoryCandidateMetricNotice
+        testId="product-category-financial-analysis-candidate-notice"
+        title="财务增强为候选分析"
+        status={props.scenarioSensitivity.metricStatus}
+      />
       <div className="product-category-financial-analysis__grid">
         <article
           className="product-category-financial-analysis__panel product-category-financial-analysis__panel--scenario"
@@ -2095,11 +2126,39 @@ function ProductCategoryFinancialAnalysisPanel(props: {
             </button>
           </div>
           {props.scenarioSensitivityError ? (
-            <div className="product-category-financial-analysis__empty">情景敏感度加载失败。</div>
+            <PageStateSurface
+              variant="error"
+              testId="product-category-scenario-sensitivity-state"
+              title="情景敏感度加载失败"
+              description="四档 FTP 情景查询未返回结果，请重试加载矩阵。"
+              actions={
+                <button type="button" onClick={props.onLoadScenarioSensitivity}>
+                  重试加载矩阵
+                </button>
+              }
+            />
           ) : props.scenarioSensitivityLoading ? (
-            <div className="product-category-financial-analysis__empty">正在加载四档 FTP 情景。</div>
+            <PageStateSurface
+              variant="loading"
+              testId="product-category-scenario-sensitivity-state"
+              title="情景敏感度加载中"
+              description="正在获取四档 FTP 情景结果。"
+            />
           ) : props.scenarioSensitivity.emptyCopy ? (
-            <div className="product-category-financial-analysis__empty">{props.scenarioSensitivity.emptyCopy}</div>
+            <PageStateSurface
+              variant="empty"
+              testId="product-category-scenario-sensitivity-state"
+              title={
+                props.scenarioSensitivityRequested
+                  ? "暂无可比较的情景结果"
+                  : "尚未加载情景敏感度矩阵"
+              }
+              description={
+                props.scenarioSensitivityRequested
+                  ? props.scenarioSensitivity.emptyCopy
+                  : "点击上方「加载矩阵」获取四档 FTP 情景敏感度结果。"
+              }
+            />
           ) : (
             <>
               <div className="product-category-financial-analysis__pressure-pack">
@@ -4768,6 +4827,11 @@ export default function ProductCategoryPnlPage() {
             title="受治理诊断面板"
             description="仅使用当前 payload 行与趋势快照，补充产品经营诊断矩阵、负贡献观察名单和利差变动归因，不改写后端总计。"
             testId="product-category-diagnostics-lead"
+          />
+          <ProductCategoryCandidateMetricNotice
+            testId="product-category-diagnostics-candidate-notice"
+            title="诊断与趋势为候选分析"
+            status={diagnosticsSurface.metricStatus}
           />
           <div className="product-category-diagnostics" data-testid="product-category-diagnostics-surface">
             <article className="product-category-diagnostics__card" data-testid="product-category-diagnostics-matrix">

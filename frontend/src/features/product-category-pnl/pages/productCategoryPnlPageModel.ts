@@ -147,6 +147,25 @@ const PRODUCT_CATEGORY_CLOSURE_ERROR_ALERT_THRESHOLD_YUAN = 500_000;
 const PRODUCT_CATEGORY_CLOSURE_ERROR_WARNING_TEXT =
   "对账残差非零，父级自报变动与子项之和存在缺口";
 
+export type ProductCategoryCandidateMetricStatus = {
+  status: "candidate";
+  pendingConfirmation: true;
+  formalUseAllowed: false;
+  source: "frontend_derived";
+  label: string;
+  disclaimer: string;
+};
+
+export const PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS: ProductCategoryCandidateMetricStatus = {
+  status: "candidate",
+  pendingConfirmation: true,
+  formalUseAllowed: false,
+  source: "frontend_derived",
+  label: "候选指标 · 非正式结论",
+  disclaimer:
+    "本区指标由前端基于后端 formal/scenario 字段进行排序、差额、阈值或诊断归类，仅供内部复核，不构成正式金融指标或业务结论。",
+};
+
 export type ProductCategoryTrendSnapshot = {
   reportDate: string;
   label?: string;
@@ -217,6 +236,7 @@ export type ProductCategorySpreadMovementAttribution =
     } & ProductCategorySpreadMovementAttributionBase);
 
 export type ProductCategoryDiagnosticsSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   headlineTotalLabel: string | null;
   matrixRows: ProductCategoryDiagnosticsMatrixRow[];
   matrixEmptyCopy: string | null;
@@ -294,6 +314,7 @@ export type ProductCategoryOperatingActionQueueRow = {
 };
 
 export type ProductCategoryOperatingAnalysisSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   contribution: {
     grandTotalLabel: string | null;
     profitRows: ProductCategoryOperatingContributionRow[];
@@ -417,6 +438,7 @@ export type ProductCategoryOperatingBacktestExample = {
 };
 
 export type ProductCategoryOperatingBacktestSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   summary: {
     evaluatedMonthCount: number;
     signalCount: number;
@@ -625,6 +647,7 @@ export type ProductCategoryScenarioExplanation = {
 };
 
 export type ProductCategoryScenarioSensitivitySurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   baselineGrandTotalLabel: string | null;
   rows: ProductCategoryScenarioSensitivityRow[];
   insightCards: ProductCategoryScenarioInsightCard[];
@@ -661,6 +684,7 @@ export type ProductCategoryAttributionWaterfallRow = {
 };
 
 export type ProductCategoryAttributionWaterfallSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   title: string;
   deltaLabel: string;
   rows: ProductCategoryAttributionWaterfallRow[];
@@ -686,6 +710,7 @@ export type ProductCategoryRootCauseDriverRow = {
 };
 
 export type ProductCategoryRootCauseSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   headline: {
     categoryId: string;
     categoryLabel: string;
@@ -722,6 +747,7 @@ export type ProductCategoryDecisionFocusItem = {
 };
 
 export type ProductCategoryDecisionFocusSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   items: ProductCategoryDecisionFocusItem[];
   emptyCopy: string | null;
 };
@@ -821,6 +847,7 @@ export type ProductCategoryInterestSpreadAttributionDetail = {
 };
 
 export type ProductCategoryInterestSpreadAttributionSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   selected: {
     basis: ProductCategoryInterestSpreadBasis;
     month: number;
@@ -912,6 +939,7 @@ export type ProductCategoryLiabilityDetailMatrix = {
 };
 
 export type ProductCategoryLiabilitySideTrendSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
   chart: ProductCategoryLiabilitySideTrendChart | null;
   detailRows: ProductCategoryLiabilityDetailTrendRow[];
   detailMatrix: ProductCategoryLiabilityDetailMatrix;
@@ -1499,6 +1527,7 @@ export function selectProductCategoryOperatingAnalysisSurface(input: {
 }): ProductCategoryOperatingAnalysisSurface {
   const parentCategoryIds = parentProductCategoryIds(input.rows);
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     contribution: selectProductCategoryOperatingContribution({
       rows: input.rows,
       grandTotal: input.grandTotal,
@@ -2306,6 +2335,7 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
 }): ProductCategoryScenarioSensitivitySurface {
   if (!input.baseline || input.scenarios.length === 0) {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       baselineGrandTotalLabel: input.baseline
         ? formatProductCategoryValue(input.baseline.grand_total.business_net_income)
         : null,
@@ -2390,6 +2420,7 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
     scenarios: input.scenarios,
   });
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     baselineGrandTotalLabel: formatProductCategoryValue(input.baseline.grand_total.business_net_income),
     rows,
     insightCards: selectProductCategoryScenarioInsightCards(rows),
@@ -2438,6 +2469,7 @@ export function selectProductCategoryAttributionWaterfallSurface(
   const headline = attribution?.totals?.grand_total;
   if (!headline || attribution?.state !== "complete") {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       title: "经营差异瀑布",
       deltaLabel: "-",
       rows: [],
@@ -2449,6 +2481,7 @@ export function selectProductCategoryAttributionWaterfallSurface(
   const delta = yiNumber(headline.effects.delta_business_net_income);
   if (prior === null || current === null) {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       title: `${headline.category_name || "全表合计"}经营差异瀑布`,
       deltaLabel: formatSignedProductCategoryYi(delta),
       rows: [],
@@ -2492,6 +2525,7 @@ export function selectProductCategoryAttributionWaterfallSurface(
     tone: productCategoryDeltaTone(delta),
   });
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     title: `${headline.category_name || "全表合计"}经营差异瀑布`,
     deltaLabel: formatSignedProductCategoryYi(delta),
     rows,
@@ -2505,6 +2539,7 @@ export function selectProductCategoryRootCauseSurface(input: {
 }): ProductCategoryRootCauseSurface {
   if (!input.attribution || input.attribution.state !== "complete") {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       headline: null,
       driverRows: [],
       evidenceItems: [],
@@ -2523,6 +2558,7 @@ export function selectProductCategoryRootCauseSurface(input: {
     .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))[0];
   if (!headlineRow) {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       headline: null,
       driverRows: [],
       evidenceItems: [],
@@ -2552,6 +2588,7 @@ export function selectProductCategoryRootCauseSurface(input: {
   const leadingDriver = driverRows[0] ?? null;
   const closureError = yiNumber(headlineRow.row.effects.closure_error);
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     headline: {
       categoryId: headlineRow.row.category_id,
       categoryLabel: headlineRow.row.category_name || headlineRow.row.category_id,
@@ -2670,6 +2707,7 @@ export function selectProductCategoryDecisionFocusSurface(input: {
     }
   }
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     items,
     emptyCopy: items.length === 0 ? "当前没有可形成决策焦点的产品行或归因结果。" : null,
   };
@@ -3485,6 +3523,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
   const ruleDisposition = productCategoryBacktestRuleDisposition(calibrationRows);
 
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     summary: {
       evaluatedMonthCount: evaluatedDates.length,
       signalCount: samples.length,
@@ -3837,6 +3876,7 @@ export function buildProductCategoryDiagnosticsSurface(input: {
     });
 
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     headlineTotalLabel: input.grandTotal
       ? `${formatProductCategoryValue(input.grandTotal.business_net_income)} \u4ebf\u5143`
       : null,
@@ -4324,6 +4364,7 @@ export function selectProductCategoryInterestSpreadAttributionSurface(
   });
 
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     selected: {
       basis: options.basis,
       month: options.month,
@@ -4927,6 +4968,7 @@ export function buildProductCategoryLiabilitySideTrendSurface(
   const incompleteReasons = chart?.incompleteReasons ?? [];
   if (!chart && detailRows.length === 0 && detailMatrix.rows.length === 0) {
     return {
+      metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       chart: null,
       detailRows,
       detailMatrix,
@@ -4935,6 +4977,7 @@ export function buildProductCategoryLiabilitySideTrendSurface(
     };
   }
   return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
     chart,
     detailRows,
     detailMatrix,

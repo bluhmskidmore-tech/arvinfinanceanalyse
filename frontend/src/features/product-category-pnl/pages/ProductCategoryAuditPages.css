@@ -1,0 +1,337 @@
+.product-category-audit-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+  margin-bottom: 18px;
+}
+
+.product-category-audit-page-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.product-category-audit-boundary-copy {
+  margin-top: 8px;
+  margin-bottom: 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 14px;
+}
+
+.product-category-audit-meta-copy {
+  margin-top: 8px;
+  margin-bottom: 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.product-category-audit-meta-copy--compact {
+  margin: 8px 0 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.product-category-audit-meta-copy--danger {
+  margin: 8px 0 0;
+  color: var(--moss-color-danger-700);
+  font-size: 12px;
+}
+
+.product-category-audit-meta-copy--danger-spaced {
+  margin-top: 8px;
+  margin-bottom: 0;
+  color: var(--moss-color-danger-700);
+  font-size: 12px;
+}
+
+.product-category-audit-filter-bar--end {
+  justify-content: flex-end;
+}
+
+.product-category-audit-filter-bar--spaced {
+  margin-bottom: 16px;
+}
+
+.product-category-audit-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.product-category-audit-chip--real {
+  background: var(--moss-color-success-50);
+  /* displayTokens.apiMode.realForeground = semantic profit */
+  color: #2d8a5e;
+}
+
+.product-category-audit-chip--mock {
+  background: var(--moss-color-primary-50);
+  color: var(--moss-color-info-500);
+}
+
+.product-category-audit-header-controls {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.product-category-audit-field {
+  display: grid;
+  gap: 8px;
+}
+
+.product-category-audit-field--compact {
+  display: grid;
+  gap: 6px;
+}
+
+.product-category-audit-field--checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 26px;
+}
+
+.product-category-audit-filter-panel {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-audit-filter-actions {
+  display: flex;
+  align-items: end;
+}
+
+.product-category-audit-form-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-audit-form-stack {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.product-category-audit-form-actions {
+  display: flex;
+  align-items: end;
+}
+
+.product-category-audit-form-actions__row {
+  display: flex;
+  gap: 8px;
+}
+
+.product-category-audit-form-actions__row--wide {
+  display: flex;
+  gap: 10px;
+}
+
+.product-category-audit-target-hint {
+  display: grid;
+  gap: 6px;
+}
+
+.product-category-audit-hint {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.product-category-audit-list {
+  display: grid;
+  gap: 12px;
+}
+
+.product-category-audit-adjustment-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 0.8fr 0.8fr auto auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-audit-adjustment-row--filled {
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-audit-adjustment-row--monthly {
+  grid-template-columns: 1.4fr 1fr auto auto auto;
+}
+
+.product-category-audit-adjustment-primary {
+  font-weight: 600;
+}
+
+.product-category-audit-adjustment-secondary {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.product-category-audit-adjustment-tertiary {
+  color: var(--moss-color-neutral-500);
+  font-size: 12px;
+}
+
+.product-category-audit-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.product-category-audit-empty {
+  color: var(--moss-color-neutral-500);
+  font-size: 13px;
+}
+
+.product-category-audit-events {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.product-category-audit-event-row {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-audit-event-row--timeline {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr;
+  gap: 12px;
+  background: #fcfdff;
+}
+
+.product-category-audit-history {
+  display: grid;
+  gap: 18px;
+}
+
+.product-category-audit-history-section {
+  display: grid;
+  gap: 10px;
+}
+
+.product-category-audit-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.product-category-audit-history-title {
+  font-weight: 600;
+}
+
+.product-category-audit-pagination {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.product-category-audit-pagination__meta {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.product-category-audit-status-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.product-category-audit-status-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.product-category-audit-status-line {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--moss-color-neutral-100);
+}
+
+.product-category-audit-scenario-summary {
+  margin-bottom: 12px;
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+}
+
+.product-category-audit-workbook-list {
+  display: grid;
+  gap: 12px;
+}
+
+.product-category-audit-workbook-section {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-audit-workbook-section__title {
+  margin-top: 0;
+}
+
+.product-category-audit-workbook-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 8px;
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-audit-workbook-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+}
+
+.product-category-audit-workbook-table th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-100);
+  color: var(--moss-color-neutral-600);
+  font-weight: 600;
+  text-align: left;
+}
+
+.product-category-audit-workbook-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+  vertical-align: top;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

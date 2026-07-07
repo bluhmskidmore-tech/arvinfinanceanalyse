@@ -3143,4 +3143,50 @@ describe("ProductCategoryPnlPage", () => {
     expect(within(scenarioError).getByRole("button", { name: "重试情景计算" })).toBeInTheDocument();
     expect(screen.getByTestId("product-category-table")).toBe(table);
   });
+
+  it("PCP-03: shows an explicit error state with retry when scenario sensitivity fetch fails", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const sensitivityRates = new Set(["1.50", "1.60", "1.75", "2.00"]);
+    let denySensitivity = true;
+    const pnlSpy = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) => {
+      if (
+        denySensitivity &&
+        options.scenarioRatePct &&
+        sensitivityRates.has(options.scenarioRatePct)
+      ) {
+        throw new Error("pcp03-sensitivity-failed");
+      }
+      return baseClient.getProductCategoryPnl(options);
+    });
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl: pnlSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    const sensitivityPanel = screen.getByTestId("product-category-scenario-sensitivity");
+    const initialState = within(sensitivityPanel).getByTestId("product-category-scenario-sensitivity-state");
+    expect(initialState).toHaveAttribute("data-state-variant", "empty");
+    expect(initialState).toHaveTextContent("尚未加载情景敏感度矩阵");
+
+    await user.click(within(sensitivityPanel).getByRole("button", { name: "加载矩阵" }));
+
+    const errorState = await within(sensitivityPanel).findByTestId("product-category-scenario-sensitivity-state");
+    expect(errorState).toHaveAttribute("data-state-variant", "error");
+    expect(errorState).toHaveTextContent("情景敏感度加载失败");
+    expect(within(errorState).getByRole("button", { name: "重试加载矩阵" })).toBeInTheDocument();
+    expect(sensitivityPanel).not.toHaveTextContent("总净营收");
+
+    denySensitivity = false;
+    await user.click(within(errorState).getByRole("button", { name: "重试加载矩阵" }));
+
+    await waitFor(() => {
+      expect(within(sensitivityPanel).queryByTestId("product-category-scenario-sensitivity-state")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(sensitivityPanel).toHaveTextContent("总净营收");
+    });
+  });
 });

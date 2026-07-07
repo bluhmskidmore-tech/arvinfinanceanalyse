@@ -1,0 +1,211 @@
+.pnl-bridge-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.pnl-bridge-page-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.pnl-bridge-page-subtitle {
+  margin-top: 10px;
+  margin-bottom: 0;
+  max-width: 860px;
+  color: var(--moss-color-neutral-600);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.pnl-bridge-page-badges {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.pnl-bridge-mode-badge,
+.pnl-bridge-role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pnl-bridge-role-badge {
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-900);
+  /* shellTokens.colorBorderSoft */
+  border: 1px solid #e2e0da;
+}
+
+.pnl-bridge-mode-badge--real {
+  background: var(--moss-color-success-50);
+  /* displayTokens.apiMode.realForeground = semantic profit */
+  color: #2d8a5e;
+}
+
+.pnl-bridge-mode-badge--mock {
+  background: var(--moss-color-primary-50);
+  color: var(--moss-color-info-500);
+}
+
+.pnl-bridge-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-3);
+  align-items: center;
+  margin-bottom: var(--moss-space-5);
+}
+
+.pnl-bridge-refresh-button {
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid #d7dfea;
+  background: #ffffff;
+  color: #162033;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pnl-bridge-filter-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--moss-color-neutral-600);
+}
+
+.pnl-bridge-report-date-select {
+  min-width: 180px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  /* shellTokens.colorBorderSoft */
+  border: 1px solid #e2e0da;
+  background: #ffffff;
+  color: var(--moss-color-neutral-900);
+}
+
+.pnl-bridge-formal-only-note {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  /* shellTokens.colorBorderSoft */
+  border: 1px solid #e2e0da;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.pnl-bridge-summary-section {
+  margin-bottom: 24px;
+}
+
+.pnl-bridge-conclusion-card {
+  margin-bottom: 20px;
+  border-radius: 16px;
+  border: 1px solid var(--moss-color-primary-200);
+  background: var(--moss-color-primary-50);
+  box-shadow: var(--moss-shadow-card);
+}
+
+.pnl-bridge-conclusion-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.pnl-bridge-conclusion-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--moss-color-neutral-600);
+}
+
+.pnl-bridge-conclusion-body {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--moss-color-neutral-900);
+  line-height: 1.4;
+}
+
+.pnl-bridge-conclusion-detail {
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.pnl-bridge-summary-cards {
+  display: grid;
+  gap: var(--moss-space-4);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.pnl-bridge-waterfall-card {
+  margin-top: 24px;
+  border-radius: 18px;
+  border: 1px solid var(--moss-color-neutral-200);
+  box-shadow: var(--moss-shadow-card);
+  background: #ffffff;
+}
+
+.pnl-bridge-waterfall-chart {
+  height: 400px;
+}
+
+.pnl-bridge-waterfall-chart__canvas {
+  height: 100%;
+  width: 100%;
+}
+
+.pnl-bridge-warnings {
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--moss-color-warning-50);
+  border: 1px solid var(--moss-color-warning-200);
+}
+
+.pnl-bridge-warnings__title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--moss-color-warning-800);
+}
+
+.pnl-bridge-warnings__list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--moss-color-neutral-600);
+}
+
+.pnl-bridge-warnings__item {
+  margin-bottom: 6px;
+}
+
+.pnl-bridge-balance-scope-header {
+  cursor: help;
+}
+
+.pnl-bridge-detail-table {
+  height: 480px;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  /* shellTokens.colorBorderSoft */
+  border: 1px solid #e2e0da;
+  margin-top: 18px;
+  --ag-header-background-color: #f7f6f3;
+  --ag-header-foreground-color: #5c6b82;
+  --ag-row-hover-color: #f7f6f3;
+  --ag-border-color: #e2e0da;
+  --ag-font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
+  --ag-font-size: 13px;
+}

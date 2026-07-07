@@ -13,6 +13,7 @@ import { designTokens } from "../../../theme/designSystem";
 
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
+  PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
   PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS,
   PRODUCT_CATEGORY_VALUE_TONE_COLORS,
   buildProductCategoryDiagnosticsSurface,
@@ -206,7 +207,47 @@ function attributionRow(
   };
 }
 
+function expectCandidateMetricStatus(
+  status: typeof PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
+): void {
+  expect(status.status).toBe("candidate");
+  expect(status.pendingConfirmation).toBe(true);
+  expect(status.formalUseAllowed).toBe(false);
+  expect(status.source).toBe("frontend_derived");
+  expect(status.disclaimer).toContain("不构成正式金融指标");
+}
+
 describe("productCategoryPnlPageModel", () => {
+  it("marks frontend-derived analysis surfaces as candidate and not formal-use allowed", () => {
+    expectCandidateMetricStatus(
+      selectProductCategoryOperatingAnalysisSurface({ rows: [] }).metricStatus,
+    );
+    expectCandidateMetricStatus(
+      selectProductCategoryOperatingActionBacktestSurface({ payloads: [] }).metricStatus,
+    );
+    expectCandidateMetricStatus(
+      selectProductCategoryScenarioSensitivitySurface({ scenarios: [] }).metricStatus,
+    );
+    expectCandidateMetricStatus(
+      selectProductCategoryAttributionWaterfallSurface(null).metricStatus,
+    );
+    expectCandidateMetricStatus(
+      selectProductCategoryRootCauseSurface({ rows: [] }).metricStatus,
+    );
+    expectCandidateMetricStatus(
+      selectProductCategoryDecisionFocusSurface({ rows: [] }).metricStatus,
+    );
+    expectCandidateMetricStatus(
+      buildProductCategoryDiagnosticsSurface({ rows: [] }).metricStatus,
+    );
+    expectCandidateMetricStatus(
+      buildProductCategoryLiabilitySideTrendSurface([]).metricStatus,
+    );
+    expectCandidateMetricStatus(
+      selectProductCategoryInterestSpreadAttributionSurface([], { basis: "weighted", month: 2 }, 2026).metricStatus,
+    );
+  });
+
   it("keeps main-page view selector scope to monthly and ytd inside the governed API detail surface", () => {
     expect(PRODUCT_CATEGORY_MAIN_PAGE_VIEWS).toEqual(["monthly", "ytd"]);
     expect(PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS).toEqual([

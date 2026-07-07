@@ -1,0 +1,49 @@
+.pnl-refresh-status {
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: 14px;
+  /* #e4ebf5: soft blue-gray border, no exact --moss-color-* token */
+  border: 1px solid #e4ebf5;
+  /* #f7f9fc: blue-tinted soft surface */
+  background: #f7f9fc;
+  /* #5c6b82: slate secondary text */
+  color: #5c6b82;
+}
+
+.pnl-refresh-status--error {
+  background: #fff2f0;
+  color: #c83b3b;
+}
+
+.pnl-debug-panel {
+  margin-top: 24px;
+  padding: 16px;
+  border-radius: 16px;
+  /* shellTokens.colorBorderSoft */
+  border: 1px solid #e2e0da;
+  background: #ffffff;
+}
+
+.pnl-debug-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  /* shellTokens.colorTextPrimary */
+  color: #16191d;
+}
+
+.pnl-debug-panel__body {
+  margin-top: 12px;
+}
+
+.pnl-debug-panel__pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  border-radius: 12px;
+  /* shellTokens.colorBgMuted */
+  background: #f7f6f3;
+  /* shellTokens.colorTextPrimary */
+  color: #16191d;
+  font-size: 12px;
+  line-height: 1.6;
+}

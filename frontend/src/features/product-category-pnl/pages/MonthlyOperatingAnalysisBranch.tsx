@@ -6,117 +6,8 @@ import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type { QdbGlMonthlyAnalysisSheet, ResultMeta } from "../../../api/contracts";
 import type { QdbGlMonthlyAnalysisRefreshPayload } from "../../../api/qdbGlMonthlyAnalysisClient";
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
-
-const pageHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  padding: 20,
-  borderRadius: 18,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.neutral[50],
-  marginBottom: 18,
-} as const;
-
-const chipTypography = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase" as const,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginBottom: 14,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: designTokens.color.neutral[500],
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: designTokens.color.neutral[600],
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
-const statusPanelStyle = {
-  display: "grid",
-  gap: 8,
-  marginBottom: 12,
-  padding: 12,
-  borderRadius: 8,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.neutral[50],
-  color: designTokens.color.neutral[700],
-  fontSize: 12,
-  lineHeight: 1.6,
-} as const;
-
-const statusLineWrapStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 8,
-} as const;
-
-const statusLineStyle = {
-  padding: "4px 8px",
-  borderRadius: 6,
-  background: designTokens.color.neutral[100],
-} as const;
-
-const workbookTableWrapStyle = {
-  overflowX: "auto",
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  borderRadius: 8,
-  background: designTokens.color.neutral[50],
-} as const;
-
-const workbookTableStyle = {
-  width: "100%",
-  minWidth: 640,
-  borderCollapse: "collapse",
-  color: designTokens.color.neutral[700],
-  fontSize: 13,
-} as const;
-
-const workbookHeaderCellStyle = {
-  padding: "8px 10px",
-  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.neutral[100],
-  color: designTokens.color.neutral[600],
-  fontWeight: 600,
-  textAlign: "left",
-} as const;
-
-const workbookCellStyle = {
-  padding: "8px 10px",
-  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-  verticalAlign: "top",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-} as const;
+import "./ProductCategoryAuditPages.css";
+import "./ProductCategoryPnlPage.css";
 
 type ComparisonMonthStatus = {
   key: string;
@@ -264,17 +155,17 @@ function SectionLead(props: {
   testId?: string;
 }) {
   return (
-    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
+    <div data-testid={props.testId} className="product-category-section-lead">
+      <span className="product-category-section-lead__eyebrow">{props.eyebrow}</span>
+      <h2 className="product-category-section-lead__title">{props.title}</h2>
+      <p className="product-category-section-lead__description">{props.description}</p>
     </div>
   );
 }
 
 function StatusPanel(props: { testId: string; children: ReactNode }) {
   return (
-    <div data-testid={props.testId} style={statusPanelStyle}>
+    <div data-testid={props.testId} className="product-category-audit-status-panel">
       {props.children}
     </div>
   );
@@ -483,34 +374,30 @@ export default function MonthlyOperatingAnalysisBranch() {
 
   return (
     <section data-testid="monthly-operating-analysis-branch">
-      <div style={pageHeaderStyle}>
+      <div className="product-category-audit-page-header">
         <div>
-          <h1 data-testid="monthly-operating-analysis-page-title" style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>月度经营分析</h1>
+          <h1 data-testid="monthly-operating-analysis-page-title" className="product-category-audit-page-title">
+            月度经营分析
+          </h1>
           <p
             data-testid="monthly-operating-analysis-boundary-copy"
-            style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}
+            className="product-category-audit-boundary-copy"
           >
             基于总账对账与日均月度配对文件重建月度经营分析工作簿。
           </p>
-          <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
+          <p className="product-category-audit-meta-copy">
             仅用于分析口径工作簿：阈值情景只预览工作表，不替换正式产品分类结果。
           </p>
         </div>
-        <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
+        <div className="product-category-audit-header-controls">
           <span
-            style={{
-              ...chipTypography,
-              background:
-                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-              color:
-                client.mode === "real"
-                  ? displayTokens.apiMode.realForeground
-                  : displayTokens.apiMode.mockForeground,
-            }}
+            className={`product-category-audit-chip ${
+              client.mode === "real" ? "product-category-audit-chip--real" : "product-category-audit-chip--mock"
+            }`}
           >
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
-          <label style={{ display: "grid", gap: 8 }}>
+          <label className="product-category-audit-field">
             报告月份
             <select
               data-testid="monthly-operating-analysis-month-select"
@@ -543,7 +430,7 @@ export default function MonthlyOperatingAnalysisBranch() {
           当前没有可用报告月份，无法加载月度经营分析工作表。
         </StatusPanel>
       ) : null}
-      <FilterBar style={{ marginBottom: 16 }}>
+      <FilterBar className="product-category-audit-filter-bar--spaced">
         <button
           type="button"
           data-testid="monthly-operating-analysis-refresh-button"
@@ -566,7 +453,7 @@ export default function MonthlyOperatingAnalysisBranch() {
         >
           查看调整审计
         </a>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="product-category-audit-field--compact">
           偏离预警阈值
           <input
             data-testid="monthly-operating-analysis-scenario-warn"
@@ -574,7 +461,7 @@ export default function MonthlyOperatingAnalysisBranch() {
             onChange={(event) => setScenarioWarn(event.target.value)}
           />
         </label>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="product-category-audit-field--compact">
           偏离告警阈值
           <input
             data-testid="monthly-operating-analysis-scenario-alert"
@@ -582,7 +469,7 @@ export default function MonthlyOperatingAnalysisBranch() {
             onChange={(event) => setScenarioAlert(event.target.value)}
           />
         </label>
-        <label style={{ display: "grid", gap: 6 }}>
+        <label className="product-category-audit-field--compact">
           偏离严重阈值
           <input
             data-testid="monthly-operating-analysis-scenario-critical"
@@ -603,34 +490,34 @@ export default function MonthlyOperatingAnalysisBranch() {
       {refreshPayload ? (
         <StatusPanel testId="monthly-operating-analysis-refresh-status">
           <strong>refresh {refreshPayload.status}</strong>
-          <div style={statusLineWrapStyle}>
-            <span style={statusLineStyle}>{refreshPayload.run_id}</span>
+          <div className="product-category-audit-status-lines">
+            <span className="product-category-audit-status-line">{refreshPayload.run_id}</span>
             {refreshPayload.report_date ? (
-              <span style={statusLineStyle}>report_date={refreshPayload.report_date}</span>
+              <span className="product-category-audit-status-line">report_date={refreshPayload.report_date}</span>
             ) : null}
             {refreshPayload.source_version ? (
-              <span style={statusLineStyle}>source_version={refreshPayload.source_version}</span>
+              <span className="product-category-audit-status-line">source_version={refreshPayload.source_version}</span>
             ) : null}
             {refreshPayload.sheet_count === undefined ? null : (
-              <span style={statusLineStyle}>sheet_count={refreshPayload.sheet_count}</span>
+              <span className="product-category-audit-status-line">sheet_count={refreshPayload.sheet_count}</span>
             )}
             {refreshPayload.evidence_rows === undefined ? null : (
-              <span style={statusLineStyle}>evidence_rows={refreshPayload.evidence_rows}</span>
+              <span className="product-category-audit-status-line">evidence_rows={refreshPayload.evidence_rows}</span>
             )}
             {refreshPayload.failure_category ? (
-              <span style={statusLineStyle}>failure_category={refreshPayload.failure_category}</span>
+              <span className="product-category-audit-status-line">failure_category={refreshPayload.failure_category}</span>
             ) : null}
             {refreshPayload.failure_reason ? (
-              <span style={statusLineStyle}>failure_reason={refreshPayload.failure_reason}</span>
+              <span className="product-category-audit-status-line">failure_reason={refreshPayload.failure_reason}</span>
             ) : null}
             {refreshPayload.error_message ? (
-              <span style={statusLineStyle}>error_message={refreshPayload.error_message}</span>
+              <span className="product-category-audit-status-line">error_message={refreshPayload.error_message}</span>
             ) : null}
           </div>
           {refreshComparisonMonthStatuses.length > 0 ? (
-            <div style={statusLineWrapStyle}>
+            <div className="product-category-audit-status-lines">
               {refreshComparisonMonthStatuses.map((item) => (
-                <span key={item.key} style={statusLineStyle}>
+                <span key={item.key} className="product-category-audit-status-line">
                   {item.key} {item.reportMonth} {item.status}
                 </span>
               ))}
@@ -642,7 +529,7 @@ export default function MonthlyOperatingAnalysisBranch() {
       {scenarioSummary ? (
         <div
           data-testid="monthly-operating-analysis-scenario-summary"
-          style={{ marginBottom: 12, color: designTokens.color.neutral[900], fontSize: 13 }}
+          className="product-category-audit-scenario-summary"
         >
           {scenarioSummary}
         </div>
@@ -677,9 +564,9 @@ export default function MonthlyOperatingAnalysisBranch() {
       {workbookMetaLines.length > 0 ? (
         <StatusPanel testId="monthly-operating-analysis-workbook-meta">
           <strong>result_meta</strong>
-          <div style={statusLineWrapStyle}>
+          <div className="product-category-audit-status-lines">
             {workbookMetaLines.map((item) => (
-              <span key={item.label} style={statusLineStyle}>
+              <span key={item.label} className="product-category-audit-status-line">
                 {item.label}={item.value}
               </span>
             ))}
@@ -689,9 +576,9 @@ export default function MonthlyOperatingAnalysisBranch() {
       {comparisonMonthStatuses.length > 0 ? (
         <StatusPanel testId="monthly-operating-analysis-comparison-status">
           <strong>comparison_months</strong>
-          <div style={statusLineWrapStyle}>
+          <div className="product-category-audit-status-lines">
             {comparisonMonthStatuses.map((item) => (
-              <span key={item.key} style={statusLineStyle}>
+              <span key={item.key} className="product-category-audit-status-line">
                 {item.key} {item.reportMonth} {item.status}
               </span>
             ))}
@@ -704,26 +591,21 @@ export default function MonthlyOperatingAnalysisBranch() {
         </StatusPanel>
       ) : null}
 
-      <div style={{ display: "grid", gap: 12 }}>
+      <div className="product-category-audit-workbook-list">
         {showWorkbookSheets ? displayedSheetsForSelectedMonth.map((sheet) => (
           <section
             key={sheet.key}
             data-testid={`monthly-operating-analysis-section-${sheet.key}`}
-            style={{
-              padding: 16,
-              borderRadius: 16,
-              border: `1px solid ${designTokens.color.neutral[200]}`,
-              background: designTokens.color.neutral[50],
-            }}
+            className="product-category-audit-workbook-section"
           >
-            <h2 style={{ marginTop: 0 }}>{sheet.title}</h2>
+            <h2 className="product-category-audit-workbook-section__title">{sheet.title}</h2>
             {sheet.rows.length > 0 ? (
-              <div style={workbookTableWrapStyle}>
-                <table style={workbookTableStyle}>
+              <div className="product-category-audit-workbook-table-wrap">
+                <table className="product-category-audit-workbook-table">
                   <thead>
                     <tr>
                       {sheet.columns.map((column) => (
-                        <th key={column} scope="col" style={workbookHeaderCellStyle}>
+                        <th key={column} scope="col">
                           {column}
                         </th>
                       ))}
@@ -733,9 +615,7 @@ export default function MonthlyOperatingAnalysisBranch() {
                     {sheet.rows.map((row, rowIndex) => (
                       <tr key={rowIndex}>
                         {sheet.columns.map((column) => (
-                          <td key={column} style={workbookCellStyle}>
-                            {formatWorkbookCell(row[column])}
-                          </td>
+                          <td key={column}>{formatWorkbookCell(row[column])}</td>
                         ))}
                       </tr>
                     ))}
@@ -745,7 +625,7 @@ export default function MonthlyOperatingAnalysisBranch() {
             ) : (
               <div
                 data-testid={`monthly-operating-analysis-empty-state-${sheet.key}`}
-                style={{ color: designTokens.color.neutral[500], fontSize: 13 }}
+                className="product-category-audit-empty"
               >
                 当前没有可展示数据。
               </div>

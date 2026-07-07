@@ -12,8 +12,12 @@ const baseline = {
   dashboardStyleFiles: {},
   // 2026-07-07: PnlByBusinessInsightsPage migrated to shared PagePrimitives, removing
   // one-off page-chrome style={{}} blocks (title/disclaimer/contract-status/section leads).
-  totalTsxStyleProps: 1794,
-  totalStaticTsxStyleProps: 727,
+  // 2026-07-07: PnL runtime/bridge pages and product-category audit branches migrated
+  // repeated layout style={{}} blocks into page-local CSS modules (PnlRuntimePanels.css,
+  // PnlBridgePage.css, ProductCategoryAuditPages.css); dynamic chart widths and mode chips
+  // remain as allowed single-use inline styles.
+  totalTsxStyleProps: 1622,
+  totalStaticTsxStyleProps: 654,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 13,
     "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,
