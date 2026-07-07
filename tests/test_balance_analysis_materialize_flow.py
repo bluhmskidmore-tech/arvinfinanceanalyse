@@ -11,6 +11,8 @@ import pytest
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
+pytestmark = [pytest.mark.integration, pytest.mark.materialize]
+
 
 def _load_modules():
     repo_mod = sys.modules.get("backend.app.repositories.balance_analysis_repo")

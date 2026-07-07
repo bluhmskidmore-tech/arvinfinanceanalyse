@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.test_portfolio_home_business_owner_approval_status import _filled_template_text
 from tests.test_portfolio_home_owner_decision_intake_check import (
     _rewrite_csv,
@@ -24,6 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "portfolio_home_owner_handoff_packet.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
+
+pytestmark = pytest.mark.governance_meta
 
 
 def _risk_tensor_preview_boundary_lines() -> list[str]:

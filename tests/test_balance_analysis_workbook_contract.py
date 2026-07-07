@@ -20,6 +20,8 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from tests.helpers import ROOT, load_module
 
+pytestmark = [pytest.mark.integration, pytest.mark.materialize]
+
 # Keys exercised by tests in this module (API + `_build_*` helpers). Keep in sync with the spec doc.
 GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS = frozenset(
     {

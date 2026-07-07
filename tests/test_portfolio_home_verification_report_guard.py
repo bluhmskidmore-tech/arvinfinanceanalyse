@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from scripts.portfolio_home_verification_report_guard import (
     blocked_verification_report_guard,
 )
+
+pytestmark = pytest.mark.governance_meta
 
 
 def _valid_verifier() -> dict[str, object]:

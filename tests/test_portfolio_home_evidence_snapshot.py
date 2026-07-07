@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.portfolio_home_evidence_snapshot import (
     build_snapshot,
     owner_handoff_completeness_alignment,
@@ -27,6 +29,8 @@ from tests.test_portfolio_home_business_owner_approval_packet import (
 )
 from scripts.portfolio_home_closure_scorecard import VERIFICATION_COMMANDS
 from scripts.verify_portfolio_home_scorecard_commands import RUNNER_COMMAND_NAME
+
+pytestmark = pytest.mark.governance_meta
 
 
 ROOT = Path(__file__).resolve().parents[1]

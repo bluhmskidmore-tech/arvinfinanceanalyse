@@ -35,6 +35,8 @@ MONTH_LABEL_JAN = "2025\u5e741\u6708"
 MONTH_LABEL_FEB = "2025\u5e742\u6708"
 ADB_READ_HEADERS = {"X-User-Id": "adb-read-user", "X-User-Role": "viewer"}
 
+pytestmark = [pytest.mark.integration, pytest.mark.materialize]
+
 
 def _configure_adb_scope_store(tmp_path: Path, monkeypatch):
     sqlite_path = tmp_path / "adb-read-scope.db"

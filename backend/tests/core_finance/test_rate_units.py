@@ -2,6 +2,8 @@
 import pytest
 from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
 
+pytestmark = pytest.mark.unit
+
 
 class TestNormalizeAnnualRateToDecimal:
 

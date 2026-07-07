@@ -2,11 +2,15 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance.bond_duration import (
     estimate_duration,
     infer_accounting_class,
     modified_duration_from_macaulay,
 )
+
+pytestmark = pytest.mark.unit
 
 
 class TestEstimateDuration:
