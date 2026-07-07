@@ -7,6 +7,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
+try:  # numpy 仅用于加速相关性计算；缺失时回退纯 Python 实现，口径不变。
+    import numpy as _np
+except ImportError:  # pragma: no cover - 运行环境未安装 numpy 时走纯 Python 路径
+    _np = None  # type: ignore[assignment]
+
 ResearchViewStance = Literal["bullish", "neutral", "bearish", "conflicted"]
 ResearchViewConfidence = Literal["high", "medium", "low"]
 ResearchViewStatus = Literal["ready", "pending_signal"]
@@ -151,6 +156,10 @@ SERIES_NAME_OVERRIDES = {
 
 ZERO_DECIMAL = Decimal("0")
 EPSILON = 1e-12
+# 平方和式 Pearson 中，方差（相对平方和或绝对值）低于以下阈值时视为浮点抵消噪声区，
+# 退回与纯 Python 实现逐位一致的顺序求和，避免 numpy 成对求和翻转 EPSILON 判定。
+_VARIANCE_STABILITY_RATIO = 1e-5
+_VARIANCE_STABILITY_ABS = 1e-6
 ENVIRONMENT_SCORE_METHOD = "robust_environment_score_v1"
 ENVIRONMENT_WINSORIZE_TAIL_FRACTION = 0.1
 ENVIRONMENT_DISPERSION_FLOOR = 0.05
@@ -264,7 +273,8 @@ def compute_macro_bond_correlations(
     """
     对每个宏观指标 vs 每条收益率曲线关键期限，计算滚动相关系数与领先滞后关系。
 
-    纯 Python 实现，不依赖 numpy。
+    numpy 可用时使用向量化实现（对齐配对与 Pearson 公式与纯 Python 路径逐一对应，
+    仅浮点求和顺序不同）；numpy 缺失时回退纯 Python 实现，口径不变。
     """
     validated_tail_fraction = _validate_winsorize_tail_fraction(winsorize_tail_fraction)
 
@@ -354,6 +364,45 @@ def _compute_correlations(
 ) -> tuple[float | None, float | None, float | None]:
     """Return (corr_3m, corr_6m, corr_1y) for a macro/yield pair."""
     start_date_1y = latest_date - timedelta(days=max(_WINDOW_1Y_DAYS - 1, 0))
+    if _np is not None and macro_map and target_map:
+        m_ord, m_val = _series_arrays(
+            macro_map,
+            macro_dates if macro_dates is not None else tuple(sorted(macro_map)),
+        )
+        t_ord, t_val = _series_arrays(
+            target_map,
+            target_dates if target_dates is not None else tuple(sorted(target_map)),
+        )
+        aligned_ord, aligned_x, aligned_y = _aligned_arrays(
+            m_ord,
+            m_val,
+            t_ord,
+            t_val,
+            alignment_mode=alignment_mode,
+            lag_days=0,
+            start_ordinal=start_date_1y.toordinal(),
+            end_ordinal=latest_date.toordinal(),
+        )
+        start_3m = (latest_date - timedelta(days=max(_WINDOW_3M_DAYS - 1, 0))).toordinal()
+        start_6m = (latest_date - timedelta(days=max(_WINDOW_6M_DAYS - 1, 0))).toordinal()
+        index_3m = int(_np.searchsorted(aligned_ord, start_3m))
+        index_6m = int(_np.searchsorted(aligned_ord, start_6m))
+        corr_3m = _array_pairs_correlation(
+            aligned_x[index_3m:],
+            aligned_y[index_3m:],
+            winsorize_tail_fraction=winsorize_tail_fraction,
+        )
+        corr_6m = _array_pairs_correlation(
+            aligned_x[index_6m:],
+            aligned_y[index_6m:],
+            winsorize_tail_fraction=winsorize_tail_fraction,
+        )
+        corr_1y = _array_pairs_correlation(
+            aligned_x,
+            aligned_y,
+            winsorize_tail_fraction=winsorize_tail_fraction,
+        )
+        return corr_3m, corr_6m, corr_1y
     aligned_pairs_1y = _align_series_pairs(
         macro_map=macro_map,
         target_map=target_map,
@@ -738,6 +787,215 @@ def _pearson_from_aligned_pairs(
     return correlation
 
 
+def _series_arrays(
+    series_map: dict[date, float],
+    ordered_dates: Sequence[date],
+) -> tuple[Any, Any]:
+    """Convert an ordered date->value map into (ordinal int64, value float64) arrays."""
+    count = len(ordered_dates)
+    ordinals = _np.fromiter(
+        (current_date.toordinal() for current_date in ordered_dates),
+        dtype=_np.int64,
+        count=count,
+    )
+    values = _np.fromiter(
+        (series_map[current_date] for current_date in ordered_dates),
+        dtype=_np.float64,
+        count=count,
+    )
+    return ordinals, values
+
+
+def _aligned_arrays(
+    macro_ordinals: Any,
+    macro_values: Any,
+    target_ordinals: Any,
+    target_values: Any,
+    *,
+    alignment_mode: str,
+    lag_days: int = 0,
+    start_ordinal: int | None = None,
+    end_ordinal: int | None = None,
+) -> tuple[Any, Any, Any]:
+    """向量化版 _align_series_pairs：返回 (对齐日期序号, 宏观值, 收益率值) 三个数组。
+
+    与纯 Python 实现产生完全相同的配对集合与顺序。
+    """
+    if alignment_mode not in {"conservative", "market_timing"}:
+        raise ValueError(f"Unsupported alignment mode: {alignment_mode}")
+    empty = _np.empty(0, dtype=_np.float64)
+    if macro_ordinals.size == 0 or target_ordinals.size == 0:
+        return _np.empty(0, dtype=_np.int64), empty, empty
+
+    if alignment_mode == "conservative":
+        shifted = macro_ordinals + lag_days
+        positions = _np.searchsorted(target_ordinals, shifted)
+        clipped = _np.minimum(positions, target_ordinals.size - 1)
+        mask = target_ordinals[clipped] == shifted
+        if start_ordinal is not None:
+            mask &= macro_ordinals >= start_ordinal
+        if end_ordinal is not None:
+            mask &= macro_ordinals <= end_ordinal
+        return macro_ordinals[mask], macro_values[mask], target_values[clipped[mask]]
+
+    target_mask = _np.ones(target_ordinals.size, dtype=bool)
+    if start_ordinal is not None:
+        target_mask &= target_ordinals >= start_ordinal
+    if end_ordinal is not None:
+        target_mask &= target_ordinals <= end_ordinal
+    selected_target_ordinals = target_ordinals[target_mask]
+    selected_target_values = target_values[target_mask]
+    effective_macro_ordinals = selected_target_ordinals - lag_days
+    macro_positions = _np.searchsorted(macro_ordinals, effective_macro_ordinals, side="right") - 1
+    valid = macro_positions >= 0
+    return (
+        selected_target_ordinals[valid],
+        macro_values[macro_positions[valid]],
+        selected_target_values[valid],
+    )
+
+
+def _array_pairs_correlation(
+    values_x: Any,
+    values_y: Any,
+    *,
+    winsorize_tail_fraction: float | None,
+) -> float | None:
+    correlation = _array_pairs_pearson(
+        values_x,
+        values_y,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+    return round(correlation, 6) if correlation is not None else None
+
+
+def _array_pairs_pearson(
+    values_x: Any,
+    values_y: Any,
+    *,
+    winsorize_tail_fraction: float | None,
+) -> float | None:
+    """向量化版 _aligned_pairs_pearson：公式与纯 Python 路径逐一对应。"""
+    if values_x.size < 2:
+        return None
+    if winsorize_tail_fraction is None:
+        return _pearson_sums_from_arrays(values_x, values_y)
+    return _pearson_means_from_arrays(
+        _winsorize_array(values_x, tail_fraction=winsorize_tail_fraction),
+        _winsorize_array(values_y, tail_fraction=winsorize_tail_fraction),
+    )
+
+
+def _pearson_sums_from_arrays(values_x: Any, values_y: Any) -> float | None:
+    """与 _pearson_from_aligned_pairs 相同的平方和式 Pearson。
+
+    当方差落入浮点抵消噪声量级（近似常数序列）时，numpy 成对求和与
+    纯 Python 顺序求和的差异可能翻转 variance <= EPSILON 判定，
+    此时退回与原实现逐位一致的顺序求和，保证结果完全一致。
+    """
+    count = int(values_x.size)
+    sum_macro = float(values_x.sum())
+    sum_target = float(values_y.sum())
+    sum_macro_sq = float((values_x * values_x).sum())
+    sum_target_sq = float((values_y * values_y).sum())
+    sum_product = float((values_x * values_y).sum())
+
+    covariance = sum_product - (sum_macro * sum_target / count)
+    variance_macro = sum_macro_sq - (sum_macro * sum_macro / count)
+    variance_target = sum_target_sq - (sum_target * sum_target / count)
+    if (
+        variance_macro <= max(_VARIANCE_STABILITY_RATIO * sum_macro_sq, _VARIANCE_STABILITY_ABS)
+        or variance_target <= max(_VARIANCE_STABILITY_RATIO * sum_target_sq, _VARIANCE_STABILITY_ABS)
+    ):
+        return _pearson_sums_sequential(values_x.tolist(), values_y.tolist())
+    if variance_macro <= EPSILON or variance_target <= EPSILON:
+        return None
+    correlation = covariance / ((variance_macro**0.5) * (variance_target**0.5))
+    return _clamp_correlation(correlation)
+
+
+def _pearson_sums_sequential(values_x: Sequence[float], values_y: Sequence[float]) -> float | None:
+    """顺序求和的平方和式 Pearson，与 _pearson_from_aligned_pairs 逐位一致。"""
+    count = 0
+    sum_macro = 0.0
+    sum_target = 0.0
+    sum_macro_sq = 0.0
+    sum_target_sq = 0.0
+    sum_product = 0.0
+    for macro_float, target_float in zip(values_x, values_y, strict=True):
+        count += 1
+        sum_macro += macro_float
+        sum_target += target_float
+        sum_macro_sq += macro_float * macro_float
+        sum_target_sq += target_float * target_float
+        sum_product += macro_float * target_float
+    if count < 2:
+        return None
+
+    covariance = sum_product - (sum_macro * sum_target / count)
+    variance_macro = sum_macro_sq - (sum_macro * sum_macro / count)
+    variance_target = sum_target_sq - (sum_target * sum_target / count)
+    if variance_macro <= EPSILON or variance_target <= EPSILON:
+        return None
+    correlation = covariance / ((variance_macro**0.5) * (variance_target**0.5))
+    return _clamp_correlation(correlation)
+
+
+def _pearson_means_from_arrays(values_x: Any, values_y: Any) -> float | None:
+    """与 pearson_correlation 相同的均值中心式 Pearson（winsorize 路径）。"""
+    count = int(values_x.size)
+    if count < 2:
+        return None
+    mean_x = float(values_x.sum()) / count
+    mean_y = float(values_y.sum()) / count
+    centered_x = values_x - mean_x
+    centered_y = values_y - mean_y
+    covariance = float((centered_x * centered_y).sum())
+    variance_x = float((centered_x * centered_x).sum())
+    variance_y = float((centered_y * centered_y).sum())
+    if variance_x <= EPSILON or variance_y <= EPSILON:
+        return None
+    correlation = covariance / ((variance_x**0.5) * (variance_y**0.5))
+    return _clamp_correlation(correlation)
+
+
+def _clamp_correlation(correlation: float) -> float:
+    if abs(correlation - 1.0) <= EPSILON:
+        return 1.0
+    if abs(correlation + 1.0) <= EPSILON:
+        return -1.0
+    if correlation > 1:
+        return 1.0
+    if correlation < -1:
+        return -1.0
+    return correlation
+
+
+def _winsorize_array(values: Any, *, tail_fraction: float) -> Any:
+    """向量化版 _winsorize_values：分位数插值公式与纯 Python 路径一致。"""
+    validated_tail_fraction = _validate_winsorize_tail_fraction(tail_fraction)
+    if validated_tail_fraction is None:
+        raise ValueError("winsorize_tail_fraction must be provided")
+    if values.size < 2:
+        return values
+    ordered = _np.sort(values)
+
+    def sorted_quantile(quantile: float) -> float:
+        # 与 _quantile 相同的线性插值公式（此处 ordered 长度 >= 2）。
+        bounded_quantile = min(max(float(quantile), 0.0), 1.0)
+        position = bounded_quantile * (ordered.size - 1)
+        lower_index = int(position)
+        upper_index = min(lower_index + 1, ordered.size - 1)
+        weight = position - lower_index
+        lower_value = float(ordered[lower_index])
+        upper_value = float(ordered[upper_index])
+        return lower_value + (upper_value - lower_value) * weight
+
+    lower_bound = sorted_quantile(validated_tail_fraction)
+    upper_bound = sorted_quantile(1 - validated_tail_fraction)
+    return _np.minimum(_np.maximum(values, lower_bound), upper_bound)
+
+
 def _align_series_pairs(
     macro_map: dict[date, float],
     target_map: dict[date, float],
@@ -859,27 +1117,56 @@ def _best_lead_lag_details(
     candidates: list[dict[str, float | int]] = []
     best_candidate: dict[str, float | int] | None = None
     best_abs = -1.0
-    for lag_days in range(-max_lag_days, max_lag_days + 1):
-        aligned_pairs = _align_series_pairs(
+    use_vectorized = _np is not None and bool(macro_map) and bool(target_map)
+    if use_vectorized:
+        macro_ordinals, macro_values = _series_arrays(
             macro_map,
+            macro_dates if macro_dates is not None else tuple(sorted(macro_map)),
+        )
+        target_ordinals, target_values = _series_arrays(
             target_map,
-            macro_dates=macro_dates,
-            target_dates=target_dates,
-            alignment_mode=alignment_mode,
-            lag_days=lag_days,
+            target_dates if target_dates is not None else tuple(sorted(target_map)),
         )
-        if len(aligned_pairs) < 2:
-            continue
-        correlation = _aligned_pairs_pearson(
-            aligned_pairs,
-            winsorize_tail_fraction=winsorize_tail_fraction,
-        )
+    for lag_days in range(-max_lag_days, max_lag_days + 1):
+        if use_vectorized:
+            _aligned_ord, aligned_x, aligned_y = _aligned_arrays(
+                macro_ordinals,
+                macro_values,
+                target_ordinals,
+                target_values,
+                alignment_mode=alignment_mode,
+                lag_days=lag_days,
+            )
+            sample_size = int(aligned_x.size)
+            if sample_size < 2:
+                continue
+            correlation = _array_pairs_pearson(
+                aligned_x,
+                aligned_y,
+                winsorize_tail_fraction=winsorize_tail_fraction,
+            )
+        else:
+            aligned_pairs = _align_series_pairs(
+                macro_map,
+                target_map,
+                macro_dates=macro_dates,
+                target_dates=target_dates,
+                alignment_mode=alignment_mode,
+                lag_days=lag_days,
+            )
+            sample_size = len(aligned_pairs)
+            if sample_size < 2:
+                continue
+            correlation = _aligned_pairs_pearson(
+                aligned_pairs,
+                winsorize_tail_fraction=winsorize_tail_fraction,
+            )
         if correlation is None:
             continue
         candidate = {
             "lag_days": lag_days,
             "correlation": correlation,
-            "sample_size": len(aligned_pairs),
+            "sample_size": sample_size,
         }
         candidates.append(candidate)
         correlation_abs = abs(correlation)
