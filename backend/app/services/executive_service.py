@@ -8,12 +8,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Literal
 
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
-from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
+from backend.app.core_finance.risk_tensor import PortfolioRiskTensor, compute_portfolio_risk_tensor
 from backend.app.governance.formal_compute_lineage import resolve_completed_formal_build_lineage
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
@@ -26,7 +27,12 @@ from backend.app.repositories.liability_analytics_repo import LiabilityAnalytics
 from backend.app.repositories.news_warehouse_repo import NewsWarehouseRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
-from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
+from backend.app.repositories.risk_tensor_repo import (
+    RiskTensorRepository,
+    load_current_tyw_liability_rule_version,
+    load_current_tyw_liability_source_version,
+    load_latest_bond_analytics_lineage,
+)
 from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.executive_dashboard import (
     AlertItem,
@@ -2455,6 +2461,124 @@ def _fallback_executive_alerts() -> dict[str, object]:
     )
 
 
+def _decimal_from_fact_value(value: object) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def _portfolio_risk_tensor_from_fact_row(
+    row: dict[str, object],
+    *,
+    report_date: date,
+) -> PortfolioRiskTensor:
+    return PortfolioRiskTensor(
+        report_date=report_date,
+        portfolio_dv01=_decimal_from_fact_value(row["portfolio_dv01"]),
+        regulatory_dv01=_decimal_from_fact_value(row.get("regulatory_dv01")),
+        krd_1y=_decimal_from_fact_value(row["krd_1y"]),
+        krd_3y=_decimal_from_fact_value(row["krd_3y"]),
+        krd_5y=_decimal_from_fact_value(row["krd_5y"]),
+        krd_7y=_decimal_from_fact_value(row["krd_7y"]),
+        krd_10y=_decimal_from_fact_value(row["krd_10y"]),
+        krd_30y=_decimal_from_fact_value(row["krd_30y"]),
+        cs01=_decimal_from_fact_value(row["cs01"]),
+        portfolio_convexity=_decimal_from_fact_value(row["portfolio_convexity"]),
+        portfolio_modified_duration=_decimal_from_fact_value(row["portfolio_modified_duration"]),
+        issuer_concentration_hhi=_decimal_from_fact_value(row["issuer_concentration_hhi"]),
+        issuer_top5_weight=_decimal_from_fact_value(row["issuer_top5_weight"]),
+        asset_cashflow_30d=_decimal_from_fact_value(row["asset_cashflow_30d"]),
+        asset_cashflow_90d=_decimal_from_fact_value(row["asset_cashflow_90d"]),
+        liability_cashflow_30d=_decimal_from_fact_value(row["liability_cashflow_30d"]),
+        liability_cashflow_90d=_decimal_from_fact_value(row["liability_cashflow_90d"]),
+        liquidity_gap_30d=_decimal_from_fact_value(row["liquidity_gap_30d"]),
+        liquidity_gap_90d=_decimal_from_fact_value(row["liquidity_gap_90d"]),
+        liquidity_gap_30d_ratio=_decimal_from_fact_value(row["liquidity_gap_30d_ratio"]),
+        total_market_value=_decimal_from_fact_value(row["total_market_value"]),
+        bond_count=int(row["bond_count"]),
+        quality_flag=str(row["quality_flag"]),
+        warnings=list(row.get("warnings") or []),
+    )
+
+
+def _executive_alerts_risk_tensor_stale_reason(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date_text: str,
+    row: dict[str, object] | None,
+) -> str | None:
+    if row is None:
+        return f"Risk tensor fact missing for report_date={report_date_text}."
+
+    upstream_lineage = load_latest_bond_analytics_lineage(
+        governance_dir=governance_dir,
+        report_date=report_date_text,
+    )
+    if upstream_lineage is None or not upstream_lineage["source_version"]:
+        upstream_source_version = ""
+    else:
+        upstream_source_version = upstream_lineage["source_version"]
+
+    current_tyw_liability_source_version = load_current_tyw_liability_source_version(
+        duckdb_path=duckdb_path,
+        report_date=report_date_text,
+    )
+    current_tyw_liability_rule_version = load_current_tyw_liability_rule_version(
+        duckdb_path=duckdb_path,
+        report_date=report_date_text,
+    )
+
+    if not upstream_source_version:
+        return (
+            f"Bond analytics lineage missing for report_date={report_date_text}; "
+            "cannot validate risk tensor freshness."
+        )
+
+    if str(row.get("upstream_source_version") or "").strip() != upstream_source_version:
+        return f"Risk tensor stale against bond analytics lineage for report_date={report_date_text}."
+
+    stored_tyw_liability_source_version = str(row.get("liability_source_version") or "").strip()
+    if current_tyw_liability_source_version and (
+        stored_tyw_liability_source_version != current_tyw_liability_source_version
+    ):
+        return f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
+
+    stored_tyw_liability_rule_version = str(row.get("liability_rule_version") or "").strip()
+    if current_tyw_liability_rule_version and (
+        stored_tyw_liability_rule_version != current_tyw_liability_rule_version
+    ):
+        return f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
+    return None
+
+
+def _load_executive_alerts_risk_tensor(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    normalized_report_date: str,
+    report_date_value: date,
+    bond_repo: BondAnalyticsRepository,
+) -> PortfolioRiskTensor:
+    fact_row = RiskTensorRepository(duckdb_path).fetch_risk_tensor_row(normalized_report_date)
+    if fact_row is not None and governance_dir:
+        stale_reason = _executive_alerts_risk_tensor_stale_reason(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            report_date_text=normalized_report_date,
+            row=fact_row,
+        )
+        if stale_reason is None:
+            return _portfolio_risk_tensor_from_fact_row(
+                fact_row,
+                report_date=report_date_value,
+            )
+    rows = bond_repo.fetch_bond_analytics_rows(report_date=normalized_report_date)
+    return compute_portfolio_risk_tensor(rows, report_date=report_date_value)
+
+
 def executive_alerts(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
     governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
@@ -2476,8 +2600,13 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
                 source_version=_MISS_SOURCE,
             )
         report_date_value = date.fromisoformat(normalized_report_date)
-        rows = repo.fetch_bond_analytics_rows(report_date=report_date_value.isoformat())
-        tensor = compute_portfolio_risk_tensor(rows, report_date=report_date_value)
+        tensor = _load_executive_alerts_risk_tensor(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=governance_dir,
+            normalized_report_date=normalized_report_date,
+            report_date_value=report_date_value,
+            bond_repo=repo,
+        )
         raw = evaluate_alerts(tensor)
         occurred_at = datetime.now().strftime("%H:%M")
         items = [
