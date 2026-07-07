@@ -10,6 +10,7 @@ import { createApiClient } from "../api/client";
 import type {
   ApiEnvelope,
   ApiQuality,
+  ChoiceNewsEventsPayload,
   LivermoreCandidateHistoryRow,
   LivermoreStockDetailPayload,
   ResultMeta,
@@ -116,6 +117,21 @@ function buildCandidateHistoryEnvelope(items: LivermoreCandidateHistoryRow[]) {
       quality_flag: "ok",
       vendor_status: "ok",
     },
+  );
+}
+
+function buildEmptyChoiceNewsEnvelope() {
+  return buildMockApiEnvelope<ChoiceNewsEventsPayload>(
+    "news.choice.latest",
+    {
+      total_rows: 0,
+      limit: 10,
+      offset: 0,
+      as_of_date: "2026-04-29",
+      excluded_future_rows: 0,
+      events: [],
+    },
+    { basis: "analytical", result_kind: "news.choice.latest" },
   );
 }
 
@@ -234,11 +250,7 @@ describe("StockDetailDrawer", () => {
         }),
       );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
     vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
       buildCandidateHistoryEnvelope([]),
@@ -274,11 +286,7 @@ describe("StockDetailDrawer", () => {
       buildStockDetailEnvelope({ meta: null }),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
@@ -315,11 +323,7 @@ describe("StockDetailDrawer", () => {
       }),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
     const histSpy = vi
       .spyOn(client, "getLivermoreCandidateHistory")
@@ -354,11 +358,7 @@ describe("StockDetailDrawer", () => {
       }),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
     const histSpy = vi
       .spyOn(client, "getLivermoreCandidateHistory")
@@ -562,11 +562,7 @@ describe("StockDetailDrawer", () => {
       buildStockDetailEnvelope(),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
     vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
       buildCandidateHistoryEnvelope([]),
@@ -950,11 +946,7 @@ describe("StockDetailDrawer", () => {
       buildStockDetailEnvelope(),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
@@ -1070,11 +1062,7 @@ describe("StockDetailDrawer", () => {
       buildCandidateHistoryEnvelope([]),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
@@ -1238,11 +1226,7 @@ describe("StockDetailDrawer", () => {
       buildStockDetailEnvelope(),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
@@ -1333,11 +1317,7 @@ describe("StockDetailDrawer", () => {
       buildStockDetailEnvelope(),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
@@ -1376,11 +1356,7 @@ describe("StockDetailDrawer", () => {
       ),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(
@@ -1420,11 +1396,7 @@ describe("StockDetailDrawer", () => {
       buildStockDetailEnvelope(),
     );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
-      buildMockApiEnvelope(
-        "news.choice.latest",
-        { total_rows: 0, limit: 10, offset: 0, events: [] },
-        { basis: "analytical", result_kind: "news.choice.latest" },
-      ),
+      buildEmptyChoiceNewsEnvelope(),
     );
 
     render(

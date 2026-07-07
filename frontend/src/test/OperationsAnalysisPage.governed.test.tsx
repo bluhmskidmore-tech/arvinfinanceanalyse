@@ -235,6 +235,8 @@ describe("OperationsAnalysisPage governed values", () => {
           total_rows: 4,
           limit: 3,
           offset: 0,
+          as_of_date: "2026-04-10",
+          excluded_future_rows: 0,
           events: [],
         },
       })),

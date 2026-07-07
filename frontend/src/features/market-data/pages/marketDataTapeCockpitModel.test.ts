@@ -519,6 +519,8 @@ describe("buildMarketDataTapeCockpitModel", () => {
         total_rows: 2,
         limit: 2,
         offset: 0,
+        as_of_date: "2026-06-10",
+        excluded_future_rows: 0,
         events: [
           {
             event_key: "older",

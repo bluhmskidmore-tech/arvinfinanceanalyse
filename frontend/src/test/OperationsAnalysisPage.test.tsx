@@ -198,6 +198,8 @@ describe("OperationsAnalysisPage", () => {
         total_rows: 2,
         limit: 3,
         offset: 0,
+        as_of_date: "2026-04-10",
+        excluded_future_rows: 0,
         events: [
           {
             event_key: "evt-001",

@@ -128,6 +128,8 @@ describe("NewsEventsPage", () => {
             total_rows: 75,
             limit: options.limit,
             offset: options.offset,
+            as_of_date: "2026-04-24",
+            excluded_future_rows: 0,
             compare: makeComparePayload(),
             events: page1
               ? [
@@ -229,6 +231,8 @@ describe("NewsEventsPage", () => {
         total_rows: 1,
         limit: PAGE_SIZE,
         offset: 0,
+        as_of_date: "2026-04-24",
+        excluded_future_rows: 0,
         compare: makeComparePayload(),
         events: [
           makeEvent({
