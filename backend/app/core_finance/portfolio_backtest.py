@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import math
 import statistics
+from bisect import bisect_right
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -19,6 +20,11 @@ from backend.app.core_finance.strategy_policy import POLICY
 DEFAULT_INITIAL_CAPITAL = 100.0
 DEFAULT_MAX_POSITIONS = 5
 PORTFOLIO_ENGINE_VERSION = "pbt_v2_path_mode"
+VOL_TARGET_NOT_WIRED_WARNING = (
+    "vol_target 仅作为标注写入 metrics，模拟循环不会据此缩放仓位；"
+    "实际波动率目标暴露需通过 vol_target_overlay.build_vol_target_index_comparison "
+    "计算出的 exposure_by_date 传入才会生效。"
+)
 VARIANT_HORIZONS = {
     "fixed_5d": "5d",
     "fixed_20d": "20d",
@@ -61,6 +67,48 @@ class _Lot:
     entry_price: float
 
 
+class _IndexedPathRows(Sequence[Mapping[str, object]]):
+    def __init__(self, rows: Sequence[Mapping[str, object]]) -> None:
+        self._rows = tuple(rows)
+        self._row_index_by_date: dict[str, int] = {}
+        for index, row in enumerate(self._rows):
+            date_key = _date_text(row.get("trade_date") or row.get("date"))
+            self._row_index_by_date.setdefault(date_key, index)
+
+        mark_dates: list[str] = []
+        marks_as_of: list[float | None] = []
+        mark: float | None = None
+        for row in self._rows:
+            date_key = _date_text(row.get("trade_date") or row.get("date"))
+            if not date_key:
+                break
+            candidate = path_mark_price(row)
+            if candidate is not None:
+                mark = candidate
+            mark_dates.append(date_key)
+            marks_as_of.append(mark)
+        self._mark_dates = tuple(mark_dates)
+        self._marks_as_of = tuple(marks_as_of)
+
+    def __getitem__(
+        self,
+        index: int | slice,
+    ) -> Mapping[str, object] | tuple[Mapping[str, object], ...]:
+        return self._rows[index]
+
+    def __len__(self) -> int:
+        return len(self._rows)
+
+    def row_index(self, trade_date: str) -> int | None:
+        return self._row_index_by_date.get(trade_date)
+
+    def mark_for_date(self, trade_date: str) -> float | None:
+        index = bisect_right(self._mark_dates, trade_date) - 1
+        if index < 0:
+            return None
+        return self._marks_as_of[index]
+
+
 @dataclass(frozen=True)
 class _Position:
     stock_code: str
@@ -75,7 +123,7 @@ class _Position:
     target_weight: float
     sizing: str
     entry_price: float | None = None
-    path_rows: tuple[Mapping[str, object], ...] = ()
+    path_rows: Sequence[Mapping[str, object]] = ()
     risk_per_trade: float | None = None
     stop_distance_pct: float | None = None
     risk_budget_planned: float | None = None
@@ -369,7 +417,7 @@ def run_portfolio_backtest(
                 continue
             exit_date = candidate.exit_date
             return_net = candidate.return_net
-            path_rows: tuple[Mapping[str, object], ...] = ()
+            path_rows: Sequence[Mapping[str, object]] = ()
             entry_price = candidate.entry_price
             if mode == "path":
                 path_key = position_path_key(candidate.stock_code, candidate.entry_date)
@@ -517,25 +565,26 @@ def run_portfolio_backtest(
                 }
             )
 
-        if mode == "path":
-            remaining_positions = []
-            for position in positions:
-                if position.exit_date <= trade_date:
-                    proceeds = _position_exit_proceeds(position, mode=mode)
-                    cash += proceeds
-                    realized_pnl += proceeds - position.amount
-                    risk_budget_loss, risk_budget_planned, risk_budget_hit = _risk_budget_sale_stats(
-                        position,
-                        return_net=_sell_return_net(position, proceeds),
-                    )
-                    if risk_budget_hit is not None:
-                        risk_budget_trade_count += 1
-                        if risk_budget_hit:
-                            risk_budget_hit_count += 1
-                    trades.append(_sell_trade_row(position, trade_date=trade_date, proceeds=proceeds))
-                else:
-                    remaining_positions.append(position)
-            positions = remaining_positions
+        # Runs for every mode so a same-day exit_date == entry_date position
+        # bought above is not left open until the next trade_date.
+        remaining_positions = []
+        for position in positions:
+            if position.exit_date <= trade_date:
+                proceeds = _position_exit_proceeds(position, mode=mode)
+                cash += proceeds
+                realized_pnl += proceeds - position.amount
+                risk_budget_loss, risk_budget_planned, risk_budget_hit = _risk_budget_sale_stats(
+                    position,
+                    return_net=_sell_return_net(position, proceeds),
+                )
+                if risk_budget_hit is not None:
+                    risk_budget_trade_count += 1
+                    if risk_budget_hit:
+                        risk_budget_hit_count += 1
+                trades.append(_sell_trade_row(position, trade_date=trade_date, proceeds=proceeds))
+            else:
+                remaining_positions.append(position)
+        positions = remaining_positions
 
         invested = _invested_value(positions, trade_date, mode=mode)
         equity = cash + invested
@@ -586,6 +635,7 @@ def run_portfolio_backtest(
             "entry_style": entry_style,
             "max_entry_premium": max_entry_premium,
             "vol_target": vol_target,
+            "vol_target_warning": VOL_TARGET_NOT_WIRED_WARNING if vol_target is not None else None,
             "entry_premium_blocked": skip_counts["entry_premium_blocked"],
             "probe_fraction": probe_fraction_value if entry_style == "probe_pyramid" else None,
             "confirm_days": confirm_days_value if entry_style == "probe_pyramid" else None,
@@ -705,28 +755,50 @@ def build_benchmark_comparison(
 
     state_by_date = _market_state_by_date(market_state_rows)
     exposure_by_date = _exposure_by_date(exposure_rows)
+    start_date = str(strategy_curve[0]["date"])[:10]
+
+    # Compound over the benchmark's own full trading-day calendar (not just
+    # the strategy curve's anchor dates) so a sparse strategy curve cannot
+    # skip intermediate benchmark trading days. Anchor lookups below then
+    # take the last compounded value on or before each strategy curve date.
+    buy_hold_by_date: dict[str, float] = {}
+    gate_timing_by_date: dict[str, float] = {}
     buy_hold = float(initial_capital)
     gate_timing = float(initial_capital)
+    for date_key in sorted(benchmark_returns):
+        if date_key <= start_date:
+            continue
+        daily_return = benchmark_returns[date_key]
+        buy_hold *= 1.0 + daily_return
+        gate_timing *= 1.0 + daily_return * _exposure_for_date(
+            date_key,
+            state=state_by_date.get(date_key, "OFF"),
+            exposure_by_date=exposure_by_date,
+            exposure_by_market_state=exposure_by_market_state,
+        )
+        buy_hold_by_date[date_key] = buy_hold
+        gate_timing_by_date[date_key] = gate_timing
+    sorted_benchmark_dates = sorted(buy_hold_by_date)
+
+    def _value_as_of(series: Mapping[str, float], date_key: str) -> float:
+        index = bisect_right(sorted_benchmark_dates, date_key) - 1
+        if index < 0:
+            return float(initial_capital)
+        return series[sorted_benchmark_dates[index]]
+
     curves: list[dict[str, object]] = []
-    for index, row in enumerate(strategy_curve):
+    for row in strategy_curve:
         date_key = str(row["date"])[:10]
-        if index > 0:
-            daily_return = benchmark_returns.get(date_key, 0.0)
-            buy_hold *= 1.0 + daily_return
-            gate_timing *= 1.0 + daily_return * _exposure_for_date(
-                date_key,
-                state=state_by_date.get(date_key, "OFF"),
-                exposure_by_date=exposure_by_date,
-                exposure_by_market_state=exposure_by_market_state,
-            )
         strategy_value = float(row["net_value"])
+        buy_hold_value = _value_as_of(buy_hold_by_date, date_key)
+        gate_timing_value = _value_as_of(gate_timing_by_date, date_key)
         curves.append(
             {
                 "date": date_key,
                 "strategy": round(strategy_value, 6),
-                "csi300_buy_hold": round(buy_hold, 6),
-                "gate_timing_csi300": round(gate_timing, 6),
-                "stock_selection_increment": round(strategy_value - gate_timing, 6),
+                "csi300_buy_hold": round(buy_hold_value, 6),
+                "gate_timing_csi300": round(gate_timing_value, 6),
+                "stock_selection_increment": round(strategy_value - gate_timing_value, 6),
             }
         )
 
@@ -1180,7 +1252,7 @@ def _probe_event_for_open(position: _Position, trade_date: str) -> dict[str, obj
         return None
     if position.signal_high is None or position.confirm_days is None:
         return None
-    rows = tuple(position.path_rows)
+    rows = position.path_rows
     entry_index = _path_row_index(rows, position.entry_date)
     open_index = _path_row_index(rows, trade_date)
     if entry_index is None or open_index is None:
@@ -1205,6 +1277,8 @@ def _probe_event_for_open(position: _Position, trade_date: str) -> dict[str, obj
 
 
 def _path_row_index(rows: Sequence[Mapping[str, object]], trade_date: str) -> int | None:
+    if isinstance(rows, _IndexedPathRows):
+        return rows.row_index(trade_date)
     for index, row in enumerate(rows):
         if _date_text(row.get("trade_date") or row.get("date")) == trade_date:
             return index
@@ -1217,9 +1291,11 @@ def _path_open_price(row: Mapping[str, object]) -> float | None:
 
 def _price_paths_by_key(
     price_paths: Mapping[str, Sequence[Mapping[str, object]]],
-) -> dict[str, tuple[Mapping[str, object], ...]]:
+) -> dict[str, _IndexedPathRows]:
     return {
-        str(key): tuple(sorted(rows, key=lambda row: _date_text(row.get("trade_date") or row.get("date"))))
+        str(key): _IndexedPathRows(
+            sorted(rows, key=lambda row: _date_text(row.get("trade_date") or row.get("date")))
+        )
         for key, rows in price_paths.items()
     }
 
@@ -1265,6 +1341,8 @@ def _position_value(position: _Position, trade_date: str, *, mode: str) -> float
 
 
 def _path_mark_for_date(rows: Sequence[Mapping[str, object]], trade_date: str) -> float | None:
+    if isinstance(rows, _IndexedPathRows):
+        return rows.mark_for_date(trade_date)
     mark: float | None = None
     for row in rows:
         date_key = _date_text(row.get("trade_date") or row.get("date"))

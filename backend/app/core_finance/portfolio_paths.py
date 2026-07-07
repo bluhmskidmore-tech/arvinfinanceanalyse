@@ -34,18 +34,29 @@ def load_position_price_paths(
         _columns(conn, TABLE_ADJ_FACTOR)
     )
 
-    paths: dict[str, list[dict[str, object]]] = {}
+    entry_keys: list[tuple[str, str]] = []
     for entry in entries:
         stock_code = str(entry.get("stock_code") or "").strip()
         entry_date = str(entry.get("entry_date") or "")[:10]
         if not stock_code or not entry_date:
             continue
-        rows = _load_raw_bars(
-            conn,
-            stock_code=stock_code,
-            entry_date=entry_date,
-            has_adj=has_adj,
-        )
+        entry_keys.append((stock_code, entry_date))
+    if not entry_keys:
+        return {}
+
+    raw_rows_by_stock = _load_raw_bars_by_stock(
+        conn,
+        stock_codes=sorted({stock_code for stock_code, _entry_date in entry_keys}),
+        min_entry_date=min(entry_date for _stock_code, entry_date in entry_keys),
+        has_adj=has_adj,
+    )
+    paths: dict[str, list[dict[str, object]]] = {}
+    for stock_code, entry_date in entry_keys:
+        rows = [
+            row
+            for trade_date, row in raw_rows_by_stock.get(stock_code, ())
+            if trade_date >= entry_date
+        ]
         if rows:
             normalized_rows = _apply_path_price_basis(_normalize_path_rows(rows))
             paths[position_path_key(stock_code, entry_date)] = _truncate_after_horizon_exit(
@@ -102,13 +113,15 @@ def path_mark_price(row: Mapping[str, object]) -> float | None:
     return _first_float(row.get("adj_close"), row.get("close"), row.get("close_value"))
 
 
-def _load_raw_bars(
+def _load_raw_bars_by_stock(
     conn: duckdb.DuckDBPyConnection,
     *,
-    stock_code: str,
-    entry_date: str,
+    stock_codes: Sequence[str],
+    min_entry_date: str,
     has_adj: bool,
-) -> list[tuple[Any, ...]]:
+) -> dict[str, list[tuple[str, tuple[Any, ...]]]]:
+    if not stock_codes:
+        return {}
     adj_select = "af.adj_factor" if has_adj else "cast(null as double) as adj_factor"
     adj_join = (
         f"""
@@ -119,9 +132,11 @@ def _load_raw_bars(
         if has_adj
         else ""
     )
-    return conn.execute(
+    stock_placeholders = ", ".join("?" for _stock_code in stock_codes)
+    rows = conn.execute(
         f"""
         select
+          d.stock_code,
           d.trade_date,
           d.open_value,
           d.high_value,
@@ -135,13 +150,19 @@ def _load_raw_bars(
           {adj_select}
         from {TABLE_OBS} d
         {adj_join}
-        where d.stock_code = ?
+        where d.stock_code in ({stock_placeholders})
           and cast(d.trade_date as date) >= cast(? as date)
           and d.close_value is not null
-        order by cast(d.trade_date as date)
+        order by d.stock_code, cast(d.trade_date as date)
         """,
-        [stock_code, entry_date],
+        [*stock_codes, min_entry_date],
     ).fetchall()
+    by_stock: dict[str, list[tuple[str, tuple[Any, ...]]]] = {}
+    for row in rows:
+        stock_code = str(row[0]).strip()
+        trade_date = str(row[1])[:10]
+        by_stock.setdefault(stock_code, []).append((trade_date, row[1:]))
+    return by_stock
 
 
 def _normalize_path_rows(rows: Sequence[tuple[Any, ...]]) -> list[dict[str, object]]:

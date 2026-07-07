@@ -442,6 +442,34 @@ def test_portfolio_path_mode_does_not_fund_open_with_same_day_close_exit() -> No
     assert result.skip_counts["no_slot"] == 1
 
 
+def test_portfolio_horizon_mode_exits_same_day_entry_date_equals_exit_date() -> None:
+    result = run_portfolio_backtest(
+        [
+            _execution_row(
+                signal_date="2026-05-29",
+                stock_code="000001.SZ",
+                rank=1,
+                market_state="HOT",
+                entry_date="2026-06-01",
+                exit_date_5d="2026-06-01",
+                return_5d_net_adj=0.05,
+            )
+        ],
+        [{"trade_date": "2026-06-01", "market_state": "HOT"}],
+        exposure_by_date={"2026-06-01": 1.0},
+        variant="fixed_5d",
+        initial_capital=100.0,
+        max_positions=1,
+        exposure_by_market_state=EXPOSURE,
+    )
+
+    sells = [row for row in result.trades if row["action"] == "sell"]
+    assert sells and sells[0]["date"] == "2026-06-01"
+    curve_by_date = {row["date"]: row for row in result.equity_curve}
+    assert curve_by_date["2026-06-01"]["open_positions"] == 0
+    assert curve_by_date["2026-06-01"]["net_value"] == pytest.approx(105.0)
+
+
 def test_portfolio_risk_budget_sizing_weights_by_stop_distance() -> None:
     result = run_portfolio_backtest(
         [
@@ -663,6 +691,56 @@ def test_portfolio_max_entry_premium_blocks_without_consuming_slot() -> None:
     assert result.skip_counts["no_slot"] == 0
     assert result.metrics["entry_premium_blocked"] == 1
     assert result.metrics["max_entry_premium"] == pytest.approx(0.03)
+
+
+def test_portfolio_vol_target_emits_warning_when_not_wired_to_exposure() -> None:
+    result = run_portfolio_backtest(
+        [
+            _execution_row(
+                signal_date="2026-05-29",
+                stock_code="000001.SZ",
+                rank=1,
+                market_state="HOT",
+                entry_date="2026-06-01",
+                exit_date_5d="2026-06-03",
+                return_5d_net_adj=0.0,
+            )
+        ],
+        [{"trade_date": "2026-06-01", "market_state": "HOT"}],
+        variant="fixed_5d",
+        initial_capital=100.0,
+        max_positions=1,
+        exposure_by_market_state=EXPOSURE,
+        vol_target=0.15,
+    )
+
+    assert result.metrics["vol_target"] == pytest.approx(0.15)
+    assert result.metrics["vol_target_warning"] is not None
+    assert "exposure_by_date" in result.metrics["vol_target_warning"]
+
+
+def test_portfolio_vol_target_none_emits_no_warning() -> None:
+    result = run_portfolio_backtest(
+        [
+            _execution_row(
+                signal_date="2026-05-29",
+                stock_code="000001.SZ",
+                rank=1,
+                market_state="HOT",
+                entry_date="2026-06-01",
+                exit_date_5d="2026-06-03",
+                return_5d_net_adj=0.0,
+            )
+        ],
+        [{"trade_date": "2026-06-01", "market_state": "HOT"}],
+        variant="fixed_5d",
+        initial_capital=100.0,
+        max_positions=1,
+        exposure_by_market_state=EXPOSURE,
+    )
+
+    assert result.metrics["vol_target"] is None
+    assert result.metrics["vol_target_warning"] is None
 
 
 def test_portfolio_probe_pyramid_confirms_and_adds_next_open() -> None:
@@ -930,6 +1008,35 @@ def test_benchmark_comparison_prefers_daily_exposure() -> None:
 
     metrics = comparison["metrics"]
     assert metrics["gate_timing_csi300"]["cumulative_return"] == pytest.approx(0.025)
+
+
+def test_benchmark_comparison_compounds_intermediate_days_for_sparse_strategy_curve() -> None:
+    strategy_curve = [
+        {"date": "2026-06-01", "net_value": 100.0},
+        {"date": "2026-06-05", "net_value": 100.0},
+    ]
+    benchmark_rows = [
+        {"trade_date": "2026-06-01", "return": 0.0},
+        {"trade_date": "2026-06-02", "return": 0.01},
+        {"trade_date": "2026-06-03", "return": 0.01},
+        {"trade_date": "2026-06-04", "return": 0.01},
+        {"trade_date": "2026-06-05", "return": 0.01},
+    ]
+
+    comparison = build_benchmark_comparison(
+        strategy_curve,
+        benchmark_rows,
+        [],
+        exposure_by_market_state=EXPOSURE,
+        initial_capital=100.0,
+    )
+
+    assert comparison["status"] == "ready"
+    curve_by_date = {row["date"]: row for row in comparison["curves"]}
+    assert curve_by_date["2026-06-01"]["csi300_buy_hold"] == pytest.approx(100.0)
+    # 100 * 1.01^4 compounded over the benchmark's own 06-02..06-05 trading
+    # days, not just the single 06-05 return the old code used to apply.
+    assert curve_by_date["2026-06-05"]["csi300_buy_hold"] == pytest.approx(104.060401)
 
 
 def test_liquidity_floor_keeps_missing_amounts_and_removes_known_fails() -> None:
