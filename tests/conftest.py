@@ -37,8 +37,8 @@ def _install_windows_readable_pytest_basetemp() -> None:
                     basetemp = basetemp.with_name(f"{basetemp.name}-readable")
             basetemp.mkdir(parents=True, exist_ok=True)
         else:
-            basetemp = Path.cwd() / ".pytest-basetemp"
-            basetemp.mkdir(exist_ok=True)
+            basetemp = Path.cwd() / ".codex-tmp" / "pytest-basetemp"
+            basetemp.mkdir(parents=True, exist_ok=True)
         self._basetemp = basetemp.resolve()
         return self._basetemp
 

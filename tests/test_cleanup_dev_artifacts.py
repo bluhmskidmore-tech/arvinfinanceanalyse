@@ -92,6 +92,21 @@ def test_cleanup_dev_artifacts_apply_respects_protected_paths_and_extensions(tmp
     assert "Skipped protected" in output
 
 
+def test_cleanup_dev_artifacts_apply_removes_legacy_root_pytest_basetemp_with_db_artifacts(tmp_path):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    legacy_basetemp = _make_dir(repo_root / ".pytest-basetemp")
+    _write_file(legacy_basetemp / "test_capture_ready_golden_samp114" / "moss.duckdb", days_old=30)
+    os.utime(legacy_basetemp / "test_capture_ready_golden_samp114", (_old_timestamp(), _old_timestamp()))
+    os.utime(legacy_basetemp, (_old_timestamp(), _old_timestamp()))
+
+    output = _run_cleanup(repo_root, "-Apply")
+
+    assert "APPLY cleanup-dev-artifacts" in output
+    assert ".pytest-basetemp" in output
+    assert not legacy_basetemp.exists()
+
+
 def test_cleanup_dev_artifacts_screenshots_require_explicit_flag(tmp_path):
     repo_root = tmp_path / "repo"
     repo_root.mkdir()

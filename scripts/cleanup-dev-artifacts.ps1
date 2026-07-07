@@ -88,6 +88,17 @@ function Test-ContainsProtectedExtension {
   return $null -ne $protectedFile
 }
 
+function Test-IsLegacyRootPytestBasetemp {
+  param([Parameter(Mandatory = $true)][string]$FullPath)
+
+  $relative = Get-RelativePathText -FullPath $FullPath
+  return (
+    $relative -eq ".pytest-basetemp" -or
+    $relative.StartsWith(".pytest-basetemp\", [System.StringComparison]::OrdinalIgnoreCase) -or
+    $relative.StartsWith(".pytest-basetemp/", [System.StringComparison]::OrdinalIgnoreCase)
+  )
+}
+
 function Add-CleanupCandidate {
   param(
     [Parameter(Mandatory = $true)][System.IO.FileSystemInfo]$Item,
@@ -102,7 +113,11 @@ function Add-CleanupCandidate {
     return
   }
 
-  if ((Test-ProtectedPath -FullPath $fullPath) -or (Test-ContainsProtectedExtension -Item $Item)) {
+  $skipForProtectedExtension = (
+    (Test-ContainsProtectedExtension -Item $Item) -and
+    -not (Test-IsLegacyRootPytestBasetemp -FullPath $fullPath)
+  )
+  if ((Test-ProtectedPath -FullPath $fullPath) -or $skipForProtectedExtension) {
     $skippedProtected.Add([pscustomobject]@{
       Path = $relativePath
       Reason = $Reason
@@ -177,6 +192,12 @@ Add-DirectoryChildrenByPattern `
   -NamePatterns @(".pytest-tmp*") `
   -Reason "legacy pytest temp directory"
 
+Add-DirectoryChildrenByPattern `
+  -ParentPath (Join-Path $repoRootPath ".pytest-basetemp") `
+  -NamePatterns @("*") `
+  -Reason "legacy root pytest run output"
+
+Add-DirectoryIfPresent -Path (Join-Path $repoRootPath ".pytest-basetemp") -Reason "legacy root pytest basetemp shell"
 Add-DirectoryIfPresent -Path (Join-Path $repoRootPath ".pytest_cache") -Reason "pytest cache"
 Add-DirectoryIfPresent -Path (Join-Path $repoRootPath ".ruff_cache") -Reason "ruff cache"
 Add-DirectoryIfPresent -Path (Join-Path $repoRootPath ".mypy_cache") -Reason "mypy cache"
@@ -227,7 +248,11 @@ foreach ($candidate in $candidates) {
 
   $resolvedCandidate = (Resolve-Path -LiteralPath $candidate.FullPath).Path.TrimEnd("\", "/")
   Get-RelativePathText -FullPath $resolvedCandidate | Out-Null
-  if ((Test-ProtectedPath -FullPath $resolvedCandidate) -or (Test-ContainsProtectedExtension -Item (Get-Item -LiteralPath $resolvedCandidate -Force))) {
+  $skipForProtectedExtension = (
+    (Test-ContainsProtectedExtension -Item (Get-Item -LiteralPath $resolvedCandidate -Force)) -and
+    -not (Test-IsLegacyRootPytestBasetemp -FullPath $resolvedCandidate)
+  )
+  if ((Test-ProtectedPath -FullPath $resolvedCandidate) -or $skipForProtectedExtension) {
     Write-Host ("SKIP`t{0}`tprotected at delete time" -f $candidate.Path)
     continue
   }
