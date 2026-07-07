@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import date
+from pathlib import Path
 
 from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
@@ -19,10 +21,89 @@ from backend.app.services.explicit_numeric import promote_flat_payload
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
+from backend.app.services.runtime_cache import get_runtime_cache
 from backend.app.tasks.risk_tensor_materialize import CACHE_KEY, CACHE_VERSION, RULE_VERSION
+
+_RISK_TENSOR_CACHE_TTL_SECONDS = 300.0
+_RISK_TENSOR_CACHE = get_runtime_cache(
+    "risk_tensor.read_models",
+    ttl_seconds=_RISK_TENSOR_CACHE_TTL_SECONDS,
+)
+_RiskTensorCacheKey = tuple[object, ...]
+
+
+def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int] | None:
+    path = Path(duckdb_path)
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return None
+
+
+def _risk_tensor_cache_key(
+    endpoint: str,
+    duckdb_path: str,
+    governance_dir: str,
+    *parts: object,
+) -> _RiskTensorCacheKey | None:
+    storage = _duckdb_storage_identity(duckdb_path)
+    if storage is None:
+        return None
+    resolved_path, mtime_ns, size = storage
+    return (
+        endpoint,
+        resolved_path,
+        mtime_ns,
+        size,
+        str(governance_dir),
+        RULE_VERSION,
+        CACHE_VERSION,
+        *parts,
+    )
+
+
+def _with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    meta = response.get("result_meta")
+    if isinstance(meta, dict):
+        meta["trace_id"] = _trace_id()
+    return response
+
+
+def invalidate_risk_tensor_read_cache() -> None:
+    _RISK_TENSOR_CACHE.clear()
 
 
 def risk_tensor_dates_envelope(
+    duckdb_path: str,
+    governance_dir: str,
+) -> dict[str, object]:
+    cache_key = _risk_tensor_cache_key(
+        "dates",
+        duckdb_path,
+        governance_dir,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _RISK_TENSOR_CACHE.get_or_set(
+                cache_key,
+                lambda: _risk_tensor_dates_envelope_uncached(
+                    duckdb_path=duckdb_path,
+                    governance_dir=governance_dir,
+                ),
+            )
+        )
+    return _risk_tensor_dates_envelope_uncached(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+    )
+
+
+def _risk_tensor_dates_envelope_uncached(
+    *,
     duckdb_path: str,
     governance_dir: str,
 ) -> dict[str, object]:
@@ -115,6 +196,39 @@ def risk_tensor_envelope(
 ) -> dict[str, object]:
     report_date_value = _coerce_report_date(report_date)
     report_date_text = report_date_value.isoformat()
+    cache_key = _risk_tensor_cache_key(
+        "tensor",
+        duckdb_path,
+        governance_dir,
+        report_date_text,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _RISK_TENSOR_CACHE.get_or_set(
+                cache_key,
+                lambda: _risk_tensor_envelope_uncached(
+                    duckdb_path=duckdb_path,
+                    governance_dir=governance_dir,
+                    report_date_value=report_date_value,
+                    report_date_text=report_date_text,
+                ),
+            )
+        )
+    return _risk_tensor_envelope_uncached(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date_value=report_date_value,
+        report_date_text=report_date_text,
+    )
+
+
+def _risk_tensor_envelope_uncached(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date_value: date,
+    report_date_text: str,
+) -> dict[str, object]:
     repo = RiskTensorRepository(str(duckdb_path))
     row = repo.fetch_risk_tensor_row(report_date_text)
 
