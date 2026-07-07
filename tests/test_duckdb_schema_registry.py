@@ -10,7 +10,7 @@ import duckdb
 from backend.app.repositories.duckdb_migrations import register_all
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 
-_BASELINE_VERSION_COUNT = 29
+_BASELINE_VERSION_COUNT = 30
 
 
 def test_apply_pending_on_fresh_db(tmp_path) -> None:
@@ -70,7 +70,7 @@ def test_migration_tracking(tmp_path) -> None:
     assert versions == list(range(1, _BASELINE_VERSION_COUNT + 1))
     assert len(rows) == _BASELINE_VERSION_COUNT
     assert any("snapshot" in str(row[1]).lower() for row in rows)
-    assert rows[-1] == (29, "Commodity futures main-contract daily ingest")
+    assert rows[-1] == (30, "Formal fact and snapshot read-path indexes")
 
 
 def test_legacy_missing_zqtz_tables_can_still_recover_current_schema(tmp_path) -> None:

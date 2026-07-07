@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import duckdb
 from backend.app.repositories.duckdb_schema_registry import (
     DuckDBSchemaRegistry,
@@ -159,6 +161,15 @@ def _v29_commodity_futures_daily(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "29_commodity_futures_daily.sql")
 
 
+def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
+    text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
+    for statement in parse_registry_sql_text(text):
+        match = re.search(r"\bon\s+([a-z_][a-z0-9_]*)\s*\(", statement, re.IGNORECASE)
+        table_name = match.group(1) if match else None
+        if table_name is not None and _main_table_exists(conn, table_name):
+            conn.execute(statement)
+
+
 def _v1_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "01_snapshot.sql")
 
@@ -258,6 +269,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(27, "Choice stock factor snapshot for equity strategies", _v27_choice_stock_factor_snapshot)
     registry.register(28, "Livermore candidate history analytical replay", _v28_livermore_candidate_history)
     registry.register(29, "Commodity futures main-contract daily ingest", _v29_commodity_futures_daily)
+    registry.register(30, "Formal fact and snapshot read-path indexes", _v30_fact_snapshot_indexes)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

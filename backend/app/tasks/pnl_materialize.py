@@ -206,50 +206,56 @@ def _materialize_pnl_facts_under_writer_lock(
             [report_date],
         )
 
-        for row in formal_fi_rows:
-            conn.execute(
+        if formal_fi_rows:
+            conn.executemany(
                 """
                 insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    row.report_date.isoformat(),
-                    row.instrument_code,
-                    row.portfolio_name,
-                    row.cost_center,
-                    row.invest_type_std,
-                    row.accounting_basis,
-                    row.currency_basis,
-                    row.interest_income_514,
-                    row.fair_value_change_516,
-                    row.capital_gain_517,
-                    row.manual_adjustment,
-                    row.total_pnl,
-                    row.source_version,
-                    RULE_VERSION,
-                    row.ingest_batch_id,
-                    row.trace_id,
+                    (
+                        row.report_date.isoformat(),
+                        row.instrument_code,
+                        row.portfolio_name,
+                        row.cost_center,
+                        row.invest_type_std,
+                        row.accounting_basis,
+                        row.currency_basis,
+                        row.interest_income_514,
+                        row.fair_value_change_516,
+                        row.capital_gain_517,
+                        row.manual_adjustment,
+                        row.total_pnl,
+                        row.source_version,
+                        RULE_VERSION,
+                        row.ingest_batch_id,
+                        row.trace_id,
+                    )
+                    for row in formal_fi_rows
                 ],
             )
 
-        for row in bridge_rows:
-            conn.execute(
+        if bridge_rows:
+            conn.executemany(
                 """
                 insert into fact_nonstd_pnl_bridge values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    row.report_date.isoformat(),
-                    row.bond_code,
-                    row.portfolio_name,
-                    row.cost_center,
-                    row.interest_income_514,
-                    row.fair_value_change_516,
-                    row.capital_gain_517,
-                    row.manual_adjustment,
-                    row.total_pnl,
-                    row.source_version,
-                    RULE_VERSION,
-                    row.ingest_batch_id,
-                    row.trace_id,
+                    (
+                        row.report_date.isoformat(),
+                        row.bond_code,
+                        row.portfolio_name,
+                        row.cost_center,
+                        row.interest_income_514,
+                        row.fair_value_change_516,
+                        row.capital_gain_517,
+                        row.manual_adjustment,
+                        row.total_pnl,
+                        row.source_version,
+                        RULE_VERSION,
+                        row.ingest_batch_id,
+                        row.trace_id,
+                    )
+                    for row in bridge_rows
                 ],
             )
 
