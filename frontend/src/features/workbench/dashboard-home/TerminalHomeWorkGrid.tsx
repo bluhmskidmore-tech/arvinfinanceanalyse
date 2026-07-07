@@ -427,8 +427,12 @@ function buildAvailabilityRows(view: DashboardHomeBodyView): AvailabilityModuleR
   ];
 }
 
-function HomeDataAvailabilityPanel({ view }: { view: DashboardHomeBodyView }) {
-  const rows = buildAvailabilityRows(view);
+const HomeDataAvailabilityPanel = memo(function HomeDataAvailabilityPanel({
+  view,
+}: {
+  view: DashboardHomeBodyView;
+}) {
+  const rows = useMemo(() => buildAvailabilityRows(view), [view]);
   const availableCount = rows.filter((row) => row.state.kind === "ready").length;
   const reviewCount = rows.length - availableCount;
 
@@ -510,7 +514,8 @@ function HomeDataAvailabilityPanel({ view }: { view: DashboardHomeBodyView }) {
       </DiagnosticDisclosure>
     </section>
   );
-}
+});
+HomeDataAvailabilityPanel.displayName = "HomeDataAvailabilityPanel";
 
 function latestValueIndex(
   points: DashboardHomeBodyView["incomeTrend"],
@@ -698,7 +703,7 @@ function buildIncomeTrendOption(points: DashboardHomeBodyView["incomeTrend"]): E
   };
 }
 
-function HoldingsPanel({ view }: { view: DashboardHomeBodyView }) {
+const HoldingsPanel = memo(function HoldingsPanel({ view }: { view: DashboardHomeBodyView }) {
   const hasRows = view.holdingsState.kind === "ready" && view.holdingRows.length > 0;
   const targetRowCount = hasRows
     ? Math.min(
@@ -762,7 +767,8 @@ function HoldingsPanel({ view }: { view: DashboardHomeBodyView }) {
       </CardBody>
     </Card>
   );
-}
+});
+HoldingsPanel.displayName = "HoldingsPanel";
 
 type SourceGateRow = {
   id: string;
@@ -868,8 +874,8 @@ function buildSourceGateRows(view: DashboardHomeBodyView): SourceGateRow[] {
   return rows;
 }
 
-function SourceGatePanel({ view }: { view: DashboardHomeBodyView }) {
-  const sourceGateRows = buildSourceGateRows(view);
+const SourceGatePanel = memo(function SourceGatePanel({ view }: { view: DashboardHomeBodyView }) {
+  const sourceGateRows = useMemo(() => buildSourceGateRows(view), [view]);
   const sourceGateStatus = aggregateSourceGateStatus(sourceGateRows);
   const sourceGateLabel = sourceGateRows.length > 0 ? sourceGateStatusLabel(sourceGateStatus) : "等待来源行";
 
@@ -924,9 +930,10 @@ function SourceGatePanel({ view }: { view: DashboardHomeBodyView }) {
       </CardBody>
     </Card>
   );
-}
+});
+SourceGatePanel.displayName = "SourceGatePanel";
 
-function PositionChangesPanel({ view }: { view: DashboardHomeBodyView }) {
+const PositionChangesPanel = memo(function PositionChangesPanel({ view }: { view: DashboardHomeBodyView }) {
   const hasRows = view.positionChangesState.kind === "ready" && view.positionChanges.length > 0;
   const title = hasRows ? `增减仓 TOP${view.positionChanges.length}` : "增减仓 TOP5";
   return (
@@ -969,7 +976,8 @@ function PositionChangesPanel({ view }: { view: DashboardHomeBodyView }) {
       )}
     </article>
   );
-}
+});
+PositionChangesPanel.displayName = "PositionChangesPanel";
 
 function formatResearchMonthDay(publishedAt: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(publishedAt.trim());
@@ -995,6 +1003,15 @@ function isResearchSummaryVisible(summary: string): boolean {
   return text.length > 0 && text !== "—";
 }
 
+function stripDuplicateTitleFromSummary(title: string, summary: string): string {
+  const trimmedTitle = title.trim();
+  const trimmedSummary = summary.trim();
+  if (!trimmedTitle || !trimmedSummary.startsWith(trimmedTitle)) {
+    return trimmedSummary;
+  }
+  return trimmedSummary.slice(trimmedTitle.length).replace(/^[\s\-–—·:：]+/, "");
+}
+
 function formatResearchInstitution(row: HomeResearchReportRow): string | null {
   const institution = row.institution.trim();
   if (institution && institution !== "—") {
@@ -1011,8 +1028,9 @@ function buildResearchMetaLine(row: HomeResearchReportRow): string {
   return [formatResearchInstitution(row), formatResearchCategoryLabel(row.category)].filter(Boolean).join(" · ");
 }
 
-function ResearchReportFeatured({ row }: { row: HomeResearchReportRow }) {
+const ResearchReportFeatured = memo(function ResearchReportFeatured({ row }: { row: HomeResearchReportRow }) {
   const className = `${styles.dhTerminalReportFeatured}${row.isNewsFallback ? ` ${styles.dhTerminalReportFallback}` : ""}`;
+  const summaryText = stripDuplicateTitleFromSummary(row.title, row.summary);
   const content = (
     <>
       <span className={styles.dhTerminalReportFeaturedDate}>
@@ -1021,8 +1039,8 @@ function ResearchReportFeatured({ row }: { row: HomeResearchReportRow }) {
       </span>
       <span className={styles.dhTerminalReportFeaturedBody}>
         <span className={styles.dhTerminalReportFeaturedTitle}>{row.title}</span>
-        {isResearchSummaryVisible(row.summary) ? (
-          <span className={styles.dhTerminalReportFeaturedSummary}>{row.summary}</span>
+        {isResearchSummaryVisible(summaryText) ? (
+          <span className={styles.dhTerminalReportFeaturedSummary}>{summaryText}</span>
         ) : null}
         <span className={styles.dhTerminalReportMetaRow}>
           <span className={styles.dhTerminalReportMetaText}>{buildResearchMetaLine(row)}</span>
@@ -1040,9 +1058,10 @@ function ResearchReportFeatured({ row }: { row: HomeResearchReportRow }) {
       {content}
     </div>
   );
-}
+});
+ResearchReportFeatured.displayName = "ResearchReportFeatured";
 
-function ResearchReportCompactRow({ row }: { row: HomeResearchReportRow }) {
+const ResearchReportCompactRow = memo(function ResearchReportCompactRow({ row }: { row: HomeResearchReportRow }) {
   const className = `${styles.dhTerminalReportCompactRow}${row.isNewsFallback ? ` ${styles.dhTerminalReportFallback}` : ""}`;
   const content = (
     <>
@@ -1064,9 +1083,10 @@ function ResearchReportCompactRow({ row }: { row: HomeResearchReportRow }) {
       {content}
     </div>
   );
-}
+});
+ResearchReportCompactRow.displayName = "ResearchReportCompactRow";
 
-function ResearchReportsPanel({ view }: { view: DashboardHomeBodyView }) {
+const ResearchReportsPanel = memo(function ResearchReportsPanel({ view }: { view: DashboardHomeBodyView }) {
   const hasRows =
     (view.researchReportsState.kind === "ready" || view.researchReportsState.kind === "partial") &&
     view.researchReports.length > 0;
@@ -1097,9 +1117,10 @@ function ResearchReportsPanel({ view }: { view: DashboardHomeBodyView }) {
       )}
     </article>
   );
-}
+});
+ResearchReportsPanel.displayName = "ResearchReportsPanel";
 
-function IncomeTrendPanel({ view }: { view: DashboardHomeBodyView }) {
+const IncomeTrendPanel = memo(function IncomeTrendPanel({ view }: { view: DashboardHomeBodyView }) {
   const hasRows =
     (view.incomeTrendState.kind === "ready" || view.incomeTrendState.kind === "partial") &&
     view.incomeTrend.length > 0;
@@ -1138,18 +1159,18 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeBodyView }) {
               </span>
               <span>
                 <small>基准</small>
-                <b className={styles.dhNum}>{latestPoint.benchmarkPnl}</b>
+                <b className={styles.dhNum}>{hasBenchmarkSeries ? latestPoint.benchmarkPnl : "—"}</b>
               </span>
               <span>
                 <small>超额</small>
-                <b className={styles.dhNum}>{latestPoint.excessPnl}</b>
+                <b className={styles.dhNum}>{hasExcessSeries ? latestPoint.excessPnl : "—"}</b>
               </span>
             </div>
           ) : null}
           {latestPoint ? (
             <div className={styles.dhTerminalIncomeMeta}>
               <span>{`数据截至 ${latestPoint.date}`}</span>
-              <span>{`CDB_INDEX / MoM${view.incomeTrendState.kind === "partial" ? ` · ${view.incomeTrendState.label}` : ""}`}</span>
+              <span>CDB_INDEX / MoM</span>
             </div>
           ) : null}
           <div className={styles.dhTerminalIncomeLegend} aria-label="收益趋势图例">
@@ -1176,11 +1197,15 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeBodyView }) {
                   <div className={styles.dhTerminalIncomeLedgerMetrics}>
                     <div data-series="benchmark">
                       <small>基准</small>
-                      <strong className={styles.dhNum}>{point.benchmarkPnl}</strong>
+                      <strong className={styles.dhNum}>
+                        {hasBenchmarkSeries ? point.benchmarkPnl : "—"}
+                      </strong>
                     </div>
                     <div data-series="excess">
                       <small>超额</small>
-                      <strong className={styles.dhNum}>{point.excessPnl}</strong>
+                      <strong className={styles.dhNum}>
+                        {hasExcessSeries ? point.excessPnl : "—"}
+                      </strong>
                     </div>
                   </div>
                 </div>
@@ -1193,7 +1218,8 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeBodyView }) {
       )}
     </article>
   );
-}
+});
+IncomeTrendPanel.displayName = "IncomeTrendPanel";
 
 type ApiDirectoryRow = {
   id: string;
@@ -1235,7 +1261,7 @@ function buildApiDirectoryRows(view: DashboardHomeBodyView): ApiDirectoryRow[] {
   ];
   const bondSummaryReady = structureStates.some((state) => state.kind === "ready" || state.kind === "partial");
   const bondSummaryState = bondSummaryReady
-    ? moduleReadyState("structure families visible")
+    ? moduleReadyState("结构族可见")
     : view.riskExposureState;
 
   return [
@@ -1243,14 +1269,14 @@ function buildApiDirectoryRows(view: DashboardHomeBodyView): ApiDirectoryRow[] {
       id: "snapshot",
       endpoint: "/ui/home/snapshot",
       module: "判断 / 治理 / KPI / 品类标题",
-      state: moduleReadyState("primary snapshot"),
+      state: moduleReadyState("主快照"),
       handling: "直接",
     },
     {
       id: "supplemental",
       endpoint: "/api/dashboard/core_metrics + daily-changes",
       module: "日期门控补充经营指标",
-      state: moduleReadyState("date-gated"),
+      state: moduleReadyState("日期门控"),
       handling: "补充",
     },
     {
@@ -1298,8 +1324,8 @@ function buildApiDirectoryRows(view: DashboardHomeBodyView): ApiDirectoryRow[] {
   ];
 }
 
-function ApiDataDirectoryPanel({ view }: { view: DashboardHomeBodyView }) {
-  const rows = buildApiDirectoryRows(view);
+const ApiDataDirectoryPanel = memo(function ApiDataDirectoryPanel({ view }: { view: DashboardHomeBodyView }) {
+  const rows = useMemo(() => buildApiDirectoryRows(view), [view]);
 
   return (
     <section className={`${styles.dhApiModule} ${styles.dhApiDirectoryPanel}`}>
@@ -1340,13 +1366,20 @@ function ApiDataDirectoryPanel({ view }: { view: DashboardHomeBodyView }) {
       </div>
     </section>
   );
-}
+});
+ApiDataDirectoryPanel.displayName = "ApiDataDirectoryPanel";
 
 function summaryMetricValue(metrics: readonly HomeRiskExposureMetric[], id: string): string {
   return metrics.find((metric) => metric.id === id)?.value ?? "—";
 }
 
-function RiskExposureGapLedger({ state, reportDate }: { state: HomeTerminalListState; reportDate: string }) {
+const RiskExposureGapLedger = memo(function RiskExposureGapLedger({
+  state,
+  reportDate,
+}: {
+  state: HomeTerminalListState;
+  reportDate: string;
+}) {
   return (
     <div
       className={styles.dhApiRiskGapLedger}
@@ -1372,9 +1405,10 @@ function RiskExposureGapLedger({ state, reportDate }: { state: HomeTerminalListS
       </dl>
     </div>
   );
-}
+});
+RiskExposureGapLedger.displayName = "RiskExposureGapLedger";
 
-function RiskSummaryPanel({ view }: { view: DashboardHomeBodyView }) {
+const RiskSummaryPanel = memo(function RiskSummaryPanel({ view }: { view: DashboardHomeBodyView }) {
   const hasRows = view.riskExposureMetrics.length > 0;
   return (
     <article
@@ -1413,7 +1447,8 @@ function RiskSummaryPanel({ view }: { view: DashboardHomeBodyView }) {
       )}
     </article>
   );
-}
+});
+RiskSummaryPanel.displayName = "RiskSummaryPanel";
 
 type StructureCoverageTone = "ready" | "partial" | "blocked";
 
@@ -1423,13 +1458,12 @@ type StructureCoverageDomain = {
   state: HomeTerminalListState;
   slices: readonly HomeDistributionSlice[];
   note: string;
-  basis: string;
 };
 
 const STRUCTURE_RESERVED_GAPS = [
-  { id: "alerts", title: "预警", basis: "reserved endpoint", state: "503" },
-  { id: "contribution", title: "贡献", basis: "reserved endpoint", state: "503" },
-  { id: "risk-overview", title: "风险总览", basis: "reserved endpoint", state: "503" },
+  { id: "alerts", title: "预警", basis: "保留端点", state: "保留" },
+  { id: "contribution", title: "贡献", basis: "保留端点", state: "保留" },
+  { id: "risk-overview", title: "风险总览", basis: "保留端点", state: "保留" },
 ] as const;
 
 function buildStructureCoverageDomains(view: DashboardHomeBodyView): StructureCoverageDomain[] {
@@ -1440,7 +1474,6 @@ function buildStructureCoverageDomains(view: DashboardHomeBodyView): StructureCo
       state: view.assetDistributionState,
       slices: view.assetDistribution,
       note: `${view.assetDistribution.length} 行`,
-      basis: "asset distribution",
     },
     {
       id: "rating",
@@ -1448,7 +1481,6 @@ function buildStructureCoverageDomains(view: DashboardHomeBodyView): StructureCo
       state: view.ratingDistributionState,
       slices: view.ratingDistribution,
       note: `${view.ratingDistribution.length} 行`,
-      basis: "rating buckets",
     },
     {
       id: "maturity",
@@ -1456,7 +1488,6 @@ function buildStructureCoverageDomains(view: DashboardHomeBodyView): StructureCo
       state: view.maturityDistributionState,
       slices: view.maturityDistribution,
       note: `${view.maturityDistribution.length} 组`,
-      basis: "maturity buckets",
     },
     {
       id: "industry",
@@ -1464,7 +1495,6 @@ function buildStructureCoverageDomains(view: DashboardHomeBodyView): StructureCo
       state: view.industryDistributionState,
       slices: view.industryDistribution,
       note: `${view.industryDistribution.length} 行`,
-      basis: "industry distribution",
     },
     {
       id: "ytm",
@@ -1472,7 +1502,6 @@ function buildStructureCoverageDomains(view: DashboardHomeBodyView): StructureCo
       state: view.yieldDistributionState,
       slices: view.yieldDistribution,
       note: "加权 YTM",
-      basis: "weighted yield",
     },
     {
       id: "portfolio",
@@ -1480,7 +1509,6 @@ function buildStructureCoverageDomains(view: DashboardHomeBodyView): StructureCo
       state: view.portfolioComparisonState,
       slices: view.portfolioComparison,
       note: "久期 / DV01",
-      basis: "portfolio compare",
     },
   ];
 }
@@ -1502,12 +1530,12 @@ function structureCoverageLabel(domain: StructureCoverageDomain): string {
 }
 
 function structureCoverageMode(domain: StructureCoverageDomain): string {
-  if (domain.id === "ytm") return "bucket share";
-  if (domain.id === "portfolio") return "top set";
-  return "Top3 contributors";
+  if (domain.id === "ytm") return "区间占比";
+  if (domain.id === "portfolio") return "头部集合";
+  return "Top3 贡献";
 }
 
-function StructureCoverageMap({
+const StructureCoverageMap = memo(function StructureCoverageMap({
   domains,
   expandedDomains,
   missingDomains,
@@ -1523,40 +1551,40 @@ function StructureCoverageMap({
   return (
     <div className={styles.dhApiCoverageMap} data-testid="dashboard-home-structure-coverage">
       <div className={styles.dhApiCoverageScore}>
-        <small>Coverage</small>
+        <small>覆盖</small>
         <b className={styles.dhNum}>{`${expandedDomains.length}/${domains.length}`}</b>
-        <span>domains landed</span>
+        <span>个域已落地</span>
       </div>
       <div className={styles.dhApiCoverageDomains}>
         {domains.map((domain) => {
           const tone = structureCoverageTone(domain);
           return (
-            <span key={domain.id} data-state={tone}>
+            <span key={domain.id} data-state={tone} title={structureCoverageLabel(domain)}>
               <b>{domain.title}</b>
-              <small>{structureCoverageLabel(domain)}</small>
             </span>
           );
         })}
       </div>
       <dl className={styles.dhApiCoverageStats}>
         <div>
-          <dt>Ready</dt>
+          <dt>就绪</dt>
           <dd className={styles.dhNum}>{readyCount}</dd>
         </div>
         <div>
-          <dt>Partial</dt>
+          <dt>部分</dt>
           <dd className={styles.dhNum}>{partialCount}</dd>
         </div>
         <div>
-          <dt>Gaps</dt>
+          <dt>缺口</dt>
           <dd className={styles.dhNum}>{gapCount}</dd>
         </div>
       </dl>
     </div>
   );
-}
+});
+StructureCoverageMap.displayName = "StructureCoverageMap";
 
-function StructureMiniCard({ domain }: { domain: StructureCoverageDomain }) {
+const StructureMiniCard = memo(function StructureMiniCard({ domain }: { domain: StructureCoverageDomain }) {
   const visibleSlices = domain.slices.slice(0, 3);
   const tone = structureCoverageTone(domain);
 
@@ -1566,7 +1594,6 @@ function StructureMiniCard({ domain }: { domain: StructureCoverageDomain }) {
         <h4>{domain.title}</h4>
         <CustomBadge kind={directoryStateTone(domain.state)}>{structureCoverageLabel(domain)}</CustomBadge>
       </div>
-      <p className={styles.dhApiStructureSource}>{domain.basis}</p>
       <div className={styles.dhApiStructureRows}>
         {visibleSlices.map((slice) => (
           <div key={slice.id} className={styles.dhApiStructureRow}>
@@ -1585,9 +1612,14 @@ function StructureMiniCard({ domain }: { domain: StructureCoverageDomain }) {
       </div>
     </article>
   );
-}
+});
+StructureMiniCard.displayName = "StructureMiniCard";
 
-function StructureGapBand({ missingDomains }: { missingDomains: readonly StructureCoverageDomain[] }) {
+const StructureGapBand = memo(function StructureGapBand({
+  missingDomains,
+}: {
+  missingDomains: readonly StructureCoverageDomain[];
+}) {
   const gaps = [
     ...missingDomains.map((domain) => ({
       id: domain.id,
@@ -1602,7 +1634,7 @@ function StructureGapBand({ missingDomains }: { missingDomains: readonly Structu
     <div className={styles.dhApiCoverageGapBand} data-testid="dashboard-home-structure-gap-band">
       <span>
         <b>保留缺口</b>
-        <small>{`${gaps.length} folded gap domains`}</small>
+        <small>{`${gaps.length} 个折叠缺口域`}</small>
       </span>
       <div>
         {gaps.map((gap) => (
@@ -1615,12 +1647,16 @@ function StructureGapBand({ missingDomains }: { missingDomains: readonly Structu
       </div>
     </div>
   );
-}
+});
+StructureGapBand.displayName = "StructureGapBand";
 
-function StructureBoardPanel({ view }: { view: DashboardHomeBodyView }) {
-  const domains = buildStructureCoverageDomains(view);
-  const expandedDomains = domains.filter(hasStructureCoverageRows);
-  const missingDomains = domains.filter((domain) => !hasStructureCoverageRows(domain));
+const StructureBoardPanel = memo(function StructureBoardPanel({ view }: { view: DashboardHomeBodyView }) {
+  const domains = useMemo(() => buildStructureCoverageDomains(view), [view]);
+  const expandedDomains = useMemo(() => domains.filter(hasStructureCoverageRows), [domains]);
+  const missingDomains = useMemo(
+    () => domains.filter((domain) => !hasStructureCoverageRows(domain)),
+    [domains],
+  );
 
   return (
     <section
@@ -1629,7 +1665,6 @@ function StructureBoardPanel({ view }: { view: DashboardHomeBodyView }) {
     >
       <div className={styles.dhApiModuleHead}>
         <h3>结构看板</h3>
-        <span>coverage map · expanded landed domains · folded gaps</span>
       </div>
       <StructureCoverageMap domains={domains} expandedDomains={expandedDomains} missingDomains={missingDomains} />
       {expandedDomains.length > 0 ? (
@@ -1642,10 +1677,11 @@ function StructureBoardPanel({ view }: { view: DashboardHomeBodyView }) {
       <StructureGapBand missingDomains={missingDomains} />
     </section>
   );
-}
+});
+StructureBoardPanel.displayName = "StructureBoardPanel";
 
-function EvidenceRailPanel({ view }: { view: DashboardHomeBodyView }) {
-  const sourceRows = buildSourceGateRows(view);
+const EvidenceRailPanel = memo(function EvidenceRailPanel({ view }: { view: DashboardHomeBodyView }) {
+  const sourceRows = useMemo(() => buildSourceGateRows(view), [view]);
   const landedFormalRows = view.holdingRows.length + view.positionChanges.length;
   const landedAnalyticalRows = view.researchReports.length + view.incomeTrend.length;
 
@@ -1673,10 +1709,10 @@ function EvidenceRailPanel({ view }: { view: DashboardHomeBodyView }) {
     },
     {
       status: "BLOCKED",
-      tone: "error" as HomeDataStateKind,
+      tone: "empty" as HomeDataStateKind,
       title: "保留缺口",
-      detail: "预警 / 贡献 / 风险总览仍返回 503，不作为实时证据展示",
-      result: "503",
+      detail: "预警 / 贡献 / 风险总览为保留端点，暂不作为实时证据",
+      result: "保留",
     },
   ];
 
@@ -1684,7 +1720,7 @@ function EvidenceRailPanel({ view }: { view: DashboardHomeBodyView }) {
     <section className={`${styles.dhApiModule} ${styles.dhApiEvidenceRail}`}>
       <div className={styles.dhApiModuleHead}>
         <h3>证据链</h3>
-        <span>主快照 · 正式台账 · 分析上下文 · 保留缺口</span>
+        <span>覆盖主快照至保留缺口的证据链路</span>
       </div>
       <div className={styles.dhApiEvidenceRows}>
         {rows.map((row) => (
@@ -1703,9 +1739,10 @@ function EvidenceRailPanel({ view }: { view: DashboardHomeBodyView }) {
       </div>
     </section>
   );
-}
+});
+EvidenceRailPanel.displayName = "EvidenceRailPanel";
 
-function LegacyExpandedPanels({
+const LegacyExpandedPanels = memo(function LegacyExpandedPanels({
   view,
   enabled,
 }: {
@@ -1733,7 +1770,8 @@ function LegacyExpandedPanels({
       <span>{view.portfolioComparisonState.label}</span>
     </div>
   );
-}
+});
+LegacyExpandedPanels.displayName = "LegacyExpandedPanels";
 
 export function TerminalHomeWorkGrid({
   view,

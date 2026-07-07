@@ -215,12 +215,12 @@ function KpiCard({
         </span>
       ) : null}
       <span className={styles.dhApiKpiCode}>{spec.code}</span>
-      <span className={styles.dhApiKpiLabel}>{label}</span>
+      <span className={styles.dhApiKpiLabel} title={label}>{label}</span>
       <strong className={styles.dhApiKpiValue}>{value}</strong>
       <span className={styles.dhApiKpiRule} aria-hidden="true" />
       <span className={styles.dhApiKpiStatus}>
         <i className={stateClass(state)} aria-hidden="true" />
-        {statusLabel} / {view.reportDate}
+        {statusLabel}
       </span>
       <span className={`${styles.dhApiKpiDelta} ${resolveDeltaClass(deltaTone, styles)}`}>
         {kpi ? kpi.delta : state === "error" ? "未取得" : GAP}
@@ -240,10 +240,9 @@ function SourceGateSummary({ view }: { view: DashboardHomeFirstScreenView }) {
         {SOURCE_GATE_ROWS.map((row) => {
           const status = sourceGateStatus(row, view);
           return (
-            <div key={row.id} className={styles.dhApiSourceRow}>
+            <div key={row.id} className={styles.dhApiSourceRow} title={row.basis}>
               <i className={stateClass(status.kind)} aria-hidden="true" />
               <span>{row.label}</span>
-              <code>{row.basis}</code>
               <b className={stateClass(status.kind)} title={status.detail}>
                 {status.label}
               </b>

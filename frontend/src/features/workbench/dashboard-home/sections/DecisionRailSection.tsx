@@ -269,10 +269,18 @@ export function DecisionRailSection({
         status={<RailStatusPill tone={statusTone(dataStatusKind)}>链路</RailStatusPill>}
       >
         <div className={styles.dhRailEvidenceRows}>
+          <RailEvidenceRow
+            label="来源"
+            value={sourceLedgerRows.find((row) => row.label === "来源")?.value ?? ""}
+          />
           <RailEvidenceRow label="口径" value={`${dataSyncPrefix} · 经营读数`} />
           <RailEvidenceRow
             label="更新时间"
             value={<span data-testid="dashboard-home-rail-updated-at">{railUpdatedAt}</span>}
+          />
+          <RailEvidenceRow
+            label="用途"
+            value={sourceLedgerRows.find((row) => row.label === "用途")?.value ?? ""}
           />
           <RailEvidenceRow
             label="数据状态"
@@ -284,24 +292,6 @@ export function DecisionRailSection({
           />
         </div>
       </RailCard>
-
-      <section className={styles.dhRailSection}>
-        <div className={styles.dhRailSectionHeader}>
-          <h3>来源台账概要</h3>
-          <RailStatusPill tone={statusTone(dataStatusKind)}>证据</RailStatusPill>
-        </div>
-        <div className={styles.dhRailEvidenceRows}>
-          {sourceLedgerRows.map((row) => (
-            <RailEvidenceRow
-              key={row.label}
-              label={row.label}
-              value={row.value}
-              status={row.status}
-              tone={row.tone}
-            />
-          ))}
-        </div>
-      </section>
     </aside>
   );
 }

@@ -105,7 +105,7 @@
 }
 
 :global([data-testid="dashboard-home-page"]) .dhMacroBriefingPane {
-  align-self: start;
+  align-self: stretch;
 }
 
 :global([data-testid="dashboard-home-page"]) .dhMacroReleaseInsight {
@@ -2326,6 +2326,12 @@
   scroll-margin-top: 18px;
 }
 
+/* 短内容一侧不再跟随更高的右栏拉伸，避免面板内出现大面积空白（保留外层 stretch 规则用于整体对齐）。
+   需要与 :global([data-testid="dashboard-home-page"]) .dhMacroBriefingPane 的 stretch 规则同等特异性才能覆盖。 */
+:global([data-testid="dashboard-home-page"]) .dhMacroBriefingPane.dhMacroReleasePane {
+  align-self: start;
+}
+
 .dhPolicyFundingPane:focus {
   outline: none;
 }
@@ -2716,6 +2722,7 @@
 
 .dhBondNewsGrid {
   display: grid;
+  align-items: start;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
@@ -3230,9 +3237,114 @@
 }
 
 .dhTerminalDeferredPlaceholder {
-  min-height: 1px;
-  margin-top: var(--dh-space-2);
+  background: var(--dh-card-soft);
+  border: 1px solid var(--dh-line);
   border-radius: 2px;
+  display: grid;
+  gap: var(--dh-space-3);
+  margin-top: var(--dh-space-2);
+  min-height: 320px;
+  overflow: hidden;
+  padding: var(--dh-space-3);
+}
+
+.dhSkeletonTable {
+  background: var(--dh-card);
+  border: 1px solid var(--dh-line-soft);
+  border-radius: 2px;
+  display: grid;
+  gap: 10px;
+  padding: var(--dh-space-2) var(--dh-space-3);
+}
+
+.dhSkeletonTableRow {
+  align-items: center;
+  display: grid;
+  gap: var(--dh-space-2);
+  grid-template-columns: minmax(0, 1fr) 72px;
+}
+
+.dhSkeletonBar {
+  background: var(--dh-line-soft);
+  border-radius: 2px;
+  height: 9px;
+}
+
+.dhSkeletonBarShort {
+  background: var(--dh-line-soft);
+  border-radius: 2px;
+  height: 9px;
+  justify-self: end;
+  width: 60%;
+}
+
+.dhSkeletonTableRow:nth-child(1) .dhSkeletonBar {
+  width: 88%;
+}
+
+.dhSkeletonTableRow:nth-child(2) .dhSkeletonBar {
+  width: 72%;
+}
+
+.dhSkeletonTableRow:nth-child(3) .dhSkeletonBar {
+  width: 94%;
+}
+
+.dhSkeletonTableRow:nth-child(4) .dhSkeletonBar {
+  width: 66%;
+}
+
+.dhSkeletonTableRow:nth-child(5) .dhSkeletonBar {
+  width: 80%;
+}
+
+.dhSkeletonTableRow:nth-child(6) .dhSkeletonBar {
+  width: 58%;
+}
+
+.dhSkeletonSideGrid {
+  display: grid;
+  gap: var(--dh-space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dhSkeletonSidePanel {
+  align-content: start;
+  background: var(--dh-card);
+  border: 1px solid var(--dh-line-soft);
+  border-radius: 2px;
+  display: grid;
+  gap: 10px;
+  padding: var(--dh-space-2) var(--dh-space-3);
+}
+
+.dhSkeletonSidePanel .dhSkeletonBar:nth-child(1) {
+  width: 70%;
+}
+
+.dhSkeletonSidePanel .dhSkeletonBar:nth-child(2) {
+  width: 90%;
+}
+
+.dhSkeletonSidePanel .dhSkeletonBar:nth-child(3) {
+  width: 55%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dhSkeletonBar,
+  .dhSkeletonBarShort {
+    animation: dhSkeletonPulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes dhSkeletonPulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 0.9;
+  }
 }
 
 .dhTerminalJudgement,
@@ -6944,14 +7056,14 @@
   padding: 0 8px;
 }
 
-.dhApiCoverageGapBand em[data-state="503"] {
-  border-left-color: #d66b62;
+.dhApiCoverageGapBand em[data-state="保留"] {
+  border-left-color: var(--dh-api-muted);
 }
 
-.dhApiCoverageGapBand em[data-state="503"] code {
-  background: rgba(55, 23, 27, 0.56);
-  border-color: rgba(214, 107, 98, 0.36);
-  color: #d66b62;
+.dhApiCoverageGapBand em[data-state="保留"] code {
+  background: rgba(103, 119, 142, 0.14);
+  border-color: rgba(103, 119, 142, 0.36);
+  color: var(--dh-api-muted);
 }
 
 .dhApiCoverageGapBand small {
@@ -8282,6 +8394,21 @@
   border-radius: 6px;
   min-height: 72px;
   padding: 12px;
+}
+
+/* 0 条的列折叠为紧凑单行空态，不再占满整列高度。 */
+.dhBondNewsGroupEmpty {
+  min-height: 0;
+}
+
+.dhBondNewsEmptyCompact {
+  margin: 0;
+  padding: 0;
+  color: var(--dh-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  opacity: 0.75;
 }
 
 .dhTerminalBottom {

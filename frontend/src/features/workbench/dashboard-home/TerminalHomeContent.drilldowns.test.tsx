@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
@@ -272,7 +272,10 @@ describe("TerminalHomeContent drilldowns", () => {
     expect(legend).toHaveTextContent("组合");
     expect(legend).not.toHaveTextContent("CDB基准");
     expect(legend).not.toHaveTextContent("超额");
-    expect(screen.getAllByText("缺CDB_INDEX").length).toBeGreaterThan(0);
+
+    const panel = screen.getByTestId("dashboard-home-income-trend");
+    expect(panel).toHaveTextContent("缺 CDB_INDEX 曲线");
+    expect(within(panel).queryAllByText("缺CDB_INDEX")).toHaveLength(0);
   });
 });
 

@@ -28,8 +28,12 @@ function BondNewsItemRow({ item }: { item: HomeBondNewsItem }) {
 }
 
 function BondNewsGroup({ testId, title, count, items, message }: BondNewsGroupProps) {
+  const isEmpty = items.length === 0;
   return (
-    <div data-testid={testId} className={styles.dhBondNewsGroup}>
+    <div
+      data-testid={testId}
+      className={`${styles.dhBondNewsGroup} ${isEmpty ? styles.dhBondNewsGroupEmpty : ""}`}
+    >
       <div className={styles.dhBondNewsGroupHeader}>
         <span>{title}</span>
         <small>{count} 条</small>
@@ -41,7 +45,7 @@ function BondNewsGroup({ testId, title, count, items, message }: BondNewsGroupPr
           ))}
         </div>
       ) : (
-        <p className={styles.dhBondNewsEmpty}>{message}</p>
+        <p className={styles.dhBondNewsEmptyCompact}>{message}</p>
       )}
     </div>
   );

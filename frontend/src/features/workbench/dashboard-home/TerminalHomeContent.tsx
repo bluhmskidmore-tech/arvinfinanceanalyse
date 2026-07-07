@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { NextUIProvider } from "@nextui-org/react";
 
 import type { DashboardHomeBodyView } from "./dashboardHomeBodyView";
-import styles from "./dashboardHome.module.css";
+import { DeferredSkeleton } from "./DeferredSkeleton";
 
 type TerminalHomeContentProps = {
   view: DashboardHomeBodyView;
@@ -33,7 +33,7 @@ export function TerminalHomeContent({
 
   return (
     <NextUIProvider>
-      <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
+      <Suspense fallback={<DeferredSkeleton variant="work-grid" />}>
         <TerminalHomeDeferredSections
           view={view}
           focusPolicyFunding={focusPolicyFunding}

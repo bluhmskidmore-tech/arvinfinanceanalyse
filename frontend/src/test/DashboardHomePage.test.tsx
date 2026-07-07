@@ -97,7 +97,9 @@ function compressedHomeGateDelay(timeout: number | undefined) {
   if (timeout == null || timeout <= 0) {
     return timeout;
   }
-  const knownHomeGateDelayMs = new Set([600, 650, 800, 850, 900, 1_000, 1_100, 1_200, 2_000, 2_100]);
+  const knownHomeGateDelayMs = new Set([
+    150, 200, 250, 600, 650, 800, 850, 900, 1_000, 1_100, 1_200, 2_000, 2_100,
+  ]);
   if (!knownHomeGateDelayMs.has(timeout)) {
     return timeout;
   }
@@ -2703,8 +2705,8 @@ describe("DashboardHomePage", () => {
     const board = screen.getByTestId("dashboard-home-structure-board");
     const coverage = within(board).getByTestId("dashboard-home-structure-coverage");
     expect(coverage).toHaveTextContent("1/6");
-    expect(coverage).toHaveTextContent("Ready");
-    expect(coverage).toHaveTextContent("Gaps");
+    expect(coverage).toHaveTextContent("就绪");
+    expect(coverage).toHaveTextContent("缺口");
 
     const expanded = within(board).getByTestId("dashboard-home-structure-expanded-grid");
     expect(expanded.querySelectorAll("article")).toHaveLength(1);
@@ -2712,7 +2714,8 @@ describe("DashboardHomePage", () => {
 
     const gapBand = within(board).getByTestId("dashboard-home-structure-gap-band");
     expect(gapBand).toHaveTextContent("rating missing");
-    expect(gapBand).toHaveTextContent("503");
+    expect(gapBand).toHaveTextContent("保留端点");
+    expect(gapBand).not.toHaveTextContent("503");
   });
 
   it("renders income trend as portfolio benchmark and excess context", () => {

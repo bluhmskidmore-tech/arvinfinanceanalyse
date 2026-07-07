@@ -1,82 +1,181 @@
 # Design System — MOSS V3
 
-## Product Context
+> 本文件是全站版式、配色、字体、密度与动效的**唯一权威**。改动任何界面外观前先读本文；数值以 `frontend/src/theme/designSystem.ts` 与 `frontend/src/styles/tokens.css` 为单一来源。QA 与代码审查中，明显违背本文的实现应被标出。
 
-- **What this is:** 面向机构固收与组合管理的业务工作台（经营分析、债券分析、治理与报表等），强调可读数字、可追踪口径与页面级闭环。
-- **Who it's for:** 投资/交易、风控、经营与管理层等需要在统一界面里看结论与下钻证据的用户。
-- **Space/industry:** 固定收益组合与信用； peers 为各类资管/自营 OMS-Analytics 一体台。
-- **Project type:** 内部业务 Web 应用（重数据仪表与表格，非营销站）。
+---
 
-## Visual Reference Authority
+## 1. Product Context
 
-- **Primary layout reference:** 组合工作台下的「债券分析」首页完稿视觉（宏观条 → 本日判断 → 组合 KPI → 三列深度区 → 日历与重点券）。该稿为**唯一版式与层次权威**。
-- **Tolerance:** 间距、圆角、区块间距允许在 **±5%** 范围内调整以适配实现与响应式；**不得**在无产品确认下改变信息区块的上下顺序与主结论区（首屏主结论）优先级。
-- **Research:** 未单独做公网竞品走查；行内惯例（浅色机构台、细边框、蓝系强调、tabular 数字）与代码内 `designTokens` 已对齐。
+- **What this is:** 面向机构固收与组合管理的业务工作台（经营日报、债券分析、风险、绩效、治理与报表），强调可读数字、可追踪口径与页面级闭环。
+- **Who it's for:** 投资/交易、风控、经营与管理层——需要在统一界面里"先看结论、再下钻证据"的用户。
+- **Project type:** 内部业务 Web 应用（重数据仪表与表格，**非营销站**）。营销页设计法则（Hero 规则、Bento、图片策略等）不适用；本文吸收的是通用审美纪律：一致性锁、降噪、状态语义化、文案自审。
+- **North star:** 冷静、可审计。数字与单位一眼可辨；异常、缺口、兜底显式呈现，**不用装饰掩盖缺失数据**。
 
-## Aesthetic Direction
+---
 
-- **Direction:** Industrial / Utilitarian（功能优先、数据密度高）+ **Intentional** 装饰（仅用于「本日判断」等主结论面板的轻量背景/点缀，不抢数据）。
-- **Decoration level:** intentional（全局 minimal；关键总结区可有一条浅渐变或淡纹，与 `BondAnalyticsInstitutionalCockpit` 一类 hero 区一致方向）。
-- **Mood:** 冷静、可审计；数字与单位一眼可辨，异常与空态显式，不用装饰掩盖缺失数据。
-- **Anti-patterns:** 全屏大渐变、紫色主色、与数据无关的插画主体、可交换的「通用仪表盘」无差别模块堆叠。
+## 2. 双主题体系（Theme Families）
 
-## Typography
+项目现存两套正式视觉语言，**一页一主题，页内禁止混用或中途翻转**（Page Theme Lock）。
 
-- **Display/Hero 与 UI/Body:** 与 `frontend/src/theme/designSystem.ts` 中 `fontFamily.sans` 一致：**Plus Jakarta Sans**（拉丁，经 `index.html` Google Fonts 加载）+ 中文回退 `PingFang SC` / `Microsoft YaHei UI` / `Noto Sans SC`。内网若屏蔽外网，浏览器会自然回退中文栈，不破坏可用性。
-- **Data/Tables/KPI:** **IBM Plex Mono**（`fontFamily.tabular`）+ `font-variant-numeric: tabular-nums`（见 `tabularNumsStyle`），保证列对齐与变动对比稳定。
-- **Code / 等宽:** 仅用于原始代码、JSON、调试；业务金额与比率不用等宽体作正文阅读字体。
-- **Scale（与实现一致，单位 px）：** 页内标题 18–20；卡片标题 14–16；正文 13–14；辅助 11–12；KPI 主值可用 20–24 视层级。具体以 Ant Design 主题与局部 `Typography` 为准，但**数据行不小于 12px**（过小便读性优先于「塞满一屏」）。
+### 2.1 IB 浅色工作台（默认）
 
-## Color
+大多数页面的默认外观。纸感浅底 + 白卡 + 深藏青强调 + 深色侧栏。
 
-- **Approach:** balanced — 单一机构主色阶 + 中性灰面 + 语义色（红涨绿跌等以业务与地区约定为准，与 `semantic` 及债券展示 formatter 一致）。
-- **Visual reference（配色权威）:** 「总览工作台 / 驾驶舱」完稿——大背景浅灰蓝、白卡片、主导航/主操作 **深蓝 `#1850a1`**，正向/严格态 **森林绿 `#2d8a5e`**，警示/中优先级 **琥珀橙 `#d97706`**，负向 **红 `#ef4444`**，内链/次强调亮蓝 **`info[500]` `#3b82f6`**；正文 **`neutral[900]` `#1f2937`**、次文 **`neutral[600]` `#6b7280`**。实现以 `frontend/src/theme/designSystem.ts` 为单一数值源。
-- **Primary:** 以 `designTokens.color.primary[600]`（`#1850a1`）为锚点——**偏蓝、少青**的机构主色；浅表面用 `primary[50–100]`，悬停/强调用 `400–500`。
-- **Info / 链接 / 次强调:** `color.info[400–500]` 系（链接锚点 `#3b82f6`），**不**与主色混用为同一语义的第二套「蓝」；新组件从 info 与 primary 二选一，保持页面不超过两种冷色主调。
-- **Neutrals:** `neutral[50]` 作应用底（`#f5f7f9` 系），`neutral[50–900]` 作卡片、边线、次文；表头用 `600–800`，禁用浅灰上叠浅灰致对比不足（WCAG 面向内部大屏仍建议正文对比清晰）。
-- **Semantic:** success / warning / danger 使用 token 中对应阶；`semantic.profit/loss/up/down` 与债券涨跌展示函数统一（与总览 KPI 绿/红一致）。
-- **Dark mode:** 当前以浅色工作台为主；若增加暗色，需单独立项：降低主色饱和约 10–20%、表面用 `neutral.900+` 而非纯黑、图表坐标轴与网格单独定义。
+| Token | 值 | 用途 |
+|---|---|---|
+| `--ib-paper` | `#f4f3f0` | 应用底 |
+| `--ib-surface` / `--ib-surface-muted` | `#ffffff` / `#f7f6f3` | 卡片 / 次级面 |
+| `--ib-hairline` | `#e2e0da` | 细分隔线 |
+| `--ib-ink` / `--ib-ink-secondary` / `--ib-ink-muted` | `#16191d` / `#5c6370` / `#8a8f98` | 正文 / 次文 / 弱文 |
+| `--ib-accent` (+hover/surface) | `#14366b` | 主强调、链接、主按钮 |
+| `--ib-up` / `--ib-down` / `--ib-warn` | `#1f7a4d` / `#b42318` / `#b54708` | 语义色 |
+| `--ib-rail-*` | `#10161f` 系 + 金条 `#c9a85c` | 左侧导航深栏 |
+| `--ib-radius` | `2px` | 全局锐角卡片 |
+| `--ib-serif` | Georgia / Noto Serif SC 栈 | 仅标题/刊头 |
 
-## Spacing
+### 2.2 深色终端驾驶舱（Decision Desk）
 
-- **Base unit:** 4px（`designTokens.space` 基于 4 的倍数）。
-- **Density:** **compact** 为主（债券分析首页信息量大）；全页垂直节奏用 8/12/16/24 组合，**同一栅格行内**卡片 padding 与 gap 保持一致。
-- **Scale:** 与 `designTokens.space.1`–`10` 一致；页面外边距与 shell 已定时，域内区段优先 `space.3`–`space.6`。
+用于高密度决策页：经营日报首页（`dhApiBackedHome`）、组合首页、债券分析驾驶舱、股票分析、宏观工具箱。近黑藏青底 + 分层面板 + **去饱和**冷强调。
 
-## Layout
+| Token | 值 | 用途 |
+|---|---|---|
+| `--dh-api-bg` | `#070a12` | 页面底（非纯黑） |
+| `--dh-api-panel` / `-2` / `-3` | `#0c1421` / `#101a2a` / `#132033` | 三层面板递进 |
+| `--dh-api-line` / `-soft` | `rgba(103,119,142,.34/.22)` | 边线两级 |
+| `--dh-api-ink` / `soft` / `muted` | `#e8eef7` / `#a9b6c7` / `#8593a8` | 文字三级 |
+| `--dh-api-blue` | `#72a7dc` | 强调/链接（去饱和） |
+| `--dh-api-green` / `amber` / `red` | `#66b98b` / `#c9a565` / `#d47a72` | 语义色（去饱和） |
 
-- **Approach:** grid-disciplined（Ant Design `Row` / `Col`，24 栅格；主内容区常见 **三列 8+8+8** 对齐全参考图中间数行）。
-- **Grid:** 大桌面 ≥1280px 时三列 8-8-8；收窄时先折行成 12+12 或单栏，**禁止**为保持三列在窄屏上压缩到不可读字号。
-- **Max content width:** 随工作台主内容区（与全局 Layout 一致），不在域内单页设独立 max-width 除非与壳冲突。
-- **Border radius:** `radius.sm` / `md` / `lg` 分层；宏观条无卡时可 `border-radius: 0` 或全宽浅底；卡片用 `md` 为主，避免全页大圆角「玩具感」。
+**规则：**
+- 深色页语义色必须用以上去饱和色阶，禁止把浅色主题的高饱和 `#ef4444`/`#2d8a5e` 直接搬进深色页。
+- 面板层级靠 `panel → panel-2 → panel-3` 背景递进 + 细边线表达，**不靠阴影**（深色底上阴影无效且脏）。
+- 页面主题由页面根容器一次性声明（token 重映射），子组件禁止各自覆盖主题变量。
 
-## Page: Bond Analysis / Portfolio Workbench Home
+### 2.3 选择规则
 
-- **First screen question:** 今日组合在利率/曲线/信用/流动性下**可执行的判断是什么**；其次才是指标与下钻。
-- **Block order (locked):**  
-  1) 宏观市场条  
-  2) 本日判断（大段结论文本 + 轻装饰）  
-  3) 组合 KPI 横带（久期、到期收益、信用利差、DV01、Carry+Roll、月/累计收入等按契约）  
-  4) 三列：曲线与波动 | 四象策略标签 | 收益归因（瀑布等）  
-  5) 三列：结构/风险/今日焦点  
-  6) 双列：事件日历 | 重点券表  
-- **States:** 每个区块需可感知 **loading / 空 / 错 /  stale(若契约提供)**；无数据时**不得**用随机演示数冒充正式口径。
+- 新页面默认 IB 浅色。
+- 只有"驾驶舱式高密度决策首页"允许申请深色终端主题，且需产品确认。
+- 同一路由树下的详情页/下钻页跟随其入口页主题，避免跳转时明暗闪切。
 
-## Motion
+---
 
-- **Approach:** minimal-functional — 仅状态切换、折叠、Tab、路由过渡；**禁止**大段入场动画干扰扫数。
-- **Easing / Duration:** 使用 `designTokens.motion`：`durationFast` 用于 hover；`durationBase` 用于展开；曲线 `easeOut` / `easeInOut` 如定义。
+## 3. Typography
 
-## Relationship to Code
+- **UI/正文：** 本地系统栈 `PingFang SC / Microsoft YaHei UI / Noto Sans SC / Segoe UI`（`fontFamily.sans`）。**不引入外链展示字体**——内网可用性优先。
+- **数字/KPI/表格：** 等宽栈（`fontFamily.tabular`）+ `font-variant-numeric: tabular-nums`。**所有对比性数字必须 tabular**，保证列对齐与变动可扫。
+- **衬线（`--ib-serif`）：** 仅限 IB 浅色主题的页面刊头/大标题。深色终端页不用衬线。
+- **Scale（px）：** 页标题 18–20；卡片标题 14–16；正文 13–14；辅助 11–12；KPI 主值 20–24。**数据行最小 12px**——便读性优先于塞满一屏。
+- **多行标签对齐：** 同一横带内的 KPI/卡片标签统一 2 行 clamp（`-webkit-line-clamp: 2` + 固定 `min-height`），完整文案入 `title`。禁止因标签换行不一致导致同排数值错位。
+- **大写宽字距徽标（GOV / FORMAL / ANALYTICAL / READY 等）：** 属既定终端语言，仅用于**状态/口径徽标**。禁止把它扩散为普通区块标题装饰；每个模块头最多一个。
 
-- **Single source of numeric scales:** `frontend/src/theme/designSystem.ts`；域内可扩展（如 `bondAnalyticsCockpitTokens`）但需与本文件**语义一致**。
-- **Formal metrics:** 展示仅消费后端或已约定 adapter 输出，前端不自行推导正式金融指标（与 `AGENTS.md` / `CLAUDE.md` 一致）。
-- **全站版式（opt-in）：** 页面解剖、栅格与状态面等见 [`docs/frontend-layout-contract.md`](docs/frontend-layout-contract.md)。未在本文「Page: …」中**锁定区块顺序**的页面以该契约为默认骨架；已锁定页（如本节债券分析首页）仍以**本文顺序与层次**为准。
+---
 
-## Decisions Log
+## 4. Color
+
+- **单一数值源：** `designSystem.ts`（`designTokens` + `ibTokens`）与 `tokens.css`。新色先入 token，禁止散落硬编码 hex。
+- **浅色主题锚点：** 主色 `primary[600]` `#1850a1`（偏蓝少青）；链接/次强调 `info[500]` `#3b82f6`。一页内冷色主调不超过两种，**新组件在 primary 与 info 中二选一**。
+- **语义色统一：** `semantic.profit/up = #2d8a5e`、`loss/down = #ef4444`（浅色）；深色页用 2.2 的去饱和对应色。同一页面同一语义只允许一种色值。
+- **Color Consistency Lock：** 页面级强调色一旦确定，全页统一。不允许第 7 个区块突然出现主题外的新强调色。
+- **禁用：** AI 紫/霓虹渐变、纯黑 `#000` 大底、高饱和撞色、无语义的彩色装饰。
+- **域内调色板（`cockpit` / `warm` / `institutional`）：** 可继续使用，但仅限视觉层（visual-only），不承载业务语义；新页面优先从 IB / dh-api 两套主色系取色，确有需要再引用域内调色板，并保持与所在页面主题的明暗与饱和度协调。
+
+---
+
+## 5. Spacing & Layout
+
+- **Base unit:** 4px（`designTokens.space`）。页内垂直节奏用 8/12/16/24 组合；同一栅格行内卡片 padding 与 gap 必须一致。
+- **Density:** compact 为主。深色终端页更紧（面板 padding 12–15px，行高 1.25–1.35）。
+- **栅格：** 主内容 + 右栏布局用 `minmax(0, 1fr) + 固定右栏（320px 级）`；三列区大桌面 8-8-8，窄屏先折 12+12 再单栏，**禁止**压缩字号保列数。
+- **不等高网格必须 `align-items: start`：** 多列卡片/新闻组内容量天然不等时，禁止默认 stretch 把空卡拉出大段空白（"空白比内容多"是版式事故）。左右双栏若追求齐底，用 `align-self: stretch` 让**卡片背景**补齐，而非留裸空白断层。
+- **空态收缩：** 0 条数据的分组收缩到消息框自身高度（min-height ≤ 120px 级），居中一句话说明 + 原因，不占满等高格。
+- **圆角一致性（Shape Lock）：** IB 主题全局 `2px` 锐角；深色终端页 `6px`。一页一套圆角制度，禁止混用大圆角"玩具感"卡片。
+- **卡片使用纪律：** 仅当层级需要时才用卡片容器；同级信息优先用 `border-top` / `divide` / 留白分组。禁止"格子套格子"。
+
+---
+
+## 6. 状态与数据可信呈现
+
+这是本系统区别于普通仪表盘的核心：**状态即内容**。
+
+- **五态齐备：** 每个数据区块必须可感知 loading / 空 / 错 / stale / partial。无数据时禁止用演示数冒充正式口径。
+- **占位防重排：** 懒加载区块的 Suspense 占位必须带与相邻面板一致的背板（背景+边线）和接近真实高度的 `min-height`，禁止 1px 占位导致内容到达时页面跳动。
+- **缺值占位符：** 表格/指标缺值统一 `—`（金融惯例）。**同一缺失原因整列缺失时**，明细行用安静的 `—`，原因说明只在区块头部/汇总处出现一次——禁止把"缺 XXX"文案在每行重复。
+- **状态圆点必须承载语义：** 圆点颜色 = 数据状态（通过/部分/缺口/延迟）。禁止纯装饰圆点。
+- **状态信息去重：** 同一事实（如"数据已更新 04:40"）全页最多出现两处（工具条 + 底栏）。卡片内不再重复全局报告日；来源/口径细节（如 `home.snapshot`、basis 代码）收进 `title`/tooltip，不占正文版面。
+- **溯源标识分层：** 端点路径、trace 类技术信息属于"证据层"，只出现在证据链/API 目录等专门模块，不散落到业务结论区。
+
+---
+
+## 7. 文案（Copy Register）
+
+- **一页一语域：** 面向用户的文案统一**简体中文业务语言**。禁止中英混排的技术微标签（如 `coverage map · expanded landed domains`、`date-gated`、`domains landed`）——这类内容要么中文化，要么收进 tooltip，要么删除。
+- **例外：** 既定大写状态徽标（GOV/FORMAL/READY 等）、接口路径、代码标识可保留英文，因为它们是"证据引用"而非叙述文案。
+- **`·` 分隔符配额：** 单行元信息最多 1 个 `·`。超出时改分行、竖线分栏或删字段。
+- **禁止微元句：** 区块标题旁不加"解释这个组件如何实现"的装饰性小字。标题 + 状态徽标已足够。
+- **em-dash 禁令：** 叙述文案中不用 `—` 作修辞停顿（表格缺值占位 `—` 除外，见第 6 节）。
+- **发布前自审：** 通读所有可见字符串，清除语法不通、指代不明、AI 味修辞的句子。宁要平实，不要"聪明但错"。
+
+---
+
+## 8. Motion
+
+- **Approach:** minimal-functional。仅状态切换、折叠、Tab、路由过渡、hover/active 反馈。
+- **禁止无限循环装饰动效**（扫光、呼吸、网格漂移一类）。已于 2026-07 全数移除，不得回加。
+- **时长/曲线：** 用 `designTokens.motion`（fast 150ms hover / base 200ms 展开 / easeOut）。
+- **必须尊重 `prefers-reduced-motion`：** 所有非 hover 动效在 reduce 下退化为静态。
+- **滚动监听：** 禁止裸 `window.addEventListener("scroll")` 驱动动画；用 IntersectionObserver 或 idle-callback 门控（现有分级加载门控即此模式）。
+
+---
+
+## 9. Page Locks（区块顺序锁）
+
+以下页面的信息区块顺序未经产品确认**不得调整**。
+
+### 9.1 债券分析 / 组合工作台首页
+
+1) 宏观市场条 → 2) 本日判断（结论文本+轻装饰）→ 3) 组合 KPI 横带 → 4) 三列：曲线与波动 | 四象策略 | 收益归因 → 5) 三列：结构/风险/今日焦点 → 6) 双列：事件日历 | 重点券表
+
+### 9.2 经营日报首页（深色终端，2026-07 现状）
+
+- **首屏：** 工具条（报告日/搜索/状态胶囊 ≤3 个/刷新）→ 早间决策一览（判断 hero + 来源核验）→ KPI 横带（规模/损益/久期/YTM，4 卡等高对齐）
+- **下半屏（懒加载，带骨架占位）：** 宏观/日历上下文（左前瞻+过往、右政策资金面，双栏齐底）→ 市场/日历上下文 → 债券信息新闻（三组，空组收缩）→ 快捷下钻 → 重点券 + 风险暴露/增减仓 → 收益趋势 → 结构看板 → 券商研报 → 证据链路
+- **右栏（320px）：** 待复核 → 待办事项 → 数据质量（含来源台账，一卡合并）
+- **首屏问题：** "今日组合的可执行判断是什么、数据是否可信"，两问都必须在首屏可答。
+
+---
+
+## 10. Relationship to Code
+
+- **数值单一来源：** `frontend/src/theme/designSystem.ts`（scale、语义色、motion）+ `frontend/src/styles/tokens.css`（CSS 变量）。域内扩展 token 需与本文语义一致。
+- **正式金融指标：** 前端只消费后端/adapter 输出，不自行推导（与 `AGENTS.md`/`CLAUDE.md` 一致）。
+- **全站版式契约（opt-in）：** 未在第 9 节锁定顺序的页面，以 [`docs/frontend-layout-contract.md`](docs/frontend-layout-contract.md) 为默认骨架。
+- **验收工具：** 改动版式后跑 `npm run test`（相关域）、`npm run debt:audit`、浏览器 1440×900 基准截图对比；不等高网格、状态去重、文案语域属于审查必查项。
+
+---
+
+## 11. Anti-Patterns（一票否决清单）
+
+1. 页内主题翻转（浅色页中插深色区块，反之亦然）
+2. 等高 stretch 造成的空卡大留白；左右栏裸空白断层
+3. 同一状态文案在页面 3 处以上重复；每行重复同一缺失原因
+4. 无限循环装饰动效；不尊重 reduced-motion
+5. 中英混排技术微标签出现在业务叙述位
+6. 单行 2 个以上 `·`；区块标题旁的装饰性微元句
+7. 高饱和语义色直接用于深色终端页
+8. 无语义装饰圆点；AI 紫渐变；纯黑大底
+9. KPI 标签换行导致同排数值错位
+10. 1px 懒加载占位造成内容到达时重排
+11. 用随机演示数据冒充正式口径
+
+---
+
+## 12. Decisions Log
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-04-27 | 引入根目录 DESIGN.md，债券分析页以提供之完稿为权威 ±5% | 用户选择参考图为唯一视觉稿，统一协作与实现验收 |
-| 2026-04-27 | 延续系统字体栈，不强制外联展示字体 | 与现有 `designSystem` 一致，减少内网与加载变量 |
-| 2026-05-29 | 经营驾驶舱首页改为「分层卡片 + 更大留白」视觉方向：一级白底柔阴影、二级浅底无边框；Hero 仅保留今日判断渐变；间距统一 8/12/16/24 | 用户授权较大视觉改动，解决格子套格子拥挤感，不影响业务区块与数据口径 |
+| 2026-04-27 | 引入根目录 DESIGN.md，债券分析页以完稿为权威 ±5% | 统一协作与实现验收 |
+| 2026-04-27 | 延续系统字体栈，不强制外联展示字体 | 内网可用性，减少加载变量 |
+| 2026-05-29 | 经营驾驶舱首页改为分层卡片+更大留白 | 解决格子套格子拥挤感 |
+| 2026-06-12 | 引入 IB 浅色 restyle（ibTokens：纸底/深栏/衬线刊头/2px 锐角） | 机构感统一视觉语言 |
+| 2026-07-07 | 全文重写：正式承认「IB 浅色 + 深色终端」双主题体系并各自定 token 权威；新增状态呈现、文案语域、防重排、反模式清单 | 旧文档只覆盖浅色体系，与首页深色终端现状脱节；沉淀本轮首页整改（KPI 对齐、状态去重、动效移除、空态收缩、中文化）为可审查标准 |
+| 2026-07-07 | `cockpit`/`warm`/`institutional` 域内调色板继续保留使用，定位为 visual-only；新页面优先 IB / dh-api 取色 | 存量页面依赖广，强制冻结成本高；以"优先级引导"代替"禁令" |

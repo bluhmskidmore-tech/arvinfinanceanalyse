@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import type { DashboardHomeFirstScreenHydration } from "./dashboardHomeFirstScreenTypes";
 import { DeferredEvidenceIndexPreview } from "./DeferredEvidenceIndexPreview";
-import styles from "./dashboardHomeShell.module.css";
+import { DeferredSkeleton } from "./DeferredSkeleton";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 import { useDashboardHomeSupplementalHydration } from "./useDashboardHomeSupplementalHydration";
 
@@ -159,7 +159,7 @@ export function DeferredTerminalHomeContent({
   }
 
   return (
-    <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
+    <Suspense fallback={<DeferredSkeleton variant="context-panel" />}>
       <DeferredTerminalHomeBody
         snapshotBoundary={snapshotBoundary}
         focusPolicyFunding={focusPolicyFunding}

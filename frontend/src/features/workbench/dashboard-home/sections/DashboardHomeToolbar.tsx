@@ -14,6 +14,10 @@ function statusDotClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
   return `${styles.dhDot} ${statusKind === "ok" ? styles.dhDotGreen : styles.dhDotOrange}`;
 }
 
+function marketDotClass(valuationTone: HomeHeaderStatus["valuationTone"]) {
+  return `${styles.dhDot} ${valuationTone === "ok" ? styles.dhDotBlue : styles.dhDotOrange}`;
+}
+
 type DashboardHomeToolbarProps = {
   title?: string;
   toolbarTestId?: string;
@@ -86,13 +90,14 @@ export function DashboardHomeToolbar({
             {headerStatus.dataSyncPrefix}
             <span className={styles.dhNum}>{headerStatus.dataUpdatedAt}</span>
           </span>
-          <span className={styles.dhStatusPill}>
-            <i className={`${styles.dhDot} ${styles.dhDotOrange}`} aria-hidden="true" />
-            {headerStatus.marketStatus}
-          </span>
-          <span className={styles.dhStatusPill}>
-            <i className={`${styles.dhDot} ${styles.dhDotBlue}`} aria-hidden="true" />
-            {headerStatus.valuationLabel}
+          <span
+            className={styles.dhStatusPill}
+            title={`${headerStatus.marketStatus} · ${headerStatus.valuationLabel}`}
+          >
+            <i className={marketDotClass(headerStatus.valuationTone)} aria-hidden="true" />
+            <span>{headerStatus.marketStatus}</span>
+            <span aria-hidden="true"> · </span>
+            <span>{headerStatus.valuationLabel}</span>
           </span>
           {headerStatus.showRiskReview ? (
             <Link

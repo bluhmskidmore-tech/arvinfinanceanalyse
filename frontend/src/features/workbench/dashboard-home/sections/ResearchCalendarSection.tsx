@@ -78,7 +78,7 @@ export function ResearchCalendarSection({
           </div>
         </div>
         <div className={styles.dhMacroBriefingGrid}>
-          <div className={styles.dhMacroBriefingPane}>
+          <div className={`${styles.dhMacroBriefingPane} ${styles.dhMacroReleasePane}`}>
             <div className={styles.dhMacroBriefingHeader}>
               <span>重大信息发布日期前瞻</span>
               <small>{macroBriefing.releaseWindowLabel}</small>
