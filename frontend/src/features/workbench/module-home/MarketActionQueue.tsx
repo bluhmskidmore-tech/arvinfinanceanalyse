@@ -317,7 +317,7 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
 
   return (
     <section
-      className={`${marketStyles.actionQueue} ${marketStyles.marketDeskPanel}`}
+      className={`${dhStyles.dhCard} ${marketStyles.actionQueue} ${marketStyles.marketDeskPanel}`}
       data-testid="module-home-market-actions"
     >
       <div className={marketStyles.actionQueueHeader}>
@@ -327,12 +327,12 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
           Action Queue · Owner / SLA / Gate / Evidence Pack
         </em>
       </div>
-      <div className={marketStyles.actionQueueTape}>
-        <div aria-hidden="true" className={marketStyles.actionQueueTableHead}>
-          <span>优先级</span>
-          <span>事项</span>
-          <span>证据</span>
-          <span>入口</span>
+      <div className={marketStyles.actionQueueTape} role="table" aria-label="行动队列">
+        <div className={marketStyles.actionQueueTableHead} role="row">
+          <span role="columnheader">优先级</span>
+          <span role="columnheader">事项</span>
+          <span role="columnheader">证据</span>
+          <span role="columnheader">入口</span>
         </div>
         {items.map((item) => {
           const taskParts = taskMetaParts(item);
@@ -344,20 +344,22 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
               data-testid={`module-home-market-action-${item.key}`}
               data-tone={item.tone}
               key={item.key}
+              role="row"
               to={item.path}
             >
-              <span className={`${marketStyles.actionQueueRank} ${toneClass(item.tone)}`}>{item.rank}</span>
-              <strong className={marketStyles.actionQueueTableTitle}>{item.title}</strong>
+              <span className={`${marketStyles.actionQueueRank} ${toneClass(item.tone)}`} role="cell">{item.rank}</span>
+              <strong className={marketStyles.actionQueueTableTitle} role="cell">{item.title}</strong>
               <em
                 aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
                 className={marketStyles.actionQueueTableEvidence}
                 data-testid={`module-home-market-action-${item.key}-evidence`}
+                role="cell"
               >
                 {item.evidence.length > 0
                   ? renderColoredFieldSegments(item.evidence, item.evidenceSparkline)
                   : <span>待返回</span>}
               </em>
-              <b className={marketStyles.actionQueueTableTarget} data-testid={`module-home-market-action-${item.key}-target`}>
+              <b className={marketStyles.actionQueueTableTarget} data-testid={`module-home-market-action-${item.key}-target`} role="cell">
                 {item.label}
               </b>
               <div

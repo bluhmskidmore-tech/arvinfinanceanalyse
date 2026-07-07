@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { LightIcon } from "../../../components/LightIcon";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { ModuleHomeSectionHead } from "./ModuleHomeSectionHead";
 import type {
   ModuleHomeDetailPanel,
   ModuleHomeDistributionPanel,
@@ -217,15 +218,6 @@ function PortfolioChartSnapshot({ panels }: { panels: ModuleHomeDistributionPane
         })}
       </div>
     </section>
-  );
-}
-
-function SectionHead({ label, title }: { label: string; title: string }) {
-  return (
-    <div className={styles.sectionHead}>
-      <span>{label}</span>
-      <strong>{title}</strong>
-    </div>
   );
 }
 
@@ -794,7 +786,7 @@ export default function PortfolioHomeLayout({
                 <DecisionPanel view={view} />
 
                 <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
-                  <SectionHead label="指标" title="核心指标" />
+                  <ModuleHomeSectionHead label="指标" title="核心指标" className={styles.sectionHead} />
                   {kpiGroups.scopeNote ? (
                     <p className={styles.kpiScopeNote} data-testid="module-home-portfolio-kpi-scope-note">
                       {kpiGroups.scopeNote}
@@ -936,19 +928,19 @@ export default function PortfolioHomeLayout({
                       <PortfolioClosureGate decision={view.decision} />
                       {riskPanel ? (
                         <article className={`${styles.closureReviewCard} ${styles.closureReviewCardRisk}`} data-testid={detailPanelTestId(riskPanel.key)}>
-                          <SectionHead label="风险" title="风险读数" />
+                          <ModuleHomeSectionHead label="风险" title="风险读数" className={styles.sectionHead} />
                           <DetailPanelBody panel={riskPanel} embedded />
                         </article>
                       ) : null}
                       {pnlPanel ? (
                         <article className={styles.closureReviewCard} data-testid={detailPanelTestId(pnlPanel.key)}>
-                          <SectionHead label="归因" title="收益归因" />
+                          <ModuleHomeSectionHead label="归因" title="收益归因" className={styles.sectionHead} />
                           <DetailPanelBody panel={pnlPanel} embedded />
                         </article>
                       ) : null}
                       {basisPanel ? (
                         <article className={styles.closureReviewCard} data-testid={detailPanelTestId(basisPanel.key)}>
-                          <SectionHead label="来源" title="日期闭合线" />
+                          <ModuleHomeSectionHead label="来源" title="日期闭合线" className={styles.sectionHead} />
                           <DetailPanelBody panel={basisPanel} embedded />
                         </article>
                       ) : null}
@@ -965,12 +957,12 @@ export default function PortfolioHomeLayout({
                       组合复盘摘要
                     </h2>
                     <section data-testid="module-home-holdings-structure" className={styles.summaryLedgerCard}>
-                      <SectionHead label="复盘" title="评级 / 期限 / 行业分布" />
+                      <ModuleHomeSectionHead label="复盘" title="评级 / 期限 / 行业分布" className={styles.sectionHead} />
                       <PortfolioChartSnapshot panels={secondaryDistributionPanels} />
                     </section>
 
                     <section data-testid="module-home-briefing" className={styles.summaryLedgerCard}>
-                      <SectionHead label="复盘" title="组合摘要" />
+                      <ModuleHomeSectionHead label="复盘" title="组合摘要" className={styles.sectionHead} />
                       <div className={styles.briefGrid} data-testid="module-home-briefing-ledger">
                         {view.briefings.map((item, index) => (
                           <article
@@ -991,7 +983,7 @@ export default function PortfolioHomeLayout({
                       data-testid="module-home-status-strip"
                       className={`${dhStyles.dhCard} ${styles.summaryLedgerCard} ${styles.statusStrip}`}
                     >
-                      <SectionHead label="复盘" title="来源与状态" />
+                      <ModuleHomeSectionHead label="复盘" title="来源与状态" className={styles.sectionHead} />
                       <div className={styles.statusGrid} data-testid="module-home-status-ledger">
                         {view.statuses.slice(0, 4).map((item) => (
                           <div className={styles.statusCell} key={item.key}>
@@ -1022,7 +1014,7 @@ export default function PortfolioHomeLayout({
                         data-testid="module-home-portfolio-quick-access"
                         className={`${styles.sectionBlock} ${styles.quickAccessBlock}`}
                       >
-                        <SectionHead label="快捷" title="分析入口" />
+                        <ModuleHomeSectionHead label="快捷" title="分析入口" className={styles.sectionHead} />
                         <div className={styles.quickAccessGrid}>
                           {PORTFOLIO_QUICK_ACCESS_TILES.map((tile) => (
                             <Link
@@ -1041,7 +1033,7 @@ export default function PortfolioHomeLayout({
                       </section>
 
                       <section data-testid="module-home-drilldowns" className={`${styles.sectionBlock} ${styles.drilldownBlock}`}>
-                        <SectionHead label="明细" title="全部分组入口" />
+                        <ModuleHomeSectionHead label="明细" title="全部分组入口" className={styles.sectionHead} />
                         <div className={styles.drillGrid}>
                           {config.drilldowns.map((item) => {
                             const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <LightIcon name="arrow-right" />;

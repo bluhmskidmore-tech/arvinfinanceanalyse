@@ -28,7 +28,7 @@ export function MarketDeskIntelStrip({ intel }: MarketDeskIntelStripProps) {
 
   return (
     <section
-      className={`${marketStyles.marketDeskIntelStrip} ${marketStyles.marketDeskPanel}`}
+      className={`${dhStyles.dhCard} ${marketStyles.marketDeskIntelStrip} ${marketStyles.marketDeskPanel}`}
       data-testid="module-home-market-desk-intel"
     >
       <header className={marketStyles.marketDeskIntelHead}>

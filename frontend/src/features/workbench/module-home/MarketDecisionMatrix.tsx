@@ -220,7 +220,7 @@ export function MarketDecisionMatrix({
 
   return (
     <section
-      className={`${marketStyles.decisionMatrix} ${marketStyles.marketDeskPanel}`}
+      className={`${dhStyles.dhCard} ${marketStyles.decisionMatrix} ${marketStyles.marketDeskPanel}`}
       data-testid="module-home-market-matrix"
     >
       <div className={marketStyles.decisionMatrixHeader}>

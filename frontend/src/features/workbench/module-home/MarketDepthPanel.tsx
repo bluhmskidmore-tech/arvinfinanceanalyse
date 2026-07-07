@@ -187,7 +187,7 @@ export function MarketDepthPanel({
 
   return (
     <article
-      className={`${marketStyles.marketDeskPanel} ${marketStyles.depthPanel} ${isEmpty ? marketStyles.marketCompactEmptyPanel : ""} ${className ?? ""}`}
+      className={`${dhStyles.dhCard} ${marketStyles.marketDeskPanel} ${marketStyles.depthPanel} ${isEmpty ? marketStyles.marketCompactEmptyPanel : ""} ${className ?? ""}`}
       data-testid={testId}
     >
       <div className={dhStyles.dhSectionTitle}>

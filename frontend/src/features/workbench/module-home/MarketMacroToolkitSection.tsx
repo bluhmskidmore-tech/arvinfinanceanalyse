@@ -6,6 +6,7 @@ import { formatMacroSignalEvidence, marketSignalVisual, parseMacroSignalValue } 
 import { marketChangePresentation } from "./marketHomeChangeTone";
 import { MarketIconMacroToolkit } from "./marketHomeIcons";
 import { MarketMacroPanelShell } from "./MarketMacroPanelShell";
+import { ModuleHomeSectionHead } from "./ModuleHomeSectionHead";
 import { formatPanelMetaForHome, type ModuleHomeDetailPanel, type ModuleHomeTone } from "./moduleHomeModel";
 import { MarketDepthPanel } from "./MarketDepthPanel";
 import marketStyles from "./marketHome.module.css";
@@ -309,10 +310,12 @@ export default function MarketMacroToolkitSection({
 
   return (
     <section className={marketStyles.macroSection} data-testid="module-home-macro-toolkit">
-      <div className={marketStyles.macroSectionHead}>
-        <span className={marketStyles.macroSectionHeadTitle}>宏观工具</span>
-        <MacroToolkitLink />
-      </div>
+      <ModuleHomeSectionHead
+        label="宏观工具"
+        title=""
+        className={marketStyles.macroSectionHead}
+        trailing={<MacroToolkitLink />}
+      />
       {toolkitBody}
     </section>
   );

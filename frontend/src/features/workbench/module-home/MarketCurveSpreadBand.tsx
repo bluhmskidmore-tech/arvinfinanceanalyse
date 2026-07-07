@@ -50,7 +50,7 @@ function SpreadMiniCard({
 
   const card = (
     <article
-      className={`${marketStyles.marketCurveSpreadCard} ${marketStyles.marketDeskPanel} ${accent ? marketStyles[`marketAccent_${accent}`] : marketStyles.marketAccent_slate} ${linked ? marketStyles.marketCurveSpreadCardLinked : ""}`}
+      className={`${dhStyles.dhCard} ${marketStyles.marketCurveSpreadCard} ${marketStyles.marketDeskPanel} ${accent ? marketStyles[`marketAccent_${accent}`] : marketStyles.marketAccent_slate} ${linked ? marketStyles.marketCurveSpreadCardLinked : ""}`}
       data-testid={`module-home-market-curve-spread-${row.key}`}
       data-tone={row.tone}
       data-linked-active={linked ? "true" : "false"}
@@ -105,7 +105,7 @@ export function MarketCurveSpreadBand({
 
   return (
     <section
-      className={`${marketStyles.marketCurveSpreadBand} ${marketStyles.marketDeskPanel}`}
+      className={`${dhStyles.dhCard} ${marketStyles.marketCurveSpreadBand} ${marketStyles.marketDeskPanel}`}
       data-testid="module-home-market-curve-spread-band"
     >
       <header className={marketStyles.marketCurveSpreadBandHead}>

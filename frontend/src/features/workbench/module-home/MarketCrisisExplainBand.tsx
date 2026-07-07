@@ -185,7 +185,7 @@ export function MarketCrisisExplainBand({ explain }: MarketCrisisExplainBandProp
 
   return (
     <section
-      className={`${marketStyles.marketCrisisExplainBand} ${marketStyles.marketDeskPanel}`}
+      className={`${dhStyles.dhCard} ${marketStyles.marketCrisisExplainBand} ${marketStyles.marketDeskPanel}`}
       data-testid="module-home-market-crisis-explain-band"
       data-tone={explain.tone}
     >

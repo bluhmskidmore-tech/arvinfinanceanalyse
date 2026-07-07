@@ -22,6 +22,7 @@ import { marketDrillIconLabel } from "./marketHomeDrillIcon";
 import { MarketIconYieldCurve } from "./marketHomeIcons";
 import MarketMacroToolkitSection from "./MarketMacroToolkitSection";
 import { MarketStructureTabPanel } from "./MarketStructureTabPanel";
+import { ModuleHomeSectionHead } from "./ModuleHomeSectionHead";
 import marketStyles from "./marketHome.module.css";
 import { marketDataPageHref } from "../../market-data/components/marketDataDeskBridgeLinks";
 
@@ -51,6 +52,10 @@ const SPREAD_KPI_KEYS = ["term-spread-10y-2y", "term-spread-10y-1y", "term-sprea
 
 function panelByKey(panels: ModuleHomeView["detailPanels"], key: string) {
   return panels?.find((panel) => panel.key === key);
+}
+
+function marketAuditTabBadge(panel: ModuleHomeDetailPanel | undefined) {
+  return panel && panel.rows.length > 0 ? String(panel.rows.length) : "空";
 }
 
 function toneClass(tone: ModuleHomeTone) {
@@ -126,13 +131,15 @@ function MarketMacroOverviewCard({ panel }: { panel: ModuleHomeDetailPanel }) {
 
   return (
     <article
-      className={`${marketStyles.marketDeskPanel} ${marketStyles.macroOverviewCard}`}
+      className={`${dhStyles.dhCard} ${marketStyles.marketDeskPanel} ${marketStyles.macroOverviewCard}`}
       data-testid="module-home-macro-overview-depth"
     >
-      <div className={dhStyles.dhSectionTitle}>
-        <span>{panel.title}</span>
-        <span className={marketStyles.marketStatusOutline}>{panel.stateLabel}</span>
-      </div>
+      <ModuleHomeSectionHead
+        label={panel.title}
+        title=""
+        className={dhStyles.dhSectionTitle}
+        trailing={<span className={marketStyles.marketStatusOutline}>{panel.stateLabel}</span>}
+      />
       <p className={marketStyles.panelMeta}>{panel.meta}</p>
       <div className={marketStyles.macroOverviewBody}>
         <div className={marketStyles.macroOverviewMain}>
@@ -371,7 +378,12 @@ export default function MarketHomeLayout({
       const panel = map.get(tab.key);
       return {
         key: tab.key,
-        label: tab.label,
+        label: (
+          <span className={marketStyles.marketAuditTabLabel} data-testid={`module-home-market-audit-tab-${tab.key}`}>
+            <span>{tab.label}</span>
+            <small className={marketStyles.marketAuditTabBadge}>{marketAuditTabBadge(panel)}</small>
+          </span>
+        ),
         children: panel ? (
           <div data-testid={DETAIL_PANEL_TEST_IDS[tab.key]}>
             <MarketStructureTabPanel panel={panel} />
@@ -477,15 +489,17 @@ export default function MarketHomeLayout({
               </div>
             </aside>
             <section className={marketStyles.marketDepthZone} data-testid="module-home-market-depth-zone">
-              <div className={dhStyles.dhSectionTitle}>
-                <span>深度数据</span>
-                <Link to={marketDataHref} className={dhStyles.dhLink}>完整市场数据 →</Link>
-              </div>
+              <ModuleHomeSectionHead
+                label="深度数据"
+                title=""
+                className={dhStyles.dhSectionTitle}
+                trailing={<Link to={marketDataHref} className={dhStyles.dhLink}>完整市场数据 →</Link>}
+              />
               <div
-                className={`${marketStyles.marketDeskPanel} ${marketStyles.terminalCard} ${marketStyles.marketAnalysisRates} ${isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""}`}
+                className={`${dhStyles.dhCard} ${marketStyles.marketDeskPanel} ${marketStyles.terminalCard} ${marketStyles.marketAnalysisRates} ${isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""}`}
                 data-testid="module-home-market-terminal"
               >
-                <div className={dhStyles.dhSectionTitle}><span>正式利率序列 / 目录 / 快讯</span></div>
+                <ModuleHomeSectionHead label="正式利率序列 / 目录 / 快讯" title="" className={dhStyles.dhSectionTitle} />
                 <Tabs defaultActiveKey="formal-rate-series" items={auditTabItems} />
               </div>
               <section className={marketStyles.marketDistributionGrid} data-testid="module-home-market-distribution-grid">
@@ -632,7 +646,7 @@ export default function MarketHomeLayout({
           <section data-testid="module-home-market-primary-grid" className={marketStyles.marketHero}>
             <section data-testid="module-home-briefing" className={marketStyles.marketThesisSection}>
               {primaryBriefing ? (
-                <article className={`${marketStyles.marketThesisHero} ${marketStyles.marketJudgementHero} ${marketStyles.marketDeskPanel}`}>
+                <article className={`${dhStyles.dhCard} ${marketStyles.marketThesisHero} ${marketStyles.marketJudgementHero} ${marketStyles.marketDeskPanel}`}>
                   <span className={marketStyles.marketThesisKicker}>本日市场判断</span>
                   <h2>{macroStanceRow?.value ? `${macroStanceRow.value} · ${primaryBriefing.conclusion}` : primaryBriefing.conclusion}</h2>
                   <p className={marketStyles.marketHeroEvidence} data-testid="module-home-market-hero-evidence"><span>{marketJudgementCue}</span></p>
@@ -666,7 +680,7 @@ export default function MarketHomeLayout({
                 const isSpreadLinked = linkedSpreadKey === item.key;
                 return (
                   <div
-                    className={`${marketStyles.marketKpiTile} ${marketStyles.marketDeskPanel} ${MARKET_KPI_ACCENT[item.key] ? marketStyles[`marketAccent_${MARKET_KPI_ACCENT[item.key]}`] : ""} ${item.key === "a-share-risk" ? marketStyles.marketKpiHeroTile : ""} ${isSpreadLinkedKpi ? marketStyles.marketKpiSpreadTile : ""} ${isSpreadLinked ? marketStyles.marketKpiSpreadLinked : ""}`}
+                    className={`${dhStyles.dhCard} ${marketStyles.marketKpiTile} ${marketStyles.marketDeskPanel} ${MARKET_KPI_ACCENT[item.key] ? marketStyles[`marketAccent_${MARKET_KPI_ACCENT[item.key]}`] : ""} ${item.key === "a-share-risk" ? marketStyles.marketKpiHeroTile : ""} ${isSpreadLinkedKpi ? marketStyles.marketKpiSpreadTile : ""} ${isSpreadLinked ? marketStyles.marketKpiSpreadLinked : ""}`}
                     data-tone={item.tone}
                     data-spread-kpi={isSpreadLinkedKpi ? "true" : undefined}
                     data-linked-active={isSpreadLinked ? "true" : "false"}
@@ -752,7 +766,7 @@ export default function MarketHomeLayout({
             />
           </section>
           <MarketCrisisExplainBand explain={view.marketCrisisExplain} />
-          <section className={`${marketStyles.marketActionBand} ${marketStyles.marketDeskPanel}`} data-testid="module-home-market-morning-readout">
+          <section className={`${dhStyles.dhCard} ${marketStyles.marketActionBand} ${marketStyles.marketDeskPanel}`} data-testid="module-home-market-morning-readout">
             <div className={marketStyles.marketActionBandHead}><span>晨会读盘</span><em>重点读数 + 下一步动作</em></div>
             {newsHeadlineRows.length > 0 || newsEventsPanel ? (
               <section className={marketStyles.marketNewsStrip} data-testid="module-home-news-events-strip">

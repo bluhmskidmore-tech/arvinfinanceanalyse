@@ -10,6 +10,7 @@ import {
 } from "./marketEvidenceVisual";
 import { marketChangePresentation } from "./marketHomeChangeTone";
 import type { MarketChangeDirection } from "./marketHomeChangeTone";
+import { ModuleHomeSectionHead } from "./ModuleHomeSectionHead";
 import type {
   MarketCrisisExplainView,
   MarketDeskIntelView,
@@ -74,12 +75,16 @@ function CrisisMiniTrend({ explain }: { explain: MarketCrisisExplainView }) {
 
   return (
     <section className={marketStyles.crossAssetGapSection} data-testid="module-home-cross-asset-crisis-mini">
-      <header className={marketStyles.crossAssetGapSectionHead}>
-        <span className={marketStyles.crossAssetGapSectionKicker}>CRISIS 趋势</span>
-        <Link to="/macro-toolkit" className={marketStyles.marketIbLink}>
-          宏观工具 →
-        </Link>
-      </header>
+      <ModuleHomeSectionHead
+        label="CRISIS 趋势"
+        title=""
+        className={marketStyles.crossAssetGapSectionHead}
+        trailing={
+          <Link to="/macro-toolkit" className={marketStyles.marketIbLink}>
+            宏观工具 →
+          </Link>
+        }
+      />
       <div className={marketStyles.crossAssetCrisisMini}>
         <div className={marketStyles.crossAssetCrisisMiniStats}>
           <strong className={`${dhStyles.dhNum} ${marketStyles.crossAssetCrisisMiniScore}`}>{scoreLabel}</strong>
@@ -131,9 +136,11 @@ function DeskContextStrip({
 
   return (
     <section className={marketStyles.crossAssetDeskContext} data-testid="module-home-cross-asset-desk-context">
-      <header className={marketStyles.crossAssetGapSectionHead}>
-        <span className={marketStyles.crossAssetGapSectionKicker}>Desk 上下文</span>
-      </header>
+      <ModuleHomeSectionHead
+        label="Desk 上下文"
+        title=""
+        className={marketStyles.crossAssetGapSectionHead}
+      />
       <div className={marketStyles.crossAssetDeskContextGrid}>
         {missingRates ? (
           <div className={marketStyles.crossAssetDeskContextCell} data-testid="module-home-cross-asset-missing-rates">
@@ -232,10 +239,12 @@ export function MarketCrossAssetGapBlock({
       ) : null}
       {showSecondary ? (
         <section className={marketStyles.crossAssetGapSection} data-testid="module-home-cross-asset-secondary-list">
-          <header className={marketStyles.crossAssetGapSectionHead}>
-            <span className={marketStyles.crossAssetGapSectionKicker}>更多观察</span>
-            <em className={marketStyles.crossAssetGapSectionMeta}>{secondaryRows.length} 条</em>
-          </header>
+          <ModuleHomeSectionHead
+            label="更多观察"
+            title=""
+            className={marketStyles.crossAssetGapSectionHead}
+            trailing={<em className={marketStyles.crossAssetGapSectionMeta}>{secondaryRows.length} 条</em>}
+          />
           <div className={marketStyles.crossAssetSecondaryList}>
             {secondaryRows.map((row) => (
               <SecondaryRow key={row.key} row={row} />
