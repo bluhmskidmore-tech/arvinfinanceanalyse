@@ -222,3 +222,58 @@ def test_resolve_data_input_root_path_moss_env_overrides_raw_files_layout(tmp_pa
     resolved = resolve_data_input_root_path(repo_root=repo_root, pydantic_value=Path("explicit_drop"))
 
     assert resolved == explicit.resolve()
+
+
+def test_settings_production_defaults_governance_backends_to_sql_authority(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+
+    s = Settings(_env_file=None)
+
+    assert s.governance_backend == "sql-authority"
+    assert s.source_preview_governance_backend == "sql-authority"
+
+
+def test_settings_production_rejects_explicit_jsonl_governance_backend(monkeypatch):
+    _clear_moss_env(monkeypatch)
+
+    try:
+        Settings(environment="production", governance_backend="jsonl", _env_file=None)
+    except ValueError as exc:
+        assert "production" in str(exc)
+        assert "governance_backend" in str(exc)
+        assert "jsonl" in str(exc)
+    else:
+        raise AssertionError("production governance backend must reject explicit jsonl")
+
+
+def test_settings_production_rejects_explicit_jsonl_source_preview_backend(monkeypatch):
+    _clear_moss_env(monkeypatch)
+
+    try:
+        Settings(
+            environment="production",
+            source_preview_governance_backend="jsonl",
+            _env_file=None,
+        )
+    except ValueError as exc:
+        assert "production" in str(exc)
+        assert "source_preview_governance_backend" in str(exc)
+        assert "jsonl" in str(exc)
+    else:
+        raise AssertionError("production source preview governance backend must reject explicit jsonl")
+
+
+def test_settings_production_rejects_jsonl_governance_backend_env(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+    monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "jsonl")
+
+    try:
+        Settings(_env_file=None)
+    except ValueError as exc:
+        assert "production" in str(exc)
+        assert "governance_backend" in str(exc)
+        assert "jsonl" in str(exc)
+    else:
+        raise AssertionError("production governance backend env must reject jsonl")

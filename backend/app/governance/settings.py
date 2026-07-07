@@ -143,6 +143,19 @@ class Settings(BaseSettings):
     )
 
     def model_post_init(self, __context) -> None:
+        explicit_fields = set(getattr(self, "model_fields_set", set()))
+        self.governance_backend = _resolve_production_governance_backend(
+            self.governance_backend,
+            environment=self.environment,
+            field_name="governance_backend",
+            explicit="governance_backend" in explicit_fields,
+        )
+        self.source_preview_governance_backend = _resolve_production_governance_backend(
+            self.source_preview_governance_backend,
+            environment=self.environment,
+            field_name="source_preview_governance_backend",
+            explicit="source_preview_governance_backend" in explicit_fields,
+        )
         self.postgres_dsn = resolve_postgres_dsn(self.postgres_dsn, repo_root=_REPO_ROOT)
         self.governance_sql_dsn = resolve_governance_sql_dsn(
             self.governance_sql_dsn,
@@ -202,6 +215,23 @@ class Settings(BaseSettings):
             self.fx_mid_csv_path,
             repo_root=_REPO_ROOT,
         )
+
+
+def _resolve_production_governance_backend(
+    backend: str,
+    *,
+    environment: str,
+    field_name: str,
+    explicit: bool,
+) -> str:
+    normalized = str(backend or "").strip()
+    if str(environment or "").strip().lower() != "production":
+        return normalized
+    if normalized == "jsonl":
+        if explicit:
+            raise ValueError(f"production {field_name} cannot use jsonl authority")
+        return "sql-authority"
+    return normalized or "sql-authority"
 
 
 def get_settings() -> Settings:
