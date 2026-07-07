@@ -284,8 +284,8 @@ const gateHControlContextPages = [
         selector: '[data-testid="stock-analysis-refresh"]',
       },
       {
-        label: "supply detail disclosure",
-        selector: '[data-testid="stock-analysis-supply-details-toggle"]',
+        label: "complete evidence filter",
+        selector: '[data-testid="stock-analysis-complete-evidence-toggle"]',
       },
     ],
     stateCueSelector: '[data-testid="stock-analysis-page"]',
