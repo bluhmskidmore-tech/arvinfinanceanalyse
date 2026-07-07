@@ -545,16 +545,13 @@ def campisi_enhanced(
     }
 
 
-def maturity_bucket_attribution(
-    positions_merged: list[dict[str, Any]],
-    market_start: dict[str, Any] | None,
-    market_end: dict[str, Any] | None,
-    start_date: date,
-    end_date: date,
-) -> dict[str, dict[str, float]]:
-    base = campisi_attribution(
-        positions_merged, market_start, market_end, start_date, end_date
-    )
+def aggregate_maturity_buckets(by_bond: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    """将 ``campisi_attribution`` 的 ``by_bond`` 行聚合为到期桶四效应。
+
+    输入行需含 ``maturity_bucket`` 及 float 化的四效应字段（即 CampisiResult.by_bond）。
+    聚合顺序与字段与原 ``maturity_bucket_attribution`` 内联实现完全一致，
+    供 service 复用已缓存的四效应逐券结果时调用，数值逐字段等价。
+    """
     out: dict[str, dict[str, float]] = {lbl: {} for lbl in _MATURITY_BUCKET_LABELS}
     for lbl in _MATURITY_BUCKET_LABELS:
         out[lbl] = {
@@ -565,7 +562,7 @@ def maturity_bucket_attribution(
             "selection_effect": 0.0,
             "total_return": 0.0,
         }
-    for r in base.by_bond:
+    for r in by_bond:
         b = r["maturity_bucket"]
         if b not in out:
             continue
@@ -573,6 +570,19 @@ def maturity_bucket_attribution(
         for k in ("income_return", "treasury_effect", "spread_effect", "selection_effect", "total_return"):
             out[b][k] += r[k]
     return out
+
+
+def maturity_bucket_attribution(
+    positions_merged: list[dict[str, Any]],
+    market_start: dict[str, Any] | None,
+    market_end: dict[str, Any] | None,
+    start_date: date,
+    end_date: date,
+) -> dict[str, dict[str, float]]:
+    base = campisi_attribution(
+        positions_merged, market_start, market_end, start_date, end_date
+    )
+    return aggregate_maturity_buckets(base.by_bond)
 
 
 def classify_primary_driver(

@@ -861,6 +861,91 @@ def test_enhanced_and_maturity_bucket_envelopes_close_to_same_four_effect_totals
     )
 
 
+def test_maturity_bucket_envelope_reuses_cached_four_effects_state_without_recompute(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_four_effects_cache()
+    duckdb_path = tmp_path / "campisi-cache.duckdb"
+    duckdb_path.write_text("seed", encoding="utf-8")
+    start_rows = [
+        _bond_row(
+            code="GOV_BUCKET",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="国债",
+        ),
+        _bond_row(
+            code="AAA_BUCKET",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="credit",
+        ),
+    ]
+    end_rows = [
+        {**start_rows[0], "market_value": Decimal("990")},
+        {**start_rows[1], "market_value": Decimal("995")},
+    ]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={
+            "2026-01-01": start_rows,
+            "2026-01-31": end_rows,
+        },
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("3.00")),
+            ("2026-01-01", "credit_spread_aaa"): {"3Y": 50.0},
+            ("2026-01-31", "credit_spread_aaa"): {"3Y": 100.0},
+        },
+        duckdb_path=str(duckdb_path),
+    )
+
+    cold_buckets = campisi_svc.campisi_maturity_bucket_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )["result"]["buckets"]
+
+    _clear_four_effects_cache()
+    campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+
+    calls = {"campisi_attribution": 0, "maturity_bucket_attribution": 0}
+    real_campisi_attribution = campisi_svc.campisi_attribution
+    real_maturity_bucket_attribution = campisi_svc.maturity_bucket_attribution
+
+    def counting_campisi_attribution(**kwargs: Any) -> Any:
+        calls["campisi_attribution"] += 1
+        return real_campisi_attribution(**kwargs)
+
+    def counting_maturity_bucket_attribution(**kwargs: Any) -> Any:
+        calls["maturity_bucket_attribution"] += 1
+        return real_maturity_bucket_attribution(**kwargs)
+
+    monkeypatch.setattr(campisi_svc, "campisi_attribution", counting_campisi_attribution)
+    monkeypatch.setattr(campisi_svc, "maturity_bucket_attribution", counting_maturity_bucket_attribution)
+
+    warm_buckets = campisi_svc.campisi_maturity_bucket_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )["result"]["buckets"]
+
+    assert calls["campisi_attribution"] == 0
+    assert calls["maturity_bucket_attribution"] == 0
+    assert warm_buckets == cold_buckets
+
+
 def test_campisi_envelopes_close_to_formal_report_pnl_when_bridge_is_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

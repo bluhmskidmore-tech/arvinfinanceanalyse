@@ -31,6 +31,7 @@ from backend.app.core_finance.accounting_basis_constants import (
 )
 from backend.app.core_finance.campisi import (
     CampisiResult,
+    aggregate_maturity_buckets,
     campisi_attribution,
     campisi_enhanced,
     infer_credit_rating_from_asset_class,
@@ -2572,13 +2573,30 @@ def campisi_maturity_bucket_envelope(
         market_end=market_end,
     )
 
-    buckets = maturity_bucket_attribution(
-        positions_merged=positions,
-        market_start=market_start,
-        market_end=market_end,
-        start_date=date.fromisoformat(anchor_start),
-        end_date=date.fromisoformat(anchor_end),
+    # 复用四效应 envelope 已缓存的逐券结果做桶聚合，避免重跑完整 Campisi。
+    # 缓存 key 覆盖 duckdb 指纹 + 请求/解析日期，命中即输入完全一致；
+    # 未命中时走原完整计算路径（等价 fallback）。
+    cached_state = _get_cached_campisi_four_effects_state(
+        _campisi_four_effects_cache_key(
+            duckdb_path=settings.duckdb_path,
+            duckdb_fingerprint=_duckdb_storage_fingerprint(settings.duckdb_path),
+            requested_start_date=start_date,
+            requested_end_date=end_date,
+            resolved_start_date=anchor_start,
+            resolved_end_date=anchor_end,
+            lookback_days=lookback_days,
+        )
     )
+    if cached_state is not None:
+        buckets = aggregate_maturity_buckets(cached_state["result"].by_bond)
+    else:
+        buckets = maturity_bucket_attribution(
+            positions_merged=positions,
+            market_start=market_start,
+            market_end=market_end,
+            start_date=date.fromisoformat(anchor_start),
+            end_date=date.fromisoformat(anchor_end),
+        )
 
     return build_formal_result_envelope(
         result_meta=_meta_with_quality(
