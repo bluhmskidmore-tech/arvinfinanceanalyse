@@ -107,7 +107,17 @@ def resolve_system_duckdb_path(duckdb_path: str | Path | None = None) -> Path:
     return Path(get_settings().duckdb_path)
 
 
-def load_system_macro_frame(duckdb_path: str | Path | None = None) -> pd.DataFrame:
+def load_system_macro_frame(
+    duckdb_path: str | Path | None = None,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """Load the concatenated system macro frame.
+
+    ``series_ids`` is an internal pushdown filter: when provided, each source
+    query is restricted to those series ids in SQL instead of fetching whole
+    tables into pandas. ``None`` keeps the historical full-table behaviour.
+    """
     path = resolve_system_duckdb_path(duckdb_path)
     if not path.exists():
         _warn_source_gap_once(
@@ -130,12 +140,12 @@ def load_system_macro_frame(duckdb_path: str | Path | None = None) -> pd.DataFra
 
     try:
         frames = [
-            _load_choice_frame(conn),
-            _load_choice_snapshot_frame(conn),
-            _load_external_macro_frame(conn),
-            _load_commodity_daily_frame(conn),
-            _load_fx_frame(conn),
-            _load_legacy_yield_curve_frame(conn),
+            _load_choice_frame(conn, series_ids=series_ids),
+            _load_choice_snapshot_frame(conn, series_ids=series_ids),
+            _load_external_macro_frame(conn, series_ids=series_ids),
+            _load_commodity_daily_frame(conn, series_ids=series_ids),
+            _load_fx_frame(conn, series_ids=series_ids),
+            _load_legacy_yield_curve_frame(conn, series_ids=series_ids),
         ]
     finally:
         conn.close()
@@ -152,9 +162,7 @@ def load_system_macro_frame(duckdb_path: str | Path | None = None) -> pd.DataFra
     return out.sort_values(["series_id", "trade_date", "source_priority"]).reset_index(drop=True)
 
 
-def _load_system_macro_frame_for_alias_lookup(
-    duckdb_path: str | Path | None = None,
-) -> tuple[pd.DataFrame, dict[str, tuple[int, ...]]]:
+def _system_macro_cache_key(duckdb_path: str | Path | None = None) -> tuple[str, int, int] | None:
     path = resolve_system_duckdb_path(duckdb_path)
     if not path.exists():
         _warn_source_gap_once(
@@ -162,7 +170,7 @@ def _load_system_macro_frame_for_alias_lookup(
             "system macro source duckdb file %s is missing; returning empty frame",
             path,
         )
-        return _empty_frame(), {}
+        return None
     try:
         stat = path.stat()
     except OSError as exc:
@@ -172,33 +180,32 @@ def _load_system_macro_frame_for_alias_lookup(
             path,
             exc,
         )
-        return _empty_frame(), {}
-    path_text = str(path.resolve())
-    cache_key = (
-        path_text,
-        stat.st_mtime_ns,
-        stat.st_size,
-    )
-    return (
-        _load_system_macro_frame_for_alias_cache(*cache_key),
-        _load_system_macro_alias_index_cache(*cache_key),
-    )
+        return None
+    return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
 
 
 @lru_cache(maxsize=8)
-def _load_system_macro_frame_for_alias_cache(path: str, mtime_ns: int, size: int) -> pd.DataFrame:
-    return load_system_macro_frame(Path(path))
+def _load_alias_triple_index_cache(
+    path: str,
+    mtime_ns: int,
+    size: int,
+) -> dict[str, tuple[tuple[str, str, str], ...]]:
+    return _build_alias_triple_index(_load_alias_identity_frame(Path(path)))
 
 
-@lru_cache(maxsize=8)
-def _load_system_macro_alias_index_cache(path: str, mtime_ns: int, size: int) -> dict[str, tuple[int, ...]]:
-    frame = _load_system_macro_frame_for_alias_cache(path, mtime_ns, size)
-    return _build_alias_row_index(frame)
+@lru_cache(maxsize=256)
+def _load_series_subset_frame_cache(
+    path: str,
+    mtime_ns: int,
+    size: int,
+    series_ids: tuple[str, ...],
+) -> pd.DataFrame:
+    return load_system_macro_frame(Path(path), series_ids=series_ids)
 
 
 def clear_system_macro_source_cache() -> None:
-    _load_system_macro_frame_for_alias_cache.cache_clear()
-    _load_system_macro_alias_index_cache.cache_clear()
+    _load_alias_triple_index_cache.cache_clear()
+    _load_series_subset_frame_cache.cache_clear()
     _WARNED_SOURCE_GAPS.clear()
 
 
@@ -209,17 +216,36 @@ def load_series_by_alias(
     end: str | None = None,
     duckdb_path: str | Path | None = None,
 ) -> pd.DataFrame:
-    frame, row_index_by_alias = _load_system_macro_frame_for_alias_lookup(duckdb_path)
+    cache_key = _system_macro_cache_key(duckdb_path)
+    if cache_key is None:
+        return _empty_series_frame()
+
+    triple_index = _load_alias_triple_index_cache(*cache_key)
+    candidates = _candidate_aliases(alias)
+    matched_triples = {triple for candidate in candidates for triple in triple_index.get(candidate, ())}
+    if not matched_triples:
+        return _empty_series_frame()
+
+    series_ids = tuple(sorted({triple[0] for triple in matched_triples}))
+    frame = _load_series_subset_frame_cache(*cache_key, series_ids)
     if frame.empty:
         return _empty_series_frame()
 
-    candidates = _candidate_aliases(alias)
-    row_indices = sorted(
-        {row_index for candidate in candidates for row_index in row_index_by_alias.get(candidate, ())},
-    )
-    if not row_indices:
-        return _empty_series_frame()
-    selected = frame.iloc[row_indices].copy()
+    row_matches = [
+        (
+            _alias_source_text(series_id),
+            _alias_source_text(series_name),
+            _alias_source_text(vendor_series_code),
+        )
+        in matched_triples
+        for series_id, series_name, vendor_series_code in zip(
+            frame["series_id"],
+            frame["series_name"],
+            frame["vendor_series_code"],
+            strict=True,
+        )
+    ]
+    selected = frame[row_matches].copy()
     if selected.empty:
         return _empty_series_frame()
 
@@ -236,34 +262,174 @@ def load_series_by_alias(
     )
 
 
-def _load_choice_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+_CHOICE_FACT_SQL = """
+select
+  series_id, series_name, trade_date, value_numeric,
+  frequency, unit, source_version, vendor_version, rule_version, run_id
+from fact_choice_macro_daily
+"""
+
+_CHOICE_CATALOG_SQL = """
+select series_id, max(series_name) as catalog_series_name,
+       max(vendor_name) as catalog_vendor_name,
+       max(vendor_series_code) as vendor_series_code
+from phase1_macro_vendor_catalog
+group by series_id
+"""
+
+_CHOICE_SNAPSHOT_VENDOR_SQL = """
+select series_id, max(vendor_name) as snapshot_vendor_name,
+       max(vendor_series_code) as snapshot_vendor_series_code
+from choice_market_snapshot
+group by series_id
+"""
+
+_CHOICE_SNAPSHOT_SQL = """
+select
+  series_id, series_name, vendor_name, trade_date, value_numeric,
+  frequency, unit, source_version, vendor_version, rule_version, run_id,
+  vendor_series_code
+from choice_market_snapshot
+"""
+
+_EXTERNAL_STD_SQL = """
+select
+  series_id, vendor_name, trade_date, value_numeric, frequency, unit,
+  source_version, vendor_version, rule_version, ingest_batch_id as run_id
+from std_external_macro_daily
+where lower(vendor_name) in ('tushare', 'wind_legacy_market_db', 'moss_derived')
+"""
+
+_EXTERNAL_CATALOG_SQL = """
+select series_id, max(series_name) as catalog_series_name
+from external_data_catalog
+where lower(vendor_name) in ('tushare', 'wind_legacy_market_db', 'moss_derived')
+group by series_id
+"""
+
+_COMMODITY_DAILY_SQL = """
+select
+  case
+    when upper(product_code) = 'NHCI' then 'NHCI.NH'
+    when upper(product_code) = 'NHII' then 'NHII.NH'
+    when upper(product_code) = 'CU' then 'CA.COPPER'
+    when upper(product_code) = 'AL' then 'CA.ALUMINUM'
+    else 'COMMODITY.' || upper(product_code)
+  end as series_id,
+  case
+    when upper(product_code) = 'NHCI' then 'Nanhua commodity index'
+    when upper(product_code) = 'NHII' then 'Nanhua industrial index'
+    else upper(product_code) || ' commodity futures close'
+  end as series_name,
+  case
+    when lower(coalesce(vendor_version, '')) like 'vv_akshare%' then 'akshare'
+    else 'tushare'
+  end as vendor_name,
+  trade_date,
+  cast(close_value as double) as value_numeric,
+  'daily' as frequency,
+  case
+    when upper(product_code) in ('NHCI', 'NHII') then 'index'
+    else 'price'
+  end as unit,
+  source_version,
+  vendor_version,
+  rule_version,
+  source_version as run_id,
+  case
+    when upper(product_code) in ('NHCI', 'NHII')
+      then 'tushare.index_daily.' || coalesce(nullif(contract_code, ''), upper(product_code) || '.NH') || '.close'
+    else 'fut_daily:' || upper(product_code) || '.' || upper(coalesce(exchange, '')) || '.close'
+  end as vendor_series_code
+from fact_commodity_futures_daily
+where close_value is not null
+"""
+
+_FX_SQL = """
+select
+  case
+    when upper(base_currency) = 'USD' and upper(quote_currency) = 'CNY'
+      then 'EMM00058124'
+    else 'legacy.fx.' || lower(coalesce(vendor_name, 'choice')) || '.'
+         || upper(base_currency) || '.' || upper(quote_currency)
+  end as series_id,
+  'FX mid: ' || upper(base_currency) || '/' || upper(quote_currency) as series_name,
+  coalesce(nullif(vendor_name, ''), 'choice') as vendor_name,
+  cast(trade_date as varchar) as trade_date,
+  cast(mid_rate as double) as value_numeric,
+  'daily' as frequency,
+  upper(quote_currency) || '/' || upper(base_currency) as unit,
+  source_version,
+  vendor_version,
+  'rv_fx_daily_mid_system_source_v1' as rule_version,
+  source_name as run_id,
+  coalesce(nullif(vendor_series_code, ''), 'fx_daily_mid:' || upper(base_currency) || '/' || upper(quote_currency))
+    as vendor_series_code
+from fx_daily_mid
+"""
+
+_LEGACY_YIELD_CURVE_SQL = """
+select
+  'legacy.yield.' || lower(vendor_name) || '.' || curve_type || '.' || tenor as series_id,
+  curve_type || ' yield curve ' || tenor as series_name,
+  vendor_name,
+  trade_date,
+  cast(rate_pct as double) as value_numeric,
+  'daily' as frequency,
+  '%' as unit,
+  source_version,
+  vendor_version,
+  rule_version,
+  source_version as run_id,
+  'legacy.yield.' || lower(vendor_name) || '.' || curve_type || '.' || tenor as vendor_series_code
+from fact_formal_yield_curve_daily
+where lower(vendor_name) in ('choice', 'tushare', 'akshare', 'moss_derived')
+"""
+
+
+def _fetch_source_frame(
+    conn: duckdb.DuckDBPyConnection,
+    sql: str,
+    series_ids: tuple[str, ...] | None,
+) -> pd.DataFrame:
+    if series_ids is None:
+        return conn.execute(sql).fetchdf()
+    if not series_ids:
+        return conn.execute(f"select * from ({sql}) src where 1 = 0").fetchdf()
+    placeholders = ", ".join("?" for _ in series_ids)
+    return conn.execute(
+        f"select * from ({sql}) src where src.series_id in ({placeholders})",
+        list(series_ids),
+    ).fetchdf()
+
+
+def _load_choice_frame(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     if not _table_exists(conn, "fact_choice_macro_daily"):
         _warn_missing_table_once("fact_choice_macro_daily")
         return _empty_frame()
 
-    fact = conn.execute(
-        """
-        select
-          series_id, series_name, trade_date, value_numeric,
-          frequency, unit, source_version, vendor_version, rule_version, run_id
-        from fact_choice_macro_daily
-        """
-    ).fetchdf()
+    fact = _fetch_source_frame(conn, _CHOICE_FACT_SQL, series_ids)
     if fact.empty:
         return _empty_frame()
 
+    fact = _apply_choice_vendor_merges(conn, fact, series_ids=series_ids)
+    return _normalize_frame(fact)
+
+
+def _apply_choice_vendor_merges(
+    conn: duckdb.DuckDBPyConnection,
+    fact: pd.DataFrame,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     fact["vendor_name"] = "choice"
     fact["vendor_series_code"] = ""
     if _table_exists(conn, "phase1_macro_vendor_catalog"):
-        catalog = conn.execute(
-            """
-            select series_id, max(series_name) as catalog_series_name,
-                   max(vendor_name) as catalog_vendor_name,
-                   max(vendor_series_code) as vendor_series_code
-            from phase1_macro_vendor_catalog
-            group by series_id
-            """
-        ).fetchdf()
+        catalog = _fetch_source_frame(conn, _CHOICE_CATALOG_SQL, series_ids)
         fact = fact.merge(catalog, on="series_id", how="left")
         fact["series_name"] = fact["series_name"].fillna(fact["catalog_series_name"])
         fact["vendor_name"] = fact["catalog_vendor_name"].fillna(fact["vendor_name"])
@@ -278,14 +444,7 @@ def _load_choice_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         )
 
     if _table_exists(conn, "choice_market_snapshot"):
-        snapshot = conn.execute(
-            """
-            select series_id, max(vendor_name) as snapshot_vendor_name,
-                   max(vendor_series_code) as snapshot_vendor_series_code
-            from choice_market_snapshot
-            group by series_id
-            """
-        ).fetchdf()
+        snapshot = _fetch_source_frame(conn, _CHOICE_SNAPSHOT_VENDOR_SQL, series_ids)
         fact = fact.merge(snapshot, on="series_id", how="left")
         fact["vendor_name"] = fact["snapshot_vendor_name"].fillna(fact["vendor_name"])
         fact["vendor_series_code"] = fact["vendor_series_code"].fillna("")
@@ -295,173 +454,214 @@ def _load_choice_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         ).fillna("")
         fact = fact.drop(columns=["snapshot_vendor_name", "snapshot_vendor_series_code"])
 
-    return _normalize_frame(fact)
+    return fact
 
 
-def _load_choice_snapshot_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+def _load_choice_snapshot_frame(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     if not _table_exists(conn, "choice_market_snapshot"):
         _warn_missing_table_once("choice_market_snapshot")
         return _empty_frame()
 
-    snapshot = conn.execute(
-        """
-        select
-          series_id, series_name, vendor_name, trade_date, value_numeric,
-          frequency, unit, source_version, vendor_version, rule_version, run_id,
-          vendor_series_code
-        from choice_market_snapshot
-        """
-    ).fetchdf()
+    snapshot = _fetch_source_frame(conn, _CHOICE_SNAPSHOT_SQL, series_ids)
     if snapshot.empty:
         return _empty_frame()
     return _normalize_frame(snapshot)
 
 
-def _load_external_macro_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+def _load_external_macro_frame(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     if not _table_exists(conn, "std_external_macro_daily"):
         _warn_missing_table_once("std_external_macro_daily")
         return _empty_frame()
 
-    std = conn.execute(
-        """
-        select
-          series_id, vendor_name, trade_date, value_numeric, frequency, unit,
-          source_version, vendor_version, rule_version, ingest_batch_id as run_id
-        from std_external_macro_daily
-        where lower(vendor_name) in ('tushare', 'wind_legacy_market_db', 'moss_derived')
-        """
-    ).fetchdf()
+    std = _fetch_source_frame(conn, _EXTERNAL_STD_SQL, series_ids)
     if std.empty:
         return _empty_frame()
 
     std["series_name"] = std["series_id"]
     std["vendor_series_code"] = ""
-    if _table_exists(conn, "external_data_catalog"):
-        catalog = conn.execute(
-            """
-            select series_id, max(series_name) as catalog_series_name
-            from external_data_catalog
-            where lower(vendor_name) in ('tushare', 'wind_legacy_market_db', 'moss_derived')
-            group by series_id
-            """
-        ).fetchdf()
-        std = std.merge(catalog, on="series_id", how="left")
-        std["series_name"] = std["catalog_series_name"].fillna(std["series_name"])
-        std = std.drop(columns=["catalog_series_name"])
-
+    std = _apply_external_catalog_names(conn, std, series_ids=series_ids)
     return _normalize_frame(std)
 
 
-def _load_commodity_daily_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+def _apply_external_catalog_names(
+    conn: duckdb.DuckDBPyConnection,
+    std: pd.DataFrame,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    if _table_exists(conn, "external_data_catalog"):
+        catalog = _fetch_source_frame(conn, _EXTERNAL_CATALOG_SQL, series_ids)
+        std = std.merge(catalog, on="series_id", how="left")
+        std["series_name"] = std["catalog_series_name"].fillna(std["series_name"])
+        std = std.drop(columns=["catalog_series_name"])
+    return std
+
+
+def _load_commodity_daily_frame(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     if not _table_exists(conn, "fact_commodity_futures_daily"):
         _warn_missing_table_once("fact_commodity_futures_daily")
         return _empty_frame()
 
-    commodity = conn.execute(
-        """
-        select
-          case
-            when upper(product_code) = 'NHCI' then 'NHCI.NH'
-            when upper(product_code) = 'NHII' then 'NHII.NH'
-            when upper(product_code) = 'CU' then 'CA.COPPER'
-            when upper(product_code) = 'AL' then 'CA.ALUMINUM'
-            else 'COMMODITY.' || upper(product_code)
-          end as series_id,
-          case
-            when upper(product_code) = 'NHCI' then 'Nanhua commodity index'
-            when upper(product_code) = 'NHII' then 'Nanhua industrial index'
-            else upper(product_code) || ' commodity futures close'
-          end as series_name,
-          case
-            when lower(coalesce(vendor_version, '')) like 'vv_akshare%' then 'akshare'
-            else 'tushare'
-          end as vendor_name,
-          trade_date,
-          cast(close_value as double) as value_numeric,
-          'daily' as frequency,
-          case
-            when upper(product_code) in ('NHCI', 'NHII') then 'index'
-            else 'price'
-          end as unit,
-          source_version,
-          vendor_version,
-          rule_version,
-          source_version as run_id,
-          case
-            when upper(product_code) in ('NHCI', 'NHII')
-              then 'tushare.index_daily.' || coalesce(nullif(contract_code, ''), upper(product_code) || '.NH') || '.close'
-            else 'fut_daily:' || upper(product_code) || '.' || upper(coalesce(exchange, '')) || '.close'
-          end as vendor_series_code
-        from fact_commodity_futures_daily
-        where close_value is not null
-        """
-    ).fetchdf()
+    commodity = _fetch_source_frame(conn, _COMMODITY_DAILY_SQL, series_ids)
     if commodity.empty:
         return _empty_frame()
     return _normalize_frame(commodity)
 
 
-def _load_fx_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+def _load_fx_frame(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     if not _table_exists(conn, "fx_daily_mid"):
         _warn_missing_table_once("fx_daily_mid")
         return _empty_frame()
 
-    fx = conn.execute(
-        """
-        select
-          case
-            when upper(base_currency) = 'USD' and upper(quote_currency) = 'CNY'
-              then 'EMM00058124'
-            else 'legacy.fx.' || lower(coalesce(vendor_name, 'choice')) || '.'
-                 || upper(base_currency) || '.' || upper(quote_currency)
-          end as series_id,
-          'FX mid: ' || upper(base_currency) || '/' || upper(quote_currency) as series_name,
-          coalesce(nullif(vendor_name, ''), 'choice') as vendor_name,
-          cast(trade_date as varchar) as trade_date,
-          cast(mid_rate as double) as value_numeric,
-          'daily' as frequency,
-          upper(quote_currency) || '/' || upper(base_currency) as unit,
-          source_version,
-          vendor_version,
-          'rv_fx_daily_mid_system_source_v1' as rule_version,
-          source_name as run_id,
-          coalesce(nullif(vendor_series_code, ''), 'fx_daily_mid:' || upper(base_currency) || '/' || upper(quote_currency))
-            as vendor_series_code
-        from fx_daily_mid
-        """
-    ).fetchdf()
+    fx = _fetch_source_frame(conn, _FX_SQL, series_ids)
     if fx.empty:
         return _empty_frame()
     return _normalize_frame(fx)
 
 
-def _load_legacy_yield_curve_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+def _load_legacy_yield_curve_frame(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: tuple[str, ...] | None = None,
+) -> pd.DataFrame:
     if not _table_exists(conn, "fact_formal_yield_curve_daily"):
         _warn_missing_table_once("fact_formal_yield_curve_daily")
         return _empty_frame()
 
-    curve = conn.execute(
-        """
-        select
-          'legacy.yield.' || lower(vendor_name) || '.' || curve_type || '.' || tenor as series_id,
-          curve_type || ' yield curve ' || tenor as series_name,
-          vendor_name,
-          trade_date,
-          cast(rate_pct as double) as value_numeric,
-          'daily' as frequency,
-          '%' as unit,
-          source_version,
-          vendor_version,
-          rule_version,
-          source_version as run_id,
-          'legacy.yield.' || lower(vendor_name) || '.' || curve_type || '.' || tenor as vendor_series_code
-        from fact_formal_yield_curve_daily
-        where lower(vendor_name) in ('choice', 'tushare', 'akshare', 'moss_derived')
-        """
-    ).fetchdf()
+    curve = _fetch_source_frame(conn, _LEGACY_YIELD_CURVE_SQL, series_ids)
     if curve.empty:
         return _empty_frame()
     return _normalize_frame(curve)
+
+
+_IDENTITY_COLUMNS = ("series_id", "series_name", "vendor_series_code")
+
+
+def _empty_identity_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(_IDENTITY_COLUMNS))
+
+
+def _load_alias_identity_frame(path: Path) -> pd.DataFrame:
+    """Load the distinct (series_id, series_name, vendor_series_code) catalog.
+
+    Alias resolution only depends on these three identity columns, so the
+    alias index can be built from a cheap SQL ``distinct`` per source instead
+    of fetching every fact row into pandas.
+    """
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error as exc:
+        _warn_source_gap_once(
+            f"duckdb_connect_failed:{path}",
+            "system macro source duckdb connect failed for %s (%s); returning empty frame",
+            path,
+            exc,
+        )
+        return _empty_identity_frame()
+
+    try:
+        frames = [
+            _load_choice_identity_frame(conn),
+            _load_source_identity_frame(conn, "choice_market_snapshot", _CHOICE_SNAPSHOT_SQL),
+            _load_external_identity_frame(conn),
+            _load_source_identity_frame(conn, "fact_commodity_futures_daily", _COMMODITY_DAILY_SQL),
+            _load_source_identity_frame(conn, "fx_daily_mid", _FX_SQL),
+            _load_source_identity_frame(conn, "fact_formal_yield_curve_daily", _LEGACY_YIELD_CURVE_SQL),
+        ]
+    finally:
+        conn.close()
+
+    frames = [frame for frame in frames if not frame.empty]
+    if not frames:
+        return _empty_identity_frame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def _load_choice_identity_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    if not _table_exists(conn, "fact_choice_macro_daily"):
+        _warn_missing_table_once("fact_choice_macro_daily")
+        return _empty_identity_frame()
+
+    fact = conn.execute(
+        "select distinct series_id, series_name from fact_choice_macro_daily"
+    ).fetchdf()
+    if fact.empty:
+        return _empty_identity_frame()
+    fact = _apply_choice_vendor_merges(conn, fact)
+    return fact[list(_IDENTITY_COLUMNS)]
+
+
+def _load_external_identity_frame(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    if not _table_exists(conn, "std_external_macro_daily"):
+        _warn_missing_table_once("std_external_macro_daily")
+        return _empty_identity_frame()
+
+    std = conn.execute(
+        """
+        select distinct series_id
+        from std_external_macro_daily
+        where lower(vendor_name) in ('tushare', 'wind_legacy_market_db', 'moss_derived')
+        """
+    ).fetchdf()
+    if std.empty:
+        return _empty_identity_frame()
+    std["series_name"] = std["series_id"]
+    std["vendor_series_code"] = ""
+    std = _apply_external_catalog_names(conn, std)
+    return std[list(_IDENTITY_COLUMNS)]
+
+
+def _load_source_identity_frame(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    sql: str,
+) -> pd.DataFrame:
+    if not _table_exists(conn, table_name):
+        _warn_missing_table_once(table_name)
+        return _empty_identity_frame()
+
+    return conn.execute(
+        f"select distinct series_id, series_name, vendor_series_code from ({sql}) src"
+    ).fetchdf()
+
+
+def _alias_source_text(value: object) -> str:
+    return str(value or "")
+
+
+def _build_alias_triple_index(frame: pd.DataFrame) -> dict[str, tuple[tuple[str, str, str], ...]]:
+    if frame.empty:
+        return {}
+    triples_by_alias: dict[str, set[tuple[str, str, str]]] = {}
+    seen: set[tuple[str, str, str]] = set()
+    for _, row in frame.iterrows():
+        triple = (
+            _alias_source_text(row.get("series_id")),
+            _alias_source_text(row.get("series_name")),
+            _alias_source_text(row.get("vendor_series_code")),
+        )
+        if triple in seen:
+            continue
+        seen.add(triple)
+        for alias in _row_aliases(row):
+            triples_by_alias.setdefault(alias, set()).add(triple)
+    return {alias: tuple(sorted(triples)) for alias, triples in triples_by_alias.items()}
 
 
 def _normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -515,16 +715,6 @@ def _row_aliases(row: pd.Series) -> set[str]:
     for alias in tuple(aliases):
         aliases.update(_candidate_aliases(alias))
     return aliases
-
-
-def _build_alias_row_index(frame: pd.DataFrame) -> dict[str, tuple[int, ...]]:
-    if frame.empty:
-        return {}
-    rows_by_alias: dict[str, list[int]] = {}
-    for row_position, (_, row) in enumerate(frame.iterrows()):
-        for alias in _row_aliases(row):
-            rows_by_alias.setdefault(alias, []).append(row_position)
-    return {alias: tuple(row_indices) for alias, row_indices in rows_by_alias.items()}
 
 
 def _expanded_vendor_aliases(value: str) -> set[str]:

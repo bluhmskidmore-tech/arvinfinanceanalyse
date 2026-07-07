@@ -1,5 +1,9 @@
 import type { ApiClient } from "./client";
-import type { BalanceCurrencyBasis, BalancePositionScope } from "./contracts";
+import type {
+  BalanceCurrencyBasis,
+  BalancePositionScope,
+  BondDashboardBundleSectionId,
+} from "./contracts";
 
 type PnlByBusinessAnalysisDimension =
   Parameters<ApiClient["getPnlByBusinessAnalysis"]>[0]["dimension"];
@@ -14,6 +18,20 @@ export const apiQueryKeys = {
     ["bond-dashboard", "headline", mode, normalizeReportDate(reportDate)] as const,
   bondDashboardHomeSummary: (mode: string, reportDate: string | null | undefined) =>
     ["bond-dashboard", "home-summary", mode, normalizeReportDate(reportDate)] as const,
+  bondDashboardBundle: (
+    mode: string,
+    reportDate: string | null | undefined,
+    sections: readonly BondDashboardBundleSectionId[],
+    industryTopN = 10,
+  ) =>
+    [
+      "bond-dashboard",
+      "bundle",
+      mode,
+      normalizeReportDate(reportDate),
+      sections.join(","),
+      industryTopN,
+    ] as const,
   bondAnalyticsPortfolioHeadlines: (mode: string, reportDate: string | null | undefined) =>
     ["bond-analytics", "portfolio-headlines", mode, normalizeReportDate(reportDate)] as const,
   bondAnalyticsDv01Risk: (

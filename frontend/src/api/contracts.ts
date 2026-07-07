@@ -1656,6 +1656,50 @@ export type LivermoreMarketCondition = {
   source_series_id?: string | null;
 };
 
+export type LivermoreMarketGateMacroContextStatus =
+  | "ready"
+  | "missing"
+  | "expired"
+  | "look_ahead";
+
+export type LivermoreMarketGateCycleState =
+  | "recession"
+  | "contraction"
+  | "neutral"
+  | "expansion";
+
+export type LivermoreMarketGateMacroComponent = {
+  input_family: string;
+  input: string;
+  cadence: string;
+  business_date: string;
+  age_days?: number | null;
+  tier?: ExternalDataFreshnessTier | string | null;
+};
+
+/** Market-gate macro cycle disclosure (rv_market_gate_macro_overlay_v1). Not signal confluence macro_context. */
+export type LivermoreMarketGateMacroContext = {
+  status: LivermoreMarketGateMacroContextStatus | string;
+  cycle_state?: LivermoreMarketGateCycleState | string | null;
+  macro_score?: number | null;
+  gate_as_of_date?: string | null;
+  data_date?: string | null;
+  lag_days?: number | null;
+  max_component_lag_days?: number | null;
+  components?: LivermoreMarketGateMacroComponent[];
+  evidence?: string | null;
+  formula_version?: string | null;
+};
+
+export type LivermoreMarketGateMacroOverlay = {
+  applied: boolean;
+  exposure_cap?: number | null;
+  exposure_raw: number;
+  exposure_adjusted: number;
+  rule?: string | null;
+  formula_version?: string | null;
+};
+
 export type LivermoreMarketGate = {
   state: LivermoreMarketGateState;
   exposure: number;
@@ -1663,6 +1707,12 @@ export type LivermoreMarketGate = {
   available_conditions: number;
   required_conditions: number;
   conditions: LivermoreMarketCondition[];
+  /** Pre-overlay exposure; equals exposure when macro inputs are missing. */
+  exposure_raw?: number;
+  formula_version?: string | null;
+  /** Gate-level macro cycle disclosure; distinct from signal confluence macro_context. */
+  macro_context?: LivermoreMarketGateMacroContext | null;
+  macro_overlay?: LivermoreMarketGateMacroOverlay | null;
 };
 
 export type LivermoreRuleReadiness = {
@@ -1830,6 +1880,7 @@ export type LivermoreStockCandidatesPayload = {
     valid_factor_count?: number | null;
     selected_factor_count?: number | null;
     top_fraction?: number | null;
+    factor_missing_count?: number | null;
   };
   items: LivermoreStockCandidateItem[];
 };
@@ -1923,7 +1974,8 @@ export type LivermoreRiskExitItem = {
   stock_code: string;
   stock_name: string;
   reason: string;
-  entry_cost: number;
+  entry_cost: number | null;
+  entry_cost_available?: boolean;
   bars_since_entry: number;
   latest_close: number;
   latest_ema10: number;
@@ -1934,7 +1986,8 @@ export type LivermoreRiskExitItem = {
 export type LivermoreRiskExitWatchItem = {
   stock_code: string;
   stock_name: string;
-  entry_cost: number;
+  entry_cost: number | null;
+  entry_cost_available?: boolean;
   bars_since_entry: number;
   latest_close: number;
   latest_ema10: number;
@@ -2104,6 +2157,7 @@ export type HybridFusionCandidateItem = {
   regime_score?: number;
   life_long_pass?: boolean;
   fusion_action?: string;
+  factor_rank_available?: boolean;
   confidence: "high" | "medium" | "low" | string;
   reason: string;
   evidence: Record<string, unknown>;
@@ -2177,9 +2231,18 @@ export type LivermoreCycleProxyBacktestInterval = {
   trough_date?: string;
 };
 
+export type LivermoreProxyCostBasis = {
+  source: string;
+  buy_cost_rate: number;
+  sell_cost_rate: number;
+  slippage_rate: number;
+  round_trip_cost_rate: number;
+};
+
 export type LivermoreCycleProxyBacktestSummary = {
   sample_days: number;
   candidate_rows: number;
+  cost_basis?: LivermoreProxyCostBasis;
   cumulative_return: number;
   annualized_return: number | null;
   max_gain: LivermoreCycleProxyBacktestInterval;
@@ -2231,6 +2294,7 @@ export type LivermoreCandidateHistoryPortfolioBacktestSummary = {
   invested_rebalance_count: number;
   cash_rebalance_count: number;
   gross_turnover: number;
+  cost_basis?: LivermoreProxyCostBasis;
   cost_drag: number;
   cumulative_return: number;
   annualized_return: number | null;
@@ -5723,6 +5787,45 @@ export type BondDashboardHomeSummaryPayload = {
   portfolio_comparison: PortfolioComparisonPayload;
   spread: SpreadAnalysisPayload;
   business_type: BondBusinessTypeMetricsResult;
+};
+
+export type BondDashboardBundleSectionId =
+  | "dates"
+  | "headline-kpis"
+  | "home-summary"
+  | "asset-structure"
+  | "asset-structure-rating"
+  | "asset-structure-portfolio-name"
+  | "asset-structure-tenor-bucket"
+  | "yield-distribution"
+  | "portfolio-comparison"
+  | "spread-analysis"
+  | "maturity-structure"
+  | "industry-distribution"
+  | "risk-indicators"
+  | "business-type-metrics";
+
+export type BondDashboardBundleSectionEnvelopeMap = {
+  dates: ApiEnvelope<BondAnalyticsDatesPayload>;
+  "headline-kpis": ApiEnvelope<BondDashboardHeadlinePayload>;
+  "home-summary": ApiEnvelope<BondDashboardHomeSummaryPayload>;
+  "asset-structure": ApiEnvelope<AssetStructurePayload>;
+  "asset-structure-rating": ApiEnvelope<AssetStructurePayload>;
+  "asset-structure-portfolio-name": ApiEnvelope<AssetStructurePayload>;
+  "asset-structure-tenor-bucket": ApiEnvelope<AssetStructurePayload>;
+  "yield-distribution": ApiEnvelope<YieldDistributionPayload>;
+  "portfolio-comparison": ApiEnvelope<PortfolioComparisonPayload>;
+  "spread-analysis": ApiEnvelope<SpreadAnalysisPayload>;
+  "maturity-structure": ApiEnvelope<MaturityStructurePayload>;
+  "industry-distribution": ApiEnvelope<IndustryDistPayload>;
+  "risk-indicators": ApiEnvelope<RiskIndicatorsPayload>;
+  "business-type-metrics": ApiEnvelope<BondBusinessTypeMetricsResult>;
+};
+
+export type BondDashboardBundlePayload = {
+  report_date: string | null;
+  requested_sections: BondDashboardBundleSectionId[];
+  sections: Partial<BondDashboardBundleSectionEnvelopeMap>;
 };
 
 // --- Cube 多维查询 (`/api/cube`) ---

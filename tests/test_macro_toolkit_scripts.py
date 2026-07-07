@@ -395,6 +395,7 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
 
     frame = load_system_macro_frame()
     hs300 = load_series_by_alias("sh000300")
+    csi500 = load_series_by_alias("sh000905")
     copper = load_series_by_alias("CU0")
     usdcny = load_series_by_alias("M0067855")
     treasury_5y = load_series_by_alias("S0059747")
@@ -405,6 +406,8 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
 
     assert {"choice", "tushare"}.issubset(set(frame["vendor_name"]))
     assert hs300["value"].tolist() == [4102.25]
+    assert csi500["series_id"].tolist() == ["CA.CSI500"]
+    assert csi500["value"].tolist() == [6155.8]
     assert copper["value"].tolist() == [81234.5]
     assert usdcny["value"].tolist() == [7.1234]
     assert treasury_5y["value"].tolist() == [2.34]
@@ -418,31 +421,123 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
     get_settings.cache_clear()
 
 
-def test_series_alias_lookup_reuses_system_frame_until_duckdb_file_changes(tmp_path, monkeypatch) -> None:
+def test_public_cross_asset_refresh_lands_csi500_idempotently_and_shim_resolves(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.tasks import choice_macro as task_module
+
+    fixture_rows = [
+        {
+            "series_id": "CA.CSI300",
+            "trade_date": "2026-04-08",
+            "value_numeric": 4080.0,
+            "vendor_version": "vv_tushare_index_daily_000300SH_20260410",
+            "source_version": "sv_tushare_index_daily_fixture",
+        },
+        {
+            "series_id": "CA.CSI500",
+            "trade_date": "2026-04-08",
+            "value_numeric": 6100.0,
+            "vendor_version": "vv_tushare_index_daily_000905SH_20260410",
+            "source_version": "sv_tushare_index_daily_000905_fixture",
+        },
+        {
+            "series_id": "CA.CSI500",
+            "trade_date": "2026-04-09",
+            "value_numeric": 6120.5,
+            "vendor_version": "vv_tushare_index_daily_000905SH_20260410",
+            "source_version": "sv_tushare_index_daily_000905_fixture",
+        },
+        {
+            "series_id": "CA.CSI500",
+            "trade_date": "2026-04-10",
+            "value_numeric": 6155.8,
+            "vendor_version": "vv_tushare_index_daily_000905SH_20260410",
+            "source_version": "sv_tushare_index_daily_000905_fixture",
+        },
+    ]
+    monkeypatch.setattr(task_module, "_load_public_cross_asset_history_rows", lambda **_: list(fixture_rows))
+
+    first = task_module.refresh_public_cross_asset_headlines(
+        duckdb_path=str(duckdb_path),
+        report_date="2026-04-10",
+        lookback_days=90,
+    )
+    second = task_module.refresh_public_cross_asset_headlines(
+        duckdb_path=str(duckdb_path),
+        report_date="2026-04-10",
+        lookback_days=90,
+    )
+
+    assert first["row_count"] == 4
+    assert second["row_count"] == 4
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        fact_summary = conn.execute(
+            """
+            select series_id, count(*), min(trade_date), max(trade_date)
+            from fact_choice_macro_daily
+            where series_id = 'CA.CSI500'
+            group by series_id
+            """
+        ).fetchone()
+        latest = conn.execute(
+            """
+            select series_id, trade_date, value_numeric, vendor_series_code, vendor_name
+            from choice_market_snapshot
+            where series_id = 'CA.CSI500'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert fact_summary == ("CA.CSI500", 3, "2026-04-08", "2026-04-10")
+    assert latest == ("CA.CSI500", "2026-04-10", 6155.8, "index_daily:000905.SH.close", "tushare")
+
+    system_sources.clear_system_macro_source_cache()
+    csi500 = load_series_by_alias("sh000905", duckdb_path=duckdb_path)
+    assert csi500["series_id"].tolist() == ["CA.CSI500", "CA.CSI500", "CA.CSI500"]
+    assert csi500["value"].tolist() == [6100.0, 6120.5, 6155.8]
+    get_settings.cache_clear()
+
+
+def test_series_alias_lookup_reuses_cached_frames_until_duckdb_file_changes(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     original_load_system_macro_frame = system_sources.load_system_macro_frame
     calls: list[object] = []
 
-    def spy_load_system_macro_frame(duckdb_path_arg=None):
-        calls.append(duckdb_path_arg)
-        return original_load_system_macro_frame(duckdb_path_arg)
+    def spy_load_system_macro_frame(duckdb_path_arg=None, **kwargs):
+        calls.append((duckdb_path_arg, kwargs.get("series_ids")))
+        return original_load_system_macro_frame(duckdb_path_arg, **kwargs)
 
     monkeypatch.setattr(system_sources, "load_system_macro_frame", spy_load_system_macro_frame)
 
     hs300 = load_series_by_alias("sh000300", duckdb_path=duckdb_path)
-    copper = load_series_by_alias("CU0", duckdb_path=duckdb_path)
+    hs300_repeat = load_series_by_alias("sh000300", duckdb_path=duckdb_path)
 
     assert hs300["value"].tolist() == [4102.25]
-    assert copper["value"].tolist() == [81234.5]
+    assert hs300_repeat["value"].tolist() == [4102.25]
+    # Repeated lookups reuse the cached subset frame: exactly one pushdown load.
     assert len(calls) == 1
+    assert calls[0][1] is not None and "CA.CSI300" in calls[0][1]
+
+    copper = load_series_by_alias("CU0", duckdb_path=duckdb_path)
+    assert copper["value"].tolist() == [81234.5]
+    assert len(calls) == 2
 
     time.sleep(0.01)
     duckdb_path.touch()
+    hs300_after_touch = load_series_by_alias("sh000300", duckdb_path=duckdb_path)
     usdcny = load_series_by_alias("M0067855", duckdb_path=duckdb_path)
 
+    # A file change (mtime) invalidates cached frames for every alias.
+    assert hs300_after_touch["value"].tolist() == [4102.25]
     assert usdcny["value"].tolist() == [7.1234]
-    assert len(calls) == 2
+    assert len(calls) == 4
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -460,18 +555,16 @@ def test_series_alias_lookup_reuses_system_frame_until_duckdb_file_changes(tmp_p
 
     assert cache_invalidation_sample["series_id"].tolist() == ["M0099999"]
     assert cache_invalidation_sample["value"].tolist() == [50.5]
-    assert len(calls) == 3
+    assert len(calls) == 5
 
 
-def test_series_alias_lookup_uses_positional_rows_for_cached_alias_index(tmp_path, monkeypatch) -> None:
+def test_series_alias_lookup_does_not_rely_on_frame_index_labels(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     original_load_system_macro_frame = system_sources.load_system_macro_frame
-    calls: list[object] = []
 
-    def load_system_macro_frame_with_shifted_index(duckdb_path_arg=None):
-        calls.append(duckdb_path_arg)
-        frame = original_load_system_macro_frame(duckdb_path_arg)
+    def load_system_macro_frame_with_shifted_index(duckdb_path_arg=None, **kwargs):
+        frame = original_load_system_macro_frame(duckdb_path_arg, **kwargs)
         frame.index = pd.RangeIndex(start=10, stop=10 + len(frame))
         return frame
 
@@ -482,7 +575,6 @@ def test_series_alias_lookup_uses_positional_rows_for_cached_alias_index(tmp_pat
 
     assert hs300["value"].tolist() == [4102.25]
     assert copper["value"].tolist() == [81234.5]
-    assert len(calls) == 1
 
 
 def test_system_source_layer_reads_merrill_clock_stable_macro_aliases(tmp_path, monkeypatch) -> None:
@@ -4767,7 +4859,10 @@ def _seed_choice_tushare_macro_db(path) -> None:
               ('cn_cpi_yoy', 'CN CPI YoY', '2026-04-09', 0.7, 'monthly', 'pct',
                'sv_choice', 'vv_choice', 'rv_choice_macro_thin_slice_v1', 'ok', 'choice-run'),
               ('CA.CSI300', 'CSI 300 close', '2026-04-10', 4102.25, 'daily', 'index',
-               'sv_tushare_index', 'vv_tushare_index', 'rv_public_cross_asset_headline_v1', 'ok', 'tushare-run')
+               'sv_tushare_index', 'vv_tushare_index', 'rv_public_cross_asset_headline_v1', 'ok', 'tushare-run'),
+              ('CA.CSI500', 'CSI 500 close', '2026-04-10', 6155.8, 'daily', 'index',
+               'sv_tushare_csi500_index', 'vv_tushare_csi500_index', 'rv_public_cross_asset_headline_v1', 'ok',
+               'tushare-run')
             """
         )
         conn.execute(
@@ -4778,6 +4873,9 @@ def _seed_choice_tushare_macro_db(path) -> None:
                '{}', 'latest', 'single', 'stable', ''),
               ('CA.CSI300', 'CSI 300 close', 'tushare', 'vv_tushare_index', 'daily', 'index',
                'index_daily:000300.SH.close', 'supplemental', 'test.tushare', 'equity', true, '[]',
+               '{}', 'materialized', 'daily', 'supplemental', ''),
+              ('CA.CSI500', 'CSI 500 close', 'tushare', 'vv_tushare_csi500_index', 'daily', 'index',
+               'index_daily:000905.SH.close', 'supplemental', 'test.tushare', 'equity', true, '[]',
                '{}', 'materialized', 'daily', 'supplemental', '')
             """
         )
@@ -4791,6 +4889,9 @@ def _seed_choice_tushare_macro_db(path) -> None:
                'rv_choice_macro_thin_slice_v1', 'choice-run'),
               ('CA.CSI300', 'CSI 300 close', 'index_daily:000300.SH.close', 'tushare', '2026-04-10',
                4102.25, 'daily', 'index', 'sv_tushare_index', 'vv_tushare_index',
+               'rv_public_cross_asset_headline_v1', 'tushare-run'),
+              ('CA.CSI500', 'CSI 500 close', 'index_daily:000905.SH.close', 'tushare', '2026-04-10',
+               6155.8, 'daily', 'index', 'sv_tushare_csi500_index', 'vv_tushare_csi500_index',
                'rv_public_cross_asset_headline_v1', 'tushare-run'),
               ('CA.COPPER', 'Copper main futures close', 'fut_daily:CU.SHF.close', 'tushare', '2026-04-10',
                81234.5, 'daily', 'CNY/t', 'sv_tushare_fut', 'vv_tushare_fut',

@@ -3,10 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Card, Spin } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import ReactECharts from "../../../lib/echarts";
-import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
 import styles from "./BondAnalyticsYieldCurveTermStructureChart.module.css";
+
+const YIELD_CURVE_TERM_STRUCTURE_CURVE_TYPES = "treasury,cdb";
 
 export type BondAnalyticsYieldCurveTermStructureChartProps = {
   reportDate: string;
@@ -16,16 +18,18 @@ export function BondAnalyticsYieldCurveTermStructureChart({
   reportDate,
 }: BondAnalyticsYieldCurveTermStructureChartProps) {
   const client = useApiClient();
+  // Uses the same canonical queryKey/params as the Institutional Cockpit's yield-curve query
+  // (curveTypes "treasury,cdb") so both surfaces dedupe onto a single in-flight request instead
+  // of double-fetching the same curve for the same report date.
   const q = useQuery({
-    queryKey: [
-      ...bondAnalyticsQueryKeyRoot,
-      "yield-curve-term-structure",
+    queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(
       client.mode,
       reportDate,
-    ],
+      YIELD_CURVE_TERM_STRUCTURE_CURVE_TYPES,
+    ),
     queryFn: () =>
       client.getBondAnalyticsYieldCurveTermStructure(reportDate, {
-        curveTypes: "treasury,cdb",
+        curveTypes: YIELD_CURVE_TERM_STRUCTURE_CURVE_TYPES,
       }),
     enabled: Boolean(reportDate),
     retry: false,

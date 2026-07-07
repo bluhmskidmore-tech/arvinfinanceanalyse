@@ -12,24 +12,31 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (handle: number) => void;
 };
 
-const BODY_DETAIL_IDLE_MIN_DELAY_MS = 1_000;
-const BODY_DETAIL_IDLE_TIMEOUT_MS = 1_200;
-const BODY_DETAIL_TIMEOUT_FALLBACK_MS = 900;
-const BODY_STRUCTURE_IDLE_MIN_DELAY_MS = 1_000;
-const BODY_STRUCTURE_IDLE_TIMEOUT_MS = 1_200;
-const BODY_STRUCTURE_TIMEOUT_FALLBACK_MS = 900;
-const EVENT_FEED_IDLE_MIN_DELAY_MS = 1_000;
-const EVENT_FEED_IDLE_TIMEOUT_MS = 1_200;
-const EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
-const SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS = 1_000;
-const SECONDARY_EVENT_FEED_IDLE_TIMEOUT_MS = 1_200;
-const SECONDARY_EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
-const BOND_NEWS_FEED_IDLE_MIN_DELAY_MS = 1_000;
-const BOND_NEWS_FEED_IDLE_TIMEOUT_MS = 1_200;
-const BOND_NEWS_FEED_TIMEOUT_FALLBACK_MS = 900;
-const FORMAL_CONTEXT_IDLE_MIN_DELAY_MS = 1_000;
-const FORMAL_CONTEXT_IDLE_TIMEOUT_MS = 1_200;
-const FORMAL_CONTEXT_TIMEOUT_FALLBACK_MS = 900;
+// Each body tier still gates its requests behind the snapshot's supplemental
+// report date (so first-screen paint keeps priority), but the per-tier delay
+// is kept small: these tiers chain (body detail -> body structure, and event
+// feed -> secondary event feed -> bond news feed), and the previous 1000ms-per
+// -tier values compounded into multi-second waits before body content (and
+// especially bond news) appeared. 150ms still yields a tick to the browser
+// between tiers without stacking into a multi-second perceived load time.
+const BODY_DETAIL_IDLE_MIN_DELAY_MS = 150;
+const BODY_DETAIL_IDLE_TIMEOUT_MS = 250;
+const BODY_DETAIL_TIMEOUT_FALLBACK_MS = 200;
+const BODY_STRUCTURE_IDLE_MIN_DELAY_MS = 150;
+const BODY_STRUCTURE_IDLE_TIMEOUT_MS = 250;
+const BODY_STRUCTURE_TIMEOUT_FALLBACK_MS = 200;
+const EVENT_FEED_IDLE_MIN_DELAY_MS = 150;
+const EVENT_FEED_IDLE_TIMEOUT_MS = 250;
+const EVENT_FEED_TIMEOUT_FALLBACK_MS = 200;
+const SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS = 150;
+const SECONDARY_EVENT_FEED_IDLE_TIMEOUT_MS = 250;
+const SECONDARY_EVENT_FEED_TIMEOUT_FALLBACK_MS = 200;
+const BOND_NEWS_FEED_IDLE_MIN_DELAY_MS = 150;
+const BOND_NEWS_FEED_IDLE_TIMEOUT_MS = 250;
+const BOND_NEWS_FEED_TIMEOUT_FALLBACK_MS = 200;
+const FORMAL_CONTEXT_IDLE_MIN_DELAY_MS = 150;
+const FORMAL_CONTEXT_IDLE_TIMEOUT_MS = 250;
+const FORMAL_CONTEXT_TIMEOUT_FALLBACK_MS = 200;
 const HOME_TOP_HOLDINGS_FETCH_LIMIT = 14;
 
 function useDeferredReportDateGate(
@@ -182,10 +189,13 @@ export function useDashboardHomeViewModel(
       : undefined,
   );
   const secondaryEventFeedsReady = hasSecondaryEventFeedData;
-  const shouldLoadBondNewsGate =
-    hasDeferredSupplementalReportDate &&
-    eventFeedsReady &&
-    secondaryEventFeedsReady;
+  // Bond news no longer waits on the macro-fallback tier: the fallback decision
+  // (secondaryEventFeedsReady) is a sibling concern, not a prerequisite for the
+  // bond news probe, so gating bond news on it only stacked an extra idle-gate
+  // tier onto the chain without any data dependency backing it. Running the
+  // macro and bond news probe chains off the same event-feed tier lets them
+  // fire in parallel instead of serially.
+  const shouldLoadBondNewsGate = hasDeferredSupplementalReportDate && eventFeedsReady;
   const hasBondNewsFeedData = useBondNewsFeedDataGate(
     shouldLoadBondNewsGate ? supplementalReportDate : undefined,
   );
@@ -223,7 +233,6 @@ export function useDashboardHomeViewModel(
     loadBondNewsFeeds:
       hasDeferredSupplementalReportDate &&
       eventFeedsReady &&
-      secondaryEventFeedsReady &&
       bondNewsFeedsReady,
     loadFormalData: hasDeferredFormalContext,
   });

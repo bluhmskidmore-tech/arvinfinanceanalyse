@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -29,6 +31,10 @@ from backend.app.core_finance.factor_screen_candidates import (
 from backend.app.core_finance.fresh_trend_watchlist_candidates import (
     FreshTrendWatchlistSnapshot,
     compute_fresh_trend_watchlist_candidates,
+)
+from backend.app.core_finance.gate_macro_overlay import (
+    MacroCycleObservation,
+    apply_macro_gate_overlay,
 )
 from backend.app.core_finance.hybrid_fusion_candidates import (
     compute_hybrid_fusion_candidates,
@@ -134,6 +140,8 @@ _INPUT_FRESHNESS_TIER_RANK = {
     FRESHNESS_TIER_STALE: 2,
     FRESHNESS_TIER_FRESH: 1,
 }
+# Cycle-input families forwarded into the market-gate macro_context disclosure block.
+_MACRO_CONTEXT_INPUT_FAMILIES = frozenset({"PMI", "credit_impulse", "price_spread"})
 _INPUT_FRESHNESS_NOTE_CATEGORY_BY_FAMILY = {
     "PMI": "宏观输入",
     "credit_impulse": "宏观输入",
@@ -245,20 +253,38 @@ def _load_livermore_strategy_payload_uncached(
     stock_candidate_policy: str | None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     resolved_stock_readiness = stock_readiness
-    history_rows, broad_index_tables = _load_broad_index_history(
-        duckdb_path=duckdb_path,
-        as_of_date=as_of_date,
-    )
-    latest_trade_date: date | None = history_rows[-1].trade_date if history_rows else None
+    # Reuse one read-only connection for the macro history + cycle-evidence
+    # loaders instead of opening the DuckDB file once per loader.
+    with _shared_read_only_connection(duckdb_path) as shared_conn:
+        history_rows, broad_index_tables = _load_broad_index_history(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+            conn=shared_conn,
+        )
+        latest_trade_date: date | None = history_rows[-1].trade_date if history_rows else None
+        cycle_input_evidence = _load_cycle_input_evidence(
+            duckdb_path=duckdb_path,
+            as_of_date=latest_trade_date,
+            conn=shared_conn,
+        )
     supplement: MarketGateSupplement | None = None
     if latest_trade_date is not None:
         supplement = fetch_market_gate_supplement(duckdb_path=duckdb_path, trade_date=latest_trade_date)
-    cycle_input_evidence = _load_cycle_input_evidence(
-        duckdb_path=duckdb_path,
-        as_of_date=latest_trade_date,
-    )
 
     market_gate = evaluate_market_gate(cast(list[BroadIndexObservation], history_rows), supplement=supplement)
+    market_gate = apply_macro_gate_overlay(
+        market_gate,
+        gate_as_of_date=latest_trade_date.isoformat() if latest_trade_date is not None else None,
+        macro=MacroCycleObservation(
+            macro_score=cycle_input_evidence.macro_score,
+            component_dates=tuple(
+                row
+                for row in cycle_input_evidence.input_business_dates
+                if row[0] in _MACRO_CONTEXT_INPUT_FAMILIES
+            ),
+            evidence=cycle_input_evidence.macro_score_evidence,
+        ),
+    )
     requested_text = None if as_of_date is None else as_of_date.isoformat()
     resolved_as_of_date = history_rows[-1].trade_date.isoformat() if history_rows else None
     effective_as_of_date = resolved_as_of_date or requested_text
@@ -420,19 +446,46 @@ def _parse_optional_date(value: str | None) -> date | None:
     return date.fromisoformat(str(value))
 
 
+@contextmanager
+def _shared_read_only_connection(duckdb_path: str) -> Iterator[duckdb.DuckDBPyConnection | None]:
+    """Open one read-only connection for a request and reuse it across loaders.
+
+    Yields ``None`` (instead of raising) when the file is missing or cannot be
+    opened, so each loader can fall back to its own connection or degrade to an
+    empty result. The connection closes when the ``with`` block exits, keeping
+    the file-lock window short for separate writer processes.
+    """
+    path = Path(duckdb_path)
+    if not path.exists():
+        yield None
+        return
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        yield None
+        return
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def _load_broad_index_history(
     *,
     duckdb_path: str,
     as_of_date: date | None,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[list[_LoadedObservation], list[str]]:
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
         return [], []
 
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return [], []
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(duckdb_file), read_only=True)
+        except duckdb.Error:
+            return [], []
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
@@ -516,7 +569,8 @@ def _load_broad_index_history(
     except duckdb.Error:
         return [], tables_used if "tables_used" in locals() else []
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     ordered = [
         _LoadedObservation(
@@ -532,18 +586,37 @@ def _load_broad_index_history(
     return ordered, tables_used
 
 
+def _latest_common_trade_date_pair(
+    left_points: list[tuple[str, float]],
+    right_points: list[tuple[str, float]],
+) -> tuple[str, float, float] | None:
+    """Return (trade_date, left_value, right_value) for the latest trade_date landed in both series.
+
+    Guards against pairing a stale point from one series with a fresher point from the other
+    (e.g. lagging PE with the latest CN10Y) when the two series' most recent landed dates differ.
+    """
+    right_by_date = {trade_date: value for trade_date, value in right_points}
+    for trade_date, left_value in sorted(left_points, key=lambda row: row[0], reverse=True):
+        if trade_date in right_by_date:
+            return trade_date, left_value, right_by_date[trade_date]
+    return None
+
+
 def _load_cycle_input_evidence(
     *,
     duckdb_path: str,
     as_of_date: date | None,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> _CycleInputEvidence:
     path = Path(duckdb_path)
     if as_of_date is None or not path.exists():
         return _CycleInputEvidence()
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return _CycleInputEvidence()
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return _CycleInputEvidence()
     tables_used: list[str] = []
     source_versions: list[str] = []
     evidence_rows = 0
@@ -573,7 +646,7 @@ def _load_cycle_input_evidence(
                 )
                 select series_id, trade_date, value_numeric, source_version
                 from ranked
-                where rn <= 2
+                where rn <= 5
                 order by series_id, cast(trade_date as date)
                 """,
                 [
@@ -599,16 +672,20 @@ def _load_cycle_input_evidence(
 
             pe_points = points_by_series.get(CSI300_PE_SERIES_ID, [])
             cn10y_points = points_by_series.get(CN10Y_SERIES_ID, [])
-            if pe_points and cn10y_points:
-                pe_value = pe_points[-1][1]
-                cn10y_value = cn10y_points[-1][1]
+            aligned_price_spread = _latest_common_trade_date_pair(pe_points, cn10y_points)
+            if aligned_price_spread is not None:
+                price_spread_trade_date, pe_value, cn10y_value = aligned_price_spread
                 if pe_value > 0:
                     earnings_yield = 100.0 / pe_value
                     spread = earnings_yield - cn10y_value
                     price_spread_evidence = (
                         f"{CSI300_PE_SERIES_ID} {pe_value:.2f} and {CN10Y_SERIES_ID} 10Y yield {cn10y_value:.2f}% "
-                        f"landed by {as_of_date.isoformat()}; proxy price_spread is {spread:.2f}ppt."
+                        f"both landed on trade_date {price_spread_trade_date} "
+                        f"(<= {as_of_date.isoformat()}); proxy price_spread is {spread:.2f}ppt."
                     )
+            # else: PE and CN10Y have no shared landed trade_date <= as_of_date; leave pe_value/cn10y_value
+            # unset so build_cycle_macro_snapshot marks price_spread as missing and reweights, instead of
+            # pairing a lagging point from one series with a fresher point from the other.
 
             pmi_points = points_by_series.get(PMI_SERIES_ID)
             credit_series_id = SOCIAL_FINANCING_YOY_SERIES_ID
@@ -766,7 +843,8 @@ def _load_cycle_input_evidence(
     except duckdb.Error:
         return _CycleInputEvidence()
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 class _LoadedObservation(BroadIndexObservation):
@@ -948,6 +1026,36 @@ def _load_choice_stock_outputs(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
         )
+    # Reuse one read-only connection for every stock loader in this request
+    # instead of opening the DuckDB file once per loader.
+    with _shared_read_only_connection(duckdb_path) as stock_conn:
+        return _load_choice_stock_outputs_on_conn(
+            stock_conn,
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+            market_state=market_state,
+            stock_readiness=stock_readiness,
+            backfill_mode=backfill_mode,
+            stock_candidate_policy=stock_candidate_policy,
+            macro_score=macro_score,
+            sector_coverage=sector_coverage,
+            stock_coverage=stock_coverage,
+        )
+
+
+def _load_choice_stock_outputs_on_conn(
+    stock_conn: duckdb.DuckDBPyConnection | None,
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+    market_state: str,
+    stock_readiness: ChoiceStockReadiness,
+    backfill_mode: bool,
+    stock_candidate_policy: str | None,
+    macro_score: float | None,
+    sector_coverage: ChoiceStockMaterializationCoverage,
+    stock_coverage: ChoiceStockMaterializationCoverage,
+) -> _ChoiceStockOutputs:
     tables_used: list[str] = []
     source_versions: list[str] = []
     vendor_versions: list[str] = []
@@ -962,6 +1070,7 @@ def _load_choice_stock_outputs(
                 as_of_date=as_of_date,
                 include_concepts=True,
                 include_limit_quality=True,
+                conn=stock_conn,
             )
         return trading_snapshot_inputs
 
@@ -970,6 +1079,7 @@ def _load_choice_stock_outputs(
         sector_rows, sector_tables, sector_sources, sector_vendors = _load_sector_rank_inputs(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
+            conn=stock_conn,
         )
         evidence_rows += len(sector_rows)
         tables_used.extend(sector_tables)
@@ -999,6 +1109,7 @@ def _load_choice_stock_outputs(
                 duckdb_path=duckdb_path,
                 as_of_date=as_of_date,
                 sector_rank_payload=sector_rank_payload,
+                conn=stock_conn,
             )
             evidence_rows += len(snapshots)
             tables_used.extend(stock_tables)
@@ -1068,7 +1179,7 @@ def _load_choice_stock_outputs(
 
     factor_screen_payload: dict[str, object] | None = None
     factor_screen_block_reason = ""
-    factor_load = _load_factor_screen_rows(duckdb_path=duckdb_path, as_of_date=as_of_date)
+    factor_load = _load_factor_screen_rows(duckdb_path=duckdb_path, as_of_date=as_of_date, conn=stock_conn)
     if factor_load.rows and factor_load.snapshot_as_of_date is not None:
         fs_result = compute_factor_screen_candidates(
             as_of_date=factor_load.snapshot_as_of_date,
@@ -1100,6 +1211,7 @@ def _load_choice_stock_outputs(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
             sector_rank_payload=sector_rank_payload,
+            conn=stock_conn,
         )
         evidence_rows += len(theme_snapshots)
         tables_used.extend(theme_tables)
@@ -1146,6 +1258,7 @@ def _load_choice_stock_outputs(
         risk_snapshots, risk_tables, risk_sources, risk_vendors = _load_risk_exit_snapshots(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
+            conn=stock_conn,
         )
         if risk_snapshots:
             evidence_rows += len(risk_snapshots)
@@ -1160,6 +1273,7 @@ def _load_choice_stock_outputs(
             risk_exit_block_reason = _risk_exit_input_block_reason(
                 duckdb_path=duckdb_path,
                 as_of_date=as_of_date,
+                conn=stock_conn,
             )
 
     return _ChoiceStockOutputs(
@@ -1189,14 +1303,17 @@ def _load_sector_rank_inputs(
     *,
     duckdb_path: str,
     as_of_date: str,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[list[SectorRankConstituent], list[str], list[str], list[str]]:
     path = Path(duckdb_path)
     if not path.exists():
         return [], [], [], []
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return [], [], [], []
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return [], [], [], []
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         required_tables = {"choice_stock_sector_membership", "choice_stock_daily_observation"}
@@ -1262,7 +1379,8 @@ def _load_sector_rank_inputs(
     except duckdb.Error:
         return [], ["choice_stock_sector_membership", "choice_stock_daily_observation"], [], []
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     constituents = [
         SectorRankConstituent(
@@ -1289,14 +1407,17 @@ def _load_stock_candidate_snapshots(
     duckdb_path: str,
     as_of_date: str,
     sector_rank_payload: dict[str, object],
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[list[StockCandidateSnapshot], list[str], list[str], list[str]]:
     path = Path(duckdb_path)
     if not path.exists():
         return [], [], [], []
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return [], [], [], []
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return [], [], [], []
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         required_tables = {
@@ -1468,7 +1589,8 @@ def _load_stock_candidate_snapshots(
     except duckdb.Error:
         return [], list(required_tables), [], []
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     history_by_code: dict[str, dict[str, list[float]]] = {}
     for row in history_rows:
@@ -1569,6 +1691,7 @@ def _load_trading_stock_snapshot_inputs(
     as_of_date: str,
     include_concepts: bool = False,
     include_limit_quality: bool = False,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> _TradingStockSnapshotInputs:
     empty = _TradingStockSnapshotInputs(
         current_rows=[],
@@ -1580,10 +1703,12 @@ def _load_trading_stock_snapshot_inputs(
     path = Path(duckdb_path)
     if not path.exists():
         return empty
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return empty
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return empty
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         required_tables = {
@@ -1714,7 +1839,8 @@ def _load_trading_stock_snapshot_inputs(
     except duckdb.Error:
         return empty
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     history_by_code: dict[str, dict[str, list[object]]] = {}
     for row in history_rows:
@@ -2259,6 +2385,7 @@ def _load_factor_screen_rows(
     *,
     duckdb_path: str,
     as_of_date: str,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> _FactorScreenLoadResult:
     """Load factor snapshot rows for the given date (or latest available)."""
     path = Path(duckdb_path)
@@ -2269,15 +2396,17 @@ def _load_factor_screen_rows(
             tables_used=[],
             unavailable_reason="DuckDB file is missing; choice_stock_factor_snapshot cannot be read.",
         )
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return _FactorScreenLoadResult(
-            rows=[],
-            snapshot_as_of_date=None,
-            tables_used=[],
-            unavailable_reason="DuckDB file could not be opened; choice_stock_factor_snapshot cannot be read.",
-        )
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return _FactorScreenLoadResult(
+                rows=[],
+                snapshot_as_of_date=None,
+                tables_used=[],
+                unavailable_reason="DuckDB file could not be opened; choice_stock_factor_snapshot cannot be read.",
+            )
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "choice_stock_factor_snapshot" not in tables:
@@ -2462,7 +2591,8 @@ def _load_factor_screen_rows(
             unavailable_reason="DuckDB query failed while reading choice_stock_factor_snapshot.",
         )
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def _table_has_columns(conn: duckdb.DuckDBPyConnection, table_name: str, columns: list[str]) -> bool:
@@ -2524,14 +2654,17 @@ def _load_theme_breakout_snapshots(
     duckdb_path: str,
     as_of_date: str,
     sector_rank_payload: dict[str, object],
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[list[ThemeBreakoutSnapshot], list[str], list[str], list[str], _ThemeBreakoutEvidenceProvenance]:
     path = Path(duckdb_path)
     if not path.exists():
         return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return [], [], [], [], _ThemeBreakoutEvidenceProvenance()
     required_tables = {
         "choice_stock_universe",
         "choice_stock_sector_membership",
@@ -2660,7 +2793,8 @@ def _load_theme_breakout_snapshots(
     except duckdb.Error:
         return [], sorted(required_tables | {"choice_stock_limit_quality"}), [], [], _ThemeBreakoutEvidenceProvenance()
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     sector_rank_by_key: dict[tuple[str, str], int] = {}
     for item in cast(list[dict[str, object]], sector_rank_payload["items"]):
@@ -2906,14 +3040,17 @@ def _load_risk_exit_snapshots(
     *,
     duckdb_path: str,
     as_of_date: str,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[list[RiskExitSnapshot], list[str], list[str], list[str]]:
     path = Path(duckdb_path)
     if not path.exists():
         return [], [], [], []
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return [], [], [], []
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return [], [], [], []
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         required_tables = {"livermore_position_snapshot", "choice_stock_daily_observation"}
@@ -2952,7 +3089,8 @@ def _load_risk_exit_snapshots(
     except duckdb.Error:
         return [], list(required_tables), [], []
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
     close_history_by_code: dict[str, list[float]] = {}
     volume_history_by_code: dict[str, list[float]] = {}
@@ -2997,14 +3135,17 @@ def _risk_exit_input_block_reason(
     *,
     duckdb_path: str,
     as_of_date: str,
+    conn: duckdb.DuckDBPyConnection | None = None,
 ) -> str:
     path = Path(duckdb_path)
     if not path.exists():
         return "DuckDB database is not available, so Livermore position and close-history inputs are not materialized."
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return "DuckDB database is unavailable while checking Livermore position and close-history inputs."
+    owns_conn = conn is None
+    if owns_conn:
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            return "DuckDB database is unavailable while checking Livermore position and close-history inputs."
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "livermore_position_snapshot" not in tables:
@@ -3060,7 +3201,8 @@ def _risk_exit_input_block_reason(
     except duckdb.Error:
         return "DuckDB query failed while checking Livermore position and close-history inputs."
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def _mean_reversion_unavailable_reason(

@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,9 @@ from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import Table
 
 logger = logging.getLogger(__name__)
+
+_JSONL_READ_CACHE: dict[tuple[str, int, int], tuple[dict[str, object], ...]] = {}
+_JSONL_READ_CACHE_LOCK = threading.Lock()
 
 CACHE_BUILD_RUN_STREAM = "cache_build_run"
 CACHE_MANIFEST_STREAM = "cache_manifest"
@@ -165,17 +169,11 @@ class GovernanceRepository:
                 raise
 
     def read_all(self, stream: str) -> list[dict[str, object]]:
+        if self._reads_sql(stream):
+            return self._read_all_sql(stream)
         with acquire_lock(self._batch_lock(), base_dir=self.base_dir, timeout_seconds=5.0):
-            if self._reads_sql(stream):
-                return self._read_all_sql(stream)
             target = self.base_dir / f"{stream}.jsonl"
-            if not target.exists():
-                return []
-            return [
-                json.loads(line)
-                for line in target.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            ]
+            return _read_jsonl_file_cached(target)
 
     def _batch_lock(self) -> LockDefinition:
         digest = hashlib.sha256(str(self.base_dir).encode("utf-8")).hexdigest()[:8]
@@ -308,6 +306,55 @@ class GovernanceRepository:
             ) from rollback_errors[0]
 
 
+def _jsonl_file_cache_key(path: Path) -> tuple[str, int, int] | None:
+    if not path.exists():
+        return None
+    stat = path.stat()
+    return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+
+
+def _copy_jsonl_rows(rows: tuple[dict[str, object], ...]) -> list[dict[str, object]]:
+    return [dict(row) for row in rows]
+
+
+def _read_jsonl_file_cached(path: Path) -> list[dict[str, object]]:
+    cache_key = _jsonl_file_cache_key(path)
+    if cache_key is None:
+        return []
+
+    with _JSONL_READ_CACHE_LOCK:
+        cached_rows = _JSONL_READ_CACHE.get(cache_key)
+        if cached_rows is not None:
+            return _copy_jsonl_rows(cached_rows)
+
+    parsed_rows = tuple(
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    )
+
+    with _JSONL_READ_CACHE_LOCK:
+        current_key = _jsonl_file_cache_key(path)
+        if current_key is None:
+            return []
+        if current_key != cache_key:
+            cached_rows = _JSONL_READ_CACHE.get(current_key)
+            if cached_rows is not None:
+                return _copy_jsonl_rows(cached_rows)
+            parsed_rows = tuple(
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+            cache_key = current_key
+        resolved_path = cache_key[0]
+        stale_keys = [key for key in _JSONL_READ_CACHE if key[0] == resolved_path and key != cache_key]
+        for stale_key in stale_keys:
+            del _JSONL_READ_CACHE[stale_key]
+        _JSONL_READ_CACHE[cache_key] = parsed_rows
+        return _copy_jsonl_rows(parsed_rows)
+
+
 def _sql_record_for_stream(stream: str, payload: dict[str, object]) -> dict[str, object]:
     created_at = _coerce_created_at(payload.get("created_at"))
     payload_json = json.dumps(payload, ensure_ascii=False)
@@ -402,15 +449,7 @@ def _resolve_governance_sql_dsn_for_repo(sql_dsn: str, *, backend_mode: str) -> 
 
 def _read_all_sql_statement(stream: str, table: Table):
     if stream == CACHE_BUILD_RUN_STREAM:
-        return select(table.c.payload_json).order_by(
-            table.c.created_at.asc(),
-            table.c.run_id.asc(),
-            table.c.status.asc(),
-        )
+        return select(table.c.payload_json).order_by(table.c.row_id.asc())
     if stream == CACHE_MANIFEST_STREAM:
-        return select(table.c.payload_json).order_by(
-            table.c.created_at.asc(),
-            table.c.cache_key.asc(),
-            table.c.source_version.asc(),
-        )
+        return select(table.c.payload_json).order_by(table.c.row_id.asc())
     raise KeyError(f"Unsupported SQL governance stream: {stream}")

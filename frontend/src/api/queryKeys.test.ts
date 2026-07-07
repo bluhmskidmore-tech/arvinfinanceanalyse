@@ -26,6 +26,28 @@ describe("apiQueryKeys", () => {
       "real",
       "2026-04-30",
     ]);
+    expect(
+      apiQueryKeys.bondDashboardBundle("real", "2026-04-30", [
+        "headline-kpis",
+        "risk-indicators",
+      ], 12),
+    ).toEqual([
+      "bond-dashboard",
+      "bundle",
+      "real",
+      "2026-04-30",
+      "headline-kpis,risk-indicators",
+      12,
+    ]);
+    expect(
+      apiQueryKeys.bondAnalyticsYieldCurveTermStructure("real", "2026-04-30", "treasury,cdb"),
+    ).toEqual([
+      "bond-analytics",
+      "yield-curve-term-structure",
+      "real",
+      "2026-04-30",
+      "treasury,cdb",
+    ]);
     expect(apiQueryKeys.bondAnalyticsCreditSpreadMigration("real", "2026-04-30")).toEqual([
       "bond-analytics",
       "credit-spread-migration",

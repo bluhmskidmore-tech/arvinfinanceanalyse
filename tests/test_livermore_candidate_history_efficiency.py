@@ -418,7 +418,7 @@ def test_livermore_strategy_payload_reuses_same_duckdb_snapshot(monkeypatch, tmp
 
     load_count = 0
 
-    def _counting_history(*, duckdb_path: str, as_of_date: object) -> tuple[list[object], list[str]]:
+    def _counting_history(*, duckdb_path: str, as_of_date: object, conn: object = None) -> tuple[list[object], list[str]]:
         nonlocal load_count
         load_count += 1
         return [], []

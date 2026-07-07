@@ -127,14 +127,15 @@ class PositionsRepository(DuckDBRepository):
 
     def resolve_latest_report_date(self) -> str | None:
         latest_dates: list[str] = []
-        if self._table_exists("zqtz_bond_daily_snapshot"):
-            rows = self._fetch_rows("select max(report_date) from zqtz_bond_daily_snapshot")
-            if rows and rows[0][0] is not None:
-                latest_dates.append(str(rows[0][0]))
-        if self._table_exists("tyw_interbank_daily_snapshot"):
-            rows = self._fetch_rows("select max(report_date) from tyw_interbank_daily_snapshot")
-            if rows and rows[0][0] is not None:
-                latest_dates.append(str(rows[0][0]))
+        with self.scoped_connection():
+            if self._table_exists("zqtz_bond_daily_snapshot"):
+                rows = self._fetch_rows("select max(report_date) from zqtz_bond_daily_snapshot")
+                if rows and rows[0][0] is not None:
+                    latest_dates.append(str(rows[0][0]))
+            if self._table_exists("tyw_interbank_daily_snapshot"):
+                rows = self._fetch_rows("select max(report_date) from tyw_interbank_daily_snapshot")
+                if rows and rows[0][0] is not None:
+                    latest_dates.append(str(rows[0][0]))
         return max(latest_dates) if latest_dates else None
 
     def collect_lineage_versions(
@@ -147,34 +148,35 @@ class PositionsRepository(DuckDBRepository):
     ) -> tuple[list[str], list[str]]:
         src: list[str] = []
         rule: list[str] = []
-        if self._table_exists("zqtz_bond_daily_snapshot"):
-            rows = self._fetch_rows(
-                f"""
-                select distinct source_version, rule_version
-                from zqtz_bond_daily_snapshot
-                where {zqtz_where_sql}
-                """,
-                zqtz_params,
-            )
-            for s, r in rows:
-                if s:
-                    src.append(str(s))
-                if r:
-                    rule.append(str(r))
-        if self._table_exists("tyw_interbank_daily_snapshot"):
-            rows = self._fetch_rows(
-                f"""
-                select distinct source_version, rule_version
-                from tyw_interbank_daily_snapshot
-                where {tyw_where_sql}
-                """,
-                tyw_params,
-            )
-            for s, r in rows:
-                if s:
-                    src.append(str(s))
-                if r:
-                    rule.append(str(r))
+        with self.scoped_connection():
+            if self._table_exists("zqtz_bond_daily_snapshot"):
+                rows = self._fetch_rows(
+                    f"""
+                    select distinct source_version, rule_version
+                    from zqtz_bond_daily_snapshot
+                    where {zqtz_where_sql}
+                    """,
+                    zqtz_params,
+                )
+                for s, r in rows:
+                    if s:
+                        src.append(str(s))
+                    if r:
+                        rule.append(str(r))
+            if self._table_exists("tyw_interbank_daily_snapshot"):
+                rows = self._fetch_rows(
+                    f"""
+                    select distinct source_version, rule_version
+                    from tyw_interbank_daily_snapshot
+                    where {tyw_where_sql}
+                    """,
+                    tyw_params,
+                )
+                for s, r in rows:
+                    if s:
+                        src.append(str(s))
+                    if r:
+                        rule.append(str(r))
         return src, rule
 
     def list_bond_sub_types(self, report_date: str) -> list[str]:
@@ -201,8 +203,6 @@ class PositionsRepository(DuckDBRepository):
         page_size: int,
         include_issued: bool,
     ) -> tuple[list[dict[str, object]], int]:
-        if not self._table_exists("zqtz_bond_daily_snapshot"):
-            return [], 0
         where = ["report_date = ?::date"]
         params: list[object] = [report_date]
         if sub_type:
@@ -212,24 +212,27 @@ class PositionsRepository(DuckDBRepository):
             where.append("NOT COALESCE(is_issuance_like, FALSE)")
         where_sql = " AND ".join(where)
 
-        count_rows = self._fetch_rows(
-            f"select count(*) from zqtz_bond_daily_snapshot where {where_sql}",
-            params,
-        )
-        total = int(count_rows[0][0]) if count_rows else 0
-        offset = max(page - 1, 0) * max(page_size, 1)
-        limit = max(page_size, 1)
-        rows = self._fetch_rows(
-            f"""
-            select instrument_code, issuer_name, bond_type, asset_class,
-                   market_value_native, face_value_native, amortized_cost_native, ytm_value
-            from zqtz_bond_daily_snapshot
-            where {where_sql}
-            order by instrument_code, portfolio_name, cost_center
-            limit ? offset ?
-            """,
-            [*params, limit, offset],
-        )
+        with self.scoped_connection():
+            if not self._table_exists("zqtz_bond_daily_snapshot"):
+                return [], 0
+            count_rows = self._fetch_rows(
+                f"select count(*) from zqtz_bond_daily_snapshot where {where_sql}",
+                params,
+            )
+            total = int(count_rows[0][0]) if count_rows else 0
+            offset = max(page - 1, 0) * max(page_size, 1)
+            limit = max(page_size, 1)
+            rows = self._fetch_rows(
+                f"""
+                select instrument_code, issuer_name, bond_type, asset_class,
+                       market_value_native, face_value_native, amortized_cost_native, ytm_value
+                from zqtz_bond_daily_snapshot
+                where {where_sql}
+                order by instrument_code, portfolio_name, cost_center
+                limit ? offset ?
+                """,
+                [*params, limit, offset],
+            )
         items: list[dict[str, object]] = []
         for row in rows:
             market_value = Decimal(str(row[4] or 0))
@@ -276,8 +279,6 @@ class PositionsRepository(DuckDBRepository):
         page: int,
         page_size: int,
     ) -> tuple[list[dict[str, object]], int]:
-        if not self._table_exists("tyw_interbank_daily_snapshot"):
-            return [], 0
         where = ["report_date = ?::date"]
         params: list[object] = [report_date]
         if product_type:
@@ -290,24 +291,27 @@ class PositionsRepository(DuckDBRepository):
                 where.append(f"NOT ({_asset_side_predicate()})")
         where_sql = " AND ".join(where)
 
-        count_rows = self._fetch_rows(
-            f"select count(*) from tyw_interbank_daily_snapshot where {where_sql}",
-            params,
-        )
-        total = int(count_rows[0][0]) if count_rows else 0
-        offset = max(page - 1, 0) * max(page_size, 1)
-        limit = max(page_size, 1)
-        rows = self._fetch_rows(
-            f"""
-            select position_id, counterparty_name, product_type, position_side,
-                   principal_native, funding_cost_rate, maturity_date
-            from tyw_interbank_daily_snapshot
-            where {where_sql}
-            order by position_id
-            limit ? offset ?
-            """,
-            [*params, limit, offset],
-        )
+        with self.scoped_connection():
+            if not self._table_exists("tyw_interbank_daily_snapshot"):
+                return [], 0
+            count_rows = self._fetch_rows(
+                f"select count(*) from tyw_interbank_daily_snapshot where {where_sql}",
+                params,
+            )
+            total = int(count_rows[0][0]) if count_rows else 0
+            offset = max(page - 1, 0) * max(page_size, 1)
+            limit = max(page_size, 1)
+            rows = self._fetch_rows(
+                f"""
+                select position_id, counterparty_name, product_type, position_side,
+                       principal_native, funding_cost_rate, maturity_date
+                from tyw_interbank_daily_snapshot
+                where {where_sql}
+                order by position_id
+                limit ? offset ?
+                """,
+                [*params, limit, offset],
+            )
         items: list[dict[str, object]] = []
         for row in rows:
             items.append(

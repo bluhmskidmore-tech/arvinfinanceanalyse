@@ -1485,89 +1485,84 @@ export function BondAnalyticsInstitutionalCockpit({
     Boolean(reportDate) &&
     Boolean(dashboardReportDate) &&
     dashboardReportDate !== reportDate;
+  // Business queries below key off `queryReportDate` rather than waiting for
+  // `dashboardReportDate` to resolve first: they fire immediately, optimistically assuming
+  // `reportDate` is also a valid bond-dashboard snapshot (the common case). If the dashboard
+  // dates lookup later reveals a fallback is needed, `dashboardReportDate` changes and every
+  // query below picks up a new queryKey/param and re-fetches for the corrected date. This
+  // removes the two-level "dates -> dates -> 12+ business calls" waterfall in the common case
+  // without changing the final displayed data for the (rare) fallback case.
+  const queryReportDate = dashboardReportDate || reportDate;
 
-  const [
-    headlineQ,
-    _spreadQ,
-    maturityQ,
-    holdingsQ,
-    portfolioHlQ,
-    assetStructureQ,
-    riskQ,
-    industryQ,
-  ] = useQueries({
-    queries: [
-      {
-        queryKey: apiQueryKeys.bondDashboardHeadline(client.mode, dashboardReportDate),
-        queryFn: () => client.getBondDashboardHeadlineKpis(dashboardReportDate),
-        enabled: Boolean(dashboardReportDate),
-      },
-      {
-        queryKey: ["bond-analytics-institutional", "spread", client.mode, dashboardReportDate],
-        queryFn: () => client.getBondDashboardSpreadAnalysis(dashboardReportDate),
-        enabled: Boolean(dashboardReportDate),
-      },
-      {
-        queryKey: ["bond-analytics-institutional", "maturity", client.mode, dashboardReportDate],
-        queryFn: () => client.getBondDashboardMaturityStructure(dashboardReportDate),
-        enabled: Boolean(dashboardReportDate),
-      },
-      {
-        queryKey: ["bond-analytics-institutional", "holdings", client.mode, dashboardReportDate],
-        queryFn: () => client.getBondAnalyticsTopHoldings(dashboardReportDate, 10),
-        enabled: Boolean(dashboardReportDate),
-      },
-      {
-        queryKey: apiQueryKeys.bondAnalyticsPortfolioHeadlines(client.mode, dashboardReportDate),
-        queryFn: () => client.getBondAnalyticsPortfolioHeadlines(dashboardReportDate),
-        enabled: Boolean(dashboardReportDate),
-      },
-      {
-        queryKey: ["bond-analytics-institutional", "asset-structure", client.mode, dashboardReportDate],
-        queryFn: () => client.getBondDashboardAssetStructure(dashboardReportDate, "bond_type"),
-        enabled: Boolean(dashboardReportDate),
-      },
-      {
-        queryKey: ["bond-analytics-institutional", "risk-indicators", client.mode, dashboardReportDate],
-        queryFn: () => client.getBondDashboardRiskIndicators(dashboardReportDate),
-        enabled: Boolean(dashboardReportDate),
-      },
-      {
-        queryKey: ["bond-analytics-institutional", "industry-distribution", client.mode, dashboardReportDate],
-        queryFn: () => client.getBondDashboardIndustryDistribution(dashboardReportDate),
-        enabled: Boolean(dashboardReportDate),
-      },
-    ],
-  });
+  const [headlineQ, maturityQ, holdingsQ, portfolioHlQ, assetStructureQ, riskQ, industryQ] =
+    useQueries({
+      queries: [
+        {
+          queryKey: apiQueryKeys.bondDashboardHeadline(client.mode, queryReportDate),
+          queryFn: () => client.getBondDashboardHeadlineKpis(queryReportDate),
+          enabled: Boolean(queryReportDate),
+        },
+        {
+          queryKey: ["bond-analytics-institutional", "maturity", client.mode, queryReportDate],
+          queryFn: () => client.getBondDashboardMaturityStructure(queryReportDate),
+          enabled: Boolean(queryReportDate),
+        },
+        {
+          queryKey: apiQueryKeys.bondAnalyticsTopHoldings(client.mode, queryReportDate, 10),
+          queryFn: () => client.getBondAnalyticsTopHoldings(queryReportDate, 10),
+          enabled: Boolean(queryReportDate),
+        },
+        {
+          queryKey: apiQueryKeys.bondAnalyticsPortfolioHeadlines(client.mode, queryReportDate),
+          queryFn: () => client.getBondAnalyticsPortfolioHeadlines(queryReportDate),
+          enabled: Boolean(queryReportDate),
+        },
+        {
+          queryKey: ["bond-analytics-institutional", "asset-structure", client.mode, queryReportDate],
+          queryFn: () => client.getBondDashboardAssetStructure(queryReportDate, "bond_type"),
+          enabled: Boolean(queryReportDate),
+        },
+        {
+          queryKey: ["bond-analytics-institutional", "risk-indicators", client.mode, queryReportDate],
+          queryFn: () => client.getBondDashboardRiskIndicators(queryReportDate),
+          enabled: Boolean(queryReportDate),
+        },
+        {
+          queryKey: ["bond-analytics-institutional", "industry-distribution", client.mode, queryReportDate],
+          queryFn: () => client.getBondDashboardIndustryDistribution(queryReportDate),
+          enabled: Boolean(queryReportDate),
+        },
+      ],
+    });
   const dv01AccountingQueries = useQueries({
     queries: DV01_ACCOUNTING_CLASSES.map((item) => ({
       queryKey: apiQueryKeys.bondAnalyticsDv01Risk(
         client.mode,
-        dashboardReportDate,
+        queryReportDate,
         item.value,
         DV01_HOME_TOP_N,
         DV01_HOME_SHOCK_BPS,
       ),
       queryFn: () =>
-        client.getBondAnalyticsDv01Risk(dashboardReportDate, {
+        client.getBondAnalyticsDv01Risk(queryReportDate, {
           accountingClass: item.value,
           topN: DV01_HOME_TOP_N,
           shockBps: DV01_HOME_SHOCK_BPS,
         }),
-      enabled: Boolean(dashboardReportDate),
+      enabled: Boolean(queryReportDate),
     })),
   });
   const yieldCurveQ = useQuery({
     queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(
       client.mode,
-      dashboardReportDate,
+      queryReportDate,
       HOME_YIELD_CURVE_TYPES,
     ),
     queryFn: () =>
-      client.getBondAnalyticsYieldCurveTermStructure(dashboardReportDate, {
+      client.getBondAnalyticsYieldCurveTermStructure(queryReportDate, {
         curveTypes: HOME_YIELD_CURVE_TYPES,
       }),
-    enabled: Boolean(dashboardReportDate),
+    enabled: Boolean(queryReportDate),
     retry: false,
     staleTime: 60_000,
   });

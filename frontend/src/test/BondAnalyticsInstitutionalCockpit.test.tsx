@@ -173,12 +173,6 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       }
       return base.getBondDashboardHeadlineKpis(reportDate);
     });
-    const getBondDashboardSpreadAnalysis = vi.fn(async (reportDate: string) => {
-      if (reportDate !== "2026-02-28") {
-        throw new Error(`unsupported spread date ${reportDate}`);
-      }
-      return base.getBondDashboardSpreadAnalysis(reportDate);
-    });
     const getBondDashboardMaturityStructure = vi.fn(async (reportDate: string) => {
       if (reportDate !== "2026-02-28") {
         throw new Error(`unsupported maturity date ${reportDate}`);
@@ -202,7 +196,6 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       ...base,
       getBondDashboardDates,
       getBondDashboardHeadlineKpis,
-      getBondDashboardSpreadAnalysis,
       getBondDashboardMaturityStructure,
       getBondAnalyticsTopHoldings,
       getBondAnalyticsPortfolioHeadlines,
@@ -215,7 +208,6 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     await waitFor(() => {
       expect(getBondDashboardDates).toHaveBeenCalledTimes(1);
       expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-02-28");
-      expect(getBondDashboardSpreadAnalysis).toHaveBeenCalledWith("2026-02-28");
       expect(getBondDashboardMaturityStructure).toHaveBeenCalledWith("2026-02-28");
       expect(getBondAnalyticsTopHoldings).toHaveBeenCalledWith("2026-02-28", 10);
       expect(getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledWith("2026-02-28");
@@ -223,6 +215,37 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     expect(screen.queryByText("部分驾驶舱指标未就绪")).not.toBeInTheDocument();
     expect(screen.getAllByText("快照回退 2026-02-28").length).toBeGreaterThan(0);
+  });
+
+  it("fires business queries for reportDate without waiting for the dashboard-dates gate to resolve", async () => {
+    const base = createApiClient({ mode: "mock" });
+    let resolveDates: (value: Awaited<ReturnType<typeof base.getBondDashboardDates>>) => void = () => {};
+    const datesPromise = new Promise<Awaited<ReturnType<typeof base.getBondDashboardDates>>>((resolve) => {
+      resolveDates = resolve;
+    });
+    const getBondDashboardDates = vi.fn(() => datesPromise);
+    const getBondDashboardHeadlineKpis = vi.fn((reportDate: string) =>
+      base.getBondDashboardHeadlineKpis(reportDate),
+    );
+    const client = {
+      ...base,
+      getBondDashboardDates,
+      getBondDashboardHeadlineKpis,
+    };
+
+    renderCockpit(client);
+
+    await waitFor(() => {
+      expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-03-31");
+    });
+    expect(getBondDashboardDates).toHaveBeenCalledTimes(1);
+
+    resolveDates({
+      result_meta: createResultMeta({ result_kind: "bond_dashboard.dates" }),
+      result: { report_dates: ["2026-03-31"] },
+    });
+
+    await screen.findByTestId("bond-analysis-phase3-cockpit");
   });
 
   it("does not present a current business conclusion when dashboard date falls back", async () => {

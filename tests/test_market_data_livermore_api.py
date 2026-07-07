@@ -339,6 +339,9 @@ def _build_client(
     catalog_path = choice_stock_catalog_file or tmp_path / "missing-choice-stock-catalog.json"
     monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(catalog_path))
     get_settings.cache_clear()
+    from backend.app.api.response_cache import market_home_response_cache
+
+    market_home_response_cache.invalidate()
     from backend.app.repositories.user_scope_repo import UserScopeRepository
 
     UserScopeRepository(auth_dsn).grant_scope(
@@ -391,19 +394,8 @@ def _stub_livermore_read_services(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         route_module,
-        "get_macro_environment_context",
-        lambda _report_date: stub_envelope("macro.environment_context"),
-    )
-    monkeypatch.setattr(route_module, "load_macro_adversarial_signal_payload", lambda **_kwargs: ({}, {}))
-    monkeypatch.setattr(
-        route_module,
-        "livermore_candidate_history_backtest_window_summary",
-        lambda **_kwargs: {"status": "unsupported", "completed_rows": 0},
-    )
-    monkeypatch.setattr(
-        route_module,
-        "build_livermore_signal_confluence",
-        lambda **_kwargs: {"as_of_date": "2026-04-10"},
+        "livermore_signal_confluence_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore.signal_confluence"),
     )
     monkeypatch.setattr(
         route_module,
@@ -614,7 +606,7 @@ def test_livermore_workbench_summary_appends_result_without_replacing_meta() -> 
 
 
 def test_livermore_signal_confluence_loader_reraises_nested_missing_dependency(monkeypatch) -> None:
-    from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import livermore_signal_confluence_service as service_module
 
     original_import = builtins.__import__
 
@@ -626,65 +618,59 @@ def test_livermore_signal_confluence_loader_reraises_nested_missing_dependency(m
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     with pytest.raises(ModuleNotFoundError) as excinfo:
-        route_module.load_macro_adversarial_signal_payload()
+        service_module.load_macro_adversarial_signal_payload()
 
     assert excinfo.value.name == "pandas"
 
 
-def test_livermore_signal_confluence_route_extracts_backtest_window_summary(monkeypatch) -> None:
-    from backend.app.api.routes import market_data_livermore as route_module
+def test_livermore_signal_confluence_envelope_uses_candidate_history_backtest_summary(monkeypatch) -> None:
+    from backend.app.services import livermore_signal_confluence_service as service_module
 
     expected_summary = {
         "status": "partial",
         "replay_dates_completed": 1,
-        "replay_dates_pending": 1,
-        "replay_dates_unsupported": 0,
-        "replay_dates_proxy_only": 0,
         "completed_rows": 2,
-        "pending_rows": 1,
-        "unsupported_rows": 0,
-        "proxy_only_rows": 0,
-        "included_completed_stats_dates": ["2026-05-06"],
-        "date_reasons": [],
     }
+    calls: dict[str, object] = {}
+
+    def fake_backtest_summary(**kwargs: object) -> dict[str, object]:
+        calls["kwargs"] = kwargs
+        return expected_summary
 
     monkeypatch.setattr(
-        route_module,
-        "livermore_candidate_history_envelope_or_none",
-        lambda **_kwargs: {
-            "result": {
-                "summary": {"row_count": 99},
-                "backtest_window_summary": expected_summary,
-            }
-        },
+        service_module,
+        "livermore_candidate_history_backtest_window_summary",
+        fake_backtest_summary,
     )
-
-    assert route_module.livermore_candidate_history_backtest_window_summary(
-        duckdb_path="unused.duckdb",
-        stock_code=None,
-        snapshot_from="2026-05-06",
-        snapshot_to="2026-05-06",
-    ) == expected_summary
-
-
-def test_livermore_signal_confluence_route_rejects_plain_candidate_summary(monkeypatch) -> None:
-    from backend.app.api.routes import market_data_livermore as route_module
-
     monkeypatch.setattr(
-        route_module,
-        "livermore_candidate_history_envelope_or_none",
-        lambda **_kwargs: {"result": {"summary": {"status": "partial", "replay_dates_completed": 1}}},
+        service_module,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: {"result_meta": {}, "result": {"as_of_date": "2026-05-06"}},
+    )
+    monkeypatch.setattr(
+        service_module,
+        "get_macro_environment_context",
+        lambda _report_date: {"result_meta": {}, "result": {}},
+    )
+    monkeypatch.setattr(service_module, "load_macro_adversarial_signal_payload", lambda **_kwargs: ({}, {}))
+    monkeypatch.setattr(
+        service_module,
+        "build_livermore_signal_confluence",
+        lambda **_kwargs: {"entry_observations": []},
     )
 
-    summary = route_module.livermore_candidate_history_backtest_window_summary(
+    service_module.livermore_signal_confluence_envelope(
         duckdb_path="unused.duckdb",
-        stock_code=None,
-        snapshot_from="2026-05-06",
-        snapshot_to="2026-05-06",
+        as_of_date="2026-05-06",
+        choice_stock_catalog_file="catalog.json",
     )
 
-    assert summary["status"] == "unsupported"
-    assert summary["replay_dates_completed"] == 0
+    assert calls["kwargs"] == {
+        "duckdb_path": "unused.duckdb",
+        "stock_code": None,
+        "snapshot_from": "2026-05-06",
+        "snapshot_to": "2026-05-06",
+    }
 
 
 def test_livermore_candidate_history_safe_envelope_returns_none_for_duckdb_errors(monkeypatch) -> None:
@@ -1113,7 +1099,8 @@ def test_cycle_proxy_backtest_api_happy_path(tmp_path) -> None:
     assert body["result_meta"]["rule_version"] == "rv_livermore_cycle_proxy_backtest_v1"
     assert body["result"]["status"] == "proxy"
     assert body["result"]["summary"]["sample_days"] == 1
-    assert body["result"]["summary"]["cumulative_return"] == 0.12
+    # net of formal round-trip cost: 0.12 - (0.0008 + 0.0013 + 2 * 0.0010) = 0.1159
+    assert body["result"]["summary"]["cumulative_return"] == 0.1159
 
 
 def test_candidate_history_portfolio_backtest_api_happy_path(tmp_path) -> None:
@@ -2327,6 +2314,7 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
 
     calls: dict[str, object] = {}
     settings = _livermore_route_settings(tmp_path)
@@ -2531,18 +2519,18 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(
-        route_module,
+        confluence_service,
         "livermore_strategy_envelope_from_catalog",
         fake_livermore_strategy_envelope_from_catalog,
     )
-    monkeypatch.setattr(route_module, "get_macro_environment_context", fake_get_macro_bond_linkage)
+    monkeypatch.setattr(confluence_service, "get_macro_environment_context", fake_get_macro_bond_linkage)
     monkeypatch.setattr(
-        route_module,
+        confluence_service,
         "load_macro_adversarial_signal_payload",
         fake_load_macro_adversarial_signal_payload,
     )
     monkeypatch.setattr(
-        route_module,
+        confluence_service,
         "build_livermore_signal_confluence",
         fake_build_livermore_signal_confluence,
     )
@@ -2550,7 +2538,7 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
         calls["replay_summary_kwargs"] = kwargs
         return replay_summary
 
-    monkeypatch.setattr(route_module, "livermore_candidate_history_backtest_window_summary", fake_replay_summary)
+    monkeypatch.setattr(confluence_service, "livermore_candidate_history_backtest_window_summary", fake_replay_summary)
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",
@@ -2644,6 +2632,7 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -2704,8 +2693,8 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(route_module, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
+    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2733,6 +2722,7 @@ def test_livermore_signal_confluence_api_smoke_loads_real_adversarial_overlay_an
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -2806,8 +2796,8 @@ TL,2026-04-30,short,0.35,2,crowding block,false
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(route_module, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
+    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2856,6 +2846,7 @@ def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampl
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -2918,8 +2909,8 @@ def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampl
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(route_module, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
+    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2942,6 +2933,7 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -2990,8 +2982,8 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(route_module, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
+    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -3046,6 +3038,7 @@ def test_livermore_signal_confluence_api_rejects_invalid_as_of_date(tmp_path, mo
 def test_livermore_signal_confluence_api_preserves_stale_lineage(tmp_path, monkeypatch) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import livermore_signal_confluence_service as confluence_service
 
     settings = _livermore_route_settings(tmp_path)
     livermore_envelope = {
@@ -3081,8 +3074,8 @@ def test_livermore_signal_confluence_api_preserves_stale_lineage(tmp_path, monke
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(route_module, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
+    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",
@@ -3409,3 +3402,128 @@ def test_livermore_position_snapshot_manual_endpoint_materializes_without_csv(
         "livermore_position_snapshot_manual",
     )
     get_settings.cache_clear()
+
+
+def test_livermore_read_endpoint_caches_identical_requests(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+    calls = {"count": 0}
+
+    def counting_envelope(**_kwargs):
+        calls["count"] += 1
+        return {
+            "result_meta": {
+                "basis": "analytical",
+                "result_kind": "market_data.livermore.stock_detail",
+                "quality_flag": "ok",
+            },
+            "result": {"as_of_date": "2026-04-10", "stock_code": "000001.SZ"},
+        }
+
+    monkeypatch.setattr(
+        "backend.app.api.routes.market_data_livermore.livermore_stock_detail_envelope",
+        counting_envelope,
+    )
+
+    first = client.get(
+        "/ui/market-data/livermore/stock-detail",
+        params={"stock_code": "000001.SZ", "lookback": 60},
+    )
+    second = client.get(
+        "/ui/market-data/livermore/stock-detail",
+        params={"stock_code": "000001.SZ", "lookback": 60},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert calls["count"] == 1
+
+
+def test_livermore_read_endpoint_does_not_share_cache_across_params(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+    calls: list[str] = []
+
+    def stock_detail_envelope(*, stock_code: str, **_kwargs):
+        calls.append(stock_code)
+        return {
+            "result_meta": {
+                "basis": "analytical",
+                "result_kind": "market_data.livermore.stock_detail",
+                "quality_flag": "ok",
+            },
+            "result": {"as_of_date": "2026-04-10", "stock_code": stock_code},
+        }
+
+    monkeypatch.setattr(
+        "backend.app.api.routes.market_data_livermore.livermore_stock_detail_envelope",
+        stock_detail_envelope,
+    )
+
+    first = client.get(
+        "/ui/market-data/livermore/stock-detail",
+        params={"stock_code": "000001.SZ"},
+    )
+    second = client.get(
+        "/ui/market-data/livermore/stock-detail",
+        params={"stock_code": "000002.SZ"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["result"]["stock_code"] == "000001.SZ"
+    assert second.json()["result"]["stock_code"] == "000002.SZ"
+    assert calls == ["000001.SZ", "000002.SZ"]
+
+
+def test_livermore_materialize_endpoints_invalidate_read_cache(tmp_path, monkeypatch) -> None:
+    from backend.app.api.response_cache import market_home_response_cache
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    client = _build_client(tmp_path, monkeypatch)
+    calls = {"count": 0}
+
+    def counting_strategy(**_kwargs):
+        calls["count"] += 1
+        return {
+            "result_meta": {
+                "basis": "analytical",
+                "result_kind": "market_data.livermore",
+                "quality_flag": "ok",
+            },
+            "result": {"as_of_date": "2026-04-10", "sequence": calls["count"]},
+        }
+
+    monkeypatch.setattr(
+        "backend.app.api.routes.market_data_livermore.livermore_strategy_envelope_from_catalog",
+        counting_strategy,
+    )
+    monkeypatch.setattr(
+        "backend.app.api.routes.market_data_livermore.compute_and_materialize_gate_supplement",
+        lambda **_kwargs: {"status": "completed", "computed_rows": 1},
+    )
+    settings = get_settings()
+    UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="market_data.livermore_gate_supplement",
+        action="refresh",
+    )
+
+    first = client.get("/ui/market-data/livermore")
+    assert first.status_code == 200
+    assert calls["count"] == 1
+
+    second = client.get("/ui/market-data/livermore")
+    assert second.status_code == 200
+    assert calls["count"] == 1
+
+    response = client.post(
+        "/ui/market-data/livermore/refresh-gate-supplement",
+        params={"as_of_date": "2026-04-30", "lookback_days": 30},
+    )
+    assert response.status_code == 200
+
+    third = client.get("/ui/market-data/livermore")
+    assert third.status_code == 200
+    assert calls["count"] == 2
+    market_home_response_cache.invalidate()

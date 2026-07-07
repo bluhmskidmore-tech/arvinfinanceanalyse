@@ -325,16 +325,37 @@ function extractRawDetail(payload: unknown): unknown {
   return (payload as Record<string, unknown>).detail;
 }
 
+const DEFAULT_REQUEST_JSON_TIMEOUT_MS = 60_000;
+
 const requestJson = async <T>(
   fetchImpl: typeof fetch,
   baseUrl: string,
   path: string,
+  timeoutMs: number = DEFAULT_REQUEST_JSON_TIMEOUT_MS,
 ): Promise<ApiEnvelope<T>> => {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    headers: {
-      Accept: "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetchImpl(`${baseUrl}${path}`, {
+      headers: {
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const errorName =
+      typeof error === "object" && error !== null && "name" in error
+        ? (error as { name?: unknown }).name
+        : undefined;
+    if (errorName === "AbortError") {
+      throw new Error(`Request timed out: ${path}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     throw new Error(`Request failed: ${path} (${response.status})`);
