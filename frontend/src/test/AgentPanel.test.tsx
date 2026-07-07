@@ -1,7 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiClientProvider } from "../api/clientContext";
 import { AgentPanel } from "../features/agent/AgentPanel";
 
 const AGENT_PAGE_CONTEXT_CHANGE_LABEL = "页面上下文已更新";
@@ -65,6 +67,10 @@ function renderAgentPanel() {
       defaultFilters={{ research_domain: "stock" }}
     />,
   );
+}
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: ApiClientProvider });
 }
 
 type ScrollIntoViewArg = boolean | ScrollIntoViewOptions;
