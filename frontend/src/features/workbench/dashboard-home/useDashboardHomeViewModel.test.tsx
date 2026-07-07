@@ -14,7 +14,7 @@ import { useDashboardHomeViewModel } from "./useDashboardHomeViewModel";
 // Mirrors the dedupe applied in useDashboardHomeBodyData: the bond news probe
 // topic is the first bond topic that isn't already covered by the macro
 // fallback topics.
-const MACRO_FALLBACK_TOPIC_CODES = new Set(
+const MACRO_FALLBACK_TOPIC_CODES = new Set<string>(
   DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
 );
 const BOND_NEWS_PROBE_TOPIC_CODE = DASHBOARD_BOND_NEWS_TOPICS.find(

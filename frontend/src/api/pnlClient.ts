@@ -288,6 +288,11 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
             baseline_available: false,
             rows: [],
           },
+          reconciliation_diagnostics: {
+            as_of_date: asOfDate,
+            lookback_months: 12,
+            rows: [],
+          },
         },
         { basis: "analytical", formal_use_allowed: false, tables_used: ["pnl.by_business_ytd", "pnl.by_business_monthly"] },
       );

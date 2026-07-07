@@ -17,6 +17,7 @@ function riskRow(overrides: Partial<StockRiskExitRow> = {}): StockRiskExitRow {
     reason: "Close stayed below the exit watch line.",
     distanceToExitPct: "-7.14%",
     exitDistanceBucket: "triggered",
+    entryCostAvailable: true,
     ...overrides,
   };
 }
