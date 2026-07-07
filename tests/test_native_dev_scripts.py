@@ -1076,21 +1076,31 @@ def test_codex_page_readiness_supports_bond_dashboard_dry_run():
 
 
 def test_codex_page_readiness_supports_balance_movement_analysis_dry_run():
-    output = run_powershell_script("codex-page-readiness.ps1", "-PageSlug", "balance-movement-analysis")
+    completed = run_powershell_script_result(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "balance-movement-analysis",
+    )
+    output = completed.stdout + completed.stderr
 
+    assert completed.returncode != 0
     assert "MOSS page readiness gate: balance-movement-analysis" in output
     assert "candidate_or_pending" in output
     assert "golden_sample_boundary: pass" in output
     assert "missing" in output
     assert "catalog_date_evidence_sampled: pass" in output
     assert "direct_governance_record_ready: pass" in output
+    assert "balance_movement_read_model_freshness: block" in output
+    assert "Blocking gates:" in output
+    assert "- balance_movement_read_model_freshness" in output
     assert "codex-page-smoke.ps1 -PageSlug balance-movement-analysis" in output
     assert "codex-verify-page.ps1 -PageSlug balance-movement-analysis -Run" in output
     assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" not in output
     assert "dedicated golden sample is missing" in output
     assert "Business owner approval is still required" in output
-    assert "Dry run complete. Pass -Run to execute page checks." in output
+    assert "Static page readiness gates blocked." in output
+    assert "Dry run complete. Pass -Run to execute page checks." not in output
 
 
 def test_codex_page_readiness_supports_ledger_pnl_dry_run():
@@ -1117,7 +1127,7 @@ def test_codex_page_readiness_supports_positions_dry_run():
     assert "missing" in output
     assert "codex-page-smoke.ps1 -PageSlug positions" in output
     assert "codex-verify-page.ps1 -PageSlug positions -Run" in output
-    assert "full data-catalog/date review required" in output
+    assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" in output
     assert "Candidate metric dictionary-level approval remains pending." in output
     assert "dedicated golden sample is missing" in output
@@ -1133,7 +1143,7 @@ def test_codex_page_readiness_supports_operations_analysis_dry_run():
     assert "supporting_or_fragment_only" in output
     assert "codex-page-smoke.ps1 -PageSlug operations-analysis" in output
     assert "codex-verify-page.ps1 -PageSlug operations-analysis -Run" in output
-    assert "full data-catalog/date review required" in output
+    assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" in output
     assert "Mixed-source page cannot be collapsed into full-page formal truth." in output
     assert "GAP-OPS-MACRO-FX" in output
@@ -1149,7 +1159,7 @@ def test_codex_page_readiness_supports_liability_analytics_dry_run():
     assert "missing" in output
     assert "codex-page-smoke.ps1 -PageSlug liability-analytics" in output
     assert "codex-verify-page.ps1 -PageSlug liability-analytics -Run" in output
-    assert "full data-catalog/date review required" in output
+    assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" in output
     assert "Mixed-source page cannot be collapsed into full-page formal truth." in output
     assert "dedicated golden sample is missing" in output
@@ -1228,10 +1238,11 @@ def test_codex_page_readiness_all_mode_defaults_to_batch_dry_run():
 
     assert "MOSS page readiness gate: all seeded pages" in output
     assert "Summary: page_count=39" in output
-    assert "blocked_count=0" in output
+    assert "blocked_count=1" in output
     assert "run_supported_count=27" in output
     assert "Page readiness rows:" in output
-    assert "Blocking pages:" not in output
+    assert "Blocking pages:" in output
+    assert "- balance-movement-analysis" in output
     assert "executive-pnl-attribution: static-pass" in output
     assert "product-category-pnl" in output
     assert "balance-analysis" in output

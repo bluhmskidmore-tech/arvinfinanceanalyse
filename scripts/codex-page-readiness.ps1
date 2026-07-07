@@ -37,7 +37,6 @@ function Write-PageReadinessReport {
     foreach ($gateName in $Report.blocking_gates) {
       Write-Output "- $gateName"
     }
-    throw "Static page readiness gates blocked."
   }
 
   Write-Output "Residual gaps surfaced:"
@@ -673,14 +672,23 @@ if ($All) {
 Write-Output "MOSS page readiness gate: $PageSlug"
 
 $json = & python $pythonScript --page-slug $PageSlug
-if ($LASTEXITCODE -ne 0) {
+$pythonExitCode = $LASTEXITCODE
+$jsonText = $json | Out-String
+if ([string]::IsNullOrWhiteSpace($jsonText)) {
   throw "Static page readiness evaluation failed for $PageSlug."
 }
 
-$report = $json | ConvertFrom-Json
+$report = $jsonText | ConvertFrom-Json
+if ($pythonExitCode -ne 0 -and $report.blocking_gates.Count -eq 0) {
+  throw "Static page readiness evaluation failed for $PageSlug."
+}
 
 Write-PageReadinessReport -Report $report
 Assert-ApprovalCaptured -Report $report -ActionItemsAlreadyShown
+
+if ($report.blocking_gates.Count -gt 0) {
+  throw "Static page readiness gates blocked."
+}
 
 if (-not $Run) {
   Write-Output "Dry run complete. Pass -Run to execute page checks."

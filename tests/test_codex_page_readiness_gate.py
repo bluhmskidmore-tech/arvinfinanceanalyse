@@ -584,7 +584,8 @@ def test_balance_movement_readiness_surfaces_direct_candidate_evidence_without_p
     assert report["primary_api"] == "/ui/balance-movement-analysis"
     assert report["approval_status"] == "candidate_or_pending"
     assert report["formal_use_allowed"] is False
-    assert report["overall_status"] == "static-pass"
+    assert report["overall_status"] == "blocked"
+    assert report["blocking_gates"] == ["balance_movement_read_model_freshness"]
     assert "codex-page-smoke.ps1 -PageSlug balance-movement-analysis -CheckLive" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug balance-movement-analysis -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
@@ -593,6 +594,11 @@ def test_balance_movement_readiness_surfaces_direct_candidate_evidence_without_p
     assert gates["catalog_date_evidence_sampled"]["outcome"] == "pass"
     assert gates["catalog_date_evidence_sampled"]["detail"] == "2/2 table date samples"
     assert gates["direct_governance_record_ready"]["outcome"] == "pass"
+    assert gates["balance_movement_read_model_freshness"]["outcome"] == "block"
+    freshness_detail = gates["balance_movement_read_model_freshness"]["detail"]
+    assert "movement_latest=" in freshness_detail
+    assert "control_latest=" in freshness_detail
+    assert "currency_basis=CNX" in freshness_detail
     assert gates["golden_sample_boundary"]["outcome"] == "pass"
     assert gates["golden_sample_boundary"]["detail"] == "missing"
     assert gates["formal_promotion_boundary"]["outcome"] == "pass"
