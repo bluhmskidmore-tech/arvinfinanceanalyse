@@ -10,8 +10,10 @@ const baseline = {
   // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
   apiClientMockOccurrences: 55,
   dashboardStyleFiles: {},
-  totalTsxStyleProps: 2149,
-  totalStaticTsxStyleProps: 823,
+  // 2026-07-07: PnlByBusinessInsightsPage migrated to shared PagePrimitives, removing
+  // one-off page-chrome style={{}} blocks (title/disclaimer/contract-status/section leads).
+  totalTsxStyleProps: 1794,
+  totalStaticTsxStyleProps: 727,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 13,
     "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,

@@ -1,0 +1,117 @@
+.pnl-by-business-insights-page {
+  min-width: 0;
+}
+
+.pnl-by-business-insights-filter-label {
+  display: grid;
+  gap: 6px;
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+}
+
+.pnl-by-business-insights-control {
+  min-width: 140px;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-neutral-900);
+}
+
+.pnl-by-business-insights-data-status-strip {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.pnl-by-business-insights-data-status-strip__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--moss-color-neutral-900);
+}
+
+.pnl-by-business-insights-unapproved-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--moss-color-danger-100);
+  color: var(--moss-color-danger-700);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pnl-by-business-insights-data-status-strip__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+}
+
+.pnl-by-business-insights-data-status-strip__grid span {
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-by-business-insights-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--moss-space-4);
+}
+
+/* 对账健康度诊断区块：与上方业务分析区块刻意用中性灰调隔离，禁止使用 warning/danger/info 等强调色，
+   以免被误读为业务结论或业务预警。 */
+.pnl-by-business-insights-reconciliation-divider {
+  margin: 40px 0 0;
+  border: none;
+  border-top: 1px solid var(--moss-color-neutral-300);
+}
+
+.pnl-by-business-insights-reconciliation-section {
+  margin: 24px 0 0;
+  padding: 20px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-insights-reconciliation-eyebrow {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 999px;
+  background: var(--moss-color-neutral-100);
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.pnl-by-business-insights-reconciliation-title {
+  margin: 0 0 4px;
+  color: var(--moss-color-neutral-700);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pnl-by-business-insights-reconciliation-note {
+  margin: 0 0 16px;
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1080px) {
+  .pnl-by-business-insights-data-status-strip__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

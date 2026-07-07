@@ -1969,7 +1969,7 @@ export default function PnlByBusinessPage() {
           : [];
 
   return (
-    <main data-testid="pnl-by-business-page" className="pnl-by-business-page">
+    <section data-testid="pnl-by-business-page" className="pnl-by-business-page">
       <PageV2Shell testId="pnl-by-business-page-shell">
         <PageDecisionHero
           testId="pnl-by-business-contract-hero"
@@ -2325,6 +2325,6 @@ export default function PnlByBusinessPage() {
         </section>
       </AsyncSection>
       </PageV2Shell>
-    </main>
+    </section>
   );
 }

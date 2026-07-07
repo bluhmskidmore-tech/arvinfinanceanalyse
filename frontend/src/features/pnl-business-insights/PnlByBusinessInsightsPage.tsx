@@ -7,20 +7,22 @@ import type {
   PnlByBusinessNegativeFtpPersistenceRow,
   PnlByBusinessShareDriftRow,
 } from "../../api/contracts";
-import {
-  controlBarStyle,
-  summaryGridStyle,
-  tableShellStyle,
-  tableStyle,
-  tdStyle,
-  thStyle,
-} from "../../components/page/pageStyles";
+import { tableShellStyle, tableStyle, tdStyle, thStyle } from "../../components/page/pageStyles";
+import { FilterBar } from "../../components/FilterBar";
 import { KpiCard } from "../../components/KpiCard";
+import {
+  DataStatusStrip,
+  PageDecisionHero,
+  PageFilterTray,
+  PageSectionLead,
+  PageStateSurface,
+  PageV2Shell,
+} from "../../components/page/PagePrimitives";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { designTokens } from "../../theme/designSystem";
-import { shellTokens } from "../../theme/tokens";
 import { CapitalEfficiencyQuadrantPanel } from "./CapitalEfficiencyQuadrantPanel";
 import { UntracedReconciliationTrendPanel } from "./UntracedReconciliationTrendPanel";
+import "./PnlByBusinessInsightsPage.css";
 
 const DISCLAIMER_TEXT =
   "本页指标为候选分析（status=candidate），仅供内部参考，不构成正式业务结论；最终审批需业务owner确认后方可用于正式汇报。";
@@ -29,121 +31,6 @@ const RECONCILIATION_NOTE_TEXT =
   "以下为formal对账诊断趋势，反映的是数据链路完整性问题，不是业务贡献或拖累结论，不构成资源配置或业务评价依据。";
 
 const NEGATIVE_FTP_WARN_THRESHOLD_PCT = 50;
-
-const controlStyle = {
-  minWidth: 140,
-  padding: "10px 12px",
-  borderRadius: designTokens.radius.md,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: shellTokens.colorBgSurface,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const disclaimerStyle = {
-  margin: "0 0 20px",
-  padding: 16,
-  borderRadius: designTokens.radius.md,
-  border: `1px solid ${designTokens.color.danger[200]}`,
-  background: designTokens.color.danger[50],
-  color: designTokens.color.neutral[800],
-} as const;
-
-const contractStatusStyle = {
-  margin: "0 0 20px",
-  padding: 14,
-  borderRadius: designTokens.radius.md,
-  border: `1px solid ${designTokens.color.warning[200]}`,
-  background: designTokens.color.warning[50],
-  color: designTokens.color.neutral[800],
-} as const;
-
-const contractStatusGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "8px 16px",
-  marginTop: 10,
-  fontSize: 12,
-  lineHeight: 1.6,
-} as const;
-
-const unapprovedBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "4px 10px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: "0.02em",
-  background: designTokens.color.danger[100],
-  color: designTokens.color.danger[700],
-} as const;
-
-const blockTitleStyle = {
-  margin: "28px 0 4px",
-  fontSize: 16,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const blockDescriptionStyle = {
-  margin: "0 0 12px",
-  fontSize: 13,
-  color: designTokens.color.neutral[600],
-} as const;
-
-const emptyStateStyle = {
-  padding: 16,
-  borderRadius: designTokens.radius.md,
-  border: `1px dashed ${designTokens.color.neutral[200]}`,
-  color: designTokens.color.neutral[600],
-  fontSize: 13,
-} as const;
-
-// The reconciliation-diagnostics block below is a formal data-lineage
-// completeness observation, not a business-analysis conclusion like the
-// four blocks above it. Its divider/band/title are intentionally styled in
-// plain neutral gray (no danger/warning/KPI accent colors) so it cannot be
-// mistaken for a business warning or read together with the business blocks.
-const reconciliationDividerStyle = {
-  margin: "40px 0 0",
-  border: "none",
-  borderTop: `1px solid ${designTokens.color.neutral[300]}`,
-} as const;
-
-const reconciliationSectionStyle = {
-  margin: "24px 0 0",
-  padding: 20,
-  borderRadius: designTokens.radius.md,
-  background: designTokens.color.neutral[50],
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-} as const;
-
-const reconciliationEyebrowStyle = {
-  display: "inline-block",
-  margin: "0 0 8px",
-  padding: "2px 8px",
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  color: designTokens.color.neutral[600],
-  background: designTokens.color.neutral[100],
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-} as const;
-
-const reconciliationTitleStyle = {
-  margin: "0 0 4px",
-  fontSize: 15,
-  fontWeight: 600,
-  color: designTokens.color.neutral[700],
-} as const;
-
-const reconciliationNoteStyle = {
-  margin: "0 0 16px",
-  fontSize: 13,
-  color: designTokens.color.neutral[600],
-  lineHeight: 1.6,
-} as const;
 
 function toNumber(value: string | null | undefined): number | null {
   if (value === null || value === undefined || value === "") {
@@ -289,9 +176,11 @@ function ShareDriftTable({
 }) {
   if (!baselineAvailable) {
     return (
-      <div style={emptyStateStyle} data-testid="pnl-by-business-insights-share-drift-empty">
-        上一年无数据，无法计算漂移。
-      </div>
+      <PageStateSurface
+        variant="empty"
+        testId="pnl-by-business-insights-share-drift-empty"
+        title="上一年无数据，无法计算漂移。"
+      />
     );
   }
 
@@ -364,157 +253,158 @@ export default function PnlByBusinessInsightsPage() {
     (shareDrift?.rows.length ?? 0) === 0;
 
   return (
-    <section>
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 32,
-            fontWeight: 600,
-            letterSpacing: "-0.03em",
-          }}
+    <section data-testid="pnl-by-business-insights-page" className="pnl-by-business-insights-page">
+      <PageV2Shell testId="pnl-by-business-insights-page-shell">
+        <PageDecisionHero
+          testId="pnl-by-business-insights-hero"
+          titleTestId="pnl-by-business-insights-page-title"
+          questionTestId="pnl-by-business-insights-page-subtitle"
+          eyebrow="组合工作台 · 候选分析"
+          title="业务种类候选分析"
+          businessQuestion="当前业务结构是否过度集中、哪些业务长期跑不赢FTP、份额相对上一年末漂移了多少？"
         >
-          业务种类候选分析
-        </h1>
-        <p
-          style={{
-            marginTop: 10,
-            marginBottom: 0,
-            maxWidth: 860,
-            color: designTokens.color.neutral[600],
-            fontSize: 15,
-            lineHeight: 1.75,
-          }}
+          <PageFilterTray testId="pnl-by-business-insights-filter-tray">
+            <FilterBar>
+              <label className="pnl-by-business-insights-filter-label">
+                年份
+                <input
+                  aria-label="pnl-by-business-insights-year"
+                  type="number"
+                  value={year}
+                  onChange={(event) => setYear(Number(event.target.value) || year)}
+                  className="pnl-by-business-insights-control"
+                />
+              </label>
+              <label className="pnl-by-business-insights-filter-label">
+                报告日
+                <input
+                  aria-label="pnl-by-business-insights-as-of-date"
+                  type="date"
+                  value={asOfDate}
+                  onChange={(event) => setAsOfDate(event.target.value)}
+                  className="pnl-by-business-insights-control"
+                />
+              </label>
+            </FilterBar>
+          </PageFilterTray>
+        </PageDecisionHero>
+
+        <PageStateSurface
+          variant="definition-pending"
+          testId="pnl-by-business-insights-disclaimer"
+          title="候选分析免责声明"
+          description={DISCLAIMER_TEXT}
+        />
+
+        <AsyncSection
+          title="业务种类候选分析"
+          isLoading={insightsQuery.isLoading}
+          isError={insightsQuery.isError}
+          isEmpty={isEmpty}
+          onRetry={() => void insightsQuery.refetch()}
         >
-          集中度、负FTP持续性与份额漂移来自{" "}
-          <code style={{ fontSize: 13 }}>/api/pnl/by-business-candidate-insights</code>
-          ；这是对 <code style={{ fontSize: 13 }}>pnl.by_business_ytd</code> /{" "}
-          <code style={{ fontSize: 13 }}>pnl.by_business_monthly</code> 的候选再聚合，浏览器端只做展示与排序，不做正式口径重算。
-        </p>
-      </div>
+          {result ? (
+            <>
+              {meta ? (
+                <DataStatusStrip
+                  testId="pnl-by-business-insights-contract-status"
+                  className="pnl-by-business-insights-data-status-strip"
+                >
+                  <div className="pnl-by-business-insights-data-status-strip__head">
+                    <span>候选指标 · 非正式结论</span>
+                    {!meta.formal_use_allowed ? (
+                      <span
+                        data-testid="pnl-by-business-insights-unapproved-badge"
+                        className="pnl-by-business-insights-unapproved-badge"
+                      >
+                        未审批
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="pnl-by-business-insights-data-status-strip__grid">
+                    <span>正式可用: {meta.formal_use_allowed ? "是" : "否"}</span>
+                    <span>口径 {meta.basis}</span>
+                    <span>数据截至 {meta.resolved_report_date ?? result.as_of_date}</span>
+                    <span>结果类型 {meta.result_kind}</span>
+                    <span>使用表 {meta.tables_used?.join(", ") || "—"}</span>
+                    <span>浏览器端仅做展示与排序，不做正式口径重算</span>
+                  </div>
+                </DataStatusStrip>
+              ) : null}
 
-      <div style={disclaimerStyle} data-testid="pnl-by-business-insights-disclaimer">
-        {DISCLAIMER_TEXT}
-      </div>
-
-      <div style={controlBarStyle}>
-        <label>
-          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>年份</span>
-          <input
-            aria-label="pnl-by-business-insights-year"
-            type="number"
-            value={year}
-            onChange={(event) => setYear(Number(event.target.value) || year)}
-            style={controlStyle}
-          />
-        </label>
-        <label>
-          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
-          <input
-            aria-label="pnl-by-business-insights-as-of-date"
-            type="date"
-            value={asOfDate}
-            onChange={(event) => setAsOfDate(event.target.value)}
-            style={controlStyle}
-          />
-        </label>
-      </div>
-
-      <AsyncSection
-        title="业务种类候选分析"
-        isLoading={insightsQuery.isLoading}
-        isError={insightsQuery.isError}
-        isEmpty={isEmpty}
-        onRetry={() => void insightsQuery.refetch()}
-      >
-        {result ? (
-          <>
-            {meta ? (
-              <div data-testid="pnl-by-business-insights-contract-status" style={contractStatusStyle}>
-                <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 10 }}>
-                  <span>候选指标 · 非正式结论</span>
-                  {!meta.formal_use_allowed ? (
-                    <span data-testid="pnl-by-business-insights-unapproved-badge" style={unapprovedBadgeStyle}>
-                      未审批
-                    </span>
-                  ) : null}
-                </div>
-                <div style={contractStatusGridStyle}>
-                  <span>正式可用: {meta.formal_use_allowed ? "是" : "否"}</span>
-                  <span>口径 {meta.basis}</span>
-                  <span>数据截至 {meta.resolved_report_date ?? result.as_of_date}</span>
-                  <span>结果类型 {meta.result_kind}</span>
-                  <span>使用表 {meta.tables_used?.join(", ") || "—"}</span>
-                </div>
+              <div className="pnl-by-business-insights-summary-grid" data-testid="pnl-by-business-insights-concentration-kpis">
+                <KpiCard
+                  label="业务种类集中度 HHI"
+                  value={formatPct(concentration?.hhi_pct)}
+                  detail="来自 concentration.hhi_pct。"
+                />
+                <KpiCard
+                  label={`前${concentration?.top_n ?? "N"}大占比合计`}
+                  value={formatPct(concentration?.top_n_share_pct)}
+                  detail="来自 concentration.top_n_share_pct。"
+                />
               </div>
-            ) : null}
 
-            <div data-testid="pnl-by-business-insights-concentration-kpis" style={summaryGridStyle}>
-              <KpiCard
-                title="业务种类集中度 HHI"
-                value={formatPct(concentration?.hhi_pct)}
-                detail="来自 concentration.hhi_pct。"
+              <PageSectionLead
+                eyebrow="Concentration"
+                title="业务种类集中度"
+                description="按占比降序列出各业务种类在 YTD 日均规模中的份额。"
               />
-              <KpiCard
-                title={`前${concentration?.top_n ?? "N"}大占比合计`}
-                value={formatPct(concentration?.top_n_share_pct)}
-                detail="来自 concentration.top_n_share_pct。"
+              <ConcentrationTable rows={concentration?.rows ?? []} />
+
+              <PageSectionLead
+                eyebrow="Negative FTP"
+                title="负FTP持续性"
+                description={`近 ${negativeFtp?.lookback_months ?? "—"} 个月（${negativeFtp?.window_start_month ?? "—"} 至 ${negativeFtp?.window_end_month ?? "—"}）负FTP月份占比，占比≥${NEGATIVE_FTP_WARN_THRESHOLD_PCT}% 的行已标黄提示。`}
               />
-            </div>
+              <NegativeFtpPersistenceTable rows={negativeFtp?.rows ?? []} />
 
-            <h2 style={blockTitleStyle}>业务种类集中度</h2>
-            <p style={blockDescriptionStyle}>按占比降序列出各业务种类在 YTD 日均规模中的份额。</p>
-            <ConcentrationTable rows={concentration?.rows ?? []} />
+              <PageSectionLead
+                eyebrow="Share Drift"
+                title="份额漂移"
+                description={`对比 ${shareDrift?.baseline_year ?? "上一年"}年末（${shareDrift?.baseline_as_of_date ?? "—"}）基准份额，按漂移绝对值降序排列。`}
+              />
+              <ShareDriftTable
+                rows={shareDrift?.rows ?? []}
+                baselineAvailable={shareDrift?.baseline_available ?? false}
+              />
+            </>
+          ) : null}
+        </AsyncSection>
 
-            <h2 style={blockTitleStyle}>负FTP持续性</h2>
-            <p style={blockDescriptionStyle}>
-              近 {negativeFtp?.lookback_months ?? "—"} 个月（
-              {negativeFtp?.window_start_month ?? "—"} 至 {negativeFtp?.window_end_month ?? "—"}）负FTP月份占比，占比≥
-              {NEGATIVE_FTP_WARN_THRESHOLD_PCT}% 的行已标黄提示。
-            </p>
-            <NegativeFtpPersistenceTable rows={negativeFtp?.rows ?? []} />
+        <PageSectionLead
+          eyebrow="Capital Efficiency"
+          title="资本效率象限"
+          description="基于 /api/pnl/by-business-ytd 已有的 proportion / ftp_net_annualized_yield_pct 字段，浏览器端仅做象限归类展示，不重算任何正式口径。"
+        />
+        <AsyncSection
+          title=""
+          isLoading={ytdQuery.isLoading}
+          isError={ytdQuery.isError}
+          isEmpty={false}
+          onRetry={() => void ytdQuery.refetch()}
+        >
+          <CapitalEfficiencyQuadrantPanel items={ytdItems} />
+        </AsyncSection>
 
-            <h2 style={blockTitleStyle}>份额漂移</h2>
-            <p style={blockDescriptionStyle}>
-              对比 {shareDrift?.baseline_year ?? "上一年"}年末（{shareDrift?.baseline_as_of_date ?? "—"}）基准份额，按漂移绝对值降序排列。
-            </p>
-            <ShareDriftTable
-              rows={shareDrift?.rows ?? []}
-              baselineAvailable={shareDrift?.baseline_available ?? false}
+        {reconciliationDiagnostics ? (
+          <>
+            <hr
+              className="pnl-by-business-insights-reconciliation-divider"
+              data-testid="pnl-by-business-insights-reconciliation-divider"
             />
+            <div
+              className="pnl-by-business-insights-reconciliation-section"
+              data-testid="pnl-by-business-insights-reconciliation-section"
+            >
+              <span className="pnl-by-business-insights-reconciliation-eyebrow">非业务分析 · 数据链路诊断</span>
+              <h2 className="pnl-by-business-insights-reconciliation-title">对账健康度诊断（非业务结论）</h2>
+              <p className="pnl-by-business-insights-reconciliation-note">{RECONCILIATION_NOTE_TEXT}</p>
+              <UntracedReconciliationTrendPanel rows={reconciliationDiagnostics.rows} />
+            </div>
           </>
         ) : null}
-      </AsyncSection>
-
-      <h2 style={blockTitleStyle}>资本效率象限</h2>
-      <p style={blockDescriptionStyle}>
-        基于 <code style={{ fontSize: 13 }}>/api/pnl/by-business-ytd</code> 已有的 proportion /
-        ftp_net_annualized_yield_pct 字段，浏览器端仅做象限归类展示，不重算任何正式口径。
-      </p>
-      <AsyncSection
-        title=""
-        isLoading={ytdQuery.isLoading}
-        isError={ytdQuery.isError}
-        isEmpty={false}
-        onRetry={() => void ytdQuery.refetch()}
-      >
-        <CapitalEfficiencyQuadrantPanel items={ytdItems} />
-      </AsyncSection>
-
-      {reconciliationDiagnostics ? (
-        <>
-          <hr style={reconciliationDividerStyle} data-testid="pnl-by-business-insights-reconciliation-divider" />
-          <div
-            style={reconciliationSectionStyle}
-            data-testid="pnl-by-business-insights-reconciliation-section"
-          >
-            <span style={reconciliationEyebrowStyle}>非业务分析 · 数据链路诊断</span>
-            <h2 style={reconciliationTitleStyle}>对账健康度诊断（非业务结论）</h2>
-            <p style={reconciliationNoteStyle}>{RECONCILIATION_NOTE_TEXT}</p>
-            <UntracedReconciliationTrendPanel rows={reconciliationDiagnostics.rows} />
-          </div>
-        </>
-      ) : null}
+      </PageV2Shell>
     </section>
   );
 }
