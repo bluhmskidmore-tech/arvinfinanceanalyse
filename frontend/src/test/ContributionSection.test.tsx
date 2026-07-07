@@ -72,9 +72,9 @@ describe("ContributionSection", () => {
     expect(within(row1).getByText("进行中")).toBeInTheDocument();
 
     const completionCell = within(row1).getAllByRole("cell")[3];
-    const barHost = completionCell.querySelector("div[style*='overflow']") as HTMLElement | null;
+    const barHost = completionCell.querySelector("div.overflow-hidden") as HTMLElement | null;
     expect(barHost).toBeTruthy();
-    expect(barHost?.querySelector("div")).toBeTruthy();
+    expect(barHost?.querySelector("div")).toHaveStyle({ width: "72%" });
 
     const row2 = screen.getByRole("row", { name: /利率策略/ });
     expect(within(row2).getByText("利率策略")).toBeInTheDocument();
