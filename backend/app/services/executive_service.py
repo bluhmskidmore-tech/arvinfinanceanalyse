@@ -91,6 +91,16 @@ _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
 _CACHE_VERSION = "cv_exec_dashboard_v1"
+_EXECUTIVE_OVERVIEW_CACHE_TTL_SECONDS: float = 300.0
+_ExecutiveOverviewCacheKey = tuple[object, ...]
+_EXECUTIVE_OVERVIEW_CACHE: InMemoryTTLCache[
+    _ExecutiveOverviewCacheKey,
+    dict[str, object],
+] = get_runtime_cache(
+    "executive.overview",
+    ttl_seconds=_EXECUTIVE_OVERVIEW_CACHE_TTL_SECONDS,
+    clock=lambda: time.monotonic(),
+)
 logger = logging.getLogger(__name__)
 _logger = logging.getLogger(__name__)
 _DEFAULT_RESOLVE_COMPLETED_FORMAL_BUILD_LINEAGE = resolve_completed_formal_build_lineage
@@ -1560,7 +1570,73 @@ def _fetch_dv01_context(
     return snapshots_by_date, values or None
 
 
-def executive_overview(
+def _date_context_cache_token(
+    date_context: dict[str, list[str]] | None,
+) -> tuple[tuple[str, tuple[str, ...]], ...] | None:
+    if date_context is None:
+        return None
+    return tuple(
+        (str(domain), tuple(str(item) for item in dates))
+        for domain, dates in sorted(date_context.items())
+    )
+
+
+def _executive_overview_runtime_cache_enabled() -> bool:
+    try:
+        from backend.app.repositories.bond_analytics_repo import (
+            BondAnalyticsRepository as _CanonicalBondAnalyticsRepository,
+        )
+        from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
+            FormalZqtzBalanceMetricsRepository as _CanonicalFormalZqtzBalanceMetricsRepository,
+        )
+        from backend.app.repositories.liability_analytics_repo import (
+            LiabilityAnalyticsRepository as _CanonicalLiabilityAnalyticsRepository,
+        )
+        from backend.app.repositories.pnl_repo import PnlRepository as _CanonicalPnlRepository
+
+        duckdb_path = str(get_settings().duckdb_path)
+        return (
+            isinstance(
+                FormalZqtzBalanceMetricsRepository(duckdb_path),
+                _CanonicalFormalZqtzBalanceMetricsRepository,
+            )
+            and isinstance(PnlRepository(duckdb_path), _CanonicalPnlRepository)
+            and isinstance(
+                LiabilityAnalyticsRepository(duckdb_path),
+                _CanonicalLiabilityAnalyticsRepository,
+            )
+            and isinstance(
+                BondAnalyticsRepository(duckdb_path),
+                _CanonicalBondAnalyticsRepository,
+            )
+        )
+    except Exception:
+        return False
+
+
+def _executive_overview_cache_key(
+    *,
+    report_date: str | None,
+    date_context: dict[str, list[str]] | None,
+    history_points: int,
+) -> _ExecutiveOverviewCacheKey | None:
+    if not _executive_overview_runtime_cache_enabled():
+        return None
+    version_token = _home_data_version_token()
+    if version_token[1] is None or version_token[3] is None:
+        return None
+    return (
+        "executive.overview",
+        report_date,
+        history_points,
+        _date_context_cache_token(date_context),
+        *version_token,
+        _DEFAULT_RULE,
+        _CACHE_VERSION,
+    )
+
+
+def _compute_executive_overview(
     report_date: str | None = None,
     *,
     date_context: dict[str, list[str]] | None = None,
@@ -2240,6 +2316,58 @@ def executive_overview(
     )
 
 
+def executive_overview(
+    report_date: str | None = None,
+    *,
+    date_context: dict[str, list[str]] | None = None,
+    history_points: int = 20,
+) -> dict[str, object]:
+    normalized_report_date = _normalize_report_date(report_date)
+    cache_key = _executive_overview_cache_key(
+        report_date=normalized_report_date,
+        date_context=date_context,
+        history_points=history_points,
+    )
+    if cache_key is None:
+        return _compute_executive_overview(
+            report_date=report_date,
+            date_context=date_context,
+            history_points=history_points,
+        )
+    envelope = _EXECUTIVE_OVERVIEW_CACHE.get_or_set(
+        cache_key,
+        lambda: _compute_executive_overview(
+            report_date=report_date,
+            date_context=date_context,
+            history_points=history_points,
+        ),
+    )
+    return deepcopy(envelope)
+
+
+def _executive_overview_result_meta_for_summary(
+    report_date: str | None,
+) -> dict[str, object] | None:
+    normalized_report_date = _normalize_report_date(report_date)
+    cache_key = _executive_overview_cache_key(
+        report_date=normalized_report_date,
+        date_context=None,
+        history_points=20,
+    )
+    if cache_key is not None:
+        hit, cached = _EXECUTIVE_OVERVIEW_CACHE.get(cache_key)
+        if hit and isinstance(cached, dict):
+            result_meta = cached.get("result_meta")
+            if isinstance(result_meta, dict):
+                return deepcopy(result_meta)
+    overview_payload = executive_overview(report_date=report_date)
+    if isinstance(overview_payload, dict):
+        result_meta = overview_payload.get("result_meta")
+        if isinstance(result_meta, dict):
+            return result_meta
+    return None
+
+
 def executive_summary(report_date: str | None = None) -> dict[str, object]:
     payload = SummaryPayload(
         title="本周管理摘要",
@@ -2269,8 +2397,7 @@ def executive_summary(report_date: str | None = None) -> dict[str, object]:
             ),
         ],
     )
-    overview_payload = executive_overview(report_date=report_date)
-    overview_meta = overview_payload.get("result_meta") if isinstance(overview_payload, dict) else None
+    overview_meta = _executive_overview_result_meta_for_summary(report_date)
     source_version = _MISS_SOURCE
     rule_version = _DEFAULT_RULE
     if isinstance(overview_meta, dict) and overview_meta.get("vendor_status") == "ok":
