@@ -6,6 +6,9 @@ import type {
   ApiEnvelope,
   BondAnalyticsDatesPayload,
   BondAnalyticsRefreshPayload,
+  BondDashboardBundlePayload,
+  BondDashboardBundleSectionEnvelopeMap,
+  BondDashboardBundleSectionId,
   BondBusinessTypeMetricsPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
@@ -42,6 +45,7 @@ import {
   sumMockTopHoldingsMarketValue,
 } from "../mocks/bondTradingDeskDrillFixtures";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
+import { buildMockBondDashboardBundleEnvelope } from "./bondDashboardBundleMock";
 import { sampleBondBusinessTypeMetricRows } from "../fixtures/dashboardCoreWorkbenchSamples";
 import type { CashflowClientMethods } from "./cashflowClient";
 
@@ -81,6 +85,11 @@ type BondAnalyticsCoreSurfaceMethods = {
   getBondDashboardRiskIndicators: (
     reportDate: string,
   ) => Promise<ApiEnvelope<RiskIndicatorsPayload>>;
+  fetchBondDashboardBundle: (
+    reportDate: string | null | undefined,
+    sections: readonly BondDashboardBundleSectionId[],
+    opts?: { industryTopN?: number },
+  ) => Promise<ApiEnvelope<BondDashboardBundlePayload>>;
   getBondAnalyticsReturnDecomposition: (
     reportDate: string,
     periodType: string,
@@ -185,6 +194,7 @@ type BondDashboardClientMethods = Pick<
   | "getBondDashboardMaturityStructure"
   | "getBondDashboardIndustryDistribution"
   | "getBondDashboardRiskIndicators"
+  | "fetchBondDashboardBundle"
 >;
 
 type BondDashboardMockBundle = Pick<
@@ -206,6 +216,10 @@ type RequestActionJson = <T>(
   path: string,
   init?: RequestInit,
 ) => Promise<T>;
+
+type DemoBondDashboardBundleClient = BondDashboardClientMethods & {
+  getBondBusinessTypeMetrics?: (params: { reportDate: string }) => Promise<BondBusinessTypeMetricsPayload>;
+};
 
 export type BondDashboardClientFactoryOptions = {
   fetchImpl: FetchLike;
@@ -361,6 +375,88 @@ function normalizePortfolioHeadlinesEnvelope(
       }),
     },
   };
+}
+
+function requireBondDashboardBundleReportDate(
+  section: BondDashboardBundleSectionId,
+  reportDate: string | null | undefined,
+): string {
+  const normalized = reportDate?.trim() ?? "";
+  if (section !== "dates" && !normalized) {
+    throw new Error("report_date is required for the requested bundle sections");
+  }
+  return normalized;
+}
+
+async function fetchDemoBondDashboardBundleSection(
+  client: DemoBondDashboardBundleClient,
+  section: BondDashboardBundleSectionId,
+  reportDate: string | null | undefined,
+  ensureMockClientBundle: EnsureBondDashboardMockBundle,
+): Promise<[
+  BondDashboardBundleSectionId,
+  BondDashboardBundleSectionEnvelopeMap[BondDashboardBundleSectionId],
+]> {
+  if (section === "dates") {
+    return [section, await client.getBondDashboardDates()];
+  }
+
+  const rd = requireBondDashboardBundleReportDate(section, reportDate);
+  if (section === "headline-kpis") {
+    return [section, await client.getBondDashboardHeadlineKpis(rd)];
+  }
+  if (section === "home-summary") {
+    return [section, await client.getBondDashboardHomeSummary(rd)];
+  }
+  if (section === "asset-structure") {
+    return [section, await client.getBondDashboardAssetStructure(rd, "bond_type")];
+  }
+  if (section === "asset-structure-rating") {
+    return [section, await client.getBondDashboardAssetStructure(rd, "rating")];
+  }
+  if (section === "asset-structure-portfolio-name") {
+    return [section, await client.getBondDashboardAssetStructure(rd, "portfolio_name")];
+  }
+  if (section === "asset-structure-tenor-bucket") {
+    return [section, await client.getBondDashboardAssetStructure(rd, "tenor_bucket")];
+  }
+  if (section === "yield-distribution") {
+    return [section, await client.getBondDashboardYieldDistribution(rd)];
+  }
+  if (section === "portfolio-comparison") {
+    return [section, await client.getBondDashboardPortfolioComparison(rd)];
+  }
+  if (section === "spread-analysis") {
+    return [section, await client.getBondDashboardSpreadAnalysis(rd)];
+  }
+  if (section === "maturity-structure") {
+    return [section, await client.getBondDashboardMaturityStructure(rd)];
+  }
+  if (section === "industry-distribution") {
+    return [section, await client.getBondDashboardIndustryDistribution(rd)];
+  }
+  if (section === "risk-indicators") {
+    return [section, await client.getBondDashboardRiskIndicators(rd)];
+  }
+
+  if (client.getBondBusinessTypeMetrics) {
+    return [section, await client.getBondBusinessTypeMetrics({ reportDate: rd })];
+  }
+
+  return [
+    section,
+    {
+      ...(await ensureMockClientBundle()).buildMockApiEnvelope(
+        "bond_dashboard.business_type_metrics",
+        {
+          report_date: rd,
+          items: sampleBondBusinessTypeMetricRows,
+        },
+        { basis: "formal", formal_use_allowed: true },
+      ),
+      data_source: "bond_analytics_facts",
+    },
+  ];
 }
 
 export function createDemoBondAnalyticsClient(
@@ -1306,6 +1402,32 @@ export function createDemoBondDashboardClient(
         data_source: "bond_analytics_facts",
       };
     },
+    async fetchBondDashboardBundle(reportDate, sections, opts) {
+      await delay();
+      const requestedSections = [...sections];
+      const entries = await Promise.all(
+        requestedSections.map((section) =>
+          fetchDemoBondDashboardBundleSection(
+            methods,
+            section,
+            reportDate,
+            ensureMockClientBundle,
+          ),
+        ),
+      );
+      const sectionEnvelopes: Partial<BondDashboardBundleSectionEnvelopeMap> = {};
+      for (const [section, envelope] of entries) {
+        (sectionEnvelopes as Record<BondDashboardBundleSectionId, ApiEnvelope<unknown>>)[section] =
+          envelope as ApiEnvelope<unknown>;
+      }
+      return buildMockBondDashboardBundleEnvelope({
+        buildMockApiEnvelope: (await ensureMockClientBundle()).buildMockApiEnvelope,
+        reportDate: reportDate?.trim() || null,
+        requestedSections,
+        sections: sectionEnvelopes,
+        industryTopN: opts?.industryTopN,
+      });
+    },
   };
   return methods;
 }
@@ -1568,5 +1690,22 @@ export function createRealBondDashboardClient(
         baseUrl,
         `/api/bond-dashboard/risk-indicators?report_date=${encodeURIComponent(reportDate)}`,
       ),
+    fetchBondDashboardBundle: (reportDate, sections, opts) => {
+      const params = new URLSearchParams({
+        sections: sections.join(","),
+      });
+      const normalizedReportDate = reportDate?.trim();
+      if (normalizedReportDate) {
+        params.set("report_date", normalizedReportDate);
+      }
+      if (opts?.industryTopN !== undefined) {
+        params.set("industry_top_n", String(opts.industryTopN));
+      }
+      return requestJson<BondDashboardBundlePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/bundle?${params.toString()}`,
+      );
+    },
   };
 }

@@ -66,6 +66,7 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getBondDashboardMaturityStructure).toBe("function");
     expect(typeof client.getBondDashboardIndustryDistribution).toBe("function");
     expect(typeof client.getBondDashboardRiskIndicators).toBe("function");
+    expect(typeof client.fetchBondDashboardBundle).toBe("function");
   });
 
   it("keeps the public Bond Analytics surface available from createApiClient", () => {
@@ -1479,6 +1480,7 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getBondDashboardMaturityStructure\(/);
     expect(clientSource).not.toMatch(/async getBondDashboardIndustryDistribution\(/);
     expect(clientSource).not.toMatch(/async getBondDashboardRiskIndicators\(/);
+    expect(clientSource).not.toMatch(/async fetchBondDashboardBundle\(/);
     expect(clientSource).not.toMatch(/async refreshBondAnalytics\(/);
     expect(clientSource).not.toMatch(/async getBondAnalyticsRefreshStatus\(/);
     expect(clientSource).not.toMatch(/async getBondAnalyticsDates\(/);

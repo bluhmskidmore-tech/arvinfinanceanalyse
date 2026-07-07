@@ -3,8 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta } from "../api/contracts";
+import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
+import type {
+  BondDashboardBundleSectionEnvelopeMap,
+  BondDashboardBundleSectionId,
+  ResultMeta,
+} from "../api/contracts";
+import { BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS } from "../features/bond-dashboard/bondDashboardBundleModel";
 import { AssetStructurePie } from "../features/bond-dashboard/components/AssetStructurePie";
 import { CreditRatingBlocks } from "../features/bond-dashboard/components/CreditRatingBlocks";
 import { IndustryTable } from "../features/bond-dashboard/components/IndustryTable";
@@ -49,6 +54,57 @@ const pct = (raw: number | null) => formatRawAsNumeric({ raw, unit: "pct", sign_
 const ratio = (raw: number | null) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
 const dv01 = (raw: number | null) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
 
+type BondDashboardBundleSectionEnvelope =
+  BondDashboardBundleSectionEnvelopeMap[BondDashboardBundleSectionId];
+
+async function fetchMockedBundleSection(
+  client: ApiClient,
+  section: BondDashboardBundleSectionId,
+  reportDate: string,
+): Promise<[BondDashboardBundleSectionId, BondDashboardBundleSectionEnvelope]> {
+  if (section === "dates") return [section, await client.getBondDashboardDates()];
+  if (section === "headline-kpis") return [section, await client.getBondDashboardHeadlineKpis(reportDate)];
+  if (section === "home-summary") return [section, await client.getBondDashboardHomeSummary(reportDate)];
+  if (section === "asset-structure") return [section, await client.getBondDashboardAssetStructure(reportDate, "bond_type")];
+  if (section === "asset-structure-rating") return [section, await client.getBondDashboardAssetStructure(reportDate, "rating")];
+  if (section === "asset-structure-portfolio-name") {
+    return [section, await client.getBondDashboardAssetStructure(reportDate, "portfolio_name")];
+  }
+  if (section === "asset-structure-tenor-bucket") {
+    return [section, await client.getBondDashboardAssetStructure(reportDate, "tenor_bucket")];
+  }
+  if (section === "yield-distribution") return [section, await client.getBondDashboardYieldDistribution(reportDate)];
+  if (section === "portfolio-comparison") return [section, await client.getBondDashboardPortfolioComparison(reportDate)];
+  if (section === "spread-analysis") return [section, await client.getBondDashboardSpreadAnalysis(reportDate)];
+  if (section === "maturity-structure") return [section, await client.getBondDashboardMaturityStructure(reportDate)];
+  if (section === "industry-distribution") return [section, await client.getBondDashboardIndustryDistribution(reportDate)];
+  if (section === "risk-indicators") return [section, await client.getBondDashboardRiskIndicators(reportDate)];
+  return [section, await client.getBondBusinessTypeMetrics({ reportDate })];
+}
+
+function mockBondDashboardBundleFromClient(client: ApiClient) {
+  return vi.spyOn(client, "fetchBondDashboardBundle").mockImplementation(async (reportDate, sections) => {
+    const normalizedReportDate = reportDate?.trim() ?? "";
+    const entries = await Promise.all(
+      sections.map((section) => fetchMockedBundleSection(client, section, normalizedReportDate)),
+    );
+    const sectionEnvelopes: Partial<BondDashboardBundleSectionEnvelopeMap> = {};
+    for (const [section, envelope] of entries) {
+      (sectionEnvelopes as Record<BondDashboardBundleSectionId, BondDashboardBundleSectionEnvelope>)[section] =
+        envelope;
+    }
+    return {
+      data_source: "bond_analytics_facts",
+      result_meta: resultMeta("bond_dashboard.bundle"),
+      result: {
+        report_date: normalizedReportDate || null,
+        requested_sections: [...sections],
+        sections: sectionEnvelopes,
+      },
+    };
+  });
+}
+
 describe("BondDashboardPage", () => {
   it("shows title and KPI cards when mock data loads", async () => {
     const client = createApiClient({ mode: "mock" });
@@ -80,7 +136,7 @@ describe("BondDashboardPage", () => {
   it("refetches blocks when report date changes", async () => {
     const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
-    const spy = vi.spyOn(client, "getBondDashboardHeadlineKpis");
+    const spy = vi.spyOn(client, "fetchBondDashboardBundle");
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -195,6 +251,7 @@ describe("BondDashboardPage", () => {
         ],
       },
     });
+    mockBondDashboardBundleFromClient(client);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -282,6 +339,7 @@ describe("BondDashboardPage", () => {
         ],
       },
     });
+    mockBondDashboardBundleFromClient(client);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -342,6 +400,7 @@ describe("BondDashboardPage", () => {
         reinvestment_ratio_1y: ratio(0.12),
       },
     });
+    mockBondDashboardBundleFromClient(client);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -409,6 +468,7 @@ describe("BondDashboardPage", () => {
         reinvestment_ratio_1y: ratio(0.12),
       },
     });
+    mockBondDashboardBundleFromClient(client);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -440,6 +500,7 @@ describe("BondDashboardPage", () => {
       portfolioCrossPageEnvelope("bond_dashboard.risk_indicators", sample.risk);
     client.getBondDashboardPortfolioComparison = async () =>
       portfolioCrossPageEnvelope("bond_dashboard.portfolio_comparison", sample.portfolio_comparison);
+    mockBondDashboardBundleFromClient(client);
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -574,7 +635,7 @@ describe("BondDashboardPage", () => {
     expect(option.series[1].data).toEqual([0.5]);
   });
 
-  it("loads the first-screen decision data before lower dashboard panels", async () => {
+  it("loads report dates before the single dashboard bundle", async () => {
     const client = createApiClient({ mode: "mock" });
     const calls: string[] = [];
     client.getBondDashboardDates = async () => {
@@ -584,58 +645,53 @@ describe("BondDashboardPage", () => {
         result: { report_dates: ["2026-04-30"] },
       };
     };
-    client.getBondDashboardHeadlineKpis = async () => {
-      calls.push("headline");
+    const bundleSpy = vi.spyOn(client, "fetchBondDashboardBundle").mockImplementation(async (reportDate, sections, opts) => {
+      calls.push("bundle");
+      expect(reportDate).toBe("2026-04-30");
+      expect(sections).toEqual(BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS);
+      expect(opts).toEqual({ industryTopN: 10 });
       return {
-        result_meta: resultMeta("bond_dashboard.headline_kpis"),
+        data_source: "bond_analytics_facts",
+        result_meta: resultMeta("bond_dashboard.bundle"),
         result: {
           report_date: "2026-04-30",
-          prev_report_date: null,
-          kpis: {
-            total_market_value: yuan(100_000_000),
-            unrealized_pnl: yuan(0),
-            weighted_ytm: pct(0.025),
-            weighted_duration: ratio(4.1),
-            weighted_coupon: pct(0.02),
-            credit_spread_median: pct(0.01),
-            total_dv01: dv01(100),
-            bond_count: 1,
+          requested_sections: [...sections],
+          sections: {
+            "headline-kpis": {
+              result_meta: resultMeta("bond_dashboard.headline_kpis"),
+              result: {
+                report_date: "2026-04-30",
+                prev_report_date: null,
+                kpis: {
+                  total_market_value: yuan(100_000_000),
+                  unrealized_pnl: yuan(0),
+                  weighted_ytm: pct(0.025),
+                  weighted_duration: ratio(4.1),
+                  weighted_coupon: pct(0.02),
+                  credit_spread_median: pct(0.01),
+                  total_dv01: dv01(100),
+                  bond_count: 1,
+                },
+                prev_kpis: null,
+              },
+            },
+            "risk-indicators": {
+              result_meta: resultMeta("bond_dashboard.risk_indicators"),
+              result: {
+                report_date: "2026-04-30",
+                total_market_value: yuan(100_000_000),
+                credit_ratio: pct(0.4),
+                weighted_duration: ratio(4.1),
+                weighted_convexity: ratio(0.03),
+                total_dv01: dv01(100),
+                total_spread_dv01: dv01(40),
+                reinvestment_ratio_1y: pct(0.12),
+              },
+            },
           },
-          prev_kpis: null,
         },
       };
-    };
-    client.getBondDashboardRiskIndicators = async () => {
-      calls.push("risk");
-      return {
-        result_meta: resultMeta("bond_dashboard.risk_indicators"),
-        result: {
-          report_date: "2026-04-30",
-          total_market_value: yuan(100_000_000),
-          credit_ratio: pct(0.4),
-          weighted_duration: ratio(4.1),
-          weighted_convexity: ratio(0.03),
-          total_dv01: dv01(100),
-          total_spread_dv01: dv01(40),
-          reinvestment_ratio_1y: pct(0.12),
-        },
-      };
-    };
-    const lowerPanelMethods = [
-      "getBondDashboardAssetStructure",
-      "getBondDashboardYieldDistribution",
-      "getBondDashboardPortfolioComparison",
-      "getBondDashboardSpreadAnalysis",
-      "getBondDashboardMaturityStructure",
-      "getBondDashboardIndustryDistribution",
-      "getBondBusinessTypeMetrics",
-    ] as const;
-    for (const method of lowerPanelMethods) {
-      vi.spyOn(client, method).mockImplementation(async () => {
-        calls.push(method);
-        throw new Error(`${method} should wait for first-screen queries`);
-      });
-    }
+    });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -649,8 +705,9 @@ describe("BondDashboardPage", () => {
     );
 
     await waitFor(() => {
-      expect(calls).toEqual(["dates", "headline", "risk"]);
+      expect(calls).toEqual(["dates", "bundle"]);
     });
+    expect(bundleSpy).toHaveBeenCalledTimes(1);
     expect(await screen.findByTestId("bond-dashboard-conclusion")).toHaveTextContent("当前结论");
   });
 });

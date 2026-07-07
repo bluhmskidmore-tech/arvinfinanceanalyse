@@ -4,9 +4,13 @@ import { InfoCircleOutlined } from "@ant-design/icons";
 import { Alert, Card, Col, Row, Select, Space, Tooltip, Typography, Table } from "antd";
 
 import { useApiClient } from "../../../api/client";
-import { apiQueryKeys } from "../../../api/queryKeys";
 import type { BondDashboardHeadlinePayload, Numeric, RiskIndicatorsPayload } from "../../../api/contracts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
+import {
+  BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS,
+  bondDashboardAssetSectionForGroup,
+  selectBondDashboardBundleSection,
+} from "../bondDashboardBundleModel";
 import { AssetStructurePie, type AssetGroupBy } from "../components/AssetStructurePie";
 import { CreditRatingBlocks } from "../components/CreditRatingBlocks";
 import { HeadlineKpis } from "../components/HeadlineKpis";
@@ -16,6 +20,7 @@ import { PortfolioTable } from "../components/PortfolioTable";
 import { RiskIndicatorsPanel } from "../components/RiskIndicatorsPanel";
 import { SpreadTable } from "../components/SpreadTable";
 import { YieldDistributionBar } from "../components/YieldDistributionBar";
+import { useBondDashboardBundleQuery } from "../hooks/useBondDashboardBundleQuery";
 import { formatRatePercent, formatYi, formatYears } from "../utils/format";
 
 function numericRawOrNull(value: Numeric | null | undefined): number | null {
@@ -78,7 +83,6 @@ export default function BondDashboardPage() {
   const client = useApiClient();
   const [reportDate, setReportDate] = useState<string | null>(null);
   const [assetGroupBy, setAssetGroupBy] = useState<AssetGroupBy>("bond_type");
-  const [lowerPanelReadyDate, setLowerPanelReadyDate] = useState<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: [client.mode, "bond-dashboard", "dates"],
@@ -94,98 +98,60 @@ export default function BondDashboardPage() {
 
   const rd = reportDate ?? "";
 
-  const headlineQuery = useQuery({
-    queryKey: apiQueryKeys.bondDashboardHeadline(client.mode, rd),
-    queryFn: () => client.getBondDashboardHeadlineKpis(rd),
+  const bundleQuery = useBondDashboardBundleQuery(client, rd || null, BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS, {
     enabled: Boolean(rd),
+    industryTopN: 10,
   });
-
-  const riskQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "risk", rd],
-    queryFn: () => client.getBondDashboardRiskIndicators(rd),
-    enabled: Boolean(rd),
-  });
-
-  const firstScreenReady = Boolean(headlineQuery.data?.result && riskQuery.data?.result);
-  const lowerPanelEnabled = Boolean(rd) && lowerPanelReadyDate === rd;
-
-  useEffect(() => {
-    if (!firstScreenReady || !rd) {
-      return;
-    }
-
-    const idleWindow = window as typeof window & {
-      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
-      cancelIdleCallback?: (handle: number) => void;
-    };
-
-    if (idleWindow.requestIdleCallback) {
-      const idleHandle = idleWindow.requestIdleCallback(
-        () => setLowerPanelReadyDate(rd),
-        { timeout: 600 },
-      );
-      return () => idleWindow.cancelIdleCallback?.(idleHandle);
-    }
-
-    const timeoutHandle = window.setTimeout(() => setLowerPanelReadyDate(rd), 120);
-    return () => window.clearTimeout(timeoutHandle);
-  }, [firstScreenReady, rd]);
-
-  const assetQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "asset", rd, assetGroupBy],
-    queryFn: () => client.getBondDashboardAssetStructure(rd, assetGroupBy),
-    enabled: lowerPanelEnabled,
-  });
-
-  const ratingQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "asset-rating", rd],
-    queryFn: () => client.getBondDashboardAssetStructure(rd, "rating"),
-    enabled: lowerPanelEnabled,
-  });
-
-  const tenorBarQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "tenor-bars", rd],
-    queryFn: () => client.getBondDashboardAssetStructure(rd, "tenor_bucket"),
-    enabled: lowerPanelEnabled,
-  });
-
-  const yieldQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "yield-dist", rd],
-    queryFn: () => client.getBondDashboardYieldDistribution(rd),
-    enabled: lowerPanelEnabled,
-  });
-
-  const portfolioQuery = useQuery({
-    queryKey: apiQueryKeys.bondDashboardPortfolioComparison(client.mode, rd),
-    queryFn: () => client.getBondDashboardPortfolioComparison(rd),
-    enabled: lowerPanelEnabled,
-  });
-
-  const spreadQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "spread", rd],
-    queryFn: () => client.getBondDashboardSpreadAnalysis(rd),
-    enabled: lowerPanelEnabled,
-  });
-
-  const maturityQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "maturity", rd],
-    queryFn: () => client.getBondDashboardMaturityStructure(rd),
-    enabled: lowerPanelEnabled,
-  });
-
-  const industryQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "industry", rd],
-    queryFn: () => client.getBondDashboardIndustryDistribution(rd),
-    enabled: lowerPanelEnabled,
-  });
-
-  const businessTypeMetricsQuery = useQuery({
-    queryKey: [client.mode, "bond-dashboard", "business-type-metrics", rd],
-    queryFn: () => client.getBondBusinessTypeMetrics({ reportDate: rd }),
-    enabled: lowerPanelEnabled,
-    retry: false,
-    staleTime: 60_000,
-  });
+  const bundleLoading = bundleQuery.isLoading;
+  const bundleError = bundleQuery.isError;
+  const headlineQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "headline-kpis"),
+    isLoading: bundleLoading,
+  };
+  const riskQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "risk-indicators"),
+    isLoading: bundleLoading,
+  };
+  const assetQuery = {
+    data: selectBondDashboardBundleSection(
+      bundleQuery.data,
+      bondDashboardAssetSectionForGroup(assetGroupBy),
+    ),
+    isLoading: bundleLoading,
+  };
+  const ratingQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "asset-structure-rating"),
+    isLoading: bundleLoading,
+  };
+  const tenorBarQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "asset-structure-tenor-bucket"),
+    isLoading: bundleLoading,
+  };
+  const yieldQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "yield-distribution"),
+    isLoading: bundleLoading,
+  };
+  const portfolioQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "portfolio-comparison"),
+    isLoading: bundleLoading,
+  };
+  const spreadQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "spread-analysis"),
+    isLoading: bundleLoading,
+  };
+  const maturityQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "maturity-structure"),
+    isLoading: bundleLoading,
+  };
+  const industryQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "industry-distribution"),
+    isLoading: bundleLoading,
+  };
+  const businessTypeMetricsQuery = {
+    data: selectBondDashboardBundleSection(bundleQuery.data, "business-type-metrics"),
+    isLoading: bundleLoading,
+    isError: bundleError,
+  };
 
   const dateOptions = datesQuery.data?.result.report_dates ?? [];
   const hasFirstScreenMeta = Boolean(headlineQuery.data?.result_meta || riskQuery.data?.result_meta);
@@ -244,6 +210,16 @@ export default function BondDashboardPage() {
             showIcon
             message="暂无可用报告日"
             description="债券驾驶舱当前没有可读的正式报告日，因此首屏模块不展示业务结论。"
+          />
+        ) : null}
+
+        {bundleError ? (
+          <Alert
+            data-testid="bond-dashboard-bundle-state"
+            type="error"
+            showIcon
+            message="债券总览数据加载失败"
+            description="当前无法获取债券总览聚合数据，请稍后重试。"
           />
         ) : null}
 
