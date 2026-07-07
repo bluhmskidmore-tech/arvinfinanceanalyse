@@ -4351,6 +4351,51 @@ function governanceView(
   };
 }
 
+const MODULE_HOME_QUERY_KEYS: (keyof ModuleHomeSourceQueries)[] = [
+  "balanceDates",
+  "balanceOverview",
+  "bondDates",
+  "bondHeadline",
+  "bondRisk",
+  "bondAssetType",
+  "bondAssetRating",
+  "bondMaturity",
+  "bondIndustry",
+  "bondYield",
+  "bondPortfolioComparison",
+  "bondSpread",
+  "bondBusinessType",
+  "balanceBasis",
+  "pnlSummary",
+  "choiceLatest",
+  "marketRates",
+  "marketCatalog",
+  "riskDates",
+  "riskTensor",
+  "cashflow",
+  "kpiOwners",
+  "kpiSummary",
+  "pnlYtd",
+  "healthLive",
+  "healthSummary",
+  "sourceFoundation",
+  "cubeDimensions",
+  "macroToolkitAnalysis",
+  "macroToolkitStrategySummaries",
+  "newsEvents",
+];
+
+/** Stable react-query revision tokens for memoizing buildModuleHomeView in page consumers. */
+export function moduleHomeQueriesMemoDeps(queries: ModuleHomeSourceQueries): unknown[] {
+  const deps: unknown[] = [];
+  for (const key of MODULE_HOME_QUERY_KEYS) {
+    const query = queries[key];
+    if (!query) continue;
+    deps.push(query.data, query.status, query.fetchStatus, query.errorUpdatedAt);
+  }
+  return deps;
+}
+
 export function buildModuleHomeView(
   kind: ModuleWorkbenchHomeKind,
   client: Pick<ApiClient, "mode">,

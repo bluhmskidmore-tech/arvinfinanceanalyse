@@ -3,7 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
-import { buildModuleHomeView, type ModuleHomeDetailPanel, type ModuleHomeTone } from "./moduleHomeModel";
+import {
+  buildModuleHomeView,
+  moduleHomeQueriesMemoDeps,
+  type ModuleHomeDetailPanel,
+  type ModuleHomeTone,
+} from "./moduleHomeModel";
 import {
   moduleWorkbenchHomeConfigs,
   type ModuleWorkbenchHomeKind,
@@ -294,7 +299,10 @@ export default function ModuleWorkbenchHomePage({
     cubeDimensions: cubeDimensionsQuery,
   };
   const config = moduleWorkbenchHomeConfigs[kind];
-  const view = buildModuleHomeView(kind, client, queries);
+  const view = useMemo(
+    () => buildModuleHomeView(kind, client, queries),
+    [kind, client, ...moduleHomeQueriesMemoDeps(queries)],
+  );
   const isRiskView = view.kind === "risk";
   const decisionBand = view.decision ? (
     <section className={styles.decisionBand} data-testid="module-home-decision">

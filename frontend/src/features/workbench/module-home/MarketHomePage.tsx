@@ -1,8 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
-import { buildModuleHomeView, type ModuleHomeDetailPanel } from "./moduleHomeModel";
+import {
+  buildModuleHomeView,
+  moduleHomeQueriesMemoDeps,
+  type ModuleHomeDetailPanel,
+} from "./moduleHomeModel";
 import { moduleWorkbenchHomeConfigs } from "./moduleHomeConfig";
 import MarketHomeLayout from "./MarketHomeLayout";
 import { useMarketHomeQueries } from "./useMarketHomeQueries";
@@ -55,7 +59,10 @@ export default function MarketHomePage() {
   const client = useApiClient();
   const queries = useMarketHomeQueries();
   const config = moduleWorkbenchHomeConfigs.market;
-  const view = buildModuleHomeView("market", client, queries);
+  const view = useMemo(
+    () => buildModuleHomeView("market", client, queries),
+    [client, ...moduleHomeQueriesMemoDeps(queries)],
+  );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState("");
   const [refreshError, setRefreshError] = useState("");
