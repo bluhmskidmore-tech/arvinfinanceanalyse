@@ -188,6 +188,9 @@ function buildYtdMainSheet(
   return data;
 }
 
+/** 警示行 + 空行 + 表头，无明细数据行时的基线长度 */
+const YTD_DETAIL_SHEET_EMPTY_LENGTH = 3;
+
 function buildYtdDetailSheet(
   rows: PnlByBusinessYtdItem[],
   _adbMap: Map<string, number>,
@@ -208,7 +211,7 @@ function buildYtdDetailSheet(
     "资产数",
     "说明",
   ];
-  const data: SheetAoA = [header];
+  const data: SheetAoA = [["⚠ 本表金额与父级表重叠展示，请勿相加或用于加总统计"], [], header];
   for (const row of rows.filter(isDetailZqtzBusinessRow)) {
     data.push([
       row.business_type,
@@ -286,6 +289,13 @@ function buildFormalSheet(rows: PnlByBusinessRow[]): SheetAoA {
     ]);
   }
   return data;
+}
+
+/** 警示行 + 空行 + 表头，无明细数据行时的基线长度（月报/月度"其中项明细"sheet复用） */
+const MONTHLY_DETAIL_SHEET_EMPTY_LENGTH = 3;
+
+function withDetailSheetOverlapWarning(sheet: SheetAoA): SheetAoA {
+  return [["⚠ 本表金额与父级表重叠展示，请勿相加或用于加总统计"], [], ...sheet];
 }
 
 function buildMonthlyFlatSheet(
@@ -473,15 +483,15 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
 
   if (args.viewMode === "monthly" && args.months.length > 0) {
     appendSheet(wb, "月报业务种类", buildMonthlyFlatSheet(args.months));
-    const detailSheet = buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow);
-    if (detailSheet.length > 1) {
+    const detailSheet = withDetailSheetOverlapWarning(buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow));
+    if (detailSheet.length > MONTHLY_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "月报其中项明细", detailSheet);
     }
   }
   if (args.viewMode === "ytd" && args.ytdRows.length > 0) {
     appendSheet(wb, "YTD年累计明细", buildYtdMainSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays));
     const detailSheet = buildYtdDetailSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays);
-    if (detailSheet.length > 1) {
+    if (detailSheet.length > YTD_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "YTD其中项明细", detailSheet);
     }
   }
@@ -490,8 +500,8 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
   }
   if (args.viewMode === "ytd" && args.months.length > 0) {
     appendSheet(wb, "月度业务种类", buildMonthlyFlatSheet(args.months));
-    const detailSheet = buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow);
-    if (detailSheet.length > 1) {
+    const detailSheet = withDetailSheetOverlapWarning(buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow));
+    if (detailSheet.length > MONTHLY_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "月度其中项明细", detailSheet);
     }
   }

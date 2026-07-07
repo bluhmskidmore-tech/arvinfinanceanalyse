@@ -19,6 +19,24 @@
   line-height: 1.45;
 }
 
+.pnl-by-business-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pnl-by-business-candidate-insights-link {
+  font-size: 12px;
+  color: var(--moss-color-neutral-500);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pnl-by-business-candidate-insights-link:hover {
+  color: var(--moss-color-primary-600);
+  text-decoration: underline;
+}
+
 .pnl-by-business-mode-pill {
   display: inline-flex;
   align-items: center;
@@ -207,6 +225,21 @@
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: var(--moss-radius-lg);
   background: var(--moss-color-card-bg);
+}
+
+.pnl-by-business-detail-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-900);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .pnl-by-business-table {

@@ -161,6 +161,8 @@ describe("buildPnlByBusinessSheets", () => {
     expect(sheets[1]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["政策性金融债"])]));
     expect(sheets[1]?.data).not.toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
     expect(sheets[2]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
+    const monthlyDetailFirstRow = sheets[2]?.data[0];
+    expect(monthlyDetailFirstRow?.some((cell) => typeof cell === "string" && cell.includes("重叠"))).toBe(true);
   });
 
   it("builds writer-compatible YTD sheets with stable names and localized values", async () => {
@@ -214,9 +216,45 @@ describe("buildPnlByBusinessSheets", () => {
     expect(sheets[1]?.data).toEqual(expect.arrayContaining([expect.arrayContaining([10])]));
     expect(sheets[1]?.data).not.toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
     expect(sheets[2]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
+    const monthlyDetailFirstRow = sheets[4]?.data[0];
+    expect(monthlyDetailFirstRow?.some((cell) => typeof cell === "string" && cell.includes("重叠"))).toBe(true);
 
     const blob = await writeExcelFile(sheets).toBlob();
     expect(blob.size).toBeGreaterThan(1000);
+  });
+
+  it("prefixes the YTD detail sheet with an overlap warning row", () => {
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "ytd",
+      reportDate: "2025-12-31",
+      year: 2025,
+      periodStart: "2025-01-01",
+      periodEnd: "2025-12-31",
+      periodLabel: "2025 YTD",
+      ytdRows: [
+        minimalYtdRow(),
+        minimalYtdRow({
+          row_key: "asset_zqtz_detail_local_currency_special_account_cost",
+          business_type: "其中：本币专户（成本法）",
+          source_note: "ZQTZSHOW 其中项：J0 剔除市值法清单后的成本法专户",
+        }),
+      ],
+      adbAvgByBusinessType: new Map(),
+      formalRows: [],
+      months: [],
+      adjustments: [],
+      adjustmentEvents: [],
+      bondBucketRows: [],
+      bondBucketMonthlyRows: [],
+      negativeFtpRows: [],
+      analysisDimension: undefined,
+      analysisRows: [],
+    });
+
+    const detailSheet = sheets.find((sheet) => sheet.sheet === "YTD其中项明细");
+    const firstRow = detailSheet?.data[0];
+
+    expect(firstRow?.some((cell) => typeof cell === "string" && cell.includes("重叠"))).toBe(true);
   });
 
   it("exports true-zero ADB as zero while leaving denominator metrics unavailable", () => {

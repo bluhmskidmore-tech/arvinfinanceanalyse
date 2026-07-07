@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from backend.app.core_finance.pnl import compute_pnl_by_business_yield_and_ftp
 from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS, match_zqtz_asset_bond_rows
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.task_write_guard import repository_task_write_scope
@@ -20,7 +21,6 @@ from backend.app.schemas.pnl import (
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
 FTP_RATE_PCT = Decimal("1.600000")
-FTP_RATE_RATIO = Decimal("0.016")
 PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION = "sv_pnl_by_business_precompute_v1"
 PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v1"
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
@@ -1012,9 +1012,12 @@ def _instrument_code_variants(value: object) -> tuple[str, ...]:
     return tuple(sorted(variants))
 
 def _analysis_annualized_yield_pct(total_pnl: Decimal, avg_balance: Decimal, calendar_days: int) -> Decimal | None:
-    if avg_balance <= Decimal("0") or calendar_days <= 0:
-        return None
-    return _quantize_yield_pct((total_pnl / avg_balance) * Decimal("365") / Decimal(str(calendar_days)) * Decimal("100"))
+    return compute_pnl_by_business_yield_and_ftp(
+        total_pnl=total_pnl,
+        avg_balance=avg_balance,
+        calendar_days=calendar_days,
+        ftp_rate_pct=FTP_RATE_PCT,
+    ).annualized_yield_pct
 
 def _analysis_ftp_values(
     *,
@@ -1023,17 +1026,16 @@ def _analysis_ftp_values(
     annualized_yield_pct: Decimal | None,
     calendar_days: int,
 ) -> dict[str, Decimal | None]:
-    if avg_balance <= Decimal("0") or calendar_days <= 0 or annualized_yield_pct is None:
-        return {
-            "ftp_cost": None,
-            "ftp_net_pnl": None,
-            "ftp_net_annualized_yield_pct": None,
-        }
-    ftp_cost = avg_balance * FTP_RATE_RATIO * Decimal(str(calendar_days)) / Decimal("365")
+    yield_ftp = compute_pnl_by_business_yield_and_ftp(
+        total_pnl=total_pnl,
+        avg_balance=avg_balance,
+        calendar_days=calendar_days,
+        ftp_rate_pct=FTP_RATE_PCT,
+    )
     return {
-        "ftp_cost": _quantize_decimal(ftp_cost),
-        "ftp_net_pnl": _quantize_decimal(total_pnl - ftp_cost),
-        "ftp_net_annualized_yield_pct": _quantize_yield_pct(annualized_yield_pct - FTP_RATE_PCT),
+        "ftp_cost": yield_ftp.ftp_cost,
+        "ftp_net_pnl": yield_ftp.ftp_net_pnl,
+        "ftp_net_annualized_yield_pct": yield_ftp.ftp_net_annualized_yield_pct,
     }
 
 def _calendar_days(start_date: str, end_date: str) -> int:
@@ -1096,8 +1098,3 @@ def _quantize_decimal(value: Decimal) -> Decimal:
 
 def _quantize_ratio(value: Decimal) -> Decimal:
     return value.quantize(RATIOPLACES)
-
-def _quantize_yield_pct(value: object) -> Decimal | None:
-    if value is None:
-        return None
-    return Decimal(str(value)).quantize(Decimal("0.000001"))

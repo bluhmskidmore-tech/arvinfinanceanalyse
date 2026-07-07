@@ -1157,7 +1157,13 @@ def approve_pnl_by_business_manual_adjustment(
     current = _require_pnl_by_business_manual_adjustment(settings, adjustment_id)
     checker = str(approved_by or "").strip()
     maker = str(current.get("created_by") or "").strip()
-    if maker and checker and maker == checker:
+    if not maker:
+        raise PermissionError(
+            "PnL by-business adjustment is missing created_by; cannot verify maker-checker separation."
+        )
+    if not checker:
+        raise PermissionError("Approver identity is required to approve a PnL by-business adjustment.")
+    if maker == checker:
         raise PermissionError("PnL by-business adjustment creator cannot approve the same adjustment.")
     if str(current.get("approval_status") or "") == "approved":
         return PnlByBusinessManualAdjustmentPayload.model_validate(current).model_dump(mode="json")

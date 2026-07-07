@@ -409,6 +409,9 @@ function BusinessRowsTable({
       </div>
       {detailRows.length > 0 ? (
         <div className="pnl-by-business-detail-block" data-testid="pnl-by-business-detail-table">
+          <div className="pnl-by-business-detail-warning" data-testid="pnl-by-business-detail-overlap-warning">
+            以下金额已包含在上方父级行中，与父级行金额存在重叠，不可与父级行相加，也不可跨行相加。
+          </div>
           <div className="pnl-by-business-detail-heading">
             <h3>其中项明细</h3>
             <p>这些行为父级分类的拆解项，不参与父级汇总和资产数加总。</p>
@@ -514,6 +517,12 @@ function MonthlyBusinessRowsTable({ month }: { month: PnlByBusinessMonthlyBucket
           className="pnl-by-business-detail-block"
           data-testid={`pnl-by-business-monthly-detail-table-${month.month_key}`}
         >
+          <div
+            className="pnl-by-business-detail-warning"
+            data-testid={`pnl-by-business-monthly-detail-overlap-warning-${month.month_key}`}
+          >
+            以下金额已包含在上方父级行中，与父级行金额存在重叠，不可与父级行相加，也不可跨行相加。
+          </div>
           <div className="pnl-by-business-detail-heading">
             <h3>其中项明细</h3>
             <p>这些行为父级分类的拆解项，不参与父级汇总和资产数加总。</p>
