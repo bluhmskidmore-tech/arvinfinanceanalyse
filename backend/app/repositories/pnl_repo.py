@@ -16,6 +16,42 @@ def _position_book_key(portfolio_name: object, cost_center: object) -> str:
     return f"{pn}::{cc}"
 
 
+_UNTRACED_COUNT_SQL = """
+                select count(*)
+                from fact_formal_pnl_fi p
+                where p.report_date = ?
+                  and not exists (
+                    select 1
+                    from fact_formal_zqtz_balance_daily z
+                    where z.report_date = p.report_date
+                      and (
+                        trim(coalesce(z.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
+                        or trim(coalesce(z.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
+                        or ('BOND-' || trim(coalesce(z.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
+                      )
+                      and trim(coalesce(z.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
+                      and trim(coalesce(z.cost_center, '')) = trim(coalesce(p.cost_center, ''))
+                      and trim(coalesce(z.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
+                      and z.position_scope = 'asset'
+                      and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
+                  )
+                  and (
+                    select count(distinct nullif(trim(coalesce(z.business_type_primary, '')), ''))
+                    from fact_formal_zqtz_balance_daily z
+                    where z.report_date = p.report_date
+                      and (
+                        trim(coalesce(z.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
+                        or trim(coalesce(z.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
+                        or ('BOND-' || trim(coalesce(z.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
+                      )
+                      and trim(coalesce(z.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
+                      and trim(coalesce(z.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
+                      and z.position_scope = 'asset'
+                      and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
+                  ) <> 1
+                """
+
+
 @dataclass
 class PnlRepository:
     path: str
@@ -641,43 +677,7 @@ class PnlRepository:
     def count_untraced_formal_fi_rows(self, report_date: str) -> int:
         try:
             conn = duckdb.connect(self.path, read_only=True)
-            row = conn.execute(
-                """
-                select count(*)
-                from fact_formal_pnl_fi p
-                where p.report_date = ?
-                  and not exists (
-                    select 1
-                    from fact_formal_zqtz_balance_daily z
-                    where z.report_date = p.report_date
-                      and (
-                        trim(coalesce(z.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
-                        or trim(coalesce(z.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
-                        or ('BOND-' || trim(coalesce(z.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
-                      )
-                      and trim(coalesce(z.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
-                      and trim(coalesce(z.cost_center, '')) = trim(coalesce(p.cost_center, ''))
-                      and trim(coalesce(z.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
-                      and z.position_scope = 'asset'
-                      and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
-                  )
-                  and (
-                    select count(distinct nullif(trim(coalesce(z.business_type_primary, '')), ''))
-                    from fact_formal_zqtz_balance_daily z
-                    where z.report_date = p.report_date
-                      and (
-                        trim(coalesce(z.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
-                        or trim(coalesce(z.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
-                        or ('BOND-' || trim(coalesce(z.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
-                      )
-                      and trim(coalesce(z.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
-                      and trim(coalesce(z.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
-                      and z.position_scope = 'asset'
-                      and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
-                  ) <> 1
-                """,
-                [report_date],
-            ).fetchone()
+            row = conn.execute(_UNTRACED_COUNT_SQL, [report_date]).fetchone()
         except duckdb.Error as exc:
             if "cannot open database" in str(exc).lower():
                 return 0
@@ -686,6 +686,61 @@ class PnlRepository:
             if "conn" in locals():
                 conn.close()
         return int(row[0] if row else 0)
+
+    def count_untraced_formal_fi_rows_for_dates(self, report_dates: list[str]) -> dict[str, int]:
+        """近似诊断趋势用批量版本：在同一连接内逐日复用 :data:`_UNTRACED_COUNT_SQL`。
+
+        与 :meth:`count_untraced_formal_fi_rows` 对每个 ``report_date`` 的结果必须逐一相等
+        （见 ``tests/test_pnl_by_business_candidate_insights_contract.py`` 回归测试）；
+        这里只是把逐日 connect/close 合并为一次连接，不改变 SQL 或口径。
+        """
+        dates = [str(d) for d in dict.fromkeys(report_dates) if str(d or "").strip()]
+        if not dates:
+            return {}
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            counts: dict[str, int] = {}
+            for report_date in dates:
+                row = conn.execute(_UNTRACED_COUNT_SQL, [report_date]).fetchone()
+                counts[report_date] = int(row[0] if row else 0)
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return {report_date: 0 for report_date in dates}
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return counts
+
+    def count_formal_fi_rows_for_dates(self, report_dates: list[str]) -> dict[str, int]:
+        """按 ``report_date`` 统计 ``fact_formal_pnl_fi`` 总行数，用于诊断趋势占比分母。"""
+        requested = [str(report_date) for report_date in dict.fromkeys(report_dates) if str(report_date or "")]
+        if not requested:
+            return {}
+        empty = {report_date: 0 for report_date in requested}
+        placeholders = ", ".join("?" for _ in requested)
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            rows = conn.execute(
+                f"""
+                select cast(report_date as varchar) as report_date, count(*) as row_count
+                from fact_formal_pnl_fi
+                where cast(report_date as varchar) in ({placeholders})
+                group by 1
+                """,
+                requested,
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return empty
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        out = dict(empty)
+        for report_date, row_count in rows:
+            out[str(report_date)] = int(row_count or 0)
+        return out
 
     def fetch_untraced_formal_fi_breakdown(self, report_date: str) -> list[dict[str, object]]:
         try:

@@ -405,6 +405,11 @@ class PnlYearlyBusinessSummaryPayload(BaseModel):
 # schemas only shape a re-aggregation of already-computed
 # `pnl_by_business_ytd_envelope` / `pnl_by_business_monthly_envelope` parent
 # rows; they are analytical-only and must not be treated as formal PnL truth.
+#
+# `PnlByBusinessUntracedTrendRow`/`Summary` (MTR-PNLBIZ-006, further below) are
+# a DIFFERENT kind of candidate metric: a formal reconciliation/data-quality
+# diagnostic, not a business-analysis re-aggregation. Do not mix their
+# `untraced_`-prefixed fields into the business-type rows/summaries above.
 
 
 class PnlByBusinessConcentrationRow(BaseModel):
@@ -472,6 +477,27 @@ class PnlByBusinessShareDriftSummary(BaseModel):
     rows: list[PnlByBusinessShareDriftRow]
 
 
+class PnlByBusinessUntracedTrendRow(BaseModel):
+    """一个 formal 报表日的对账健康度诊断行（非业务分析行，字段用 ``untraced_`` 前缀区分）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    untraced_row_count: int
+    total_row_count: int
+    untraced_share_pct: Decimal | None
+
+
+class PnlByBusinessUntracedTrendSummary(BaseModel):
+    """`MTR-PNLBIZ-006`：formal 对账健康度诊断趋势，非业务贡献/拖累结论。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    as_of_date: str
+    lookback_months: int
+    rows: list[PnlByBusinessUntracedTrendRow]
+
+
 class PnlByBusinessCandidateInsightsPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -480,3 +506,4 @@ class PnlByBusinessCandidateInsightsPayload(BaseModel):
     concentration: PnlByBusinessConcentrationSummary
     negative_ftp_persistence: PnlByBusinessNegativeFtpPersistenceSummary
     share_drift: PnlByBusinessShareDriftSummary
+    reconciliation_diagnostics: PnlByBusinessUntracedTrendSummary

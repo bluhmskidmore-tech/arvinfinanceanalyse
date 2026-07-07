@@ -27,7 +27,8 @@
     },
     "tables_used": [
       "pnl.by_business_ytd",
-      "pnl.by_business_monthly"
+      "pnl.by_business_monthly",
+      "fact_formal_pnl_fi"
     ],
     "evidence_rows": null,
     "next_drill": [],
@@ -180,6 +181,30 @@
           "current_share_pct": "37.50",
           "baseline_share_pct": "30.00",
           "drift_pp": "7.50"
+        }
+      ]
+    },
+    "reconciliation_diagnostics": {
+      "as_of_date": "2026-02-28",
+      "lookback_months": 12,
+      "rows": [
+        {
+          "report_date": "2025-12-31",
+          "untraced_row_count": 0,
+          "total_row_count": 2,
+          "untraced_share_pct": "0.00"
+        },
+        {
+          "report_date": "2026-01-31",
+          "untraced_row_count": 0,
+          "total_row_count": 2,
+          "untraced_share_pct": "0.00"
+        },
+        {
+          "report_date": "2026-02-28",
+          "untraced_row_count": 0,
+          "total_row_count": 2,
+          "untraced_share_pct": "0.00"
         }
       ]
     }

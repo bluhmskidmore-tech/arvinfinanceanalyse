@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import duckdb
 import pytest
 
+from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.services import pnl_by_business_candidate_insights as insights
 
 
@@ -214,3 +216,161 @@ def test_candidate_insights_envelope_hardcodes_formal_use_allowed_false(monkeypa
 
     assert envelope["result_meta"]["formal_use_allowed"] is False
     assert envelope["result_meta"]["basis"] == "analytical"
+
+
+def _create_untraced_reconciliation_tables(conn: duckdb.DuckDBPyConnection) -> None:
+    conn.execute(
+        """
+        create table fact_formal_pnl_fi (
+          report_date varchar,
+          instrument_code varchar,
+          portfolio_name varchar,
+          cost_center varchar,
+          currency_basis varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table fact_formal_zqtz_balance_daily (
+          report_date varchar,
+          instrument_code varchar,
+          portfolio_name varchar,
+          cost_center varchar,
+          currency_basis varchar,
+          position_scope varchar,
+          business_type_primary varchar
+        )
+        """
+    )
+
+
+def test_untraced_trend_reuses_single_day_sql_and_caps_at_lookback_months(tmp_path) -> None:
+    duckdb_path = tmp_path / "reconciliation-trend.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        _create_untraced_reconciliation_tables(conn)
+        # 15 distinct month-end formal report dates, spanning a calendar-year boundary.
+        fi_dates = [
+            "2025-01-31",
+            "2025-02-28",
+            "2025-03-31",
+            "2025-04-30",
+            "2025-05-31",
+            "2025-06-30",
+            "2025-07-31",
+            "2025-08-31",
+            "2025-09-30",
+            "2025-10-31",
+            "2025-11-30",
+            "2025-12-31",
+            "2026-01-31",
+            "2026-02-28",
+            "2026-03-31",
+        ]
+        for report_date in fi_dates:
+            conn.execute(
+                "insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?)",
+                [report_date, "BOND-1", "Desk", "CC-1", "CNY"],
+            )
+            conn.execute(
+                "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?)",
+                [report_date, "BOND-1", "Desk", "CC-1", "CNY", "asset", "国债"],
+            )
+    finally:
+        conn.close()
+
+    result = insights.compute_untraced_reconciliation_trend(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-03-31",
+    )
+
+    assert result["lookback_months"] == 12
+    assert len(result["rows"]) <= 12
+    valid_report_dates = set(fi_dates)
+    for row in result["rows"]:
+        assert row["report_date"] in valid_report_dates
+
+
+def test_untraced_trend_handles_month_with_zero_total_rows_gracefully(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        PnlRepository,
+        "list_formal_fi_report_dates",
+        lambda self: ["2026-01-31"],
+    )
+    monkeypatch.setattr(
+        PnlRepository,
+        "count_untraced_formal_fi_rows_for_dates",
+        lambda self, report_dates: {rd: 0 for rd in report_dates},
+    )
+    monkeypatch.setattr(
+        PnlRepository,
+        "count_formal_fi_rows_for_dates",
+        lambda self, report_dates: {rd: 0 for rd in report_dates},
+    )
+
+    result = insights.compute_untraced_reconciliation_trend(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-01-31",
+        lookback_months=1,
+    )
+
+    assert len(result["rows"]) == 1
+    row = result["rows"][0]
+    assert row["total_row_count"] == 0
+    assert row["untraced_row_count"] == 0
+    assert row["untraced_share_pct"] is None
+
+
+def test_count_untraced_formal_fi_rows_for_dates_matches_single_date_calls(tmp_path) -> None:
+    duckdb_path = tmp_path / "untraced-batch-regression.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        _create_untraced_reconciliation_tables(conn)
+        # Day 1: fully traced via strict match (same cost_center).
+        conn.execute(
+            "insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?)",
+            ["2026-01-31", "BOND-1", "Desk", "CC-1", "CNY"],
+        )
+        conn.execute(
+            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?)",
+            ["2026-01-31", "BOND-1", "Desk", "CC-1", "CNY", "asset", "国债"],
+        )
+        # Day 2: untraced (never seen in zqtz asset balance for that instrument at all).
+        conn.execute(
+            "insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?)",
+            ["2026-02-28", "BOND-2", "Desk", "CC-2", "CNY"],
+        )
+        # Day 3: traced via relaxed match, ignoring BOND- prefix and cost_center mismatch,
+        # but ambiguous because two distinct business types exist for the same instrument.
+        conn.execute(
+            "insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?)",
+            ["2026-03-31", "BOND-3", "Desk", "CC-mismatch", "CNY"],
+        )
+        conn.execute(
+            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?)",
+            ["2026-03-31", "3", "Desk", "CC-other", "CNY", "asset", "国债"],
+        )
+        conn.execute(
+            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?)",
+            ["2026-03-31", "3", "Desk", "CC-other", "CNY", "asset", "政策性金融债"],
+        )
+        # Day 4: no formal rows at all (untraced count must be 0, not an error).
+    finally:
+        conn.close()
+
+    repo = PnlRepository(str(duckdb_path))
+    report_dates = ["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30"]
+
+    batch_result = repo.count_untraced_formal_fi_rows_for_dates(report_dates)
+    single_date_result = {
+        report_date: repo.count_untraced_formal_fi_rows(report_date) for report_date in report_dates
+    }
+
+    assert batch_result == single_date_result
+    assert single_date_result["2026-01-31"] == 0
+    assert single_date_result["2026-02-28"] == 1
+    assert single_date_result["2026-03-31"] == 1
+    assert single_date_result["2026-04-30"] == 0

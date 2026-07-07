@@ -3441,12 +3441,34 @@ export type PnlByBusinessShareDriftSummary = {
   rows: PnlByBusinessShareDriftRow[];
 };
 
+/**
+ * `MTR-PNLBIZ-006`: formal reconciliation/data-quality diagnostic trend
+ * (`backend/app/schemas/pnl.py::PnlByBusinessUntracedTrendRow`/`Summary`).
+ * This is a DIFFERENT kind of candidate metric from the business-type rows
+ * above: it reflects formal reconciliation-pipeline completeness, not
+ * business contribution/drag. Do not present it alongside the business
+ * analysis blocks without explicit visual/semantic separation.
+ */
+export type PnlByBusinessUntracedTrendRow = {
+  report_date: string;
+  untraced_row_count: number;
+  total_row_count: number;
+  untraced_share_pct: string | null;
+};
+
+export type PnlByBusinessUntracedTrendSummary = {
+  as_of_date: string;
+  lookback_months: number;
+  rows: PnlByBusinessUntracedTrendRow[];
+};
+
 export type PnlByBusinessCandidateInsightsPayload = {
   year: number;
   as_of_date: string;
   concentration: PnlByBusinessConcentrationSummary;
   negative_ftp_persistence: PnlByBusinessNegativeFtpPersistenceSummary;
   share_drift: PnlByBusinessShareDriftSummary;
+  reconciliation_diagnostics: PnlByBusinessUntracedTrendSummary;
 };
 
 export type PnlYearlyBusinessSummaryRow = {

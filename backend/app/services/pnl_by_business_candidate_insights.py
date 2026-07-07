@@ -1,12 +1,23 @@
 """Candidate (non-formal) analytical insights for `/pnl-by-business`.
 
-These metrics are registered as `status=candidate` in
-`docs/metric_dictionary.md` (`MTR-PNLBIZ-001`~`005`), mirroring the
-`concentration-monitor` candidate pattern. They only re-aggregate
-already-computed parent rows from `pnl_service.pnl_by_business_ytd_envelope`
-and `pnl_service.pnl_by_business_monthly_envelope`; they never re-query
+`concentration` / `negative_ftp_persistence` / `share_drift` are registered as
+`status=candidate` in `docs/metric_dictionary.md` (`MTR-PNLBIZ-001`~`005`),
+mirroring the `concentration-monitor` candidate pattern. They only
+re-aggregate already-computed parent rows from
+`pnl_service.pnl_by_business_ytd_envelope` and
+`pnl_service.pnl_by_business_monthly_envelope`; they never re-query
 `fact_formal_pnl_fi` / `fact_formal_zqtz_balance_daily` directly and must not
 be treated as formal PnL, concentration-limit, or FTP truth.
+
+`reconciliation_diagnostics` (`MTR-PNLBIZ-006`) is a **different kind of
+candidate metric**: a formal data-quality / reconciliation health diagnostic,
+not a business-analysis re-aggregation. It batches the existing single-day
+`PnlRepository.count_untraced_formal_fi_rows` SQL (see
+`docs/page_contracts.md` §14.8.1 section G) across trailing month-end report
+dates. It intentionally does re-query `fact_formal_pnl_fi` /
+`fact_formal_zqtz_balance_daily`, uses an `untraced_`-prefixed field
+vocabulary distinct from the business-analysis rows above, and must not be
+mixed into monthly/YTD business contribution conclusions.
 """
 
 from __future__ import annotations
@@ -15,6 +26,7 @@ import uuid
 from decimal import Decimal
 
 from backend.app.core_finance.pnl import TWOPLACES
+from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.schemas.pnl import PnlByBusinessCandidateInsightsPayload
 from backend.app.services import pnl_service
 from backend.app.services.formal_result_runtime import build_result_envelope
@@ -309,6 +321,89 @@ def compute_business_type_share_drift(
     }
 
 
+# ── Reconciliation diagnostics (NOT a business-analysis metric) ─────────────
+# `MTR-PNLBIZ-006` in docs/metric_dictionary.md. This block is a batch-mode
+# reuse of the existing single-day `PnlRepository.count_untraced_formal_fi_rows`
+# reconciliation SQL (docs/page_contracts.md §14.8.1 G). It measures formal
+# data-quality/reconciliation health, not business contribution or drag, and
+# must be kept structurally separate from `concentration` /
+# `negative_ftp_persistence` / `share_drift` above. Field names use the
+# `untraced_` prefix (not `business_type` / `share_pct` style) to make this
+# distinction explicit at the schema level.
+
+
+def _resolve_trailing_month_end_report_dates(
+    *,
+    all_report_dates: list[str],
+    as_of_date: str,
+    lookback_months: int,
+) -> list[str]:
+    """近 ``lookback_months`` 个自然月各自的实际 formal 报表日（非自然月最后一天）。
+
+    某月没有 formal 数据时该月直接缺席，不做插值/回填；返回列表长度恒 <= ``lookback_months``。
+    """
+    window_month_keys = _trailing_month_keys(as_of_date, lookback_months)
+    window = set(window_month_keys)
+    latest_by_month: dict[str, str] = {}
+    for report_date in all_report_dates:
+        month_key = report_date[:7]
+        if month_key not in window or report_date > as_of_date:
+            continue
+        if report_date > latest_by_month.get(month_key, ""):
+            latest_by_month[month_key] = report_date
+    return [latest_by_month[month_key] for month_key in window_month_keys if month_key in latest_by_month]
+
+
+def compute_untraced_reconciliation_trend(
+    *,
+    duckdb_path: str,
+    as_of_date: str,
+    lookback_months: int = 12,
+) -> dict[str, object]:
+    """formal 对账健康度诊断趋势（非业务结论）：近 ``lookback_months`` 个月末的
+    ``fact_formal_pnl_fi`` 未追溯行占比。仅复用既有单日诊断 SQL 的批量版本，不重新设计口径；
+    不得与月报/YTD业务贡献结论混用。
+    """
+    repo = PnlRepository(duckdb_path)
+    try:
+        all_report_dates = repo.list_formal_fi_report_dates()
+    except RuntimeError:
+        # Storage unavailable (e.g. duckdb path not yet materialized): degrade to an
+        # empty trend rather than failing the whole candidate-insights envelope.
+        all_report_dates = []
+    report_dates = _resolve_trailing_month_end_report_dates(
+        all_report_dates=all_report_dates,
+        as_of_date=as_of_date,
+        lookback_months=lookback_months,
+    )
+    untraced_counts = repo.count_untraced_formal_fi_rows_for_dates(report_dates)
+    total_counts = repo.count_formal_fi_rows_for_dates(report_dates)
+
+    rows: list[dict[str, object]] = []
+    for report_date in report_dates:
+        total_row_count = int(total_counts.get(report_date, 0))
+        untraced_row_count = int(untraced_counts.get(report_date, 0))
+        untraced_share_pct = (
+            _quantize_pct(Decimal(untraced_row_count) / Decimal(total_row_count) * _HUNDRED)
+            if total_row_count > 0
+            else None
+        )
+        rows.append(
+            {
+                "report_date": report_date,
+                "untraced_row_count": untraced_row_count,
+                "total_row_count": total_row_count,
+                "untraced_share_pct": untraced_share_pct,
+            }
+        )
+
+    return {
+        "as_of_date": as_of_date,
+        "lookback_months": lookback_months,
+        "rows": rows,
+    }
+
+
 def pnl_by_business_candidate_insights_envelope(
     *,
     duckdb_path: str,
@@ -334,6 +429,10 @@ def pnl_by_business_candidate_insights_envelope(
         year=year,
         as_of_date=as_of_date,
     )
+    reconciliation_diagnostics = compute_untraced_reconciliation_trend(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+    )
     result_payload = PnlByBusinessCandidateInsightsPayload.model_validate(
         {
             "year": year,
@@ -341,6 +440,7 @@ def pnl_by_business_candidate_insights_envelope(
             "concentration": concentration,
             "negative_ftp_persistence": negative_ftp_persistence,
             "share_drift": share_drift,
+            "reconciliation_diagnostics": reconciliation_diagnostics,
         }
     ).model_dump(mode="json")
 
@@ -354,7 +454,7 @@ def pnl_by_business_candidate_insights_envelope(
         quality_flag="ok" if concentration.get("hhi_pct") is not None else "warning",
         result_payload=result_payload,
         filters_applied={"year": year, "as_of_date": as_of_date},
-        tables_used=["pnl.by_business_ytd", "pnl.by_business_monthly"],
+        tables_used=["pnl.by_business_ytd", "pnl.by_business_monthly", "fact_formal_pnl_fi"],
         requested_report_date=as_of_date,
         resolved_report_date=as_of_date,
         as_of_date=as_of_date,

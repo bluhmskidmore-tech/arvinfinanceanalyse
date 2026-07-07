@@ -2489,6 +2489,7 @@ def _validate_pnl_business_insights(actual: dict[str, Any], expected: dict[str, 
             ("result", "concentration"),
             ("result", "negative_ftp_persistence"),
             ("result", "share_drift"),
+            ("result", "reconciliation_diagnostics"),
         ],
     )
 

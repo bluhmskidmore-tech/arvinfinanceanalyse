@@ -3,8 +3,19 @@ import { render, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("../../lib/echarts", () => ({
+  default: ({ option }: { option?: unknown }) => (
+    <div data-testid="pnl-by-business-insights-echarts-stub">{JSON.stringify(option ?? null)}</div>
+  ),
+}));
+
 import { ApiClientProvider, createApiClient, type ApiClient } from "../../api/client";
-import type { ApiEnvelope, PnlByBusinessCandidateInsightsPayload, ResultMeta } from "../../api/contracts";
+import type {
+  ApiEnvelope,
+  PnlByBusinessCandidateInsightsPayload,
+  PnlByBusinessYtdPayload,
+  ResultMeta,
+} from "../../api/contracts";
 import { routerFuture } from "../../router/routerFuture";
 import PnlByBusinessInsightsPage from "./PnlByBusinessInsightsPage";
 
@@ -106,6 +117,79 @@ function buildPayload(
           },
         ],
       },
+      reconciliation_diagnostics: {
+        as_of_date: "2026-02-28",
+        lookback_months: 12,
+        rows: [
+          { report_date: "2025-12-31", untraced_row_count: 0, total_row_count: 2, untraced_share_pct: "0.00" },
+          { report_date: "2026-01-31", untraced_row_count: 0, total_row_count: 2, untraced_share_pct: "0.00" },
+          { report_date: "2026-02-28", untraced_row_count: 0, total_row_count: 2, untraced_share_pct: "0.00" },
+        ],
+      },
+      ...overrides,
+    },
+  };
+}
+
+function buildYtdPayload(
+  overrides?: Partial<PnlByBusinessYtdPayload>,
+): ApiEnvelope<PnlByBusinessYtdPayload> {
+  return {
+    result_meta: resultMeta,
+    result: {
+      year: 2026,
+      period_type: "yearly",
+      period_label: "2026年累计",
+      period_start_date: "2026-01-01",
+      period_end_date: "2026-02-28",
+      total_pnl: "1000.00",
+      source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily"],
+      items: [
+        {
+          row_key: "asset_zqtz_treasury_bond",
+          sort_order: 1,
+          business_type: "国债",
+          interest_income: "600.00",
+          fair_value_change: "0.00",
+          capital_gain: "0.00",
+          manual_adjustment: "0.00",
+          total_pnl: "600.00",
+          avg_balance: "625.00",
+          current_balance: "625.00",
+          balance_yield_pct: "9.60",
+          annualized_yield_pct: "9.60",
+          ftp_rate_pct: "1.60",
+          ftp_cost: "10.00",
+          ftp_net_pnl: "590.00",
+          ftp_net_annualized_yield_pct: "5.00",
+          source_kind: "zqtz",
+          source_note: "父级",
+          proportion: "0.625",
+          assets_count: 3,
+        },
+        {
+          row_key: "asset_zqtz_policy_financial_bond",
+          sort_order: 2,
+          business_type: "政策性金融债",
+          interest_income: "400.00",
+          fair_value_change: "0.00",
+          capital_gain: "0.00",
+          manual_adjustment: "0.00",
+          total_pnl: "400.00",
+          avg_balance: "375.00",
+          current_balance: "375.00",
+          balance_yield_pct: "3.20",
+          annualized_yield_pct: "3.20",
+          ftp_rate_pct: "1.60",
+          ftp_cost: "6.00",
+          ftp_net_pnl: "394.00",
+          ftp_net_annualized_yield_pct: "1.00",
+          source_kind: "zqtz",
+          source_note: "父级",
+          proportion: "0.375",
+          assets_count: 2,
+        },
+      ],
       ...overrides,
     },
   };
@@ -129,9 +213,16 @@ function renderPage(client: ApiClient, queryClient: QueryClient) {
   );
 }
 
-function buildClient(getPnlByBusinessCandidateInsights: ApiClient["getPnlByBusinessCandidateInsights"]): ApiClient {
+function buildClient(
+  getPnlByBusinessCandidateInsights: ApiClient["getPnlByBusinessCandidateInsights"],
+  getPnlByBusinessYtd?: ApiClient["getPnlByBusinessYtd"],
+): ApiClient {
   const base = createApiClient({ mode: "mock" });
-  return { ...base, getPnlByBusinessCandidateInsights };
+  return {
+    ...base,
+    getPnlByBusinessCandidateInsights,
+    getPnlByBusinessYtd: getPnlByBusinessYtd ?? (async () => buildYtdPayload()),
+  };
 }
 
 function buildQueryClient() {
@@ -270,5 +361,61 @@ describe("PnlByBusinessInsightsPage", () => {
 
     expect(emptyState).toHaveTextContent("上一年无数据，无法计算漂移");
     expect(document.querySelector('[data-testid="pnl-by-business-insights-share-drift-table"]')).toBeNull();
+  });
+
+  it("renders the capital efficiency quadrant grid from the by-business-ytd query", async () => {
+    const client = buildClient(
+      vi.fn(async () => buildPayload()),
+      vi.fn(async () => buildYtdPayload()),
+    );
+    renderPage(client, buildQueryClient());
+
+    const grid = await waitFor(() => {
+      const node = document.querySelector('[data-testid="capital-efficiency-quadrant-grid"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+
+    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-large_high"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-large_low"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-small_high"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-small_low"]')).not.toBeNull();
+    expect(grid).toHaveTextContent("国债");
+    expect(grid).toHaveTextContent("政策性金融债");
+  });
+
+  it("renders the reconciliation diagnostics section with its dedicated title and disclaimer", async () => {
+    const client = buildClient(vi.fn(async () => buildPayload()));
+    renderPage(client, buildQueryClient());
+
+    const section = await waitFor(() => {
+      const node = document.querySelector('[data-testid="pnl-by-business-insights-reconciliation-section"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+
+    expect(section).toHaveTextContent("对账健康度诊断（非业务结论）");
+    expect(section).toHaveTextContent(
+      "以下为formal对账诊断趋势，反映的是数据链路完整性问题，不是业务贡献或拖累结论，不构成资源配置或业务评价依据。",
+    );
+    expect(document.querySelector('[data-testid="untraced-reconciliation-trend-panel"]')).not.toBeNull();
+    expect(
+      document.querySelector('[data-testid="pnl-by-business-insights-reconciliation-divider"]'),
+    ).not.toBeNull();
+  });
+
+  it("shows the reconciliation trend panel empty state when rows are empty", async () => {
+    const payload = buildPayload();
+    payload.result.reconciliation_diagnostics.rows = [];
+    const client = buildClient(vi.fn(async () => payload));
+    renderPage(client, buildQueryClient());
+
+    const emptyState = await waitFor(() => {
+      const node = document.querySelector('[data-testid="untraced-reconciliation-trend-empty"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+
+    expect(emptyState).toHaveTextContent("暂无可用的历史对账诊断数据");
   });
 });

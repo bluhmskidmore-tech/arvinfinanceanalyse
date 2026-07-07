@@ -19,9 +19,14 @@ import { KpiCard } from "../../components/KpiCard";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
+import { CapitalEfficiencyQuadrantPanel } from "./CapitalEfficiencyQuadrantPanel";
+import { UntracedReconciliationTrendPanel } from "./UntracedReconciliationTrendPanel";
 
 const DISCLAIMER_TEXT =
   "本页指标为候选分析（status=candidate），仅供内部参考，不构成正式业务结论；最终审批需业务owner确认后方可用于正式汇报。";
+
+const RECONCILIATION_NOTE_TEXT =
+  "以下为formal对账诊断趋势，反映的是数据链路完整性问题，不是业务贡献或拖累结论，不构成资源配置或业务评价依据。";
 
 const NEGATIVE_FTP_WARN_THRESHOLD_PCT = 50;
 
@@ -92,6 +97,52 @@ const emptyStateStyle = {
   border: `1px dashed ${designTokens.color.neutral[200]}`,
   color: designTokens.color.neutral[600],
   fontSize: 13,
+} as const;
+
+// The reconciliation-diagnostics block below is a formal data-lineage
+// completeness observation, not a business-analysis conclusion like the
+// four blocks above it. Its divider/band/title are intentionally styled in
+// plain neutral gray (no danger/warning/KPI accent colors) so it cannot be
+// mistaken for a business warning or read together with the business blocks.
+const reconciliationDividerStyle = {
+  margin: "40px 0 0",
+  border: "none",
+  borderTop: `1px solid ${designTokens.color.neutral[300]}`,
+} as const;
+
+const reconciliationSectionStyle = {
+  margin: "24px 0 0",
+  padding: 20,
+  borderRadius: designTokens.radius.md,
+  background: designTokens.color.neutral[50],
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+} as const;
+
+const reconciliationEyebrowStyle = {
+  display: "inline-block",
+  margin: "0 0 8px",
+  padding: "2px 8px",
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  color: designTokens.color.neutral[600],
+  background: designTokens.color.neutral[100],
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+} as const;
+
+const reconciliationTitleStyle = {
+  margin: "0 0 4px",
+  fontSize: 15,
+  fontWeight: 600,
+  color: designTokens.color.neutral[700],
+} as const;
+
+const reconciliationNoteStyle = {
+  margin: "0 0 16px",
+  fontSize: 13,
+  color: designTokens.color.neutral[600],
+  lineHeight: 1.6,
 } as const;
 
 function toNumber(value: string | null | undefined): number | null {
@@ -291,11 +342,20 @@ export default function PnlByBusinessInsightsPage() {
     retry: false,
   });
 
+  const ytdQuery = useQuery({
+    queryKey: ["pnl-by-business-insights", "ytd", client.mode, year, asOfDate],
+    queryFn: () => client.getPnlByBusinessYtd(year, asOfDate),
+    enabled: Boolean(year && asOfDate),
+    retry: false,
+  });
+  const ytdItems = ytdQuery.data?.result?.items ?? [];
+
   const meta = insightsQuery.data?.result_meta;
   const result = insightsQuery.data?.result;
   const concentration = result?.concentration;
   const negativeFtp = result?.negative_ftp_persistence;
   const shareDrift = result?.share_drift;
+  const reconciliationDiagnostics = result?.reconciliation_diagnostics;
 
   const isEmpty =
     insightsQuery.isSuccess &&
@@ -425,6 +485,36 @@ export default function PnlByBusinessInsightsPage() {
           </>
         ) : null}
       </AsyncSection>
+
+      <h2 style={blockTitleStyle}>资本效率象限</h2>
+      <p style={blockDescriptionStyle}>
+        基于 <code style={{ fontSize: 13 }}>/api/pnl/by-business-ytd</code> 已有的 proportion /
+        ftp_net_annualized_yield_pct 字段，浏览器端仅做象限归类展示，不重算任何正式口径。
+      </p>
+      <AsyncSection
+        title=""
+        isLoading={ytdQuery.isLoading}
+        isError={ytdQuery.isError}
+        isEmpty={false}
+        onRetry={() => void ytdQuery.refetch()}
+      >
+        <CapitalEfficiencyQuadrantPanel items={ytdItems} />
+      </AsyncSection>
+
+      {reconciliationDiagnostics ? (
+        <>
+          <hr style={reconciliationDividerStyle} data-testid="pnl-by-business-insights-reconciliation-divider" />
+          <div
+            style={reconciliationSectionStyle}
+            data-testid="pnl-by-business-insights-reconciliation-section"
+          >
+            <span style={reconciliationEyebrowStyle}>非业务分析 · 数据链路诊断</span>
+            <h2 style={reconciliationTitleStyle}>对账健康度诊断（非业务结论）</h2>
+            <p style={reconciliationNoteStyle}>{RECONCILIATION_NOTE_TEXT}</p>
+            <UntracedReconciliationTrendPanel rows={reconciliationDiagnostics.rows} />
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }

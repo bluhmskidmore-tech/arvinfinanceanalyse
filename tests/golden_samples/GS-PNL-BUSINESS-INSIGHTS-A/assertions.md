@@ -22,17 +22,20 @@
 - `result_meta.quality_flag == "ok"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.requested_report_date == result_meta.resolved_report_date == result_meta.as_of_date == "2026-02-28"`.
-- `result_meta.tables_used == ["pnl.by_business_ytd", "pnl.by_business_monthly"]` (this endpoint only re-aggregates those two envelopes; it never re-queries `fact_formal_pnl_fi` / `fact_formal_zqtz_balance_daily` directly).
-- `result.concentration`, `result.negative_ftp_persistence`, and `result.share_drift` sections are all present in `result`.
+- `result_meta.tables_used == ["pnl.by_business_ytd", "pnl.by_business_monthly", "fact_formal_pnl_fi"]`. `pnl.by_business_ytd`/`pnl.by_business_monthly` back `concentration`/`negative_ftp_persistence`/`share_drift` (re-aggregation only, no direct query); `fact_formal_pnl_fi` is queried directly only by `reconciliation_diagnostics`, which batches the existing single-day untraced-row diagnostic SQL — this is a reconciliation/data-quality diagnostic, not a business-analysis re-aggregation, and must not be conflated with the other three sections.
+- `result.concentration`, `result.negative_ftp_persistence`, `result.share_drift`, and `result.reconciliation_diagnostics` sections are all present in `result`.
 - `result.concentration.hhi_pct` is `null` or within `[0, 100]`.
 - `result.negative_ftp_persistence.negative_ftp_longest_streak_months <= result.negative_ftp_persistence.lookback_months` (structurally guaranteed: the streak can never exceed the number of months in the lookback window).
 - Every row in `result.negative_ftp_persistence.rows[]` also satisfies `negative_ftp_longest_streak_months <= lookback_months`.
+- Every `result.reconciliation_diagnostics.rows[].untraced_share_pct` is `null` (when `total_row_count == 0`) or within `[0, 100]`.
+- `len(result.reconciliation_diagnostics.rows) <= result.reconciliation_diagnostics.lookback_months`.
 
 ## Frozen Values
 
 - `MTR-PNLBIZ-001` / `MTR-PNLBIZ-002`: `result.concentration.hhi_pct == "53.12"`, `result.concentration.top_n_share_pct == "100.00"` (two parent ZQTZ business types, 62.50%/37.50% YTD average-balance shares).
 - `MTR-PNLBIZ-003` / `MTR-PNLBIZ-004`: `result.negative_ftp_persistence.negative_ftp_month_share_pct == "0.00"`, `result.negative_ftp_persistence.negative_ftp_longest_streak_months == 0` over the 3 observed months in the trailing 12-month window (`2025-03`..`2026-02`); the other 9 months are outside the fixture's seeded data and are treated as gaps, not zero/negative.
 - `MTR-PNLBIZ-005`: `result.share_drift.rows[0].drift_pp == "-7.50"` (treasury bond share dropped from 70.00% at 2025-12-31 baseline to 62.50%) and `result.share_drift.rows[1].drift_pp == "7.50"` (policy financial bond share rose from 30.00% to 37.50%).
+- `MTR-PNLBIZ-006`: `result.reconciliation_diagnostics.rows` has 3 entries (`2025-12-31`, `2026-01-31`, `2026-02-28` — the only formal report dates present in the fixture), each with `untraced_row_count == 0`, `total_row_count == 2`, `untraced_share_pct == "0.00"` (the fixture's balance rows are seeded to fully trace to their FI rows).
 
 ## Boundary
 
@@ -40,4 +43,5 @@
 - It preserves `formal_use_allowed=false`; `MTR-PNLBIZ-001` through `MTR-PNLBIZ-005` remain candidate display metrics with pending confirmation.
 - It does not replace, extend, or reinterpret `PAGE-PNL-BY-BUSINESS-001` (`docs/page_contracts.md` §14.8.1), which still has no newly approved `MTR-*` metric binding in this pass.
 - It does not approve a business-type concentration limit, an FTP rate caliber, or a strategic interpretation of share drift.
+- `reconciliation_diagnostics` (`MTR-PNLBIZ-006`) is a formal-data reconciliation/data-quality health diagnostic, batching the existing single-day untraced-row SQL from `docs/page_contracts.md` §14.8.1 section G; it is NOT a business contribution/drag conclusion and must not be mixed with monthly/YTD business results.
 - Direct governance review, catalog/date evidence, manual audit closure, and business-owner approval remain separate.
