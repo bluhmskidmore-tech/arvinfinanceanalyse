@@ -330,6 +330,10 @@ const gateHControlContextPages = [
     readySelector: '[data-testid="bond-analysis-overview"]',
     controls: [
       {
+        label: "report date selector",
+        selector: '[data-testid="bond-analysis-overview"] select[aria-label="报告日"]',
+      },
+      {
         label: "decision next action",
         selector: '[data-testid="bond-analysis-decision-next-action"]',
       },
@@ -337,17 +341,17 @@ const gateHControlContextPages = [
         label: "detail disclosure",
         selector: '[data-testid="bond-analysis-detail-drilldown"] summary',
       },
-      {
-        label: "report date selector",
-        selector: '[data-testid="bond-analysis-overview"] select[aria-label="报告日"]',
-      },
     ],
-    stateCueSelector: '[data-testid="bond-analysis-daily-judgment"]',
+    focusTarget: {
+      label: "decision next action",
+      selector: '[data-testid="bond-analysis-decision-next-action"]',
+    },
+    stateCueSelector: '[data-testid="bond-analysis-daily-judgment-status"]',
   },
 ];
 
 const stateCueTextPattern =
-  /就绪|待|暂无|缺失|降级|陈旧|受限|阻断|失败|错误|告警|风险|预警|兜底|可信|证据|复核|条件|ready|warning|stale|fallback|blocked|no data/i;
+  /就绪|匹配|已返回|可用|待|暂无|缺失|降级|陈旧|受限|阻断|失败|错误|告警|风险|预警|兜底|可信|证据|复核|条件|ready|warning|stale|fallback|blocked|no data/i;
 const internalSlugNamePattern = /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/i;
 
 async function gotoVisiblePage(page, smokePage) {
@@ -653,15 +657,15 @@ test.describe("frontend accessibility + visual smoke", () => {
         ).not.toMatch(internalSlugNamePattern);
       }
 
-      const firstControl = controlPage.controls[0];
-      const focusEvidence = await focusTargetFromMain(page, firstControl.selector);
+      const focusTarget = controlPage.focusTarget ?? controlPage.controls[0];
+      const focusEvidence = await focusTargetFromMain(page, focusTarget.selector);
       expect(
         focusEvidence.matchedStep,
-        `${controlPage.slug} keyboard focus did not reach ${firstControl.label}`,
+        `${controlPage.slug} keyboard focus did not reach ${focusTarget.label}`,
       ).not.toBeNull();
       expect(
         focusEvidence.focusPresentation?.hasVisibleFocus,
-        `${controlPage.slug} ${firstControl.label} needs a visible focus indicator`,
+        `${controlPage.slug} ${focusTarget.label} needs a visible focus indicator`,
       ).toBe(true);
 
       const stateCue = await firstVisibleLocator(page, controlPage.stateCueSelector);

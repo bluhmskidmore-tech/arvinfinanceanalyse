@@ -1857,7 +1857,7 @@ export function BondAnalyticsInstitutionalCockpit({
                 <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
                 <span>信用占比 {creditWeightDisplay}</span>
               </div>
-              <div className={styles.heroGovernanceStatus}>
+              <div className={styles.heroGovernanceStatus} data-testid="bond-analysis-daily-judgment-status">
                 <span>
                   报告日 {topbarReportStatus} · {topbarReportDate}
                 </span>
@@ -1876,7 +1876,7 @@ export function BondAnalyticsInstitutionalCockpit({
               </div>
             </div>
             {decisionRail && onOpenModuleDetail ? (
-              <aside data-testid="bond-analysis-decision-rail-shell">
+              <aside>
                 <BondAnalyticsDecisionRail
                   activeModuleContext={decisionRail.activeModuleContext}
                   activeReadinessItem={decisionRail.activeReadinessItem}
