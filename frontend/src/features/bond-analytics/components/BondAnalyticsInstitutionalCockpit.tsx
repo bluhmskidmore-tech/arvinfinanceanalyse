@@ -1845,7 +1845,7 @@ export function BondAnalyticsInstitutionalCockpit({
               </div>
             </div>
           </div>
-          <div className={styles.heroAside}>
+          <div className={styles.heroAside} data-testid="bond-analysis-hero-aside">
             <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
               <div className={styles.heroGovernanceLead}>
                 <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
@@ -1875,19 +1875,18 @@ export function BondAnalyticsInstitutionalCockpit({
                 ))}
               </div>
             </div>
+            {decisionRail && onOpenModuleDetail ? (
+              <aside data-testid="bond-analysis-decision-rail-shell">
+                <BondAnalyticsDecisionRail
+                  activeModuleContext={decisionRail.activeModuleContext}
+                  activeReadinessItem={decisionRail.activeReadinessItem}
+                  watchlistItems={decisionRail.watchlistItems}
+                  onOpenModuleDetail={onOpenModuleDetail}
+                />
+              </aside>
+            ) : null}
           </div>
         </section>
-
-        {decisionRail && onOpenModuleDetail ? (
-          <aside data-testid="bond-analysis-hero-aside">
-            <BondAnalyticsDecisionRail
-              activeModuleContext={decisionRail.activeModuleContext}
-              activeReadinessItem={decisionRail.activeReadinessItem}
-              watchlistItems={decisionRail.watchlistItems}
-              onOpenModuleDetail={onOpenModuleDetail}
-            />
-          </aside>
-        ) : null}
 
         <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
 

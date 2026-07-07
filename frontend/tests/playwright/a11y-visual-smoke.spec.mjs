@@ -330,10 +330,6 @@ const gateHControlContextPages = [
     readySelector: '[data-testid="bond-analysis-overview"]',
     controls: [
       {
-        label: "report date selector",
-        selector: '[data-testid="bond-analysis-overview"] select[aria-label="报告日"]',
-      },
-      {
         label: "decision next action",
         selector: '[data-testid="bond-analysis-decision-next-action"]',
       },
@@ -341,9 +337,12 @@ const gateHControlContextPages = [
         label: "detail disclosure",
         selector: '[data-testid="bond-analysis-detail-drilldown"] summary',
       },
+      {
+        label: "report date selector",
+        selector: '[data-testid="bond-analysis-overview"] select[aria-label="报告日"]',
+      },
     ],
-    stateCueSelector:
-      '[data-testid="bond-analysis-decision-trust"], [data-testid="bond-analysis-cockpit-conclusion"]',
+    stateCueSelector: '[data-testid="bond-analysis-daily-judgment"]',
   },
 ];
 
