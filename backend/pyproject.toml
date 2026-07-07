@@ -17,6 +17,7 @@ dependencies = [
   "redis>=6,<7",
   "dramatiq>=1.17,<2",
   "minio>=7.2,<8",
+  "numpy>=1.26,<3",
   "openpyxl>=3.1,<4",
   "xlrd>=2.0,<3",
 ]
