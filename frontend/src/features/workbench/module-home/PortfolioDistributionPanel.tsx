@@ -8,6 +8,7 @@ import {
   PORTFOLIO_DIST_CHART_COLORS,
 } from "./portfolioDistributionChart";
 import type { ModuleHomeDistributionPanel, ModuleHomeDistributionRow, ModuleHomeTone } from "./moduleHomeModel";
+import { useDeferredChartMount } from "./useDeferredChartMount";
 import styles from "./portfolioHome.module.css";
 
 const CHART_COLORS = PORTFOLIO_DIST_CHART_COLORS;
@@ -45,6 +46,7 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
   const rows = sortedRows(panel.rows);
   const hasData = rows.length > 0;
   const leader = topRow(rows);
+  const { containerRef, ready, onChartReady } = useDeferredChartMount<HTMLDivElement>();
 
   return (
     <article
@@ -79,14 +81,17 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
 
       {hasData ? (
         <div className={styles.distBody}>
-          <div className={styles.distChartCol}>
-            <ReactECharts
-              option={buildPortfolioPieOption(rows)}
-              opts={{ renderer: "canvas" }}
-              notMerge
-              lazyUpdate
-              style={{ height: "var(--dist-chart-height, 188px)", width: "100%" }}
-            />
+          <div className={styles.distChartCol} ref={containerRef}>
+            {ready ? (
+              <ReactECharts
+                option={buildPortfolioPieOption(rows)}
+                opts={{ renderer: "canvas" }}
+                notMerge
+                lazyUpdate
+                style={{ height: "var(--dist-chart-height, 188px)", width: "100%" }}
+                onChartReady={onChartReady}
+              />
+            ) : null}
             <div className={styles.distChartCenter} aria-hidden="true">
               <span>{panel.totalDisplay ? "合计" : "Top1"}</span>
               <strong>{panel.totalDisplay ?? (leader ? leader.share : "—")}</strong>

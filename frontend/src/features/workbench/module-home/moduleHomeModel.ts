@@ -511,7 +511,31 @@ function marketDataMeta(
 ) {
   const date =
     meta?.as_of_date ?? meta?.resolved_report_date ?? meta?.fallback_date ?? fallbackDate ?? "-";
-  return `来源 ${source} · ${date}`;
+  const dateIsFallback = Boolean(
+    meta && !meta.as_of_date && !meta.resolved_report_date && meta.fallback_date,
+  );
+  const isFallback = Boolean(meta?.fallback_mode && meta.fallback_mode !== "none") || dateIsFallback;
+  const isStale = meta?.quality_flag === "stale";
+  const markers = [isStale ? "[stale]" : null, isFallback ? "[fallback]" : null].filter(
+    (marker): marker is string => Boolean(marker),
+  );
+  return markers.length > 0 ? `来源 ${source} · ${date} ${markers.join(" ")}` : `来源 ${source} · ${date}`;
+}
+
+/**
+ * 市场首页专用：query 已失败且无历史缓存数据时，KPI 需要显示"—"+error，
+ * 不能与"接口成功但真实返回 0 条"混淆展示为裸数字 "0"。
+ */
+function marketSeriesCountKpiFields(
+  query: UseQueryResult<unknown> | undefined,
+  count: number,
+  detail: string,
+  failedDetail: string,
+): Pick<ModuleHomeKpi, "value" | "tone" | "detail"> {
+  if (query?.isError && query.data === undefined) {
+    return { value: "—", tone: "error", detail: failedDetail };
+  }
+  return { value: `${count}`, tone: count > 0 ? "ok" : "watch", detail };
 }
 
 /** Home depth zone: keep source labels, drop YYYY-MM-DD segments from panel meta. */
@@ -1202,6 +1226,21 @@ function portfolioDataNote(queries: ModuleHomeSourceQueries): ModuleHomeDataNote
     metaEvidenceLine("债券总览", queries.bondHeadline?.data?.result_meta),
     metaEvidenceLine("资产负债", queries.balanceOverview?.data?.result_meta),
     metaEvidenceLine("损益归因", queries.pnlSummary?.data?.result_meta),
+  ].filter((line): line is string => Boolean(line));
+
+  return {
+    ...base,
+    lines: [...base.lines, ...evidenceLines],
+  };
+}
+
+function marketDataNote(queries: ModuleHomeSourceQueries): ModuleHomeDataNote {
+  const base = baseDataNote("market", queries);
+  const evidenceLines = [
+    metaEvidenceLine("Choice最新", queries.choiceLatest?.data?.result_meta),
+    metaEvidenceLine("市场利率", queries.marketRates?.data?.result_meta),
+    metaEvidenceLine("数据目录", queries.marketCatalog?.data?.result_meta),
+    metaEvidenceLine("宏观工具", queries.macroToolkitAnalysis?.data?.result_meta),
   ].filter((line): line is string => Boolean(line));
 
   return {
@@ -3116,9 +3155,12 @@ function marketView(
       {
         key: "macro-series",
         label: "最新行情",
-        value: `${latestSeries.length}`,
-        detail: "Choice latest series 数量。",
-        tone: latestSeries.length > 0 ? "ok" : "watch",
+        ...marketSeriesCountKpiFields(
+          queries.choiceLatest,
+          latestSeries.length,
+          "Choice latest series 数量。",
+          "Choice latest 读取失败，不使用前端补数。",
+        ),
       },
       {
         key: "ten-year-rate",
@@ -3130,16 +3172,22 @@ function marketView(
       {
         key: "rate-series",
         label: "正式利率",
-        value: `${rateSeries.length}`,
-        detail: `market-data rates，${envelopeMeta(queries.marketRates)}`,
-        tone: rateSeries.length > 0 ? "ok" : "watch",
+        ...marketSeriesCountKpiFields(
+          queries.marketRates,
+          rateSeries.length,
+          `market-data rates，${envelopeMeta(queries.marketRates)}`,
+          "market-data rates 读取失败，不使用前端补数。",
+        ),
       },
       {
         key: "catalog-series",
         label: "目录序列",
-        value: `${catalogSeries.length}`,
-        detail: "market data catalog 已注册序列数。",
-        tone: catalogSeries.length > 0 ? "ok" : "watch",
+        ...marketSeriesCountKpiFields(
+          queries.marketCatalog,
+          catalogSeries.length,
+          "market data catalog 已注册序列数。",
+          "market data catalog 读取失败，不使用前端补数。",
+        ),
       },
       ...(macroAnalysis
         ? [
@@ -3258,7 +3306,7 @@ function marketView(
     ],
     marketCrisisExplain: buildMarketCrisisExplain(macroAnalysis),
     marketDeskIntel: buildMarketDeskIntel(macroAnalysis),
-    dataNote: baseDataNote("market", queries),
+    dataNote: marketDataNote(queries),
   };
 }
 

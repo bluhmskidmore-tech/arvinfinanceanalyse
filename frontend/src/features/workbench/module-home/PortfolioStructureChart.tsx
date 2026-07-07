@@ -2,6 +2,7 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import { ibTokens } from "../../../theme/designSystem";
 import type { ModuleHomeDetailChart } from "./moduleHomeModel";
+import { useDeferredChartMount } from "./useDeferredChartMount";
 import styles from "./portfolioHome.module.css";
 
 type PortfolioStructureChartProps = {
@@ -26,6 +27,8 @@ function formatTooltipValue(value: number, unit: string) {
 }
 
 export function PortfolioStructureChart({ chart, height, hideTitle = false }: PortfolioStructureChartProps) {
+  const { containerRef, ready, onChartReady } = useDeferredChartMount<HTMLDivElement>();
+
   if (chart.categories.length === 0 || chart.values.length === 0) {
     return (
       <div className={styles.structureChartEmpty} data-testid="module-home-structure-chart">
@@ -138,9 +141,17 @@ export function PortfolioStructureChart({ chart, height, hideTitle = false }: Po
       };
 
   return (
-    <div className={styles.structureChartWrap} data-testid="module-home-structure-chart">
+    <div className={styles.structureChartWrap} ref={containerRef} data-testid="module-home-structure-chart">
       {hideTitle ? null : <div className={styles.structureChartTitle}>{chart.title}</div>}
-      <ReactECharts option={option} style={{ height: height ?? (horizontal ? 280 : 260), width: "100%" }} notMerge lazyUpdate />
+      {ready ? (
+        <ReactECharts
+          option={option}
+          style={{ height: height ?? (horizontal ? 280 : 260), width: "100%" }}
+          notMerge
+          lazyUpdate
+          onChartReady={onChartReady}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
+import type { ChoiceMacroRefreshPayload } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
 import {
   buildModuleHomeView,
@@ -10,6 +11,7 @@ import {
 import { moduleWorkbenchHomeConfigs } from "./moduleHomeConfig";
 import MarketHomeLayout from "./MarketHomeLayout";
 import { useMarketHomeQueries } from "./useMarketHomeQueries";
+import { refetchAfterMarketRefresh } from "./marketHomeRefresh";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
 
 function latestTradeDateFromSeries(series: Array<{ trade_date?: string | null }>) {
@@ -33,13 +35,9 @@ function panelByKey(panels: ModuleHomeDetailPanel[] | undefined, key: string) {
 
 const CHOICE_MACRO_REFRESH_RESOURCE = "macro_vendor.choice_series";
 const CHOICE_MACRO_REFRESH_PERMISSION = `${CHOICE_MACRO_REFRESH_RESOURCE}:refresh`;
-const MARKET_REFRESH_TERMINAL_STATUSES = new Set(["completed", "partial", "failed"]);
-const MARKET_REFRESH_ACCEPTED_STATUSES = new Set(["completed", "partial"]);
-
-type RefreshableMarketHomeQuery = {
-  fetchStatus?: "fetching" | "paused" | "idle";
-  refetch: () => Promise<unknown>;
-};
+const MARKET_REFRESH_TERMINAL_STATUSES = new Set(["completed", "partial", "degraded", "failed"]);
+const MARKET_REFRESH_ACCEPTED_STATUSES = new Set(["completed", "partial", "degraded"]);
+const MARKET_REFRESH_FAILED_DATA_NOTICE = "当前展示的仍是上次成功刷新的数据。";
 
 function formatChoiceMacroRefreshError(error: unknown) {
   const message =
@@ -50,9 +48,18 @@ function formatChoiceMacroRefreshError(error: unknown) {
   return message || "刷新市场数据失败";
 }
 
-export async function refetchAfterMarketRefresh(query: RefreshableMarketHomeQuery | undefined) {
-  if (!query) return;
-  await query.refetch();
+function formatDegradedRefreshStatus(payload: ChoiceMacroRefreshPayload) {
+  const warningText =
+    payload.warnings?.filter((item) => item.trim().length > 0).join("；") ||
+    payload.warning_code ||
+    "数据质量异常";
+  return `刷新完成，但存在质量告警：${warningText}。数据已更新，请注意核对相关序列。`;
+}
+
+function appendFailedDataNotice(message: string) {
+  const trimmed = message.trimEnd();
+  const needsSeparator = trimmed.length > 0 && !/[。！？；]$/.test(trimmed);
+  return `${trimmed}${needsSeparator ? "。" : ""}${MARKET_REFRESH_FAILED_DATA_NOTICE}`;
 }
 
 export default function MarketHomePage() {
@@ -94,13 +101,17 @@ export default function MarketHomePage() {
         refetchAfterMarketRefresh(queries.macroToolkitStrategySummaries),
         refetchAfterMarketRefresh(queries.newsEvents),
       ]);
-      setRefreshStatus(
-        payload.status === "partial"
-          ? "Choice refresh failed; Tushare/public backup refreshed, and market home data was reloaded."
-          : "刷新完成，已重新读取市场首页数据。",
-      );
+      if (payload.status === "partial") {
+        setRefreshStatus(
+          "Choice 刷新失败，已使用 Tushare/公开备份源刷新并重新读取市场首页数据；部分序列来自备份口径，请注意核对。",
+        );
+      } else if (payload.status === "degraded") {
+        setRefreshStatus(formatDegradedRefreshStatus(payload));
+      } else {
+        setRefreshStatus("刷新完成，已重新读取市场首页数据。");
+      }
     } catch (err) {
-      setRefreshError(formatChoiceMacroRefreshError(err));
+      setRefreshError(appendFailedDataNotice(formatChoiceMacroRefreshError(err)));
       setRefreshStatus("");
     } finally {
       setIsRefreshing(false);

@@ -809,6 +809,118 @@ def test_choice_macro_refresh_invalidates_cached_latest_payload(monkeypatch):
     route_module.market_home_response_cache.invalidate()
 
 
+def test_choice_macro_refresh_invalidates_cache_when_choice_status_is_degraded(monkeypatch):
+    """Choice macro refresh that lands data but reports a non-fatal warning returns
+    status="degraded" (see backend/app/tasks/choice_macro.py). The refreshed data is
+    already committed to DuckDB, so the response cache must still be invalidated;
+    otherwise the market-home page keeps serving pre-refresh cached data for up to
+    the cache TTL after the user explicitly triggers a refresh.
+    """
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    route_module.market_home_response_cache.invalidate()
+    build_calls: list[object] = []
+
+    def _latest_envelope(_duckdb_path: object, *, category: object | None = None) -> dict[str, object]:
+        build_calls.append(category)
+        return {
+            "result_meta": {"result_kind": "macro.choice.latest"},
+            "result": {"series": [{"series_id": f"series-{len(build_calls)}"}]},
+        }
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            return {
+                "status": "degraded",
+                "run_id": f"choice-refresh-{backfill_days}",
+                "quality_flag": "warning",
+                "warning_code": "gate_supplement_failed",
+                "warnings": [{"code": "gate_supplement_failed", "message": "livermore gate supplement failed"}],
+            }
+
+    # Public backup refresh is deliberately NOT "completed"/"partial" here so the
+    # invalidation decision is isolated to the choice payload's "degraded" status
+    # instead of being masked by the public backup also counting as a success.
+    monkeypatch.setattr(route_module, "choice_macro_latest_envelope", _latest_envelope)
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", lambda: {"status": "skipped"})
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    auth = _macro_vendor_read_auth(route_module)
+    first = route_module.choice_series_latest(auth=auth)
+    second = route_module.choice_series_latest(auth=auth)
+    route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=3)
+    third = route_module.choice_series_latest(auth=auth)
+
+    assert first["result"]["series"][0]["series_id"] == "series-1"
+    assert second["result"]["series"][0]["series_id"] == "series-1"
+    assert third["result"]["series"][0]["series_id"] == "series-2"
+    route_module.market_home_response_cache.invalidate()
+
+
+def test_choice_macro_refresh_preserves_degraded_status_and_quality_fields(monkeypatch):
+    """The merged refresh response must pass the choice payload's degraded status,
+    quality_flag and warning_code through unchanged (not silently promoted to
+    "completed"), and must keep the underlying warning detail reachable so callers
+    can surface the quality issue instead of assuming a clean refresh.
+    """
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            return {
+                "status": "degraded",
+                "run_id": "choice_macro_refresh:test",
+                "series_count": 2,
+                "vendor_version": "vv_choice",
+                "source_version": "sv_choice",
+                "cache_key": "macro.choice.latest",
+                "quality_flag": "warning",
+                "warning_code": "gate_supplement_failed",
+                "warnings": [{"code": "gate_supplement_failed", "message": "livermore gate supplement failed"}],
+            }
+
+    def _public_refresh() -> dict[str, object]:
+        return {"status": "completed", "run_id": "public_cross_asset_refresh:test", "series_count": 3}
+
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=7)
+
+    assert payload["status"] == "degraded"
+    assert payload["quality_flag"] == "warning"
+    assert payload["warning_code"] == "gate_supplement_failed"
+    assert payload["choice_macro"]["status"] == "degraded"
+    assert payload["choice_macro"]["warnings"] == [
+        {"code": "gate_supplement_failed", "message": "livermore gate supplement failed"}
+    ]
+    assert payload["warnings"] == ["gate_supplement_failed: livermore gate supplement failed"]
+
+
+def test_refresh_payload_succeeded_treats_degraded_as_success():
+    """degraded means the refresh wrote fresh data to DuckDB but surfaced a
+    non-fatal warning; it must count as a successful refresh for cache
+    invalidation purposes, same as completed/partial.
+    """
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    assert route_module._refresh_payload_succeeded({"status": "degraded"}) is True
+    assert route_module._refresh_payload_succeeded({"status": "failed"}, None, {"status": "degraded"}) is True
+    assert route_module._refresh_payload_succeeded({"status": "failed"}) is False
+
+
 def test_choice_macro_refresh_keeps_auth_dependency_contract():
     route_module = load_module(
         "backend.app.api.routes.macro_vendor",

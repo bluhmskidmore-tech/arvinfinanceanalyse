@@ -1183,6 +1183,8 @@ export type ChoiceMacroRefreshPayload = {
   source_version?: string;
   cache_key?: string;
   warnings?: string[];
+  warning_code?: string;
+  quality_flag?: string;
   choice_macro?: ChoiceMacroRefreshPayload;
   public_cross_asset?: ChoiceMacroRefreshPayload;
   tushare_ncd_shibor?: ChoiceMacroRefreshPayload;

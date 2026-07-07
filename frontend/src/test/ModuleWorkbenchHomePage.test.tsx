@@ -26,7 +26,7 @@ import { PortfolioDistributionPanel } from "../features/workbench/module-home/Po
 import { PORTFOLIO_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/portfolioModuleDrilldowns";
 import { MARKET_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/marketModuleDrilldowns";
 import { MARKET_HOME_CRISIS_SCORE_HISTORY_LIMIT } from "../features/workbench/module-home/useMarketHomeQueries";
-import { refetchAfterMarketRefresh } from "../features/workbench/module-home/MarketHomePage";
+import { refetchAfterMarketRefresh } from "../features/workbench/module-home/marketHomeRefresh";
 import { formatRawAsNumeric } from "../utils/format";
 
 vi.mock("../lib/echarts", () => ({
@@ -2008,6 +2008,24 @@ describe("MarketHomePage", () => {
     renderAt("/market-overview", client);
 
     const page = await screen.findByTestId("module-workbench-home");
+    // TanStack Query's refetch() joins the in-flight promise instead of calling
+    // queryFn again while a query's first fetch hasn't resolved yet (state.data
+    // is still undefined). Wait for the mount-time fetches to settle before
+    // capturing "before" counts, otherwise this races the initial load and the
+    // refresh-triggered refetch below can be silently swallowed.
+    await waitFor(() => {
+      expect(getMarketDataRates.mock.calls.length).toBeGreaterThan(0);
+      expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThan(0);
+      expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThan(0);
+      expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThan(0);
+    });
+    await Promise.all([
+      getMarketDataRates.mock.results[0].value,
+      getMarketDataCatalog.mock.results[0].value,
+      getMacroToolkitAnalysis.mock.results[0].value,
+      getChoiceNewsEvents.mock.results[0].value,
+    ]);
+
     const marketRatesCallsBeforeRefresh = getMarketDataRates.mock.calls.length;
     const marketCatalogCallsBeforeRefresh = getMarketDataCatalog.mock.calls.length;
     const macroToolkitAnalysisCallsBeforeRefresh = getMacroToolkitAnalysis.mock.calls.length;
@@ -2020,7 +2038,76 @@ describe("MarketHomePage", () => {
     expect(getChoiceMacroRefreshStatus).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(within(page).getByTestId("module-home-market-refresh-feedback")).toHaveTextContent(
-        "Tushare/public backup refreshed",
+        "已使用 Tushare/公开备份源刷新并重新读取市场首页数据；部分序列来自备份口径，请注意核对。",
+      );
+    });
+    await waitFor(() => {
+      expect(getMarketDataRates.mock.calls.length).toBeGreaterThan(marketRatesCallsBeforeRefresh);
+      expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThan(marketCatalogCallsBeforeRefresh);
+      expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThan(macroToolkitAnalysisCallsBeforeRefresh);
+      expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThan(newsEventsCallsBeforeRefresh);
+    });
+  });
+
+  it("treats degraded market refresh as accepted and surfaces the quality warning in Chinese", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const refreshChoiceMacro = vi.fn(async () => ({
+      status: "degraded",
+      run_id: "market-home-refresh:degraded",
+      quality_flag: "warning",
+      warning_code: "gate_supplement_failed",
+      warnings: ["gate_supplement_failed: livermore gate supplement refresh failed"],
+    }));
+    const getChoiceMacroRefreshStatus = vi.fn(() => base.getChoiceMacroRefreshStatus("market-home-refresh:degraded"));
+    const getChoiceMacroLatest = vi.fn(() => base.getChoiceMacroLatest());
+    const getMarketDataRates = vi.fn(() => base.getMarketDataRates());
+    const getMarketDataCatalog = vi.fn(() => base.getMarketDataCatalog());
+    const getMacroToolkitAnalysis = vi.fn(() => base.getMacroToolkitAnalysis({ detail: "full" }));
+    const getChoiceNewsEvents = vi.fn(() => base.getChoiceNewsEvents({ limit: 3, offset: 0 }));
+    const client: ApiClient = {
+      ...base,
+      refreshChoiceMacro,
+      getChoiceMacroRefreshStatus,
+      getChoiceMacroLatest,
+      getMarketDataRates,
+      getMarketDataCatalog,
+      getMacroToolkitAnalysis,
+      getChoiceNewsEvents,
+    };
+
+    renderAt("/market-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    // Mirror the partial-refresh test above: wait for the mount-time fetches to
+    // settle before capturing "before" counts, otherwise this races the initial
+    // load and the refresh-triggered refetch below can be silently swallowed.
+    await waitFor(() => {
+      expect(getMarketDataRates.mock.calls.length).toBeGreaterThan(0);
+      expect(getMarketDataCatalog.mock.calls.length).toBeGreaterThan(0);
+      expect(getMacroToolkitAnalysis.mock.calls.length).toBeGreaterThan(0);
+      expect(getChoiceNewsEvents.mock.calls.length).toBeGreaterThan(0);
+    });
+    await Promise.all([
+      getMarketDataRates.mock.results[0].value,
+      getMarketDataCatalog.mock.results[0].value,
+      getMacroToolkitAnalysis.mock.results[0].value,
+      getChoiceNewsEvents.mock.results[0].value,
+    ]);
+
+    const marketRatesCallsBeforeRefresh = getMarketDataRates.mock.calls.length;
+    const marketCatalogCallsBeforeRefresh = getMarketDataCatalog.mock.calls.length;
+    const macroToolkitAnalysisCallsBeforeRefresh = getMacroToolkitAnalysis.mock.calls.length;
+    const newsEventsCallsBeforeRefresh = getChoiceNewsEvents.mock.calls.length;
+    await user.click(within(page).getByTestId("module-home-market-refresh-button"));
+
+    await waitFor(() => {
+      expect(refreshChoiceMacro).toHaveBeenCalledWith(30);
+    });
+    expect(getChoiceMacroRefreshStatus).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(within(page).getByTestId("module-home-market-refresh-feedback")).toHaveTextContent(
+        "刷新完成，但存在质量告警：gate_supplement_failed: livermore gate supplement refresh failed。数据已更新，请注意核对相关序列。",
       );
     });
     await waitFor(() => {

@@ -5,7 +5,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 
 import type { ApiEnvelope, ResultMeta } from "../api/contracts";
 import { buildMarketCrisisExplain, buildMarketDeskIntel, buildModuleHomeView, formatPanelMetaForHome } from "../features/workbench/module-home/moduleHomeModel";
-import { buildActionQueue } from "../features/workbench/module-home/MarketActionQueue";
+import { buildActionQueue } from "../features/workbench/module-home/marketActionQueueModel";
 import { formatRawAsNumeric } from "../utils/format";
 
 function meta(overrides: Partial<ResultMeta> = {}): ResultMeta {
@@ -654,6 +654,144 @@ describe("ModuleWorkbenchHome model", () => {
       "2026-05-31",
     );
     expect(view.kpis.find((item) => item.key === "rate-series")?.tone).toBe("watch");
+  });
+
+  it("shows a failed-state KPI (— / error) instead of a misleading zero when market series queries error without cached data", () => {
+    const view = buildModuleHomeView(
+      "market",
+      { mode: "real" },
+      {
+        choiceLatest: query({ error: true }),
+        marketRates: query({ error: true }),
+        marketCatalog: query({ error: true }),
+      },
+    );
+
+    for (const key of ["macro-series", "rate-series", "catalog-series"]) {
+      const kpi = view.kpis.find((item) => item.key === key);
+      expect(kpi?.value).toBe("—");
+      expect(kpi?.tone).toBe("error");
+    }
+  });
+
+  it("keeps the zero-value watch KPI when a market series query succeeds with an empty payload", () => {
+    const view = buildModuleHomeView(
+      "market",
+      { mode: "real" },
+      {
+        choiceLatest: query({ data: envelope({ read_target: "duckdb", series: [] }) }),
+        marketRates: query({ data: envelope({ read_target: "duckdb", series: [] }) }),
+        marketCatalog: query({ data: envelope({ read_target: "duckdb", series: [] }) }),
+      },
+    );
+
+    for (const key of ["macro-series", "rate-series", "catalog-series"]) {
+      const kpi = view.kpis.find((item) => item.key === key);
+      expect(kpi?.value).toBe("0");
+      expect(kpi?.tone).toBe("watch");
+    }
+  });
+
+  it("marks market detail panel meta with [fallback] when fallback_mode is not none", () => {
+    const view = buildModuleHomeView(
+      "market",
+      { mode: "real" },
+      {
+        marketRates: query({
+          data: envelope(
+            { read_target: "duckdb", series: [] },
+            { fallback_mode: "latest_snapshot", fallback_date: "2026-05-31" },
+          ),
+        }),
+      },
+    );
+
+    const panel = view.detailPanels?.find((item) => item.key === "formal-rate-series");
+    expect(panel?.meta).toContain("[fallback]");
+    expect(panel?.meta).not.toContain("[stale]");
+  });
+
+  it("marks market detail panel meta with [stale] when quality_flag is stale", () => {
+    const view = buildModuleHomeView(
+      "market",
+      { mode: "real" },
+      {
+        marketRates: query({
+          data: envelope(
+            { read_target: "duckdb", series: [] },
+            { quality_flag: "stale", as_of_date: "2026-05-31" },
+          ),
+        }),
+      },
+    );
+
+    const panel = view.detailPanels?.find((item) => item.key === "formal-rate-series");
+    expect(panel?.meta).toContain("[stale]");
+    expect(panel?.meta).not.toContain("[fallback]");
+  });
+
+  it("marks market detail panel meta with [fallback] when the displayed date is sourced from fallback_date", () => {
+    const view = buildModuleHomeView(
+      "market",
+      { mode: "real" },
+      {
+        marketRates: query({
+          data: envelope(
+            { read_target: "duckdb", series: [] },
+            { as_of_date: null, resolved_report_date: null, fallback_date: "2026-05-20" },
+          ),
+        }),
+      },
+    );
+
+    const panel = view.detailPanels?.find((item) => item.key === "formal-rate-series");
+    expect(panel?.meta).toContain("2026-05-20");
+    expect(panel?.meta).toContain("[fallback]");
+  });
+
+  it("appends per-source evidence lines to the market home data note", () => {
+    const view = buildModuleHomeView(
+      "market",
+      { mode: "real" },
+      {
+        choiceLatest: query({ data: envelope({ read_target: "duckdb", series: [] }) }),
+        marketRates: query({ data: envelope({ read_target: "duckdb", series: [] }) }),
+        marketCatalog: query({ data: envelope({ read_target: "duckdb", series: [] }) }),
+        macroToolkitAnalysis: query({
+          data: envelope({
+            default_data_sources: ["choice"],
+            as_of_date: "2026-04-30",
+            conclusion: {
+              stance: "中性观察",
+              tone: "neutral",
+              summary: "summary",
+              recommended_action: "action",
+            },
+            coverage: {
+              indicator_count: 1,
+              hit_count: 1,
+              hit_rate: 1,
+              script_count: 1,
+              output_file_count: 0,
+            },
+            indicators: [],
+            signal_cards: [],
+            capability_results: [],
+            strategy_summaries: [],
+            output_files: [],
+            source_checks: [],
+            capabilities: [],
+            warnings: [],
+          }),
+        }),
+      },
+    );
+
+    const noteText = view.dataNote.lines.join(" ");
+    expect(noteText).toContain("Choice最新证据");
+    expect(noteText).toContain("市场利率证据");
+    expect(noteText).toContain("数据目录证据");
+    expect(noteText).toContain("宏观工具证据");
   });
 
   it("builds market key rate snapshots from existing market-data terminal specs", () => {

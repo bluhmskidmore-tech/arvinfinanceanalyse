@@ -217,7 +217,25 @@ def _run_tushare_ncd_shibor_refresh() -> dict[str, object]:
 
 
 def _refresh_payload_succeeded(*payloads: dict[str, object] | None) -> bool:
-    return any(str(payload.get("status") or "") in {"completed", "partial"} for payload in payloads if payload)
+    # "degraded" means data was written successfully but a non-fatal warning was
+    # raised (see backend/app/tasks/choice_macro.py); it must count as a success
+    # so the response cache is invalidated and the refreshed data is served.
+    return any(
+        str(payload.get("status") or "") in {"completed", "partial", "degraded"} for payload in payloads if payload
+    )
+
+
+def _format_refresh_warning(item: object) -> str:
+    # Task-level warnings (backend/app/tasks/choice_macro.py) are structured
+    # {"code", "message"} dicts; flatten them to "code: message" instead of the
+    # raw dict repr so the merged top-level warnings list is display-ready.
+    if isinstance(item, dict):
+        code = str(item.get("code") or "").strip()
+        message = str(item.get("message") or "").strip()
+        if code and message:
+            return f"{code}: {message}"
+        return code or message
+    return str(item).strip()
 
 
 def _merge_choice_and_public_refresh_payloads(
@@ -232,7 +250,9 @@ def _merge_choice_and_public_refresh_payloads(
     for payload in (choice_payload, *backup_payloads):
         payload_warnings = payload.get("warnings")
         if isinstance(payload_warnings, list):
-            warnings.extend(str(item) for item in payload_warnings if str(item).strip())
+            warnings.extend(
+                text for text in (_format_refresh_warning(item) for item in payload_warnings) if text
+            )
 
     result = {
         **choice_payload,
