@@ -58,7 +58,7 @@ export function StockAnalysisDeepZoneHeader({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">供数闭环</h2>
         <p
-          className={`px-3 py-1 text-sm rounded-full font-medium border ${getSummaryToneClasses(gateSummary.tone)}`}
+          className={`stock-analysis-page__deep-zone-gate-summary px-3 py-1 text-sm rounded-full font-medium border ${getSummaryToneClasses(gateSummary.tone)}`}
           data-testid="stock-analysis-deep-zone-gate-summary"
           data-tone={gateSummary.tone}
         >
@@ -70,11 +70,11 @@ export function StockAnalysisDeepZoneHeader({
           <span>供数 / 回放 / 候选 / 事件明细</span>
           <small>{auditRows.map((row) => `${row.label} ${row.value}`).join(" · ")}</small>
         </summary>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="stock-analysis-deep-zone-audit-strip">
+      <div className="stock-analysis-page__deep-zone-audit-strip grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="stock-analysis-deep-zone-audit-strip">
         {auditRows.map((row) => (
           <div
             key={row.key}
-            className={`flex flex-col gap-1 p-4 rounded-lg border ${getAuditItemClasses(row.tone)}`}
+            className={`stock-analysis-page__deep-zone-audit-item flex flex-col gap-1 p-4 rounded-lg border ${getAuditItemClasses(row.tone)}`}
             data-tone={row.tone}
           >
             <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 mb-1">
@@ -86,7 +86,7 @@ export function StockAnalysisDeepZoneHeader({
         ))}
       </div>
       <div
-        className="flex flex-wrap items-center gap-4 pt-4 border-t border-zinc-100 dark:border-zinc-800/50"
+        className="stock-analysis-page__deep-zone-status-flow flex flex-wrap items-center gap-4 pt-4 border-t border-zinc-100 dark:border-zinc-800/50"
         data-testid="stock-analysis-deep-zone-status-flow"
         aria-label="状态口径"
       >
