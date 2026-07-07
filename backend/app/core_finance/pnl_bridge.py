@@ -12,7 +12,17 @@ from backend.app.core_finance.bond_analytics.common import (
     estimate_duration,
     estimate_modified_duration,
     infer_curve_type,
-    interpolate_rate,
+)
+from backend.app.core_finance.curve_engine.curve_types import (
+    CurvePoint,
+    FittedCurve,
+    InterpolationMethod,
+)
+from backend.app.core_finance.curve_engine.interpolation import (
+    build_cubic_spline as _build_cubic_spline,
+)
+from backend.app.core_finance.curve_engine.interpolation import (
+    interpolate as _interpolate_fitted_curve,
 )
 
 ZERO = Decimal("0")
@@ -54,6 +64,49 @@ class _ResolvedBalanceRow:
     match_level: str = "missing"
 
 
+_CurveCacheKey = tuple[tuple[str, Decimal], ...]
+
+
+class _CurveRateLookup:
+    """Per-build cache of fitted curve interpolation inputs.
+
+    Mirrors the ``_CurveRateLookup`` pattern in ``bond_analytics.read_models``: the
+    ``build_full_curve`` + ``build_curve_points`` + spline-fit pipeline is executed once
+    per distinct curve, then reused for every rate lookup within one bridge build.
+    The fitted-curve construction is step-for-step identical to
+    ``interpolate_rate(build_curve_points(build_full_curve(curve)), target_years)``.
+    """
+
+    def __init__(self) -> None:
+        self._fitted_curve_cache: dict[_CurveCacheKey, FittedCurve] = {}
+        self._curve_object_keys: dict[int, _CurveCacheKey] = {}
+
+    def _key(self, curve: dict[str, Decimal]) -> _CurveCacheKey:
+        object_id = id(curve)
+        cached = self._curve_object_keys.get(object_id)
+        if cached is None:
+            cached = tuple(
+                sorted((str(tenor), _coerce_decimal(rate)) for tenor, rate in curve.items())
+            )
+            self._curve_object_keys[object_id] = cached
+        return cached
+
+    def rate(self, curve: dict[str, Decimal], target_years: float) -> Decimal:
+        key = self._key(curve)
+        fitted = self._fitted_curve_cache.get(key)
+        if fitted is None:
+            points = tuple(
+                CurvePoint(years=years, rate=rate)
+                for years, rate in build_curve_points(build_full_curve(curve))
+            )
+            if len(points) >= 3:
+                fitted = _build_cubic_spline(list(points))
+            else:
+                fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=points)
+            self._fitted_curve_cache[key] = fitted
+        return _interpolate_fitted_curve(fitted, target_years)
+
+
 def build_pnl_bridge_rows(
     pnl_fi_rows: list[dict],
     balance_rows_current: list[dict],
@@ -71,6 +124,7 @@ def build_pnl_bridge_rows(
     current_exact, current_exact_without_basis, current_fallback = _index_balance_rows(balance_rows_current)
     prior_exact, prior_exact_without_basis, prior_fallback = _index_balance_rows(balance_rows_prior)
 
+    curve_lookup = _CurveRateLookup()
     rows: list[PnlBridgeRow] = []
     for raw_row in pnl_fi_rows:
         report_date = _coerce_date(raw_row["report_date"])
@@ -111,18 +165,38 @@ def build_pnl_bridge_rows(
         current_curve = cdb_curve_current if curve_type == "cdb" else treasury_curve_current
         prior_curve = cdb_curve_prior if curve_type == "cdb" else treasury_curve_prior
 
+        # roll_down / curve_shift / credit_spread all key off the current balance row's
+        # years-to-maturity and modified duration; compute them once per row instead of
+        # once per effect (all three effects require a current benchmark curve).
+        if current_balance is not None and current_curve:
+            years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
+            modified_duration = (
+                _modified_duration(report_date=report_date, row=current_balance)
+                if years_to_maturity > 0
+                else ZERO
+            )
+        else:
+            years_to_maturity = 0.0
+            modified_duration = ZERO
+
         carry = _coerce_decimal(raw_row.get("interest_income_514", ZERO))
         roll_down = _calculate_roll_down(
             report_date=report_date,
             current_balance=current_balance,
             prior_balance=prior_balance,
             curve=current_curve,
+            curve_lookup=curve_lookup,
+            years_to_maturity=years_to_maturity,
+            modified_duration=modified_duration,
         )
         treasury_curve = _calculate_curve_shift(
             report_date=report_date,
             current_balance=current_balance,
             current_curve=current_curve,
             prior_curve=prior_curve,
+            curve_lookup=curve_lookup,
+            years_to_maturity=years_to_maturity,
+            modified_duration=modified_duration,
         )
         credit_spread = _calculate_credit_spread_shift(
             report_date=report_date,
@@ -131,6 +205,9 @@ def build_pnl_bridge_rows(
             prior_curve=prior_curve,
             aaa_credit_curve_current=aaa_credit_curve_current,
             aaa_credit_curve_prior=aaa_credit_curve_prior,
+            curve_lookup=curve_lookup,
+            years_to_maturity=years_to_maturity,
+            modified_duration=modified_duration,
         )
         fx_translation = _calculate_fx_translation(
             currency_basis=currency_basis,
@@ -270,19 +347,25 @@ def _calculate_roll_down(
     current_balance: Mapping[str, object] | None,
     prior_balance: Mapping[str, object] | None,
     curve: dict[str, Decimal] | None,
+    curve_lookup: _CurveRateLookup | None = None,
+    years_to_maturity: float | None = None,
+    modified_duration: Decimal | None = None,
 ) -> Decimal:
     if current_balance is None or prior_balance is None or not curve:
         return ZERO
-    years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
+    if years_to_maturity is None:
+        years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
     if years_to_maturity <= 0:
         return ZERO
-    current_curve_rate = _curve_rate(curve, years_to_maturity)
+    lookup = curve_lookup or _CurveRateLookup()
+    current_curve_rate = _curve_rate(curve, years_to_maturity, curve_lookup=lookup)
     period_days = _period_days(current_balance=current_balance, prior_balance=prior_balance)
     if period_days <= 0:
         return ZERO
     rolled_years = max(0.0, years_to_maturity - (period_days / 365))
-    rolled_curve_rate = _curve_rate(curve, rolled_years)
-    modified_duration = _modified_duration(report_date=report_date, row=current_balance)
+    rolled_curve_rate = _curve_rate(curve, rolled_years, curve_lookup=lookup)
+    if modified_duration is None:
+        modified_duration = _modified_duration(report_date=report_date, row=current_balance)
     market_value = _curve_market_value(current_balance)
     if modified_duration == ZERO or market_value == ZERO:
         return ZERO
@@ -296,15 +379,21 @@ def _calculate_curve_shift(
     current_balance: Mapping[str, object] | None,
     current_curve: dict[str, Decimal] | None,
     prior_curve: dict[str, Decimal] | None,
+    curve_lookup: _CurveRateLookup | None = None,
+    years_to_maturity: float | None = None,
+    modified_duration: Decimal | None = None,
 ) -> Decimal:
     if current_balance is None or not current_curve or not prior_curve:
         return ZERO
-    years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
+    if years_to_maturity is None:
+        years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
     if years_to_maturity <= 0:
         return ZERO
-    current_curve_rate = _curve_rate(current_curve, years_to_maturity)
-    prior_curve_rate = _curve_rate(prior_curve, years_to_maturity)
-    modified_duration = _modified_duration(report_date=report_date, row=current_balance)
+    lookup = curve_lookup or _CurveRateLookup()
+    current_curve_rate = _curve_rate(current_curve, years_to_maturity, curve_lookup=lookup)
+    prior_curve_rate = _curve_rate(prior_curve, years_to_maturity, curve_lookup=lookup)
+    if modified_duration is None:
+        modified_duration = _modified_duration(report_date=report_date, row=current_balance)
     market_value = _curve_market_value(current_balance)
     if modified_duration == ZERO or market_value == ZERO:
         return ZERO
@@ -320,6 +409,9 @@ def _calculate_credit_spread_shift(
     prior_curve: dict[str, Decimal] | None,
     aaa_credit_curve_current: dict[str, Decimal] | None,
     aaa_credit_curve_prior: dict[str, Decimal] | None,
+    curve_lookup: _CurveRateLookup | None = None,
+    years_to_maturity: float | None = None,
+    modified_duration: Decimal | None = None,
 ) -> Decimal:
     """
     Credit PnL from change in (AAA enterprise curve − benchmark treasury/CDB curve) spread,
@@ -334,18 +426,21 @@ def _calculate_credit_spread_shift(
         or not aaa_credit_curve_prior
     ):
         return ZERO
-    years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
+    if years_to_maturity is None:
+        years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
     if years_to_maturity <= 0:
         return ZERO
+    lookup = curve_lookup or _CurveRateLookup()
     current_spread = (
-        _curve_rate(aaa_credit_curve_current, years_to_maturity)
-        - _curve_rate(current_curve, years_to_maturity)
+        _curve_rate(aaa_credit_curve_current, years_to_maturity, curve_lookup=lookup)
+        - _curve_rate(current_curve, years_to_maturity, curve_lookup=lookup)
     )
     prior_spread = (
-        _curve_rate(aaa_credit_curve_prior, years_to_maturity)
-        - _curve_rate(prior_curve, years_to_maturity)
+        _curve_rate(aaa_credit_curve_prior, years_to_maturity, curve_lookup=lookup)
+        - _curve_rate(prior_curve, years_to_maturity, curve_lookup=lookup)
     )
-    modified_duration = _modified_duration(report_date=report_date, row=current_balance)
+    if modified_duration is None:
+        modified_duration = _modified_duration(report_date=report_date, row=current_balance)
     market_value = _curve_market_value(current_balance)
     if modified_duration == ZERO or market_value == ZERO:
         return ZERO
@@ -408,14 +503,24 @@ def _fx_rate_missing_diagnostic(
     return None
 
 
-def _curve_rate(curve: dict[str, Decimal], target_years: float) -> Decimal:
+def _curve_rate(
+    curve: dict[str, Decimal],
+    target_years: float,
+    *,
+    curve_lookup: _CurveRateLookup | None = None,
+) -> Decimal:
     if not curve:
         return ZERO
-    points = build_curve_points(build_full_curve(curve))
-    return interpolate_rate(points, target_years)
+    lookup = curve_lookup or _CurveRateLookup()
+    return lookup.rate(curve, target_years)
 
 
 def _years_to_maturity(*, report_date: date, row: Mapping[str, object]) -> float:
+    # Prefer the bond-analytics materialized value when the balance row carries it;
+    # recompute from maturity_date only as fallback.
+    materialized = row.get("years_to_maturity")
+    if materialized not in (None, ""):
+        return float(_coerce_decimal(materialized))
     maturity_date = row.get("maturity_date")
     if maturity_date in (None, ""):
         return 0.0
@@ -437,6 +542,11 @@ def _period_days(
 
 
 def _modified_duration(*, report_date: date, row: Mapping[str, object]) -> Decimal:
+    # Prefer the bond-analytics materialized value when the balance row carries it;
+    # recompute via estimate_duration only as fallback.
+    materialized = row.get("modified_duration")
+    if materialized not in (None, ""):
+        return _coerce_decimal(materialized)
     maturity_date_value = row.get("maturity_date")
     if maturity_date_value in (None, ""):
         return ZERO
