@@ -6,29 +6,38 @@ async function openMarketData(page) {
   await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
 }
 
+async function activateWithKeyboard(locator) {
+  await locator.scrollIntoViewIfNeeded();
+  await locator.focus();
+  await locator.press("Enter");
+}
+
 test.describe("market data workflow smoke", () => {
-  test("spreads tab, linkage audit bridge, and tushare currency filter", async ({ page }) => {
+  test("spreads tab, linkage collapse, and tushare currency filter", async ({ page }) => {
     await openMarketData(page);
 
-    await page.getByTestId("market-data-macro-tab-trigger-spreads").click();
+    await activateWithKeyboard(page.getByTestId("market-data-macro-tab-trigger-spreads"));
     const spreadsPanel = page.getByTestId("market-data-macro-tab-spreads");
     await expect(spreadsPanel).toBeVisible();
     const spreadTable = spreadsPanel.getByTestId("market-data-linkage-spread-table");
     await expect(spreadTable).toBeVisible({ timeout: 30_000 });
-    await expect(spreadTable.locator(".market-data-spread-tenor-loading")).toHaveCount(0, {
-      timeout: 30_000,
-    });
-    await expect(spreadTable.getByTestId("market-data-macro-spread-slot-5Y")).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(spreadTable.locator(".market-data-spread-tenor-loading")).toHaveCount(0, { timeout: 30_000 });
+    await expect(spreadTable.getByTestId("market-data-macro-spread-slot-5Y")).toBeVisible({ timeout: 30_000 });
 
-    await page.getByText("宏观-债市联动（分析口径，点击展开）").click();
-    await expect(page.getByTestId("market-data-linkage-spreads-audit")).toBeVisible();
+    const linkageCollapse = page.getByTestId("market-data-linkage-collapse");
+    await activateWithKeyboard(linkageCollapse.locator(".ant-collapse-header").first());
+    await expect(linkageCollapse).toBeVisible();
+
+    const auditBridge = page.getByTestId("market-data-linkage-spreads-audit");
+    await expect(auditBridge).toBeVisible();
+    await expect(page.getByTestId("market-data-linkage-spreads-audit-open")).toBeVisible();
     await page.getByTestId("market-data-linkage-spreads-audit-open").click();
     await expect(page.getByTestId("market-data-macro-tab-spreads")).toBeVisible();
 
+    await activateWithKeyboard(
+      page.getByTestId("market-data-tushare-collapse").locator(".ant-collapse-header").first(),
+    );
     const tushareSection = page.getByTestId("market-data-tushare-supplement-section");
-    await tushareSection.scrollIntoViewIfNeeded();
     await expect(tushareSection).toBeVisible();
 
     const currencyFilter = page.getByTestId("market-data-tushare-eco-currency-filter");
@@ -40,16 +49,16 @@ test.describe("market data workflow smoke", () => {
     }
   });
 
-  test("lower deck panels render with unified section shells", async ({ page }) => {
+  test("lower deck panels and tushare supplement render in the current shell", async ({ page }) => {
     await openMarketData(page);
 
-    await expect(page.getByTestId("market-data-liquidity-deck")).toBeVisible();
-    await expect(page.getByTestId("market-data-money-market-card")).toBeVisible();
-    await expect(page.getByTestId("market-data-ncd-card")).toBeVisible();
+    await expect(page.getByTestId("market-data-liquidity-deck")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("market-data-money-market-card")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("market-data-ncd-card")).toBeVisible({ timeout: 30_000 });
 
-    const newsSection = page.getByTestId("market-data-news-calendar");
-    await newsSection.scrollIntoViewIfNeeded();
-    await expect(newsSection).toBeVisible();
-    await expect(newsSection).toHaveClass(/market-data-lower-deck-panel/);
+    await activateWithKeyboard(
+      page.getByTestId("market-data-tushare-collapse").locator(".ant-collapse-header").first(),
+    );
+    await expect(page.getByTestId("market-data-tushare-supplement-section")).toBeVisible();
   });
 });

@@ -873,6 +873,7 @@ export default function MarketDataPage() {
                 onChange={(e) => setWatchDate(e.target.value)}
                 className="market-data-hero-date-input"
                 data-testid="market-data-date-picker"
+                aria-label="市场数据观察日期"
               />
               <span className="market-data-hero-date-note">
                 {tickerStatusDate ? `数据日期 ${tickerStatusDate}` : ""}
@@ -911,6 +912,7 @@ export default function MarketDataPage() {
                 value={curveFilter}
                 onChange={setCurveFilter}
                 className="market-data-hero-select market-data-hero-select--curve"
+                aria-label="利率曲线筛选"
                 options={[
                   { value: "both", label: "国债+国开" },
                   { value: "treasury", label: "国债" },
@@ -923,6 +925,7 @@ export default function MarketDataPage() {
                 value={sourceFilter}
                 onChange={setSourceFilter}
                 className="market-data-hero-select market-data-hero-select--source"
+                aria-label="数据来源筛选"
                 options={[
                   { value: "all", label: "全部来源" },
                   { value: "choice", label: "Choice" },
