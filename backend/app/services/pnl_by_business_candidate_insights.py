@@ -26,11 +26,11 @@ import uuid
 from decimal import Decimal
 
 from backend.app.core_finance.pnl import TWOPLACES
+from backend.app.core_finance.zqtz_asset_bond_category import is_parent_zqtz_business_row
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.schemas.pnl import PnlByBusinessCandidateInsightsPayload
 from backend.app.services import pnl_service
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.services.pnl_service import _is_parent_zqtz_business_row
 
 CACHE_VERSION = "cv_pnl_by_business_candidate_insights_v1"
 RULE_VERSION = "rv_pnl_by_business_candidate_insights_v1"
@@ -52,7 +52,7 @@ def _parent_rows(items: list[dict[str, object]]) -> list[dict[str, object]]:
     return [
         item
         for item in items
-        if _is_parent_zqtz_business_row(
+        if is_parent_zqtz_business_row(
             str(item.get("row_key") or ""),
             str(item.get("business_type") or ""),
             item.get("source_note"),

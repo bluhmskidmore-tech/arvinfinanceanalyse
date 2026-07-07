@@ -10,7 +10,11 @@ from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCO
 from backend.app.core_finance.field_normalization import is_approved_status
 from backend.app.core_finance.pnl import compute_nonstd_signed_ledger_amount, compute_pnl_by_business_yield_and_ftp
 from backend.app.core_finance.reconciliation_checks import pnl_vs_ledger_diff
-from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS, match_zqtz_asset_bond_rows
+from backend.app.core_finance.zqtz_asset_bond_category import (
+    ZQTZ_ASSET_BOND_ROWS,
+    is_parent_zqtz_business_row,
+    match_zqtz_asset_bond_rows,
+)
 from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
     resolve_formal_manifest_lineage,
@@ -1766,7 +1770,7 @@ def _build_pnl_by_business_monthly_buckets(
                 avg_balance = Decimal("0")
             current_balance = current_sums.get(row_key, Decimal("0"))
             total_pnl = Decimal(str(group["total_pnl"]))
-            if _is_parent_monthly_business_group(group):
+            if is_parent_zqtz_business_row(row_key, str(group["business_type"]), group.get("source_note")):
                 parent_total += total_pnl
             item_inputs.append((group, avg_balance, current_balance))
 
@@ -1906,25 +1910,8 @@ def _monthly_business_summary_from_items(
     )
 
 
-def _is_parent_monthly_business_group(group: dict[str, object]) -> bool:
-    if "_detail_" in str(group.get("row_key") or ""):
-        return False
-    business_type = str(group.get("business_type") or "")
-    if business_type.startswith("其中"):
-        return False
-    return "其中项" not in str(group.get("source_note") or "")
-
-
-def _is_parent_zqtz_business_row(row_key: str, business_type: str, source_note: str | None) -> bool:
-    if "_detail_" in row_key:
-        return False
-    if business_type.startswith("其中"):
-        return False
-    return "其中项" not in str(source_note or "")
-
-
 def _is_parent_monthly_business_item(item: PnlByBusinessMonthlyItem) -> bool:
-    return _is_parent_zqtz_business_row(item.row_key, item.business_type, item.source_note)
+    return is_parent_zqtz_business_row(item.row_key, item.business_type, item.source_note)
 
 
 def _new_analysis_dimension_bucket(dimension_key: str, dimension_label: str) -> dict[str, object]:

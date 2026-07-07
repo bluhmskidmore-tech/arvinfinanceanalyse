@@ -5,7 +5,11 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from backend.app.core_finance.pnl import compute_pnl_by_business_yield_and_ftp
-from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS, match_zqtz_asset_bond_rows
+from backend.app.core_finance.zqtz_asset_bond_category import (
+    ZQTZ_ASSET_BOND_ROWS,
+    is_parent_zqtz_business_row,
+    match_zqtz_asset_bond_rows,
+)
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.pnl import (
@@ -641,7 +645,7 @@ def _build_pnl_by_business_monthly_buckets(
                 avg_balance = Decimal("0")
             current_balance = current_sums.get(row_key, Decimal("0"))
             total_pnl = Decimal(str(group["total_pnl"]))
-            if _is_parent_monthly_business_group(group):
+            if is_parent_zqtz_business_row(row_key, str(group["business_type"]), group.get("source_note")):
                 parent_total += total_pnl
             item_inputs.append((group, avg_balance, current_balance))
 
@@ -776,20 +780,8 @@ def _monthly_business_summary_from_items(
         asset_count=sum(item.asset_count for item in parent_items),
     )
 
-def _is_parent_monthly_business_group(group: dict[str, object]) -> bool:
-    if "_detail_" in str(group.get("row_key") or ""):
-        return False
-    business_type = str(group.get("business_type") or "")
-    if business_type.startswith("其中"):
-        return False
-    return "其中项" not in str(group.get("source_note") or "")
-
 def _is_parent_monthly_business_item(item: PnlByBusinessMonthlyItem) -> bool:
-    if "_detail_" in item.row_key:
-        return False
-    if item.business_type.startswith("其中"):
-        return False
-    return "其中项" not in str(item.source_note or "")
+    return is_parent_zqtz_business_row(item.row_key, item.business_type, item.source_note)
 
 def _new_analysis_dimension_bucket(dimension_key: str, dimension_label: str) -> dict[str, object]:
     return {
