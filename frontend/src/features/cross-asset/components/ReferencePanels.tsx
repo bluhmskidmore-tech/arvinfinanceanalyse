@@ -624,7 +624,7 @@ export function CrossAssetReferenceSourceAudit({
         </div>
       </dl>
 
-      <div className="cross-asset-reference-test-anchors" aria-hidden="true">
+      <div className="cross-asset-reference-test-anchors">
         <CrossAssetTrustPanel reportDate={reportDate} latestMeta={latestMeta} linkageMeta={linkageMeta} statusFlags={statusFlags}>
           <CrossAssetStatusEvidenceRows statusFlags={statusFlags} latestMeta={latestMeta} linkageMeta={linkageMeta} />
         </CrossAssetTrustPanel>

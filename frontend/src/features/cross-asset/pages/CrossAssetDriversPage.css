@@ -854,9 +854,18 @@
   height: 100%;
 }
 
-.cross-asset-reference-fusion-side-panel > .cross-asset-review-queue,
-.cross-asset-reference-test-anchors {
+.cross-asset-reference-fusion-side-panel > .cross-asset-review-queue {
   display: none;
+}
+
+.cross-asset-reference-test-anchors {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cross-asset-reference-test-anchors > * {
+  min-width: 0;
 }
 
 .cross-asset-reference-table-wrap {
