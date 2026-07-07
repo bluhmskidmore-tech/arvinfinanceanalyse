@@ -1,16 +1,12 @@
 ﻿import { useMemo, type CSSProperties, type ReactNode } from "react";
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card } from "antd";
 import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
-import { apiQueryKeys } from "../../../api/queryKeys";
 import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import type {
-  ApiEnvelope,
   AssetStructureItem,
-  BondDashboardBundlePayload,
-  BondDashboardBundleSectionEnvelopeMap,
   BondDashboardBundleSectionId,
   BondTopHoldingItem,
   ChoiceMacroLatestPoint,
@@ -46,6 +42,10 @@ import {
   BOND_HOLDINGS_COCKPIT_SCOPE_NOTE,
   BOND_HOLDINGS_EMPTY_NOTE,
 } from "../lib/bondHoldingsEvidenceCopy";
+import {
+  bundleSectionQuery,
+  useBondAnalyticsCockpitBundleQuery,
+} from "../lib/bondAnalyticsCockpitBundleQuery";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { panelStyle } from "./bondAnalyticsCockpitTokens";
 import {
@@ -76,36 +76,17 @@ const TOP_HOLDINGS_HOME_NOTE = "前十大持仓暂未返回，首页先保留组
 const TOP_HOLDINGS_RATING_NOTE = "持仓明细暂未返回，评级分布稍后补齐。";
 const BOND_ANALYTICS_CURRENCY_BASIS_TEXT =
   "金额指标按人民币/CNY口径展示，外币债券市值、摊余成本、应计利息等已折算为人民币。";
-const DV01_HOME_TOP_N = 1;
-const DV01_HOME_SHOCK_BPS = "1";
 const DV01_ACCOUNTING_CLASSES = [
   { label: "AC", value: "AC" },
   { label: "OCI", value: "OCI" },
   { label: "TPL", value: "TPL" },
   { label: "全部", value: "all" },
 ] as const;
-const HOME_YIELD_CURVE_TYPES = "treasury,cdb";
 const HOME_CURVE_LABELS: Record<string, string> = {
   treasury: "国债",
   cdb: "国开",
   aaa_credit: "AAA 信用",
 };
-const COCKPIT_BUNDLE_INDUSTRY_TOP_N = 10;
-const COCKPIT_BUNDLE_ANALYTICS_TOP_N = 10;
-const COCKPIT_BUNDLE_SECTIONS = [
-  "headline-kpis",
-  "maturity-structure",
-  "top-holdings",
-  "portfolio-headlines",
-  "asset-structure",
-  "risk-indicators",
-  "industry-distribution",
-  "dv01-risk-ac",
-  "dv01-risk-oci",
-  "dv01-risk-tpl",
-  "dv01-risk-all",
-  "yield-curve-term-structure",
-] as const satisfies readonly BondDashboardBundleSectionId[];
 
 type Dv01AccountingClassValue = (typeof DV01_ACCOUNTING_CLASSES)[number]["value"];
 const DV01_BUNDLE_SECTION_BY_ACCOUNTING_CLASS = {
@@ -114,34 +95,6 @@ const DV01_BUNDLE_SECTION_BY_ACCOUNTING_CLASS = {
   TPL: "dv01-risk-tpl",
   all: "dv01-risk-all",
 } as const satisfies Record<Dv01AccountingClassValue, BondDashboardBundleSectionId>;
-
-type BundleSectionQuery<TSection extends BondDashboardBundleSectionId> = {
-  data: BondDashboardBundleSectionEnvelopeMap[TSection] | undefined;
-  error: Error | null;
-  isError: boolean;
-  isPending: boolean;
-  isLoading: boolean;
-};
-
-function bundleSectionQuery<TSection extends BondDashboardBundleSectionId>(
-  bundleQ: UseQueryResult<ApiEnvelope<BondDashboardBundlePayload>, Error>,
-  section: TSection,
-): BundleSectionQuery<TSection> {
-  const status = bundleQ.data?.result.section_statuses?.[section];
-  const sectionFailed = status?.status === "error";
-  const data = bundleQ.data?.result.sections[section] as
-    | BondDashboardBundleSectionEnvelopeMap[TSection]
-    | undefined;
-  return {
-    data: sectionFailed ? undefined : data,
-    error: sectionFailed
-      ? new Error(status?.message ?? `${section} section failed`)
-      : bundleQ.error ?? null,
-    isError: bundleQ.isError || sectionFailed,
-    isPending: bundleQ.isPending,
-    isLoading: bundleQ.isLoading,
-  };
-}
 
 function isFiniteNumber(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && Number.isFinite(value);
@@ -1550,25 +1503,7 @@ export function BondAnalyticsInstitutionalCockpit({
   // without changing the final displayed data for the (rare) fallback case.
   const queryReportDate = dashboardReportDate || reportDate;
 
-  const cockpitBundleQ = useQuery({
-    queryKey: apiQueryKeys.bondDashboardBundle(
-      client.mode,
-      queryReportDate,
-      COCKPIT_BUNDLE_SECTIONS,
-      COCKPIT_BUNDLE_INDUSTRY_TOP_N,
-    ),
-    queryFn: () =>
-      client.fetchBondDashboardBundle(queryReportDate, COCKPIT_BUNDLE_SECTIONS, {
-        industryTopN: COCKPIT_BUNDLE_INDUSTRY_TOP_N,
-        analyticsTopN: COCKPIT_BUNDLE_ANALYTICS_TOP_N,
-        dv01TopN: DV01_HOME_TOP_N,
-        dv01ShockBps: DV01_HOME_SHOCK_BPS,
-        curveTypes: HOME_YIELD_CURVE_TYPES,
-      }),
-    enabled: Boolean(queryReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
+  const cockpitBundleQ = useBondAnalyticsCockpitBundleQuery(queryReportDate);
   const headlineQ = bundleSectionQuery(cockpitBundleQ, "headline-kpis");
   const maturityQ = bundleSectionQuery(cockpitBundleQ, "maturity-structure");
   const holdingsQ = bundleSectionQuery(cockpitBundleQ, "top-holdings");

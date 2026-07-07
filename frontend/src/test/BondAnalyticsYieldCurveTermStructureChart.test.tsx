@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
@@ -9,6 +9,7 @@ vi.mock("../lib/echarts", () => ({
 
 import { ApiClientProvider, createApiClient, useApiClient } from "../api/client";
 import { apiQueryKeys } from "../api/queryKeys";
+import { BondAnalyticsOverviewMidCharts } from "../features/bond-analytics/components/BondAnalyticsOverviewMidCharts";
 import { BondAnalyticsYieldCurveTermStructureChart } from "../features/bond-analytics/components/BondAnalyticsYieldCurveTermStructureChart";
 
 /**
@@ -55,5 +56,83 @@ describe("BondAnalyticsYieldCurveTermStructureChart", () => {
     expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledWith("2026-03-31", {
       curveTypes: "treasury,cdb",
     });
+  });
+
+  it("renders a bundled section without firing the standalone yield-curve endpoint", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const bundledYieldCurve = await base.getBondAnalyticsYieldCurveTermStructure("2026-03-31", {
+      curveTypes: "treasury,cdb",
+    });
+    const getBondAnalyticsYieldCurveTermStructure = vi.fn(
+      (reportDate: string, options?: { curveTypes?: string }) =>
+        base.getBondAnalyticsYieldCurveTermStructure(reportDate, options),
+    );
+    const client = { ...base, getBondAnalyticsYieldCurveTermStructure };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondAnalyticsYieldCurveTermStructureChart
+            reportDate="2026-03-31"
+            bundledYieldCurveQuery={{
+              data: bundledYieldCurve,
+              error: null,
+              isError: false,
+              isPending: false,
+              isLoading: false,
+            }}
+          />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId("bond-analytics-yield-curve-term-structure")).toBeInTheDocument();
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+  });
+
+  it("uses the cockpit bundle in overview mid charts instead of the standalone yield-curve endpoint", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const fetchBondDashboardBundle = vi.fn(
+      (
+        reportDate: Parameters<typeof base.fetchBondDashboardBundle>[0],
+        sections: Parameters<typeof base.fetchBondDashboardBundle>[1],
+        opts?: Parameters<typeof base.fetchBondDashboardBundle>[2],
+      ) =>
+        base.fetchBondDashboardBundle(reportDate, sections, opts),
+    );
+    const getBondAnalyticsYieldCurveTermStructure = vi.fn(
+      (reportDate: string, options?: { curveTypes?: string }) =>
+        base.getBondAnalyticsYieldCurveTermStructure(reportDate, options),
+    );
+    const client = {
+      ...base,
+      fetchBondDashboardBundle,
+      getBondAnalyticsYieldCurveTermStructure,
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondAnalyticsOverviewMidCharts
+            reportDate="2026-03-31"
+            periodType="MoM"
+            assetClass="all"
+            accountingClass="all"
+          />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(fetchBondDashboardBundle).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchBondDashboardBundle.mock.calls[0]?.[2]?.curveTypes).toBe("treasury,cdb");
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
   });
 });

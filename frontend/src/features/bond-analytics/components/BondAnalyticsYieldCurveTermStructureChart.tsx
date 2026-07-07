@@ -3,38 +3,42 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Card, Spin } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import type { ApiEnvelope, YieldCurveTermStructurePayload } from "../../../api/contracts";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import ReactECharts from "../../../lib/echarts";
+import {
+  BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
+  type BundleSectionQuery,
+} from "../lib/bondAnalyticsCockpitBundleQuery";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
 import styles from "./BondAnalyticsYieldCurveTermStructureChart.module.css";
 
-const YIELD_CURVE_TERM_STRUCTURE_CURVE_TYPES = "treasury,cdb";
-
 export type BondAnalyticsYieldCurveTermStructureChartProps = {
   reportDate: string;
+  bundledYieldCurveQuery?: BundleSectionQuery<"yield-curve-term-structure">;
 };
 
 export function BondAnalyticsYieldCurveTermStructureChart({
   reportDate,
+  bundledYieldCurveQuery,
 }: BondAnalyticsYieldCurveTermStructureChartProps) {
   const client = useApiClient();
-  // Uses the same canonical queryKey/params as the Institutional Cockpit's yield-curve query
-  // (curveTypes "treasury,cdb") so both surfaces dedupe onto a single in-flight request instead
-  // of double-fetching the same curve for the same report date.
-  const q = useQuery({
+  const hasBundledYieldCurveQuery = bundledYieldCurveQuery !== undefined;
+  const directYieldCurveQ = useQuery<ApiEnvelope<YieldCurveTermStructurePayload>, Error>({
     queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(
       client.mode,
       reportDate,
-      YIELD_CURVE_TERM_STRUCTURE_CURVE_TYPES,
+      BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
     ),
     queryFn: () =>
       client.getBondAnalyticsYieldCurveTermStructure(reportDate, {
-        curveTypes: YIELD_CURVE_TERM_STRUCTURE_CURVE_TYPES,
+        curveTypes: BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
       }),
-    enabled: Boolean(reportDate),
+    enabled: !hasBundledYieldCurveQuery && Boolean(reportDate),
     retry: false,
     staleTime: 60_000,
   });
+  const q = bundledYieldCurveQuery ?? directYieldCurveQ;
 
   const option = useMemo(
     () => buildYieldCurveTermStructureChartOption(q.data?.result.curves ?? []),

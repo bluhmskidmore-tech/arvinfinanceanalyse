@@ -9,6 +9,10 @@ import type {
   PeriodType,
 } from "../types";
 import { designTokens } from "../../../theme/designSystem";
+import {
+  bundleSectionQuery,
+  useBondAnalyticsCockpitBundleQuery,
+} from "../lib/bondAnalyticsCockpitBundleQuery";
 import { buildReturnDecompositionWaterfallOption } from "../lib/returnDecompositionWaterfallOption";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { BondAnalyticsYieldCurveTermStructureChart } from "./BondAnalyticsYieldCurveTermStructureChart";
@@ -30,6 +34,8 @@ export function BondAnalyticsOverviewMidCharts({
   accountingClass,
 }: BondAnalyticsOverviewMidChartsProps) {
   const client = useApiClient();
+  const cockpitBundleQ = useBondAnalyticsCockpitBundleQuery(reportDate);
+  const yieldCurveQ = bundleSectionQuery(cockpitBundleQ, "yield-curve-term-structure");
   const rdQuery = useQuery({
     queryKey: [
       ...bondAnalyticsQueryKeyRoot,
@@ -61,7 +67,10 @@ export function BondAnalyticsOverviewMidCharts({
     <div data-testid="bond-analytics-overview-mid-charts" style={{ display: "grid", gap: dt.space[2] }}>
       <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} lg={12}>
-          <BondAnalyticsYieldCurveTermStructureChart reportDate={reportDate} />
+          <BondAnalyticsYieldCurveTermStructureChart
+            reportDate={reportDate}
+            bundledYieldCurveQuery={yieldCurveQ}
+          />
         </Col>
         <Col xs={24} lg={12}>
           <Card
