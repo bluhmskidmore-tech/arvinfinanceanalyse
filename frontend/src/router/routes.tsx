@@ -30,6 +30,9 @@ const OperationsAnalysisPage = lazy(
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
 const FormalPnlV1Page = lazy(() => import("../features/pnl/FormalPnlV1Page"));
 const PnlByBusinessPage = lazy(() => import("../features/pnl/PnlByBusinessPage"));
+const PnlByBusinessInsightsPage = lazy(
+  () => import("../features/pnl-business-insights/PnlByBusinessInsightsPage"),
+);
 const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
 const PnlAttributionPage = lazy(
   () => import("../features/pnl-attribution/pages/PnlAttributionPage"),
@@ -427,6 +430,10 @@ export const workbenchRoutes: RouteObject[] = [
       {
         path: "pnl-formal-v1",
         element: themedRouteElement(<FormalPnlV1Page />),
+      },
+      {
+        path: "pnl-by-business-insights",
+        element: themedRouteElement(<PnlByBusinessInsightsPage />),
       },
       {
         path: "liabilities",

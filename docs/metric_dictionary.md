@@ -449,6 +449,7 @@ Guardrails:
 | `GS-EXEC-PNL-ATTR-A` | `PAGE-EXEC-PNL-ATTR-001` / `/ui/pnl/attribution` | `MTR-EXEC-101`; `MTR-EXEC-102`~`MTR-EXEC-106` 当前只冻结 segment id presence，不冻结段值 | title 与 segment inventory 为样本结构真值 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-EXEC-SUMMARY-A` | `PAGE-EXEC-SUMMARY-001` / `/ui/home/summary` | 无；本样本为 narrative-only，不进入业务指标字典主表 | `title`、`points.length`、point labels 为 narrative contract truth | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | `MTR-PCP-001`, `MTR-PCP-002`, `MTR-PCP-003`, `MTR-PCP-004`, `MTR-PCP-005`, `MTR-PCP-006`, `MTR-PCP-007`, `MTR-PCP-008`, `MTR-PCP-009`, `MTR-PCP-010`, `MTR-PCP-011`, `MTR-PCP-012` | category tree, dimensions, `result_meta`, and companion scenario probe remain page/sample truth; 3C detail metric rows bind only approved backend-owned row fields | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py`; `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` |
+| `GS-PNL-BUSINESS-INSIGHTS-A` | `PAGE-CONTRACT-PENDING:/pnl-by-business-insights` / `GET /api/pnl/by-business-candidate-insights` | `MTR-PNLBIZ-001`, `MTR-PNLBIZ-002`, `MTR-PNLBIZ-003`, `MTR-PNLBIZ-004`, `MTR-PNLBIZ-005` | Candidate business-type insights DTO (HHI concentration, top-N share, negative-FTP persistence, share drift), analytical `result_meta`, and `formal_use_allowed=false` are sample truth; it is a secondary re-aggregation of `pnl_by_business_ytd_envelope` / `pnl_by_business_monthly_envelope` and does not approve `PAGE-PNL-BY-BUSINESS-001` (`docs/page_contracts.md` §14.8.1), formal PnL truth, a concentration limit, an FTP rate caliber, governance closure, manual audit, or owner approval | `tests/test_pnl_by_business_candidate_insights_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 
 ### 12.5 Wave 1 工作台页面绑定（route → page_id → metric_id → sample_id → 测试）
 
@@ -496,7 +497,7 @@ Guardrails:
 - 本次会话未提供 `moss-metric-contracts`、`moss-lineage-evidence`、`moss-data-catalog` MCP；以下条目仅依据仓库内可读证据：`docs/page_contracts.md`、`docs/calc_rules.md`、`docs/data_contracts.md`、页面 `pages/*.tsx` / adapter / client、`backend/app/schemas/*.py`、相关 route。
 - `status=candidate` 表示页面首屏已显示、字段可追溯到 live endpoint，但 page contract / golden sample / 业务审批闭环仍未完成；因此统一保留 `pending_confirmation=true`。
 - `status=excluded` 表示当前页面虽展示该卡片，但它是过滤上下文、文本状态、workbook-local 汇总、或 analytical-only / mixed-source 说明面，不在本次补录中升格为正式 `MTR-*`。
-- This section must not treat capture-ready samples as formal approval; besides `GS-BOND-HEADLINE-A`, `GS-AVERAGE-BALANCE-A`, `GS-AVERAGE-BALANCE-MONTHLY-A`, `GS-LEDGER-PNL-SUMMARY-A`, `GS-CASHFLOW-PROJECTION-A`, `GS-CONCENTRATION-MONITOR-A`, and existing `GS-PROD-CAT-PNL-A`, no additional `bound_sample_id` is added.
+- This section must not treat capture-ready samples as formal approval; besides `GS-BOND-HEADLINE-A`, `GS-AVERAGE-BALANCE-A`, `GS-AVERAGE-BALANCE-MONTHLY-A`, `GS-LEDGER-PNL-SUMMARY-A`, `GS-CASHFLOW-PROJECTION-A`, `GS-CONCENTRATION-MONITOR-A`, `GS-PNL-BUSINESS-INSIGHTS-A`, and existing `GS-PROD-CAT-PNL-A`, no additional `bound_sample_id` is added.
 
 ### 15.1 页面覆盖矩阵
 
@@ -514,6 +515,7 @@ Guardrails:
 | `kpi-performance` | 新增 1 条 `candidate`：`MTR-KPI-001` | `PAGE-CONTRACT-PENDING:/kpi` | `none` | summary endpoint 已存在，但页面尚未冻结独立 headline strip |
 | `team-performance` | 新增 1 条 `candidate`：`MTR-TEAM-001` | `PAGE-CONTRACT-PENDING:/team-performance` | `none` | 仅登记“已映射部室”；其余 workbook-local / text-state 卡片显式排除 |
 | `platform-config` | 新增 3 条 `candidate`：`MTR-PLT-001`~`MTR-PLT-003` | `PAGE-CONTRACT-PENDING:/platform-config` | `none` | 只登记数值型数据源摘要卡片；健康 / 环境文本卡片不升格 |
+| `pnl-by-business-insights` | 新增 5 条 `candidate`：`MTR-PNLBIZ-001`~`MTR-PNLBIZ-005` | `PAGE-CONTRACT-PENDING:/pnl-by-business-insights` | `GS-PNL-BUSINESS-INSIGHTS-A` | dedicated candidate DTO 已 capture-ready 但未审批；三组指标（业务种类集中度 HHI/前三大占比、负 FTP 持续性、份额漂移）均为 `pnl_by_business_ytd_envelope`/`pnl_by_business_monthly_envelope` 已有父级行结果的二次聚合，不新查任何原始表；不替代或扩展 `PAGE-PNL-BY-BUSINESS-001`（`docs/page_contracts.md` §14.8.1，本轮无新批准 `MTR-*` 绑定） |
 
 ### 15.2 新增 `metric_id`
 
@@ -573,6 +575,14 @@ Guardrails:
 - `MTR-PLT-002` 异常来源: `status=candidate`; `display_unit=个`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /ui/preview/source-foundation`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/platform-config`; `bound_sample_id=none`; `pending_confirmation=true`.
 - `MTR-PLT-003` 人工复核行: `status=candidate`; `display_unit=行`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /ui/preview/source-foundation`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/platform-config`; `bound_sample_id=none`; `pending_confirmation=true`.
 
+#### 15.2.11 `pnl-by-business-insights`
+
+- `MTR-PNLBIZ-001` 业务种类集中度 HHI: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/pnl/by-business-candidate-insights`; `owner=TBD`; `last_reviewed=2026-07-07`; `bound_page_id=PAGE-CONTRACT-PENDING:/pnl-by-business-insights`; `bound_sample_id=GS-PNL-BUSINESS-INSIGHTS-A`; `pending_confirmation=true`.
+- `MTR-PNLBIZ-002` 业务种类前三大占比合计: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/pnl/by-business-candidate-insights`; `owner=TBD`; `last_reviewed=2026-07-07`; `bound_page_id=PAGE-CONTRACT-PENDING:/pnl-by-business-insights`; `bound_sample_id=GS-PNL-BUSINESS-INSIGHTS-A`; `pending_confirmation=true`.
+- `MTR-PNLBIZ-003` 负 FTP 月份占比（近12月）: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/pnl/by-business-candidate-insights`; `owner=TBD`; `last_reviewed=2026-07-07`; `bound_page_id=PAGE-CONTRACT-PENDING:/pnl-by-business-insights`; `bound_sample_id=GS-PNL-BUSINESS-INSIGHTS-A`; `pending_confirmation=true`.
+- `MTR-PNLBIZ-004` 负 FTP 最长连续月数（近12月）: `status=candidate`; `display_unit=月`; `precision=0`; `sign_rule=unsigned integer count`; `null_rule=null -> --`; `source_endpoint=GET /api/pnl/by-business-candidate-insights`; `owner=TBD`; `last_reviewed=2026-07-07`; `bound_page_id=PAGE-CONTRACT-PENDING:/pnl-by-business-insights`; `bound_sample_id=GS-PNL-BUSINESS-INSIGHTS-A`; `pending_confirmation=true`.
+- `MTR-PNLBIZ-005` 业务种类份额漂移（当前-年初，百分点）: `status=candidate`; `display_unit=pp`; `precision=2`; `sign_rule=signed; positive = 份额上升`; `null_rule=null -> --`; `source_endpoint=GET /api/pnl/by-business-candidate-insights`; `owner=TBD`; `last_reviewed=2026-07-07`; `bound_page_id=PAGE-CONTRACT-PENDING:/pnl-by-business-insights`; `bound_sample_id=GS-PNL-BUSINESS-INSIGHTS-A`; `pending_confirmation=true`.
+
 ### 15.3 复用、排除与对齐说明
 
 - `operations-analysis`: 当前首屏三张正式经营净收入卡片来自 `GET /ui/pnl/product-category`，因此本页复用 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003`；不新造 `MTR-OPS-*`。`PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence，macro / FX / news 继续以 `GAP-OPS-MACRO-FX` 约束。
@@ -588,3 +598,4 @@ Guardrails:
 - `team-performance`: `工作簿总得分`、`部室数量`、`证据状态` 依赖 workbook-local 指标、映射种子或文本状态，`status=excluded`；本轮只登记“已映射部室”这一条 mixed-source candidate。
 - `platform-config`: `系统状态`、`存活探测`、`简易状态`、`系统环境` 仅为 status / environment text card，`status=excluded`；本轮只登记来源摘要数值卡片。
 - `kpi-performance`: owner、period label、metric table 行数属于上下文 / 表格事实，不单列为 headline KPI；本轮只登记 `GET /api/kpi/values/summary` 可直接给出的 `期间总得分`。
+- `pnl-by-business-insights`: `PAGE-PNL-BY-BUSINESS-001`（`docs/page_contracts.md` §14.8.1）明确本轮无新批准 `MTR-*` 绑定，因此这 5 条候选指标改走独立的 `PAGE-CONTRACT-PENDING:/pnl-by-business-insights` 路径（仿照 `concentration-monitor` 的登记方式）；`GET /api/pnl/by-business-candidate-insights` 只对已有 `pnl_by_business_ytd_envelope`/`pnl_by_business_monthly_envelope` 父级行结果做二次聚合（HHI/前三大占比、负 FTP 持续性、份额漂移），不重新查询 `fact_formal_pnl_fi`/`fact_formal_zqtz_balance_daily`，`formal_use_allowed` 在服务层硬编码为 `false`。

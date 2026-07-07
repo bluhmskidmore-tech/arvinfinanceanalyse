@@ -1915,12 +1915,16 @@ def _is_parent_monthly_business_group(group: dict[str, object]) -> bool:
     return "其中项" not in str(group.get("source_note") or "")
 
 
+def _is_parent_zqtz_business_row(row_key: str, business_type: str, source_note: str | None) -> bool:
+    if "_detail_" in row_key:
+        return False
+    if business_type.startswith("其中"):
+        return False
+    return "其中项" not in str(source_note or "")
+
+
 def _is_parent_monthly_business_item(item: PnlByBusinessMonthlyItem) -> bool:
-    if "_detail_" in item.row_key:
-        return False
-    if item.business_type.startswith("其中"):
-        return False
-    return "其中项" not in str(item.source_note or "")
+    return _is_parent_zqtz_business_row(item.row_key, item.business_type, item.source_note)
 
 
 def _new_analysis_dimension_bucket(dimension_key: str, dimension_label: str) -> dict[str, object]:

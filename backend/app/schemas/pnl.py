@@ -398,3 +398,85 @@ class PnlYearlyBusinessSummaryPayload(BaseModel):
     year: int
     source_tables: list[str]
     rows: list[PnlYearlyBusinessSummaryRow]
+
+
+# ── Candidate (non-formal) business-type insights ───────────────────────────
+# `status=candidate` in docs/metric_dictionary.md (MTR-PNLBIZ-001~005). These
+# schemas only shape a re-aggregation of already-computed
+# `pnl_by_business_ytd_envelope` / `pnl_by_business_monthly_envelope` parent
+# rows; they are analytical-only and must not be treated as formal PnL truth.
+
+
+class PnlByBusinessConcentrationRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_key: str
+    business_type: str
+    avg_balance: Decimal
+    share_pct: Decimal
+
+
+class PnlByBusinessConcentrationSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    as_of_date: str | None
+    total_avg_balance: Decimal | None
+    hhi_pct: Decimal | None
+    top_n: int
+    top_n_share_pct: Decimal | None
+    rows: list[PnlByBusinessConcentrationRow]
+
+
+class PnlByBusinessNegativeFtpPersistenceRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_key: str
+    business_type: str
+    months_observed: int
+    negative_ftp_month_share_pct: Decimal | None
+    negative_ftp_longest_streak_months: int
+
+
+class PnlByBusinessNegativeFtpPersistenceSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    as_of_date: str
+    lookback_months: int
+    window_start_month: str | None
+    window_end_month: str | None
+    months_observed: int
+    negative_ftp_month_share_pct: Decimal | None
+    negative_ftp_longest_streak_months: int
+    rows: list[PnlByBusinessNegativeFtpPersistenceRow]
+
+
+class PnlByBusinessShareDriftRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_key: str
+    business_type: str
+    current_share_pct: Decimal
+    baseline_share_pct: Decimal | None
+    drift_pp: Decimal | None
+
+
+class PnlByBusinessShareDriftSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    as_of_date: str
+    baseline_year: int
+    baseline_as_of_date: str | None
+    baseline_available: bool
+    rows: list[PnlByBusinessShareDriftRow]
+
+
+class PnlByBusinessCandidateInsightsPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    as_of_date: str
+    concentration: PnlByBusinessConcentrationSummary
+    negative_ftp_persistence: PnlByBusinessNegativeFtpPersistenceSummary
+    share_drift: PnlByBusinessShareDriftSummary

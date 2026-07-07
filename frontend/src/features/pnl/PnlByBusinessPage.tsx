@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
 import { apiQueryKeys } from "../../api/queryKeys";
@@ -1994,11 +1995,16 @@ export default function PnlByBusinessPage() {
             </span>
           }
           actions={
-            <span
-              className={`pnl-by-business-mode-pill ${client.mode === "real" ? "pnl-by-business-mode-pill--real" : "pnl-by-business-mode-pill--mock"}`}
-            >
-              {client.mode === "real" ? "正式读路径" : "Mock 回放"}
-            </span>
+            <div className="pnl-by-business-hero-actions">
+              <span
+                className={`pnl-by-business-mode-pill ${client.mode === "real" ? "pnl-by-business-mode-pill--real" : "pnl-by-business-mode-pill--mock"}`}
+              >
+                {client.mode === "real" ? "正式读路径" : "Mock 回放"}
+              </span>
+              <Link to="/pnl-by-business-insights" className="pnl-by-business-candidate-insights-link">
+                候选分析（试点）→
+              </Link>
+            </div>
           }
         >
           <PageFilterTray testId="pnl-by-business-filter-tray">

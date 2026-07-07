@@ -3381,6 +3381,74 @@ export type PnlByBusinessAnalysisPayload = {
   rows: PnlByBusinessAnalysisRow[];
 };
 
+/**
+ * Candidate (non-formal) business-type insights — `status=candidate` per
+ * `docs/metric_dictionary.md` (MTR-PNLBIZ-001~005). Mirrors backend
+ * `backend/app/schemas/pnl.py::PnlByBusinessCandidateInsightsPayload` and siblings.
+ * Analytical-only re-aggregation of `pnl.by_business_ytd` / `pnl.by_business_monthly`;
+ * must not be treated as formal PnL truth.
+ */
+export type PnlByBusinessConcentrationRow = {
+  row_key: string;
+  business_type: string;
+  avg_balance: string;
+  share_pct: string;
+};
+
+export type PnlByBusinessConcentrationSummary = {
+  year: number;
+  as_of_date: string | null;
+  total_avg_balance: string | null;
+  hhi_pct: string | null;
+  top_n: number;
+  top_n_share_pct: string | null;
+  rows: PnlByBusinessConcentrationRow[];
+};
+
+export type PnlByBusinessNegativeFtpPersistenceRow = {
+  row_key: string;
+  business_type: string;
+  months_observed: number;
+  negative_ftp_month_share_pct: string | null;
+  negative_ftp_longest_streak_months: number;
+};
+
+export type PnlByBusinessNegativeFtpPersistenceSummary = {
+  as_of_date: string;
+  lookback_months: number;
+  window_start_month: string | null;
+  window_end_month: string | null;
+  months_observed: number;
+  negative_ftp_month_share_pct: string | null;
+  negative_ftp_longest_streak_months: number;
+  rows: PnlByBusinessNegativeFtpPersistenceRow[];
+};
+
+export type PnlByBusinessShareDriftRow = {
+  row_key: string;
+  business_type: string;
+  current_share_pct: string;
+  baseline_share_pct: string | null;
+  drift_pp: string | null;
+};
+
+export type PnlByBusinessShareDriftSummary = {
+  year: number;
+  as_of_date: string;
+  baseline_year: number;
+  baseline_as_of_date: string | null;
+  baseline_available: boolean;
+  rows: PnlByBusinessShareDriftRow[];
+};
+
+export type PnlByBusinessCandidateInsightsPayload = {
+  year: number;
+  as_of_date: string;
+  concentration: PnlByBusinessConcentrationSummary;
+  negative_ftp_persistence: PnlByBusinessNegativeFtpPersistenceSummary;
+  share_drift: PnlByBusinessShareDriftSummary;
+};
+
 export type PnlYearlyBusinessSummaryRow = {
   year: number;
   report_month: string;

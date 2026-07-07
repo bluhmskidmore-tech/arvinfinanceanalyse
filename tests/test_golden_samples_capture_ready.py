@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -35,6 +36,8 @@ CASHFLOW_PROJECTION_SAMPLE_PATHS = {"/api/cashflow-projection"}
 CASHFLOW_PROJECTION_READ_HEADERS = {"X-User-Id": "cashflow-projection-read-user", "X-User-Role": "viewer"}
 PNL_SAMPLE_PATHS = {"/api/pnl/bridge", "/api/pnl/data", "/api/pnl/overview"}
 PNL_READ_HEADERS = {"X-User-Id": "pnl-read-user", "X-User-Role": "viewer"}
+PNL_BUSINESS_INSIGHTS_SAMPLE_PATHS = {"/api/pnl/by-business-candidate-insights"}
+PNL_BUSINESS_INSIGHTS_READ_HEADERS = {"X-User-Id": "pnl-business-insights-read-user", "X-User-Role": "viewer"}
 PRODUCT_CATEGORY_PNL_SAMPLE_PATHS = {"/ui/pnl/product-category"}
 PRODUCT_CATEGORY_PNL_READ_HEADERS = {
     "X-User-Id": "product-category-pnl-read-user",
@@ -101,6 +104,7 @@ def _clear_runtime_modules() -> None:
         "backend.app.services.bond_dashboard_service",
         "backend.app.services.pnl_service",
         "backend.app.services.pnl_bridge_service",
+        "backend.app.services.pnl_by_business_candidate_insights",
         "backend.app.services.product_category_pnl_service",
         "backend.app.services.risk_tensor_service",
         "backend.app.tasks.product_category_pnl",
@@ -122,6 +126,154 @@ def _setup_pnl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests/test_pnl_api_contract.py",
     )
     module._materialize_three_pnl_dates(tmp_path, monkeypatch)
+
+
+def _pnl_business_insights_fi_row(
+    *,
+    report_date: str,
+    instrument_code: str,
+    interest_income: str,
+) -> dict[str, object]:
+    return {
+        "report_date": report_date,
+        "instrument_code": instrument_code,
+        "portfolio_name": "Insights Desk",
+        "cost_center": "CC-INS",
+        "invest_type_raw": "持有至到期",
+        "interest_income_514": interest_income,
+        "fair_value_change_516": "0.00",
+        "capital_gain_517": "0.00",
+        "manual_adjustment": "0.00",
+        "currency_basis": "CNY",
+        "source_version": f"sv_pnl_business_insights_{instrument_code}_{report_date}",
+        "rule_version": "rv_pnl_business_insights_gs_a",
+        "ingest_batch_id": f"batch-pnl-business-insights-{report_date}",
+        "trace_id": f"trace-pnl-business-insights-{instrument_code}-{report_date}",
+        "approval_status": "approved",
+        "event_semantics": "realized_formal",
+        "realized_flag": True,
+    }
+
+
+def _pnl_business_insights_balance_row(
+    *,
+    report_date: str,
+    instrument_code: str,
+    bond_type: str,
+    market_value_amount: str,
+) -> tuple:
+    return (
+        report_date,
+        instrument_code,
+        f"{bond_type} {instrument_code}",
+        "Insights Desk",
+        "CC-INS",
+        "asset",
+        bond_type,
+        bond_type,
+        bond_type,
+        bond_type,
+        "H",
+        "AC",
+        "asset",
+        "CNY",
+        "CNY",
+        market_value_amount,
+        market_value_amount,
+        "0.00000000",
+        False,
+        f"sv_pnl_business_insights_balance_{instrument_code}_{report_date}",
+        "rv_pnl_business_insights_gs_a",
+        f"ib-pnl-business-insights-{report_date}",
+        f"trace-pnl-business-insights-balance-{instrument_code}-{report_date}",
+    )
+
+
+def _setup_pnl_business_insights(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two ZQTZ business types (国债/政策性金融债) across 2025-12-31, 2026-01-31, 2026-02-28.
+
+    2025-12-31 doubles as the prior-year baseline for the share-drift metric; 2026-01/02 are the
+    current-year YTD/monthly window used by concentration and negative-FTP-persistence.
+    """
+    task_module = load_module(
+        "backend.app.tasks.pnl_materialize",
+        "backend/app/tasks/pnl_materialize.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
+    monkeypatch.setenv("MOSS_FORMAL_PNL_SCOPE_JSON", '["*"]')
+    get_settings.cache_clear()
+
+    fi_rows_by_date = {
+        "2025-12-31": [
+            _pnl_business_insights_fi_row(report_date="2025-12-31", instrument_code="TB001", interest_income="5.00"),
+            _pnl_business_insights_fi_row(report_date="2025-12-31", instrument_code="PF001", interest_income="2.00"),
+        ],
+        "2026-01-31": [
+            _pnl_business_insights_fi_row(report_date="2026-01-31", instrument_code="TB001", interest_income="4.00"),
+            _pnl_business_insights_fi_row(report_date="2026-01-31", instrument_code="PF001", interest_income="3.00"),
+        ],
+        "2026-02-28": [
+            _pnl_business_insights_fi_row(report_date="2026-02-28", instrument_code="TB001", interest_income="3.50"),
+            _pnl_business_insights_fi_row(report_date="2026-02-28", instrument_code="PF001", interest_income="3.00"),
+        ],
+    }
+    for report_date, fi_rows in fi_rows_by_date.items():
+        task_module.materialize_pnl_facts.fn(
+            fi_rows=fi_rows,
+            nonstd_rows_by_type={},
+            report_date=report_date,
+            is_month_end=True,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    balance_module = load_module(
+        "backend.app.repositories.balance_analysis_repo",
+        "backend/app/repositories/balance_analysis_repo.py",
+    )
+    balances = {
+        "2025-12-31": {"TB001": "700.00000000", "PF001": "300.00000000"},
+        "2026-01-31": {"TB001": "650.00000000", "PF001": "350.00000000"},
+        "2026-02-28": {"TB001": "600.00000000", "PF001": "400.00000000"},
+    }
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        balance_module.ensure_balance_analysis_tables(conn)
+        rows = [
+            _pnl_business_insights_balance_row(
+                report_date=report_date,
+                instrument_code="TB001",
+                bond_type="国债",
+                market_value_amount=amounts["TB001"],
+            )
+            for report_date, amounts in balances.items()
+        ] + [
+            _pnl_business_insights_balance_row(
+                report_date=report_date,
+                instrument_code="PF001",
+                bond_type="政策性金融债",
+                market_value_amount=amounts["PF001"],
+            )
+            for report_date, amounts in balances.items()
+        ]
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, sub_type, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+    finally:
+        conn.close()
 
 
 def _setup_product_category(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1508,6 +1660,14 @@ def _run_request_payload(
             resource="pnl",
         )
         headers = PNL_READ_HEADERS
+    elif request["path"] in PNL_BUSINESS_INSIGHTS_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="pnl-business-insights-read-scope.db",
+            resource="pnl",
+        )
+        headers = PNL_BUSINESS_INSIGHTS_READ_HEADERS
     elif request["path"] in PRODUCT_CATEGORY_PNL_SAMPLE_PATHS:
         _grant_sample_read_scope(
             tmp_path,
@@ -2301,6 +2461,38 @@ def _validate_average_balance_monthly(actual: dict[str, Any], expected: dict[str
     )
 
 
+def _validate_pnl_business_insights(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["result_meta"]["trace_id"] = expected["result_meta"]["trace_id"]
+    actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result", "year"),
+            ("result", "as_of_date"),
+            ("result", "concentration"),
+            ("result", "negative_ftp_persistence"),
+            ("result", "share_drift"),
+        ],
+    )
+
+
 @dataclass(frozen=True)
 class CaptureReadyCase:
     setup: Any
@@ -2353,6 +2545,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-AVERAGE-BALANCE-MONTHLY-A": CaptureReadyCase(
         setup=_setup_average_balance,
         validator=_validate_average_balance_monthly,
+    ),
+    "GS-PNL-BUSINESS-INSIGHTS-A": CaptureReadyCase(
+        setup=_setup_pnl_business_insights,
+        validator=_validate_pnl_business_insights,
     ),
 }
 

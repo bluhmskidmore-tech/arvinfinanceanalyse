@@ -10,6 +10,7 @@ import type {
   CampisiDecisionGradePayload,
   PnlByBusinessAnalysisDimension,
   PnlByBusinessAnalysisPayload,
+  PnlByBusinessCandidateInsightsPayload,
   PnlByBusinessManualAdjustmentListPayload,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessManualAdjustmentRequest,
@@ -60,6 +61,10 @@ type PnlBusinessClientMethods = {
     businessKey?: string;
     dimension: PnlByBusinessAnalysisDimension;
   }) => Promise<ApiEnvelope<PnlByBusinessAnalysisPayload>>;
+  getPnlByBusinessCandidateInsights: (
+    year: number,
+    asOfDate: string,
+  ) => Promise<ApiEnvelope<PnlByBusinessCandidateInsightsPayload>>;
   createPnlByBusinessManualAdjustment: (
     payload: PnlByBusinessManualAdjustmentRequest,
   ) => Promise<PnlByBusinessManualAdjustmentPayload>;
@@ -249,6 +254,44 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getPnlByBusinessCandidateInsights(year: number, asOfDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.by_business_candidate_insights",
+        {
+          year,
+          as_of_date: asOfDate,
+          concentration: {
+            year,
+            as_of_date: asOfDate,
+            total_avg_balance: "0.00",
+            hhi_pct: "0.00",
+            top_n: 3,
+            top_n_share_pct: "0.00",
+            rows: [],
+          },
+          negative_ftp_persistence: {
+            as_of_date: asOfDate,
+            lookback_months: 12,
+            window_start_month: null,
+            window_end_month: null,
+            months_observed: 0,
+            negative_ftp_month_share_pct: null,
+            negative_ftp_longest_streak_months: 0,
+            rows: [],
+          },
+          share_drift: {
+            year,
+            as_of_date: asOfDate,
+            baseline_year: year - 1,
+            baseline_as_of_date: null,
+            baseline_available: false,
+            rows: [],
+          },
+        },
+        { basis: "analytical", formal_use_allowed: false, tables_used: ["pnl.by_business_ytd", "pnl.by_business_monthly"] },
+      );
+    },
     async getPnlCampisiDecisionGrade(_options?: {
       startDate?: string;
       endDate?: string;
@@ -363,6 +406,14 @@ export function createRealPnlBusinessClient({
         fetchImpl,
         baseUrl,
         `/api/pnl/by-business-analysis?${query.toString()}`,
+      );
+    },
+    getPnlByBusinessCandidateInsights: (year: number, asOfDate: string) => {
+      const query = new URLSearchParams({ year: String(year), as_of_date: asOfDate });
+      return requestJson<PnlByBusinessCandidateInsightsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business-candidate-insights?${query.toString()}`,
       );
     },
     getPnlCampisiDecisionGrade: (options) =>
