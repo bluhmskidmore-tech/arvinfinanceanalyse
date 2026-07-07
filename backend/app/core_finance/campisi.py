@@ -66,10 +66,12 @@ def interpolate_treasury_yield_pct(market: dict[str, Any] | None, maturity_years
     return _interpolate_percent_curve(curve, maturity_years)
 
 
-def _interpolate_percent_curve(curve: dict[str, float], maturity_years: float) -> float:
-    if not curve:
-        return 0.0
+def _fit_percent_curve(curve: dict[str, float]):
+    """Fit a ``FittedCurve`` once from a percent tenor curve; ``None`` if < 2 tenors.
 
+    Split out of ``_interpolate_percent_curve`` so batch callers can build the
+    (possibly cubic-spline) curve object once and evaluate it per bond.
+    """
     from backend.app.core_finance.curve_engine.curve_types import (
         CurvePoint,
         FittedCurve,
@@ -77,9 +79,6 @@ def _interpolate_percent_curve(curve: dict[str, float], maturity_years: float) -
     )
     from backend.app.core_finance.curve_engine.interpolation import (
         build_cubic_spline as _build_spline,
-    )
-    from backend.app.core_finance.curve_engine.interpolation import (
-        interpolate as _engine_interpolate,
     )
 
     points = [
@@ -93,13 +92,64 @@ def _interpolate_percent_curve(curve: dict[str, float], maturity_years: float) -
             "Treasury curve interpolation requires at least 2 positive tenors; got %s.",
             len(points),
         )
-        return 0.0
+        return None
 
     if len(points) >= 3:
-        fitted = _build_spline(points)
-    else:
-        fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=tuple(points))
+        return _build_spline(points)
+    return FittedCurve(method=InterpolationMethod.LINEAR, points=tuple(points))
+
+
+def _interpolate_percent_curve(curve: dict[str, float], maturity_years: float) -> float:
+    if not curve:
+        return 0.0
+
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+    )
+
+    fitted = _fit_percent_curve(curve)
+    if fitted is None:
+        return 0.0
     return float(_engine_interpolate(fitted, float(maturity_years)))
+
+
+def _build_benchmark_change_evaluator(
+    market_start: dict[str, Any] | None,
+    market_end: dict[str, Any] | None,
+):
+    """构建一次 (start, end) 曲线对象，返回 maturity_years -> Δ小数 的求值函数。
+
+    与逐券调用 ``benchmark_yield_change_decimal`` 数值完全一致：同样的共同期限
+    交集、同样的样条/线性拟合与求值；差别仅是曲线对象只构建一次。
+    """
+    start_curve = _coerce_percent_curve(market_start)
+    end_curve = _coerce_percent_curve(market_end)
+    common_keys = set(start_curve) & set(end_curve)
+    if len(common_keys) < 2:
+        n_common = len(common_keys)
+
+        def _degenerate(_maturity_years: float) -> Decimal:
+            logger.warning(
+                "Benchmark yield change requires at least 2 shared positive tenors; got %s.",
+                n_common,
+            )
+            return Decimal("0")
+
+        return _degenerate
+
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+    )
+
+    fitted_start = _fit_percent_curve({k: start_curve[k] for k in _TREASURY_KEYS if k in common_keys})
+    fitted_end = _fit_percent_curve({k: end_curve[k] for k in _TREASURY_KEYS if k in common_keys})
+
+    def _evaluate(maturity_years: float) -> Decimal:
+        y0 = float(_engine_interpolate(fitted_start, float(maturity_years)))
+        y1 = float(_engine_interpolate(fitted_end, float(maturity_years)))
+        return Decimal(str((y1 - y0) / 100.0))
+
+    return _evaluate
 
 
 def benchmark_yield_change_decimal(
@@ -108,20 +158,7 @@ def benchmark_yield_change_decimal(
     maturity_years: float,
 ) -> Decimal:
     """期初期末国债收益率差（百分数点）→ 与 V1 一致的小数变动（= Δ% / 100）。"""
-    start_curve = _coerce_percent_curve(market_start)
-    end_curve = _coerce_percent_curve(market_end)
-    common_keys = set(start_curve) & set(end_curve)
-    if len(common_keys) < 2:
-        logger.warning(
-            "Benchmark yield change requires at least 2 shared positive tenors; got %s.",
-            len(common_keys),
-        )
-        return Decimal("0")
-    start_common = {k: start_curve[k] for k in _TREASURY_KEYS if k in common_keys}
-    end_common = {k: end_curve[k] for k in _TREASURY_KEYS if k in common_keys}
-    y0 = _interpolate_percent_curve(start_common, maturity_years)
-    y1 = _interpolate_percent_curve(end_common, maturity_years)
-    return Decimal(str((y1 - y0) / 100.0))
+    return _build_benchmark_change_evaluator(market_start, market_end)(maturity_years)
 
 
 SPREAD_FIELD = {
@@ -329,6 +366,9 @@ def campisi_attribution(
     num_days = max((end_date - start_date).days, 1)
     by_bond: list[dict[str, Any]] = []
     accrued_diagnostics: list[str] = []
+    # Fit the start/end treasury curves once per attribution call instead of
+    # rebuilding the cubic spline for every bond; numerically identical.
+    bench_change = _build_benchmark_change_evaluator(market_start, market_end)
     for row in positions_merged:
         mat = row.get("maturity_date_start")
         if hasattr(mat, "date"):
@@ -338,7 +378,7 @@ def campisi_attribution(
         else:
             mat_d = None
         years = _years_to_maturity(mat_d, start_date)
-        bench_dec = benchmark_yield_change_decimal(market_start, market_end, years)
+        bench_dec = bench_change(years)
         rating = infer_credit_rating_from_asset_class(row.get("asset_class_start"))
         spread_dec = credit_spread_change_decimal(market_start, market_end, rating)
         cf = _coupon_freq(row.get("asset_class_start"))
@@ -421,6 +461,8 @@ def campisi_enhanced(
     num_days = max((end_date - start_date).days, 1)
     by_bond: list[dict[str, Any]] = []
     accrued_diagnostics: list[str] = []
+    # Same one-time curve fit as campisi_attribution; see comment there.
+    bench_change = _build_benchmark_change_evaluator(market_start, market_end)
     for row in positions_merged:
         mat = row.get("maturity_date_start")
         if hasattr(mat, "date"):
@@ -430,7 +472,7 @@ def campisi_enhanced(
         else:
             mat_d = None
         years = _years_to_maturity(mat_d, start_date)
-        bench_dec = benchmark_yield_change_decimal(market_start, market_end, years)
+        bench_dec = bench_change(years)
         rating = infer_credit_rating_from_asset_class(row.get("asset_class_start"))
         spread_dec = credit_spread_change_decimal(market_start, market_end, rating)
         cf = _coupon_freq(row.get("asset_class_start"))
