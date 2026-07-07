@@ -2,7 +2,6 @@ import { lazy, Suspense } from "react";
 import { NextUIProvider } from "@nextui-org/react";
 
 import type { DashboardHomeBodyView } from "./dashboardHomeBodyView";
-import { ResearchCalendarSection } from "./sections/ResearchCalendarSection";
 import styles from "./dashboardHome.module.css";
 
 type TerminalHomeContentProps = {
@@ -34,20 +33,15 @@ export function TerminalHomeContent({
 
   return (
     <NextUIProvider>
-      <ResearchCalendarSection
-        macroBriefing={view.macroBriefing}
-        focusPolicyFunding={focusPolicyFunding}
-      />
-
       <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
+        <TerminalHomeDeferredSections
+          view={view}
+          focusPolicyFunding={focusPolicyFunding}
+        />
         <TerminalHomeWorkGrid
           view={view}
           homeAvailabilityKind={homeAvailabilityKind}
         />
-      </Suspense>
-
-      <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
-        <TerminalHomeDeferredSections view={view} />
       </Suspense>
     </NextUIProvider>
   );

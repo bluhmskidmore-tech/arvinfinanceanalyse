@@ -2993,6 +2993,10 @@
   box-shadow: var(--moss-shadow-institutional-active) !important;
 }
 
+.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child {
+  color: var(--ib-rail-text-active) !important;
+}
+
 .workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] .workbench-shell-group-count {
   color: var(--ib-rail-text) !important;
   font-family: var(--moss-font-sans);
