@@ -16,6 +16,7 @@ from backend.app.core_finance.config.classification_rules import (
 
 DEFAULT_FTP_RATE_PCT = Decimal("1.75")
 FTP_RATE_PCT_BY_REPORT_YEAR = {
+    2024: Decimal("2.00"),
     2025: Decimal("1.75"),
     2026: Decimal("1.60"),
 }

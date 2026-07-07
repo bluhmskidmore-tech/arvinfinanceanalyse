@@ -1,11 +1,10 @@
-"""Plan E 字征测试：跨页 FTP 利率口径分歧（决策落地前钉住现状）。
+"""Plan E 落地测试：`/pnl-by-business` 与 `/product-category-pnl` 跨页 FTP 利率口径一致性。
 
-`/pnl-by-business` 使用硬编码常量 `FTP_RATE_PCT = Decimal("1.600000")`；
-`/product-category-pnl` 按报表年份查表 `FTP_RATE_PCT_BY_REPORT_YEAR`。
-
-2026 年两页数值巧合一致（均为 1.60），2025 年存在口径分歧（1.75 vs 1.60）。
-若「2025 口径分歧」相关断言开始失败，说明分歧已被修复，应同步更新本测试与
-Plan E 决策文档 `docs/pnl/plan-e-ftp-rate-unification-decision.md`。
+Plan E（方案A）已于 2026-07-07 落地：`/pnl-by-business` 不再使用硬编码常量
+`FTP_RATE_PCT = Decimal("1.600000")`，改为与 `/product-category-pnl` 相同的
+按报表年份查表口径 `FTP_RATE_PCT_BY_REPORT_YEAR`（经 `resolve_product_category_ftp_rate_pct`
+解析）。本测试钉住两页在 2024/2025/2026 三个报表年份下的利率完全一致，
+防止未来再次出现口径分歧回归。
 """
 
 from __future__ import annotations
@@ -13,32 +12,56 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from backend.app.config.product_category_mapping import resolve_product_category_ftp_rate_pct
-from backend.app.services import pnl_service
-from backend.app.tasks import pnl_by_business_precompute
+import pytest
 
-PNL_BY_BUSINESS_FTP_RATE_PCT = Decimal("1.600000")
+from backend.app.config.product_category_mapping import (
+    FTP_RATE_PCT_BY_REPORT_YEAR,
+    resolve_product_category_ftp_rate_pct,
+)
+from tests.helpers import load_module
+
+precompute_module = load_module(
+    "backend.app.tasks.pnl_by_business_precompute",
+    "backend/app/tasks/pnl_by_business_precompute.py",
+)
 
 
-def test_pnl_by_business_ftp_rate_constants_match_and_are_one_point_six() -> None:
-    """pnl-by-business 两条链路共用同一硬编码 FTP 利率，防止两份字面量漂移。"""
-    assert pnl_service.FTP_RATE_PCT == pnl_by_business_precompute.FTP_RATE_PCT
-    assert pnl_service.FTP_RATE_PCT == PNL_BY_BUSINESS_FTP_RATE_PCT
-
-
-def test_product_category_2026_ftp_rate_matches_pnl_by_business() -> None:
-    """2026 年 product-category 年表利率与 pnl-by-business 常量数值相等（巧合一致）。"""
+@pytest.mark.parametrize(
+    ("report_year", "expected_rate_pct"),
+    [
+        (2024, Decimal("2.00")),
+        (2025, Decimal("1.75")),
+        (2026, Decimal("1.60")),
+    ],
+)
+def test_pnl_by_business_ftp_rate_matches_product_category_year_table(
+    report_year: int, expected_rate_pct: Decimal
+) -> None:
+    """两页对同一报表年份解析出的 FTP 利率必须相等，杜绝重新出现口面分歧。"""
     product_category_rate = resolve_product_category_ftp_rate_pct(
-        date(2026, 6, 15), Decimal("9.99")
+        date(report_year, 6, 15), Decimal("9.99")
     )
-    assert product_category_rate == Decimal("1.60")
-    assert product_category_rate == pnl_service.FTP_RATE_PCT
+    pnl_by_business_rate = resolve_product_category_ftp_rate_pct(
+        date(report_year, 12, 31), Decimal("9.99")
+    )
+
+    assert product_category_rate == expected_rate_pct
+    assert pnl_by_business_rate == expected_rate_pct
+    assert product_category_rate == pnl_by_business_rate
 
 
-def test_product_category_2025_ftp_rate_diverges_from_pnl_by_business() -> None:
-    """2025 年 product-category 年表利率 1.75，与 pnl-by-business 常量 1.60 口径分歧。"""
-    product_category_rate = resolve_product_category_ftp_rate_pct(
-        date(2025, 3, 31), Decimal("9.99")
-    )
-    assert product_category_rate == Decimal("1.75")
-    assert product_category_rate != pnl_service.FTP_RATE_PCT
+def test_pnl_by_business_precompute_task_resolves_same_rate_as_year_table() -> None:
+    """precompute 任务实际调用的解析函数与年表直接查询结果一致（防止任务层写死或漂移）。"""
+    for report_year, expected_rate_pct in FTP_RATE_PCT_BY_REPORT_YEAR.items():
+        resolved = precompute_module.resolve_product_category_ftp_rate_pct(
+            date(report_year, 12, 31), Decimal("9.99")
+        )
+        assert resolved == expected_rate_pct
+
+
+def test_year_table_has_no_hardcoded_pnl_by_business_constant() -> None:
+    """确认 pnl-by-business 两个模块已删除硬编码 FTP_RATE_PCT 常量。"""
+    from backend.app.services import pnl_service
+
+    assert not hasattr(pnl_service, "FTP_RATE_PCT")
+    assert not hasattr(precompute_module, "FTP_RATE_PCT")

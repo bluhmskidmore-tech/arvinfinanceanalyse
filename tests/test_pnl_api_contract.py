@@ -19,6 +19,7 @@ from backend.app.repositories.governance_repo import (
     SOURCE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.pnl_repo import PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -432,7 +433,9 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
             assert as_of_cap in {None, "2025-12-31"}
             return "2025-12-31"
 
-        def fetch_pnl_by_business_precompute(self, *, year, as_of_date, result_kind, dimension, business_key):
+        def fetch_pnl_by_business_precompute(
+            self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
+        ):
             assert (year, as_of_date, result_kind, dimension, business_key) == (
                 2025,
                 "2025-12-31",
@@ -440,6 +443,7 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
                 "",
                 "",
             )
+            assert expected_rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
             return cached_payload
 
         def list_union_report_dates(self):  # pragma: no cover - proves cache avoids live build
@@ -491,7 +495,9 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
             assert as_of_cap in {None, "2025-12-31"}
             return "2025-12-31"
 
-        def fetch_pnl_by_business_precompute(self, *, year, as_of_date, result_kind, dimension, business_key):
+        def fetch_pnl_by_business_precompute(
+            self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
+        ):
             assert (year, as_of_date, result_kind, dimension, business_key) == (
                 2025,
                 "2025-12-31",
@@ -499,6 +505,7 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
                 "instrument",
                 "asset_zqtz_policy_financial_bond",
             )
+            assert expected_rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
             return cached_payload
 
         def list_union_report_dates(self):  # pragma: no cover - proves cache avoids live build
@@ -567,7 +574,9 @@ def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exis
             assert as_of_cap in {None, "2025-12-31"}
             return "2025-12-31"
 
-        def fetch_pnl_by_business_precompute(self, *, year, as_of_date, result_kind, dimension, business_key):
+        def fetch_pnl_by_business_precompute(
+            self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
+        ):
             assert (year, as_of_date, result_kind, dimension, business_key) == (
                 2025,
                 "2025-12-31",
@@ -575,6 +584,7 @@ def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exis
                 "",
                 "",
             )
+            assert expected_rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
             return cached_payload
 
         def list_union_report_dates(self):
@@ -936,8 +946,8 @@ def test_pnl_by_business_monthly_contract_returns_independent_month_buckets(monk
     assert jan["summary"]["total_pnl"] == "100.00"
     assert jan["summary"]["avg_balance"] == "1000.00"
     assert jan["summary"]["current_balance"] == "1100.00"
-    assert jan["summary"]["ftp_cost"] == "1.36"
-    assert jan["summary"]["ftp_net_pnl"] == "98.64"
+    assert jan["summary"]["ftp_cost"] == "1.49"
+    assert jan["summary"]["ftp_net_pnl"] == "98.51"
     jan_item = next(item for item in jan["items"] if item["row_key"] == "asset_zqtz_policy_financial_bond")
     assert set(jan_item) == {
         "row_key",
@@ -963,10 +973,10 @@ def test_pnl_by_business_monthly_contract_returns_independent_month_buckets(monk
     assert jan_item["avg_balance"] == "1000.00"
     assert jan_item["current_balance"] == "1100.00"
     assert jan_item["annualized_yield_pct"] == "117.741935"
-    assert jan_item["ftp_rate_pct"] == "1.600000"
-    assert jan_item["ftp_cost"] == "1.36"
-    assert jan_item["ftp_net_pnl"] == "98.64"
-    assert jan_item["ftp_net_annualized_yield_pct"] == "116.141935"
+    assert jan_item["ftp_rate_pct"] == "1.750000"
+    assert jan_item["ftp_cost"] == "1.49"
+    assert jan_item["ftp_net_pnl"] == "98.51"
+    assert jan_item["ftp_net_annualized_yield_pct"] == "115.991935"
     assert jan_item["proportion"] == "1.000000"
     assert jan_item["asset_count"] == 1
     assert feb["summary"]["total_pnl"] == "200.00"
@@ -1638,10 +1648,10 @@ def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypa
     assert row["avg_balance"] == "1500.00"
     assert row["current_balance"] == "2200.00"
     assert row["annualized_yield_pct"] == "123.728814"
-    assert row["ftp_rate_pct"] == "1.600000"
-    assert row["ftp_cost"] == "3.88"
-    assert row["ftp_net_pnl"] == "296.12"
-    assert row["ftp_net_annualized_yield_pct"] == "122.128814"
+    assert row["ftp_rate_pct"] == "1.750000"
+    assert row["ftp_cost"] == "4.24"
+    assert row["ftp_net_pnl"] == "295.76"
+    assert row["ftp_net_annualized_yield_pct"] == "121.978814"
     if hasattr(pnl_service, "clear_pnl_by_business_ytd_cache"):
         pnl_service.clear_pnl_by_business_ytd_cache()
 
@@ -2322,10 +2332,10 @@ def test_pnl_by_business_analysis_contract_reconciles_selected_business(tmp_path
     assert row["current_balance"] == "10012.00"
     assert row["avg_balance"] != row["current_balance"]
     assert row["annualized_yield_pct"] == "5.965591"
-    assert row["ftp_rate_pct"] == "1.600000"
-    assert row["ftp_cost"] == "10.19"
-    assert row["ftp_net_pnl"] == "27.81"
-    assert row["ftp_net_annualized_yield_pct"] == "4.365591"
+    assert row["ftp_rate_pct"] == "1.750000"
+    assert row["ftp_cost"] == "11.15"
+    assert row["ftp_net_pnl"] == "26.85"
+    assert row["ftp_net_annualized_yield_pct"] == "4.215591"
     assert row["asset_count"] == 4
 
     empty_response = client.get(
@@ -2431,10 +2441,10 @@ def test_pnl_by_business_analysis_bond_bucket_and_ftp_contract(tmp_path, monkeyp
     assert by_label["利率债"]["avg_balance"] == "1000.00"
     assert by_label["利率债"]["current_balance"] == "1000.00"
     assert by_label["利率债"]["annualized_yield_pct"] == "117.741935"
-    assert by_label["利率债"]["ftp_rate_pct"] == "1.600000"
-    assert by_label["利率债"]["ftp_cost"] == "1.36"
-    assert by_label["利率债"]["ftp_net_pnl"] == "98.64"
-    assert by_label["利率债"]["ftp_net_annualized_yield_pct"] == "116.141935"
+    assert by_label["利率债"]["ftp_rate_pct"] == "1.750000"
+    assert by_label["利率债"]["ftp_cost"] == "1.49"
+    assert by_label["利率债"]["ftp_net_pnl"] == "98.51"
+    assert by_label["利率债"]["ftp_net_annualized_yield_pct"] == "115.991935"
 
     trend_response = client.get(
         "/api/pnl/by-business-analysis",
@@ -2453,7 +2463,7 @@ def test_pnl_by_business_analysis_bond_bucket_and_ftp_contract(tmp_path, monkeyp
     assert trend_by_key["2025-12-31::rate_bond"]["dimension_label"] == "2025-12-31 利率债"
     assert trend_by_key["2025-12-31::rate_bond"]["total_pnl"] == "100.00"
     assert trend_by_key["2025-12-31::rate_bond"]["avg_balance"] == "1000.00"
-    assert trend_by_key["2025-12-31::rate_bond"]["ftp_net_pnl"] == "98.64"
+    assert trend_by_key["2025-12-31::rate_bond"]["ftp_net_pnl"] == "98.51"
 
     no_avg_response = client.get(
         "/api/pnl/by-business-analysis",

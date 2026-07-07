@@ -1,8 +1,8 @@
 # Plan E：FTP 利率统一 — 业务确认文档
 
-状态：待业务 owner 拍板
-文档性质：决策请示文档，不是实现方案；本文档不改变任何代码行为
-关联字征测试：`tests/test_ftp_rate_cross_page_divergence.py`（已创建，用于在决策落地前钉住现状，见附录）
+状态：**已决策：方案 A，2026-07-07**
+文档性质：决策请示文档 + 落地记录；第 8 节记录方案 A 的实际落地结果
+关联字征测试：`tests/test_ftp_rate_cross_page_divergence.py`（已改写为"两页一致性"断言，见第 8.2 节）
 
 ---
 
@@ -144,3 +144,28 @@ FTP成本差 = 100亿 × 0.15% × 30/365 ≈ 123 万元
 3. `backend/app/services/pnl_attribution_service.py` 第 1254 行——carry-roll-down 归因计算的当前利率输入，与"报表年份"无关，是归因模型的固定参数。
 
 这三处目前共享同一个配置值，但业务语义并不完全相同（"年表兜底" vs "首页兜底重算" vs "归因模型参数"）。待确认清单第③项即针对此问题，建议业务明确后续是否需要拆分配置项，但拆分本身不在本决策范围内，需另行立项评估。
+
+---
+
+## 8. 落地记录（方案 A，2026-07-07）
+
+### 8.1 三年利率口径（年表，两页共用）
+
+| 报表年份 | FTP 利率 |
+| --- | --- |
+| 2024 | 2.00% |
+| 2025 | 1.75% |
+| 2026 | 1.60% |
+
+年表定义于 `backend/app/core_finance/config/product_category_mapping.py` 的 `FTP_RATE_PCT_BY_REPORT_YEAR`；`/pnl-by-business` 与 `/product-category-pnl` 均通过 `resolve_product_category_ftp_rate_pct(report_date, fallback_rate_pct)` 解析同一份年表，不再各自维护字面量。`/pnl-by-business` 侧统一以 `date(year, 12, 31)` 作为解析用的报表日期（因为该页请求参数是 `year` 而非任意 `report_date`），`fallback_rate_pct` 取 `settings.ftp_rate_pct`（年表未覆盖年份时的兜底值）。
+
+### 8.2 代码改动摘要
+
+- `backend/app/services/pnl_service.py`、`backend/app/tasks/pnl_by_business_precompute.py`：删除硬编码 `FTP_RATE_PCT = Decimal("1.600000")` 常量；改为在每条调用链顶层解析一次 `resolve_product_category_ftp_rate_pct(date(year, 12, 31), fallback)`，逐层以参数形式向下传递，不在循环体内重复解析。
+- `tests/test_ftp_rate_cross_page_divergence.py`：已从"钉住分歧现状"改写为"钉住两页一致性"，覆盖 2024/2025/2026 三个报表年份。
+
+### 8.3 `rule_version` 失效机制
+
+`backend/app/repositories/pnl_repo.py` 中 `fetch_pnl_by_business_precompute` 新增 `expected_rule_version` 参数，与物化行中存储的 `rule_version` 列比对；不一致则返回 `None`，调用方（`pnl_service._fetch_pnl_by_business_precompute`）据此自动回退到 live 计算，不会返回按旧利率计算的物化结果。
+
+`PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION` 已从 `rv_pnl_by_business_precompute_v1` 升级为 `rv_pnl_by_business_precompute_v2`，并从 `pnl_by_business_precompute.py`（写入方）迁移到 `pnl_repo.py`（读写两方共同依赖的仓储层），避免 `pnl_service`（services 层）反向 import `tasks` 层。部署后：数据库中历史写入的 `rule_version = v1` 的物化行会被判定为过期，读路径自动 live 重算并返回按新年表利率计算的结果；下一次定时物化任务运行后，会以 `v2` 重新写入物化表，之后读路径恢复走缓存。

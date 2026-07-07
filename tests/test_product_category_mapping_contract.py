@@ -48,11 +48,15 @@ def test_default_ftp_rate_pct_is_one_point_seven_five() -> None:
     assert DEFAULT_FTP_RATE_PCT == Decimal("1.75")
 
 
-def test_report_year_ftp_policy_pins_2025_and_2026_rates() -> None:
+def test_report_year_ftp_policy_pins_2024_2025_and_2026_rates() -> None:
     assert FTP_RATE_PCT_BY_REPORT_YEAR == {
+        2024: Decimal("2.00"),
         2025: Decimal("1.75"),
         2026: Decimal("1.60"),
     }
+    assert resolve_product_category_ftp_rate_pct(
+        date(2024, 12, 31), Decimal("2.25")
+    ) == Decimal("2.00")
     assert resolve_product_category_ftp_rate_pct(
         date(2025, 12, 31), Decimal("2.25")
     ) == Decimal("1.75")
@@ -60,7 +64,7 @@ def test_report_year_ftp_policy_pins_2025_and_2026_rates() -> None:
         date(2026, 2, 28), Decimal("2.25")
     ) == Decimal("1.60")
     assert resolve_product_category_ftp_rate_pct(
-        date(2024, 12, 31), Decimal("2.25")
+        date(2027, 12, 31), Decimal("2.25")
     ) == Decimal("2.25")
 
 

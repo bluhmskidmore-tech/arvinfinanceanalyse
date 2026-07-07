@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
+from backend.app.config.product_category_mapping import resolve_product_category_ftp_rate_pct
 from backend.app.core_finance.pnl import compute_pnl_by_business_yield_and_ftp
 from backend.app.core_finance.zqtz_asset_bond_category import (
     ZQTZ_ASSET_BOND_ROWS,
     is_parent_zqtz_business_row,
     match_zqtz_asset_bond_rows,
 )
-from backend.app.repositories.pnl_repo import PnlRepository
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.pnl_repo import (
+    PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+    PnlRepository,
+)
 from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.pnl import (
     PnlByBusinessAnalysisDimension,
@@ -24,9 +29,7 @@ from backend.app.schemas.pnl import (
 
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
-FTP_RATE_PCT = Decimal("1.600000")
 PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION = "sv_pnl_by_business_precompute_v1"
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v1"
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
     "bond_bucket",
     "bond_bucket_monthly",
@@ -103,6 +106,7 @@ def precompute_pnl_by_business_payloads(
     period_end = repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=str(as_cap))
     if period_end is None:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
+    ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), get_settings().ftp_rate_pct)
     loaded_dates = sorted(
         d
         for d in repo.list_union_report_dates()
@@ -143,6 +147,7 @@ def precompute_pnl_by_business_payloads(
             pnl_rows=tuple(pnl_rows),
             balance_rows=tuple(balance_rows),
             loaded_dates=loaded_dates,
+            ftp_rate_pct=ftp_rate_pct,
         ),
     )
     records.append(
@@ -166,6 +171,7 @@ def precompute_pnl_by_business_payloads(
         pnl_rows=pnl_rows,
         balance_rows=balance_rows,
         loaded_dates=loaded_dates,
+        ftp_rate_pct=ftp_rate_pct,
     )
     for payload in analysis_payloads:
         records.append(
@@ -272,6 +278,7 @@ def _build_pnl_by_business_analysis_payloads_for_precompute(
     pnl_rows: list[dict[str, object]],
     balance_rows: list[dict[str, object]],
     loaded_dates: list[str],
+    ftp_rate_pct: Decimal,
 ) -> list[PnlByBusinessAnalysisPayload]:
     balance_lookup = _analysis_balance_lookup(balance_rows)
     historical_balance_lookup = _analysis_historical_balance_lookup(balance_rows)
@@ -438,6 +445,7 @@ def _build_pnl_by_business_analysis_payloads_for_precompute(
                     period_end=period_end,
                     business_key=None,
                     dimension=dimension,
+                    ftp_rate_pct=ftp_rate_pct,
                 ),
             )
         )
@@ -462,6 +470,7 @@ def _build_pnl_by_business_analysis_payloads_for_precompute(
                         period_end=period_end,
                         business_key=business_key,
                         dimension=dimension,
+                        ftp_rate_pct=ftp_rate_pct,
                     ),
                 )
             )
@@ -478,6 +487,7 @@ def _analysis_rows_from_precompute_buckets(
     period_end: str,
     business_key: str | None,
     dimension: PnlByBusinessAnalysisDimension,
+    ftp_rate_pct: Decimal,
 ) -> list[PnlByBusinessAnalysisRow]:
     period_calendar_days = _calendar_days(period_start, period_end)
     rows: list[PnlByBusinessAnalysisRow] = []
@@ -494,12 +504,13 @@ def _analysis_rows_from_precompute_buckets(
         avg_balance = (avg_sums.get(sum_key, Decimal("0")) / Decimal(str(denom))) if denom > 0 else Decimal("0")
         current_balance = current_sums.get(sum_key, Decimal("0"))
         total_pnl = Decimal(str(bucket["total_pnl"]))
-        annualized_yield_pct = _analysis_annualized_yield_pct(total_pnl, avg_balance, calendar_days)
+        annualized_yield_pct = _analysis_annualized_yield_pct(total_pnl, avg_balance, calendar_days, ftp_rate_pct)
         ftp_values = _analysis_ftp_values(
             total_pnl=total_pnl,
             avg_balance=avg_balance,
             annualized_yield_pct=annualized_yield_pct,
             calendar_days=calendar_days,
+            ftp_rate_pct=ftp_rate_pct,
         )
         rows.append(
             PnlByBusinessAnalysisRow(
@@ -513,7 +524,7 @@ def _analysis_rows_from_precompute_buckets(
                 avg_balance=_quantize_decimal(avg_balance),
                 current_balance=_quantize_decimal(current_balance),
                 annualized_yield_pct=annualized_yield_pct,
-                ftp_rate_pct=FTP_RATE_PCT,
+                ftp_rate_pct=ftp_values["ftp_rate_pct"],
                 ftp_cost=ftp_values["ftp_cost"],
                 ftp_net_pnl=ftp_values["ftp_net_pnl"],
                 ftp_net_annualized_yield_pct=ftp_values["ftp_net_annualized_yield_pct"],
@@ -583,6 +594,7 @@ def _build_pnl_by_business_monthly_buckets(
     pnl_rows: tuple[dict[str, object], ...],
     balance_rows: tuple[dict[str, object], ...],
     loaded_dates: list[str],
+    ftp_rate_pct: Decimal,
 ) -> list[PnlByBusinessMonthlyBucket]:
     balance_rows_list = list(balance_rows)
     balance_lookup = _analysis_balance_lookup(balance_rows_list)
@@ -656,10 +668,11 @@ def _build_pnl_by_business_monthly_buckets(
                 current_balance=current_balance,
                 total_pnl_for_proportion=parent_total,
                 calendar_days=calendar_days,
+                ftp_rate_pct=ftp_rate_pct,
             )
             for group, avg_balance, current_balance in item_inputs
         ]
-        summary = _monthly_business_summary_from_items(items, calendar_days)
+        summary = _monthly_business_summary_from_items(items, calendar_days, ftp_rate_pct)
         buckets.append(
             PnlByBusinessMonthlyBucket(
                 month_key=month_key,
@@ -711,14 +724,16 @@ def _monthly_business_item_from_group(
     current_balance: Decimal,
     total_pnl_for_proportion: Decimal,
     calendar_days: int,
+    ftp_rate_pct: Decimal,
 ) -> PnlByBusinessMonthlyItem:
     total_pnl = Decimal(str(group["total_pnl"]))
-    annualized_yield_pct = _analysis_annualized_yield_pct(total_pnl, avg_balance, calendar_days)
+    annualized_yield_pct = _analysis_annualized_yield_pct(total_pnl, avg_balance, calendar_days, ftp_rate_pct)
     ftp_values = _analysis_ftp_values(
         total_pnl=total_pnl,
         avg_balance=avg_balance,
         annualized_yield_pct=annualized_yield_pct,
         calendar_days=calendar_days,
+        ftp_rate_pct=ftp_rate_pct,
     )
     return PnlByBusinessMonthlyItem(
         row_key=str(group["row_key"]),
@@ -732,7 +747,7 @@ def _monthly_business_item_from_group(
         avg_balance=_quantize_decimal(avg_balance),
         current_balance=_quantize_decimal(current_balance),
         annualized_yield_pct=annualized_yield_pct,
-        ftp_rate_pct=FTP_RATE_PCT,
+        ftp_rate_pct=ftp_values["ftp_rate_pct"],
         ftp_cost=ftp_values["ftp_cost"],
         ftp_net_pnl=ftp_values["ftp_net_pnl"],
         ftp_net_annualized_yield_pct=ftp_values["ftp_net_annualized_yield_pct"],
@@ -748,6 +763,7 @@ def _monthly_business_item_from_group(
 def _monthly_business_summary_from_items(
     items: list[PnlByBusinessMonthlyItem],
     calendar_days: int,
+    ftp_rate_pct: Decimal,
 ) -> PnlByBusinessMonthlySummary:
     parent_items = [item for item in items if _is_parent_monthly_business_item(item)]
     interest_income = sum((Decimal(str(item.interest_income)) for item in parent_items), Decimal("0"))
@@ -757,12 +773,13 @@ def _monthly_business_summary_from_items(
     total_pnl = sum((Decimal(str(item.total_pnl)) for item in parent_items), Decimal("0"))
     avg_balance = sum((Decimal(str(item.avg_balance)) for item in parent_items), Decimal("0"))
     current_balance = sum((Decimal(str(item.current_balance)) for item in parent_items), Decimal("0"))
-    annualized_yield_pct = _analysis_annualized_yield_pct(total_pnl, avg_balance, calendar_days)
+    annualized_yield_pct = _analysis_annualized_yield_pct(total_pnl, avg_balance, calendar_days, ftp_rate_pct)
     ftp_values = _analysis_ftp_values(
         total_pnl=total_pnl,
         avg_balance=avg_balance,
         annualized_yield_pct=annualized_yield_pct,
         calendar_days=calendar_days,
+        ftp_rate_pct=ftp_rate_pct,
     )
     return PnlByBusinessMonthlySummary(
         interest_income=_quantize_decimal(interest_income),
@@ -773,7 +790,7 @@ def _monthly_business_summary_from_items(
         avg_balance=_quantize_decimal(avg_balance),
         current_balance=_quantize_decimal(current_balance),
         annualized_yield_pct=annualized_yield_pct,
-        ftp_rate_pct=FTP_RATE_PCT,
+        ftp_rate_pct=ftp_values["ftp_rate_pct"],
         ftp_cost=ftp_values["ftp_cost"],
         ftp_net_pnl=ftp_values["ftp_net_pnl"],
         ftp_net_annualized_yield_pct=ftp_values["ftp_net_annualized_yield_pct"],
@@ -1003,12 +1020,17 @@ def _instrument_code_variants(value: object) -> tuple[str, ...]:
         variants.add(f"BOND-{code}")
     return tuple(sorted(variants))
 
-def _analysis_annualized_yield_pct(total_pnl: Decimal, avg_balance: Decimal, calendar_days: int) -> Decimal | None:
+def _analysis_annualized_yield_pct(
+    total_pnl: Decimal,
+    avg_balance: Decimal,
+    calendar_days: int,
+    ftp_rate_pct: Decimal,
+) -> Decimal | None:
     return compute_pnl_by_business_yield_and_ftp(
         total_pnl=total_pnl,
         avg_balance=avg_balance,
         calendar_days=calendar_days,
-        ftp_rate_pct=FTP_RATE_PCT,
+        ftp_rate_pct=ftp_rate_pct,
     ).annualized_yield_pct
 
 def _analysis_ftp_values(
@@ -1017,14 +1039,16 @@ def _analysis_ftp_values(
     avg_balance: Decimal,
     annualized_yield_pct: Decimal | None,
     calendar_days: int,
+    ftp_rate_pct: Decimal,
 ) -> dict[str, Decimal | None]:
     yield_ftp = compute_pnl_by_business_yield_and_ftp(
         total_pnl=total_pnl,
         avg_balance=avg_balance,
         calendar_days=calendar_days,
-        ftp_rate_pct=FTP_RATE_PCT,
+        ftp_rate_pct=ftp_rate_pct,
     )
     return {
+        "ftp_rate_pct": yield_ftp.ftp_rate_pct,
         "ftp_cost": yield_ftp.ftp_cost,
         "ftp_net_pnl": yield_ftp.ftp_net_pnl,
         "ftp_net_annualized_yield_pct": yield_ftp.ftp_net_annualized_yield_pct,
