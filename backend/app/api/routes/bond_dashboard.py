@@ -10,6 +10,7 @@ from backend.app.security.auth_context import AuthContext, ensure_user_allowed, 
 from backend.app.services.bond_dashboard_service import (
     get_bond_dashboard_asset_structure,
     get_bond_dashboard_business_type_metrics,
+    get_bond_dashboard_bundle,
     get_bond_dashboard_dates,
     get_bond_dashboard_headline_kpis,
     get_bond_dashboard_home_summary,
@@ -172,3 +173,30 @@ def business_type_metrics(
         "/api/bond-dashboard/business-type-metrics",
         lambda: get_bond_dashboard_business_type_metrics(report_date),
     )
+
+
+@router.get("/bundle")
+def dashboard_bundle(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    sections: str = Query(
+        ...,
+        description=(
+            "Comma-separated section ids, e.g. "
+            "headline-kpis,risk-indicators,yield-distribution"
+        ),
+    ),
+    report_date: date | None = Query(None, description="Report date (YYYY-MM-DD)"),
+    industry_top_n: int = Query(10, ge=1, le=500, description="Top industries for industry-distribution"),
+):
+    _ensure_bond_dashboard_read_allowed(auth)
+    try:
+        return timed_api_call(
+            "/api/bond-dashboard/bundle",
+            lambda: get_bond_dashboard_bundle(
+                sections=[sections],
+                report_date=report_date,
+                industry_top_n=industry_top_n,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

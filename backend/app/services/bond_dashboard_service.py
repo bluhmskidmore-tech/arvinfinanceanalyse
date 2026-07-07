@@ -17,6 +17,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.schemas.bond_dashboard import (
     BondDashboardAssetStructurePayload,
+    BondDashboardBundlePayload,
     BondDashboardBusinessTypeMetricsPayload,
     BondDashboardHeadlinePayload,
     BondDashboardHomeSummaryPayload,
@@ -49,6 +50,36 @@ BOND_DASHBOARD_DATA_SOURCE = "bond_analytics_facts"
 Q8 = Decimal("0.00000001")
 
 _GROUP_BY_LITERAL = Literal["bond_type", "rating", "portfolio_name", "tenor_bucket"]
+
+BOND_DASHBOARD_BUNDLE_SECTIONS: frozenset[str] = frozenset(
+    {
+        "dates",
+        "headline-kpis",
+        "home-summary",
+        "asset-structure",
+        "asset-structure-rating",
+        "asset-structure-portfolio-name",
+        "asset-structure-tenor-bucket",
+        "yield-distribution",
+        "portfolio-comparison",
+        "spread-analysis",
+        "maturity-structure",
+        "industry-distribution",
+        "risk-indicators",
+        "business-type-metrics",
+    }
+)
+
+BOND_DASHBOARD_BUNDLE_SECTIONS_REQUIRING_REPORT_DATE: frozenset[str] = frozenset(
+    BOND_DASHBOARD_BUNDLE_SECTIONS - {"dates"}
+)
+
+_ASSET_STRUCTURE_BUNDLE_SECTION_GROUP_BY: dict[str, _GROUP_BY_LITERAL] = {
+    "asset-structure": "bond_type",
+    "asset-structure-rating": "rating",
+    "asset-structure-portfolio-name": "portfolio_name",
+    "asset-structure-tenor-bucket": "tenor_bucket",
+}
 
 
 class _TTLCache:
@@ -659,3 +690,135 @@ def _bond_dashboard_risk_payload(report_date: str) -> dict[str, object]:
         "reinvestment_ratio_1y": _rate(row["reinvestment_ratio_1y"]),
     }
     return _typed_payload(BondDashboardRiskIndicatorsPayload, payload)
+
+
+def _normalize_bond_dashboard_bundle_sections(sections: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in sections:
+        for part in str(raw).split(","):
+            section = part.strip()
+            if not section or section in seen:
+                continue
+            normalized.append(section)
+            seen.add(section)
+    if not normalized:
+        raise ValueError("sections must include at least one supported section id")
+    unknown = [section for section in normalized if section not in BOND_DASHBOARD_BUNDLE_SECTIONS]
+    if unknown:
+        raise ValueError(
+            "unsupported bond-dashboard bundle sections: "
+            + ", ".join(sorted(unknown))
+        )
+    return normalized
+
+
+def _bond_dashboard_bundle_section_envelope(
+    section: str,
+    report_date: date | None,
+    *,
+    industry_top_n: int,
+) -> dict[str, object]:
+    if section == "dates":
+        return get_bond_dashboard_dates()
+    if report_date is None:
+        raise ValueError("report_date is required for the requested bundle sections")
+    if section == "headline-kpis":
+        return get_bond_dashboard_headline_kpis(report_date)
+    if section == "home-summary":
+        return get_bond_dashboard_home_summary(report_date)
+    if section in _ASSET_STRUCTURE_BUNDLE_SECTION_GROUP_BY:
+        return get_bond_dashboard_asset_structure(
+            report_date,
+            _ASSET_STRUCTURE_BUNDLE_SECTION_GROUP_BY[section],
+        )
+    if section == "yield-distribution":
+        return get_bond_dashboard_yield_distribution(report_date)
+    if section == "portfolio-comparison":
+        return get_bond_dashboard_portfolio_comparison(report_date)
+    if section == "spread-analysis":
+        return get_bond_dashboard_spread_analysis(report_date)
+    if section == "maturity-structure":
+        return get_bond_dashboard_maturity_structure(report_date)
+    if section == "industry-distribution":
+        return get_bond_dashboard_industry_distribution(report_date, industry_top_n)
+    if section == "risk-indicators":
+        return get_bond_dashboard_risk_indicators(report_date)
+    if section == "business-type-metrics":
+        return get_bond_dashboard_business_type_metrics(report_date)
+    raise ValueError(f"unsupported bond-dashboard bundle section: {section}")
+
+
+def get_bond_dashboard_bundle(
+    *,
+    sections: list[str],
+    report_date: date | None = None,
+    industry_top_n: int = 10,
+) -> dict[str, object]:
+    """Aggregate existing bond-dashboard section envelopes in one response."""
+    normalized_sections = _normalize_bond_dashboard_bundle_sections(sections)
+    needs_report_date = any(
+        section in BOND_DASHBOARD_BUNDLE_SECTIONS_REQUIRING_REPORT_DATE
+        for section in normalized_sections
+    )
+    if needs_report_date and report_date is None:
+        raise ValueError("report_date is required for the requested bundle sections")
+
+    section_envelopes: dict[str, dict[str, object]] = {}
+    for section in normalized_sections:
+        section_envelopes[section] = _bond_dashboard_bundle_section_envelope(
+            section,
+            report_date,
+            industry_top_n=industry_top_n,
+        )
+
+    rd = report_date.isoformat() if report_date is not None else None
+    if rd is not None:
+        fact_rows = _fact_rows(rd)
+        lineage = _facts_lineage(rd, fact_rows)
+        evidence_rows = len(fact_rows)
+        quality_flag = "ok" if evidence_rows > 0 else "warning"
+        basis = "analytical"
+        filters_applied: dict[str, object] = {
+            "report_date": rd,
+            "sections": normalized_sections,
+        }
+        if "industry-distribution" in normalized_sections:
+            filters_applied["industry_top_n"] = industry_top_n
+        tables_used = ["fact_formal_bond_analytics_daily"]
+    else:
+        lineage = _dates_lineage()
+        evidence_rows = 0
+        quality_flag = "warning"
+        basis = "formal"
+        filters_applied = {"sections": normalized_sections}
+        tables_used = []
+
+    payload = _typed_payload(
+        BondDashboardBundlePayload,
+        {
+            "report_date": rd,
+            "requested_sections": normalized_sections,
+            "sections": section_envelopes,
+        },
+    )
+    envelope = build_result_envelope(
+        basis=basis,
+        trace_id=_trace_id(),
+        result_kind="bond_dashboard.bundle",
+        cache_version=str(lineage["cache_version"]),
+        source_version=str(lineage["source_version"]),
+        rule_version=str(lineage["rule_version"]),
+        vendor_version=str(lineage.get("vendor_version") or "vv_none"),
+        quality_flag=quality_flag,
+        source_surface="bond_analytics",
+        requested_report_date=rd,
+        resolved_report_date=rd,
+        as_of_date=rd,
+        date_basis="bond_dashboard_report_date" if rd is not None else "bond_dashboard_dates",
+        filters_applied=filters_applied,
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        result_payload=payload,
+    )
+    return _with_bond_dashboard_data_source(envelope)

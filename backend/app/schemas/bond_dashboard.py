@@ -292,3 +292,9 @@ class BondDashboardHomeSummaryPayload(BaseModel):
     portfolio_comparison: BondDashboardPortfolioComparisonPayload
     spread: BondDashboardSpreadAnalysisPayload
     business_type: BondDashboardBusinessTypeMetricsPayload
+
+
+class BondDashboardBundlePayload(BaseModel):
+    report_date: str | None = None
+    requested_sections: list[str] = Field(default_factory=list)
+    sections: dict[str, dict[str, object]] = Field(default_factory=dict)
