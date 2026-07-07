@@ -1,5 +1,5 @@
 ﻿import { useMemo, type CSSProperties, type ReactNode } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { Alert, Button, Card } from "antd";
 import { Link } from "react-router-dom";
 
@@ -7,7 +7,11 @@ import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { mossChartCategoricalPalette } from "../../../components/charts/chartTheme";
 import type {
+  ApiEnvelope,
   AssetStructureItem,
+  BondDashboardBundlePayload,
+  BondDashboardBundleSectionEnvelopeMap,
+  BondDashboardBundleSectionId,
   BondTopHoldingItem,
   ChoiceMacroLatestPoint,
   DV01RiskPayload,
@@ -86,6 +90,58 @@ const HOME_CURVE_LABELS: Record<string, string> = {
   cdb: "国开",
   aaa_credit: "AAA 信用",
 };
+const COCKPIT_BUNDLE_INDUSTRY_TOP_N = 10;
+const COCKPIT_BUNDLE_ANALYTICS_TOP_N = 10;
+const COCKPIT_BUNDLE_SECTIONS = [
+  "headline-kpis",
+  "maturity-structure",
+  "top-holdings",
+  "portfolio-headlines",
+  "asset-structure",
+  "risk-indicators",
+  "industry-distribution",
+  "dv01-risk-ac",
+  "dv01-risk-oci",
+  "dv01-risk-tpl",
+  "dv01-risk-all",
+  "yield-curve-term-structure",
+] as const satisfies readonly BondDashboardBundleSectionId[];
+
+type Dv01AccountingClassValue = (typeof DV01_ACCOUNTING_CLASSES)[number]["value"];
+const DV01_BUNDLE_SECTION_BY_ACCOUNTING_CLASS = {
+  AC: "dv01-risk-ac",
+  OCI: "dv01-risk-oci",
+  TPL: "dv01-risk-tpl",
+  all: "dv01-risk-all",
+} as const satisfies Record<Dv01AccountingClassValue, BondDashboardBundleSectionId>;
+
+type BundleSectionQuery<TSection extends BondDashboardBundleSectionId> = {
+  data: BondDashboardBundleSectionEnvelopeMap[TSection] | undefined;
+  error: Error | null;
+  isError: boolean;
+  isPending: boolean;
+  isLoading: boolean;
+};
+
+function bundleSectionQuery<TSection extends BondDashboardBundleSectionId>(
+  bundleQ: UseQueryResult<ApiEnvelope<BondDashboardBundlePayload>, Error>,
+  section: TSection,
+): BundleSectionQuery<TSection> {
+  const status = bundleQ.data?.result.section_statuses?.[section];
+  const sectionFailed = status?.status === "error";
+  const data = bundleQ.data?.result.sections[section] as
+    | BondDashboardBundleSectionEnvelopeMap[TSection]
+    | undefined;
+  return {
+    data: sectionFailed ? undefined : data,
+    error: sectionFailed
+      ? new Error(status?.message ?? `${section} section failed`)
+      : bundleQ.error ?? null,
+    isError: bundleQ.isError || sectionFailed,
+    isPending: bundleQ.isPending,
+    isLoading: bundleQ.isLoading,
+  };
+}
 
 function isFiniteNumber(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && Number.isFinite(value);
@@ -1494,78 +1550,36 @@ export function BondAnalyticsInstitutionalCockpit({
   // without changing the final displayed data for the (rare) fallback case.
   const queryReportDate = dashboardReportDate || reportDate;
 
-  const [headlineQ, maturityQ, holdingsQ, portfolioHlQ, assetStructureQ, riskQ, industryQ] =
-    useQueries({
-      queries: [
-        {
-          queryKey: apiQueryKeys.bondDashboardHeadline(client.mode, queryReportDate),
-          queryFn: () => client.getBondDashboardHeadlineKpis(queryReportDate),
-          enabled: Boolean(queryReportDate),
-        },
-        {
-          queryKey: ["bond-analytics-institutional", "maturity", client.mode, queryReportDate],
-          queryFn: () => client.getBondDashboardMaturityStructure(queryReportDate),
-          enabled: Boolean(queryReportDate),
-        },
-        {
-          queryKey: apiQueryKeys.bondAnalyticsTopHoldings(client.mode, queryReportDate, 10),
-          queryFn: () => client.getBondAnalyticsTopHoldings(queryReportDate, 10),
-          enabled: Boolean(queryReportDate),
-        },
-        {
-          queryKey: apiQueryKeys.bondAnalyticsPortfolioHeadlines(client.mode, queryReportDate),
-          queryFn: () => client.getBondAnalyticsPortfolioHeadlines(queryReportDate),
-          enabled: Boolean(queryReportDate),
-        },
-        {
-          queryKey: ["bond-analytics-institutional", "asset-structure", client.mode, queryReportDate],
-          queryFn: () => client.getBondDashboardAssetStructure(queryReportDate, "bond_type"),
-          enabled: Boolean(queryReportDate),
-        },
-        {
-          queryKey: ["bond-analytics-institutional", "risk-indicators", client.mode, queryReportDate],
-          queryFn: () => client.getBondDashboardRiskIndicators(queryReportDate),
-          enabled: Boolean(queryReportDate),
-        },
-        {
-          queryKey: ["bond-analytics-institutional", "industry-distribution", client.mode, queryReportDate],
-          queryFn: () => client.getBondDashboardIndustryDistribution(queryReportDate),
-          enabled: Boolean(queryReportDate),
-        },
-      ],
-    });
-  const dv01AccountingQueries = useQueries({
-    queries: DV01_ACCOUNTING_CLASSES.map((item) => ({
-      queryKey: apiQueryKeys.bondAnalyticsDv01Risk(
-        client.mode,
-        queryReportDate,
-        item.value,
-        DV01_HOME_TOP_N,
-        DV01_HOME_SHOCK_BPS,
-      ),
-      queryFn: () =>
-        client.getBondAnalyticsDv01Risk(queryReportDate, {
-          accountingClass: item.value,
-          topN: DV01_HOME_TOP_N,
-          shockBps: DV01_HOME_SHOCK_BPS,
-        }),
-      enabled: Boolean(queryReportDate),
-    })),
-  });
-  const yieldCurveQ = useQuery({
-    queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(
+  const cockpitBundleQ = useQuery({
+    queryKey: apiQueryKeys.bondDashboardBundle(
       client.mode,
       queryReportDate,
-      HOME_YIELD_CURVE_TYPES,
+      COCKPIT_BUNDLE_SECTIONS,
+      COCKPIT_BUNDLE_INDUSTRY_TOP_N,
     ),
     queryFn: () =>
-      client.getBondAnalyticsYieldCurveTermStructure(queryReportDate, {
+      client.fetchBondDashboardBundle(queryReportDate, COCKPIT_BUNDLE_SECTIONS, {
+        industryTopN: COCKPIT_BUNDLE_INDUSTRY_TOP_N,
+        analyticsTopN: COCKPIT_BUNDLE_ANALYTICS_TOP_N,
+        dv01TopN: DV01_HOME_TOP_N,
+        dv01ShockBps: DV01_HOME_SHOCK_BPS,
         curveTypes: HOME_YIELD_CURVE_TYPES,
       }),
     enabled: Boolean(queryReportDate),
     retry: false,
     staleTime: 60_000,
   });
+  const headlineQ = bundleSectionQuery(cockpitBundleQ, "headline-kpis");
+  const maturityQ = bundleSectionQuery(cockpitBundleQ, "maturity-structure");
+  const holdingsQ = bundleSectionQuery(cockpitBundleQ, "top-holdings");
+  const portfolioHlQ = bundleSectionQuery(cockpitBundleQ, "portfolio-headlines");
+  const assetStructureQ = bundleSectionQuery(cockpitBundleQ, "asset-structure");
+  const riskQ = bundleSectionQuery(cockpitBundleQ, "risk-indicators");
+  const industryQ = bundleSectionQuery(cockpitBundleQ, "industry-distribution");
+  const yieldCurveQ = bundleSectionQuery(cockpitBundleQ, "yield-curve-term-structure");
+  const dv01AccountingQueries = DV01_ACCOUNTING_CLASSES.map((item) =>
+    bundleSectionQuery(cockpitBundleQ, DV01_BUNDLE_SECTION_BY_ACCOUNTING_CLASS[item.value]),
+  );
 
   const headline = headlineQ.data?.result;
   const portfolioHl = portfolioHlQ.data?.result;

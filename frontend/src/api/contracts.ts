@@ -5803,7 +5803,15 @@ export type BondDashboardBundleSectionId =
   | "maturity-structure"
   | "industry-distribution"
   | "risk-indicators"
-  | "business-type-metrics";
+  | "business-type-metrics"
+  | "top-holdings"
+  | "portfolio-headlines"
+  | "dv01-risk"
+  | "dv01-risk-ac"
+  | "dv01-risk-oci"
+  | "dv01-risk-tpl"
+  | "dv01-risk-all"
+  | "yield-curve-term-structure";
 
 export type BondDashboardBundleSectionEnvelopeMap = {
   dates: ApiEnvelope<BondAnalyticsDatesPayload>;
@@ -5820,12 +5828,27 @@ export type BondDashboardBundleSectionEnvelopeMap = {
   "industry-distribution": ApiEnvelope<IndustryDistPayload>;
   "risk-indicators": ApiEnvelope<RiskIndicatorsPayload>;
   "business-type-metrics": ApiEnvelope<BondBusinessTypeMetricsResult>;
+  "top-holdings": ApiEnvelope<BondTopHoldingsPayload>;
+  "portfolio-headlines": ApiEnvelope<BondPortfolioHeadlinesPayload>;
+  "dv01-risk": ApiEnvelope<DV01RiskPayload>;
+  "dv01-risk-ac": ApiEnvelope<DV01RiskPayload>;
+  "dv01-risk-oci": ApiEnvelope<DV01RiskPayload>;
+  "dv01-risk-tpl": ApiEnvelope<DV01RiskPayload>;
+  "dv01-risk-all": ApiEnvelope<DV01RiskPayload>;
+  "yield-curve-term-structure": ApiEnvelope<YieldCurveTermStructurePayload>;
+};
+
+export type BondDashboardBundleSectionStatus = {
+  status: "ok" | "error";
+  message: string | null;
 };
 
 export type BondDashboardBundlePayload = {
   report_date: string | null;
   requested_sections: BondDashboardBundleSectionId[];
   sections: Partial<BondDashboardBundleSectionEnvelopeMap>;
+  section_statuses?: Partial<Record<BondDashboardBundleSectionId, BondDashboardBundleSectionStatus>>;
+  failed_sections?: BondDashboardBundleSectionId[];
 };
 
 // --- Cube 多维查询 (`/api/cube`) ---

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
 from pydantic import BaseModel, Field, model_validator
@@ -294,7 +294,14 @@ class BondDashboardHomeSummaryPayload(BaseModel):
     business_type: BondDashboardBusinessTypeMetricsPayload
 
 
+class BondDashboardBundleSectionStatus(BaseModel):
+    status: Literal["ok", "error"]
+    message: str | None = None
+
+
 class BondDashboardBundlePayload(BaseModel):
     report_date: str | None = None
     requested_sections: list[str] = Field(default_factory=list)
     sections: dict[str, dict[str, object]] = Field(default_factory=dict)
+    section_statuses: dict[str, BondDashboardBundleSectionStatus] = Field(default_factory=dict)
+    failed_sections: list[str] = Field(default_factory=list)

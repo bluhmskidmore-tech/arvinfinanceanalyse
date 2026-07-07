@@ -40,7 +40,7 @@ describe("BondDashboard bundle client", () => {
         sections: {},
       },
     };
-    const fetchImpl = vi.fn(async () =>
+    const fetchImpl = vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) =>
       new Response(JSON.stringify(responseBody), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -54,6 +54,11 @@ describe("BondDashboard bundle client", () => {
 
     const envelope = await client.fetchBondDashboardBundle("2026-04-30", sections, {
       industryTopN: 12,
+      analyticsTopN: 5,
+      dv01TopN: 1,
+      dv01ShockBps: "1",
+      dv01AccountingClass: "all",
+      curveTypes: "treasury,cdb",
     });
 
     expect(envelope).toEqual(responseBody);
@@ -62,6 +67,11 @@ describe("BondDashboard bundle client", () => {
     expect(url.searchParams.get("sections")).toBe("headline-kpis,industry-distribution");
     expect(url.searchParams.get("report_date")).toBe("2026-04-30");
     expect(url.searchParams.get("industry_top_n")).toBe("12");
+    expect(url.searchParams.get("analytics_top_n")).toBe("5");
+    expect(url.searchParams.get("dv01_top_n")).toBe("1");
+    expect(url.searchParams.get("dv01_shock_bps")).toBe("1");
+    expect(url.searchParams.get("dv01_accounting_class")).toBe("all");
+    expect(url.searchParams.get("curve_types")).toBe("treasury,cdb");
   });
 
   it("assembles mock bundle sections from the existing single-section mock envelopes", async () => {
@@ -71,10 +81,18 @@ describe("BondDashboard bundle client", () => {
       "headline-kpis",
       "asset-structure-rating",
       "business-type-metrics",
+      "top-holdings",
+      "portfolio-headlines",
+      "dv01-risk-ac",
+      "yield-curve-term-structure",
     ];
 
     const bundle = await client.fetchBondDashboardBundle(reportDate, sections, {
       industryTopN: 10,
+      analyticsTopN: 5,
+      dv01TopN: 1,
+      dv01ShockBps: "1",
+      curveTypes: "treasury,cdb",
     });
 
     expect(bundle.data_source).toBe("bond_analytics_facts");
@@ -88,6 +106,49 @@ describe("BondDashboard bundle client", () => {
     );
     expect(bundle.result.sections["business-type-metrics"]).toEqual(
       await client.getBondBusinessTypeMetrics({ reportDate }),
+    );
+    expect(bundle.result.sections["top-holdings"]).toEqual(
+      await client.getBondAnalyticsTopHoldings(reportDate, 5),
+    );
+    expect(bundle.result.sections["portfolio-headlines"]).toEqual(
+      await client.getBondAnalyticsPortfolioHeadlines(reportDate),
+    );
+    expect(bundle.result.sections["dv01-risk-ac"]).toEqual(
+      await client.getBondAnalyticsDv01Risk(reportDate, {
+        accountingClass: "AC",
+        topN: 1,
+        shockBps: "1",
+      }),
+    );
+    const bundledCurve = bundle.result.sections["yield-curve-term-structure"];
+    const singleCurve = await client.getBondAnalyticsYieldCurveTermStructure(reportDate, {
+      curveTypes: "treasury,cdb",
+    });
+    expect(bundledCurve?.result_meta.result_kind).toBe(singleCurve.result_meta.result_kind);
+    expect(bundledCurve?.result.report_date).toBe(singleCurve.result.report_date);
+    expect(bundledCurve?.result.curves).toEqual(singleCurve.result.curves);
+    expect(bundledCurve?.result.warnings).toEqual(singleCurve.result.warnings);
+    expect(bundle.result.failed_sections).toEqual([]);
+    expect(bundle.result.section_statuses?.["yield-curve-term-structure"]?.status).toBe("ok");
+  });
+
+  it("assembles mock bundle sections through dynamically bound client methods", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const reportDate = "2026-03-31";
+    const replacement = await client.getBondDashboardHeadlineKpis(reportDate);
+    const spy = vi.spyOn(client, "getBondDashboardHeadlineKpis").mockResolvedValue({
+      ...replacement,
+      result_meta: {
+        ...replacement.result_meta,
+        trace_id: "tr_dynamic_override",
+      },
+    });
+
+    const bundle = await client.fetchBondDashboardBundle(reportDate, ["headline-kpis"]);
+
+    expect(spy).toHaveBeenCalledWith(reportDate);
+    expect(bundle.result.sections["headline-kpis"]?.result_meta.trace_id).toBe(
+      "tr_dynamic_override",
     );
   });
 

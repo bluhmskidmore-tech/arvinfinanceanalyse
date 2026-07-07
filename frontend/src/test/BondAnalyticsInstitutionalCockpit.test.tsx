@@ -868,6 +868,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
         topN: 1,
         shockBps: "1",
       });
+      expect(summary).toHaveTextContent("2.10 年");
     });
     expect(summary).toHaveTextContent("会计分类 DV01");
     expect(summary).toHaveTextContent("AC");
@@ -974,6 +975,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledWith("2026-03-31", {
         curveTypes: "treasury,cdb",
       });
+      expect(within(panel).getByTestId("bond-analysis-yield-curve-readout")).toBeInTheDocument();
     });
     expect(within(panel).getByTestId("bond-analysis-yield-curve-readout")).toBeInTheDocument();
     expect(panel).toHaveTextContent("国债");

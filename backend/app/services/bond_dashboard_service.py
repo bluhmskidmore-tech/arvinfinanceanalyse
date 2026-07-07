@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -28,9 +29,19 @@ from backend.app.schemas.bond_dashboard import (
     BondDashboardSpreadAnalysisPayload,
     BondDashboardYieldDistributionPayload,
 )
+from backend.app.services.bond_analytics_service import (
+    get_dv01_risk,
+    get_portfolio_headlines,
+    get_top_holdings,
+)
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
     build_result_envelope,
+)
+from backend.app.services.yield_curve_term_structure_service import (
+    FACT_TABLE as YIELD_CURVE_FACT_TABLE,
+    get_yield_curve_term_structure,
+    parse_curve_types_param,
 )
 from pydantic import BaseModel
 
@@ -40,6 +51,7 @@ BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
 BOND_ANALYTICS_RULE_VERSION = "rv_bond_analytics_formal_materialize_v1"
 BOND_ANALYTICS_CACHE_VERSION = f"cv_bond_analytics_formal__{BOND_ANALYTICS_RULE_VERSION}"
 EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
+BOND_DASHBOARD_BUNDLE_MAX_WORKERS = 6
 
 # 口径：本服务读 `fact_formal_bond_analytics_daily`（zqtz 快照 → `compute_bond_analytics_rows` 物化）。
 # 余额分析读 `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily`（`project_zqtz_formal_balance_row` 等），
@@ -50,6 +62,23 @@ BOND_DASHBOARD_DATA_SOURCE = "bond_analytics_facts"
 Q8 = Decimal("0.00000001")
 
 _GROUP_BY_LITERAL = Literal["bond_type", "rating", "portfolio_name", "tenor_bucket"]
+
+BOND_DASHBOARD_DV01_BUNDLE_SECTIONS: dict[str, str] = {
+    "dv01-risk": "all",
+    "dv01-risk-ac": "AC",
+    "dv01-risk-oci": "OCI",
+    "dv01-risk-tpl": "TPL",
+    "dv01-risk-all": "all",
+}
+
+BOND_DASHBOARD_ANALYTICS_BUNDLE_SECTIONS: frozenset[str] = frozenset(
+    {
+        "top-holdings",
+        "portfolio-headlines",
+        "yield-curve-term-structure",
+        *BOND_DASHBOARD_DV01_BUNDLE_SECTIONS.keys(),
+    }
+)
 
 BOND_DASHBOARD_BUNDLE_SECTIONS: frozenset[str] = frozenset(
     {
@@ -67,6 +96,7 @@ BOND_DASHBOARD_BUNDLE_SECTIONS: frozenset[str] = frozenset(
         "industry-distribution",
         "risk-indicators",
         "business-type-metrics",
+        *BOND_DASHBOARD_ANALYTICS_BUNDLE_SECTIONS,
     }
 )
 
@@ -718,6 +748,11 @@ def _bond_dashboard_bundle_section_envelope(
     report_date: date | None,
     *,
     industry_top_n: int,
+    analytics_top_n: int,
+    dv01_top_n: int,
+    dv01_shock_bps: str,
+    dv01_accounting_class: str,
+    curve_types: str,
 ) -> dict[str, object]:
     if section == "dates":
         return get_bond_dashboard_dates()
@@ -746,7 +781,58 @@ def _bond_dashboard_bundle_section_envelope(
         return get_bond_dashboard_risk_indicators(report_date)
     if section == "business-type-metrics":
         return get_bond_dashboard_business_type_metrics(report_date)
+    if section == "top-holdings":
+        return get_top_holdings(report_date, top_n=analytics_top_n)
+    if section == "portfolio-headlines":
+        return get_portfolio_headlines(report_date)
+    if section in BOND_DASHBOARD_DV01_BUNDLE_SECTIONS:
+        accounting_class = (
+            dv01_accounting_class
+            if section == "dv01-risk"
+            else BOND_DASHBOARD_DV01_BUNDLE_SECTIONS[section]
+        )
+        return get_dv01_risk(
+            report_date,
+            accounting_class=accounting_class,
+            top_n=dv01_top_n,
+            shock_bps=dv01_shock_bps,
+        )
+    if section == "yield-curve-term-structure":
+        return get_yield_curve_term_structure(
+            report_date=report_date,
+            curve_types=parse_curve_types_param(curve_types),
+        )
     raise ValueError(f"unsupported bond-dashboard bundle section: {section}")
+
+
+def _safe_bond_dashboard_bundle_section_envelope(
+    section: str,
+    report_date: date | None,
+    *,
+    industry_top_n: int,
+    analytics_top_n: int,
+    dv01_top_n: int,
+    dv01_shock_bps: str,
+    dv01_accounting_class: str,
+    curve_types: str,
+) -> tuple[dict[str, object] | None, dict[str, str | None]]:
+    try:
+        envelope = _bond_dashboard_bundle_section_envelope(
+            section,
+            report_date,
+            industry_top_n=industry_top_n,
+            analytics_top_n=analytics_top_n,
+            dv01_top_n=dv01_top_n,
+            dv01_shock_bps=dv01_shock_bps,
+            dv01_accounting_class=dv01_accounting_class,
+            curve_types=curve_types,
+        )
+    except Exception as exc:
+        return None, {
+            "status": "error",
+            "message": str(exc) or exc.__class__.__name__,
+        }
+    return envelope, {"status": "ok", "message": None}
 
 
 def get_bond_dashboard_bundle(
@@ -754,6 +840,11 @@ def get_bond_dashboard_bundle(
     sections: list[str],
     report_date: date | None = None,
     industry_top_n: int = 10,
+    analytics_top_n: int = 10,
+    dv01_top_n: int = 1,
+    dv01_shock_bps: str = "1",
+    dv01_accounting_class: str = "all",
+    curve_types: str = "treasury,cdb",
 ) -> dict[str, object]:
     """Aggregate existing bond-dashboard section envelopes in one response."""
     normalized_sections = _normalize_bond_dashboard_bundle_sections(sections)
@@ -765,19 +856,39 @@ def get_bond_dashboard_bundle(
         raise ValueError("report_date is required for the requested bundle sections")
 
     section_envelopes: dict[str, dict[str, object]] = {}
-    for section in normalized_sections:
-        section_envelopes[section] = _bond_dashboard_bundle_section_envelope(
+    section_statuses: dict[str, dict[str, str | None]] = {}
+    failed_sections: list[str] = []
+
+    def load_section(section: str) -> tuple[str, dict[str, object] | None, dict[str, str | None]]:
+        envelope, status = _safe_bond_dashboard_bundle_section_envelope(
             section,
             report_date,
             industry_top_n=industry_top_n,
+            analytics_top_n=analytics_top_n,
+            dv01_top_n=dv01_top_n,
+            dv01_shock_bps=dv01_shock_bps,
+            dv01_accounting_class=dv01_accounting_class,
+            curve_types=curve_types,
         )
+        return section, envelope, status
+
+    max_workers = min(len(normalized_sections), BOND_DASHBOARD_BUNDLE_MAX_WORKERS)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        loaded_sections = list(executor.map(load_section, normalized_sections))
+
+    for section, envelope, status in loaded_sections:
+        section_statuses[section] = status
+        if envelope is None:
+            failed_sections.append(section)
+            continue
+        section_envelopes[section] = envelope
 
     rd = report_date.isoformat() if report_date is not None else None
     if rd is not None:
         fact_rows = _fact_rows(rd)
         lineage = _facts_lineage(rd, fact_rows)
         evidence_rows = len(fact_rows)
-        quality_flag = "ok" if evidence_rows > 0 else "warning"
+        quality_flag = "warning" if failed_sections or evidence_rows <= 0 else "ok"
         basis = "analytical"
         filters_applied: dict[str, object] = {
             "report_date": rd,
@@ -785,7 +896,18 @@ def get_bond_dashboard_bundle(
         }
         if "industry-distribution" in normalized_sections:
             filters_applied["industry_top_n"] = industry_top_n
+        if "top-holdings" in normalized_sections:
+            filters_applied["analytics_top_n"] = analytics_top_n
+        if any(section in BOND_DASHBOARD_DV01_BUNDLE_SECTIONS for section in normalized_sections):
+            filters_applied["dv01_top_n"] = dv01_top_n
+            filters_applied["dv01_shock_bps"] = dv01_shock_bps
+        if "dv01-risk" in normalized_sections:
+            filters_applied["dv01_accounting_class"] = dv01_accounting_class
+        if "yield-curve-term-structure" in normalized_sections:
+            filters_applied["curve_types"] = curve_types
         tables_used = ["fact_formal_bond_analytics_daily"]
+        if "yield-curve-term-structure" in normalized_sections:
+            tables_used.append(YIELD_CURVE_FACT_TABLE)
     else:
         lineage = _dates_lineage()
         evidence_rows = 0
@@ -800,6 +922,8 @@ def get_bond_dashboard_bundle(
             "report_date": rd,
             "requested_sections": normalized_sections,
             "sections": section_envelopes,
+            "section_statuses": section_statuses,
+            "failed_sections": failed_sections,
         },
     )
     envelope = build_result_envelope(

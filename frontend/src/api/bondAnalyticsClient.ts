@@ -88,7 +88,7 @@ type BondAnalyticsCoreSurfaceMethods = {
   fetchBondDashboardBundle: (
     reportDate: string | null | undefined,
     sections: readonly BondDashboardBundleSectionId[],
-    opts?: { industryTopN?: number },
+    opts?: BondDashboardBundleOptions,
   ) => Promise<ApiEnvelope<BondDashboardBundlePayload>>;
   getBondAnalyticsReturnDecomposition: (
     reportDate: string,
@@ -159,6 +159,15 @@ export type BondAnalyticsClientMethods = BondAnalyticsCoreSurfaceMethods & Cashf
 type FetchLike = typeof fetch;
 type Delay = () => Promise<void>;
 
+type BondDashboardBundleOptions = {
+  industryTopN?: number;
+  analyticsTopN?: number;
+  dv01TopN?: number;
+  dv01ShockBps?: string;
+  dv01AccountingClass?: string;
+  curveTypes?: string;
+};
+
 type BondAnalyticsCoreClientMethods = Pick<
   BondAnalyticsClientMethods,
   | "refreshBondAnalytics"
@@ -219,7 +228,13 @@ type RequestActionJson = <T>(
 
 type DemoBondDashboardBundleClient = BondDashboardClientMethods & {
   getBondBusinessTypeMetrics?: (params: { reportDate: string }) => Promise<BondBusinessTypeMetricsPayload>;
-};
+} & Pick<
+  BondAnalyticsClientMethods,
+  | "getBondAnalyticsPortfolioHeadlines"
+  | "getBondAnalyticsTopHoldings"
+  | "getBondAnalyticsDv01Risk"
+  | "getBondAnalyticsYieldCurveTermStructure"
+>;
 
 export type BondDashboardClientFactoryOptions = {
   fetchImpl: FetchLike;
@@ -393,6 +408,7 @@ async function fetchDemoBondDashboardBundleSection(
   section: BondDashboardBundleSectionId,
   reportDate: string | null | undefined,
   ensureMockClientBundle: EnsureBondDashboardMockBundle,
+  opts?: BondDashboardBundleOptions,
 ): Promise<[
   BondDashboardBundleSectionId,
   BondDashboardBundleSectionEnvelopeMap[BondDashboardBundleSectionId],
@@ -437,6 +453,46 @@ async function fetchDemoBondDashboardBundleSection(
   }
   if (section === "risk-indicators") {
     return [section, await client.getBondDashboardRiskIndicators(rd)];
+  }
+  if (section === "top-holdings") {
+    return [section, await client.getBondAnalyticsTopHoldings(rd, opts?.analyticsTopN ?? 10)];
+  }
+  if (section === "portfolio-headlines") {
+    return [section, await client.getBondAnalyticsPortfolioHeadlines(rd)];
+  }
+  if (section === "dv01-risk") {
+    return [
+      section,
+      await client.getBondAnalyticsDv01Risk(rd, {
+        accountingClass: opts?.dv01AccountingClass ?? "all",
+        topN: opts?.dv01TopN ?? 1,
+        shockBps: opts?.dv01ShockBps ?? "1",
+      }),
+    ];
+  }
+  if (
+    section === "dv01-risk-ac" ||
+    section === "dv01-risk-oci" ||
+    section === "dv01-risk-tpl" ||
+    section === "dv01-risk-all"
+  ) {
+    const accountingClass = section.replace("dv01-risk-", "").toUpperCase();
+    return [
+      section,
+      await client.getBondAnalyticsDv01Risk(rd, {
+        accountingClass: accountingClass === "ALL" ? "all" : accountingClass,
+        topN: opts?.dv01TopN ?? 1,
+        shockBps: opts?.dv01ShockBps ?? "1",
+      }),
+    ];
+  }
+  if (section === "yield-curve-term-structure") {
+    return [
+      section,
+      await client.getBondAnalyticsYieldCurveTermStructure(rd, {
+        curveTypes: opts?.curveTypes ?? "treasury,cdb",
+      }),
+    ];
   }
 
   if (client.getBondBusinessTypeMetrics) {
@@ -1402,23 +1458,44 @@ export function createDemoBondDashboardClient(
         data_source: "bond_analytics_facts",
       };
     },
-    async fetchBondDashboardBundle(reportDate, sections, opts) {
+    async fetchBondDashboardBundle(this: DemoBondDashboardBundleClient | undefined, reportDate, sections, opts) {
       await delay();
       const requestedSections = [...sections];
-      const entries = await Promise.all(
-        requestedSections.map((section) =>
-          fetchDemoBondDashboardBundleSection(
-            methods,
-            section,
-            reportDate,
-            ensureMockClientBundle,
-          ),
-        ),
-      );
+      const bundleClient =
+        this && typeof this.getBondDashboardHeadlineKpis === "function"
+          ? this
+          : (methods as DemoBondDashboardBundleClient);
       const sectionEnvelopes: Partial<BondDashboardBundleSectionEnvelopeMap> = {};
-      for (const [section, envelope] of entries) {
+      const sectionStatuses: BondDashboardBundlePayload["section_statuses"] = {};
+      const failedSections: BondDashboardBundleSectionId[] = [];
+      const entries = await Promise.all(
+        requestedSections.map(async (section) => {
+          try {
+            return await fetchDemoBondDashboardBundleSection(
+              bundleClient,
+              section,
+              reportDate,
+              ensureMockClientBundle,
+              opts,
+            );
+          } catch (error) {
+            failedSections.push(section);
+            sectionStatuses[section] = {
+              status: "error",
+              message: error instanceof Error ? error.message : String(error),
+            };
+            return null;
+          }
+        }),
+      );
+      for (const entry of entries) {
+        if (!entry) {
+          continue;
+        }
+        const [section, envelope] = entry;
         (sectionEnvelopes as Record<BondDashboardBundleSectionId, ApiEnvelope<unknown>>)[section] =
           envelope as ApiEnvelope<unknown>;
+        sectionStatuses[section] = { status: "ok", message: null };
       }
       return buildMockBondDashboardBundleEnvelope({
         buildMockApiEnvelope: (await ensureMockClientBundle()).buildMockApiEnvelope,
@@ -1426,6 +1503,13 @@ export function createDemoBondDashboardClient(
         requestedSections,
         sections: sectionEnvelopes,
         industryTopN: opts?.industryTopN,
+        analyticsTopN: opts?.analyticsTopN,
+        dv01TopN: opts?.dv01TopN,
+        dv01ShockBps: opts?.dv01ShockBps,
+        dv01AccountingClass: opts?.dv01AccountingClass,
+        curveTypes: opts?.curveTypes,
+        sectionStatuses,
+        failedSections,
       });
     },
   };
@@ -1700,6 +1784,21 @@ export function createRealBondDashboardClient(
       }
       if (opts?.industryTopN !== undefined) {
         params.set("industry_top_n", String(opts.industryTopN));
+      }
+      if (opts?.analyticsTopN !== undefined) {
+        params.set("analytics_top_n", String(opts.analyticsTopN));
+      }
+      if (opts?.dv01TopN !== undefined) {
+        params.set("dv01_top_n", String(opts.dv01TopN));
+      }
+      if (opts?.dv01ShockBps !== undefined) {
+        params.set("dv01_shock_bps", opts.dv01ShockBps);
+      }
+      if (opts?.dv01AccountingClass !== undefined) {
+        params.set("dv01_accounting_class", opts.dv01AccountingClass);
+      }
+      if (opts?.curveTypes !== undefined) {
+        params.set("curve_types", opts.curveTypes);
       }
       return requestJson<BondDashboardBundlePayload>(
         fetchImpl,
