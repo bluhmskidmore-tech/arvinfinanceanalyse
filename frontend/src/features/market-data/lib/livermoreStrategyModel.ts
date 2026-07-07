@@ -3,12 +3,126 @@ import type {
   ExternalDataFreshnessTier,
   LivermoreConditionStatus,
   LivermoreDiagnosticSeverity,
+  LivermoreMarketGate,
   LivermoreOutputKey,
   LivermoreRuleReadinessKey,
   LivermoreRuleReadinessStatus,
   LivermoreStrategyPayload,
   ResultMeta,
 } from "../../../api/contracts";
+
+export type MarketGateMacroDisclosure = {
+  adjustmentLabel: string | null;
+  cycleStateLabel: string | null;
+  statusMarker: string | null;
+  lagLabel: string | null;
+};
+
+const marketGateCycleStateLabels: Record<string, string> = {
+  recession: "衰退",
+  contraction: "收缩",
+  neutral: "中性",
+  expansion: "扩张",
+};
+
+const marketGateMacroStatusMarkers: Record<string, string> = {
+  missing: "宏观背景缺失",
+  expired: "宏观背景过期",
+  look_ahead: "宏观背景前视",
+};
+
+export type MarketGateExposureFormat = "decimal" | "percent";
+
+function formatMarketGateExposureRatio(
+  value: number | null | undefined,
+  format: MarketGateExposureFormat = "decimal",
+): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "—";
+  }
+  if (format === "percent") {
+    return `${Math.round(value * 100)}%`;
+  }
+  return value.toFixed(2);
+}
+
+export function hasMarketGateMacroDisclosure(
+  gate: Pick<LivermoreMarketGate, "macro_context" | "macro_overlay" | "exposure_raw" | "formula_version">,
+): boolean {
+  return (
+    gate.macro_context != null ||
+    gate.macro_overlay != null ||
+    gate.exposure_raw != null ||
+    gate.formula_version != null
+  );
+}
+
+export function buildMarketGateMacroDisclosure(
+  gate: LivermoreMarketGate,
+  options?: { exposureFormat?: MarketGateExposureFormat },
+): MarketGateMacroDisclosure | null {
+  if (!hasMarketGateMacroDisclosure(gate)) {
+    return null;
+  }
+
+  const exposureFormat = options?.exposureFormat ?? "decimal";
+  const macroContext = gate.macro_context;
+  const macroOverlay = gate.macro_overlay;
+  const status = String(macroContext?.status ?? "").trim().toLowerCase();
+
+  let adjustmentLabel: string | null = null;
+  if (macroOverlay?.applied) {
+    const raw = macroOverlay.exposure_raw ?? gate.exposure_raw ?? gate.exposure;
+    const adjusted = macroOverlay.exposure_adjusted ?? gate.exposure;
+    adjustmentLabel = `宏观调节 ${formatMarketGateExposureRatio(raw, exposureFormat)}→${formatMarketGateExposureRatio(adjusted, exposureFormat)}`;
+  }
+
+  let cycleStateLabel: string | null = null;
+  if (macroOverlay?.applied && macroContext?.cycle_state) {
+    const cycleKey = String(macroContext.cycle_state).trim().toLowerCase();
+    cycleStateLabel = marketGateCycleStateLabels[cycleKey] ?? null;
+  }
+
+  let statusMarker: string | null = null;
+  if (status === "missing" || status === "expired" || status === "look_ahead") {
+    statusMarker = marketGateMacroStatusMarkers[status] ?? null;
+  }
+
+  let lagLabel: string | null = null;
+  if (status === "ready" && typeof macroContext?.lag_days === "number" && Number.isFinite(macroContext.lag_days)) {
+    lagLabel = `宏观数据滞后 ${macroContext.lag_days} 天`;
+  }
+
+  return {
+    adjustmentLabel,
+    cycleStateLabel,
+    statusMarker,
+    lagLabel,
+  };
+}
+
+export function formatMarketGateMacroDisclosureDetail(
+  disclosure: MarketGateMacroDisclosure | null | undefined,
+): string | null {
+  if (!disclosure) {
+    return null;
+  }
+  const parts: string[] = [];
+  if (disclosure.adjustmentLabel) {
+    parts.push(
+      disclosure.cycleStateLabel
+        ? `${disclosure.adjustmentLabel} · ${disclosure.cycleStateLabel}`
+        : disclosure.adjustmentLabel,
+    );
+  }
+  if (disclosure.statusMarker) {
+    parts.push(disclosure.statusMarker);
+  }
+  if (disclosure.lagLabel) {
+    parts.push(disclosure.lagLabel);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 export type LivermoreStrategyModel = {
   strategyName: string;
@@ -30,6 +144,7 @@ export type LivermoreStrategyModel = {
       evidence: string;
       sourceSeriesId: string | null;
     }>;
+    macroDisclosure: MarketGateMacroDisclosure | null;
   };
   ruleBlocks: Array<{
     key: LivermoreRuleReadinessKey;
@@ -76,6 +191,7 @@ export type LivermoreStrategyModel = {
   stockCandidates: null | {
     formulaVersion: string;
     marketState: LivermoreStrategyPayload["market_gate"]["state"];
+    factorMissingCount: number | null;
     items: Array<{
       rank: number;
       stockCode: string;
@@ -138,6 +254,7 @@ export type LivermoreStrategyModel = {
       stockName: string;
       reason: string;
       entryCost: string;
+      entryCostAvailable: boolean;
       barsSinceEntry: number;
       latestClose: string;
       latestEma10: string;
@@ -233,8 +350,8 @@ function buildStatusNotes(
   return notes;
 }
 
-function formatMetric(value: number, digits = 3) {
-  return value.toFixed(digits);
+function formatMetric(value: number | null | undefined, digits = 3) {
+  return value == null ? "—" : value.toFixed(digits);
 }
 
 function formatFreshnessLabel(gap: LivermoreStrategyPayload["data_gaps"][number]) {
@@ -279,6 +396,7 @@ export function buildLivermoreStrategyModel(input: {
         evidence: condition.evidence,
         sourceSeriesId: condition.source_series_id ?? null,
       })),
+      macroDisclosure: buildMarketGateMacroDisclosure(payload.market_gate),
     },
     ruleBlocks: payload.rule_readiness.map((block) => ({
       key: block.key,
@@ -328,6 +446,7 @@ export function buildLivermoreStrategyModel(input: {
       ? {
           formulaVersion: payload.stock_candidates.formula_version,
           marketState: payload.stock_candidates.market_state,
+          factorMissingCount: payload.stock_candidates.fundamental_overlay?.factor_missing_count ?? null,
           items: payload.stock_candidates.items.map((item) => ({
             rank: item.rank,
             stockCode: item.stock_code,
@@ -398,6 +517,7 @@ export function buildLivermoreStrategyModel(input: {
             stockName: item.stock_name,
             reason: item.reason,
             entryCost: formatMetric(item.entry_cost),
+            entryCostAvailable: item.entry_cost_available ?? item.entry_cost != null,
             barsSinceEntry: item.bars_since_entry,
             latestClose: formatMetric(item.latest_close),
             latestEma10: formatMetric(item.latest_ema10),

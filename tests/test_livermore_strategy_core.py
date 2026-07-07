@@ -82,6 +82,73 @@ def test_market_gate_overheat_when_supplement_covers_breadth_and_limit_up() -> N
     assert condition_by_key["limit_up_quality_positive"]["status"] == "pass"
 
 
+def test_market_gate_exposure_scales_when_one_of_four_conditions_fails() -> None:
+    start = date(2026, 1, 1)
+    closes = [3000.0 + day * 10 for day in range(65)]
+    history = _history(start=start, closes=closes)
+    latest = history[-1].trade_date
+    gate = evaluate_market_gate(
+        history,
+        supplement=MarketGateSupplement(
+            trade_date=latest,
+            breadth_5d=42.0,
+            limit_up_quality_ok=False,
+        ),
+    )
+    assert gate["state"] == "HOT"
+    assert gate["passed_conditions"] == 3
+    assert gate["available_conditions"] == 4
+    assert gate["exposure"] == 0.75
+    condition_by_key = {row["key"]: row for row in gate["conditions"]}
+    assert condition_by_key["breadth_5d_positive"]["status"] == "pass"
+    assert condition_by_key["limit_up_quality_positive"]["status"] == "fail"
+
+
+def test_market_gate_negative_breadth_fails_condition() -> None:
+    start = date(2026, 1, 1)
+    closes = [3000.0 + day * 10 for day in range(65)]
+    history = _history(start=start, closes=closes)
+    latest = history[-1].trade_date
+    gate = evaluate_market_gate(
+        history,
+        supplement=MarketGateSupplement(
+            trade_date=latest,
+            breadth_5d=-120.0,
+            limit_up_quality_ok=True,
+        ),
+    )
+    assert gate["state"] == "HOT"
+    assert gate["passed_conditions"] == 3
+    assert gate["available_conditions"] == 4
+    assert gate["exposure"] == 0.75
+    condition_by_key = {row["key"]: row for row in gate["conditions"]}
+    assert condition_by_key["breadth_5d_positive"]["status"] == "fail"
+
+
+def test_market_gate_partial_supplement_keeps_missing_leg_degraded() -> None:
+    """Only breadth landed: exposure denominator stays 4 and state stays capped at WARM."""
+    start = date(2026, 1, 1)
+    closes = [3000.0 + day * 10 for day in range(65)]
+    history = _history(start=start, closes=closes)
+    latest = history[-1].trade_date
+    gate = evaluate_market_gate(
+        history,
+        supplement=MarketGateSupplement(
+            trade_date=latest,
+            breadth_5d=42.0,
+            limit_up_quality_ok=None,
+        ),
+    )
+    assert gate["state"] == "WARM"
+    assert gate["passed_conditions"] == 3
+    assert gate["available_conditions"] == 3
+    assert gate["required_conditions"] == 4
+    assert gate["exposure"] == 0.75
+    condition_by_key = {row["key"]: row for row in gate["conditions"]}
+    assert condition_by_key["breadth_5d_positive"]["status"] == "pass"
+    assert condition_by_key["limit_up_quality_positive"]["status"] == "missing"
+
+
 def test_market_gate_pending_when_supplement_trade_date_mismatches() -> None:
     start = date(2026, 1, 1)
     closes = [3000.0 + day * 10 for day in range(65)]

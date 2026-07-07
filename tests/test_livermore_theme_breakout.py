@@ -311,6 +311,50 @@ def test_theme_breakout_caps_selected_real_concepts_to_ranked_top_themes() -> No
     assert items[-1]["theme_key"] == f"concept:C{MAX_THEMES - 1:03d}"
 
 
+def test_theme_breakout_keeps_strong_stock_when_sector_rank_missing() -> None:
+    result = compute_theme_breakout(
+        as_of_date="2026-05-08",
+        snapshots=[
+            _snapshot(
+                stock_code="688001.SH",
+                stock_name="Alpha Semiconductor",
+                pctchange=12.1,
+                closed_up_limit=True,
+                sector_rank=5,
+            ),
+            _snapshot(
+                stock_code="688002.SH",
+                stock_name="Beta Chip",
+                pctchange=10.4,
+                closed_up_limit=True,
+                turn=5.2,
+                sector_rank=None,
+            ),
+            _snapshot(
+                stock_code="688003.SH",
+                stock_name="Gamma Micro",
+                pctchange=6.8,
+                sector_rank=None,
+            ),
+        ],
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    items = cast(list[dict[str, Any]], payload["items"])
+    assert payload["theme_count"] == 1
+    stock_items = cast(list[dict[str, Any]], items[0]["items"])
+    stock_codes = [item["stock_code"] for item in stock_items]
+    assert "688002.SH" in stock_codes
+    assert "688003.SH" in stock_codes
+    missing_rank_rows = [row for row in stock_items if row.get("sector_rank_missing")]
+    assert len(missing_rank_rows) == 2
+    assert all(row["sector_rank"] is None for row in missing_rank_rows)
+    ranked_row = next(row for row in stock_items if row["stock_code"] == "688001.SH")
+    assert ranked_row["sector_rank"] == 5
+    assert stock_codes.index("688001.SH") < stock_codes.index("688002.SH")
+    assert stock_codes.index("688001.SH") < stock_codes.index("688003.SH")
+
+
 def test_theme_breakout_ranking_uses_movement_events_as_confirmation_signal() -> None:
     movement_confirmed = [
         _snapshot(

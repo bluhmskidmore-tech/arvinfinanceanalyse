@@ -155,6 +155,7 @@ def _stock_row(
         return None
 
     sector_rank = _valid_int(snapshot.sector_rank)
+    sector_rank_missing = sector_rank is None
     pctchange = _valid_float(snapshot.pctchange)
     turn = _valid_float(snapshot.turn)
     amplitude = _valid_float(snapshot.amplitude)
@@ -163,8 +164,7 @@ def _stock_row(
     low_value = _valid_float(snapshot.low_value)
     close_value = _valid_float(snapshot.close_value)
     if (
-        sector_rank is None
-        or pctchange is None
+        pctchange is None
         or turn is None
         or amplitude is None
         or open_value is None
@@ -185,6 +185,7 @@ def _stock_row(
         "sector_code": snapshot.sector_code,
         "sector_name": snapshot.sector_name,
         "sector_rank": sector_rank,
+        "sector_rank_missing": sector_rank_missing,
         "open": round(open_value, 6),
         "high": round(high_value, 6),
         "low": round(low_value, 6),
@@ -219,7 +220,7 @@ def _evaluate_theme_row(
     avg_pctchange = _average(row["pctchange"] for row in stock_rows)
     avg_turn = _average(row["turn"] for row in stock_rows)
     avg_amplitude = _average(row["amplitude"] for row in stock_rows)
-    parent_sector_rank = min(cast(int, row["sector_rank"]) for row in stock_rows)
+    parent_sector_rank = min(_sector_rank_sort_value(row["sector_rank"]) for row in stock_rows)
     movement_event_count = sum(cast(int, row["movement_event_count"]) for row in stock_rows)
     movement_rows = [
         row
@@ -338,14 +339,21 @@ def _theme_sort_key(row: dict[str, object]) -> tuple[int, int, int, float, float
     )
 
 
-def _stock_sort_key(row: dict[str, object]) -> tuple[int, float, float, float, str]:
+def _stock_sort_key(row: dict[str, object]) -> tuple[int, int, float, float, float, str]:
     return (
         0 if cast(bool, row["closed_up_limit"]) else 1,
+        _sector_rank_sort_value(row.get("sector_rank")),
         -cast(float, row["pctchange"]),
         -cast(float, row["turn"]),
         -cast(float, row["close_strength"]),
         str(row["stock_code"]),
     )
+
+
+def _sector_rank_sort_value(rank: object) -> int:
+    if rank is None:
+        return 999
+    return int(cast(int, rank))
 
 
 def _average(values: Iterable[object]) -> float:

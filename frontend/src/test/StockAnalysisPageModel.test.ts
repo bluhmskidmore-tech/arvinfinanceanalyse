@@ -404,6 +404,8 @@ describe("stockAnalysisPageModel", () => {
     expect(card.state).toBe("温和");
     expect(card.exposureLabel).toBe("40%");
     expect(card.passedLabel).toBe("2 / 4 条件通过");
+    expect(card.macroDisclosure).toBeNull();
+    expect(card.macroDisclosureDetail).toBeNull();
     expect(card.warnings.join(" ")).toContain("市场宽度输入不可用");
     expect(card.warnings.join(" ")).toContain("5日市场宽度输入未落地");
     expect(card.conditions[0]).toMatchObject({
@@ -1025,6 +1027,60 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.candidateCountLabel).toBe("候选 1");
     expect(summary.nextReviewAction).toContain("Fusion Alpha");
     expect(summary.nextReviewAction).not.toContain("买入");
+  });
+
+  it("discloses factor_rank_available on hybrid fusion candidates when the backend reports it", () => {
+    const basePayload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      supported_outputs: [...strategyPayload.supported_outputs, "hybrid_fusion"],
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_hybrid_fusion_candidates_v1",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 1,
+        coverage_note: "Hybrid fusion uses existing proxy inputs.",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000009.SZ",
+            stock_name: "Fusion Alpha",
+            sector_code: "801009",
+            sector_name: "机器人",
+            fusion_score: 0.81,
+            cycle_score: 0.7,
+            lifecourt_proxy_score: 0.6,
+            attention_score: 0.55,
+            price_confirm_score: 0.8,
+            crowding_penalty: 0.1,
+            factor_rank_available: false,
+            fusion_action: "monitor_only",
+            confidence: "low",
+            reason: "Fusion observation-only candidate",
+            evidence: { source_kinds: ["factor_screen"] },
+          },
+        ],
+      },
+    };
+
+    const missingCards = buildCandidateEvidenceCards(basePayload);
+    expect(missingCards[0].evidenceBullets.find((row) => row.key === "factor_rank_available")).toMatchObject({
+      value: "缺失，景气周期权重已重归一",
+    });
+
+    const legacyCards = buildCandidateEvidenceCards({
+      ...basePayload,
+      hybrid_fusion_candidates: {
+        ...basePayload.hybrid_fusion_candidates!,
+        items: [
+          {
+            ...basePayload.hybrid_fusion_candidates!.items[0],
+            factor_rank_available: undefined,
+          },
+        ],
+      },
+    });
+    expect(legacyCards[0].evidenceBullets.some((row) => row.key === "factor_rank_available")).toBe(false);
   });
 
   it("localizes signed hybrid fusion actions without turning them into trading instructions", () => {
@@ -2275,6 +2331,41 @@ describe("stockAnalysisPageModel", () => {
     expect(watch?.exitDistanceBucket === "triggered" || watch?.exitDistanceBucket === "0-3%").toBe(true);
   });
 
+  it("derives entryCostAvailable from the backend flag, defaulting from entry_cost when absent", () => {
+    const rows = buildRiskExitRows(strategyPayload, confluencePayload);
+    const triggered = rows.find((r) => r.stockCode === "000001.SZ");
+    const watch = rows.find((r) => r.stockCode === "000777.SZ");
+    // Legacy payload rows have entry_cost set and no explicit entry_cost_available flag.
+    expect(triggered?.entryCostAvailable).toBe(true);
+    expect(watch?.entryCostAvailable).toBe(true);
+
+    const rowsWithMissingCost = buildRiskExitRows(
+      {
+        ...strategyPayload,
+        risk_exit: {
+          ...strategyPayload.risk_exit!,
+          items: [
+            {
+              ...strategyPayload.risk_exit!.items[0],
+              entry_cost: null,
+              entry_cost_available: false,
+            },
+          ],
+          watch_items: [
+            {
+              ...strategyPayload.risk_exit!.watch_items![0],
+              entry_cost: null,
+              entry_cost_available: false,
+            },
+          ],
+        },
+      },
+      null,
+    );
+    expect(rowsWithMissingCost.find((r) => r.stockCode === "000001.SZ")?.entryCostAvailable).toBe(false);
+    expect(rowsWithMissingCost.find((r) => r.stockCode === "000777.SZ")?.entryCostAvailable).toBe(false);
+  });
+
   it("localizes confluence risk exit evidence before exposing row reasons", () => {
     const rows = buildRiskExitRows(strategyPayload, {
       ...confluencePayload,
@@ -2757,6 +2848,39 @@ describe("stockAnalysisPageModel", () => {
     });
     expect(factor?.candidateCountLabel).toBe("1 只候选");
     expect(factor?.candidates).toHaveLength(1);
+  });
+
+  it("discloses fundamental_overlay.factor_missing_count in the livermore card evidence when present", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      stock_candidates: {
+        ...strategyPayload.stock_candidates!,
+        fundamental_overlay: {
+          status: "applied",
+          input_candidate_count: 3,
+          valid_factor_count: 1,
+          selected_factor_count: 1,
+          top_fraction: 0.5,
+          factor_missing_count: 2,
+        },
+      },
+    };
+
+    const trend = buildStrategyLensItems(payload, buildConsensusSummary(payload)).find(
+      (item) => item.key === "livermore",
+    );
+
+    expect(trend?.evidence).toEqual(
+      expect.arrayContaining([{ key: "factor_missing", label: "缺因子", value: "2 只" }]),
+    );
+  });
+
+  it("omits the factor_missing evidence row for legacy payloads without fundamental_overlay", () => {
+    const trend = buildStrategyLensItems(strategyPayload, buildConsensusSummary(strategyPayload)).find(
+      (item) => item.key === "livermore",
+    );
+
+    expect(trend?.evidence.some((row) => row.key === "factor_missing")).toBe(false);
   });
 
   it("uses backend candidate_count for strategy ledger counts instead of preview length", () => {

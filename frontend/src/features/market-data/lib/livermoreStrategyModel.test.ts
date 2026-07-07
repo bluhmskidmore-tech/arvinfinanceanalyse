@@ -7,7 +7,7 @@ import type {
   LivermoreStrategyPayload,
   ResultMeta,
 } from "../../../api/contracts";
-import { buildLivermoreStrategyModel } from "./livermoreStrategyModel";
+import { buildLivermoreStrategyModel, buildMarketGateMacroDisclosure } from "./livermoreStrategyModel";
 
 const LIVERMORE_OUTPUT_KEYS: LivermoreOutputKey[] = [
   "market_gate",
@@ -348,6 +348,50 @@ describe("livermoreStrategyModel", () => {
     });
     expect(model.dataGaps.find((g) => g.inputFamily === "breadth")?.statusLabel).toBe("就绪");
   });
+  it("renders a dash instead of crashing when a risk-exit row has no entry cost", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "risk_exit"],
+        risk_exit: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_livermore_risk_exit_v1",
+          position_count: 2,
+          signal_count: 2,
+          excluded_position_count: 0,
+          insufficient_history_count: 0,
+          items: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              reason: "2d_below_ema10_with_volume",
+              entry_cost: null,
+              entry_cost_available: false,
+              bars_since_entry: 6,
+              latest_close: 9.1,
+              latest_ema10: 10.2,
+              prior_close: 9.4,
+              prior_ema10: 10.3,
+            },
+            {
+              stock_code: "000002.SZ",
+              stock_name: "Beta",
+              reason: "2d_below_ema10_with_volume",
+              entry_cost: 10.5,
+              entry_cost_available: true,
+              bars_since_entry: 6,
+              latest_close: 9.1,
+              latest_ema10: 10.2,
+              prior_close: 9.4,
+              prior_ema10: 10.3,
+            },
+          ],
+        },
+      }),
+    });
+
+    expect(model.riskExit?.items.map((item) => item.entryCost)).toEqual(["—", "10.500"]);
+  });
+
   it("derives stock-candidate observation levels from the backend candidate fields", () => {
     const model = buildLivermoreStrategyModel({
       envelope: makeEnvelope({
@@ -388,6 +432,280 @@ describe("livermoreStrategyModel", () => {
       entryTrigger: "21.800",
       pullbackWatch: "20.500",
       defenseLine: "19.800",
+    });
+  });
+
+  it("surfaces the fundamental overlay factor_missing_count when the backend reports it", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+        stock_candidates: {
+          as_of_date: "2026-04-30",
+          formula_version: "rv_livermore_stock_candidates_bundle_v7",
+          market_state: "HOT",
+          input_stock_count: 1,
+          candidate_count: 1,
+          excluded_stock_count: 0,
+          insufficient_history_count: 0,
+          fundamental_overlay: {
+            status: "applied",
+            input_candidate_count: 3,
+            valid_factor_count: 1,
+            selected_factor_count: 1,
+            top_fraction: 0.5,
+            factor_missing_count: 2,
+          },
+          items: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              sector_code: "S270000",
+              sector_name: "电子",
+              sector_rank: 1,
+              close: 22,
+              breakout_level: 21.8,
+              ma20: 20.5,
+              ma60: 19.8,
+              ma120: 18.2,
+              close_strength: 0.83,
+              gap_norm: -0.12,
+              abnormal_turnover: 1.39,
+            },
+          ],
+        },
+      }),
+    });
+
+    expect(model.stockCandidates?.factorMissingCount).toBe(2);
+  });
+
+  it("defaults the fundamental overlay factor_missing_count to null for legacy payloads", () => {
+    const model = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+        stock_candidates: {
+          as_of_date: "2026-04-30",
+          formula_version: "rv_livermore_stock_candidates_bundle_v1",
+          market_state: "HOT",
+          input_stock_count: 1,
+          candidate_count: 1,
+          excluded_stock_count: 0,
+          insufficient_history_count: 0,
+          items: [],
+        },
+      }),
+    });
+
+    expect(model.stockCandidates?.factorMissingCount).toBeNull();
+  });
+
+  it("derives entryCostAvailable for risk-exit items, defaulting to true for legacy payloads without the flag", () => {
+    const modelWithMissingCost = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "risk_exit"],
+        risk_exit: {
+          as_of_date: "2026-04-30",
+          formula_version: "rv_livermore_risk_exit_ema10_volume_obsfallback_v3",
+          position_count: 1,
+          signal_count: 1,
+          excluded_position_count: 0,
+          insufficient_history_count: 0,
+          items: [
+            {
+              stock_code: "000777.SZ",
+              stock_name: "Watch Alpha",
+              reason: "2d_below_ema10_with_volume",
+              entry_cost: null,
+              entry_cost_available: false,
+              bars_since_entry: 4,
+              latest_close: 19.8,
+              latest_ema10: 20.1,
+              prior_close: 20.4,
+              prior_ema10: 20,
+            },
+          ],
+        },
+      }),
+    });
+    expect(modelWithMissingCost.riskExit?.items[0]).toMatchObject({
+      entryCost: "—",
+      entryCostAvailable: false,
+    });
+
+    const legacyModel = buildLivermoreStrategyModel({
+      envelope: makeEnvelope({
+        supported_outputs: ["market_gate", "risk_exit"],
+        risk_exit: {
+          as_of_date: "2026-04-30",
+          formula_version: "rv_livermore_risk_exit_ema10_mvp_v1",
+          position_count: 1,
+          signal_count: 1,
+          excluded_position_count: 0,
+          insufficient_history_count: 0,
+          items: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              reason: "2d_below_ema10",
+              entry_cost: 10.5,
+              bars_since_entry: 6,
+              latest_close: 9.1,
+              latest_ema10: 10.2,
+              prior_close: 9.8,
+              prior_ema10: 10.4,
+            },
+          ],
+        },
+      }),
+    });
+    expect(legacyModel.riskExit?.items[0]).toMatchObject({
+      entryCost: "10.500",
+      entryCostAvailable: true,
+    });
+  });
+
+  it("returns null macro disclosure for legacy market gate payloads", () => {
+    const model = buildLivermoreStrategyModel({ envelope: makeEnvelope() });
+    expect(model.marketGate.macroDisclosure).toBeNull();
+    expect(buildMarketGateMacroDisclosure(makePayload().market_gate)).toBeNull();
+  });
+
+  it("builds applied macro adjustment disclosure with cycle state label", () => {
+    const disclosure = buildMarketGateMacroDisclosure({
+      ...makePayload().market_gate,
+      exposure: 0.25,
+      exposure_raw: 0.75,
+      formula_version: "rv_market_gate_macro_overlay_v1",
+      macro_context: {
+        status: "ready",
+        cycle_state: "recession",
+        macro_score: 0.2,
+        gate_as_of_date: "2026-04-29",
+        data_date: "2026-03-28",
+        lag_days: 32,
+        max_component_lag_days: 32,
+        components: [],
+        evidence: "cycle inputs ready",
+        formula_version: "rv_market_gate_macro_overlay_v1",
+      },
+      macro_overlay: {
+        applied: true,
+        exposure_cap: 0.25,
+        exposure_raw: 0.75,
+        exposure_adjusted: 0.25,
+        rule: "cap recession",
+        formula_version: "rv_market_gate_macro_overlay_v1",
+      },
+    });
+
+    expect(disclosure).toMatchObject({
+      adjustmentLabel: "宏观调节 0.75→0.25",
+      cycleStateLabel: "衰退",
+      statusMarker: null,
+      lagLabel: "宏观数据滞后 32 天",
+    });
+  });
+
+  it("formats the macro adjustment as percentages when the percent exposure format is requested", () => {
+    const disclosure = buildMarketGateMacroDisclosure(
+      {
+        ...makePayload().market_gate,
+        exposure: 0.25,
+        exposure_raw: 0.75,
+        formula_version: "rv_market_gate_macro_overlay_v1",
+        macro_context: {
+          status: "ready",
+          cycle_state: "recession",
+          macro_score: 0.2,
+          lag_days: 32,
+          components: [],
+        },
+        macro_overlay: {
+          applied: true,
+          exposure_cap: 0.25,
+          exposure_raw: 0.75,
+          exposure_adjusted: 0.25,
+        },
+      },
+      { exposureFormat: "percent" },
+    );
+
+    expect(disclosure?.adjustmentLabel).toBe("宏观调节 75%→25%");
+  });
+
+  it("keeps disclosure without adjustment when macro overlay is not applied", () => {
+    const disclosure = buildMarketGateMacroDisclosure({
+      ...makePayload().market_gate,
+      exposure: 0.4,
+      exposure_raw: 0.4,
+      formula_version: "rv_market_gate_macro_overlay_v1",
+      macro_context: {
+        status: "ready",
+        cycle_state: "neutral",
+        macro_score: 0.5,
+        lag_days: 12,
+        components: [],
+      },
+      macro_overlay: {
+        applied: false,
+        exposure_cap: null,
+        exposure_raw: 0.4,
+        exposure_adjusted: 0.4,
+      },
+    });
+
+    expect(disclosure).toMatchObject({
+      adjustmentLabel: null,
+      cycleStateLabel: null,
+      statusMarker: null,
+      lagLabel: "宏观数据滞后 12 天",
+    });
+  });
+
+  it("surfaces missing macro background marker", () => {
+    const disclosure = buildMarketGateMacroDisclosure({
+      ...makePayload().market_gate,
+      exposure_raw: 0.4,
+      macro_context: {
+        status: "missing",
+        cycle_state: null,
+        macro_score: null,
+        components: [],
+      },
+      macro_overlay: {
+        applied: false,
+        exposure_raw: 0.4,
+        exposure_adjusted: 0.4,
+      },
+    });
+
+    expect(disclosure).toMatchObject({
+      adjustmentLabel: null,
+      statusMarker: "宏观背景缺失",
+      lagLabel: null,
+    });
+  });
+
+  it("surfaces expired macro background marker", () => {
+    const disclosure = buildMarketGateMacroDisclosure({
+      ...makePayload().market_gate,
+      exposure_raw: 0.4,
+      macro_context: {
+        status: "expired",
+        cycle_state: null,
+        macro_score: 0.3,
+        components: [],
+      },
+      macro_overlay: {
+        applied: false,
+        exposure_raw: 0.4,
+        exposure_adjusted: 0.4,
+      },
+    });
+
+    expect(disclosure).toMatchObject({
+      statusMarker: "宏观背景过期",
     });
   });
 });

@@ -2,6 +2,7 @@ import type {
   LivermoreCandidateHistoryHorizonKey,
   LivermoreCandidateHistoryHorizonStats,
   LivermoreCandidateHistoryPayload,
+  LivermoreProxyCostBasis,
 } from "../../../api/contracts";
 
 export const strategyBacktestOrder = [
@@ -55,6 +56,12 @@ export function formatBacktestSignedPercent(value: number | null | undefined): s
   if (value == null || Number.isNaN(value)) return "待补";
   const pct = value * 100;
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+}
+
+/** Returns null when the backend omits cost_basis (older payloads), so callers can skip the line entirely. */
+export function formatCostBasisLabel(costBasis: LivermoreProxyCostBasis | null | undefined): string | null {
+  if (!costBasis || !Number.isFinite(costBasis.round_trip_cost_rate)) return null;
+  return `双边成本 ${formatBacktestPercent(costBasis.round_trip_cost_rate, 2)}（含双向滑点）`;
 }
 
 export function backtestStatsText(stats: LivermoreCandidateHistoryHorizonStats | undefined): string {

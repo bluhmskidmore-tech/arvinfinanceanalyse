@@ -448,10 +448,82 @@ def test_stock_candidates_apply_fundamental_overlay_when_factor_inputs_are_avail
         "valid_factor_count": 4,
         "selected_factor_count": 2,
         "top_fraction": 0.5,
+        "factor_missing_count": 0,
     }
     assert [row["stock_code"] for row in items] == ["000002.SZ", "000003.SZ"]
     assert all(row["factor_score"] is not None for row in items)
     assert float(items[0]["abnormal_turnover"]) > float(items[1]["abnormal_turnover"])
+
+
+def test_stock_candidates_fundamental_overlay_keeps_technically_eligible_stock_missing_factor_data() -> None:
+    closes = _close_history(start=10.0, step=0.1)
+    snapshots = [
+        _snapshot(
+            stock_code="000010.SZ",
+            stock_name="Quality With Factors",
+            sector_code="801001",
+            sector_name="AI",
+            sector_rank=1,
+            close_history=closes,
+            turnover_history=_turnover_history(baseline=0.5, current=1.8),
+            open_value=21.85,
+            high_value=21.91,
+            low_value=21.6,
+            pe=12.0,
+            pb=1.5,
+            ps=2.0,
+            roe=0.18,
+            gross_margin=0.35,
+            three_month_return=0.12,
+            twelve_month_return=0.20,
+            volatility=0.22,
+            dividend_yield=0.025,
+        ),
+        _snapshot(
+            stock_code="000020.SZ",
+            stock_name="Technically Eligible Missing PE",
+            sector_code="801002",
+            sector_name="Power",
+            sector_rank=2,
+            close_history=closes,
+            turnover_history=_turnover_history(baseline=0.5, current=1.3),
+            open_value=21.85,
+            high_value=21.91,
+            low_value=21.6,
+            pe=None,
+            pb=1.2,
+            ps=1.6,
+            roe=0.14,
+            gross_margin=0.30,
+        ),
+    ]
+
+    result = compute_stock_candidates(
+        as_of_date="2026-04-29",
+        market_state="HOT",
+        snapshots=snapshots,
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    items = cast(list[dict[str, Any]], payload["items"])
+
+    # Regression guard: a candidate that clears every technical filter must
+    # not silently disappear from the output just because it lacks one
+    # fundamental factor input (pe here). It stays in the output, ranked
+    # after the fully-scored candidate, but without a factor score.
+    assert payload["candidate_count"] == 2
+    assert [row["stock_code"] for row in items] == ["000010.SZ", "000020.SZ"]
+    assert items[0]["factor_score"] is not None
+    assert "factor_score" not in items[1]
+
+    assert payload["fundamental_overlay"] == {
+        "status": "applied",
+        "input_candidate_count": 2,
+        "valid_factor_count": 1,
+        "selected_factor_count": 1,
+        "top_fraction": 0.5,
+        "factor_missing_count": 1,
+    }
 
 
 def test_stock_candidates_can_emit_pre_truncation_universe_for_research() -> None:

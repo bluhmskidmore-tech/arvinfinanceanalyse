@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import json
 import sys
+from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import cast
 
@@ -1820,6 +1822,117 @@ def test_task_loads_strategy_before_opening_write_connection(monkeypatch, tmp_pa
     out = materialize_livermore_candidate_history(str(db_path))
 
     assert out["row_count"] == 1
+
+
+def test_materialize_holds_candidate_history_lock_during_write(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "lock-hold.duckdb"
+    snap = date(2026, 5, 1)
+    stock = "000006.SZ"
+    _seed_calendar_observations(str(db_path), stock_code=stock, start=snap, days=25)
+
+    locks_mod = importlib.import_module("backend.app.governance.locks")
+    task_mod = importlib.import_module("backend.app.tasks.livermore_candidate_history_materialize")
+    observed = {"contention_checked": False}
+    original_acquire_lock = locks_mod.acquire_lock
+
+    @contextmanager
+    def tracking_acquire_lock(definition, base_dir, timeout_seconds=1.0, **kwargs):
+        with original_acquire_lock(
+            definition,
+            base_dir=base_dir,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        ) as lock_path:
+            if definition.key == task_mod.LIVERMORE_CANDIDATE_HISTORY_LOCK.key:
+                with pytest.raises(TimeoutError):
+                    with original_acquire_lock(
+                        definition,
+                        base_dir=base_dir,
+                        timeout_seconds=0.01,
+                    ):
+                        pass
+                observed["contention_checked"] = True
+            yield lock_path
+
+    monkeypatch.setattr(task_mod, "acquire_lock", tracking_acquire_lock)
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        lambda *args, **kwargs: _fake_payload(
+            as_of_date=snap.isoformat(),
+            items=[
+                {
+                    "rank": 1,
+                    "stock_code": stock,
+                    "stock_name": "LockHold",
+                    "sector_code": "S1",
+                    "sector_name": "Sec",
+                }
+            ],
+        ),
+    )
+
+    out = materialize_livermore_candidate_history(str(db_path))
+
+    assert out["row_count"] == 1
+    assert observed["contention_checked"] is True
+
+
+def test_execution_backfill_holds_candidate_history_lock_during_write(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "execution-lock-hold.duckdb"
+    snap = date(2026, 5, 1)
+    stock = "000007.SZ"
+    _seed_calendar_observations(str(db_path), stock_code=stock, start=snap, days=25)
+
+    locks_mod = importlib.import_module("backend.app.governance.locks")
+    task_mod = importlib.import_module("backend.app.tasks.livermore_candidate_history_materialize")
+    observed = {"contention_checked": False}
+    original_acquire_lock = locks_mod.acquire_lock
+
+    @contextmanager
+    def tracking_acquire_lock(definition, base_dir, timeout_seconds=1.0, **kwargs):
+        with original_acquire_lock(
+            definition,
+            base_dir=base_dir,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        ) as lock_path:
+            if definition.key == task_mod.LIVERMORE_CANDIDATE_HISTORY_LOCK.key:
+                with pytest.raises(TimeoutError):
+                    with original_acquire_lock(
+                        definition,
+                        base_dir=base_dir,
+                        timeout_seconds=0.01,
+                    ):
+                        pass
+                observed["contention_checked"] = True
+            yield lock_path
+
+    monkeypatch.setattr(task_mod, "acquire_lock", tracking_acquire_lock)
+    monkeypatch.setattr(
+        "backend.app.tasks.livermore_candidate_history_materialize.load_livermore_strategy_payload",
+        lambda *args, **kwargs: _fake_payload(
+            as_of_date=snap.isoformat(),
+            items=[
+                {
+                    "rank": 1,
+                    "stock_code": stock,
+                    "stock_name": "ExecLock",
+                    "sector_code": "S1",
+                    "sector_name": "Sec",
+                }
+            ],
+        ),
+    )
+    materialize_livermore_candidate_history(str(db_path))
+
+    out = backfill_livermore_candidate_execution_history(
+        str(db_path),
+        start_date=snap.isoformat(),
+        end_date=snap.isoformat(),
+    )
+
+    assert out["execution_row_count"] == 1
+    assert observed["contention_checked"] is True
 
 
 def test_task_materializes_theme_breakout_signal_rows_with_review_evidence_and_no_lookahead(
@@ -5547,8 +5660,18 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
     assert body["full_strategy_status"] == "blocked_missing_inputs"
     assert body["proxy_signal_kind"] == "stock_candidate"
     assert body["summary"]["sample_days"] == 1
-    assert body["summary"]["cumulative_return"] == 0.12
-    assert body["summary"]["max_gain"]["return"] == 0.12
+    # net of formal round-trip cost: 0.12 - (0.0008 + 0.0013 + 2 * 0.0010) = 0.1159
+    assert body["summary"]["cumulative_return"] == 0.1159
+    # v2 basket returns prefer return_5d_adj; these fixtures only land gross return_5d
+    assert body["summary"]["return_field_used"] == "return_5d_adj"
+    assert body["summary"]["return_field_fallback"] == "return_5d"
+    assert body["summary"]["return_rows_adjusted"] == 0
+    assert body["summary"]["return_rows_gross_fallback"] == 4
+    assert body["summary"]["cost_basis"]["round_trip_cost_rate"] == 0.0041
+    # single basket: annualization would explode, must be suppressed
+    assert body["summary"]["annualized_return"] is None
+    assert body["summary"]["annualization_status"] == "insufficient_sample"
+    assert body["summary"]["max_gain"]["return"] == 0.1159
     assert body["summary"]["max_gain"]["start_date"] == "2026-05-01"
     assert body["summary"]["max_gain"]["end_date"] == "2026-05-08"
     assert body["summary"]["max_drawdown"]["return"] == 0.0
@@ -5557,8 +5680,195 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
     assert [row["date"] for row in body["nav_series"]] == [
         "2026-05-01",
     ]
-    assert body["nav_series"][-1]["nav"] == 1.12
+    assert body["nav_series"][-1]["nav"] == 1.1159
     assert "PMI" in body["missing_full_strategy_inputs"]
+
+
+def test_cycle_proxy_backtest_nets_formal_costs_and_annualizes_with_actual_span(tmp_path) -> None:
+    db_path = tmp_path / "cycle-proxy-annualization.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-01-05", "000001.SZ", "Proxy A", "stock_candidate", 0.10, 0.12, 0.20, '{"market_state":"WARM"}'),
+                ("2026-12-21", "000002.SZ", "Proxy B", "stock_candidate", 0.10, 0.12, 0.20, '{"market_state":"HOT"}'),
+            ],
+        )
+        conn.executemany(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_5d = ?
+            where snapshot_as_of_date = ?
+            """,
+            [
+                ("2026-01-12", "2026-01-05"),
+                ("2026-12-28", "2026-12-21"),
+            ],
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-01-05")
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-12-21")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_cycle_proxy_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-01-05",
+        snapshot_to="2026-12-21",
+    )
+
+    body = envelope["result"]
+    # net basket return: 0.12 - (0.0008 + 0.0013 + 2 * 0.0010) = 0.1159 per basket
+    assert body["nav_series"][0]["period_return"] == 0.1159
+    assert body["nav_series"][0]["period_return_gross"] == 0.12
+    # terminal nav 1.1159 ** 2 = 1.245233 (rounded)
+    assert body["nav_series"][-1]["nav"] == 1.245233
+    summary = body["summary"]
+    assert summary["return_field_used"] == "return_5d_adj"
+    assert summary["return_field_fallback"] == "return_5d"
+    assert summary["cost_basis"] == {
+        "source": "core_finance.strategy_policy.POLICY",
+        "buy_cost_rate": 0.0008,
+        "sell_cost_rate": 0.0013,
+        "slippage_rate": 0.001,
+        "round_trip_cost_rate": 0.0041,
+    }
+    assert summary["cumulative_return"] == 0.245233
+    # actual span 2026-01-05 -> 2026-12-28 = 357 calendar days,
+    # annualized = 1.245233 ** (365 / 357) - 1 = 0.251368
+    assert summary["annualization_span_calendar_days"] == 357
+    assert summary["annualization_status"] == "ok"
+    assert summary["annualized_return"] == 0.251368
+    assert any("net of the formal transaction-cost constants" in warning for warning in body["warnings"])
+    assert any("not produced by the formal path backtest engine" in warning for warning in body["warnings"])
+
+
+def test_cycle_proxy_backtest_prefers_adjusted_returns_and_reports_formula_version(tmp_path) -> None:
+    """v2 口径：篮子收益优先 return_5d_adj（复权口径，与正式引擎一致），缺失时回退 gross return_5d。"""
+    db_path = tmp_path / "cycle-proxy-adjusted.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Adj A", "stock_candidate", 0.10, 0.12, 0.20, '{"market_state":"WARM"}'),
+            ],
+        )
+        # gross return_5d is inflated by an ex-dividend gap; the adjusted return is 0.10
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_5d = '2026-05-08',
+                return_5d_adj = 0.10
+            where snapshot_as_of_date = '2026-05-01'
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_cycle_proxy_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+    )
+
+    body = envelope["result"]
+    assert body["formula_version"] == "fv_livermore_cycle_proxy_backtest_adj_first_v2"
+    # old (v1, gross return_5d) 口径: 0.12 - 0.0041 = 0.1159
+    # new (v2, return_5d_adj first) 口径: 0.10 - 0.0041 = 0.0959
+    assert body["nav_series"][0]["period_return"] == 0.0959
+    assert body["nav_series"][0]["period_return_gross"] == 0.1
+    assert body["summary"]["cumulative_return"] == 0.0959
+    assert body["summary"]["return_rows_adjusted"] == 1
+    assert body["summary"]["return_rows_gross_fallback"] == 0
+
+
+def test_candidate_history_portfolio_backtest_reports_formula_version(tmp_path) -> None:
+    db_path = tmp_path / "candidate-history-portfolio-formula.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                ("2026-05-01", "000001.SZ", 100.0),
+                ("2026-05-02", "000001.SZ", 110.0),
+            ],
+        )
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Alpha", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute("update livermore_candidate_history set data_status = 'pending'")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_portfolio_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-02",
+    )
+
+    body = envelope["result"]
+    assert body["formula_version"] == "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
+
+
+def test_candidate_history_portfolio_backtest_uses_adjusted_mtm_and_reports_fallback_rows(tmp_path) -> None:
+    db_path = tmp_path / "candidate-history-portfolio-adjusted-mtm.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                ("2026-05-01", "000001.SZ", 100.0),
+                ("2026-05-01", "000002.SZ", 100.0),
+                # 000001.SZ has an ex-dividend raw close gap; adjusted close stays flat at 100.
+                ("2026-05-02", "000001.SZ", 50.0),
+                ("2026-05-02", "000002.SZ", 110.0),
+            ],
+        )
+        _seed_stock_adjustment_factors(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", 1.0),
+                ("2026-05-02", "000001.SZ", 2.0),
+            ],
+        )
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "ExDiv", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+                ("2026-05-01", "000002.SZ", "RawFallback", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute("update livermore_candidate_history set data_status = 'pending'")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_portfolio_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-02",
+    )
+
+    body = envelope["result"]
+    assert envelope["result_meta"]["tables_used"] == [
+        "livermore_candidate_history",
+        "choice_stock_daily_observation",
+        "stock_adjustment_factor",
+    ]
+    assert body["formula_version"] == "fv_livermore_candidate_history_portfolio_adj_mtm_v2"
+    assert [row["nav"] for row in body["nav_series"]] == [0.9982, 1.04811]
+    summary = body["summary"]
+    assert summary["price_field_used"] == "adj_close_value"
+    assert summary["price_field_fallback"] == "close_value"
+    assert summary["price_rows_adjusted"] == 2
+    assert summary["price_rows_raw_fallback"] == 2
+    assert any("daily adjusted-close mark-to-market" in warning for warning in body["warnings"])
 
 
 def test_cycle_proxy_backtest_compares_proxy_nav_to_csi300_benchmark(tmp_path) -> None:
@@ -5598,7 +5908,8 @@ def test_cycle_proxy_backtest_compares_proxy_nav_to_csi300_benchmark(tmp_path) -
     assert summary["benchmark"]["start_date"] == "2026-05-01"
     assert summary["benchmark"]["end_date"] == "2026-05-08"
     assert summary["benchmark"]["cumulative_return"] == 0.05
-    assert summary["benchmark"]["relative_cumulative_return"] == 0.07
+    # strategy net return 0.1159 minus benchmark 0.05
+    assert summary["benchmark"]["relative_cumulative_return"] == 0.0659
 
 
 def test_cycle_proxy_backtest_unions_csi300_benchmark_sources_for_coverage(tmp_path) -> None:
@@ -5700,7 +6011,7 @@ def test_cycle_proxy_backtest_api_happy_path_and_query_validation(monkeypatch, t
     body = response.json()
     assert body["result_meta"]["rule_version"] == "rv_livermore_cycle_proxy_backtest_v1"
     assert body["result"]["status"] == "proxy"
-    assert body["result"]["summary"]["cumulative_return"] == 0.12
+    assert body["result"]["summary"]["cumulative_return"] == 0.1159
     assert (
         client.get(
             "/ui/market-data/livermore/cycle-proxy-backtest",
@@ -5758,10 +6069,12 @@ def test_candidate_history_portfolio_backtest_marks_to_market_with_monthly_cash_
     assert body["summary"]["cash_rebalance_count"] == 1
     assert body["summary"]["candidate_rows"] == 3
     assert body["summary"]["gross_turnover"] == 3.0
-    assert body["summary"]["cost_drag"] == 0.002583
+    # per-side cost now includes slippage: buy 0.0008+0.0010, sell 0.0013+0.0010
+    assert body["summary"]["cost_drag"] == 0.005275
+    assert body["summary"]["cost_basis"]["slippage_rate"] == 0.001
     assert body["summary"]["sample_days"] == 4
-    assert body["summary"]["cumulative_return"] == -0.067709
-    assert body["summary"]["max_gain"]["return"] == 0.1
+    assert body["summary"]["cumulative_return"] == -0.070506
+    assert body["summary"]["max_gain"]["return"] == 0.099999
     assert body["summary"]["max_gain"]["start_date"] == "2026-07-01"
     assert body["summary"]["max_gain"]["end_date"] == "2026-07-02"
     assert body["summary"]["max_drawdown"]["peak_date"] == "2026-05-02"
@@ -5777,6 +6090,88 @@ def test_candidate_history_portfolio_backtest_marks_to_market_with_monthly_cash_
     assert body["rebalance_log"][1]["target_count"] == 0
     assert body["rebalance_log"][1]["sell_turnover"] == 1.0
     assert "equal-weight top-6 replay rows" in body["warnings"][1]
+
+
+def test_candidate_history_portfolio_backtest_forward_fills_missing_closes(tmp_path) -> None:
+    db_path = tmp_path / "candidate-history-portfolio-forward-fill.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                ("2026-05-01", "000001.SZ", 100.0),
+                ("2026-05-01", "000002.SZ", 100.0),
+                # 000001.SZ has no close on 2026-05-02 (e.g. halted) and reprices on 2026-05-03
+                ("2026-05-02", "000002.SZ", 110.0),
+                ("2026-05-03", "000001.SZ", 104.0),
+                ("2026-05-03", "000002.SZ", 110.0),
+            ],
+        )
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Alpha", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+                ("2026-05-01", "000002.SZ", "Beta", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute("update livermore_candidate_history set data_status = 'pending'")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_portfolio_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-03",
+    )
+
+    body = envelope["result"]
+    # 2026-05-02: 000001.SZ marked at its last known close 100.0 (forward-fill),
+    # not zero: nav = 0.4991 + 0.4991 * 1.1 = 1.04811 (entry cost 0.0018 on day 1)
+    assert [row["nav"] for row in body["nav_series"]] == [0.9982, 1.04811, 1.068074]
+    assert body["nav_series"][1]["holding_count"] == 2
+    # the stock repriced within the period, so no stale-price warning is emitted
+    assert not any("forward-fill" in warning for warning in body["warnings"])
+
+
+def test_candidate_history_portfolio_backtest_flags_stocks_without_fresh_prices(tmp_path) -> None:
+    db_path = tmp_path / "candidate-history-portfolio-stale.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                ("2026-05-01", "000001.SZ", 100.0),
+                ("2026-05-01", "000002.SZ", 100.0),
+                # 000001.SZ never reprices again after the rebalance date
+                ("2026-05-02", "000002.SZ", 110.0),
+                ("2026-05-03", "000002.SZ", 112.0),
+            ],
+        )
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Alpha", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+                ("2026-05-01", "000002.SZ", "Beta", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute("update livermore_candidate_history set data_status = 'pending'")
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_portfolio_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-03",
+    )
+
+    body = envelope["result"]
+    # 000001.SZ stays valued at 100.0: nav = 0.4991 + 0.4991 * 1.12 = 1.058092
+    assert body["nav_series"][-1]["nav"] == 1.058092
+    stale_warnings = [warning for warning in body["warnings"] if "forward-fill" in warning]
+    assert len(stale_warnings) == 1
+    assert "000001.SZ" in stale_warnings[0]
 
 
 def test_candidate_history_portfolio_backtest_compares_nav_to_csi300_benchmark(tmp_path) -> None:
@@ -5812,6 +6207,7 @@ def test_candidate_history_portfolio_backtest_compares_nav_to_csi300_benchmark(t
     assert envelope["result_meta"]["tables_used"] == [
         "livermore_candidate_history",
         "choice_stock_daily_observation",
+        "stock_adjustment_factor",
         "fact_choice_macro_daily",
     ]
     assert summary["benchmark"]["series_id"] == "CA.CSI300"
@@ -5819,7 +6215,8 @@ def test_candidate_history_portfolio_backtest_compares_nav_to_csi300_benchmark(t
     assert summary["benchmark"]["requested_start_date"] == "2026-05-01"
     assert summary["benchmark"]["requested_end_date"] == "2026-05-02"
     assert summary["benchmark"]["cumulative_return"] == 0.2
-    assert summary["benchmark"]["relative_cumulative_return"] == -0.10088
+    # strategy net return 0.09802 (costs incl. slippage) minus benchmark 0.2
+    assert summary["benchmark"]["relative_cumulative_return"] == -0.10198
 
 
 def test_candidate_history_portfolio_backtest_marks_unsupported_without_replay_rows(tmp_path) -> None:
@@ -5883,3 +6280,140 @@ def test_candidate_history_portfolio_backtest_api_happy_path_and_query_validatio
         == 422
     )
     get_settings.cache_clear()
+
+
+def test_cycle_proxy_backtest_payload_structure_characterization(tmp_path) -> None:
+    """Lock the payload keys consumed by the frontend candidate-history page."""
+    db_path = tmp_path / "cycle-proxy-structure.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Proxy A", "stock_candidate", 0.10, 0.12, 0.20, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_5d = '2026-05-08'
+            where snapshot_as_of_date = '2026-05-01'
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+        _seed_csi300_benchmark(conn, [("2026-05-01", 100.0), ("2026-05-08", 105.0)])
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_cycle_proxy_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-01",
+    )
+
+    body = envelope["result"]
+    required_payload_keys = {
+        "status",
+        "full_strategy_status",
+        "proxy_signal_kind",
+        "proxy_rule",
+        "snapshot_from",
+        "snapshot_to",
+        "missing_full_strategy_inputs",
+        "warnings",
+        "summary",
+        "nav_series",
+    }
+    assert required_payload_keys <= set(body)
+    required_summary_keys = {
+        "sample_days",
+        "candidate_rows",
+        "cumulative_return",
+        "annualized_return",
+        "max_gain",
+        "max_drawdown",
+    }
+    assert required_summary_keys <= set(body["summary"])
+    assert {"return", "start_date", "end_date"} <= set(body["summary"]["max_gain"])
+    assert {"return", "peak_date", "trough_date"} <= set(body["summary"]["max_drawdown"])
+    assert {"series_id", "coverage_status", "cumulative_return", "relative_cumulative_return"} <= set(
+        body["summary"]["benchmark"]
+    )
+    required_nav_keys = {"date", "exit_date", "period_return", "nav", "candidate_count"}
+    assert required_nav_keys <= set(body["nav_series"][0])
+
+
+def test_candidate_history_portfolio_backtest_payload_structure_characterization(tmp_path) -> None:
+    """Lock the payload keys consumed by the frontend candidate-history page."""
+    db_path = tmp_path / "candidate-history-portfolio-structure.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation (trade_date, stock_code, close_value) values (?, ?, ?)",
+            [
+                ("2026-05-01", "000001.SZ", 100.0),
+                ("2026-05-02", "000001.SZ", 110.0),
+            ],
+        )
+        _insert_strategy_score_rows(
+            conn,
+            [
+                ("2026-05-01", "000001.SZ", "Alpha", "stock_candidate", None, None, None, '{"market_state":"WARM"}'),
+            ],
+        )
+        conn.execute("update livermore_candidate_history set data_status = 'pending'")
+        _seed_csi300_benchmark(conn, [("2026-05-01", 100.0), ("2026-05-02", 120.0)])
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_portfolio_backtest_envelope(
+        duckdb_path=str(db_path),
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-02",
+    )
+
+    body = envelope["result"]
+    required_payload_keys = {
+        "status",
+        "full_strategy_status",
+        "signal_kind",
+        "rebalance_rule",
+        "weighting_rule",
+        "snapshot_from",
+        "snapshot_to",
+        "missing_full_strategy_inputs",
+        "warnings",
+        "summary",
+        "nav_series",
+        "rebalance_log",
+    }
+    assert required_payload_keys <= set(body)
+    required_summary_keys = {
+        "sample_days",
+        "candidate_rows",
+        "rebalance_count",
+        "invested_rebalance_count",
+        "cash_rebalance_count",
+        "gross_turnover",
+        "cost_drag",
+        "cumulative_return",
+        "annualized_return",
+        "max_gain",
+        "max_drawdown",
+    }
+    assert required_summary_keys <= set(body["summary"])
+    required_nav_keys = {"date", "nav", "cash_weight", "holding_count"}
+    assert required_nav_keys <= set(body["nav_series"][0])
+    required_rebalance_keys = {
+        "date",
+        "market_state",
+        "target_count",
+        "buy_turnover",
+        "sell_turnover",
+        "transaction_cost",
+    }
+    assert required_rebalance_keys <= set(body["rebalance_log"][0])
+    assert {"series_id", "coverage_status", "cumulative_return", "relative_cumulative_return"} <= set(
+        body["summary"]["benchmark"]
+    )

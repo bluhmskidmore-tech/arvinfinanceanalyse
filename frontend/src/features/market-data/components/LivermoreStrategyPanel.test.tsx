@@ -18,6 +18,7 @@ function makeModel(): LivermoreStrategyModel {
       availableConditions: 4,
       requiredConditions: 4,
       conditions: [],
+      macroDisclosure: null,
     },
     ruleBlocks: [],
     diagnostics: [],
@@ -42,6 +43,7 @@ function makeModel(): LivermoreStrategyModel {
     stockCandidates: {
       formulaVersion: "rv_livermore_stock_candidates_bundle_v1",
       marketState: "HOT",
+      factorMissingCount: null,
       items: [
         {
           rank: 1,
@@ -147,6 +149,43 @@ describe("LivermoreStrategyPanel", () => {
     expect(dataGaps).toHaveTextContent("stale");
   });
 
+  it("discloses missing fundamental factors and missing entry cost basis", () => {
+    const model = makeModel();
+    model.stockCandidates = {
+      ...model.stockCandidates!,
+      factorMissingCount: 2,
+    };
+    model.riskExit = {
+      formulaVersion: "rv_livermore_risk_exit_ema10_volume_obsfallback_v3",
+      positionCount: 1,
+      signalCount: 1,
+      items: [
+        {
+          stockCode: "000777.SZ",
+          stockName: "Watch Alpha",
+          reason: "2d_below_ema10_with_volume",
+          entryCost: "—",
+          entryCostAvailable: false,
+          barsSinceEntry: 4,
+          latestClose: "19.800",
+          latestEma10: "20.100",
+        },
+      ],
+    };
+
+    render(
+      <LivermoreStrategyPanel
+        model={model}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("livermore-stock-candidates")).toHaveTextContent("缺 2 个因子");
+    expect(screen.getByTestId("livermore-risk-exit")).toHaveTextContent("成本价缺失");
+  });
+
   it("renders multiple data gaps from the same input family without duplicate row keys", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const model = makeModel();
@@ -194,5 +233,32 @@ describe("LivermoreStrategyPanel", () => {
       ),
     ).toBe(false);
     consoleError.mockRestore();
+  });
+
+  it("renders market gate macro overlay disclosure on the gate card", () => {
+    render(
+      <LivermoreStrategyPanel
+        model={{
+          ...makeModel(),
+          marketGate: {
+            ...makeModel().marketGate,
+            macroDisclosure: {
+              adjustmentLabel: "宏观调节 0.75→0.25",
+              cycleStateLabel: "衰退",
+              statusMarker: null,
+              lagLabel: null,
+            },
+          },
+        }}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const disclosure = screen.getByTestId("livermore-market-gate-macro-disclosure");
+    expect(disclosure).toHaveTextContent("宏观调节 0.75→0.25");
+    expect(disclosure).toHaveTextContent("衰退");
+    expect(screen.queryByText("宏观背景缺失")).not.toBeInTheDocument();
   });
 });

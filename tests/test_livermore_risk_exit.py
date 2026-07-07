@@ -121,6 +121,42 @@ def test_compute_risk_exit_keeps_position_when_only_latest_close_breaks_ema10() 
     assert watch_items[0]["price_below_ema"] is False
 
 
+def test_compute_risk_exit_keeps_watch_item_when_entry_cost_missing() -> None:
+    """缺 entry_cost 时仍监控 EMA/量能，标注 entry_cost_available=false。"""
+    closes = [
+        10.0, 10.1, 10.2, 10.4, 10.6, 10.8, 10.9, 11.0, 11.1, 11.0,
+        10.9, 11.0, 11.1, 11.2, 11.0, 10.9, 10.8, 11.0, 11.1, 9.8, 9.1,
+    ]
+    result = compute_risk_exit(
+        as_of_date="2026-04-29",
+        snapshots=[
+            RiskExitSnapshot(
+                stock_code="000001.SZ",
+                stock_name="Alpha",
+                entry_cost=None,
+                bars_since_entry=6,
+                close_history=closes,
+                volume_history=_high_volume_history(surge_ratio=2.0),
+            )
+        ],
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    assert payload["excluded_position_count"] == 0
+    assert payload["signal_count"] == 1
+    watch_items = cast(list[dict[str, Any]], payload["watch_items"])
+    assert len(watch_items) == 1
+    watch_item = watch_items[0]
+    assert watch_item["stock_code"] == "000001.SZ"
+    assert watch_item["entry_cost_available"] is False
+    assert watch_item["triggered"] is True
+    assert watch_item["price_below_ema"] is True
+    assert watch_item["volume_confirmed"] is True
+    items = cast(list[dict[str, Any]], payload["items"])
+    assert items[0]["stock_code"] == "000001.SZ"
+    assert items[0]["entry_cost_available"] is False
+
+
 def test_compute_risk_exit_excludes_positions_without_required_inputs() -> None:
     result = compute_risk_exit(
         as_of_date="2026-04-29",
@@ -162,6 +198,9 @@ def test_compute_risk_exit_excludes_positions_without_required_inputs() -> None:
 
     assert result.payload["position_count"] == 4
     assert result.payload["signal_count"] == 0
-    assert result.payload["excluded_position_count"] == 4
+    assert result.payload["excluded_position_count"] == 3
     assert result.payload["insufficient_history_count"] == 2
-    assert result.payload["watch_items"] == []
+    watch_items = cast(list[dict[str, Any]], result.payload["watch_items"])
+    assert len(watch_items) == 1
+    assert watch_items[0]["stock_code"] == "000001.SZ"
+    assert watch_items[0]["entry_cost_available"] is False

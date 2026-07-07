@@ -71,6 +71,14 @@ export function StockAnalysisRiskExitRows({
                 {riskStatusLabel(row.status)}
               </em>
             </div>
+            {!row.entryCostAvailable ? (
+              <p
+                className="stock-analysis-page__rail-risk-flag"
+                data-testid={`stock-risk-row-${row.stockCode}-cost-missing`}
+              >
+                成本价缺失
+              </p>
+            ) : null}
             <div className="stock-analysis-page__rail-risk-meta">
               <span className="stock-analysis-page__tabular">收 {row.latestClose}</span>
               <span className="stock-analysis-page__tabular">距 {row.distanceToExitPct}</span>

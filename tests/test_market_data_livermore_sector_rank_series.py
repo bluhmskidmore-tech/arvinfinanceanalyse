@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
 from tests.helpers import load_module
 
 
@@ -60,6 +61,85 @@ def _seed_sector_series_fixture(
                     """,
                     (d.isoformat(), stock, name, code, "sv_test_sec", "vv_test_sec"),
                 )
+                conn.execute(
+                    """
+                    insert into choice_stock_daily_observation
+                    (trade_date, stock_code, pctchange, turn, amplitude, source_version, vendor_version)
+                    values (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        d.isoformat(),
+                        stock,
+                        pct,
+                        float(sec_idx + 1),
+                        float(sec_idx + 1) * 0.5,
+                        "sv_test_obs",
+                        "vv_test_obs",
+                    ),
+                )
+    finally:
+        conn.close()
+
+
+def _seed_membership_stale_snapshot_fixture(
+    duckdb_path: str,
+    *,
+    trade_days: list[date],
+    membership_snapshot_date: date,
+    sector_specs: list[tuple[str, str]],
+    pct_matrix: list[list[float]],
+) -> None:
+    """Membership snapshot fixed on membership_snapshot_date; observations on each trade_day."""
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_sector_membership (
+              as_of_date varchar,
+              stock_code varchar,
+              sw2021 varchar,
+              sw2021code varchar,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar,
+              stock_code varchar,
+              pctchange double,
+              turn double,
+              amplitude double,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        assert len(pct_matrix) == len(trade_days)
+        assert all(len(row) == len(sector_specs) for row in pct_matrix)
+        for sec_idx, (code, name) in enumerate(sector_specs):
+            stock = f"S{sec_idx:03d}.SZ"
+            conn.execute(
+                """
+                insert into choice_stock_sector_membership
+                (as_of_date, stock_code, sw2021, sw2021code, source_version, vendor_version)
+                values (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    membership_snapshot_date.isoformat(),
+                    stock,
+                    name,
+                    code,
+                    "sv_test_sec",
+                    "vv_test_sec",
+                ),
+            )
+        for day_idx, d in enumerate(trade_days):
+            for sec_idx, (_code, _name) in enumerate(sector_specs):
+                stock = f"S{sec_idx:03d}.SZ"
+                pct = pct_matrix[day_idx][sec_idx]
                 conn.execute(
                     """
                     insert into choice_stock_daily_observation
@@ -279,14 +359,51 @@ def test_sector_rank_series_cum_pctchange_window(tmp_path, monkeypatch) -> None:
 
     assert response.status_code == 200
     series = response.json()["result"]["series"]
-    latest_rows = [r for r in series if r["trade_date"] == end.isoformat()]
-    assert len(latest_rows) == 1
-    row = latest_rows[0]
-    expected = sum(float(r["avg_pctchange"]) for r in series if r["sector_code"] == "SW801020")
-    assert abs(float(row["cum_pctchange_window"]) - round(expected, 6)) < 1e-5
-    non_latest = [r for r in series if r["trade_date"] != end.isoformat()]
-    assert all(r["cum_pctchange_window"] is None for r in non_latest)
+    sector_rows = sorted(
+        [r for r in series if r["sector_code"] == "SW801020"],
+        key=lambda r: r["trade_date"],
+    )
+    assert len(sector_rows) == len(days)
+    running = 0.0
+    for row in sector_rows:
+        assert row["cum_pctchange_window"] is not None
+        running += float(row["avg_pctchange"])
+        assert abs(float(row["cum_pctchange_window"]) - round(running, 6)) < 1e-5
     get_settings.cache_clear()
+
+
+def test_sector_rank_series_membership_snapshot_on_or_before_trade_date(tmp_path) -> None:
+    end = date(2026, 4, 10)
+    days = _five_weekdays(end)
+    snapshot_day = days[0]
+    sectors = [
+        ("SW801010", "Sect01"),
+        ("SW801020", "Sect02"),
+        ("SW801030", "Sect03"),
+    ]
+    pct_matrix = [[float(i + j) * 0.1 for j in range(len(sectors))] for i in range(len(days))]
+    db_path = tmp_path / "moss.duckdb"
+    _seed_membership_stale_snapshot_fixture(
+        str(db_path),
+        trade_days=days,
+        membership_snapshot_date=snapshot_day,
+        sector_specs=sectors,
+        pct_matrix=pct_matrix,
+    )
+
+    envelope = livermore_sector_rank_series_envelope(
+        duckdb_path=str(db_path),
+        as_of_date=end,
+        window_days=5,
+        sector_code=None,
+        top_k=10,
+    )
+    result = envelope["result"]
+    assert result["state"] == "ok"
+    series = result["series"]
+    distinct_dates = {row["trade_date"] for row in series}
+    assert distinct_dates == {d.isoformat() for d in days}
+    assert len(series) == len(days) * len(sectors)
 
 
 def test_sector_rank_series_unsupported_notes_complete(tmp_path, monkeypatch) -> None:

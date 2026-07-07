@@ -239,6 +239,36 @@ export function LivermoreStrategyPanel({
           <div className="livermore-strategy-panel__metric-detail">
             需要至少 {model.marketGate.requiredConditions} 条通过
           </div>
+          {model.marketGate.macroDisclosure ? (
+            <div
+              className="livermore-strategy-panel__macro-disclosure"
+              data-testid="livermore-market-gate-macro-disclosure"
+            >
+              {model.marketGate.macroDisclosure.adjustmentLabel ? (
+                <span className="livermore-strategy-panel__macro-disclosure-line">
+                  {model.marketGate.macroDisclosure.adjustmentLabel}
+                  {model.marketGate.macroDisclosure.cycleStateLabel ? (
+                    <span className="livermore-strategy-panel__macro-cycle-tag">
+                      {model.marketGate.macroDisclosure.cycleStateLabel}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+              {model.marketGate.macroDisclosure.statusMarker ? (
+                <span
+                  className="livermore-strategy-panel__macro-status-marker"
+                  data-tone="warning"
+                >
+                  {model.marketGate.macroDisclosure.statusMarker}
+                </span>
+              ) : null}
+              {model.marketGate.macroDisclosure.lagLabel ? (
+                <span className="livermore-strategy-panel__macro-disclosure-line">
+                  {model.marketGate.macroDisclosure.lagLabel}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="livermore-strategy-panel__metric" data-testid="livermore-exposure">
           <div className="livermore-strategy-panel__metric-label">仓位系数</div>
@@ -379,6 +409,9 @@ export function LivermoreStrategyPanel({
             <h3 className="livermore-strategy-panel__block-title">个股候选</h3>
             <div className="livermore-strategy-panel__row-detail">
               {stockCandidates.formulaVersion}
+              {stockCandidates.factorMissingCount != null && stockCandidates.factorMissingCount > 0
+                ? ` · 缺 ${stockCandidates.factorMissingCount} 个因子`
+                : ""}
             </div>
             <ul className="livermore-strategy-panel__list">
               {stockCandidates.items.map((item) => (
@@ -540,7 +573,8 @@ export function LivermoreStrategyPanel({
                       {item.stockName} | {item.stockCode}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
-                      {item.reason} | entry {item.entryCost} | bars {item.barsSinceEntry}
+                      {item.reason} | entry {item.entryCost}
+                      {item.entryCostAvailable ? "" : " (成本价缺失)"} | bars {item.barsSinceEntry}
                     </span>
                     <span className="livermore-strategy-panel__row-detail">
                       close {item.latestClose} | ema10 {item.latestEma10}

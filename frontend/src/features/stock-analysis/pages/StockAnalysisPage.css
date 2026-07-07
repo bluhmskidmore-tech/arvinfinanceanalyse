@@ -2288,6 +2288,13 @@
   font-weight: 750;
 }
 
+.stock-analysis-page__rail-risk-flag {
+  margin: 3px 0 0;
+  color: var(--sa-dh-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
 .stock-analysis-page__rail-risk-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

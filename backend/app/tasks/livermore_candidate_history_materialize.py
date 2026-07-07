@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
+from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.core_finance.adjusted_returns import (
     PRICE_ADJUSTMENT_MODE,
     STOCK_ADJUSTMENT_FACTOR_TABLE,
@@ -25,6 +26,10 @@ from backend.app.services.market_data_livermore_service import (
     load_livermore_strategy_payload,
 )
 
+LIVERMORE_CANDIDATE_HISTORY_LOCK = LockDefinition(
+    key="lock:duckdb:livermore-candidate-history",
+    ttl_seconds=600,
+)
 RULE_VERSION = "rv_livermore_candidate_history_v1"
 FORMULA_VERSION = "fv_livermore_candidate_forward_close_dual_adjust_v2"
 EXECUTION_FORMULA_VERSION = "fv_livermore_candidate_execution_dual_adjust_v2"
@@ -556,41 +561,42 @@ def materialize_livermore_candidate_history(
         elif universe_items:
             skipped.append("universe:missing_observation_table")
 
-        transaction_started = False
-        try:
-            conn.execute("begin transaction")
-            transaction_started = True
-            conn.execute(f"delete from {TABLE_HIST} where snapshot_as_of_date = ?", [snapshot_as_of])
-            conn.execute(f"delete from {TABLE_STOCK_UNIVERSE} where snapshot_as_of_date = ?", [snapshot_as_of])
-            conn.execute(f"delete from {TABLE_EXECUTION_HIST} where signal_date = ?", [snapshot_as_of])
-            if computed_rows:
-                placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
-                conn.executemany(
-                    f"""
-                    insert into {TABLE_HIST} ({", ".join(_INSERT_COLUMNS)})
-                    values ({placeholders})
-                    """,
-                    [tuple(cast(Any, row[col]) for col in _INSERT_COLUMNS) for row in computed_rows],
-                )
-            if computed_universe_rows:
-                placeholders = ", ".join("?" for _ in _UNIVERSE_INSERT_COLUMNS)
-                conn.executemany(
-                    f"""
-                    insert into {TABLE_STOCK_UNIVERSE} ({", ".join(_UNIVERSE_INSERT_COLUMNS)})
-                    values ({placeholders})
-                    """,
-                    [
-                        tuple(cast(Any, row[col]) for col in _UNIVERSE_INSERT_COLUMNS)
-                        for row in computed_universe_rows
-                    ],
-                )
-            _insert_execution_history_rows(conn, computed_execution_rows)
-            conn.execute("commit")
+        with acquire_lock(LIVERMORE_CANDIDATE_HISTORY_LOCK, base_dir=duckdb_file.parent):
             transaction_started = False
-        except Exception:
-            if transaction_started:
-                conn.execute("rollback")
-            raise
+            try:
+                conn.execute("begin transaction")
+                transaction_started = True
+                conn.execute(f"delete from {TABLE_HIST} where snapshot_as_of_date = ?", [snapshot_as_of])
+                conn.execute(f"delete from {TABLE_STOCK_UNIVERSE} where snapshot_as_of_date = ?", [snapshot_as_of])
+                conn.execute(f"delete from {TABLE_EXECUTION_HIST} where signal_date = ?", [snapshot_as_of])
+                if computed_rows:
+                    placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
+                    conn.executemany(
+                        f"""
+                        insert into {TABLE_HIST} ({", ".join(_INSERT_COLUMNS)})
+                        values ({placeholders})
+                        """,
+                        [tuple(cast(Any, row[col]) for col in _INSERT_COLUMNS) for row in computed_rows],
+                    )
+                if computed_universe_rows:
+                    placeholders = ", ".join("?" for _ in _UNIVERSE_INSERT_COLUMNS)
+                    conn.executemany(
+                        f"""
+                        insert into {TABLE_STOCK_UNIVERSE} ({", ".join(_UNIVERSE_INSERT_COLUMNS)})
+                        values ({placeholders})
+                        """,
+                        [
+                            tuple(cast(Any, row[col]) for col in _UNIVERSE_INSERT_COLUMNS)
+                            for row in computed_universe_rows
+                        ],
+                    )
+                _insert_execution_history_rows(conn, computed_execution_rows)
+                conn.execute("commit")
+                transaction_started = False
+            except Exception:
+                if transaction_started:
+                    conn.execute("rollback")
+                raise
 
         status = "ok"
         if skipped and computed_rows:
@@ -820,22 +826,23 @@ def backfill_livermore_candidate_execution_history(
 
         rebuilt_dates = sorted(source_dates)
         if rebuilt_dates:
-            transaction_started = False
-            try:
-                conn.execute("begin transaction")
-                transaction_started = True
-                for rebuilt_date in rebuilt_dates:
-                    conn.execute(
-                        f"delete from {TABLE_EXECUTION_HIST} where signal_date = ?",
-                        [rebuilt_date],
-                    )
-                _insert_execution_history_rows(conn, execution_rows)
-                conn.execute("commit")
+            with acquire_lock(LIVERMORE_CANDIDATE_HISTORY_LOCK, base_dir=duckdb_file.parent):
                 transaction_started = False
-            except Exception:
-                if transaction_started:
-                    conn.execute("rollback")
-                raise
+                try:
+                    conn.execute("begin transaction")
+                    transaction_started = True
+                    for rebuilt_date in rebuilt_dates:
+                        conn.execute(
+                            f"delete from {TABLE_EXECUTION_HIST} where signal_date = ?",
+                            [rebuilt_date],
+                        )
+                    _insert_execution_history_rows(conn, execution_rows)
+                    conn.execute("commit")
+                    transaction_started = False
+                except Exception:
+                    if transaction_started:
+                        conn.execute("rollback")
+                    raise
 
         date_results = sorted(
             date_results_by_date.values(),

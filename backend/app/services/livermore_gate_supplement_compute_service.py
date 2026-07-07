@@ -1,17 +1,19 @@
 """Compute breadth_5d and limit_up_quality_ok from landed market data.
 
-Uses existing DuckDB tables (fact_choice_macro_daily / choice_market_snapshot)
-to derive the market-gate supplement inputs without additional vendor calls.
+Preferred basis — **market_breadth**: real all-market advance/decline and
+limit-up seal/break counts aggregated from ``choice_stock_daily_observation``
+(see :mod:`backend.app.core_finance.market_breadth` for the formal
+definitions and :mod:`backend.app.tasks.market_breadth_materialize` for the
+DuckDB write path).
 
-**Breadth proxy** — 5-day market momentum breadth computed from the ratio of
-up-days to total days in a trailing 5-day window of CSI300 daily returns.
-When actual A-share advance/decline data becomes available this should be
-replaced with a true breadth metric.
+Fallback basis — **csi300_proxy** (legacy behavior, unchanged): when the
+all-market source table is not landed, derive proxy inputs from CSI300 daily
+returns (fact_choice_macro_daily / choice_market_snapshot):
 
-**Limit-up quality proxy** — a simplified signal based on CSI300 return
-characteristics that approximates whether the quality of limit-up stocks
-(sealed vs broken board) is healthy.  When Tushare ``limit_list`` or
-Choice ``stk_limit`` data becomes available this should be replaced.
+- Breadth proxy: ratio of up-days to total days in a trailing 5-day window of
+  CSI300 daily returns.
+- Limit-up quality proxy: a simplified signal based on CSI300 return
+  characteristics.
 """
 
 from __future__ import annotations
@@ -34,6 +36,9 @@ from backend.app.tasks.livermore_gate_supplement import (
 )
 from backend.app.tasks.livermore_gate_supplement import (
     materialize_livermore_gate_supplement_daily,
+)
+from backend.app.tasks.market_breadth_materialize import (
+    materialize_market_breadth_daily,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +65,7 @@ def compute_and_materialize_gate_supplement(
     as_of_date: date | None = None,
     lookback_days: int = 30,
     idempotency_key: str | None = None,
+    min_observations_per_day: int | None = None,
 ) -> dict[str, object]:
     """Compute breadth_5d + limit_up_quality_ok and write to DuckDB supplement table.
 
@@ -85,6 +91,7 @@ def compute_and_materialize_gate_supplement(
             idempotency_key=normalized_idempotency_key,
             storage_target_digest=storage_target_digest,
             lock_definition=lock_definition,
+            min_observations_per_day=min_observations_per_day,
         )
 
     with acquire_lock(
@@ -99,6 +106,7 @@ def compute_and_materialize_gate_supplement(
             lookback_days=lookback_days,
             idempotency_key=None,
             storage_target_digest=storage_target_digest,
+            min_observations_per_day=min_observations_per_day,
         )
 
 
@@ -111,6 +119,7 @@ def _run_idempotent_refresh(
     idempotency_key: str,
     storage_target_digest: str,
     lock_definition: LockDefinition,
+    min_observations_per_day: int | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
     deadline = time.monotonic() + LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_WAIT_TIMEOUT_SECONDS
@@ -171,6 +180,7 @@ def _run_idempotent_refresh(
                     lookback_days=lookback_days,
                     idempotency_key=idempotency_key,
                     storage_target_digest=storage_target_digest,
+                    min_observations_per_day=min_observations_per_day,
                 )
         except TimeoutError:
             if acquired_lock:
@@ -203,7 +213,26 @@ def _compute_gate_supplement_payload(
     lookback_days: int,
     idempotency_key: str | None,
     storage_target_digest: str,
+    min_observations_per_day: int | None = None,
 ) -> dict[str, object]:
+    real_payload = _try_market_breadth_payload(
+        duckdb_path=duckdb_path,
+        target_date=target_date,
+        lookback_days=lookback_days,
+        idempotency_key=idempotency_key,
+        min_observations_per_day=min_observations_per_day,
+    )
+    if real_payload is not None:
+        if idempotency_key is not None:
+            _record_idempotent_refresh(
+                as_of_date=target_date_text,
+                lookback_days=lookback_days,
+                idempotency_key=idempotency_key,
+                storage_target_digest=storage_target_digest,
+                response_payload=real_payload,
+            )
+        return real_payload
+
     daily_returns = _load_csi300_daily_returns(
         duckdb_path=duckdb_path,
         end_date=target_date,
@@ -213,6 +242,7 @@ def _compute_gate_supplement_payload(
     if len(daily_returns) < MIN_HISTORY_FOR_SUPPLEMENT:
         return {
             "status": "insufficient_data",
+            "basis": "csi300_proxy",
             "message": (
                 f"Need at least {MIN_HISTORY_FOR_SUPPLEMENT} daily return "
                 f"observations; found {len(daily_returns)}."
@@ -226,6 +256,7 @@ def _compute_gate_supplement_payload(
     if not supplement_rows:
         return {
             "status": "no_computable_dates",
+            "basis": "csi300_proxy",
             "message": "No trade dates yielded computable supplement rows.",
             "computed_rows": 0,
             "idempotency_key": idempotency_key,
@@ -239,6 +270,7 @@ def _compute_gate_supplement_payload(
 
     payload: dict[str, object] = {
         "status": "completed",
+        "basis": "csi300_proxy",
         "computed_rows": len(supplement_rows),
         "first_date": str(supplement_rows[0]["trade_date"]),
         "last_date": str(supplement_rows[-1]["trade_date"]),
@@ -255,6 +287,75 @@ def _compute_gate_supplement_payload(
             response_payload=payload,
         )
     return payload
+
+
+def _try_market_breadth_payload(
+    *,
+    duckdb_path: str,
+    target_date: date,
+    lookback_days: int,
+    idempotency_key: str | None,
+    min_observations_per_day: int | None,
+) -> dict[str, object] | None:
+    """Real all-market breadth basis; returns None to fall back to the CSI300 proxy."""
+    kwargs: dict[str, object] = {}
+    if min_observations_per_day is not None:
+        kwargs["min_observations_per_day"] = int(min_observations_per_day)
+    try:
+        result = materialize_market_breadth_daily(
+            duckdb_path=duckdb_path,
+            as_of_date=target_date,
+            lookback_days=lookback_days,
+            **kwargs,  # type: ignore[arg-type]
+        )
+    except Exception:
+        logger.warning(
+            "Market breadth materialization failed; falling back to CSI300 proxy.",
+            exc_info=True,
+        )
+        return None
+    if str(result.get("status")) != "completed":
+        return None
+    if int(result.get("supplement_row_count") or 0) <= 0:
+        # The all-market source is landed (status=completed) but no complete
+        # 5-day breadth window could be computed (e.g. partial-universe days).
+        # Do NOT fall back to the CSI300 proxy here: the proxy path would
+        # delete+insert proxy rows over previously materialized real
+        # market_breadth supplement rows, silently degrading the gate basis.
+        return {
+            "status": "no_computable_dates",
+            "basis": "market_breadth",
+            "message": (
+                "All-market breadth source is landed but no complete "
+                f"{BREADTH_WINDOW}-day windows were computable; existing "
+                "supplement rows are left untouched."
+            ),
+            "computed_rows": 0,
+            "market_breadth_result": {
+                "daily_row_count": result.get("daily_row_count"),
+                "table": result.get("table"),
+                "rule_version": result.get("rule_version"),
+                "run_id": result.get("run_id"),
+            },
+            "idempotency_key": idempotency_key,
+            "idempotency_replay": False,
+        }
+    return {
+        "status": "completed",
+        "basis": "market_breadth",
+        "computed_rows": int(result["supplement_row_count"]),
+        "first_date": result.get("first_supplement_date"),
+        "last_date": result.get("last_supplement_date"),
+        "materialize_result": result.get("materialize_result"),
+        "market_breadth_result": {
+            "daily_row_count": result.get("daily_row_count"),
+            "table": result.get("table"),
+            "rule_version": result.get("rule_version"),
+            "run_id": result.get("run_id"),
+        },
+        "idempotency_key": idempotency_key,
+        "idempotency_replay": False,
+    }
 
 
 def _normalize_idempotency_key(value: str | None) -> str | None:

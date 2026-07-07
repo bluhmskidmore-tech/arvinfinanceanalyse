@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, cast
 
 from backend.app.core_finance.hybrid_fusion_candidates import (
@@ -297,6 +298,120 @@ def test_hybrid_fusion_uses_sector_from_factor_source_when_trend_source_lacks_it
     assert item["sector_name"] == "Electronic"
     assert item["cycle_score"] == 1.0
     assert item["evidence"]["sector_rank"] == 1
+
+
+def test_hybrid_fusion_cycle_score_renormalizes_when_factor_screen_coverage_missing() -> None:
+    # Two symmetric stocks (identical macro/sector/price-confirm inputs). One has a real,
+    # worst-possible factor_screen rank (factor_rank_score == 0.0 but row is present); the
+    # other is entirely absent from factor_screen (row is None, i.e. a data coverage gap).
+    # Both must NOT collapse to the same cycle_score: only the coverage-gap stock should
+    # have its remaining weights renormalized, the genuinely-worst-ranked stock keeps the
+    # unrenormalized (lower) formula.
+    common_kwargs = dict(
+        as_of_date="2026-05-08",
+        market_state="HOT",
+        sector_rank_payload={"items": [{"sector_code": "801080", "rank": 1}]},
+        stock_candidates_payload={
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "688001.SH",
+                    "stock_name": "HasWorstFactorRank",
+                    "sector_code": "801080",
+                    "close_strength": 0.9,
+                    "abnormal_turnover": 1.6,
+                    "breakout_extension_norm": 0.12,
+                },
+                {
+                    "rank": 2,
+                    "stock_code": "688002.SH",
+                    "stock_name": "NoFactorCoverage",
+                    "sector_code": "801080",
+                    "close_strength": 0.9,
+                    "abnormal_turnover": 1.6,
+                    "breakout_extension_norm": 0.12,
+                },
+            ]
+        },
+        factor_screen_payload={
+            "items": [
+                {"rank": 1, "stock_code": "999999.SH", "stock_name": "Other"},
+                {"rank": 2, "stock_code": "688001.SH", "stock_name": "HasWorstFactorRank"},
+            ]
+        },
+        theme_breakout_payload=None,
+    )
+
+    with_macro = {
+        item["stock_code"]: item
+        for item in compute_hybrid_fusion_candidates(macro_score=0.5, **common_kwargs).payload["items"]
+    }
+    worst_rank_item = with_macro["688001.SH"]
+    missing_item = with_macro["688002.SH"]
+
+    assert worst_rank_item["evidence"]["factor_rank_available"] is True
+    assert missing_item["evidence"]["factor_rank_available"] is False
+    assert worst_rank_item["evidence"]["factor_rank_score"] == 0.0
+    assert missing_item["evidence"]["factor_rank_score"] == 0.0
+
+    # macro-landed weights: 0.30 macro + 0.35 industry + 0.20 flow + 0.15 valuation.
+    # Missing coverage renormalizes over the remaining 0.85 weight instead of eating a
+    # silent 0.15*0 penalty.
+    assert math.isclose(missing_item["cycle_score"], worst_rank_item["cycle_score"] / 0.85, abs_tol=1e-5)
+    assert missing_item["cycle_score"] > worst_rank_item["cycle_score"]
+
+    without_macro = {
+        item["stock_code"]: item
+        for item in compute_hybrid_fusion_candidates(macro_score=None, **common_kwargs).payload["items"]
+    }
+    legacy_worst_rank_item = without_macro["688001.SH"]
+    legacy_missing_item = without_macro["688002.SH"]
+
+    assert legacy_worst_rank_item["evidence"]["factor_rank_available"] is True
+    assert legacy_missing_item["evidence"]["factor_rank_available"] is False
+
+    # legacy (macro pending) weights: 0.70 sector + 0.30 factor; renormalize over 0.70.
+    assert math.isclose(
+        legacy_missing_item["cycle_score"], legacy_worst_rank_item["cycle_score"] / 0.70, abs_tol=1e-5
+    )
+    assert legacy_missing_item["cycle_score"] > legacy_worst_rank_item["cycle_score"]
+
+
+def test_hybrid_fusion_does_not_renormalize_when_factor_rank_is_genuinely_low() -> None:
+    # A stock present in factor_screen with the worst rank keeps the standard (lower)
+    # formula: real low scores are not entitled to renormalization, only missing coverage is.
+    result = compute_hybrid_fusion_candidates(
+        as_of_date="2026-05-08",
+        market_state="HOT",
+        sector_rank_payload={"items": [{"sector_code": "801080", "rank": 1}]},
+        stock_candidates_payload={
+            "items": [
+                {
+                    "rank": 1,
+                    "stock_code": "688001.SH",
+                    "stock_name": "WorstFactorRank",
+                    "sector_code": "801080",
+                    "close_strength": 0.9,
+                    "abnormal_turnover": 1.6,
+                    "breakout_extension_norm": 0.12,
+                }
+            ]
+        },
+        factor_screen_payload={
+            "items": [
+                {"rank": 1, "stock_code": "999999.SH", "stock_name": "Other"},
+                {"rank": 2, "stock_code": "688001.SH", "stock_name": "WorstFactorRank"},
+            ]
+        },
+        theme_breakout_payload=None,
+        macro_score=0.5,
+    )
+    item = cast(list[dict[str, Any]], result.payload["items"])[0]
+    assert item["stock_code"] == "688001.SH"
+    assert item["evidence"]["factor_rank_available"] is True
+    assert item["evidence"]["factor_rank_score"] == 0.0
+    expected = 0.30 * 0.5 + 0.35 * 1.0 + 0.20 * item["price_confirm_score"] + 0.15 * 0.0
+    assert math.isclose(item["cycle_score"], expected, rel_tol=1e-9)
 
 
 def test_hybrid_fusion_uses_name_from_factor_source_when_trend_source_lacks_it() -> None:

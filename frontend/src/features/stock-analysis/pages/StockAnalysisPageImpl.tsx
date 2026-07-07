@@ -1938,7 +1938,15 @@ export default function StockAnalysisPage() {
   const reviewQueueLedgerCount =
     workbenchPayload?.decision_summary.review_queue_count ?? Math.min(queueVisibleCount || queueTotalCount, 3);
   const gateDecisionTone = stockGateDecisionTone(currentMarketState, boundaryRailIssueCount > 0);
-  const gateContextTone = stockGateContextTone(gateDecisionTone);
+  const gateContextTone =
+    marketState?.macroDisclosure?.statusMarker != null ? "watch" : stockGateContextTone(gateDecisionTone);
+  const gateMacroDisclosureDetail = marketState?.macroDisclosureDetail ?? null;
+  const gateContextDetail = [
+    backendSupplyOverview?.conditionLabel ?? marketState?.passedLabel ?? "门控待确认",
+    gateMacroDisclosureDetail,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
   const apiLedgerMetrics = [
     {
       label: "门控",
@@ -2249,7 +2257,7 @@ export default function StockAnalysisPage() {
       icon: <SafetyCertificateOutlined />,
       label: "门控",
       value: queueGateStatusLabel,
-      detail: backendSupplyOverview?.conditionLabel ?? marketState?.passedLabel ?? "门控待确认",
+      detail: gateContextDetail,
       tone: gateContextTone,
     },
     {

@@ -43,10 +43,10 @@ def compute_credit_impulse_signal(*, current_yoy: float, prior_yoy: float) -> fl
     return _clamp((impulse_ppt + 2.0) / 4.0), impulse_ppt
 
 
-def compute_price_spread_signal(*, pe: float, cn10y: float) -> float:
+def compute_price_spread_signal(*, pe: float, cn10y: float) -> tuple[float, float | None]:
     """Earnings yield minus 10Y yield (ppt), normalized to [0, 1]."""
     if pe <= 0:
-        return 0.0
+        return 0.0, None
     spread_ppt = (100.0 / pe) - cn10y
     return _clamp((spread_ppt + 1.0) / 5.0), spread_ppt
 
@@ -85,7 +85,7 @@ def build_cycle_macro_snapshot(
     pmi_ready = False
     pmi_lineage: dict[str, object] = {}
 
-    ordered_pmi = _ordered_points(pmi_points)
+    ordered_pmi = _ordered_points(pmi_points, as_of_date=as_of_date)
     if ordered_pmi:
         trade_date, value = ordered_pmi[-1]
         pmi_value = value
@@ -101,7 +101,7 @@ def build_cycle_macro_snapshot(
     credit_value: float | None = None
     credit_ready = False
     credit_lineage: dict[str, object] = {}
-    ordered_sf = _ordered_points(social_financing_yoy_points)
+    ordered_sf = _ordered_points(social_financing_yoy_points, as_of_date=as_of_date)
     if len(ordered_sf) >= 2:
         prior_date, prior_yoy = ordered_sf[-2]
         current_date, current_yoy = ordered_sf[-1]
@@ -195,10 +195,18 @@ def build_cycle_macro_snapshot(
     )
 
 
-def _ordered_points(points: Iterable[tuple[str, float]] | None) -> list[tuple[str, float]]:
+def _ordered_points(
+    points: Iterable[tuple[str, float]] | None,
+    *,
+    as_of_date: str | None = None,
+) -> list[tuple[str, float]]:
+    """Sort ascending by trade_date; drop any point after as_of_date to avoid look-ahead leakage."""
     if not points:
         return []
-    return sorted(((str(trade_date), float(value)) for trade_date, value in points), key=lambda row: row[0])
+    rows = ((str(trade_date), float(value)) for trade_date, value in points)
+    if as_of_date is not None:
+        rows = (row for row in rows if row[0] <= as_of_date)
+    return sorted(rows, key=lambda row: row[0])
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:

@@ -103,6 +103,40 @@
   overflow-wrap: anywhere;
 }
 
+.livermore-strategy-panel__macro-disclosure {
+  display: grid;
+  gap: 2px;
+  margin-top: 2px;
+  color: var(--moss-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.livermore-strategy-panel__macro-disclosure-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.livermore-strategy-panel__macro-cycle-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface, #fff);
+  color: var(--ib-accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.livermore-strategy-panel__macro-status-marker {
+  color: #8a5b16;
+  font-weight: 600;
+}
+
 .livermore-strategy-panel__grid {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);

@@ -2,10 +2,22 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from datetime import date
+from pathlib import Path
 
 from backend.app.core_finance.strategy_policy import POLICY
+from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.livermore_candidate_history_service import (
+    livermore_candidate_history_backtest_window_summary,
+    livermore_candidate_history_envelope_or_none,
+)
+from backend.app.services.macro_bond_linkage_service import get_macro_environment_context
+from backend.app.services.market_data_livermore_service import livermore_strategy_envelope_from_catalog
 
 DISCLAIMER = "Observation-only output. This service does not generate trading instructions."
+LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND = "market_data.livermore.signal_confluence"
+LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION = "rv_livermore_signal_confluence_v1"
+LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION = "cv_livermore_signal_confluence_v1"
 ENTRY_OBSERVATION_STATES = POLICY.entry_observation_states
 REPLAY_READY_COMPLETED_DATES = 20
 REPLAY_READY_MATCHED_ENTRIES = 100
@@ -13,6 +25,125 @@ REPLAY_PARTIAL_COMPLETED_DATES = 5
 REPLAY_PARTIAL_MATCHED_ENTRIES = 30
 REPLAY_REQUIRED_HORIZONS = ("return_5d", "return_20d")
 MACRO_MULTIPLIERS = POLICY.macro_multipliers
+
+
+def load_macro_adversarial_signal_payload(
+    *, output_dir: str | Path | None = None
+) -> tuple[dict[str, object], dict[str, object]]:
+    try:
+        from backend.app.services.macro_adversarial_signal_service import (
+            load_macro_adversarial_signal_payload as loader,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name != "backend.app.services.macro_adversarial_signal_service":
+            raise
+        return {}, {}
+
+    payload, meta = loader(output_dir=output_dir)
+    return _dict_payload(payload), _dict_payload(meta)
+
+
+def livermore_signal_confluence_envelope(
+    *,
+    duckdb_path: str,
+    as_of_date: str | None,
+    choice_stock_catalog_file: object,
+) -> dict[str, object]:
+    livermore_envelope = livermore_strategy_envelope_from_catalog(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        choice_stock_catalog_file=choice_stock_catalog_file,
+    )
+    livermore_meta = _dict_payload(livermore_envelope.get("result_meta"))
+    livermore_payload = _dict_payload(livermore_envelope.get("result"))
+    resolved_as_of_date = _optional_text(livermore_payload.get("as_of_date")) or _optional_text(as_of_date)
+
+    macro_meta: dict[str, object] = {}
+    macro_payload: dict[str, object] = {}
+    if resolved_as_of_date:
+        macro_envelope = get_macro_environment_context(date.fromisoformat(resolved_as_of_date))
+        macro_meta = _dict_payload(macro_envelope.get("result_meta"))
+        macro_payload = _dict_payload(macro_envelope.get("result"))
+    adversarial_payload, adversarial_meta = load_macro_adversarial_signal_payload(output_dir=None)
+    adversarial_meta_for_envelope = (
+        {}
+        if adversarial_payload.get("status") == "missing"
+        and not adversarial_payload.get("items")
+        else adversarial_meta
+    )
+    replay_summary = livermore_candidate_history_backtest_window_summary(
+        duckdb_path=duckdb_path,
+        stock_code=None,
+        snapshot_from=resolved_as_of_date[:10] if resolved_as_of_date else None,
+        snapshot_to=resolved_as_of_date[:10] if resolved_as_of_date else None,
+    )
+
+    result_payload = build_livermore_signal_confluence(
+        as_of_date=resolved_as_of_date or "",
+        livermore_payload=livermore_payload,
+        macro_payload=macro_payload,
+        adversarial_payload=adversarial_payload,
+        backtest_window_summary=replay_summary,
+    )
+    _attach_replay_evidence(
+        result_payload,
+        duckdb_path=duckdb_path,
+        as_of_date=resolved_as_of_date,
+        replay_summary=replay_summary,
+    )
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=f"tr_livermore_signal_confluence_{date.today().strftime('%Y%m%d')}",
+        result_kind=LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND,
+        cache_version=LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION,
+        source_version=_combine_lineage(
+            [
+                _meta_source_version(livermore_meta),
+                _meta_source_version(macro_meta),
+                _meta_source_version(adversarial_meta_for_envelope),
+            ],
+            empty_value="sv_livermore_signal_confluence_empty",
+        ),
+        rule_version=LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION,
+        quality_flag=_merge_quality_flag(
+            _meta_quality_flag(livermore_meta),
+            _meta_quality_flag(macro_meta),
+            _meta_quality_flag(adversarial_meta_for_envelope),
+        ),
+        vendor_version=_combine_lineage(
+            [
+                _meta_vendor_version(livermore_meta),
+                _meta_vendor_version(macro_meta),
+                _meta_vendor_version(adversarial_meta_for_envelope),
+            ],
+            empty_value="vv_none",
+        ),
+        vendor_status=_merge_vendor_status(
+            _meta_vendor_status(livermore_meta),
+            _meta_vendor_status(macro_meta),
+            _meta_vendor_status(adversarial_meta_for_envelope),
+        ),
+        fallback_mode=_merge_fallback_mode(
+            _meta_fallback_mode(livermore_meta),
+            _meta_fallback_mode(macro_meta),
+            _meta_fallback_mode(adversarial_meta_for_envelope),
+        ),
+        filters_applied={
+            "requested_as_of_date": _optional_text(as_of_date),
+            "as_of_date": resolved_as_of_date,
+        },
+        tables_used=_combine_tables(
+            _meta_tables_used(livermore_meta),
+            _meta_tables_used(macro_meta),
+            _meta_tables_used(adversarial_meta_for_envelope),
+        ),
+        evidence_rows=(
+            _safe_int(_meta_evidence_rows(livermore_meta))
+            + _safe_int(_meta_evidence_rows(macro_meta))
+            + _safe_int(_meta_evidence_rows(adversarial_meta_for_envelope))
+        ),
+        result_payload=result_payload,
+    )
 
 
 def build_livermore_replay_status(backtest_window_summary: dict[str, object] | None = None) -> dict[str, object]:
@@ -555,3 +686,202 @@ def _safe_float(value: object) -> float:
     if parsed is None:
         return 0.0
     return parsed
+
+
+def _attach_replay_evidence(
+    payload: dict[str, object],
+    *,
+    duckdb_path: str,
+    as_of_date: str | None,
+    replay_summary: dict[str, object],
+) -> None:
+    replay_evidence = _candidate_history_replay_evidence(
+        payload=payload,
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        replay_summary=replay_summary,
+    )
+    payload["replay_evidence"] = replay_evidence
+
+
+def _candidate_history_replay_evidence(
+    *,
+    payload: dict[str, object],
+    duckdb_path: str,
+    as_of_date: str | None,
+    replay_summary: dict[str, object],
+) -> dict[str, object]:
+    snapshot_as_of_date = as_of_date[:10] if as_of_date else None
+    if not as_of_date:
+        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
+    path = Path(duckdb_path)
+    if not path.is_file():
+        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
+    row_count = _replay_window_candidate_row_count(replay_summary)
+    if row_count <= 0:
+        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
+    envelope = livermore_candidate_history_envelope_or_none(
+        duckdb_path=duckdb_path,
+        stock_code=None,
+        snapshot_from=snapshot_as_of_date,
+        snapshot_to=snapshot_as_of_date,
+        limit=max(row_count, 5),
+    )
+    if envelope is None:
+        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
+
+    result = _dict_payload(envelope.get("result"))
+    all_items = _list_of_dict_mappings(result.get("items"))
+
+    replay_stock_codes = {_normalized_stock_code(item.get("stock_code")) for item in all_items}
+    replay_stock_codes.discard("")
+    entry_stock_codes = {
+        _normalized_stock_code(item.get("stock_code"))
+        for item in _list_of_dict_mappings(payload.get("entry_observations"))
+    }
+    entry_stock_codes.discard("")
+
+    return {
+        "status": "available",
+        "snapshot_as_of_date": snapshot_as_of_date,
+        "row_count": row_count,
+        "matched_entry_count": len(entry_stock_codes & replay_stock_codes),
+        "sample_items": [_replay_sample_item(item) for item in all_items[:5]],
+    }
+
+
+def _empty_replay_evidence(*, snapshot_as_of_date: str | None) -> dict[str, object]:
+    return {
+        "status": "missing",
+        "snapshot_as_of_date": snapshot_as_of_date,
+        "row_count": 0,
+        "matched_entry_count": 0,
+        "sample_items": [],
+    }
+
+
+def _replay_window_candidate_row_count(summary: dict[str, object]) -> int:
+    return (
+        _non_negative_int(summary.get("completed_rows"))
+        + _non_negative_int(summary.get("pending_rows"))
+        + _non_negative_int(summary.get("unsupported_rows"))
+        + _non_negative_int(summary.get("proxy_only_rows"))
+    )
+
+
+def _replay_sample_item(item: dict[str, object]) -> dict[str, object]:
+    return {
+        "stock_code": item.get("stock_code"),
+        "stock_name": item.get("stock_name"),
+        "candidate_rank": item.get("candidate_rank"),
+        "signal_kind": item.get("signal_kind"),
+        "data_status": item.get("data_status"),
+    }
+
+
+def _normalized_stock_code(value: object) -> str:
+    return str(value or "").strip().upper()
+
+
+def _dict_payload(value: object) -> dict[str, object]:
+    mapping = _mapping(value)
+    if mapping is None:
+        return {}
+    return dict(mapping)
+
+
+def _list_of_dict_mappings(value: object) -> list[dict[str, object]]:
+    return [dict(item) for item in _list_of_mappings(value)]
+
+
+def _non_negative_int(value: object, *, default: int = 0) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(parsed, 0)
+
+
+def _meta_source_version(meta: dict[str, object]) -> object:
+    source = _dict_payload(meta.get("source"))
+    return meta.get("source_version") or source.get("source_version") or source.get("version")
+
+
+def _meta_quality_flag(meta: dict[str, object]) -> object:
+    source = _dict_payload(meta.get("source"))
+    return meta.get("quality_flag") or source.get("quality_flag") or source.get("status")
+
+
+def _meta_vendor_version(meta: dict[str, object]) -> object:
+    vendor = _dict_payload(meta.get("vendor"))
+    return meta.get("vendor_version") or vendor.get("vendor_version") or vendor.get("version")
+
+
+def _meta_vendor_status(meta: dict[str, object]) -> object:
+    vendor = _dict_payload(meta.get("vendor"))
+    return meta.get("vendor_status") or vendor.get("vendor_status") or vendor.get("status")
+
+
+def _meta_fallback_mode(meta: dict[str, object]) -> object:
+    source = _dict_payload(meta.get("source"))
+    return meta.get("fallback_mode") or source.get("fallback_mode")
+
+
+def _meta_tables_used(meta: dict[str, object]) -> object:
+    return meta.get("tables_used") or meta.get("tables")
+
+
+def _meta_evidence_rows(meta: dict[str, object]) -> object:
+    evidence = _dict_payload(meta.get("evidence"))
+    return meta.get("evidence_rows") or evidence.get("evidence_rows") or evidence.get("rows")
+
+
+def _combine_lineage(values: list[object], *, empty_value: str) -> str:
+    unique_values: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in unique_values:
+            unique_values.append(text)
+    if not unique_values:
+        return empty_value
+    if len(unique_values) == 1:
+        return unique_values[0]
+    return "__".join(unique_values)
+
+
+def _merge_quality_flag(*values: object) -> str:
+    normalized = {str(value or "").strip() for value in values if str(value or "").strip()}
+    if "error" in normalized:
+        return "error"
+    if "stale" in normalized:
+        return "stale"
+    if "warning" in normalized:
+        return "warning"
+    return "ok"
+
+
+def _merge_vendor_status(*values: object) -> str:
+    normalized = {str(value or "").strip() for value in values if str(value or "").strip()}
+    if "vendor_unavailable" in normalized:
+        return "vendor_unavailable"
+    if "vendor_stale" in normalized:
+        return "vendor_stale"
+    return "ok"
+
+
+def _merge_fallback_mode(*values: object) -> str:
+    if any(str(value or "").strip() == "latest_snapshot" for value in values):
+        return "latest_snapshot"
+    return "none"
+
+
+def _combine_tables(*values: object) -> list[str]:
+    combined: list[str] = []
+    for value in values:
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            text = str(item or "").strip()
+            if text and text not in combined:
+                combined.append(text)
+    return combined

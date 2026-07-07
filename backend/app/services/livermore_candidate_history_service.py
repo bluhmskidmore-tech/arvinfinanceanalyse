@@ -9,6 +9,16 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
+from backend.app.core_finance.candidate_history_proxy_backtest import (
+    CYCLE_PROXY_FORMULA_VERSION,
+    PORTFOLIO_PROXY_FORMULA_VERSION,
+    build_candidate_history_portfolio_series,
+    build_candidate_history_portfolio_summary,
+    build_cycle_proxy_nav_series,
+    build_cycle_proxy_summary,
+    candidate_history_portfolio_price_field_stats,
+    cycle_proxy_return_field_stats,
+)
 from backend.app.core_finance.matched_baseline import (
     MATCHED_BASELINE_TABLE,
     matched_baseline_stats_from_rows,
@@ -43,6 +53,7 @@ CANDIDATE_HISTORY_PORTFOLIO_BACKTEST_CACHE_VERSION = "cv_livermore_candidate_his
 TABLE_HIST = "livermore_candidate_history"
 TABLE_EXECUTION_HIST = "livermore_candidate_execution_history"
 TABLE_OBS = "choice_stock_daily_observation"
+TABLE_ADJ_FACTOR = "stock_adjustment_factor"
 BENCHMARK_SERIES_ID = "CA.CSI300"
 TABLE_BENCHMARK_DAILY = "fact_choice_macro_daily"
 TABLE_BENCHMARK_SNAPSHOT = "choice_market_snapshot"
@@ -131,8 +142,6 @@ _CYCLE_PROXY_ALLOWED_MARKET_STATES = POLICY.entry_observation_states
 _PORTFOLIO_BACKTEST_SIGNAL_KIND = "stock_candidate"
 _PORTFOLIO_BACKTEST_MAX_RANK = 6
 _PORTFOLIO_BACKTEST_ALLOWED_MARKET_STATES = POLICY.entry_observation_states
-_PORTFOLIO_BACKTEST_BUY_COST_RATE = POLICY.buy_cost_rate
-_PORTFOLIO_BACKTEST_SELL_COST_RATE = POLICY.sell_cost_rate
 _CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS = [
     "PMI",
     "credit_impulse",
@@ -664,7 +673,7 @@ def livermore_candidate_history_cycle_proxy_backtest_envelope(
             snapshot_from=resolved_from,
             snapshot_to=resolved_to,
         )
-        proxy_nav = _build_cycle_proxy_nav_series(_cycle_proxy_items(rows))
+        proxy_nav = build_cycle_proxy_nav_series(_cycle_proxy_items(rows))
         benchmark_rows, benchmark_table = _load_benchmark_rows_for_nav_series(
             conn,
             tables=tables,
@@ -743,12 +752,14 @@ def livermore_candidate_history_portfolio_backtest_envelope(
             snapshot_to=resolved_to,
         )
         monthly_rebalances = _candidate_history_portfolio_rebalance_rows(rows)
+        has_adjustment_factor = _candidate_history_portfolio_has_adjustment_factor(conn, tables=tables)
         close_rows = _load_candidate_history_portfolio_close_rows(
             conn,
             rebalances=monthly_rebalances,
             snapshot_to=resolved_to,
+            has_adjustment_factor=has_adjustment_factor,
         )
-        portfolio_nav, _rebalance_log = _build_candidate_history_portfolio_series(
+        portfolio_nav, _rebalance_log, _stale_price_codes = build_candidate_history_portfolio_series(
             rebalances=monthly_rebalances,
             close_rows=close_rows,
         )
@@ -774,7 +785,10 @@ def livermore_candidate_history_portfolio_backtest_envelope(
         vendor_version=_first_nonempty_vendor_version(evidence_items or rows) or EMPTY_VENDOR_VERSION,
         evidence_rows=len(evidence_items),
         quality_flag="ok" if payload["summary"] else "warning",
-        tables_used=_append_optional_table([TABLE_HIST, TABLE_OBS], benchmark_table),
+        tables_used=_append_optional_table(
+            [TABLE_HIST, TABLE_OBS, *([TABLE_ADJ_FACTOR] if has_adjustment_factor else [])],
+            benchmark_table,
+        ),
     )
 
 
@@ -1883,15 +1897,18 @@ def _build_cycle_proxy_backtest_payload(
     benchmark_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     proxy_items = _cycle_proxy_items(items)
-    nav_series = _build_cycle_proxy_nav_series(proxy_items)
-    summary = _build_cycle_proxy_summary(
+    nav_series = build_cycle_proxy_nav_series(proxy_items)
+    summary = build_cycle_proxy_summary(
         nav_series,
         candidate_rows=len(proxy_items),
         benchmark_rows=benchmark_rows or [],
+        benchmark_series_id=BENCHMARK_SERIES_ID,
+        return_field_stats=cycle_proxy_return_field_stats(proxy_items),
     )
     return {
         "status": "proxy" if summary is not None else "unsupported",
         "full_strategy_status": "blocked_missing_inputs",
+        "formula_version": CYCLE_PROXY_FORMULA_VERSION,
         "proxy_signal_kind": _CYCLE_PROXY_SIGNAL_KIND,
         "proxy_rule": (
             "Equal-weight non-overlapping T+5 baskets of completed rank<=6 stock_candidate rows in WARM/HOT states, "
@@ -1903,7 +1920,9 @@ def _build_cycle_proxy_backtest_payload(
         "warnings": [
             "This is a reduced proxy backtest, not the full A-share cycle-rotation strategy.",
             "It uses daily candidate rows already persisted by the existing Livermore replay pipeline.",
-            "Transaction costs, slippage, full benchmark attribution, and the report's monthly core cadence are not modeled here.",
+            "Basket returns are net of the formal transaction-cost constants (buy/sell fees plus two-way slippage) applied to the dividend-adjusted return_5d_adj (gross return_5d fallback) on the read side.",
+            "Proxy evidence only: cost and return conventions are aligned with the formal engine constants, but results are not produced by the formal path backtest engine.",
+            "Full benchmark attribution and the report's monthly core cadence are still not modeled here.",
         ],
         "summary": summary,
         "nav_series": nav_series,
@@ -1919,18 +1938,22 @@ def _build_candidate_history_portfolio_backtest_payload(
     benchmark_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     rebalances = _candidate_history_portfolio_rebalance_rows(items)
-    nav_series, rebalance_log = _build_candidate_history_portfolio_series(
+    nav_series, rebalance_log, stale_price_codes = build_candidate_history_portfolio_series(
         rebalances=rebalances,
         close_rows=close_rows,
     )
-    summary = _build_candidate_history_portfolio_summary(
+    price_field_stats = candidate_history_portfolio_price_field_stats(close_rows)
+    summary = build_candidate_history_portfolio_summary(
         nav_series,
         rebalance_log=rebalance_log,
         benchmark_rows=benchmark_rows or [],
+        benchmark_series_id=BENCHMARK_SERIES_ID,
+        price_field_stats=price_field_stats,
     )
     return {
         "status": "portfolio_proxy" if summary is not None else "unsupported",
         "full_strategy_status": "blocked_missing_inputs",
+        "formula_version": PORTFOLIO_PROXY_FORMULA_VERSION,
         "signal_kind": _PORTFOLIO_BACKTEST_SIGNAL_KIND,
         "rebalance_rule": "first_available_monthly_snapshot",
         "weighting_rule": "equal_weight_top_6",
@@ -1939,8 +1962,13 @@ def _build_candidate_history_portfolio_backtest_payload(
         "missing_full_strategy_inputs": list(_CYCLE_PROXY_MISSING_FULL_STRATEGY_INPUTS),
         "warnings": [
             "This is a candidate-history portfolio proxy, not the full A-share cycle-rotation strategy.",
-            "It uses first-available monthly stock_candidate snapshots, equal-weight top-6 replay rows, daily close mark-to-market, and fixed transaction-cost assumptions.",
+            "It uses first-available monthly stock_candidate snapshots, equal-weight top-6 replay rows, daily adjusted-close mark-to-market with raw-close fallback, and fixed transaction-cost assumptions.",
+            "Proxy evidence only: transaction costs (buy/sell fees plus per-side slippage) are aligned with the formal engine constants, but results are not produced by the formal path backtest engine.",
             "It still lacks the report's macro, industry-cycle, fund-flow, valuation-history, and earnings-revision inputs.",
+            *[
+                f"Stock {code} had no fresh close for an entire rebalance period; its position was valued at the last known close (forward-fill)."
+                for code in stale_price_codes
+            ],
         ],
         "summary": summary,
         "nav_series": nav_series,
@@ -2010,6 +2038,7 @@ def _load_candidate_history_portfolio_close_rows(
     *,
     rebalances: list[dict[str, Any]],
     snapshot_to: str | None,
+    has_adjustment_factor: bool | None = None,
 ) -> list[dict[str, Any]]:
     stock_codes = sorted(
         {
@@ -2021,20 +2050,51 @@ def _load_candidate_history_portfolio_close_rows(
     )
     if not rebalances or not stock_codes:
         return []
+    if has_adjustment_factor is None:
+        has_adjustment_factor = _candidate_history_portfolio_has_adjustment_factor(conn)
     start_date = str(rebalances[0]["date"])
     placeholders = ", ".join("?" for _ in stock_codes)
-    where_to = "and trade_date <= ?" if snapshot_to else ""
+    where_to = "and d.trade_date <= ?" if snapshot_to else ""
+    adj_select = (
+        """
+          case
+            when af.adj_factor is not null and af.adj_factor > 0
+            then d.close_value * af.adj_factor
+            else null
+          end as adj_close_value,
+          af.adj_factor
+        """
+        if has_adjustment_factor
+        else """
+          cast(null as double) as adj_close_value,
+          cast(null as double) as adj_factor
+        """
+    )
+    adj_join = (
+        f"""
+        left join {TABLE_ADJ_FACTOR} af
+          on af.stock_code = d.stock_code
+         and af.trade_date = d.trade_date
+        """
+        if has_adjustment_factor
+        else ""
+    )
     bindings: list[object] = [*stock_codes, start_date]
     if snapshot_to:
         bindings.append(snapshot_to)
     rows = conn.execute(
         f"""
-        select trade_date, stock_code, close_value
-        from {TABLE_OBS}
-        where stock_code in ({placeholders})
-          and trade_date >= ?
+        select
+          d.trade_date,
+          d.stock_code,
+          d.close_value,
+          {adj_select}
+        from {TABLE_OBS} d
+        {adj_join}
+        where d.stock_code in ({placeholders})
+          and d.trade_date >= ?
           {where_to}
-        order by trade_date asc, stock_code asc
+        order by d.trade_date asc, d.stock_code asc
         """,
         bindings,
     ).fetchall()
@@ -2043,10 +2103,24 @@ def _load_candidate_history_portfolio_close_rows(
             "trade_date": str(trade_date)[:10],
             "stock_code": str(stock_code),
             "close_value": float(close_value),
+            "adj_close_value": float(adj_close_value) if adj_close_value is not None else None,
+            "adj_factor": float(adj_factor) if adj_factor is not None else None,
         }
-        for trade_date, stock_code, close_value in rows
+        for trade_date, stock_code, close_value, adj_close_value, adj_factor in rows
         if close_value is not None
     ]
+
+
+def _candidate_history_portfolio_has_adjustment_factor(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str] | None = None,
+) -> bool:
+    table_names = tables if tables is not None else {str(row[0]) for row in conn.execute("show tables").fetchall()}
+    if TABLE_ADJ_FACTOR not in table_names:
+        return False
+    columns = {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_ADJ_FACTOR}')").fetchall()}
+    return {"stock_code", "trade_date", "adj_factor"}.issubset(columns)
 
 
 def _load_benchmark_rows_for_nav_series(
@@ -2103,39 +2177,6 @@ def _benchmark_table_sort_key(table: str) -> int:
     return (TABLE_BENCHMARK_DAILY, TABLE_BENCHMARK_SNAPSHOT).index(table)
 
 
-def _build_benchmark_summary(
-    *,
-    nav_series: list[dict[str, Any]],
-    benchmark_rows: list[dict[str, Any]],
-    strategy_cumulative_return: float,
-) -> dict[str, Any] | None:
-    if not nav_series or len(benchmark_rows) < 2:
-        return None
-    requested_start_date = str(nav_series[0]["date"])[:10]
-    requested_end_date = str(nav_series[-1].get("exit_date") or nav_series[-1]["date"])[:10]
-    start_row = benchmark_rows[0]
-    end_row = benchmark_rows[-1]
-    start_value = float(start_row["value"])
-    end_value = float(end_row["value"])
-    if start_value <= 0:
-        return None
-    benchmark_return = end_value / start_value - 1
-    start_date = str(start_row["trade_date"])[:10]
-    end_date = str(end_row["trade_date"])[:10]
-    return {
-        "series_id": BENCHMARK_SERIES_ID,
-        "coverage_status": "complete"
-        if start_date <= requested_start_date and end_date >= requested_end_date
-        else "partial",
-        "requested_start_date": requested_start_date,
-        "requested_end_date": requested_end_date,
-        "start_date": start_date,
-        "end_date": end_date,
-        "cumulative_return": round(benchmark_return, 6),
-        "relative_cumulative_return": round(strategy_cumulative_return - benchmark_return, 6),
-    }
-
-
 def _append_optional_table(tables: list[str], table: str | list[str] | None) -> list[str]:
     if table is None:
         return tables
@@ -2145,235 +2186,6 @@ def _append_optional_table(tables: list[str], table: str | list[str] | None) -> 
         if item not in out:
             out.append(item)
     return out
-
-
-def _build_candidate_history_portfolio_series(
-    *,
-    rebalances: list[dict[str, Any]],
-    close_rows: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if not rebalances or not close_rows:
-        return [], []
-
-    closes_by_date: dict[str, dict[str, float]] = {}
-    for row in close_rows:
-        date_key = str(row["trade_date"])
-        closes_by_date.setdefault(date_key, {})[str(row["stock_code"])] = float(row["close_value"])
-
-    rebalance_by_date = {str(rebalance["date"]): rebalance for rebalance in rebalances}
-    positions: dict[str, float] = {}
-    cash = 1.0
-    nav = 1.0
-    nav_series: list[dict[str, Any]] = []
-    rebalance_log: list[dict[str, Any]] = []
-
-    for trade_date in sorted(closes_by_date):
-        closes = closes_by_date[trade_date]
-        market_value_before = sum(shares * closes.get(code, 0.0) for code, shares in positions.items())
-        nav_before_rebalance = cash + market_value_before
-        rebalance = rebalance_by_date.get(trade_date)
-        if rebalance is not None:
-            target_codes = [
-                str(item.get("stock_code") or "").strip()
-                for item in rebalance["items"]
-                if str(item.get("stock_code") or "").strip() in closes
-            ]
-            target_weight = 1.0 / len(target_codes) if target_codes else 0.0
-            current_values = {code: positions.get(code, 0.0) * closes.get(code, 0.0) for code in set(positions) | set(target_codes)}
-            target_values = {code: nav_before_rebalance * target_weight for code in target_codes}
-            buy_value = sum(max(target_values.get(code, 0.0) - current_values.get(code, 0.0), 0.0) for code in set(current_values) | set(target_values))
-            sell_value = sum(max(current_values.get(code, 0.0) - target_values.get(code, 0.0), 0.0) for code in set(current_values) | set(target_values))
-            buy_turnover = buy_value / nav_before_rebalance if nav_before_rebalance > 0 else 0.0
-            sell_turnover = sell_value / nav_before_rebalance if nav_before_rebalance > 0 else 0.0
-            cost = buy_value * _PORTFOLIO_BACKTEST_BUY_COST_RATE + sell_value * _PORTFOLIO_BACKTEST_SELL_COST_RATE
-            investable_nav = max(nav_before_rebalance - cost, 0.0)
-            if target_codes:
-                target_value_after_cost = investable_nav / len(target_codes)
-                positions = {code: target_value_after_cost / closes[code] for code in target_codes if closes[code] > 0}
-                cash = 0.0
-            else:
-                positions = {}
-                cash = investable_nav
-            nav = cash + sum(shares * closes.get(code, 0.0) for code, shares in positions.items())
-            rebalance_log.append(
-                {
-                    "date": trade_date,
-                    "market_state": rebalance["market_state"],
-                    "target_count": len(target_codes),
-                    "buy_turnover": round(buy_turnover, 6),
-                    "sell_turnover": round(sell_turnover, 6),
-                    "transaction_cost": round(cost, 6),
-                }
-            )
-        else:
-            nav = cash + market_value_before
-        nav_series.append(
-            {
-                "date": trade_date,
-                "nav": round(nav, 6),
-                "cash_weight": round(cash / nav, 6) if nav > 0 else 0.0,
-                "holding_count": len(positions),
-            }
-        )
-    return nav_series, rebalance_log
-
-
-def _build_candidate_history_portfolio_summary(
-    nav_series: list[dict[str, Any]],
-    *,
-    rebalance_log: list[dict[str, Any]],
-    benchmark_rows: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    if not nav_series or not rebalance_log:
-        return None
-    terminal_nav = float(nav_series[-1]["nav"])
-    cumulative_return = terminal_nav - 1.0
-    sample_days = max(len(nav_series) - 1, 0)
-    annualized_return = terminal_nav ** (252 / sample_days) - 1 if sample_days > 0 and terminal_nav > 0 else None
-    buy_turnover = sum(float(row["buy_turnover"]) for row in rebalance_log)
-    sell_turnover = sum(float(row["sell_turnover"]) for row in rebalance_log)
-    transaction_cost = sum(float(row["transaction_cost"]) for row in rebalance_log)
-    summary = {
-        "sample_days": sample_days,
-        "candidate_rows": sum(int(row["target_count"]) for row in rebalance_log),
-        "rebalance_count": len(rebalance_log),
-        "invested_rebalance_count": sum(1 for row in rebalance_log if int(row["target_count"]) > 0),
-        "cash_rebalance_count": sum(1 for row in rebalance_log if int(row["target_count"]) == 0),
-        "gross_turnover": round(buy_turnover + sell_turnover, 6),
-        "cost_drag": round(transaction_cost, 6),
-        "cumulative_return": round(cumulative_return, 6),
-        "annualized_return": round(annualized_return, 6) if annualized_return is not None else None,
-        "max_gain": _max_gain_interval(nav_series),
-        "max_drawdown": _max_drawdown_interval(nav_series),
-    }
-    benchmark = _build_benchmark_summary(
-        nav_series=nav_series,
-        benchmark_rows=benchmark_rows,
-        strategy_cumulative_return=cumulative_return,
-    )
-    if benchmark is not None:
-        summary["benchmark"] = benchmark
-    return summary
-
-
-def _build_cycle_proxy_nav_series(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows_by_date: dict[str, list[dict[str, Any]]] = {}
-    for item in items:
-        snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
-        if snapshot_date:
-            rows_by_date.setdefault(snapshot_date, []).append(item)
-
-    nav = 1.0
-    next_entry_after: str | None = None
-    series: list[dict[str, Any]] = []
-    for snapshot_date, rows in sorted(rows_by_date.items()):
-        if next_entry_after is not None and snapshot_date <= next_entry_after:
-            continue
-        values = _present_float_values(rows, "return_5d")
-        if not values:
-            continue
-        period_return = sum(values) / len(values)
-        exit_dates = [
-            str(row.get("forward_trade_date_5d") or "").strip()[:10]
-            for row in rows
-            if str(row.get("forward_trade_date_5d") or "").strip()
-        ]
-        if not exit_dates:
-            continue
-        exit_date = max(exit_dates)
-        nav *= 1 + period_return
-        series.append(
-            {
-                "date": snapshot_date,
-                "exit_date": exit_date,
-                "period_return": round(period_return, 6),
-                "nav": round(nav, 6),
-                "candidate_count": len(values),
-            }
-        )
-        next_entry_after = exit_date
-    return series
-
-
-def _build_cycle_proxy_summary(
-    nav_series: list[dict[str, Any]],
-    *,
-    candidate_rows: int,
-    benchmark_rows: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    if not nav_series:
-        return None
-
-    terminal_nav = float(nav_series[-1]["nav"])
-    cumulative_return = terminal_nav - 1
-    sample_days = len(nav_series)
-    annualized_return = terminal_nav ** (252 / (sample_days * 5)) - 1 if sample_days > 0 else None
-    max_gain = _max_gain_interval(nav_series)
-    max_drawdown = _max_drawdown_interval(nav_series)
-    summary = {
-        "sample_days": sample_days,
-        "candidate_rows": candidate_rows,
-        "cumulative_return": round(cumulative_return, 6),
-        "annualized_return": round(annualized_return, 6) if annualized_return is not None else None,
-        "max_gain": max_gain,
-        "max_drawdown": max_drawdown,
-    }
-    benchmark = _build_benchmark_summary(
-        nav_series=nav_series,
-        benchmark_rows=benchmark_rows,
-        strategy_cumulative_return=cumulative_return,
-    )
-    if benchmark is not None:
-        summary["benchmark"] = benchmark
-    return summary
-
-
-def _max_gain_interval(nav_series: list[dict[str, Any]]) -> dict[str, Any]:
-    best_return = float("-inf")
-    trough_nav = 1.0
-    trough_date = str(nav_series[0]["date"])
-    best_start = trough_date
-    best_end = str(nav_series[0].get("exit_date") or trough_date)
-    for row in nav_series:
-        nav = float(row["nav"])
-        current_date = str(row.get("exit_date") or row["date"])
-        gain = nav / trough_nav - 1 if trough_nav > 0 else 0.0
-        if gain > best_return:
-            best_return = gain
-            best_start = trough_date
-            best_end = current_date
-        if nav < trough_nav:
-            trough_nav = nav
-            trough_date = current_date
-    return {
-        "return": round(max(best_return, 0.0), 6),
-        "start_date": best_start,
-        "end_date": best_end,
-    }
-
-
-def _max_drawdown_interval(nav_series: list[dict[str, Any]]) -> dict[str, Any]:
-    peak_nav = 1.0
-    peak_date = str(nav_series[0]["date"])
-    worst_return = 0.0
-    worst_peak_date = peak_date
-    worst_trough_date = peak_date
-    for row in nav_series:
-        nav = float(row["nav"])
-        current_date = str(row.get("exit_date") or row["date"])
-        if nav > peak_nav:
-            peak_nav = nav
-            peak_date = current_date
-        drawdown = nav / peak_nav - 1 if peak_nav > 0 else 0.0
-        if drawdown < worst_return:
-            worst_return = drawdown
-            worst_peak_date = peak_date
-            worst_trough_date = current_date
-    return {
-        "return": round(worst_return, 6),
-        "peak_date": worst_peak_date,
-        "trough_date": worst_trough_date,
-    }
 
 
 def _strategy_primary_sample_size(

@@ -10,6 +10,7 @@ import {
   buildStrategyBacktestRows,
   formatBacktestPercent,
   formatBacktestSignedPercent,
+  formatCostBasisLabel,
   resolveStrategyBacktestMetricBasisLabel,
   resolveStrategyBacktestSampleCount,
   strategyBacktestHorizonLabels,
@@ -225,6 +226,20 @@ describe("stockAnalysisBacktestModel", () => {
     ]);
     expect(rows[0].stats.return_1d).toBe("58.3% / +2.34% / 12条");
     expect(rows[1].label).toBe("策略待确认");
+  });
+
+  it("formats the proxy cost basis disclosure, degrading gracefully when absent", () => {
+    expect(
+      formatCostBasisLabel({
+        source: "core_finance.strategy_policy.POLICY",
+        buy_cost_rate: 0.0005,
+        sell_cost_rate: 0.0015,
+        slippage_rate: 0.0005,
+        round_trip_cost_rate: 0.0035,
+      }),
+    ).toBe("双边成本 0.35%（含双向滑点）");
+    expect(formatCostBasisLabel(null)).toBeNull();
+    expect(formatCostBasisLabel(undefined)).toBeNull();
   });
 
   it("exports horizon metadata for table rendering", () => {

@@ -25,6 +25,11 @@ import type {
 import type { ConsensusSummary } from "./buildConsensusSummary";
 import type { StockDetailSource } from "./stockAnalysisDetailSelection";
 import { resolveStrategyBacktestMetricBasisLabel } from "./stockAnalysisBacktestModel";
+import {
+  buildMarketGateMacroDisclosure,
+  formatMarketGateMacroDisclosureDetail,
+  type MarketGateMacroDisclosure,
+} from "../../market-data/lib/livermoreStrategyModel";
 
 type NormalizedConfluenceReplayBlockedDate = Omit<ConfluenceReplayBlockedDate, "reason_code"> & {
   reason_code: string;
@@ -52,6 +57,8 @@ export type StockMarketStateCard = {
   basisLabel: string;
   warnings: string[];
   conditions: StockMarketConditionRow[];
+  macroDisclosure: MarketGateMacroDisclosure | null;
+  macroDisclosureDetail: string | null;
 };
 
 export type StockCandidatePattern = "突破" | "回踩" | "缩量盘整" | "待补";
@@ -97,6 +104,8 @@ export type StockRiskExitRow = {
   reason: string;
   distanceToExitPct: string;
   exitDistanceBucket: StockRiskDistanceBucket;
+  /** false when the backend reports the position's entry cost basis as missing. */
+  entryCostAvailable: boolean;
 };
 
 export type StockSectorRow = {
@@ -1125,6 +1134,16 @@ function buildHybridFusionEvidenceCards(
       { key: "attention_score", label: "关注线索", value: formatNumber(item.attention_score, 4) },
       { key: "price_confirm_score", label: "价格确认", value: formatNumber(item.price_confirm_score, 4) },
       { key: "crowding_penalty", label: "拥挤惩罚", value: formatNumber(item.crowding_penalty, 4) },
+      // Only disclosed when the backend returns factor_rank_available (older payloads omit it).
+      ...(item.factor_rank_available === undefined
+        ? []
+        : [
+            {
+              key: "factor_rank_available",
+              label: "因子排名覆盖",
+              value: item.factor_rank_available ? "已覆盖" : "缺失，景气周期权重已重归一",
+            },
+          ]),
       {
         key: "life_long_pass",
         label: "生命法庭长仓门槛",
@@ -2700,6 +2719,10 @@ export function buildStrategyLensItems(
         { key: "input", label: "输入", value: stockPayload ? `${stockPayload.input_stock_count} 只` : "待补" },
         { key: "excluded", label: "剔除", value: stockPayload ? `${stockPayload.excluded_stock_count} 只` : "待补" },
         { key: "history", label: "历史不足", value: stockPayload ? `${stockPayload.insufficient_history_count} 只` : "待补" },
+        // Only disclosed when the backend returns fundamental_overlay (older payloads omit it entirely).
+        ...(typeof stockPayload?.fundamental_overlay?.factor_missing_count === "number"
+          ? [{ key: "factor_missing", label: "缺因子", value: `${stockPayload.fundamental_overlay.factor_missing_count} 只` }]
+          : []),
       ],
       candidates: livermoreCandidates,
       scrollTarget: "stock-analysis-review-queue",
@@ -3593,6 +3616,8 @@ export function buildMarketStateCard(
   payload: LivermoreStrategyPayload,
 ): StockMarketStateCard {
   const gate = payload.market_gate;
+  // 选股页暴露标签统一用百分比（如"观察暴露 40%"），宏观调节行保持同一格式。
+  const macroDisclosure = buildMarketGateMacroDisclosure(gate, { exposureFormat: "percent" });
   const warnings = [
     ...payload.diagnostics
       .filter((item) => item.severity !== "info")
@@ -3614,6 +3639,8 @@ export function buildMarketStateCard(
     passedLabel: `${gate.passed_conditions} / ${gate.required_conditions} 条件通过`,
     basisLabel: localizeBasisLabel(payload.basis),
     warnings,
+    macroDisclosure,
+    macroDisclosureDetail: formatMarketGateMacroDisclosureDetail(macroDisclosure),
     conditions: gate.conditions.map((condition) => {
       const unknownVendorCondition = [
         condition.key,
@@ -4058,6 +4085,7 @@ export function buildRiskExitRows(
       reason: `触发复核：${localizeRiskExitReason(item.reason)}`,
       distanceToExitPct,
       exitDistanceBucket,
+      entryCostAvailable: item.entry_cost_available ?? item.entry_cost != null,
     });
   }
 
@@ -4087,6 +4115,7 @@ export function buildRiskExitRows(
       reason: status === "triggered" ? "触发复核：跌破退出观察价" : "观察中：接近退出观察价",
       distanceToExitPct,
       exitDistanceBucket,
+      entryCostAvailable: item.entry_cost_available ?? item.entry_cost != null,
     });
   }
 
@@ -4119,6 +4148,9 @@ export function buildRiskExitRows(
         (status === "triggered" ? "触发复核：联动观察命中" : "观察中：联动观察"),
       distanceToExitPct,
       exitDistanceBucket,
+      // Signal-confluence exit observations carry no entry-cost field; there is
+      // no basis to disclose it as missing, so the marker stays hidden.
+      entryCostAvailable: true,
     });
   }
 

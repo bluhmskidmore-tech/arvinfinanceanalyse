@@ -151,6 +151,11 @@
       "path": "31_livermore_matched_baseline.sql",
       "ensure_module": "backend.app.core_finance.matched_baseline",
       "ensure_symbol": "ensure_livermore_matched_baseline_schema"
+    },
+    {
+      "path": "33_market_breadth_daily.sql",
+      "ensure_module": "backend.app.tasks.market_breadth_materialize",
+      "ensure_symbol": "ensure_market_breadth_daily_schema"
     }
   ]
 }

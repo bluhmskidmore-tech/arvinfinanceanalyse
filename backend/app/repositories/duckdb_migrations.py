@@ -161,6 +161,10 @@ def _v29_commodity_futures_daily(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "29_commodity_futures_daily.sql")
 
 
+def _v31_market_breadth_daily(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "33_market_breadth_daily.sql")
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -270,6 +274,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(28, "Livermore candidate history analytical replay", _v28_livermore_candidate_history)
     registry.register(29, "Commodity futures main-contract daily ingest", _v29_commodity_futures_daily)
     registry.register(30, "Formal fact and snapshot read-path indexes", _v30_fact_snapshot_indexes)
+    registry.register(31, "Market breadth daily counts for Livermore gate", _v31_market_breadth_daily)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

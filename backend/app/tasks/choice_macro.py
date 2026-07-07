@@ -58,6 +58,7 @@ STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS = 31
 PUBLIC_HEADLINE_RULE_VERSION = "rv_public_cross_asset_headline_v1"
 PUBLIC_HEADLINE_BATCH_ID = "public_cross_asset_headline"
 PUBLIC_HEADLINE_LOOKBACK_DAYS = 90
+TUSHARE_INDEX_MIN_HISTORY_DAYS = 365 * 3 + 7
 PUBLIC_HEADLINE_CATALOG_VERSION = "2026-04-21.public-cross-asset-headline.v1"
 FRED_BRENT_SERIES_ID = "DCOILBRENTEU"
 NCD_SHIBOR_RULE_VERSION = "rv_tushare_ncd_shibor_proxy_v1"
@@ -185,6 +186,17 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
         "is_core": True,
         "tags": ["tushare", "market", "equity", "csi300", "cross_asset"],
         "policy_note": "Tushare index_daily supplement for CSI300 cross-asset risk sentiment",
+    },
+    "CA.CSI500": {
+        "series_name": "CSI 500 index close",
+        "vendor_name": "tushare",
+        "vendor_series_code": "index_daily:000905.SH.close",
+        "frequency": "daily",
+        "unit": "index",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "market", "equity", "csi500", "cross_asset"],
+        "policy_note": "Tushare index_daily supplement for CSI500 macro toolkit allocation inputs",
     },
     "CA.CSI300_PCT_CHG": {
         "series_name": "沪深300指数涨跌幅",
@@ -425,15 +437,33 @@ def refresh_choice_macro_snapshot(
                     )
                 else:
                     choice_series_ids = _choice_managed_series_ids(conn, series_registry)
-                    _delete_choice_managed_rows(
-                        conn,
-                        series_ids=choice_series_ids,
-                        trade_dates=(
-                            sorted(backfill_trade_dates)
-                            if backfill_days > 1 and backfill_trade_dates
-                            else None
-                        ),
+                    daily_fact_pairs = sorted(
+                        {
+                            (point.series_id, str(point.trade_date))
+                            for point in snapshot.series
+                            if point.trade_date
+                        }
                     )
+                    if backfill_days > 1 and backfill_trade_dates:
+                        _delete_choice_managed_rows(
+                            conn,
+                            series_ids=choice_series_ids,
+                            trade_dates=sorted(backfill_trade_dates),
+                        )
+                    elif daily_fact_pairs:
+                        _delete_choice_managed_rows(
+                            conn,
+                            series_ids=choice_series_ids,
+                            trade_dates=None,
+                            fact_pairs=daily_fact_pairs,
+                            catalog_series_ids=sorted(series_registry),
+                        )
+                    else:
+                        _delete_choice_managed_rows(
+                            conn,
+                            series_ids=choice_series_ids,
+                            trade_dates=None,
+                        )
 
                 for point in snapshot.series:
                     conn.execute(
@@ -1566,32 +1596,50 @@ def _delete_choice_managed_rows(
     *,
     series_ids: list[str],
     trade_dates: list[str] | None,
+    fact_pairs: list[tuple[str, str]] | None = None,
+    catalog_series_ids: list[str] | None = None,
 ) -> None:
-    if not series_ids:
+    if not series_ids and not fact_pairs:
         return
-    series_placeholders = ", ".join(["?"] * len(series_ids))
-    if trade_dates:
-        date_placeholders = ", ".join(["?"] * len(trade_dates))
-        params = [*series_ids, *trade_dates]
+    catalog_targets = catalog_series_ids if catalog_series_ids is not None else series_ids
+    if fact_pairs is not None:
+        if fact_pairs:
+            fact_conditions = " or ".join(["(series_id = ? and trade_date = ?)"] * len(fact_pairs))
+            fact_params = [value for pair in fact_pairs for value in pair]
+            conn.execute(f"delete from choice_market_snapshot where {fact_conditions}", fact_params)
+            conn.execute(f"delete from fact_choice_macro_daily where {fact_conditions}", fact_params)
+    elif series_ids:
+        series_placeholders = ", ".join(["?"] * len(series_ids))
+        if trade_dates:
+            date_placeholders = ", ".join(["?"] * len(trade_dates))
+            params = [*series_ids, *trade_dates]
+            conn.execute(
+                f"""
+                delete from choice_market_snapshot
+                where series_id in ({series_placeholders}) and trade_date in ({date_placeholders})
+                """,
+                params,
+            )
+            conn.execute(
+                f"""
+                delete from fact_choice_macro_daily
+                where series_id in ({series_placeholders}) and trade_date in ({date_placeholders})
+                """,
+                params,
+            )
+        else:
+            conn.execute(f"delete from choice_market_snapshot where series_id in ({series_placeholders})", series_ids)
+            conn.execute(f"delete from fact_choice_macro_daily where series_id in ({series_placeholders})", series_ids)
+    if catalog_targets:
+        catalog_placeholders = ", ".join(["?"] * len(catalog_targets))
         conn.execute(
-            f"""
-            delete from choice_market_snapshot
-            where series_id in ({series_placeholders}) and trade_date in ({date_placeholders})
-            """,
-            params,
+            f"delete from phase1_macro_vendor_catalog where series_id in ({catalog_placeholders})",
+            catalog_targets,
         )
         conn.execute(
-            f"""
-            delete from fact_choice_macro_daily
-            where series_id in ({series_placeholders}) and trade_date in ({date_placeholders})
-            """,
-            params,
+            f"delete from market_data_series_category where series_id in ({catalog_placeholders})",
+            catalog_targets,
         )
-    else:
-        conn.execute(f"delete from choice_market_snapshot where series_id in ({series_placeholders})", series_ids)
-        conn.execute(f"delete from fact_choice_macro_daily where series_id in ({series_placeholders})", series_ids)
-    conn.execute(f"delete from phase1_macro_vendor_catalog where series_id in ({series_placeholders})", series_ids)
-    conn.execute(f"delete from market_data_series_category where series_id in ({series_placeholders})", series_ids)
 
 
 def _delete_scoped_choice_rows(
@@ -1798,11 +1846,16 @@ def _fetch_tushare_cross_asset_history_rows(
 
     ts = import_tushare_pro()
     pro = ts.pro_api(token)
-    start_date = (report_date - timedelta(days=max(lookback_days, 45) * 2)).strftime("%Y%m%d")
+    start_date = (
+        report_date - timedelta(days=max(lookback_days * 2, TUSHARE_INDEX_MIN_HISTORY_DAYS))
+    ).strftime("%Y%m%d")
     weight_start_date = (report_date - timedelta(days=max(lookback_days, 90) * 2)).strftime("%Y%m%d")
     end_date = report_date.strftime("%Y%m%d")
     daily_records = _records_from_tushare_frame(
         pro.index_daily(ts_code="000300.SH", start_date=start_date, end_date=end_date)
+    )
+    csi500_daily_records = _records_from_tushare_frame(
+        pro.index_daily(ts_code="000905.SH", start_date=start_date, end_date=end_date)
     )
     basic_records = _records_from_tushare_frame(
         pro.index_dailybasic(ts_code="000300.SH", start_date=start_date, end_date=end_date)
@@ -1826,6 +1879,16 @@ def _fetch_tushare_cross_asset_history_rows(
             rows.append(
                 _public_history_row("CA.CSI300_PCT_CHG", trade_date, pct_chg, daily_vendor_version, daily_source_version)
             )
+
+    csi500_vendor_version = f"vv_tushare_index_daily_000905SH_{end_date}"
+    csi500_source_version = _source_version_from_records("tushare_index_daily", csi500_daily_records)
+    for record in csi500_daily_records:
+        trade_date = _coerce_public_trade_date(record.get("trade_date"))
+        if trade_date is None or trade_date > report_date.isoformat():
+            continue
+        close = _coerce_public_number(record.get("close"))
+        if close is not None:
+            rows.append(_public_history_row("CA.CSI500", trade_date, close, csi500_vendor_version, csi500_source_version))
 
     basic_vendor_version = f"vv_tushare_index_dailybasic_000300SH_{end_date}"
     basic_source_version = _source_version_from_records("tushare_index_dailybasic", basic_records)

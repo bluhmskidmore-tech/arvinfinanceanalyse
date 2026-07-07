@@ -79,7 +79,9 @@ def compute_hybrid_fusion_candidates(
             sector_ranks.get(sector_code),
         )
         sector_score = _sector_score(sector_rank)
-        factor_rank_score = _factor_rank_score(factor_rows.get(stock_code), factor_rank_count)
+        factor_row = factor_rows.get(stock_code)
+        factor_rank_available = factor_row is not None
+        factor_rank_score = _factor_rank_score(factor_row, factor_rank_count)
         source_kinds = _source_kinds(stock_code, stock_rows=stock_rows, factor_rows=factor_rows, theme_rows=theme_rows)
         theme_row = theme_rows.get(stock_code)
         stock_row = stock_rows.get(stock_code)
@@ -90,6 +92,7 @@ def compute_hybrid_fusion_candidates(
             sector_score=sector_score,
             market_flow_score=price_confirm_score,
             factor_rank_score=factor_rank_score,
+            factor_rank_available=factor_rank_available,
             thresholds=resolved_thresholds,
         )
         crowding_score = _crowding_score(stock_row=stock_row, theme_row=theme_row)
@@ -151,6 +154,7 @@ def compute_hybrid_fusion_candidates(
                     "sector_rank": sector_rank,
                     "sector_score": round(sector_score, 6),
                     "factor_rank_score": round(factor_rank_score, 6),
+                    "factor_rank_available": factor_rank_available,
                     "formula_version": FORMULA_VERSION,
                     "lifecourt_formula": (
                         "0.18*VCOV + 0.14*CONS + 0.14*BURST + 0.20*PCONF "
@@ -231,12 +235,30 @@ def _cycle_score(
     sector_score: float,
     market_flow_score: float,
     factor_rank_score: float,
+    factor_rank_available: bool,
     thresholds: HybridFusionThresholds,
 ) -> float:
     if macro_score is None:
+        if not factor_rank_available:
+            # Stock has no factor_screen coverage at all (row missing, not merely a low
+            # rank): renormalize onto the remaining sector weight instead of letting the
+            # 0.0 valuation term silently cap the achievable score.
+            return _clamp(sector_score)
         return _clamp(
             thresholds.legacy_cycle_sector_weight * sector_score
             + thresholds.legacy_cycle_factor_weight * factor_rank_score
+        )
+    if not factor_rank_available:
+        remaining_weight = (
+            thresholds.cycle_macro_weight + thresholds.cycle_industry_weight + thresholds.cycle_market_flow_weight
+        )
+        return _clamp(
+            (
+                thresholds.cycle_macro_weight * macro_score
+                + thresholds.cycle_industry_weight * sector_score
+                + thresholds.cycle_market_flow_weight * market_flow_score
+            )
+            / remaining_weight
         )
     return _clamp(
         thresholds.cycle_macro_weight * macro_score

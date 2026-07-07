@@ -8,6 +8,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
+from app.core_finance.macro.helpers import to_decimal_or_none as _dn
 from app.core_finance.macro.helpers import to_decimal_safe as _d
 from app.core_finance.macro.helpers import to_rounded_float as _f
 
@@ -92,7 +93,7 @@ def compute_leading_indicator(
     thresholds = _M10_LEI_THRESHOLDS
 
     pmi_val = _d(today.get("pmi"))
-    if pmi_val:
+    if today.get("pmi") is not None:
         pmi_score = (pmi_val - Decimal("30")) / Decimal("0.4")
         pmi_score = max(Decimal("0"), min(Decimal("100"), pmi_score))
     else:
@@ -120,13 +121,19 @@ def compute_leading_indicator(
     else:
         sf_score = Decimal("50")
 
-    term_val = _d(today.get("term_spread_10y_1y"))
-    term_score = Decimal("50") + term_val / Decimal("2")
-    term_score = max(Decimal("0"), min(Decimal("100"), term_score))
+    term_val = _dn(today.get("term_spread_10y_1y"))
+    if term_val is not None:
+        term_score = Decimal("50") + term_val / Decimal("2")
+        term_score = max(Decimal("0"), min(Decimal("100"), term_score))
+    else:
+        term_score = None
 
-    credit_val = _d(today.get("credit_spread_aaa_3y"))
-    credit_score = Decimal("100") - credit_val
-    credit_score = max(Decimal("0"), min(Decimal("100"), credit_score))
+    credit_val = _dn(today.get("credit_spread_aaa_3y"))
+    if credit_val is not None:
+        credit_score = Decimal("100") - credit_val
+        credit_score = max(Decimal("0"), min(Decimal("100"), credit_score))
+    else:
+        credit_score = None
 
     if len(monthly_oil) >= 2 and monthly_oil[0]:
         oil_avg = sum(monthly_oil[1:]) / (len(monthly_oil) - 1)
@@ -139,29 +146,43 @@ def compute_leading_indicator(
     else:
         commodity_score = Decimal("50")
 
-    lei = (
-        pmi_score * weights["pmi"]
-        + m2_score * weights["m2_yoy"]
-        + sf_score * weights["social_financing_yoy"]
-        + term_score * weights["term_spread"]
-        + credit_score * weights["credit_spread"]
-        + commodity_score * weights["commodity"]
+    # 分项缺失（term_score / credit_score 为 None）时不参与加权，剩余分项按权重重归一，
+    # 避免缺数据被 to_decimal_safe 的 0 默认值污染评分（详见审计问题 1）。
+    component_scores: dict[str, Decimal | None] = {
+        "pmi": pmi_score,
+        "m2_yoy": m2_score,
+        "social_financing_yoy": sf_score,
+        "term_spread": term_score,
+        "credit_spread": credit_score,
+        "commodity": commodity_score,
+    }
+    available_weight = sum(
+        weights[name] for name, score in component_scores.items() if score is not None
     )
-    lei = lei.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    fv = float(lei)
-    if fv >= thresholds["strong_expansion"]:
-        economic_state = "强劲扩张"
-    elif fv >= thresholds["moderate_expansion"]:
-        economic_state = "温和扩张"
-    elif fv >= thresholds["neutral_high"]:
-        economic_state = "中性"
-    elif fv >= thresholds["neutral_low"]:
-        economic_state = "中性"
-    elif fv >= thresholds["moderate_contraction"]:
-        economic_state = "温和收缩"
+    if available_weight > 0:
+        lei = sum(
+            score * weights[name] for name, score in component_scores.items() if score is not None
+        ) / available_weight
+        lei = lei.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     else:
-        economic_state = "显著收缩"
+        lei = None
+
+    if lei is not None:
+        fv = float(lei)
+        if fv >= thresholds["strong_expansion"]:
+            economic_state = "强劲扩张"
+        elif fv >= thresholds["moderate_expansion"]:
+            economic_state = "温和扩张"
+        elif fv >= thresholds["neutral_high"]:
+            economic_state = "中性"
+        elif fv >= thresholds["neutral_low"]:
+            economic_state = "中性"
+        elif fv >= thresholds["moderate_contraction"]:
+            economic_state = "温和收缩"
+        else:
+            economic_state = "显著收缩"
+    else:
+        economic_state = "数据不足"
 
     if len(monthly_pmi) >= 2:
         pmi_prev = monthly_pmi[1]
@@ -175,22 +196,24 @@ def compute_leading_indicator(
         trend = "平稳"
 
     warnings: list[str] = []
-    if today.get("term_spread_10y_1y") is None:
+    if term_val is None:
         warnings.append("TERM_SPREAD_MISSING")
-    if today.get("credit_spread_aaa_3y") is None:
+    if credit_val is None:
         warnings.append("CREDIT_SPREAD_AAA_MISSING")
+    if lei is None:
+        warnings.append("LEI_ALL_COMPONENTS_MISSING")
 
     return {
         "report_date": report_date.isoformat(),
         "data_status": "degraded" if warnings else "complete",
-        "lei_index": _f(lei),
+        "lei_index": _f(lei) if lei is not None else None,
         "economic_state": economic_state,
         "trend": trend,
         "pmi_score": _f(pmi_score),
         "m2_score": _f(m2_score),
         "social_financing_score": _f(sf_score),
-        "term_spread_score": _f(term_score),
-        "credit_spread_score": _f(credit_score),
+        "term_spread_score": _f(term_score) if term_score is not None else None,
+        "credit_spread_score": _f(credit_score) if credit_score is not None else None,
         "commodity_score": _f(commodity_score),
         "warnings": warnings,
     }

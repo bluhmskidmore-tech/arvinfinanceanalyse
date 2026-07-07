@@ -578,6 +578,137 @@ def test_choice_macro_refresh_preserves_tushare_supplemental_rows(tmp_path, monk
     get_settings.cache_clear()
 
 
+def test_choice_macro_daily_refresh_preserves_backfilled_history(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", _choice_series_json())
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        task_module._ensure_tables(conn)
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+            ('cn_cpi_yoy', 'CN CPI YoY', '2026-04-01', 0.5, 'daily', 'pct',
+             'sv_backfill', 'vv_backfill', 'rv_backfill', 'ok', 'run-backfill'),
+            ('cn_cpi_yoy', 'CN CPI YoY', '2026-04-02', 0.6, 'daily', 'pct',
+             'sv_backfill', 'vv_backfill', 'rv_backfill', 'ok', 'run-backfill'),
+            ('cn_repo_7d', 'CN Repo 7D', '2026-04-01', 1.70, 'daily', 'pct',
+             'sv_backfill', 'vv_backfill', 'rv_backfill', 'ok', 'run-backfill')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_market_snapshot values
+            ('cn_cpi_yoy', 'CN CPI YoY', 'EDB_CPI_YOY', 'choice',
+             '2026-04-01', 0.5, 'daily', 'pct', 'sv_backfill', 'vv_backfill',
+             'rv_backfill', 'run-backfill'),
+            ('cn_cpi_yoy', 'CN CPI YoY', 'EDB_CPI_YOY', 'choice',
+             '2026-04-02', 0.6, 'daily', 'pct', 'sv_backfill', 'vv_backfill',
+             'rv_backfill', 'run-backfill'),
+            ('cn_repo_7d', 'CN Repo 7D', 'EDB_REPO_7D', 'choice',
+             '2026-04-01', 1.70, 'daily', 'pct', 'sv_backfill', 'vv_backfill',
+             'rv_backfill', 'run-backfill')
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog (
+              series_id, series_name, vendor_name, vendor_version, frequency, unit,
+              vendor_series_code, batch_id, catalog_version, theme, is_core, tags_json,
+              request_options, fetch_mode, fetch_granularity, refresh_tier, policy_note
+            ) values
+            ('cn_cpi_yoy', 'CN CPI YoY', 'choice', 'vv_backfill', 'daily', 'pct',
+             'EDB_CPI_YOY', 'stable_daily', '2026-04-01.backfill', 'macro', true, '[]',
+             'IsLatest=0', 'date_slice', 'batch', 'stable', 'backfill seed'),
+            ('cn_repo_7d', 'CN Repo 7D', 'choice', 'vv_backfill', 'daily', 'pct',
+             'EDB_REPO_7D', 'stable_daily', '2026-04-01.backfill', 'macro', true, '[]',
+             'IsLatest=0', 'date_slice', 'batch', 'stable', 'backfill seed')
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        task_module.VendorAdapter,
+        "fetch_macro_snapshot",
+        lambda self, series, timeout_seconds=10.0, request_options="": macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version="vv_choice_daily_refresh",
+            captured_at="2026-04-09T14:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id="cn_cpi_yoy",
+                    series_name="CN CPI YoY",
+                    vendor_series_code="EDB_CPI_YOY",
+                    vendor_name="choice",
+                    trade_date="2026-04-09",
+                    value_numeric=0.7,
+                    frequency="daily",
+                    unit="pct",
+                    vendor_version="vv_choice_daily_refresh",
+                ),
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id="cn_repo_7d",
+                    series_name="CN Repo 7D",
+                    vendor_series_code="EDB_REPO_7D",
+                    vendor_name="choice",
+                    trade_date="2026-04-09",
+                    value_numeric=1.82,
+                    frequency="daily",
+                    unit="pct",
+                    vendor_version="vv_choice_daily_refresh",
+                ),
+            ],
+            raw_payload=_choice_gateway_payload(),
+        ),
+    )
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+    )
+    assert payload["status"] == "completed"
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select series_id, trade_date, value_numeric
+            from fact_choice_macro_daily
+            where series_id in ('cn_cpi_yoy', 'cn_repo_7d')
+            order by series_id, trade_date
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("cn_cpi_yoy", "2026-04-01", 0.5),
+        ("cn_cpi_yoy", "2026-04-02", 0.6),
+        ("cn_cpi_yoy", "2026-04-09", 0.7),
+        ("cn_repo_7d", "2026-04-01", 1.70),
+        ("cn_repo_7d", "2026-04-09", 1.82),
+    ]
+    get_settings.cache_clear()
+
+
 def test_choice_macro_ensure_tables_repairs_old_db_missing_category_table(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.choice_macro")
     if task_module is None:
@@ -2271,6 +2402,14 @@ def test_tushare_cross_asset_loader_maps_index_daily_basic_and_weight(monkeypatc
 
     class _FakePro:
         def index_daily(self, **kwargs):
+            assert kwargs["start_date"] <= "20230410"
+            if kwargs["ts_code"] == "000905.SH":
+                return pd.DataFrame(
+                    [
+                        {"trade_date": "20260409", "close": 6120.5},
+                        {"trade_date": "20260410", "close": 6155.8},
+                    ]
+                )
             assert kwargs["ts_code"] == "000300.SH"
             return pd.DataFrame(
                 [
@@ -2312,6 +2451,7 @@ def test_tushare_cross_asset_loader_maps_index_daily_basic_and_weight(monkeypatc
     by_key = {(row["series_id"], row["trade_date"]): row["value_numeric"] for row in rows}
 
     assert by_key[("CA.CSI300", "2026-04-10")] == 4102.25
+    assert by_key[("CA.CSI500", "2026-04-10")] == 6155.8
     assert by_key[("CA.CSI300_PCT_CHG", "2026-04-10")] == 0.42
     assert by_key[("CA.CSI300_PE", "2026-04-10")] == 14.64
     assert by_key[("CA.MEGA_CAP_WEIGHT", "2026-04-10")] == pytest.approx(18.4)

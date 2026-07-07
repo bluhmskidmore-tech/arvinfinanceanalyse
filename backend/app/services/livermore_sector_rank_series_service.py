@@ -146,8 +146,10 @@ def livermore_sector_rank_series_envelope(
                 name = str(it.get("sector_name") or "").strip()
                 by_date_item[(day_td.isoformat(), code)] = it
 
-        cum_by_sector: dict[str, float] = {c: 0.0 for c in selected_codes}
-        for _td, payload, _, _ in daily_results:
+        cum_by_date_sector: dict[tuple[str, str], float] = {}
+        running_cum: dict[str, float] = {c: 0.0 for c in selected_codes}
+        for td, payload, _, _ in daily_results:
+            d_iso = td.isoformat()
             day_items = payload.get("items")
             if not isinstance(day_items, list):
                 continue
@@ -157,7 +159,8 @@ def livermore_sector_rank_series_envelope(
                     continue
                 apc = it.get("avg_pctchange")
                 if isinstance(apc, (int, float)) and math.isfinite(float(apc)):
-                    cum_by_sector[code] += float(apc)
+                    running_cum[code] += float(apc)
+                cum_by_date_sector[(d_iso, code)] = round(running_cum[code], 6)
 
         latest_iso = latest_td.isoformat()
         series: list[dict[str, object]] = []
@@ -168,9 +171,6 @@ def livermore_sector_rank_series_envelope(
                 if it is None:
                     continue
                 name = str(it.get("sector_name") or "").strip()
-                cum_val: float | None = None
-                if d_iso == latest_iso:
-                    cum_val = round(cum_by_sector.get(code, 0.0), 6)
                 series.append(
                     {
                         "trade_date": d_iso,
@@ -182,7 +182,7 @@ def livermore_sector_rank_series_envelope(
                         "avg_turn": _item_float(it.get("avg_turn")),
                         "avg_amplitude": _item_float(it.get("avg_amplitude")),
                         "constituent_count": _item_int(it.get("constituent_count")),
-                        "cum_pctchange_window": cum_val,
+                        "cum_pctchange_window": cum_by_date_sector.get((d_iso, code)),
                     }
                 )
 
@@ -342,6 +342,14 @@ def _load_sector_rank_constituents(
     *,
     as_of_date: str,
 ) -> tuple[list[SectorRankConstituent], list[str], list[str]]:
+    membership_snapshot_date = _latest_table_date_on_or_before(
+        conn,
+        table_name=TABLE_MEMBERSHIP,
+        column_name="as_of_date",
+        as_of_date=as_of_date,
+    )
+    if membership_snapshot_date is None:
+        return [], [], []
     try:
         rows = conn.execute(
             f"""
@@ -362,7 +370,7 @@ def _load_sector_rank_constituents(
              and cast(daily.trade_date as date) = cast(? as date)
             where membership.as_of_date = ?
             """,
-            [as_of_date, as_of_date],
+            [as_of_date, membership_snapshot_date],
         ).fetchall()
     except duckdb.Error:
         return [], [], []
@@ -381,6 +389,27 @@ def _load_sector_rank_constituents(
     source_versions = [str(value) for row in rows for value in (row[6], row[8]) if value]
     vendor_versions = [str(value) for row in rows for value in (row[7], row[9]) if value]
     return constituents, source_versions, vendor_versions
+
+
+def _latest_table_date_on_or_before(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    table_name: str,
+    column_name: str,
+    as_of_date: str,
+) -> str | None:
+    try:
+        row = conn.execute(
+            f"""
+            select max({column_name})
+            from {table_name}
+            where cast({column_name} as date) <= cast(? as date)
+            """,
+            [as_of_date],
+        ).fetchone()
+    except duckdb.Error:
+        return None
+    return str(row[0]) if row and row[0] else None
 
 
 def _item_float(value: object) -> float | None:

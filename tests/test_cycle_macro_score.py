@@ -5,6 +5,7 @@ from backend.app.core_finance.cycle_macro_score import (
     compute_credit_impulse_signal,
     compute_macro_score,
     compute_pmi_signal,
+    compute_price_spread_signal,
 )
 
 
@@ -54,3 +55,43 @@ def test_build_cycle_macro_snapshot_computes_macro_score_when_inputs_land() -> N
     assert snapshot.price_spread_ready is True
     assert snapshot.macro_score is not None
     assert "MacroScore" in snapshot.evidence
+
+
+def test_build_cycle_macro_snapshot_ignores_points_after_as_of_date() -> None:
+    """Core layer must not use look-ahead points even when a caller forgets to pre-filter them."""
+    snapshot = build_cycle_macro_snapshot(
+        pmi_points=[("2026-04-01", 51.0), ("2026-06-01", 99.0)],
+        social_financing_yoy_points=[
+            ("2026-03-01", 8.5),
+            ("2026-04-01", 9.2),
+            ("2026-06-01", 50.0),
+        ],
+        pe=14.0,
+        cn10y=2.1,
+        as_of_date="2026-05-08",
+    )
+    assert snapshot.pmi_value == 51.0
+    assert round(snapshot.credit_impulse_value, 6) == 0.7
+
+
+def test_build_cycle_macro_snapshot_reweights_when_all_points_are_future() -> None:
+    """If every landed point for an input is after as_of_date, treat it as missing and reweight."""
+    snapshot = build_cycle_macro_snapshot(
+        pmi_points=[("2026-06-01", 99.0)],
+        social_financing_yoy_points=None,
+        pe=None,
+        cn10y=None,
+        as_of_date="2026-05-08",
+    )
+    assert snapshot.pmi_ready is False
+    assert "PMI" in snapshot.missing_inputs
+    assert snapshot.macro_score is None
+
+
+def test_compute_price_spread_signal_returns_tuple_when_pe_non_positive() -> None:
+    """The non-positive PE branch must keep the same (signal, spread_ppt) contract as the normal path."""
+    result = compute_price_spread_signal(pe=0.0, cn10y=2.1)
+    assert isinstance(result, tuple)
+    signal, spread_ppt = result
+    assert signal == 0.0
+    assert spread_ppt is None

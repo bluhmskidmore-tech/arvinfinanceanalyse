@@ -29,6 +29,7 @@ import {
 import {
   buildStrategyBacktestRows,
   formatBacktestSignedPercent,
+  formatCostBasisLabel,
 } from "../lib/stockAnalysisBacktestModel";
 import {
   cycleBoundaryLabel,
@@ -297,6 +298,14 @@ export function StockAnalysisStrategyCardGrid({
                             missingInputs={candidateHistoryPortfolioBacktestPayload.missing_full_strategy_inputs}
                             testId="stock-analysis-portfolio-backtest-boundary"
                           />
+                          {formatCostBasisLabel(candidateHistoryPortfolioBacktestPayload.summary.cost_basis) ? (
+                            <small
+                              className="text-xs text-default-500"
+                              data-testid="stock-analysis-portfolio-backtest-cost-basis"
+                            >
+                              {formatCostBasisLabel(candidateHistoryPortfolioBacktestPayload.summary.cost_basis)}
+                            </small>
+                          ) : null}
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
                             <div className="flex flex-col gap-1">
                               <span className="text-xs text-default-500">组合回测收益</span>
@@ -362,6 +371,14 @@ export function StockAnalysisStrategyCardGrid({
                             missingInputs={cycleProxyBacktestPayload.missing_full_strategy_inputs}
                             testId="stock-analysis-cycle-proxy-boundary"
                           />
+                          {formatCostBasisLabel(cycleProxyBacktestPayload.summary.cost_basis) ? (
+                            <small
+                              className="text-xs text-default-500"
+                              data-testid="stock-analysis-cycle-proxy-cost-basis"
+                            >
+                              {formatCostBasisLabel(cycleProxyBacktestPayload.summary.cost_basis)}
+                            </small>
+                          ) : null}
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
                             <div className="flex flex-col gap-1">
                               <span className="text-xs text-default-500">累计收益</span>

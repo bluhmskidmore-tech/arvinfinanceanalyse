@@ -196,6 +196,22 @@ def to_decimal_safe(v: Any) -> Decimal:
         return Decimal("0")
 
 
+def to_decimal_or_none(v: Any) -> Decimal | None:
+    """与 to_decimal_safe 不同：缺失/无法解析时返回 None 而非静默的 Decimal("0")。
+
+    用于评分公式中"缺失分项不应等价于取值 0"的场景（例如 credit_spread、
+    term_spread），调用方需据此把该分项从加权计算中剔除，而不是让 0 参与计算。
+    """
+    if v is None:
+        return None
+    if isinstance(v, Decimal):
+        return v
+    try:
+        return Decimal(str(v))
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+
+
 def to_rounded_float(d: Decimal) -> float:
     return float(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 

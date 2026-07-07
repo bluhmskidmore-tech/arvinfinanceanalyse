@@ -6,13 +6,12 @@ from pathlib import Path
 from typing import Annotated
 
 from backend.app.api.perf_logging import timed_api_call
+from backend.app.api.response_cache import market_home_response_cache
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
-from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_cycle_proxy_backtest_envelope,
     livermore_candidate_history_envelope,
-    livermore_candidate_history_envelope_or_none,
     livermore_candidate_history_portfolio_backtest_envelope,
     livermore_candidate_history_strategy_optimization_envelope,
     livermore_candidate_history_strategy_score_envelope,
@@ -21,14 +20,9 @@ from backend.app.services.livermore_gate_supplement_compute_service import (
     compute_and_materialize_gate_supplement,
 )
 from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
-from backend.app.services.livermore_signal_confluence_service import (
-    build_livermore_signal_confluence,
-)
+from backend.app.services.livermore_signal_confluence_service import livermore_signal_confluence_envelope
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
-from backend.app.services.macro_bond_linkage_service import (
-    get_macro_context_v1,
-    get_macro_environment_context,
-)
+from backend.app.services.macro_bond_linkage_service import get_macro_context_v1
 from backend.app.services.market_data_livermore_service import (
     _risk_exit_input_block_reason,
     livermore_strategy_envelope_from_catalog,
@@ -39,151 +33,6 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
-LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND = "market_data.livermore.signal_confluence"
-LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION = "rv_livermore_signal_confluence_v1"
-LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION = "cv_livermore_signal_confluence_v1"
-
-
-def load_macro_adversarial_signal_payload(
-    *, output_dir: str | Path | None = None
-) -> tuple[dict[str, object], dict[str, object]]:
-    try:
-        from backend.app.services.macro_adversarial_signal_service import (
-            load_macro_adversarial_signal_payload as loader,
-        )
-    except ModuleNotFoundError as exc:
-        if exc.name != "backend.app.services.macro_adversarial_signal_service":
-            raise
-        return {}, {}
-
-    payload, meta = loader(output_dir=output_dir)
-    return _dict_payload(payload), _mapping(meta)
-
-
-def _attach_replay_evidence(
-    payload: dict[str, object],
-    *,
-    duckdb_path: str,
-    as_of_date: str | None,
-    replay_summary: dict[str, object],
-) -> None:
-    replay_evidence = _candidate_history_replay_evidence(
-        payload=payload,
-        duckdb_path=duckdb_path,
-        as_of_date=as_of_date,
-        replay_summary=replay_summary,
-    )
-    payload["replay_evidence"] = replay_evidence
-
-
-def livermore_candidate_history_backtest_window_summary(
-    *,
-    duckdb_path: str,
-    stock_code: str | None,
-    snapshot_from: str | None,
-    snapshot_to: str | None,
-) -> dict[str, object]:
-    if not snapshot_from and not snapshot_to:
-        return _unsupported_replay_summary()
-    envelope = livermore_candidate_history_envelope_or_none(
-        duckdb_path=duckdb_path,
-        stock_code=stock_code,
-        snapshot_from=snapshot_from,
-        snapshot_to=snapshot_to,
-        limit=500,
-    )
-    if envelope is None:
-        return _unsupported_replay_summary()
-    result = _mapping(envelope.get("result"))
-    summary = _mapping(result.get("backtest_window_summary"))
-    if "status" in summary and "replay_dates_completed" in summary:
-        return summary
-    return _unsupported_replay_summary()
-
-
-def _candidate_history_replay_evidence(
-    *,
-    payload: dict[str, object],
-    duckdb_path: str,
-    as_of_date: str | None,
-    replay_summary: dict[str, object],
-) -> dict[str, object]:
-    snapshot_as_of_date = as_of_date[:10] if as_of_date else None
-    if not as_of_date:
-        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
-    path = Path(duckdb_path)
-    if not path.is_file():
-        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
-    row_count = _replay_window_candidate_row_count(replay_summary)
-    if row_count <= 0:
-        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
-    envelope = livermore_candidate_history_envelope_or_none(
-        duckdb_path=duckdb_path,
-        stock_code=None,
-        snapshot_from=snapshot_as_of_date,
-        snapshot_to=snapshot_as_of_date,
-        limit=max(row_count, 5),
-    )
-    if envelope is None:
-        return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
-
-    result = _mapping(envelope.get("result"))
-    all_items = _list_of_mappings(result.get("items"))
-
-    replay_stock_codes = {_normalized_stock_code(item.get("stock_code")) for item in all_items}
-    replay_stock_codes.discard("")
-    entry_stock_codes = {
-        _normalized_stock_code(item.get("stock_code"))
-        for item in _list_of_mappings(payload.get("entry_observations"))
-    }
-    entry_stock_codes.discard("")
-
-    return {
-        "status": "available",
-        "snapshot_as_of_date": snapshot_as_of_date,
-        "row_count": row_count,
-        "matched_entry_count": len(entry_stock_codes & replay_stock_codes),
-        "sample_items": [_replay_sample_item(item) for item in all_items[:5]],
-    }
-
-
-def _empty_replay_evidence(*, snapshot_as_of_date: str | None) -> dict[str, object]:
-    return {
-        "status": "missing",
-        "snapshot_as_of_date": snapshot_as_of_date,
-        "row_count": 0,
-        "matched_entry_count": 0,
-        "sample_items": [],
-    }
-
-
-def _unsupported_replay_summary() -> dict[str, object]:
-    return {
-        "status": "unsupported",
-        "snapshot_from": None,
-        "snapshot_to": None,
-        "replay_dates_total": 0,
-        "replay_dates_completed": 0,
-        "replay_dates_pending": 0,
-        "replay_dates_unsupported": 0,
-        "replay_dates_proxy_only": 0,
-        "completed_rows": 0,
-        "pending_rows": 0,
-        "unsupported_rows": 0,
-        "proxy_only_rows": 0,
-        "included_completed_stats_dates": [],
-        "excluded_from_completed_stats_dates": [],
-        "date_reasons": [],
-    }
-
-
-def _replay_window_candidate_row_count(summary: dict[str, object]) -> int:
-    return (
-        _non_negative_int(summary.get("completed_rows"))
-        + _non_negative_int(summary.get("pending_rows"))
-        + _non_negative_int(summary.get("unsupported_rows"))
-        + _non_negative_int(summary.get("proxy_only_rows"))
-    )
 
 
 class LivermorePositionSnapshotRequest(BaseModel):
@@ -266,6 +115,120 @@ def _resolve_livermore_position_csv_path(*, data_input_root: Path, csv_path: str
     return candidate
 
 
+def _invalidate_livermore_response_cache() -> None:
+    market_home_response_cache.invalidate()
+
+
+def _livermore_strategy_cache_key(*, duckdb_path: str, catalog_file: object, as_of_date: str | None) -> str:
+    return f"livermore/strategy::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
+
+
+def _stock_analysis_workbench_cache_key(
+    *,
+    duckdb_path: str,
+    catalog_file: object,
+    as_of_date: str | None,
+    include: str | None,
+    sector_window_days: int,
+    top_k: int,
+) -> str:
+    return (
+        f"livermore/workbench::as_of={as_of_date or ''}::include={include or ''}"
+        f"::sector_window_days={sector_window_days}::top_k={top_k}"
+        f"::catalog={catalog_file}::{duckdb_path}"
+    )
+
+
+def _livermore_signal_confluence_cache_key(
+    *, duckdb_path: str, catalog_file: object, as_of_date: str | None
+) -> str:
+    return f"livermore/signal-confluence::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
+
+
+def _livermore_stock_detail_cache_key(
+    *, duckdb_path: str, stock_code: str, as_of_date: str | None, lookback: int
+) -> str:
+    return (
+        f"livermore/stock-detail::stock={stock_code}::as_of={as_of_date or ''}"
+        f"::lookback={lookback}::{duckdb_path}"
+    )
+
+
+def _livermore_candidate_history_cache_key(
+    *,
+    duckdb_path: str,
+    stock_code: str | None,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+    limit: int,
+) -> str:
+    return (
+        f"livermore/candidate-history::stock={stock_code or ''}"
+        f"::from={snapshot_from or ''}::to={snapshot_to or ''}::limit={limit}::{duckdb_path}"
+    )
+
+
+def _livermore_strategy_score_cache_key(
+    *,
+    duckdb_path: str,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+    current_market_state: str | None,
+    min_sample: int,
+    primary_horizon: str,
+) -> str:
+    return (
+        f"livermore/strategy-score::from={snapshot_from or ''}::to={snapshot_to or ''}"
+        f"::market_state={current_market_state or ''}::min_sample={min_sample}"
+        f"::primary_horizon={primary_horizon}::{duckdb_path}"
+    )
+
+
+def _livermore_strategy_optimization_cache_key(
+    *,
+    duckdb_path: str,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+    current_market_state: str | None,
+    min_sample: int,
+    primary_horizon: str,
+) -> str:
+    return (
+        f"livermore/strategy-optimization::from={snapshot_from or ''}::to={snapshot_to or ''}"
+        f"::market_state={current_market_state or ''}::min_sample={min_sample}"
+        f"::primary_horizon={primary_horizon}::{duckdb_path}"
+    )
+
+
+def _livermore_cycle_proxy_backtest_cache_key(
+    *, duckdb_path: str, snapshot_from: str | None, snapshot_to: str | None
+) -> str:
+    return f"livermore/cycle-proxy-backtest::from={snapshot_from or ''}::to={snapshot_to or ''}::{duckdb_path}"
+
+
+def _livermore_portfolio_backtest_cache_key(
+    *, duckdb_path: str, snapshot_from: str | None, snapshot_to: str | None
+) -> str:
+    return (
+        f"livermore/candidate-history-portfolio-backtest::from={snapshot_from or ''}"
+        f"::to={snapshot_to or ''}::{duckdb_path}"
+    )
+
+
+def _livermore_sector_rank_series_cache_key(
+    *,
+    duckdb_path: str,
+    as_of_date: str | None,
+    window_days: int,
+    sector_code: str | None,
+    top_k: int,
+) -> str:
+    return (
+        f"livermore/sector-rank-series::as_of={as_of_date or ''}::window_days={window_days}"
+        f"::sector={sector_code or ''}::top_k={top_k}::{duckdb_path}"
+    )
+
+
 @router.get("/livermore")
 def livermore_strategy(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
@@ -279,13 +242,22 @@ def livermore_strategy(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return _with_livermore_workbench_summary(
-        livermore_strategy_envelope_from_catalog(
-            duckdb_path=str(settings.duckdb_path),
+    duckdb_path = str(settings.duckdb_path)
+    catalog_file = settings.choice_stock_catalog_file
+    return market_home_response_cache.get_or_build(
+        _livermore_strategy_cache_key(
+            duckdb_path=duckdb_path,
+            catalog_file=catalog_file,
             as_of_date=as_of_date,
-            choice_stock_catalog_file=settings.choice_stock_catalog_file,
         ),
-        summary_kind="strategy",
+        lambda: _with_livermore_workbench_summary(
+            livermore_strategy_envelope_from_catalog(
+                duckdb_path=duckdb_path,
+                as_of_date=as_of_date,
+                choice_stock_catalog_file=catalog_file,
+            ),
+            summary_kind="strategy",
+        ),
     )
 
 
@@ -305,15 +277,27 @@ def stock_analysis_workbench(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return timed_api_call(
-        "/ui/market-data/stock-analysis/workbench",
-        lambda: stock_analysis_workbench_envelope(
-            duckdb_path=str(settings.duckdb_path),
+    duckdb_path = str(settings.duckdb_path)
+    catalog_file = settings.choice_stock_catalog_file
+    return market_home_response_cache.get_or_build(
+        _stock_analysis_workbench_cache_key(
+            duckdb_path=duckdb_path,
+            catalog_file=catalog_file,
             as_of_date=as_of_date,
-            choice_stock_catalog_file=settings.choice_stock_catalog_file,
             include=include,
             sector_window_days=sector_window_days,
             top_k=top_k,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/stock-analysis/workbench",
+            lambda: stock_analysis_workbench_envelope(
+                duckdb_path=duckdb_path,
+                as_of_date=as_of_date,
+                choice_stock_catalog_file=catalog_file,
+                include=include,
+                sector_window_days=sector_window_days,
+                top_k=top_k,
+            ),
         ),
     )
 
@@ -331,103 +315,22 @@ def livermore_signal_confluence(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    livermore_envelope = livermore_strategy_envelope_from_catalog(
-        duckdb_path=str(settings.duckdb_path),
-        as_of_date=as_of_date,
-        choice_stock_catalog_file=settings.choice_stock_catalog_file,
-    )
-    livermore_meta = _mapping(livermore_envelope.get("result_meta"))
-    livermore_payload = _dict_payload(livermore_envelope.get("result"))
-    resolved_as_of_date = _optional_text(livermore_payload.get("as_of_date")) or _optional_text(as_of_date)
-
-    macro_meta: dict[str, object] = {}
-    macro_payload: dict[str, object] = {}
-    if resolved_as_of_date:
-        macro_envelope = get_macro_environment_context(date.fromisoformat(resolved_as_of_date))
-        macro_meta = _mapping(macro_envelope.get("result_meta"))
-        macro_payload = _dict_payload(macro_envelope.get("result"))
-    adversarial_payload, adversarial_meta = load_macro_adversarial_signal_payload(output_dir=None)
-    adversarial_meta_for_envelope = (
-        {}
-        if adversarial_payload.get("status") == "missing"
-        and not adversarial_payload.get("items")
-        else adversarial_meta
-    )
-    replay_summary = livermore_candidate_history_backtest_window_summary(
-        duckdb_path=str(settings.duckdb_path),
-        stock_code=None,
-        snapshot_from=resolved_as_of_date[:10] if resolved_as_of_date else None,
-        snapshot_to=resolved_as_of_date[:10] if resolved_as_of_date else None,
-    )
-
-    result_payload = build_livermore_signal_confluence(
-        as_of_date=resolved_as_of_date or "",
-        livermore_payload=livermore_payload,
-        macro_payload=macro_payload,
-        adversarial_payload=adversarial_payload,
-        backtest_window_summary=replay_summary,
-    )
-    _attach_replay_evidence(
-        result_payload,
-        duckdb_path=str(settings.duckdb_path),
-        as_of_date=resolved_as_of_date,
-        replay_summary=replay_summary,
-    )
-    return _with_livermore_workbench_summary(
-        build_result_envelope(
-            basis="analytical",
-            trace_id=f"tr_livermore_signal_confluence_{date.today().strftime('%Y%m%d')}",
-            result_kind=LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND,
-            cache_version=LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION,
-            source_version=_combine_lineage(
-                [
-                    _meta_source_version(livermore_meta),
-                    _meta_source_version(macro_meta),
-                    _meta_source_version(adversarial_meta_for_envelope),
-                ],
-                empty_value="sv_livermore_signal_confluence_empty",
-            ),
-            rule_version=LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION,
-            quality_flag=_merge_quality_flag(
-                _meta_quality_flag(livermore_meta),
-                _meta_quality_flag(macro_meta),
-                _meta_quality_flag(adversarial_meta_for_envelope),
-            ),
-            vendor_version=_combine_lineage(
-                [
-                    _meta_vendor_version(livermore_meta),
-                    _meta_vendor_version(macro_meta),
-                    _meta_vendor_version(adversarial_meta_for_envelope),
-                ],
-                empty_value="vv_none",
-            ),
-            vendor_status=_merge_vendor_status(
-                _meta_vendor_status(livermore_meta),
-                _meta_vendor_status(macro_meta),
-                _meta_vendor_status(adversarial_meta_for_envelope),
-            ),
-            fallback_mode=_merge_fallback_mode(
-                _meta_fallback_mode(livermore_meta),
-                _meta_fallback_mode(macro_meta),
-                _meta_fallback_mode(adversarial_meta_for_envelope),
-            ),
-            filters_applied={
-                "requested_as_of_date": _optional_text(as_of_date),
-                "as_of_date": resolved_as_of_date,
-            },
-            tables_used=_combine_tables(
-                _meta_tables_used(livermore_meta),
-                _meta_tables_used(macro_meta),
-                _meta_tables_used(adversarial_meta_for_envelope),
-            ),
-            evidence_rows=(
-                _safe_int(_meta_evidence_rows(livermore_meta))
-                + _safe_int(_meta_evidence_rows(macro_meta))
-                + _safe_int(_meta_evidence_rows(adversarial_meta_for_envelope))
-            ),
-            result_payload=result_payload,
+    duckdb_path = str(settings.duckdb_path)
+    catalog_file = settings.choice_stock_catalog_file
+    return market_home_response_cache.get_or_build(
+        _livermore_signal_confluence_cache_key(
+            duckdb_path=duckdb_path,
+            catalog_file=catalog_file,
+            as_of_date=as_of_date,
         ),
-        summary_kind="signal_confluence",
+        lambda: _with_livermore_workbench_summary(
+            livermore_signal_confluence_envelope(
+                duckdb_path=duckdb_path,
+                as_of_date=as_of_date,
+                choice_stock_catalog_file=catalog_file,
+            ),
+            summary_kind="signal_confluence",
+        ),
     )
 
 
@@ -478,6 +381,7 @@ def materialize_position_snapshot(
     )
     payload["risk_exit_input_status"] = "blocked" if block_reason else "ready"
     payload["risk_exit_input_block_reason"] = block_reason
+    _invalidate_livermore_response_cache()
     return payload
 
 
@@ -520,6 +424,7 @@ def materialize_manual_position_snapshot(
     )
     payload["risk_exit_input_status"] = "blocked" if block_reason else "ready"
     payload["risk_exit_input_block_reason"] = block_reason
+    _invalidate_livermore_response_cache()
     return payload
 
 
@@ -550,6 +455,7 @@ def refresh_gate_supplement(
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    _invalidate_livermore_response_cache()
     return result
 
 
@@ -578,13 +484,23 @@ def livermore_stock_detail(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return timed_api_call(
-        "/ui/market-data/livermore/stock-detail",
-        lambda: livermore_stock_detail_envelope(
-            duckdb_path=str(settings.duckdb_path),
+    duckdb_path = str(settings.duckdb_path)
+    as_of_text = parsed_as_of.isoformat() if parsed_as_of is not None else None
+    return market_home_response_cache.get_or_build(
+        _livermore_stock_detail_cache_key(
+            duckdb_path=duckdb_path,
             stock_code=cleaned,
-            as_of_date=parsed_as_of,
+            as_of_date=as_of_text,
             lookback=lookback,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/livermore/stock-detail",
+            lambda: livermore_stock_detail_envelope(
+                duckdb_path=duckdb_path,
+                stock_code=cleaned,
+                as_of_date=parsed_as_of,
+                lookback=lookback,
+            ),
         ),
     )
 
@@ -618,17 +534,27 @@ def livermore_candidate_history(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return timed_api_call(
-        "/ui/market-data/livermore/candidate-history",
-        lambda: _with_livermore_workbench_summary(
-            livermore_candidate_history_envelope(
-                duckdb_path=str(settings.duckdb_path),
-                stock_code=stock_code,
-                snapshot_from=snapshot_from,
-                snapshot_to=snapshot_to,
-                limit=limit,
+    duckdb_path = str(settings.duckdb_path)
+    return market_home_response_cache.get_or_build(
+        _livermore_candidate_history_cache_key(
+            duckdb_path=duckdb_path,
+            stock_code=stock_code,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+            limit=limit,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/livermore/candidate-history",
+            lambda: _with_livermore_workbench_summary(
+                livermore_candidate_history_envelope(
+                    duckdb_path=duckdb_path,
+                    stock_code=stock_code,
+                    snapshot_from=snapshot_from,
+                    snapshot_to=snapshot_to,
+                    limit=limit,
+                ),
+                summary_kind="candidate_history",
             ),
-            summary_kind="candidate_history",
         ),
     )
 
@@ -661,19 +587,30 @@ def livermore_strategy_score(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return timed_api_call(
-        "/ui/market-data/livermore/strategy-score",
-        lambda: _with_livermore_workbench_summary(
-            livermore_candidate_history_strategy_score_envelope(
-                duckdb_path=str(settings.duckdb_path),
-                snapshot_from=snapshot_from,
-                snapshot_to=snapshot_to,
-                current_market_state=current_market_state,
-                min_sample=min_sample,
-                primary_horizon=primary_horizon,
-                macro_context_loader=_livermore_macro_context_v1_for_date,
+    duckdb_path = str(settings.duckdb_path)
+    return market_home_response_cache.get_or_build(
+        _livermore_strategy_score_cache_key(
+            duckdb_path=duckdb_path,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+            current_market_state=current_market_state,
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/livermore/strategy-score",
+            lambda: _with_livermore_workbench_summary(
+                livermore_candidate_history_strategy_score_envelope(
+                    duckdb_path=duckdb_path,
+                    snapshot_from=snapshot_from,
+                    snapshot_to=snapshot_to,
+                    current_market_state=current_market_state,
+                    min_sample=min_sample,
+                    primary_horizon=primary_horizon,
+                    macro_context_loader=_livermore_macro_context_v1_for_date,
+                ),
+                summary_kind="strategy_score",
             ),
-            summary_kind="strategy_score",
         ),
     )
 
@@ -692,19 +629,30 @@ def livermore_strategy_optimization(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return timed_api_call(
-        "/ui/market-data/livermore/strategy-optimization",
-        lambda: _with_livermore_workbench_summary(
-            livermore_candidate_history_strategy_optimization_envelope(
-                duckdb_path=str(settings.duckdb_path),
-                snapshot_from=snapshot_from,
-                snapshot_to=snapshot_to,
-                current_market_state=current_market_state,
-                min_sample=min_sample,
-                primary_horizon=primary_horizon,
-                macro_context_loader=_livermore_macro_context_v1_for_date,
+    duckdb_path = str(settings.duckdb_path)
+    return market_home_response_cache.get_or_build(
+        _livermore_strategy_optimization_cache_key(
+            duckdb_path=duckdb_path,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+            current_market_state=current_market_state,
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/livermore/strategy-optimization",
+            lambda: _with_livermore_workbench_summary(
+                livermore_candidate_history_strategy_optimization_envelope(
+                    duckdb_path=duckdb_path,
+                    snapshot_from=snapshot_from,
+                    snapshot_to=snapshot_to,
+                    current_market_state=current_market_state,
+                    min_sample=min_sample,
+                    primary_horizon=primary_horizon,
+                    macro_context_loader=_livermore_macro_context_v1_for_date,
+                ),
+                summary_kind="strategy_optimization",
             ),
-            summary_kind="strategy_optimization",
         ),
     )
 
@@ -719,15 +667,23 @@ def livermore_cycle_proxy_backtest(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return timed_api_call(
-        "/ui/market-data/livermore/cycle-proxy-backtest",
-        lambda: _with_livermore_workbench_summary(
-            livermore_candidate_history_cycle_proxy_backtest_envelope(
-                duckdb_path=str(settings.duckdb_path),
-                snapshot_from=snapshot_from,
-                snapshot_to=snapshot_to,
+    duckdb_path = str(settings.duckdb_path)
+    return market_home_response_cache.get_or_build(
+        _livermore_cycle_proxy_backtest_cache_key(
+            duckdb_path=duckdb_path,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/livermore/cycle-proxy-backtest",
+            lambda: _with_livermore_workbench_summary(
+                livermore_candidate_history_cycle_proxy_backtest_envelope(
+                    duckdb_path=duckdb_path,
+                    snapshot_from=snapshot_from,
+                    snapshot_to=snapshot_to,
+                ),
+                summary_kind="cycle_proxy_backtest",
             ),
-            summary_kind="cycle_proxy_backtest",
         ),
     )
 
@@ -742,15 +698,23 @@ def livermore_candidate_history_portfolio_backtest(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return timed_api_call(
-        "/ui/market-data/livermore/candidate-history-portfolio-backtest",
-        lambda: _with_livermore_workbench_summary(
-            livermore_candidate_history_portfolio_backtest_envelope(
-                duckdb_path=str(settings.duckdb_path),
-                snapshot_from=snapshot_from,
-                snapshot_to=snapshot_to,
+    duckdb_path = str(settings.duckdb_path)
+    return market_home_response_cache.get_or_build(
+        _livermore_portfolio_backtest_cache_key(
+            duckdb_path=duckdb_path,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+            lambda: _with_livermore_workbench_summary(
+                livermore_candidate_history_portfolio_backtest_envelope(
+                    duckdb_path=duckdb_path,
+                    snapshot_from=snapshot_from,
+                    snapshot_to=snapshot_to,
+                ),
+                summary_kind="candidate_history_portfolio_backtest",
             ),
-            summary_kind="candidate_history_portfolio_backtest",
         ),
     )
 
@@ -1045,133 +1009,9 @@ def _with_livermore_workbench_summary(
     return envelope
 
 
-def _list_of_mappings(value: object) -> list[dict[str, object]]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, dict)]
-
-
-def _dict_payload(value: object) -> dict[str, object]:
-    return _mapping(value)
-
-
 def _optional_text(value: object) -> str | None:
     text = str(value or "").strip()
     return text or None
-
-
-def _non_negative_int(value: object, *, default: int = 0) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(parsed, 0)
-
-
-def _normalized_stock_code(value: object) -> str:
-    return str(value or "").strip().upper()
-
-
-def _replay_sample_item(item: dict[str, object]) -> dict[str, object]:
-    return {
-        "stock_code": item.get("stock_code"),
-        "stock_name": item.get("stock_name"),
-        "candidate_rank": item.get("candidate_rank"),
-        "signal_kind": item.get("signal_kind"),
-        "data_status": item.get("data_status"),
-    }
-
-
-def _meta_source_version(meta: dict[str, object]) -> object:
-    source = _mapping(meta.get("source"))
-    return meta.get("source_version") or source.get("source_version") or source.get("version")
-
-
-def _meta_quality_flag(meta: dict[str, object]) -> object:
-    source = _mapping(meta.get("source"))
-    return meta.get("quality_flag") or source.get("quality_flag") or source.get("status")
-
-
-def _meta_vendor_version(meta: dict[str, object]) -> object:
-    vendor = _mapping(meta.get("vendor"))
-    return meta.get("vendor_version") or vendor.get("vendor_version") or vendor.get("version")
-
-
-def _meta_vendor_status(meta: dict[str, object]) -> object:
-    vendor = _mapping(meta.get("vendor"))
-    return meta.get("vendor_status") or vendor.get("vendor_status") or vendor.get("status")
-
-
-def _meta_fallback_mode(meta: dict[str, object]) -> object:
-    source = _mapping(meta.get("source"))
-    return meta.get("fallback_mode") or source.get("fallback_mode")
-
-
-def _meta_tables_used(meta: dict[str, object]) -> object:
-    return meta.get("tables_used") or meta.get("tables")
-
-
-def _meta_evidence_rows(meta: dict[str, object]) -> object:
-    evidence = _mapping(meta.get("evidence"))
-    return meta.get("evidence_rows") or evidence.get("evidence_rows") or evidence.get("rows")
-
-
-def _combine_lineage(values: list[object], *, empty_value: str) -> str:
-    unique_values: list[str] = []
-    for value in values:
-        text = str(value or "").strip()
-        if text and text not in unique_values:
-            unique_values.append(text)
-    if not unique_values:
-        return empty_value
-    if len(unique_values) == 1:
-        return unique_values[0]
-    return "__".join(unique_values)
-
-
-def _merge_quality_flag(*values: object) -> str:
-    normalized = {str(value or "").strip() for value in values if str(value or "").strip()}
-    if "error" in normalized:
-        return "error"
-    if "stale" in normalized:
-        return "stale"
-    if "warning" in normalized:
-        return "warning"
-    return "ok"
-
-
-def _merge_vendor_status(*values: object) -> str:
-    normalized = {str(value or "").strip() for value in values if str(value or "").strip()}
-    if "vendor_unavailable" in normalized:
-        return "vendor_unavailable"
-    if "vendor_stale" in normalized:
-        return "vendor_stale"
-    return "ok"
-
-
-def _merge_fallback_mode(*values: object) -> str:
-    if any(str(value or "").strip() == "latest_snapshot" for value in values):
-        return "latest_snapshot"
-    return "none"
-
-
-def _combine_tables(*values: object) -> list[str]:
-    combined: list[str] = []
-    for value in values:
-        if not isinstance(value, list):
-            continue
-        for item in value:
-            text = str(item or "").strip()
-            if text and text not in combined:
-                combined.append(text)
-    return combined
-
-
-def _safe_int(value: object) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
 
 
 @router.get("/livermore/sector-rank-series")
@@ -1190,16 +1030,27 @@ def livermore_sector_rank_series(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    return timed_api_call(
-        "/ui/market-data/livermore/sector-rank-series",
-        lambda: _with_livermore_workbench_summary(
-            livermore_sector_rank_series_envelope(
-                duckdb_path=str(settings.duckdb_path),
-                as_of_date=parsed_as_of,
-                window_days=window_days,
-                sector_code=sector_code,
-                top_k=top_k,
+    duckdb_path = str(settings.duckdb_path)
+    as_of_text = parsed_as_of.isoformat() if parsed_as_of is not None else None
+    return market_home_response_cache.get_or_build(
+        _livermore_sector_rank_series_cache_key(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_text,
+            window_days=window_days,
+            sector_code=sector_code,
+            top_k=top_k,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/livermore/sector-rank-series",
+            lambda: _with_livermore_workbench_summary(
+                livermore_sector_rank_series_envelope(
+                    duckdb_path=duckdb_path,
+                    as_of_date=parsed_as_of,
+                    window_days=window_days,
+                    sector_code=sector_code,
+                    top_k=top_k,
+                ),
+                summary_kind="sector_rank_series",
             ),
-            summary_kind="sector_rank_series",
         ),
     )

@@ -624,9 +624,11 @@ def _apply_fundamental_overlay(
     market_state: str,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
     valid_rows: list[tuple[dict[str, object], dict[str, float | None]]] = []
+    missing_rows: list[dict[str, object]] = []
     for row in items:
         factor_inputs = _fundamental_factor_inputs(row)
         if factor_inputs is None:
+            missing_rows.append(row)
             continue
         valid_rows.append((row, factor_inputs))
 
@@ -637,6 +639,7 @@ def _apply_fundamental_overlay(
             "valid_factor_count": 0,
             "selected_factor_count": len(items),
             "top_fraction": None,
+            "factor_missing_count": len(missing_rows),
         }
 
     scored_rows = _score_fundamental_rows(valid_rows)
@@ -649,12 +652,19 @@ def _apply_fundamental_overlay(
         row["factor_score"] = round(score, 4)
         row["factor_overlay_rank"] = rank
 
-    return [row for row, _score in scored_rows if str(row["stock_code"]) in selected_codes], {
+    selected_rows = [row for row, _score in scored_rows if str(row["stock_code"]) in selected_codes]
+    # Rows missing any required factor input (pe/pb/ps/roe/gross_margin) never
+    # enter the fundamental scoring, but must still surface downstream: append
+    # them in their original technical order rather than dropping them, so a
+    # technically-eligible candidate does not silently vanish just because its
+    # factor data is incomplete.
+    return selected_rows + missing_rows, {
         "status": "applied",
         "input_candidate_count": len(items),
         "valid_factor_count": len(valid_rows),
         "selected_factor_count": selected_count,
         "top_fraction": round(top_fraction, 6),
+        "factor_missing_count": len(missing_rows),
     }
 
 
