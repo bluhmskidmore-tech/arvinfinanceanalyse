@@ -1,33 +1,5 @@
 import type { ProductCategoryGovernanceNotice } from "./productCategoryPnlPageModel";
-
-const wrapStyle = {
-  marginBottom: 14,
-  padding: "12px 16px",
-  borderRadius: 14,
-  border: "1px solid #d7dfea",
-  background: "#f7f9fc",
-} as const;
-
-const asOfDateStyle = {
-  margin: 0,
-  color: "#5c6b82",
-  fontSize: 12,
-  lineHeight: 1.65,
-} as const;
-
-const noticeStyle = {
-  margin: "8px 0 0",
-  color: "#9a6700",
-  fontSize: 12,
-  lineHeight: 1.65,
-} as const;
-
-const distinctStyle = {
-  margin: "8px 0 0",
-  color: "#162033",
-  fontSize: 12,
-  lineHeight: 1.65,
-} as const;
+import "./ProductCategoryGovernanceStrip.css";
 
 type ProductCategoryGovernanceStripProps = {
   asOfDateGapText: string;
@@ -37,8 +9,14 @@ type ProductCategoryGovernanceStripProps = {
 
 export function ProductCategoryGovernanceStrip(props: ProductCategoryGovernanceStripProps) {
   return (
-    <div data-testid="product-category-governance-strip" style={wrapStyle}>
-      <p data-testid="product-category-as-of-date-gap" style={asOfDateStyle}>
+    <div
+      data-testid="product-category-governance-strip"
+      className="product-category-governance-strip"
+    >
+      <p
+        data-testid="product-category-as-of-date-gap"
+        className="product-category-governance-strip__as-of-date"
+      >
         {props.asOfDateGapText}
       </p>
       {props.notices.map((notice) => (
@@ -46,7 +24,7 @@ export function ProductCategoryGovernanceStrip(props: ProductCategoryGovernanceS
           key={notice.id}
           data-testid={`product-category-governance-notice-${notice.id}`}
           role="status"
-          style={noticeStyle}
+          className="product-category-governance-strip__notice"
         >
           {notice.text}
         </p>
@@ -54,7 +32,7 @@ export function ProductCategoryGovernanceStrip(props: ProductCategoryGovernanceS
       {props.formalScenarioDistinct ? (
         <p
           data-testid="product-category-formal-scenario-meta-distinct"
-          style={distinctStyle}
+          className="product-category-governance-strip__formal-scenario-distinct"
         >
           {props.formalScenarioDistinct}
         </p>

@@ -14,7 +14,7 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { DataStatusStrip, PageDecisionHero } from "../../../components/page/PagePrimitives";
+import { DataStatusStrip, PageDecisionHero, PageStateSurface } from "../../../components/page/PagePrimitives";
 import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
@@ -4219,6 +4219,34 @@ export default function ProductCategoryPnlPage() {
         </label>
       </div>
 
+      {datesQuery.isLoading ? (
+        <PageStateSurface
+          variant="loading"
+          testId="product-category-dates-state"
+          title="报告月份加载中"
+          description="正在获取可选报告月份列表。"
+        />
+      ) : datesQuery.isError ? (
+        <PageStateSurface
+          variant="error"
+          testId="product-category-dates-state"
+          title="报告月份加载失败"
+          description="报告月份接口未返回数据，无法选择报表日期，请重试。"
+          actions={
+            <button type="button" onClick={() => void datesQuery.refetch()}>
+              重试
+            </button>
+          }
+        />
+      ) : (datesQuery.data?.result.report_dates ?? []).length === 0 ? (
+        <PageStateSurface
+          variant="empty"
+          testId="product-category-dates-state"
+          title="暂无可选报告月份"
+          description="报告月份接口未返回任何月份，请确认数据源是否已生成。"
+        />
+      ) : null}
+
       <div className="product-category-scenario-controls__actions">
         <button
           type="button"
@@ -4229,6 +4257,20 @@ export default function ProductCategoryPnlPage() {
           应用场景
         </button>
       </div>
+
+      {scenarioQuery.isError ? (
+        <PageStateSurface
+          variant="error"
+          testId="product-category-scenario-error"
+          title="情景计算失败，当前展示为基线口径"
+          description="FTP 情景查询未返回结果，页面继续显示正式基线数据，可重新应用场景重试。"
+          actions={
+            <button type="button" onClick={() => void scenarioQuery.refetch()}>
+              重试情景计算
+            </button>
+          }
+        />
+      ) : null}
 
       {!baselineQuery.isError ? (
         <ProductCategoryFormalReadinessBand

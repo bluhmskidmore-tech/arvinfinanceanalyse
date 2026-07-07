@@ -60,7 +60,7 @@ def _pnl_row_payload(
         level=0,
         view="monthly",
         report_date="2026-01-31",
-        baseline_ftp_rate_pct=Decimal("1.75"),
+        baseline_ftp_rate_pct=Decimal("1.60"),
         cnx_scale=Decimal("0"),
         cny_scale=Decimal("0"),
         foreign_scale=Decimal("0"),

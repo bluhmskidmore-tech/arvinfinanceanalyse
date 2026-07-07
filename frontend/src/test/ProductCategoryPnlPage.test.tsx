@@ -3085,4 +3085,62 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-edit-pca-st-pending")).not.toBeDisabled();
     expect(screen.getByTestId("product-category-edit-pca-st-rejected")).not.toBeDisabled();
   });
+
+  it("PCP-01: shows an explicit error state with retry when the report-dates fetch fails", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    let denyDates = true;
+    const datesSpy = vi.fn(async () => {
+      if (denyDates) {
+        throw new Error("pcp01-dates-failed");
+      }
+      return baseClient.getProductCategoryDates();
+    });
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: datesSpy,
+    });
+
+    const stateSurfaceTitle = await screen.findByText("报告月份加载失败");
+    const stateSurface = stateSurfaceTitle.closest(
+      "[data-testid='product-category-dates-state']",
+    ) as HTMLElement;
+    expect(stateSurface).toHaveAttribute("data-state-variant", "error");
+    expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
+
+    denyDates = false;
+    await user.click(within(stateSurface).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("product-category-dates-state")).not.toBeInTheDocument();
+    });
+    await screen.findByTestId("product-category-table");
+  });
+
+  it("PCP-02: shows a scenario error banner while keeping the baseline table when the scenario fetch fails", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const pnlSpy = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) => {
+      if (options.scenarioRatePct) {
+        throw new Error("pcp02-scenario-failed");
+      }
+      return baseClient.getProductCategoryPnl(options);
+    });
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl: pnlSpy,
+    });
+
+    const table = await screen.findByTestId("product-category-table");
+    expect(screen.queryByTestId("product-category-scenario-error")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+
+    const scenarioError = await screen.findByTestId("product-category-scenario-error");
+    expect(scenarioError).toHaveTextContent("情景计算失败，当前展示为基线口径");
+    expect(within(scenarioError).getByRole("button", { name: "重试情景计算" })).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-table")).toBe(table);
+  });
 });
