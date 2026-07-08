@@ -996,14 +996,21 @@ def _source_checks_for_aliases(
     *,
     source_check_cache: dict[str, dict[str, object]] | None = None,
     end: str | None = None,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> list[dict[str, object]]:
     cache = source_check_cache if source_check_cache is not None else {}
     requested_aliases = tuple(dict.fromkeys(str(alias) for alias in aliases))
     missing_aliases = tuple(alias for alias in requested_aliases if alias not in cache)
     if missing_aliases:
-        frames_by_alias = load_series_by_aliases(missing_aliases, end=end, duckdb_path=duckdb_path)
+        loaded_frames_by_alias = frames_by_alias or {}
+        aliases_to_load = tuple(alias for alias in missing_aliases if alias not in loaded_frames_by_alias)
+        if aliases_to_load:
+            loaded_frames_by_alias = {
+                **loaded_frames_by_alias,
+                **load_series_by_aliases(aliases_to_load, end=end, duckdb_path=duckdb_path),
+            }
         for alias in missing_aliases:
-            cache[alias] = _source_check_payload(alias, frames_by_alias[alias])
+            cache[alias] = _source_check_payload(alias, loaded_frames_by_alias[alias])
     return [cache[alias] for alias in requested_aliases]
 
 
@@ -1558,7 +1565,29 @@ def _macro_capability_results(
         ]
 
     curve_rows = _load_macro_curve_rows(duckdb_path, parsed_report_date)
-    wide_rows = _load_macro_wide_rows(duckdb_path, parsed_report_date, curve_rows)
+    report_date_frames_by_alias = load_series_by_aliases(
+        tuple(
+            dict.fromkeys(
+                [
+                    *(alias for _, alias in _WIDE_SERIES_ALIASES),
+                    *(
+                        str(alias)
+                        for requirements in _CAPABILITY_INPUT_REQUIREMENTS.values()
+                        for requirement in requirements
+                        for alias in requirement.get("aliases", ())
+                    ),
+                ]
+            )
+        ),
+        end=parsed_report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
+    wide_rows = _load_macro_wide_rows(
+        duckdb_path,
+        parsed_report_date,
+        curve_rows,
+        frames_by_alias=report_date_frames_by_alias,
+    )
     risk_tensor = _load_latest_risk_tensor_row(duckdb_path, parsed_report_date)
     proxy_rows, bucket_rows, total_assets = _risk_tensor_to_liquidity_inputs(risk_tensor)
     positions = _load_latest_bond_positions(duckdb_path, parsed_report_date)
@@ -1631,6 +1660,7 @@ def _macro_capability_results(
         duckdb_path,
         source_check_cache=input_evidence_source_check_cache,
         end=parsed_report_date.isoformat(),
+        frames_by_alias=report_date_frames_by_alias,
     )
     for key in ("monetary_policy_stance", "leading_indicator", "economic_cycle"):
         raw_results[key] = _with_capability_input_evidence(
@@ -1640,6 +1670,7 @@ def _macro_capability_results(
             report_date=parsed_report_date,
             wide_rows=wide_rows,
             source_check_cache=input_evidence_source_check_cache,
+            source_frames_by_alias=report_date_frames_by_alias,
         )
 
     cards: list[dict[str, object]] = []
@@ -2143,8 +2174,14 @@ def _compute_crisis_score_capability(
     history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
 ) -> dict[str, object]:
     start = report_date - timedelta(days=420)
+    crisis_aliases = tuple(str(config["alias"]) for config in _CRISIS_SCORE_INPUTS)
+    commodity_aliases = tuple(
+        str(alias)
+        for config in _CRISIS_COMMODITY_COVERAGE_INPUTS
+        for alias in config["aliases"]
+    )
     frames_by_alias = load_series_by_aliases(
-        tuple(str(config["alias"]) for config in _CRISIS_SCORE_INPUTS),
+        (*crisis_aliases, *commodity_aliases),
         start=start.isoformat(),
         end=report_date.isoformat(),
         duckdb_path=duckdb_path,
@@ -2202,6 +2239,7 @@ def _compute_crisis_score_capability(
         report_date=report_date,
         start=start,
         crisis_history=crisis_history,
+        frames_by_alias=frames_by_alias,
     )
     enriched["commodity_coverage"] = commodity_coverage
     enriched["shadow_impact"] = _crisis_commodity_shadow_impact(
@@ -2226,13 +2264,16 @@ def _crisis_commodity_coverage(
     report_date: date,
     start: date,
     crisis_history: pd.DataFrame,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, object]:
-    frames_by_alias = load_series_by_aliases(
-        tuple(str(alias) for config in _CRISIS_COMMODITY_COVERAGE_INPUTS for alias in config["aliases"]),
-        start=start.isoformat(),
-        end=report_date.isoformat(),
-        duckdb_path=duckdb_path,
-    )
+    resolved_frames_by_alias = frames_by_alias
+    if resolved_frames_by_alias is None:
+        resolved_frames_by_alias = load_series_by_aliases(
+            tuple(str(alias) for config in _CRISIS_COMMODITY_COVERAGE_INPUTS for alias in config["aliases"]),
+            start=start.isoformat(),
+            end=report_date.isoformat(),
+            duckdb_path=duckdb_path,
+        )
     items = [
         _crisis_commodity_coverage_item(
             config,
@@ -2240,7 +2281,7 @@ def _crisis_commodity_coverage(
             report_date=report_date,
             start=start,
             crisis_history=crisis_history,
-            frames_by_alias=frames_by_alias,
+            frames_by_alias=resolved_frames_by_alias,
         )
         for config in _CRISIS_COMMODITY_COVERAGE_INPUTS
     ]
@@ -2897,6 +2938,7 @@ def _with_capability_input_evidence(
     report_date: date,
     wide_rows: list[dict[str, object]],
     source_check_cache: dict[str, dict[str, object]] | None = None,
+    source_frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, object]:
     requirements = _CAPABILITY_INPUT_REQUIREMENTS.get(key)
     if not requirements:
@@ -2912,6 +2954,7 @@ def _with_capability_input_evidence(
         duckdb_path,
         source_check_cache=resolved_source_check_cache,
         end=report_date.isoformat(),
+        frames_by_alias=source_frames_by_alias,
     )
     inputs = [
         _capability_input_evidence_item(
@@ -3039,16 +3082,26 @@ def _load_macro_wide_rows(
     duckdb_path: str | Path,
     report_date: date,
     curve_rows: list[dict[str, object]],
+    *,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> list[dict[str, object]]:
     wide_by_date: dict[date, dict[str, float]] = {report_date: {}}
     fields = [field for field, _ in _WIDE_SERIES_ALIASES]
-    frames_by_alias = load_series_by_aliases(
-        tuple(alias for _, alias in _WIDE_SERIES_ALIASES),
-        end=report_date.isoformat(),
-        duckdb_path=duckdb_path,
+    resolved_frames_by_alias = frames_by_alias or {}
+    missing_aliases = tuple(
+        dict.fromkeys(alias for _, alias in _WIDE_SERIES_ALIASES if alias not in resolved_frames_by_alias)
     )
+    if missing_aliases:
+        resolved_frames_by_alias = {
+            **resolved_frames_by_alias,
+            **load_series_by_aliases(
+                missing_aliases,
+                end=report_date.isoformat(),
+                duckdb_path=duckdb_path,
+            ),
+        }
     for field, alias in _WIDE_SERIES_ALIASES:
-        frame = frames_by_alias[alias]
+        frame = resolved_frames_by_alias[alias]
         if frame.empty:
             continue
         for _, sample in frame.iterrows():

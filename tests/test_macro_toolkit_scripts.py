@@ -2555,6 +2555,100 @@ def test_macro_curve_rows_include_reverse_repo_legacy_alias(tmp_path, monkeypatc
     ]
 
 
+def test_crisis_score_capability_batches_formula_and_commodity_aliases(tmp_path, monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    empty_frame = pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
+
+    def fake_load_series_by_aliases(
+        aliases: tuple[str, ...],
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        duckdb_path: object | None = None,
+    ) -> dict[str, pd.DataFrame]:
+        requested_aliases = tuple(dict.fromkeys(str(alias) for alias in aliases))
+        calls.append(
+            {
+                "aliases": requested_aliases,
+                "start": start,
+                "end": end,
+                "duckdb_path": duckdb_path,
+            }
+        )
+        return {alias: empty_frame.copy() for alias in requested_aliases}
+
+    monkeypatch.setattr(macro_toolkit_route, "load_series_by_aliases", fake_load_series_by_aliases)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "compute_crisis_score_payload",
+        lambda _series_data, *, report_date: {
+            "data_status": "unavailable",
+            "warnings": [],
+            "crisis_score": None,
+        },
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_crisis_score_history",
+        lambda _series_data, _report_date: pd.DataFrame(columns=["crisis_score"]),
+    )
+
+    report_date = date(2026, 4, 10)
+    payload = macro_toolkit_route._compute_crisis_score_capability(
+        tmp_path / "moss.duckdb",
+        report_date,
+        history_limit=5,
+    )
+
+    assert len(calls) == 1
+    batched_aliases = set(calls[0]["aliases"])
+    assert {str(config["alias"]) for config in macro_toolkit_route._CRISIS_SCORE_INPUTS}.issubset(batched_aliases)
+    assert {
+        str(alias)
+        for config in macro_toolkit_route._CRISIS_COMMODITY_COVERAGE_INPUTS
+        for alias in config["aliases"]
+    }.issubset(batched_aliases)
+    assert calls[0]["end"] == report_date.isoformat()
+    assert payload["commodity_coverage"]["tracked_count"] == len(macro_toolkit_route._CRISIS_COMMODITY_COVERAGE_INPUTS)
+
+
+def test_source_checks_for_aliases_reuses_supplied_frames(tmp_path, monkeypatch) -> None:
+    def fail_load_series_by_aliases(*_args: object, **_kwargs: object) -> dict[str, pd.DataFrame]:
+        raise AssertionError("source checks should reuse supplied alias frames")
+
+    monkeypatch.setattr(macro_toolkit_route, "load_series_by_aliases", fail_load_series_by_aliases)
+    frame = pd.DataFrame(
+        [
+            {
+                "date": pd.Timestamp("2026-04-10"),
+                "value": 2.5,
+                "series_id": "M001",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+
+    checks = macro_toolkit_route._source_checks_for_aliases(
+        ("M001",),
+        tmp_path / "moss.duckdb",
+        end="2026-04-10",
+        frames_by_alias={"M001": frame},
+    )
+
+    assert checks == [
+        {
+            "alias": "M001",
+            "row_count": 1,
+            "latest": {
+                "date": "2026-04-10",
+                "series_id": "M001",
+                "vendor_name": "choice",
+                "value": 2.5,
+            },
+        }
+    ]
+
+
 def test_latest_risk_tensor_row_delegates_to_service(tmp_path, monkeypatch) -> None:
     report_date = date(2026, 4, 30)
     expected_row = {"report_date": "2026-04-30", "total_market_value": 100.0}
