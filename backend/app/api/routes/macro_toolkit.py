@@ -13,13 +13,13 @@ from backend.app.api.response_cache import (
     market_home_strategy_summaries_cache_key,
 )
 from backend.app.core_finance.macro import (
+    DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
     analyze_cross_market_linkage,
+    build_crisis_score_history_payload,
     classify_low_crowding_market_regime,
     clean_low_crowding_observations,
     compute_credit_spread_risk,
     compute_crisis_score_payload,
-    DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
-    build_crisis_score_history_payload,
     compute_economic_cycle,
     compute_leading_indicator,
     compute_liquidity_stress_test,
@@ -54,7 +54,11 @@ from backend.app.core_finance.macro.toolkit.runner import (
     MacroToolkitScript,
     iter_toolkit_scripts,
 )
-from backend.app.core_finance.macro.toolkit.system_sources import clear_system_macro_source_cache, load_series_by_alias
+from backend.app.core_finance.macro.toolkit.system_sources import (
+    clear_system_macro_source_cache,
+    load_series_by_alias,
+    load_series_by_aliases,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRACTS, table_stats
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
@@ -383,8 +387,25 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
             history_limit=history_limit,
         )
         strategy_summaries = _equity_strategy_summaries(settings.duckdb_path)
-        source_checks = _source_checks(settings.duckdb_path)
-        capabilities = _capability_plan(settings.duckdb_path)
+        source_check_cache: dict[str, dict[str, object]] = {}
+        _source_checks_for_aliases(
+            (
+                str(alias)
+                for aliases in (
+                    _SOURCE_CHECK_ALIASES,
+                    tuple(
+                        str(alias)
+                        for definition in _CAPABILITY_DEFINITIONS
+                        for alias in definition["data_aliases"]
+                    ),
+                )
+                for alias in aliases
+            ),
+            settings.duckdb_path,
+            source_check_cache=source_check_cache,
+        )
+        source_checks = _source_checks(settings.duckdb_path, source_check_cache=source_check_cache)
+        capabilities = _capability_plan(settings.duckdb_path, source_check_cache=source_check_cache)
         runtime_status = _analysis_runtime_status("full")
     signal_cards = _analysis_signal_cards(
         indicator_by_key,
@@ -957,12 +978,41 @@ def _output_files() -> list[dict[str, object]]:
     return macro_toolkit_service.output_files(OUTPUT_DIR)
 
 
-def _source_checks(duckdb_path: str | Path) -> list[dict[str, object]]:
-    return [_source_check(alias, duckdb_path) for alias in _SOURCE_CHECK_ALIASES]
+def _source_checks(
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    return _source_checks_for_aliases(
+        _SOURCE_CHECK_ALIASES,
+        duckdb_path,
+        source_check_cache=source_check_cache,
+    )
+
+
+def _source_checks_for_aliases(
+    aliases: Iterable[str],
+    duckdb_path: str | Path,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
+    end: str | None = None,
+) -> list[dict[str, object]]:
+    cache = source_check_cache if source_check_cache is not None else {}
+    requested_aliases = tuple(dict.fromkeys(str(alias) for alias in aliases))
+    missing_aliases = tuple(alias for alias in requested_aliases if alias not in cache)
+    if missing_aliases:
+        frames_by_alias = load_series_by_aliases(missing_aliases, end=end, duckdb_path=duckdb_path)
+        for alias in missing_aliases:
+            cache[alias] = _source_check_payload(alias, frames_by_alias[alias])
+    return [cache[alias] for alias in requested_aliases]
 
 
 def _source_check(alias: str, duckdb_path: str | Path, *, end: str | None = None) -> dict[str, object]:
     frame = load_series_by_alias(alias, end=end, duckdb_path=duckdb_path)
+    return _source_check_payload(alias, frame)
+
+
+def _source_check_payload(alias: str, frame: pd.DataFrame) -> dict[str, object]:
     latest = None
     if not frame.empty:
         latest_row = frame.sort_values("date").iloc[-1]
@@ -1239,6 +1289,15 @@ def _capability_plan(
     source_check_cache: dict[str, dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     cache = source_check_cache if source_check_cache is not None else {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for definition in _CAPABILITY_DEFINITIONS
+            for alias in definition["data_aliases"]
+        ),
+        duckdb_path,
+        source_check_cache=cache,
+    )
     return [_capability_payload(item, duckdb_path, source_check_cache=cache) for item in _CAPABILITY_DEFINITIONS]
 
 
@@ -1561,6 +1620,18 @@ def _macro_capability_results(
             ),
         ),
     }
+    input_evidence_source_check_cache: dict[str, dict[str, object]] = {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for requirements in _CAPABILITY_INPUT_REQUIREMENTS.values()
+            for requirement in requirements
+            for alias in requirement.get("aliases", ())
+        ),
+        duckdb_path,
+        source_check_cache=input_evidence_source_check_cache,
+        end=parsed_report_date.isoformat(),
+    )
     for key in ("monetary_policy_stance", "leading_indicator", "economic_cycle"):
         raw_results[key] = _with_capability_input_evidence(
             key,
@@ -1568,6 +1639,7 @@ def _macro_capability_results(
             duckdb_path=duckdb_path,
             report_date=parsed_report_date,
             wide_rows=wide_rows,
+            source_check_cache=input_evidence_source_check_cache,
         )
 
     cards: list[dict[str, object]] = []
@@ -2071,16 +2143,17 @@ def _compute_crisis_score_capability(
     history_limit: int = DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
 ) -> dict[str, object]:
     start = report_date - timedelta(days=420)
+    frames_by_alias = load_series_by_aliases(
+        tuple(str(config["alias"]) for config in _CRISIS_SCORE_INPUTS),
+        start=start.isoformat(),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
     series_data: dict[str, list[tuple[date, float]]] = {}
     inputs: list[dict[str, object]] = []
     for config in _CRISIS_SCORE_INPUTS:
         alias = str(config["alias"])
-        frame = load_series_by_alias(
-            alias,
-            start=start.isoformat(),
-            end=report_date.isoformat(),
-            duckdb_path=duckdb_path,
-        )
+        frame = frames_by_alias[alias]
         points = _frame_to_crisis_points(frame)
         field = str(config["field"])
         series_data[field] = points
@@ -2154,6 +2227,12 @@ def _crisis_commodity_coverage(
     start: date,
     crisis_history: pd.DataFrame,
 ) -> dict[str, object]:
+    frames_by_alias = load_series_by_aliases(
+        tuple(str(alias) for config in _CRISIS_COMMODITY_COVERAGE_INPUTS for alias in config["aliases"]),
+        start=start.isoformat(),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
     items = [
         _crisis_commodity_coverage_item(
             config,
@@ -2161,6 +2240,7 @@ def _crisis_commodity_coverage(
             report_date=report_date,
             start=start,
             crisis_history=crisis_history,
+            frames_by_alias=frames_by_alias,
         )
         for config in _CRISIS_COMMODITY_COVERAGE_INPUTS
     ]
@@ -2186,16 +2266,21 @@ def _crisis_commodity_coverage_item(
     report_date: date,
     start: date,
     crisis_history: pd.DataFrame,
+    frames_by_alias: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, object]:
     aliases = tuple(str(alias) for alias in config["aliases"])
     matched_alias = None
     frame = pd.DataFrame()
     for alias in aliases:
-        candidate = load_series_by_alias(
-            alias,
-            start=start.isoformat(),
-            end=report_date.isoformat(),
-            duckdb_path=duckdb_path,
+        candidate = (
+            frames_by_alias[alias]
+            if frames_by_alias is not None
+            else load_series_by_alias(
+                alias,
+                start=start.isoformat(),
+                end=report_date.isoformat(),
+                duckdb_path=duckdb_path,
+            )
         )
         if not candidate.empty:
             matched_alias = alias
@@ -2811,13 +2896,31 @@ def _with_capability_input_evidence(
     duckdb_path: str | Path,
     report_date: date,
     wide_rows: list[dict[str, object]],
+    source_check_cache: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     requirements = _CAPABILITY_INPUT_REQUIREMENTS.get(key)
     if not requirements:
         return result
 
+    resolved_source_check_cache = source_check_cache if source_check_cache is not None else {}
+    _source_checks_for_aliases(
+        (
+            str(alias)
+            for requirement in requirements
+            for alias in requirement.get("aliases", ())
+        ),
+        duckdb_path,
+        source_check_cache=resolved_source_check_cache,
+        end=report_date.isoformat(),
+    )
     inputs = [
-        _capability_input_evidence_item(requirement, duckdb_path=duckdb_path, report_date=report_date, wide_rows=wide_rows)
+        _capability_input_evidence_item(
+            requirement,
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+            wide_rows=wide_rows,
+            source_check_cache=resolved_source_check_cache,
+        )
         for requirement in requirements
     ]
     missing_inputs = [
@@ -2849,9 +2952,15 @@ def _capability_input_evidence_item(
     duckdb_path: str | Path,
     report_date: date,
     wide_rows: list[dict[str, object]],
+    source_check_cache: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     aliases = tuple(str(alias) for alias in requirement.get("aliases", ()))
-    check = _first_available_source_check(aliases, duckdb_path, report_date)
+    check = _first_available_source_check(
+        aliases,
+        duckdb_path,
+        report_date,
+        source_check_cache=source_check_cache,
+    )
     latest = check.get("latest") if isinstance(check.get("latest"), dict) else None
     field = str(requirement["field"])
     derived = bool(requirement.get("derived", False))
@@ -2878,9 +2987,13 @@ def _first_available_source_check(
     aliases: tuple[str, ...],
     duckdb_path: str | Path,
     report_date: date,
+    *,
+    source_check_cache: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     checks = [
-        _source_check(alias, duckdb_path, end=report_date.isoformat())
+        source_check_cache[alias]
+        if source_check_cache is not None and alias in source_check_cache
+        else _source_check(alias, duckdb_path, end=report_date.isoformat())
         for alias in aliases
     ]
     for check in checks:
@@ -2929,8 +3042,13 @@ def _load_macro_wide_rows(
 ) -> list[dict[str, object]]:
     wide_by_date: dict[date, dict[str, float]] = {report_date: {}}
     fields = [field for field, _ in _WIDE_SERIES_ALIASES]
+    frames_by_alias = load_series_by_aliases(
+        tuple(alias for _, alias in _WIDE_SERIES_ALIASES),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
     for field, alias in _WIDE_SERIES_ALIASES:
-        frame = load_series_by_alias(alias, end=report_date.isoformat(), duckdb_path=duckdb_path)
+        frame = frames_by_alias[alias]
         if frame.empty:
             continue
         for _, sample in frame.iterrows():
@@ -3444,9 +3562,13 @@ def _coerce_frame_date(value: object) -> date | None:
 
 
 def _analysis_indicators(duckdb_path: str | Path) -> list[dict[str, object]]:
+    frames_by_alias = load_series_by_aliases(
+        tuple(str(config["alias"]) for config in _ANALYSIS_INDICATORS),
+        duckdb_path=duckdb_path,
+    )
     indicators: list[dict[str, object]] = []
     for config in _ANALYSIS_INDICATORS:
-        frame = load_series_by_alias(str(config["alias"]), duckdb_path=duckdb_path)
+        frame = frames_by_alias[str(config["alias"])]
         indicators.append(_indicator_payload(config, frame))
     return indicators
 

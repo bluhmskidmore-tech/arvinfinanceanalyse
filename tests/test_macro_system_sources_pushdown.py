@@ -17,6 +17,7 @@ import pytest
 import backend.app.core_finance.macro.toolkit.system_sources as system_sources
 from backend.app.core_finance.macro.toolkit.system_sources import (
     load_series_by_alias,
+    load_series_by_aliases,
     load_system_macro_frame,
 )
 from tests.test_macro_toolkit_scripts import _seed_choice_tushare_macro_db
@@ -170,6 +171,49 @@ def test_pushdown_alias_lookup_matches_reference_with_date_bounds(seeded_duckdb)
             reference.reset_index(drop=True),
             check_dtype=False,
         )
+
+
+def test_batch_alias_lookup_matches_single_alias_results(seeded_duckdb) -> None:
+    aliases = ("sh000300", "CU0", "M0067855", "S0059747", "unknown-alias-without-rows")
+    batch = load_series_by_aliases(
+        aliases,
+        duckdb_path=seeded_duckdb,
+        start="2026-04-01",
+        end="2026-04-30",
+    )
+
+    assert set(batch) == set(aliases)
+    for alias in aliases:
+        single = load_series_by_alias(
+            alias,
+            duckdb_path=seeded_duckdb,
+            start="2026-04-01",
+            end="2026-04-30",
+        )
+        pd.testing.assert_frame_equal(
+            batch[alias].reset_index(drop=True),
+            single.reset_index(drop=True),
+            check_dtype=False,
+        )
+
+
+def test_batch_alias_lookup_loads_one_subset_frame(seeded_duckdb, monkeypatch) -> None:
+    original_load_system_macro_frame = system_sources.load_system_macro_frame
+    calls: list[tuple[str, ...] | None] = []
+
+    def counting_load_system_macro_frame(duckdb_path=None, *, series_ids=None):
+        calls.append(series_ids)
+        return original_load_system_macro_frame(duckdb_path, series_ids=series_ids)
+
+    monkeypatch.setattr(system_sources, "load_system_macro_frame", counting_load_system_macro_frame)
+    system_sources.clear_system_macro_source_cache()
+
+    batch = load_series_by_aliases(("sh000300", "CU0", "M0067855"), duckdb_path=seeded_duckdb)
+
+    assert all(not batch[alias].empty for alias in ("sh000300", "CU0", "M0067855"))
+    assert len(calls) == 1
+    assert calls[0] is not None
+    assert len(calls[0]) > 1
 
 
 def test_filtered_frame_matches_full_frame_slice_and_keeps_all_columns(seeded_duckdb) -> None:

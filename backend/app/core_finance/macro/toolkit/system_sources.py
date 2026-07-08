@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
@@ -260,6 +261,75 @@ def load_series_by_alias(
     return selected[["trade_date", "value_numeric", "series_id", "vendor_name"]].rename(
         columns={"trade_date": "date", "value_numeric": "value"},
     )
+
+
+def load_series_by_aliases(
+    aliases: Iterable[str],
+    *,
+    start: str | None = None,
+    end: str | None = None,
+    duckdb_path: str | Path | None = None,
+) -> dict[str, pd.DataFrame]:
+    requested_aliases = tuple(dict.fromkeys(str(alias) for alias in aliases))
+    if not requested_aliases:
+        return {}
+
+    cache_key = _system_macro_cache_key(duckdb_path)
+    if cache_key is None:
+        return {alias: _empty_series_frame() for alias in requested_aliases}
+
+    triple_index = _load_alias_triple_index_cache(*cache_key)
+    triples_by_alias: dict[str, set[tuple[str, str, str]]] = {}
+    for alias in requested_aliases:
+        candidates = _candidate_aliases(alias)
+        triples_by_alias[alias] = {
+            triple for candidate in candidates for triple in triple_index.get(candidate, ())
+        }
+
+    series_ids = tuple(
+        sorted({triple[0] for matched_triples in triples_by_alias.values() for triple in matched_triples})
+    )
+    if not series_ids:
+        return {alias: _empty_series_frame() for alias in requested_aliases}
+
+    frame = _load_series_subset_frame_cache(*cache_key, series_ids)
+    if frame.empty:
+        return {alias: _empty_series_frame() for alias in requested_aliases}
+
+    out: dict[str, pd.DataFrame] = {}
+    for alias, matched_triples in triples_by_alias.items():
+        if not matched_triples:
+            out[alias] = _empty_series_frame()
+            continue
+
+        row_matches = [
+            (
+                _alias_source_text(series_id),
+                _alias_source_text(series_name),
+                _alias_source_text(vendor_series_code),
+            )
+            in matched_triples
+            for series_id, series_name, vendor_series_code in zip(
+                frame["series_id"],
+                frame["series_name"],
+                frame["vendor_series_code"],
+                strict=True,
+            )
+        ]
+        selected = frame[row_matches].copy()
+        if start:
+            selected = selected[selected["trade_date"] >= pd.to_datetime(start, errors="coerce")]
+        if end:
+            selected = selected[selected["trade_date"] <= pd.to_datetime(end, errors="coerce")]
+        if selected.empty:
+            out[alias] = _empty_series_frame()
+            continue
+
+        selected = selected.sort_values(["trade_date", "source_priority"]).drop_duplicates("trade_date", keep="first")
+        out[alias] = selected[["trade_date", "value_numeric", "series_id", "vendor_name"]].rename(
+            columns={"trade_date": "date", "value_numeric": "value"},
+        )
+    return out
 
 
 _CHOICE_FACT_SQL = """

@@ -23,7 +23,7 @@ from backend.app.core_finance.macro.toolkit.runner import (
     iter_toolkit_scripts,
     run_toolkit_script,
 )
-from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias
+from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_aliases
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.security.auth_context import AuthContext
@@ -1282,8 +1282,13 @@ def load_macro_curve_rows(duckdb_path: str | Path, report_date: date) -> list[di
             finally:
                 conn.close()
 
+    frames_by_alias = load_series_by_aliases(
+        tuple(alias for alias, _, _ in _CURVE_ALIAS_POINTS),
+        end=report_date.isoformat(),
+        duckdb_path=duckdb_path,
+    )
     for alias, curve_id, tenor in _CURVE_ALIAS_POINTS:
-        frame = load_series_by_alias(alias, end=report_date.isoformat(), duckdb_path=duckdb_path)
+        frame = frames_by_alias[alias]
         if frame.empty:
             continue
         for _, sample in frame.iterrows():
