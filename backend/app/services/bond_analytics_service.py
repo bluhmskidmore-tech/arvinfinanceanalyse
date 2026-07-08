@@ -280,6 +280,9 @@ class _TTLCache:
 _return_decomposition_cache = _TTLCache(ttl_seconds=300)
 _benchmark_excess_cache = _TTLCache(ttl_seconds=300)
 _action_attribution_cache = _TTLCache(ttl_seconds=300)
+_bond_analytics_rows_cache = _TTLCache(ttl_seconds=300)
+_bond_analytics_rows_fetch_locks: dict[tuple, threading.Lock] = {}
+_bond_analytics_rows_fetch_locks_guard = threading.Lock()
 
 
 def _invalidate_bond_analytics_caches_for_report_date(report_date: object) -> None:
@@ -295,6 +298,9 @@ def _invalidate_bond_analytics_caches_for_report_date(report_date: object) -> No
     _action_attribution_cache.invalidate_matching(
         lambda key: len(key) >= 1 and key[0] == report_date_text
     )
+    _bond_analytics_rows_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
 
 
 def _duckdb_cache_version_token() -> tuple[str, int | None]:
@@ -303,6 +309,44 @@ def _duckdb_cache_version_token() -> tuple[str, int | None]:
         return duckdb_path, Path(duckdb_path).stat().st_mtime_ns
     except OSError:
         return duckdb_path, None
+
+
+def _bond_analytics_rows_fetch_lock(key: tuple) -> threading.Lock:
+    with _bond_analytics_rows_fetch_locks_guard:
+        return _bond_analytics_rows_fetch_locks.setdefault(key, threading.Lock())
+
+
+def _fetch_bond_analytics_rows_cached(
+    *,
+    report_date: str,
+    asset_class: str = "all",
+    accounting_class: str = "all",
+) -> list[dict[str, object]]:
+    report_date_text = str(report_date)
+    asset_class_text = str(asset_class or "all")
+    accounting_class_text = str(accounting_class or "all")
+    cache_key = (
+        report_date_text,
+        asset_class_text,
+        accounting_class_text,
+        *_duckdb_cache_version_token(),
+    )
+    hit, cached = _bond_analytics_rows_cache.get(cache_key)
+    if hit:
+        return cached
+
+    fetch_lock = _bond_analytics_rows_fetch_lock(cache_key)
+    with fetch_lock:
+        hit, cached = _bond_analytics_rows_cache.get(cache_key)
+        if hit:
+            return cached
+        rows = _repo().fetch_bond_analytics_rows(
+            report_date=report_date_text,
+            asset_class=asset_class_text,
+            accounting_class=accounting_class_text,
+        )
+        _bond_analytics_rows_cache.set(cache_key, rows)
+        return rows
 
 
 def _benchmark_excess_brinson_sum_matches_explained(summary: dict[str, object]) -> bool:
@@ -2522,7 +2566,7 @@ def _rate_duration_rows(rows: list[dict[str, object]]) -> list[dict[str, object]
 
 
 def get_portfolio_headlines(report_date: date) -> dict:
-    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    rows = _fetch_bond_analytics_rows_cached(report_date=report_date.isoformat())
     if not rows:
         return _build_portfolio_headlines_empty_response(report_date)
 
@@ -2577,7 +2621,7 @@ def get_dv01_risk(
     shock_bps: str = "1,10,25,50",
 ) -> dict:
     normalized_class = _normalize_dv01_accounting_class(accounting_class)
-    rows = _repo().fetch_bond_analytics_rows(
+    rows = _fetch_bond_analytics_rows_cached(
         report_date=report_date.isoformat(),
         accounting_class=normalized_class,
     )
@@ -3336,7 +3380,7 @@ def _optional_text(value: object) -> str | None:
 
 
 def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
-    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    rows = _fetch_bond_analytics_rows_cached(report_date=report_date.isoformat())
     if not rows:
         payload = BondTopHoldingsResponse.model_validate(
             promote_flat_payload(

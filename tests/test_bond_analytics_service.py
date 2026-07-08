@@ -163,10 +163,14 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
     other_return_key = ("2026-04-30", "MoM", "all", "all")
     action_key = ("2026-03-31", "MoM")
     other_action_key = ("2026-04-30", "MoM")
+    row_key = ("2026-03-31", "all", "all", *service_mod._duckdb_cache_version_token())
+    other_row_key = ("2026-04-30", "all", "all", *service_mod._duckdb_cache_version_token())
     service_mod._return_decomposition_cache.set(return_key, {"value": "stale-return"})
     service_mod._return_decomposition_cache.set(other_return_key, {"value": "keep-return"})
     service_mod._action_attribution_cache.set(action_key, {"value": "stale-action"})
     service_mod._action_attribution_cache.set(other_action_key, {"value": "keep-action"})
+    service_mod._bond_analytics_rows_cache.set(row_key, [{"value": "stale-row"}])
+    service_mod._bond_analytics_rows_cache.set(other_row_key, [{"value": "keep-row"}])
 
     GovernanceRepository(base_dir=governance_dir).append(
         CACHE_BUILD_RUN_STREAM,
@@ -188,6 +192,7 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
     assert payload["status"] == "completed"
     assert service_mod._return_decomposition_cache.get(return_key) == (False, None)
     assert service_mod._action_attribution_cache.get(action_key) == (False, None)
+    assert service_mod._bond_analytics_rows_cache.get(row_key) == (False, None)
     assert service_mod._return_decomposition_cache.get(other_return_key) == (
         True,
         {"value": "keep-return"},
@@ -196,6 +201,59 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
         True,
         {"value": "keep-action"},
     )
+    assert service_mod._bond_analytics_rows_cache.get(other_row_key) == (
+        True,
+        [{"value": "keep-row"}],
+    )
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_rows_cache_reuses_matching_fact_reads(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    service_mod._bond_analytics_rows_cache.clear()
+    calls: list[tuple[str, str, str]] = []
+
+    class FakeBondAnalyticsRepository:
+        def fetch_bond_analytics_rows(
+            self,
+            *,
+            report_date: str,
+            asset_class: str = "all",
+            accounting_class: str = "all",
+        ) -> list[dict[str, object]]:
+            calls.append((report_date, asset_class, accounting_class))
+            return [
+                {
+                    "report_date": report_date,
+                    "asset_class": asset_class,
+                    "accounting_class": accounting_class,
+                }
+            ]
+
+    fake_repo = FakeBondAnalyticsRepository()
+    monkeypatch.setattr(service_mod, "_repo", lambda: fake_repo)
+
+    first = service_mod._fetch_bond_analytics_rows_cached(report_date="2026-03-31")
+    second = service_mod._fetch_bond_analytics_rows_cached(report_date="2026-03-31")
+    scoped = service_mod._fetch_bond_analytics_rows_cached(
+        report_date="2026-03-31",
+        accounting_class="AC",
+    )
+
+    assert first == second
+    assert scoped != first
+    assert calls == [
+        ("2026-03-31", "all", "all"),
+        ("2026-03-31", "all", "AC"),
+    ]
     get_settings.cache_clear()
 
 
