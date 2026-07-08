@@ -8,6 +8,7 @@ import sys
 import time
 from datetime import UTC, date, datetime
 from pathlib import Path
+from threading import Event, Lock
 from types import SimpleNamespace
 
 import duckdb
@@ -2779,6 +2780,58 @@ def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(
     assert signal_cards["a_share_stampede_risk"]["title"] == "市场踩踏风险"
     assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
     assert "choice_stock_limit_quality" in payload["result_meta"]["tables_used"]
+
+
+def test_macro_toolkit_full_analysis_blocks_run_heavy_sections_concurrently(monkeypatch) -> None:
+    duckdb_path = Path("macro-analysis.duckdb")
+    report_date = date(2026, 7, 7)
+    started: list[str] = []
+    started_lock = Lock()
+    all_started = Event()
+
+    def wait_for_peer_blocks(name: str, value: object) -> object:
+        with started_lock:
+            started.append(name)
+            if len(started) == 3:
+                all_started.set()
+        assert all_started.wait(1.0), f"{name} ran before the other heavy analysis blocks started"
+        return value
+
+    def fake_a_share_risk(path: object) -> dict[str, object]:
+        assert path == duckdb_path
+        return wait_for_peer_blocks("a_share_risk", {"status": "complete"})  # type: ignore[return-value]
+
+    def fake_capability_results(
+        path: object,
+        *,
+        report_date: date,
+        history_limit: int,
+    ) -> list[dict[str, object]]:
+        assert path == duckdb_path
+        assert report_date == date(2026, 7, 7)
+        assert history_limit == 19
+        return wait_for_peer_blocks("capability_results", [{"key": "capability"}])  # type: ignore[return-value]
+
+    def fake_strategy_summaries(path: object) -> list[dict[str, object]]:
+        assert path == duckdb_path
+        return wait_for_peer_blocks("strategy_summaries", [{"key": "strategy"}])  # type: ignore[return-value]
+
+    monkeypatch.setattr(macro_toolkit_route, "_a_share_stampede_risk", fake_a_share_risk)
+    monkeypatch.setattr(macro_toolkit_route, "_macro_capability_results", fake_capability_results)
+    monkeypatch.setattr(macro_toolkit_route, "_equity_strategy_summaries", fake_strategy_summaries)
+
+    a_share_risk, capability_results, strategy_summaries = (
+        macro_toolkit_route._build_macro_toolkit_full_analysis_blocks(
+            duckdb_path,
+            report_date,
+            history_limit=19,
+        )
+    )
+
+    assert set(started) == {"a_share_risk", "capability_results", "strategy_summaries"}
+    assert a_share_risk == {"status": "complete"}
+    assert capability_results == [{"key": "capability"}]
+    assert strategy_summaries == [{"key": "strategy"}]
 
 
 def test_macro_toolkit_analysis_surfaces_crisis_score_from_system_sources(tmp_path, monkeypatch) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated
@@ -380,13 +381,11 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
         capabilities: list[dict[str, object]] = []
         runtime_status = _analysis_runtime_status("core")
     else:
-        a_share_risk = _a_share_stampede_risk(settings.duckdb_path)
-        capability_results = _macro_capability_results(
+        a_share_risk, capability_results, strategy_summaries = _build_macro_toolkit_full_analysis_blocks(
             settings.duckdb_path,
-            report_date=analysis_date,
+            analysis_date,
             history_limit=history_limit,
         )
-        strategy_summaries = _equity_strategy_summaries(settings.duckdb_path)
         source_check_cache: dict[str, dict[str, object]] = {}
         _source_checks_for_aliases(
             (
@@ -466,6 +465,29 @@ def _build_macro_toolkit_analysis(detail: str, *, history_limit: int = DEFAULT_C
             "warnings": warnings,
         },
     )
+
+
+def _build_macro_toolkit_full_analysis_blocks(
+    duckdb_path: str | Path,
+    analysis_date: date,
+    *,
+    history_limit: int,
+) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]]]:
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        a_share_risk_future = executor.submit(_a_share_stampede_risk, duckdb_path)
+        capability_results_future = executor.submit(
+            lambda: _macro_capability_results(
+                duckdb_path,
+                report_date=analysis_date,
+                history_limit=history_limit,
+            )
+        )
+        strategy_summaries_future = executor.submit(_equity_strategy_summaries, duckdb_path)
+        return (
+            a_share_risk_future.result(),
+            capability_results_future.result(),
+            strategy_summaries_future.result(),
+        )
 
 
 @router.get("/analysis/strategy-summaries")
