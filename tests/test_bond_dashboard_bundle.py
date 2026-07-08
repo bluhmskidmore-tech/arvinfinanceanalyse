@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -176,6 +177,61 @@ def test_bond_dashboard_bundle_matches_individual_section_envelopes(tmp_path, mo
             single_response.json()
         ), section
 
+    get_settings.cache_clear()
+
+
+def test_bond_dashboard_bundle_reuses_headline_snapshot_for_yield_distribution(tmp_path, monkeypatch) -> None:
+    from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+    import backend.app.services.bond_dashboard_service as service_mod
+
+    duckdb_path = tmp_path / "dash-bundle-shared-headline.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    service_mod.clear_bond_dashboard_runtime_cache()
+
+    repo = BondAnalyticsRepository(str(duckdb_path))
+    rows = [
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="RATE",
+            portfolio_name="P1",
+            asset_class_std="rate",
+            market_value=Decimal("100"),
+            ytm=Decimal("0.02"),
+            modified_duration=Decimal("2"),
+            bond_type_label="Rate",
+        ),
+        _make_bond_analytics_row(
+            report_date=REPORT_DATE,
+            instrument_code="CREDIT",
+            portfolio_name="P1",
+            asset_class_std="credit",
+            market_value=Decimal("300"),
+            ytm=Decimal("0.04"),
+            modified_duration=Decimal("6"),
+            bond_type_label="Credit",
+        ),
+    ]
+    _replace_bond_dashboard_rows(repo, report_date=REPORT_DATE, rows=rows)
+
+    original_fetch = BondAnalyticsRepository.fetch_dashboard_headline_kpis
+    calls = 0
+
+    def counting_fetch(self, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_fetch(self, *args, **kwargs)
+
+    monkeypatch.setattr(BondAnalyticsRepository, "fetch_dashboard_headline_kpis", counting_fetch)
+
+    payload = service_mod.get_bond_dashboard_bundle(
+        sections=["headline-kpis", "yield-distribution"],
+        report_date=date.fromisoformat(REPORT_DATE),
+    )
+
+    assert payload["result"]["failed_sections"] == []
+    assert calls == 1
     get_settings.cache_clear()
 
 

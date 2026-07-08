@@ -40,6 +40,8 @@ from backend.app.services.formal_result_runtime import (
 )
 from backend.app.services.yield_curve_term_structure_service import (
     FACT_TABLE as YIELD_CURVE_FACT_TABLE,
+)
+from backend.app.services.yield_curve_term_structure_service import (
     get_yield_curve_term_structure,
     parse_curve_types_param,
 )
@@ -239,6 +241,23 @@ def _analytical_envelope(
 ) -> dict[str, object]:
     rows = _fact_rows(report_date)
     lineage = _facts_lineage(report_date, rows)
+    return _analytical_envelope_from_lineage(
+        result_kind=result_kind,
+        report_date=report_date,
+        lineage=lineage,
+        evidence_rows=len(rows),
+        result_payload=result_payload,
+    )
+
+
+def _analytical_envelope_from_lineage(
+    *,
+    result_kind: str,
+    report_date: str,
+    lineage: dict[str, object],
+    evidence_rows: int,
+    result_payload: dict[str, object],
+) -> dict[str, object]:
     return build_result_envelope(
         basis="analytical",
         trace_id=_trace_id(),
@@ -255,8 +274,123 @@ def _analytical_envelope(
         date_basis="bond_dashboard_report_date",
         filters_applied={"report_date": report_date},
         tables_used=["fact_formal_bond_analytics_daily"],
-        evidence_rows=len(rows),
+        evidence_rows=evidence_rows,
         result_payload=result_payload,
+    )
+
+
+class _BondDashboardBundleSharedReads:
+    """Thread-safe per-bundle reads shared by section envelopes."""
+
+    def __init__(self, report_date: date | None) -> None:
+        self._report_date = report_date.isoformat() if report_date is not None else None
+        self._lock = threading.RLock()
+        self._fact_rows: list[dict[str, Any]] | None = None
+        self._fact_rows_error: Exception | None = None
+        self._lineage: dict[str, object] | None = None
+        self._lineage_error: Exception | None = None
+        self._prior_loaded = False
+        self._prior: str | None = None
+        self._prior_error: Exception | None = None
+        self._headline: dict[str, object] | None = None
+        self._headline_error: Exception | None = None
+
+    def require_report_date(self) -> str:
+        if self._report_date is None:
+            raise ValueError("report_date is required for the requested bundle sections")
+        return self._report_date
+
+    def fact_rows(self) -> list[dict[str, Any]]:
+        report_date = self.require_report_date()
+        with self._lock:
+            if self._fact_rows_error is not None:
+                raise self._fact_rows_error
+            if self._fact_rows is not None:
+                return self._fact_rows
+            try:
+                self._fact_rows = _fact_rows(report_date)
+            except Exception as exc:
+                self._fact_rows_error = exc
+                raise
+            return self._fact_rows
+
+    def lineage(self) -> dict[str, object]:
+        report_date = self.require_report_date()
+        with self._lock:
+            if self._lineage_error is not None:
+                raise self._lineage_error
+            if self._lineage is not None:
+                return self._lineage
+            try:
+                self._lineage = _facts_lineage(report_date, self.fact_rows())
+            except Exception as exc:
+                self._lineage_error = exc
+                raise
+            return self._lineage
+
+    def evidence_rows(self) -> int:
+        return len(self.fact_rows())
+
+    def prior_report_date(self) -> str | None:
+        report_date = self.require_report_date()
+        with self._lock:
+            if self._prior_error is not None:
+                raise self._prior_error
+            if self._prior_loaded:
+                return self._prior
+            try:
+                self._prior = _prior_report_date(report_date)
+            except Exception as exc:
+                self._prior_error = exc
+                raise
+            self._prior_loaded = True
+            return self._prior
+
+    def headline_raw(self) -> dict[str, object]:
+        report_date = self.require_report_date()
+        with self._lock:
+            if self._headline_error is not None:
+                raise self._headline_error
+            if self._headline is not None:
+                return self._headline
+            try:
+                self._headline = _repo().fetch_dashboard_headline_kpis(
+                    report_date,
+                    prev_report_date=self.prior_report_date(),
+                )
+            except Exception as exc:
+                self._headline_error = exc
+                raise
+            return self._headline
+
+
+def _analytical_envelope_from_bundle_shared_reads(
+    *,
+    shared_reads: _BondDashboardBundleSharedReads,
+    result_kind: str,
+    result_payload: dict[str, object],
+) -> dict[str, object]:
+    return _analytical_envelope_from_lineage(
+        result_kind=result_kind,
+        report_date=shared_reads.require_report_date(),
+        lineage=shared_reads.lineage(),
+        evidence_rows=shared_reads.evidence_rows(),
+        result_payload=result_payload,
+    )
+
+
+def _bond_dashboard_bundle_shared_section_envelope(
+    *,
+    shared_reads: _BondDashboardBundleSharedReads,
+    result_kind: str,
+    result_payload: dict[str, object],
+) -> dict[str, object]:
+    return _with_bond_dashboard_data_source(
+        _analytical_envelope_from_bundle_shared_reads(
+            shared_reads=shared_reads,
+            result_kind=result_kind,
+            result_payload=result_payload,
+        )
     )
 
 
@@ -766,33 +900,109 @@ def _bond_dashboard_bundle_section_envelope(
     dv01_shock_bps: str,
     dv01_accounting_class: str,
     curve_types: str,
+    shared_reads: _BondDashboardBundleSharedReads | None = None,
 ) -> dict[str, object]:
     if section == "dates":
         return get_bond_dashboard_dates()
     if report_date is None:
         raise ValueError("report_date is required for the requested bundle sections")
     if section == "headline-kpis":
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.headline_kpis",
+                result_payload=_bond_dashboard_headline_payload(
+                    rd,
+                    shared_reads.prior_report_date(),
+                    shared_reads.headline_raw(),
+                ),
+            )
         return get_bond_dashboard_headline_kpis(report_date)
     if section == "home-summary":
         return get_bond_dashboard_home_summary(report_date)
     if section in _ASSET_STRUCTURE_BUNDLE_SECTION_GROUP_BY:
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.asset_structure",
+                result_payload=_bond_dashboard_asset_structure_payload(
+                    rd,
+                    _ASSET_STRUCTURE_BUNDLE_SECTION_GROUP_BY[section],
+                ),
+            )
         return get_bond_dashboard_asset_structure(
             report_date,
             _ASSET_STRUCTURE_BUNDLE_SECTION_GROUP_BY[section],
         )
     if section == "yield-distribution":
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            headline = shared_reads.headline_raw()
+            current_headline = headline["current"]
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.yield_distribution",
+                result_payload=_bond_dashboard_yield_distribution_payload(
+                    rd,
+                    weighted_ytm=current_headline["weighted_ytm"],
+                ),
+            )
         return get_bond_dashboard_yield_distribution(report_date)
     if section == "portfolio-comparison":
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.portfolio_comparison",
+                result_payload=_bond_dashboard_portfolio_payload(rd),
+            )
         return get_bond_dashboard_portfolio_comparison(report_date)
     if section == "spread-analysis":
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.spread_analysis",
+                result_payload=_bond_dashboard_spread_payload(rd),
+            )
         return get_bond_dashboard_spread_analysis(report_date)
     if section == "maturity-structure":
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.maturity_structure",
+                result_payload=_bond_dashboard_maturity_payload(rd),
+            )
         return get_bond_dashboard_maturity_structure(report_date)
     if section == "industry-distribution":
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.industry_distribution",
+                result_payload=_bond_dashboard_industry_payload(rd, industry_top_n),
+            )
         return get_bond_dashboard_industry_distribution(report_date, industry_top_n)
     if section == "risk-indicators":
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.risk_indicators",
+                result_payload=_bond_dashboard_risk_payload(rd),
+            )
         return get_bond_dashboard_risk_indicators(report_date)
     if section == "business-type-metrics":
+        if shared_reads is not None:
+            rd = shared_reads.require_report_date()
+            return _bond_dashboard_bundle_shared_section_envelope(
+                shared_reads=shared_reads,
+                result_kind="bond_dashboard.business_type_metrics",
+                result_payload=_bond_dashboard_business_type_payload(rd),
+            )
         return get_bond_dashboard_business_type_metrics(report_date)
     if section == "top-holdings":
         return get_top_holdings(report_date, top_n=analytics_top_n)
@@ -828,6 +1038,7 @@ def _safe_bond_dashboard_bundle_section_envelope(
     dv01_shock_bps: str,
     dv01_accounting_class: str,
     curve_types: str,
+    shared_reads: _BondDashboardBundleSharedReads | None = None,
 ) -> tuple[dict[str, object] | None, dict[str, str | float | None]]:
     started_at = time.perf_counter()
     try:
@@ -840,6 +1051,7 @@ def _safe_bond_dashboard_bundle_section_envelope(
             dv01_shock_bps=dv01_shock_bps,
             dv01_accounting_class=dv01_accounting_class,
             curve_types=curve_types,
+            shared_reads=shared_reads,
         )
     except Exception as exc:
         return None, {
@@ -877,6 +1089,7 @@ def get_bond_dashboard_bundle(
     section_envelopes: dict[str, dict[str, object]] = {}
     section_statuses: dict[str, dict[str, str | float | None]] = {}
     failed_sections: list[str] = []
+    shared_reads = _BondDashboardBundleSharedReads(report_date) if report_date is not None else None
 
     def load_section(section: str) -> tuple[str, dict[str, object] | None, dict[str, str | float | None]]:
         envelope, status = _safe_bond_dashboard_bundle_section_envelope(
@@ -888,6 +1101,7 @@ def get_bond_dashboard_bundle(
             dv01_shock_bps=dv01_shock_bps,
             dv01_accounting_class=dv01_accounting_class,
             curve_types=curve_types,
+            shared_reads=shared_reads,
         )
         return section, envelope, status
 
@@ -904,9 +1118,10 @@ def get_bond_dashboard_bundle(
 
     rd = report_date.isoformat() if report_date is not None else None
     if rd is not None:
-        fact_rows = _fact_rows(rd)
-        lineage = _facts_lineage(rd, fact_rows)
-        evidence_rows = len(fact_rows)
+        if shared_reads is None:
+            raise ValueError("report_date is required for the requested bundle sections")
+        lineage = shared_reads.lineage()
+        evidence_rows = shared_reads.evidence_rows()
         quality_flag = "warning" if failed_sections or evidence_rows <= 0 else "ok"
         basis = "analytical"
         filters_applied: dict[str, object] = {
