@@ -203,6 +203,50 @@ class YieldCurveRepository:
         finally:
             conn.close()
 
+    def fetch_prior_trade_dates_many(self, requests: list[tuple[str, str]]) -> dict[tuple[str, str], str | None]:
+        normalized = [
+            (str(curve_type).strip(), str(trade_date).strip())
+            for curve_type, trade_date in dict.fromkeys(requests)
+            if str(curve_type or "").strip() and str(trade_date or "").strip()
+        ]
+        if not normalized:
+            return {}
+        out: dict[tuple[str, str], str | None] = {key: None for key in normalized}
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return out
+        try:
+            if not _relation_exists(conn, READ_VIEW):
+                return out
+            requested_sql = " union all ".join("select ? as curve_type, ? as trade_date" for _ in normalized)
+            params: list[object] = []
+            for curve_type, trade_date in normalized:
+                params.extend([curve_type, trade_date])
+            rows = conn.execute(
+                f"""
+                with requested as (
+                  {requested_sql}
+                )
+                select
+                  r.curve_type,
+                  r.trade_date,
+                  max(cast(y.trade_date as varchar)) as prior_trade_date
+                from requested r
+                left join {READ_VIEW} y
+                  on y.curve_type = r.curve_type
+                 and cast(y.trade_date as varchar) < r.trade_date
+                group by r.curve_type, r.trade_date
+                """,
+                params,
+            ).fetchall()
+            for curve_type, trade_date, prior_trade_date in rows:
+                out[(str(curve_type), str(trade_date))] = (
+                    str(prior_trade_date) if prior_trade_date not in (None, "") else None
+                )
+            return out
+        finally:
+            conn.close()
+
     def fetch_fx_rates(self, trade_date: str) -> dict[str, Decimal]:
         rates, _warning = self.fetch_fx_rates_with_fallback_warning(trade_date)
         return rates
@@ -326,6 +370,29 @@ class YieldCurveRepository:
                 "source_version": source_version,
                 "rule_version": rule_version,
             }
+        finally:
+            conn.close()
+
+    def fetch_curve_snapshots_many(
+        self,
+        keys: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], dict[str, object] | None]:
+        normalized = [
+            (str(trade_date).strip(), str(curve_type).strip())
+            for trade_date, curve_type in dict.fromkeys(keys)
+            if str(trade_date or "").strip() and str(curve_type or "").strip()
+        ]
+        if not normalized:
+            return {}
+        out: dict[tuple[str, str], dict[str, object] | None] = {key: None for key in normalized}
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return out
+        try:
+            if not _relation_exists(conn, FORMAL_FACT_TABLE):
+                return out
+            out.update(_fetch_curve_snapshots_on_connection_many(conn, normalized))
+            return out
         finally:
             conn.close()
 

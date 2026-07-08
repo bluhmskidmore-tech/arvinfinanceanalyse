@@ -9,7 +9,6 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.yield_curve_repo import (
     YIELD_CURVE_LATEST_FALLBACK_PREFIX,
     YieldCurveRepository,
-    resolve_curve_snapshot,
 )
 from backend.app.schemas.common_numeric import numeric_from_raw
 from backend.app.schemas.yield_curve_term_structure import (
@@ -53,6 +52,24 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
     path = str(get_settings().duckdb_path)
     repo = YieldCurveRepository(path)
     requested = report_date.isoformat()
+    snapshot_results = repo.resolve_curve_snapshots_many(
+        [(requested, curve_type) for curve_type in curve_types]
+    )
+    prior_date_requests: list[tuple[str, str]] = []
+    for curve_type in curve_types:
+        snapshot, _warning = snapshot_results.get((requested, curve_type), (None, None))
+        if snapshot is None:
+            continue
+        td_resolved = str(snapshot.get("trade_date") or "")
+        if td_resolved:
+            prior_date_requests.append((curve_type, td_resolved))
+    prior_dates = repo.fetch_prior_trade_dates_many(prior_date_requests)
+    prior_snapshot_keys = [
+        (prior_date, curve_type)
+        for (curve_type, _trade_date), prior_date in prior_dates.items()
+        if prior_date
+    ]
+    prior_snapshots = repo.fetch_curve_snapshots_many(prior_snapshot_keys)
     warnings: list[str] = []
     curves_out: list[YieldCurveTermStructureCurve] = []
     source_parts: list[str] = []
@@ -62,10 +79,9 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
     all_missing = True
 
     for curve_type in curve_types:
-        snapshot, w_curve = resolve_curve_snapshot(
-            repo,
-            requested_trade_date=requested,
-            curve_type=curve_type,
+        snapshot, w_curve = snapshot_results.get(
+            (requested, curve_type),
+            (None, f"No {curve_type} curve available for requested trade_date={requested}."),
         )
         if w_curve:
             warnings.append(w_curve)
@@ -79,9 +95,9 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
             source_parts.append(str(snapshot.get("source_version") or ""))
             rule_parts.append(str(snapshot.get("rule_version") or ""))
             vendor_parts.append(str(snapshot.get("vendor_version") or ""))
-            prior_td = repo.fetch_prior_trade_date(curve_type, td_resolved) if td_resolved else None
+            prior_td = prior_dates.get((curve_type, td_resolved)) if td_resolved else None
             if prior_td is not None:
-                prev_snap = repo.fetch_curve_snapshot(prior_td, curve_type)
+                prev_snap = prior_snapshots.get((prior_td, curve_type))
         else:
             td_resolved = None
 
