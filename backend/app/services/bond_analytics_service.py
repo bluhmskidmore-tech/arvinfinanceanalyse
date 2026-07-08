@@ -1317,6 +1317,30 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
     return result
 
 
+def _project_return_decomposition_summary(envelope: dict) -> dict:
+    result = envelope.get("result")
+    if not isinstance(result, dict):
+        return envelope
+    return {
+        **envelope,
+        "result": {
+            **result,
+            "bond_details": [],
+        },
+    }
+
+
+def get_return_decomposition_summary(
+    report_date: date,
+    period_type: str = "MoM",
+    asset_class: str = "all",
+    accounting_class: str = "all",
+) -> dict:
+    return _project_return_decomposition_summary(
+        get_return_decomposition(report_date, period_type, asset_class, accounting_class)
+    )
+
+
 def _resolve_curve_for_service(
     *,
     repo: YieldCurveRepository,

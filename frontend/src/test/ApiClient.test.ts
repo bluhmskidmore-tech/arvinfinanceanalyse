@@ -1553,6 +1553,37 @@ describe("createApiClient", () => {
     );
   });
 
+  it("passes return decomposition detail projection parameters", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: { result_kind: "bond_analytics.return_decomposition" },
+        result: {
+          report_date: "2026-03-31",
+          computed_at: "2026-04-13T00:00:00Z",
+          warnings: [],
+          bond_details: [],
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getBondAnalyticsReturnDecomposition("2026-03-31", "MoM", {
+      assetClass: "rate",
+      accountingClass: "AC",
+      detail: "summary",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/return-decomposition?report_date=2026-03-31&period_type=MoM&asset_class=rate&accounting_class=AC&detail=summary",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
   it("normalizes real bond portfolio headline numerics for display", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

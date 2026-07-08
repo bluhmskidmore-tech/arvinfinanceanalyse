@@ -36,10 +36,16 @@ export function BondAnalyticsOverviewMidCharts({
   const client = useApiClient();
   const cockpitBundleQ = useBondAnalyticsCockpitBundleQuery(reportDate);
   const yieldCurveQ = bundleSectionQuery(cockpitBundleQ, "yield-curve-term-structure");
+  const returnDecompositionOptions = {
+    detail: "summary" as const,
+    ...(assetClass !== "all" ? { assetClass } : {}),
+    ...(accountingClass !== "all" ? { accountingClass } : {}),
+  };
   const rdQuery = useQuery({
     queryKey: [
       ...bondAnalyticsQueryKeyRoot,
       "return-decomposition",
+      "summary",
       client.mode,
       reportDate,
       periodType,
@@ -47,12 +53,7 @@ export function BondAnalyticsOverviewMidCharts({
       accountingClass,
     ],
     queryFn: () =>
-      assetClass === "all" && accountingClass === "all"
-        ? client.getBondAnalyticsReturnDecomposition(reportDate, periodType)
-        : client.getBondAnalyticsReturnDecomposition(reportDate, periodType, {
-            ...(assetClass !== "all" ? { assetClass } : {}),
-            ...(accountingClass !== "all" ? { accountingClass } : {}),
-          }),
+      client.getBondAnalyticsReturnDecomposition(reportDate, periodType, returnDecompositionOptions),
     enabled: Boolean(reportDate),
     retry: false,
     staleTime: 60_000,

@@ -173,4 +173,39 @@ describe("home startup deferred client", () => {
       display: expect.any(String),
     });
   });
+
+  it("passes return decomposition detail through the deferred home supplemental client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "formal" },
+          result: {
+            report_date: "2026-04-30",
+            computed_at: "2026-04-30T00:00:00Z",
+            warnings: [],
+            bond_details: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getBondAnalyticsReturnDecomposition("2026-04-30", "MoM", {
+      assetClass: "all",
+      accountingClass: "all",
+      detail: "summary",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/api/bond-analytics/return-decomposition?report_date=2026-04-30&period_type=MoM&asset_class=all&accounting_class=all&detail=summary",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
 });

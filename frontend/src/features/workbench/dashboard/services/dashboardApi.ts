@@ -69,10 +69,12 @@ export function getCreditRiskOverview(
 export function getReturnDecompositionContext(
   client: DashboardApiClient,
   reportDate: string,
+  options?: { detail?: "full" | "summary" },
 ) {
   return client.getBondAnalyticsReturnDecomposition(reportDate, "MoM", {
     assetClass: "all",
     accountingClass: "all",
+    ...(options?.detail ? { detail: options.detail } : {}),
   });
 }
 

@@ -346,7 +346,7 @@ export function createRealHomeSupplementalClient({
     getBondAnalyticsReturnDecomposition: (
       reportDate: string,
       periodType: string,
-      options?: { assetClass?: string; accountingClass?: string },
+      options?: { assetClass?: string; accountingClass?: string; detail?: "full" | "summary" },
     ) => {
       const params = new URLSearchParams({
         report_date: reportDate,
@@ -357,6 +357,9 @@ export function createRealHomeSupplementalClient({
       }
       if (options?.accountingClass) {
         params.set("accounting_class", options.accountingClass);
+      }
+      if (options?.detail) {
+        params.set("detail", options.detail);
       }
       return requestJson<ReturnDecompositionPayload>(
         fetchImpl,

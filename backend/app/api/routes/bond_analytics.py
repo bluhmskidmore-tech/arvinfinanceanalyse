@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
@@ -25,6 +25,7 @@ from backend.app.services.bond_analytics_service import (
     get_portfolio_headlines,
     get_position_changes,
     get_return_decomposition,
+    get_return_decomposition_summary,
     get_top_holdings,
     refresh_bond_analytics,
 )
@@ -66,8 +67,14 @@ def return_decomposition(
     period_type: str = Query("MoM", description="MoM / YTD / TTM"),
     asset_class: str = Query("all", description="all / rate / credit"),
     accounting_class: str = Query("all", description="all / AC / OCI / TPL"),
+    detail: Literal["full", "summary"] = Query(
+        "full",
+        description="full includes per-bond details; summary omits them",
+    ),
 ):
     _ensure_bond_analytics_read_allowed(auth)
+    if detail == "summary":
+        return get_return_decomposition_summary(report_date, period_type, asset_class, accounting_class)
     return get_return_decomposition(report_date, period_type, asset_class, accounting_class)
 
 

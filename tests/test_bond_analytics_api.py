@@ -236,6 +236,7 @@ def test_bond_analytics_read_surfaces_require_explicit_read_scope(tmp_path, monk
     for name in (
         "bond_analytics_dates_envelope",
         "get_return_decomposition",
+        "get_return_decomposition_summary",
         "get_benchmark_excess",
         "get_krd_curve_risk",
         "get_dv01_risk",
@@ -272,6 +273,52 @@ def test_bond_analytics_read_surfaces_require_explicit_read_scope(tmp_path, monk
     for path, params in _BOND_ANALYTICS_READ_CASES:
         response = client.get(path, params=params, headers=BOND_ANALYTICS_READ_HEADERS)
         assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_bond_analytics_return_decomposition_summary_detail_uses_summary_projection(monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.bond_analytics",
+        "backend/app/api/routes/bond_analytics.py",
+    )
+    called = {}
+
+    def _summary(report_date, period_type, asset_class, accounting_class):
+        called["args"] = (report_date.isoformat(), period_type, asset_class, accounting_class)
+        return {
+            "result_meta": {"result_kind": "bond_analytics.return_decomposition"},
+            "result": {
+                "report_date": report_date.isoformat(),
+                "computed_at": "2026-04-13T00:00:00Z",
+                "warnings": [],
+                "bond_details": [],
+            },
+        }
+
+    monkeypatch.setattr(route_module, "get_return_decomposition_summary", _summary)
+    monkeypatch.setattr(
+        route_module,
+        "get_return_decomposition",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("full detail path should not be used")),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/bond-analytics/return-decomposition",
+        params={
+            "report_date": REPORT_DATE,
+            "period_type": "MoM",
+            "asset_class": "rate",
+            "accounting_class": "AC",
+            "detail": "summary",
+        },
+        headers=BOND_ANALYTICS_READ_HEADERS,
+    )
+
+    assert response.status_code == 200, response.text
+    assert called["args"] == (REPORT_DATE, "MoM", "rate", "AC")
+    assert response.json()["result"]["bond_details"] == []
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):

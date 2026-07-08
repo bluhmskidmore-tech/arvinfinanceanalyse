@@ -433,6 +433,39 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     get_settings.cache_clear()
 
 
+def test_bond_analytics_return_decomposition_summary_omits_bond_details(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    full_payload = service_mod.get_return_decomposition(date(2026, 3, 31), "MoM", "all", "all")
+    summary_payload = service_mod.get_return_decomposition_summary(date(2026, 3, 31), "MoM", "all", "all")
+
+    full_result = full_payload["result"]
+    summary_result = summary_payload["result"]
+    assert len(full_result["bond_details"]) == 3
+    assert summary_result["bond_details"] == []
+    assert len(full_result["bond_details"]) == 3
+    for key in (
+        "carry",
+        "roll_down",
+        "rate_effect",
+        "spread_effect",
+        "trading",
+        "fx_effect",
+        "convexity_effect",
+        "explained_pnl",
+        "bond_count",
+        "total_market_value",
+    ):
+        assert summary_result[key] == full_result[key]
+    assert summary_result["by_asset_class"] == full_result["by_asset_class"]
+    assert summary_result["by_accounting_class"] == full_result["by_accounting_class"]
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_return_decomposition_discloses_cny_amount_basis(
     tmp_path,
     monkeypatch,

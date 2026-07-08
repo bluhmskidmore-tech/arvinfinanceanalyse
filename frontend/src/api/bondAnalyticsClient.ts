@@ -93,7 +93,7 @@ type BondAnalyticsCoreSurfaceMethods = {
   getBondAnalyticsReturnDecomposition: (
     reportDate: string,
     periodType: string,
-    options?: { assetClass?: string; accountingClass?: string },
+    options?: BondAnalyticsReturnDecompositionOptions,
   ) => Promise<ApiEnvelope<ReturnDecompositionPayload>>;
   getBondAnalyticsBenchmarkExcess: (
     reportDate: string,
@@ -166,6 +166,12 @@ type BondDashboardBundleOptions = {
   dv01ShockBps?: string;
   dv01AccountingClass?: string;
   curveTypes?: string;
+};
+
+type BondAnalyticsReturnDecompositionOptions = {
+  assetClass?: string;
+  accountingClass?: string;
+  detail?: "full" | "summary";
 };
 
 type BondAnalyticsCoreClientMethods = Pick<
@@ -553,7 +559,7 @@ export function createDemoBondAnalyticsClient(
     async getBondAnalyticsReturnDecomposition(
       reportDate: string,
       periodType: string,
-      _options?: { assetClass?: string; accountingClass?: string },
+      _options?: BondAnalyticsReturnDecompositionOptions,
     ) {
       await delay();
       void _options;
@@ -1546,7 +1552,7 @@ export function createRealBondAnalyticsClient(
     getBondAnalyticsReturnDecomposition: (
       reportDate: string,
       periodType: string,
-      options?: { assetClass?: string; accountingClass?: string },
+      options?: BondAnalyticsReturnDecompositionOptions,
     ) => {
       const params = new URLSearchParams({
         report_date: reportDate,
@@ -1554,6 +1560,7 @@ export function createRealBondAnalyticsClient(
       });
       if (options?.assetClass) params.set("asset_class", options.assetClass);
       if (options?.accountingClass) params.set("accounting_class", options.accountingClass);
+      if (options?.detail) params.set("detail", options.detail);
       return requestJson<ReturnDecompositionPayload>(
         fetchImpl,
         baseUrl,

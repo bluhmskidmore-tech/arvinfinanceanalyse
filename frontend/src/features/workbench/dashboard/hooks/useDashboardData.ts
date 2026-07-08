@@ -122,8 +122,12 @@ export function useDashboardData({
       "MoM",
       "all",
       "all",
+      "summary",
     ),
-    queryFn: () => getReturnDecompositionContext(dataClient, supplementalReportDate ?? ""),
+    queryFn: () =>
+      getReturnDecompositionContext(dataClient, supplementalReportDate ?? "", {
+        detail: "summary",
+      }),
     retry: false,
     staleTime: 60_000,
     enabled: loadSupplementalData && loadPortfolioSupplementData && hasSupplementalReportDate,

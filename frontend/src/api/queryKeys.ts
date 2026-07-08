@@ -178,6 +178,7 @@ export const apiQueryKeys = {
     periodType: string,
     assetClass = "all",
     accountingClass = "all",
+    detail = "full",
   ) =>
     [
       "bond-analytics",
@@ -187,6 +188,7 @@ export const apiQueryKeys = {
       periodType,
       assetClass,
       accountingClass,
+      detail,
     ] as const,
   bondAnalyticsYieldCurveTermStructure: (
     mode: string,

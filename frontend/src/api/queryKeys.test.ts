@@ -55,6 +55,30 @@ describe("apiQueryKeys", () => {
       "2026-04-30",
       "10,25,50",
     ]);
+    expect(
+      apiQueryKeys.bondAnalyticsReturnDecomposition("real", "2026-04-30", "MoM"),
+    ).toEqual([
+      "bond-analytics",
+      "return-decomposition",
+      "real",
+      "2026-04-30",
+      "MoM",
+      "all",
+      "all",
+      "full",
+    ]);
+    expect(
+      apiQueryKeys.bondAnalyticsReturnDecomposition("real", "2026-04-30", "MoM", "all", "all", "summary"),
+    ).toEqual([
+      "bond-analytics",
+      "return-decomposition",
+      "real",
+      "2026-04-30",
+      "MoM",
+      "all",
+      "all",
+      "summary",
+    ]);
     expect(apiQueryKeys.homeIncomeTrend("real", "2026-04-30", 7)).toEqual([
       "home",
       "income-trend",

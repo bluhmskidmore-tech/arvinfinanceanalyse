@@ -107,10 +107,18 @@ describe("BondAnalyticsYieldCurveTermStructureChart", () => {
       (reportDate: string, options?: { curveTypes?: string }) =>
         base.getBondAnalyticsYieldCurveTermStructure(reportDate, options),
     );
+    const getBondAnalyticsReturnDecomposition = vi.fn(
+      (
+        reportDate: string,
+        periodType: string,
+        options?: { assetClass?: string; accountingClass?: string; detail?: "full" | "summary" },
+      ) => base.getBondAnalyticsReturnDecomposition(reportDate, periodType, options),
+    );
     const client = {
       ...base,
       fetchBondDashboardBundle,
       getBondAnalyticsYieldCurveTermStructure,
+      getBondAnalyticsReturnDecomposition,
     };
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -134,5 +142,11 @@ describe("BondAnalyticsYieldCurveTermStructureChart", () => {
     });
     expect(fetchBondDashboardBundle.mock.calls[0]?.[2]?.curveTypes).toBe("treasury,cdb");
     expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalledTimes(1);
+    });
+    expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM", {
+      detail: "summary",
+    });
   });
 });
