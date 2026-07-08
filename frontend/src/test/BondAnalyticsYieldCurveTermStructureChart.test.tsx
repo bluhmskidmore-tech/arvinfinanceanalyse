@@ -11,6 +11,7 @@ import { ApiClientProvider, createApiClient, useApiClient } from "../api/client"
 import { apiQueryKeys } from "../api/queryKeys";
 import { BondAnalyticsOverviewMidCharts } from "../features/bond-analytics/components/BondAnalyticsOverviewMidCharts";
 import { BondAnalyticsYieldCurveTermStructureChart } from "../features/bond-analytics/components/BondAnalyticsYieldCurveTermStructureChart";
+import { useBondAnalyticsCockpitBundleQuery } from "../features/bond-analytics/lib/bondAnalyticsCockpitBundleQuery";
 
 /**
  * Stands in for `BondAnalyticsInstitutionalCockpit`'s yield-curve query, which already used
@@ -26,6 +27,11 @@ function SiblingYieldCurveConsumer({ reportDate }: { reportDate: string }) {
       client.getBondAnalyticsYieldCurveTermStructure(reportDate, { curveTypes: "treasury,cdb" }),
     enabled: Boolean(reportDate),
   });
+  return null;
+}
+
+function SiblingCockpitBundleConsumer({ reportDate }: { reportDate: string }) {
+  useBondAnalyticsCockpitBundleQuery(reportDate);
   return null;
 }
 
@@ -147,6 +153,61 @@ describe("BondAnalyticsYieldCurveTermStructureChart", () => {
     });
     expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM", {
       detail: "summary",
+    });
+  });
+
+  it("shares one cockpit bundle request when overview cockpit and mid charts mount together", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const fetchBondDashboardBundle = vi.fn(
+      (
+        reportDate: Parameters<typeof base.fetchBondDashboardBundle>[0],
+        sections: Parameters<typeof base.fetchBondDashboardBundle>[1],
+        opts?: Parameters<typeof base.fetchBondDashboardBundle>[2],
+      ) =>
+        base.fetchBondDashboardBundle(reportDate, sections, opts),
+    );
+    const getBondAnalyticsYieldCurveTermStructure = vi.fn(
+      (reportDate: string, options?: { curveTypes?: string }) =>
+        base.getBondAnalyticsYieldCurveTermStructure(reportDate, options),
+    );
+    const getBondAnalyticsReturnDecomposition = vi.fn(
+      (
+        reportDate: string,
+        periodType: string,
+        options?: { assetClass?: string; accountingClass?: string; detail?: "full" | "summary" },
+      ) => base.getBondAnalyticsReturnDecomposition(reportDate, periodType, options),
+    );
+    const client = {
+      ...base,
+      fetchBondDashboardBundle,
+      getBondAnalyticsYieldCurveTermStructure,
+      getBondAnalyticsReturnDecomposition,
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <SiblingCockpitBundleConsumer reportDate="2026-03-31" />
+          <BondAnalyticsOverviewMidCharts
+            reportDate="2026-03-31"
+            periodType="MoM"
+            assetClass="all"
+            accountingClass="all"
+          />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(fetchBondDashboardBundle).toHaveBeenCalledTimes(1);
+    });
+    expect(fetchBondDashboardBundle.mock.calls[0]?.[0]).toBe("2026-03-31");
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalledTimes(1);
     });
   });
 });
