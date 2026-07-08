@@ -524,6 +524,63 @@ def test_bond_analytics_return_decomposition_summary_omits_bond_details(tmp_path
     get_settings.cache_clear()
 
 
+def test_return_decomposition_curve_pairs_use_batch_resolver():
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    calls: list[list[tuple[str, str]]] = []
+
+    class FakeCurveRepo:
+        def resolve_curve_snapshots_many(self, requests):
+            calls.append(list(requests))
+            return {
+                key: (
+                    {
+                        "trade_date": key[0],
+                        "curve_type": key[1],
+                        "curve": {"10Y": Decimal("2.00")},
+                        "vendor_name": "choice",
+                        "vendor_version": "vv_curve",
+                        "source_version": "sv_curve",
+                        "rule_version": "rv_curve",
+                    },
+                    None,
+                )
+                for key in requests
+            }
+
+    rows = [
+        {
+            "asset_class_std": "credit",
+            "instrument_name": "Credit bond",
+            "bond_type": "credit",
+            "asset_class_raw": "credit",
+        }
+    ]
+
+    curves = service_mod._fetch_all_curve_pairs(
+        rows,
+        curve_repo=FakeCurveRepo(),
+        report_date="2026-03-31",
+        prior_date="2026-02-28",
+    )
+
+    assert calls == [
+        [
+            ("2026-03-31", "aaa_credit"),
+            ("2026-02-28", "aaa_credit"),
+            ("2026-03-31", "treasury"),
+            ("2026-02-28", "treasury"),
+        ]
+    ]
+    assert curves["treasury_current"]["_prior_snapshot"]["trade_date"] == "2026-02-28"
+    assert curves["aaa_current"]["_prior_snapshot"]["trade_date"] == "2026-02-28"
+    assert curves["cdb_current"] is None
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_return_decomposition_discloses_cny_amount_basis(
     tmp_path,
     monkeypatch,

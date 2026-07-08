@@ -1044,16 +1044,36 @@ def _fetch_all_curve_pairs(
     if extra_curve_types:
         required = required | extra_curve_types
 
-    treasury_current, treasury_current_warning = _resolve_curve_pair_if_needed(
-        curve_type="treasury", required_curve_types=required, repo=curve_repo,
+    curve_requests = [
+        (trade_date, curve_type)
+        for curve_type in sorted(required)
+        for trade_date in (report_date, prior_date)
+    ]
+    resolved_curves = curve_repo.resolve_curve_snapshots_many(curve_requests)
+    resolved_curves = {
+        key: (
+            snapshot,
+            (
+                f"{warning}; affected components remain 0."
+                if isinstance(warning, str)
+                and warning.startswith("No ")
+                and "affected components remain 0" not in warning
+                else warning
+            ),
+        )
+        for key, (snapshot, warning) in resolved_curves.items()
+    }
+
+    treasury_current, treasury_current_warning = _resolve_curve_pair_from_batch(
+        curve_type="treasury", required_curve_types=required, resolved_curves=resolved_curves,
         report_date=report_date, prior_date=prior_date,
     )
-    cdb_current, cdb_current_warning = _resolve_curve_pair_if_needed(
-        curve_type="cdb", required_curve_types=required, repo=curve_repo,
+    cdb_current, cdb_current_warning = _resolve_curve_pair_from_batch(
+        curve_type="cdb", required_curve_types=required, resolved_curves=resolved_curves,
         report_date=report_date, prior_date=prior_date,
     )
-    aaa_current, aaa_current_warning = _resolve_curve_pair_if_needed(
-        curve_type="aaa_credit", required_curve_types=required, repo=curve_repo,
+    aaa_current, aaa_current_warning = _resolve_curve_pair_from_batch(
+        curve_type="aaa_credit", required_curve_types=required, resolved_curves=resolved_curves,
         report_date=report_date, prior_date=prior_date,
     )
 
