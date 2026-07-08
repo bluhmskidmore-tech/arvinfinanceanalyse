@@ -137,12 +137,16 @@ class _TTLCache:
 _report_dates_cache = _TTLCache(ttl_seconds=300)
 _fact_rows_cache = _TTLCache(ttl_seconds=300)
 _home_summary_cache = _TTLCache(ttl_seconds=300)
+_fact_rows_fetch_locks: dict[tuple, threading.Lock] = {}
+_fact_rows_fetch_locks_guard = threading.Lock()
 
 
 def clear_bond_dashboard_runtime_cache() -> None:
     _report_dates_cache.clear()
     _fact_rows_cache.clear()
     _home_summary_cache.clear()
+    with _fact_rows_fetch_locks_guard:
+        _fact_rows_fetch_locks.clear()
 
 
 def _duckdb_cache_version_token() -> tuple[str, int | None]:
@@ -168,9 +172,18 @@ def _fact_rows(report_date: str) -> list[dict[str, object]]:
     hit, cached = _fact_rows_cache.get(key)
     if hit:
         return cached
-    rows = _repo().fetch_bond_analytics_rows(report_date=report_date)
-    _fact_rows_cache.set(key, rows)
-    return rows
+    with _fact_rows_fetch_lock(key):
+        hit, cached = _fact_rows_cache.get(key)
+        if hit:
+            return cached
+        rows = _repo().fetch_bond_analytics_rows(report_date=report_date)
+        _fact_rows_cache.set(key, rows)
+        return rows
+
+
+def _fact_rows_fetch_lock(key: tuple) -> threading.Lock:
+    with _fact_rows_fetch_locks_guard:
+        return _fact_rows_fetch_locks.setdefault(key, threading.Lock())
 
 
 def _with_bond_dashboard_data_source(envelope: dict[str, object]) -> dict[str, object]:
@@ -815,7 +828,8 @@ def _safe_bond_dashboard_bundle_section_envelope(
     dv01_shock_bps: str,
     dv01_accounting_class: str,
     curve_types: str,
-) -> tuple[dict[str, object] | None, dict[str, str | None]]:
+) -> tuple[dict[str, object] | None, dict[str, str | float | None]]:
+    started_at = time.perf_counter()
     try:
         envelope = _bond_dashboard_bundle_section_envelope(
             section,
@@ -831,8 +845,13 @@ def _safe_bond_dashboard_bundle_section_envelope(
         return None, {
             "status": "error",
             "message": str(exc) or exc.__class__.__name__,
+            "duration_ms": round((time.perf_counter() - started_at) * 1000, 3),
         }
-    return envelope, {"status": "ok", "message": None}
+    return envelope, {
+        "status": "ok",
+        "message": None,
+        "duration_ms": round((time.perf_counter() - started_at) * 1000, 3),
+    }
 
 
 def get_bond_dashboard_bundle(
@@ -856,10 +875,10 @@ def get_bond_dashboard_bundle(
         raise ValueError("report_date is required for the requested bundle sections")
 
     section_envelopes: dict[str, dict[str, object]] = {}
-    section_statuses: dict[str, dict[str, str | None]] = {}
+    section_statuses: dict[str, dict[str, str | float | None]] = {}
     failed_sections: list[str] = []
 
-    def load_section(section: str) -> tuple[str, dict[str, object] | None, dict[str, str | None]]:
+    def load_section(section: str) -> tuple[str, dict[str, object] | None, dict[str, str | float | None]]:
         envelope, status = _safe_bond_dashboard_bundle_section_envelope(
             section,
             report_date,

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+import time
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -43,6 +45,34 @@ def _bond_dashboard_client_with_bundle_scopes(tmp_path, monkeypatch) -> TestClie
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     client.headers.update(BOND_DASHBOARD_READ_HEADERS)
     return client
+
+
+def test_bond_dashboard_fact_rows_cache_collapses_concurrent_fetches(tmp_path, monkeypatch) -> None:
+    import backend.app.services.bond_dashboard_service as service_mod
+
+    duckdb_path = tmp_path / "dash-bundle-fact-cache.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    service_mod.clear_bond_dashboard_runtime_cache()
+    calls = 0
+
+    class FakeBondAnalyticsRepository:
+        def fetch_bond_analytics_rows(self, *, report_date: str):
+            nonlocal calls
+            calls += 1
+            time.sleep(0.05)
+            return [{"report_date": report_date, "source_version": "sv_test"}]
+
+    fake_repo = FakeBondAnalyticsRepository()
+    monkeypatch.setattr(service_mod, "_repo", lambda: fake_repo)
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(lambda _index: service_mod._fact_rows(REPORT_DATE), range(4)))
+
+    assert calls == 1
+    assert all(result == results[0] for result in results)
+    get_settings.cache_clear()
 
 
 def test_bond_dashboard_bundle_matches_individual_section_envelopes(tmp_path, monkeypatch) -> None:
@@ -212,6 +242,10 @@ def test_bond_dashboard_bundle_includes_cockpit_analytics_sections(tmp_path, mon
     assert {k: v["status"] for k, v in result["section_statuses"].items()} == {
         section: "ok" for section in requested_sections
     }
+    assert all(
+        isinstance(status["duration_ms"], (int, float)) and status["duration_ms"] >= 0
+        for status in result["section_statuses"].values()
+    )
     assert result["sections"]["top-holdings"]["result"]["top_n"] == 5
     assert result["sections"]["portfolio-headlines"]["result_meta"]["result_kind"] == "bond_analytics.portfolio_headlines"
     assert result["sections"]["dv01-risk-ac"]["result"]["accounting_class"] == "AC"
@@ -271,6 +305,8 @@ def test_bond_dashboard_bundle_isolates_section_failure(tmp_path, monkeypatch) -
     assert result["section_statuses"]["headline-kpis"]["status"] == "ok"
     assert result["section_statuses"]["top-holdings"]["status"] == "error"
     assert result["section_statuses"]["top-holdings"]["message"] == "top holdings unavailable"
+    assert result["section_statuses"]["headline-kpis"]["duration_ms"] >= 0
+    assert result["section_statuses"]["top-holdings"]["duration_ms"] >= 0
     get_settings.cache_clear()
 
 

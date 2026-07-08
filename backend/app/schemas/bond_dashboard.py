@@ -297,6 +297,7 @@ class BondDashboardHomeSummaryPayload(BaseModel):
 class BondDashboardBundleSectionStatus(BaseModel):
     status: Literal["ok", "error"]
     message: str | None = None
+    duration_ms: float = 0.0
 
 
 class BondDashboardBundlePayload(BaseModel):
