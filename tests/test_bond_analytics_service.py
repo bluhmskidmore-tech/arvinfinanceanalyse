@@ -160,12 +160,14 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
     settings = get_settings()
 
     return_key = ("2026-03-31", "MoM", "all", "all")
+    summary_return_key = ("2026-03-31", "MoM", "all", "all", "summary")
     other_return_key = ("2026-04-30", "MoM", "all", "all")
     action_key = ("2026-03-31", "MoM")
     other_action_key = ("2026-04-30", "MoM")
     row_key = ("2026-03-31", "all", "all", *service_mod._duckdb_cache_version_token())
     other_row_key = ("2026-04-30", "all", "all", *service_mod._duckdb_cache_version_token())
     service_mod._return_decomposition_cache.set(return_key, {"value": "stale-return"})
+    service_mod._return_decomposition_cache.set(summary_return_key, {"value": "stale-summary-return"})
     service_mod._return_decomposition_cache.set(other_return_key, {"value": "keep-return"})
     service_mod._action_attribution_cache.set(action_key, {"value": "stale-action"})
     service_mod._action_attribution_cache.set(other_action_key, {"value": "keep-action"})
@@ -191,6 +193,7 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
 
     assert payload["status"] == "completed"
     assert service_mod._return_decomposition_cache.get(return_key) == (False, None)
+    assert service_mod._return_decomposition_cache.get(summary_return_key) == (False, None)
     assert service_mod._action_attribution_cache.get(action_key) == (False, None)
     assert service_mod._bond_analytics_rows_cache.get(row_key) == (False, None)
     assert service_mod._return_decomposition_cache.get(other_return_key) == (
@@ -521,6 +524,31 @@ def test_bond_analytics_return_decomposition_summary_omits_bond_details(tmp_path
         assert summary_result[key] == full_result[key]
     assert summary_result["by_asset_class"] == full_result["by_asset_class"]
     assert summary_result["by_accounting_class"] == full_result["by_accounting_class"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_return_decomposition_summary_skips_bond_detail_payload_models(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    service_mod._return_decomposition_cache.clear()
+
+    def fail_bond_detail_payload(_row):
+        raise AssertionError("summary detail path should not build per-bond response models")
+
+    monkeypatch.setattr(service_mod, "_build_bond_level_decomposition", fail_bond_detail_payload)
+
+    summary_payload = service_mod.get_return_decomposition_summary(date(2026, 3, 31), "MoM", "all", "all")
+    summary_result = summary_payload["result"]
+
+    assert summary_result["bond_details"] == []
+    assert {row["asset_class"] for row in summary_result["by_asset_class"]} == {"credit", "rate"}
+    assert {row["asset_class"] for row in summary_result["by_accounting_class"]} == {"AC", "OCI", "TPL"}
     get_settings.cache_clear()
 
 

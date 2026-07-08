@@ -1184,6 +1184,7 @@ def _build_return_decomposition_payload(
     fx_missing_warnings: list[str],
     trading_extra_warnings: list[str] | None = None,
     warnings_detail: list[dict[str, str]] | None = None,
+    include_bond_details: bool = True,
 ) -> ReturnDecompositionResponse:
     trading_total = safe_decimal(summary.get("trading_total", ZERO))
     explained_total = (
@@ -1224,7 +1225,11 @@ def _build_return_decomposition_payload(
                 "recon_error_pct": ZERO,
                 "by_asset_class": [_build_asset_class_breakdown(row) for row in summary["by_asset_class"]],
                 "by_accounting_class": [_build_asset_class_breakdown(row) for row in summary["by_accounting_class"]],
-                "bond_details": [_build_bond_level_decomposition(row) for row in summary["bond_details"]],
+                "bond_details": (
+                    [_build_bond_level_decomposition(row) for row in summary["bond_details"]]
+                    if include_bond_details
+                    else []
+                ),
                 "bond_count": int(summary["bond_count"]),
                 "total_market_value": summary["total_market_value"],
                 "computed_at": meta.generated_at.isoformat(),
@@ -1318,8 +1323,19 @@ def _compute_return_decomposition_summary(
     )
 
 
-def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
-    _cache_key = (report_date.isoformat(), period_type, asset_class, accounting_class)
+def _get_return_decomposition(
+    report_date: date,
+    period_type: str,
+    asset_class: str,
+    accounting_class: str,
+    *,
+    include_bond_details: bool,
+) -> dict:
+    _cache_key = (
+        (report_date.isoformat(), period_type, asset_class, accounting_class)
+        if include_bond_details
+        else (report_date.isoformat(), period_type, asset_class, accounting_class, "summary")
+    )
     hit, cached = _return_decomposition_cache.get(_cache_key)
     if hit:
         return cached
@@ -1370,6 +1386,7 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         fx_missing_warnings=inputs["fx_missing_warnings"],
         trading_extra_warnings=trading_extra_warnings,
         warnings_detail=trading_wd,
+        include_bond_details=include_bond_details,
     )
     result = _with_bond_amount_disclosure(
         build_formal_result_envelope(
@@ -1379,6 +1396,16 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
     )
     _return_decomposition_cache.set(_cache_key, result)
     return result
+
+
+def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
+    return _get_return_decomposition(
+        report_date,
+        period_type,
+        asset_class,
+        accounting_class,
+        include_bond_details=True,
+    )
 
 
 def _project_return_decomposition_summary(envelope: dict) -> dict:
@@ -1400,8 +1427,12 @@ def get_return_decomposition_summary(
     asset_class: str = "all",
     accounting_class: str = "all",
 ) -> dict:
-    return _project_return_decomposition_summary(
-        get_return_decomposition(report_date, period_type, asset_class, accounting_class)
+    return _get_return_decomposition(
+        report_date,
+        period_type,
+        asset_class,
+        accounting_class,
+        include_bond_details=False,
     )
 
 
