@@ -2390,6 +2390,87 @@ def test_equity_strategy_price_context_delegates_to_service(tmp_path, monkeypatc
     assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_equity_strategy_price_context)
 
 
+def test_a_share_stampede_risk_context_loads_observations_as_dataframe(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    dates = pd.date_range("2026-04-01", periods=40, freq="D")
+    observation_rows = pd.DataFrame(
+        [
+            {
+                "trade_date": trade_date.date(),
+                "stock_code": stock_code,
+                "open_value": 10.0 + stock_no,
+                "high_value": 10.5 + stock_no,
+                "low_value": 9.5 + stock_no,
+                "close_value": 10.2 + stock_no,
+                "amount": 1000.0 + stock_no,
+                "pctchange": 0.1,
+                "turn": 1.0,
+                "amplitude": 2.0,
+                "tradestatus": "Trading",
+                "highlimit": 20.0,
+                "lowlimit": 5.0,
+                "source_version": "sv_stock",
+                "vendor_version": "vv_stock",
+            }
+            for trade_date in dates
+            for stock_no, stock_code in enumerate(("000001.SZ", "000002.SZ"), start=1)
+        ]
+    )
+    observation_query_used_df = False
+
+    class FakeResult:
+        def __init__(
+            self,
+            *,
+            row: tuple[object, ...] | None = None,
+            frame: pd.DataFrame | None = None,
+        ) -> None:
+            self._row = row
+            self._frame = frame
+
+        def fetchone(self) -> tuple[object, ...] | None:
+            return self._row
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            if self._frame is not None:
+                raise AssertionError("A-share observations should be loaded through DuckDB .df(), not fetchall()")
+            return []
+
+        def df(self) -> pd.DataFrame:
+            nonlocal observation_query_used_df
+            observation_query_used_df = True
+            if self._frame is None:
+                raise AssertionError("unexpected df() call")
+            return self._frame.copy()
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            if "max(try_cast(trade_date as date))" in normalized:
+                return FakeResult(row=(dates[-1].date(),))
+            if "latest_sample" in normalized and "choice_stock_daily_observation" in normalized:
+                return FakeResult(frame=observation_rows)
+            raise AssertionError(f"unexpected query: {query}")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", lambda *_args, **_kwargs: FakeConnection())
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_table_exists",
+        lambda _conn, table_name: table_name == "choice_stock_daily_observation",
+    )
+
+    context = macro_toolkit_service.load_a_share_stampede_risk_context(duckdb_path)
+
+    assert context is not None
+    assert observation_query_used_df is True
+    assert context["observations"].shape == (len(observation_rows), len(observation_rows.columns))
+    assert context["tables_used"] == ["choice_stock_daily_observation"]
+
+
 def test_a_share_stampede_risk_context_delegates_to_service(tmp_path, monkeypatch) -> None:
     expected_context = {
         "observations": pd.DataFrame({"stock_code": ["000001.SZ"]}),

@@ -1150,7 +1150,7 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
         if latest_trade_date is None:
             return None
         start_date = latest_trade_date - timedelta(days=A_SHARE_RISK_LOOKBACK_DAYS)
-        rows = conn.execute(
+        observations = conn.execute(
             f"""
             with latest_sample as (
               select stock_code
@@ -1205,29 +1205,9 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
             order by daily.try_cast_date asc, daily.stock_code asc
             """,
             [latest_trade_date, start_date, latest_trade_date],
-        ).fetchall()
-        if not rows:
+        ).df()
+        if observations.empty:
             return None
-        observations = pd.DataFrame(
-            rows,
-            columns=[
-                "trade_date",
-                "stock_code",
-                "open_value",
-                "high_value",
-                "low_value",
-                "close_value",
-                "amount",
-                "pctchange",
-                "turn",
-                "amplitude",
-                "tradestatus",
-                "highlimit",
-                "lowlimit",
-                "source_version",
-                "vendor_version",
-            ],
-        )
         tables_used = ["choice_stock_daily_observation"]
         warnings: list[str] = []
         _merge_a_share_universe(conn, observations, latest_trade_date, tables_used, warnings)
