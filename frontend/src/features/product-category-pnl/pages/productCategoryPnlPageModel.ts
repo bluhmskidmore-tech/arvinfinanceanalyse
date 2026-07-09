@@ -4593,7 +4593,7 @@ export function selectProductCategoryLiabilitySideTrendChart(
 
   ordered.forEach((snapshot) => {
     const label = snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate);
-    const averageDaily = yiNumber(snapshot.liabilityTotal?.cnx_scale);
+    const averageDaily = liabilityAmountDisplayNumber(snapshot.liabilityTotal ?? undefined, "cnx_scale");
     const rate = percentNumber(snapshot.liabilityTotal?.weighted_yield);
     labels.push(label);
     totalAverageDaily.push(averageDaily);
@@ -4623,7 +4623,9 @@ function latestComparableLiabilityValue(input: {
     }
     const row = liabilityDetailRowsFromSnapshot(snapshot).find((item) => item.category_id === input.categoryId);
     const value =
-      input.metric === "cnx_scale" ? yiNumber(row?.cnx_scale) : percentNumber(row?.weighted_yield);
+      input.metric === "cnx_scale"
+        ? liabilityAmountDisplayNumber(row, "cnx_scale")
+        : percentNumber(row?.weighted_yield);
     if (value !== null) {
       return {
         value,
@@ -4672,6 +4674,21 @@ function adjacentProductCategoryMonths(
 
 type ProductCategoryLiabilityAmountField = "cnx_scale" | "cny_scale" | "foreign_scale";
 
+function liabilityAmountDisplayNumber(
+  row: ProductCategoryPnlRow | undefined,
+  amountField: ProductCategoryLiabilityAmountField,
+): number | null {
+  if (!row) {
+    return null;
+  }
+  const label =
+    amountField === "foreign_scale"
+      ? formatProductCategoryForeignDisplayValue(row, row[amountField])
+      : formatProductCategoryRowDisplayValue(row, row[amountField]);
+  const parsed = Number(label);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function liabilityDetailMetricLabels(
   row: ProductCategoryPnlRow | undefined,
   amountField: ProductCategoryLiabilityAmountField = "cnx_scale",
@@ -4681,7 +4698,7 @@ function liabilityDetailMetricLabels(
   rateLabel: string;
   rateValue: number | null;
 } {
-  const amountValue = yiNumber(row?.[amountField]);
+  const amountValue = liabilityAmountDisplayNumber(row, amountField);
   const rateValue = percentNumber(row?.weighted_yield);
   return {
     amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
@@ -4700,12 +4717,12 @@ function liabilityCurrencyMetricLabels(
   rateLabel: string;
   rateValue: number | null;
 } {
-  const amountValue = yiNumber(row?.[amountField]);
-  const rateValue: number | null = null;
+  const amountValue = liabilityAmountDisplayNumber(row, amountField);
+  const rateValue = percentNumber(row?.weighted_yield);
   return {
     amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
     amountValue,
-    rateLabel: "-",
+    rateLabel: rateValue !== null ? rateValue.toFixed(2) : "-",
     rateValue,
   };
 }
@@ -4920,7 +4937,7 @@ export function selectProductCategoryLiabilityDetailTrendRows(
   const latestLabel = latestSnapshot.label ?? formatProductCategoryReportMonthLabel(latestSnapshot.reportDate);
   const latestIndex = ordered.length - 1;
   return liabilityDetailRowsFromSnapshot(latestSnapshot).map((row) => {
-    const latestAmount = yiNumber(row.cnx_scale);
+    const latestAmount = liabilityAmountDisplayNumber(row, "cnx_scale");
     const priorAmount = latestAmount !== null
       ? latestComparableLiabilityValue({
           snapshots: ordered,

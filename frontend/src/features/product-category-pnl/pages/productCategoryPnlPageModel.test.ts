@@ -3193,6 +3193,70 @@ describe("productCategoryPnlPageModel", () => {
     });
   });
 
+  it("normalizes raw negative liability amounts in fallback detail rows", () => {
+    const snapshots = [
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-01-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interbank_deposits",
+            category_name: "同业存放",
+            side: "liability",
+            report_date: "2026-01-31",
+            cnx_scale: yi(-75),
+            weighted_yield: "1.10",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(-75),
+          weighted_yield: "1.10",
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年01月"),
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-02-28",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interbank_deposits",
+            category_name: "同业存放",
+            side: "liability",
+            report_date: "2026-02-28",
+            cnx_scale: yi(-82),
+            weighted_yield: "1.20",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(-82),
+          weighted_yield: "1.20",
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年02月"),
+    ];
+
+    const surface = buildProductCategoryLiabilitySideTrendSurface(snapshots);
+
+    expect(surface.detailRows.find((item) => item.categoryId === "interbank_deposits")).toMatchObject({
+      latestAmountLabel: "82.00",
+      amountDeltaLabel: "+7.00",
+      latestRateLabel: "1.20",
+      rateDeltaLabel: "+10bp",
+    });
+  });
+
   it("builds a liability-side detail matrix with period cells and adjacent-month movement", () => {
     const snapshots = [
       buildProductCategoryTrendSnapshot({
@@ -3328,9 +3392,9 @@ describe("productCategoryPnlPageModel", () => {
             category_name: "同业存放",
             side: "liability",
             report_date: "2026-01-31",
-            cnx_scale: yi(75),
-            cny_scale: yi(60),
-            foreign_scale: yi(15),
+            cnx_scale: yi(-75),
+            cny_scale: yi(-60),
+            foreign_scale: yi(-15),
             cny_cash: nonFormulaCashFixture(60, 2.00, 31),
             foreign_cash: nonFormulaCashFixture(15, 1.00, 31),
             weighted_yield: "1.10",
@@ -3340,9 +3404,9 @@ describe("productCategoryPnlPageModel", () => {
             category_name: "同业存单",
             side: "liability",
             report_date: "2026-01-31",
-            cnx_scale: yi(120),
-            cny_scale: yi(110),
-            foreign_scale: yi(10),
+            cnx_scale: yi(-120),
+            cny_scale: yi(-110),
+            foreign_scale: yi(-10),
             cny_cash: nonFormulaCashFixture(110, 1.50, 31),
             foreign_cash: nonFormulaCashFixture(10, 2.50, 31),
             weighted_yield: "1.45",
@@ -3355,9 +3419,9 @@ describe("productCategoryPnlPageModel", () => {
           side: "liability",
           is_total: true,
           report_date: "2026-01-31",
-          cnx_scale: yi(195),
-          cny_scale: yi(170),
-          foreign_scale: yi(25),
+          cnx_scale: yi(-195),
+          cny_scale: yi(-170),
+          foreign_scale: yi(-25),
           cny_cash: nonFormulaCashFixture(170, 1.68, 31),
           foreign_cash: nonFormulaCashFixture(25, 1.60, 31),
           weighted_yield: "1.30",
@@ -3375,9 +3439,9 @@ describe("productCategoryPnlPageModel", () => {
             category_name: "同业存放",
             side: "liability",
             report_date: "2026-02-28",
-            cnx_scale: yi(80),
-            cny_scale: yi(64),
-            foreign_scale: yi(16),
+            cnx_scale: yi(-80),
+            cny_scale: yi(-64),
+            foreign_scale: yi(-16),
             cny_cash: nonFormulaCashFixture(64, 2.10, 28),
             foreign_cash: nonFormulaCashFixture(16, 1.25, 28),
             weighted_yield: "1.20",
@@ -3387,9 +3451,9 @@ describe("productCategoryPnlPageModel", () => {
             category_name: "同业存单",
             side: "liability",
             report_date: "2026-02-28",
-            cnx_scale: yi(118),
+            cnx_scale: yi(-118),
             cny_scale: "not_available",
-            foreign_scale: yi(8),
+            foreign_scale: yi(-8),
             cny_cash: nonFormulaCashFixture(108, 1.60, 28),
             foreign_cash: nonFormulaCashFixture(8, 2.75, 28),
             weighted_yield: "1.40",
@@ -3402,9 +3466,9 @@ describe("productCategoryPnlPageModel", () => {
           side: "liability",
           is_total: true,
           report_date: "2026-02-28",
-          cnx_scale: yi(198),
-          cny_scale: yi(174),
-          foreign_scale: yi(24),
+          cnx_scale: yi(-198),
+          cny_scale: yi(-174),
+          foreign_scale: yi(-24),
           cny_cash: nonFormulaCashFixture(174, 2.00, 28),
           foreign_cash: nonFormulaCashFixture(24, 1.75, 28),
           weighted_yield: "1.25",
@@ -3432,17 +3496,17 @@ describe("productCategoryPnlPageModel", () => {
       categoryId: "liability_total",
       categoryLabel: "负债合计",
       cells: [
-        { amountLabel: "170.00", rateLabel: "-" },
-        { amountLabel: "174.00", rateLabel: "-" },
+        { amountLabel: "170.00", rateLabel: "1.30" },
+        { amountLabel: "174.00", rateLabel: "1.25" },
       ],
-      movement: { amountLabel: "+4.00", rateLabel: "-" },
+      movement: { amountLabel: "+4.00", rateLabel: "-5bp" },
     });
     expect(cnyMatrix?.rows.find((item) => item.categoryId === "interbank_cds")).toMatchObject({
       cells: [
-        { amountLabel: "110.00", rateLabel: "-" },
-        { amountLabel: "-", rateLabel: "-" },
+        { amountLabel: "110.00", rateLabel: "1.45" },
+        { amountLabel: "-", rateLabel: "1.40" },
       ],
-      movement: { amountLabel: "-", rateLabel: "-" },
+      movement: { amountLabel: "-", rateLabel: "-5bp" },
     });
 
     const foreignMatrix = matrix.currencyMatrices.find((item) => item.currencyKey === "foreign");
@@ -3450,10 +3514,10 @@ describe("productCategoryPnlPageModel", () => {
     expect(foreignMatrix?.rows[0]).toMatchObject({
       categoryId: "liability_total",
       cells: [
-        { amountLabel: "25.00", rateLabel: "-" },
-        { amountLabel: "24.00", rateLabel: "-" },
+        { amountLabel: "25.00", rateLabel: "1.30" },
+        { amountLabel: "24.00", rateLabel: "1.25" },
       ],
-      movement: { amountLabel: "-1.00", rateLabel: "-" },
+      movement: { amountLabel: "-1.00", rateLabel: "-5bp" },
     });
   });
 

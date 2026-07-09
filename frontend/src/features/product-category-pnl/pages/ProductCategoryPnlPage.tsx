@@ -882,6 +882,22 @@ function buildLiabilitySideTrendChartOption(input: {
   if (!input.labels.length) {
     return null;
   }
+  const finiteAverageDaily = input.averageDaily.filter((value): value is number =>
+    typeof value === "number" && Number.isFinite(value),
+  );
+  const leftAxisRange =
+    finiteAverageDaily.length > 0
+      ? (() => {
+          const minValue = Math.min(...finiteAverageDaily);
+          const maxValue = Math.max(...finiteAverageDaily);
+          const span = Math.max(maxValue - minValue, Math.max(Math.abs(minValue), Math.abs(maxValue)) * 0.08, 1);
+          const padding = span * 0.08;
+          return {
+            min: Number(Math.min(0, minValue - padding).toFixed(2)),
+            max: Number(Math.max(0, maxValue + padding).toFixed(2)),
+          };
+        })()
+      : undefined;
   return {
     tooltip: { trigger: "axis" },
     legend: { bottom: 0, data: ["负债端日均额（亿元）", "负债端利率（%）"] },
@@ -891,12 +907,15 @@ function buildLiabilitySideTrendChartOption(input: {
       data: input.labels,
       axisTick: { show: false },
       axisLabel: { interval: 0, rotate: input.labels.length > 6 ? 24 : 0 },
-      axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
+      axisLine: { onZero: false, lineStyle: { color: designTokens.color.neutral[300] } },
     },
     yAxis: [
       {
         type: "value",
         name: "亿元",
+        min: leftAxisRange?.min,
+        max: leftAxisRange?.max,
+        axisLabel: { formatter: buildAxisLabelFormatter() },
         splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[200] } },
       },
       {
