@@ -393,3 +393,296 @@ def test_warm_hermes_bridge_if_configured_skips_non_bridge_settings(monkeypatch)
     )
 
     assert started is False
+
+
+def _legacy_hermes_prompt(request: AgentQueryRequest) -> str:
+    context = {
+        "basis": request.basis,
+        "filters": request.filters,
+        "position_scope": request.position_scope,
+        "currency_basis": request.currency_basis,
+        "context": request.context,
+        "page_context": request.page_context.model_dump(mode="json") if request.page_context else None,
+    }
+    return (
+        "You are Hermes Agent connected to the MOSS business analytics system. "
+        "Answer the user's question directly. If you use tools or evidence, summarize the evidence and limitations. "
+        "Do not claim formal financial correctness unless the provided evidence proves it.\n\n"
+        f"User question:\n{request.question}\n\n"
+        f"MOSS request context:\n{context}"
+    )
+
+
+def _make_knowledge_vault_available(monkeypatch) -> None:
+    from backend.app.services import knowledge_index_service
+
+    monkeypatch.setattr(knowledge_index_service, "knowledge_vault_available", lambda: True)
+
+
+def test_prompt_unchanged_when_ontology_unavailable(monkeypatch):
+    from backend.app.ontology import loader as ontology_loader
+
+    request = AgentQueryRequest(
+        question="formal PnL",
+        basis="analytical",
+        filters={"report_date": "2026-06-30"},
+        context={"source": "test"},
+    )
+    monkeypatch.setattr(
+        ontology_loader,
+        "load_ontology_index",
+        lambda: (_ for _ in ()).throw(RuntimeError("ontology offline")),
+    )
+
+    assert service._build_hermes_prompt(request) == _legacy_hermes_prompt(request)
+
+
+def test_prompt_unchanged_when_vault_unavailable(tmp_path, monkeypatch):
+    from backend.app.ontology import loader as ontology_loader
+
+    request = AgentQueryRequest(
+        question="formal PnL",
+        basis="analytical",
+        filters={"report_date": "2026-06-30"},
+        context={"source": "test"},
+    )
+    entity = SimpleNamespace(
+        entity_id="MTR-PNL-001",
+        name="正式PnL",
+        unit="yuan",
+        basis="formal",
+        time_semantics="report_date",
+        status="approved",
+        authority=["docs/metric_dictionary.md#mtr-pnl-001"],
+    )
+    monkeypatch.setattr(
+        ontology_loader,
+        "load_ontology_index",
+        lambda: SimpleNamespace(resolve_from_text=lambda _question: [entity]),
+    )
+    monkeypatch.setenv("MOSS_OBSIDIAN_VAULT_PATH", str(tmp_path / "missing-vault"))
+
+    assert service._build_hermes_prompt(request) == _legacy_hermes_prompt(request)
+
+
+def test_prompt_injects_ontology_when_vault_is_available_without_bound_notes(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.ontology import loader as ontology_loader
+
+    entity = SimpleNamespace(
+        entity_id="MTR-PNL-001",
+        name="正式PnL",
+        unit="yuan",
+        basis="formal",
+        time_semantics="report_date",
+        status="approved",
+        authority=["docs/metric_dictionary.md#mtr-pnl-001"],
+    )
+    monkeypatch.setattr(
+        ontology_loader,
+        "load_ontology_index",
+        lambda: SimpleNamespace(resolve_from_text=lambda _question: [entity]),
+    )
+    monkeypatch.setenv("MOSS_OBSIDIAN_VAULT_PATH", str(tmp_path))
+
+    prompt = service._build_hermes_prompt(AgentQueryRequest(question="解释正式PnL"))
+
+    assert "MOSS ontology context" in prompt
+    assert "MTR-PNL-001" in prompt
+    assert "- note:" not in prompt
+
+
+def test_prompt_injects_entity_and_authority(monkeypatch):
+    from backend.app.ontology import loader as ontology_loader
+    from backend.app.services import knowledge_index_service
+
+    entity = SimpleNamespace(
+        entity_id="MTR-PNL-001",
+        name="正式PnL",
+        unit="yuan",
+        basis="formal",
+        time_semantics="report_date",
+        status="approved",
+        authority=["docs/metric_dictionary.md#mtr-pnl-001"],
+    )
+    monkeypatch.setattr(
+        ontology_loader,
+        "load_ontology_index",
+        lambda: SimpleNamespace(resolve_from_text=lambda _question: [entity]),
+    )
+    monkeypatch.setattr(
+        knowledge_index_service,
+        "knowledge_summaries_for_entities",
+        lambda _entity_ids: ["[MTR-PNL-001] note title: note summary (source: n.md, status: narrative)"],
+    )
+    _make_knowledge_vault_available(monkeypatch)
+
+    prompt = service._build_hermes_prompt(AgentQueryRequest(question="解释正式PnL"))
+
+    assert "MOSS ontology context" in prompt
+    assert "MTR-PNL-001" in prompt
+    assert "authority=docs/metric_dictionary.md#mtr-pnl-001" in prompt
+
+
+def test_prompt_injects_note_summaries(monkeypatch):
+    from backend.app.ontology import loader as ontology_loader
+    from backend.app.services import knowledge_index_service
+
+    entity = SimpleNamespace(
+        entity_id="MTR-PNL-001",
+        name="正式PnL",
+        unit="yuan",
+        basis="formal",
+        time_semantics="report_date",
+        status="approved",
+        authority=["docs/metric_dictionary.md#mtr-pnl-001"],
+    )
+    monkeypatch.setattr(
+        ontology_loader,
+        "load_ontology_index",
+        lambda: SimpleNamespace(resolve_from_text=lambda _question: [entity]),
+    )
+    monkeypatch.setattr(
+        knowledge_index_service,
+        "knowledge_summaries_for_entities",
+        lambda _entity_ids: ["[MTR-PNL-001] note title: note summary (source: n.md, status: narrative)"],
+    )
+    _make_knowledge_vault_available(monkeypatch)
+
+    prompt = service._build_hermes_prompt(AgentQueryRequest(question="解释正式PnL"))
+
+    assert "- note: [MTR-PNL-001] note title: note summary" in prompt
+
+
+def test_prompt_injects_entities_with_and_without_note_summaries(monkeypatch):
+    from backend.app.ontology import loader as ontology_loader
+    from backend.app.services import knowledge_index_service
+
+    matched_entities = [
+        SimpleNamespace(
+            entity_id="MTR-PNL-001",
+            name="正式PnL",
+            unit="yuan",
+            basis="formal",
+            time_semantics="report_date",
+            status="approved",
+            authority=["docs/metric_dictionary.md#mtr-pnl-001"],
+        ),
+        SimpleNamespace(
+            entity_id="MTR-PNL-002",
+            name="公允价值变动",
+            unit="yuan",
+            basis="formal",
+            time_semantics="report_date",
+            status="approved",
+            authority=["docs/metric_dictionary.md#mtr-pnl-002"],
+        ),
+    ]
+    monkeypatch.setattr(
+        ontology_loader,
+        "load_ontology_index",
+        lambda: SimpleNamespace(resolve_from_text=lambda _question: matched_entities),
+    )
+    monkeypatch.setattr(
+        knowledge_index_service,
+        "knowledge_summaries_for_entities",
+        lambda _entity_ids: ["[MTR-PNL-001] note title: note summary"],
+    )
+    _make_knowledge_vault_available(monkeypatch)
+
+    prompt = service._build_hermes_prompt(AgentQueryRequest(question="解释PnL"))
+
+    assert "MTR-PNL-001" in prompt
+    assert "authority=docs/metric_dictionary.md#mtr-pnl-001" in prompt
+    assert "- note: [MTR-PNL-001] note title: note summary" in prompt
+    assert "MTR-PNL-002" in prompt
+    assert "authority=docs/metric_dictionary.md#mtr-pnl-002" in prompt
+
+
+def test_prompt_applies_entity_cap_before_loading_summaries(monkeypatch):
+    from backend.app.ontology import loader as ontology_loader
+    from backend.app.services import knowledge_index_service
+
+    matched_entities = [
+        SimpleNamespace(
+            entity_id=f"MTR-PNL-00{index}",
+            name=f"metric {index}",
+            unit="yuan",
+            basis="formal",
+            time_semantics="report_date",
+            status="approved",
+            authority=[f"docs/metric_dictionary.md#mtr-pnl-00{index}"],
+        )
+        for index in range(1, 5)
+    ]
+    monkeypatch.setattr(
+        ontology_loader,
+        "load_ontology_index",
+        lambda: SimpleNamespace(resolve_from_text=lambda _question: matched_entities),
+    )
+    requested_entity_ids = []
+
+    def _summaries(entity_ids):
+        requested_entity_ids.extend(entity_ids)
+        return ["[MTR-PNL-004] late note: summary"]
+
+    monkeypatch.setattr(knowledge_index_service, "knowledge_summaries_for_entities", _summaries)
+    _make_knowledge_vault_available(monkeypatch)
+
+    prompt = service._build_hermes_prompt(AgentQueryRequest(question="解释PnL"))
+
+    assert requested_entity_ids == ["MTR-PNL-001", "MTR-PNL-002", "MTR-PNL-003"]
+    assert "MTR-PNL-001" in prompt
+    assert "MTR-PNL-002" in prompt
+    assert "MTR-PNL-003" in prompt
+    assert "MTR-PNL-004" not in prompt
+
+
+def test_prompt_block_respects_char_cap(monkeypatch):
+    from backend.app.ontology import loader as ontology_loader
+    from backend.app.services import knowledge_index_service
+
+    entity = SimpleNamespace(
+        entity_id="MTR-PNL-001",
+        name="正" * 3000,
+        unit="yuan",
+        basis="formal",
+        time_semantics="report_date",
+        status="approved",
+        authority=["docs/metric_dictionary.md#mtr-pnl-001"],
+    )
+    monkeypatch.setattr(
+        ontology_loader,
+        "load_ontology_index",
+        lambda: SimpleNamespace(resolve_from_text=lambda _question: [entity]),
+    )
+    monkeypatch.setattr(
+        knowledge_index_service,
+        "knowledge_summaries_for_entities",
+        lambda _entity_ids: ["[MTR-PNL-001] note title: note summary"],
+    )
+    _make_knowledge_vault_available(monkeypatch)
+
+    block = service._build_ontology_context_block("正式PnL")
+
+    assert len(block) <= service._ONTOLOGY_CONTEXT_MAX_CHARS
+
+
+def test_prompt_block_char_cap_keeps_complete_lines(monkeypatch):
+    first_line = "- MTR-PNL-001 | formal PnL | authority=docs/metric_dictionary.md#mtr-pnl-001"
+    second_line = "- note: [MTR-PNL-001] " + ("summary " * 20)
+    monkeypatch.setattr(service, "_ONTOLOGY_CONTEXT_MAX_CHARS", len(first_line))
+
+    block = service._join_ontology_context_lines([first_line, second_line])
+
+    assert block == first_line
+    assert "\n" not in block
+    assert "summary" not in block
+
+
+def test_no_alias_hit_means_no_block():
+    prompt = service._build_hermes_prompt(AgentQueryRequest(question="What is today's meeting agenda?"))
+
+    assert "MOSS ontology context" not in prompt

@@ -100,6 +100,8 @@ _BUSINESS_QUERY_HINTS = (
     "macro",
     "market",
 )
+_ONTOLOGY_CONTEXT_MAX_CHARS = 1500
+_ONTOLOGY_CONTEXT_MAX_ENTITIES = 3
 
 
 def execute_hermes_agent_query(
@@ -681,13 +683,73 @@ def _build_hermes_prompt(request: AgentQueryRequest) -> str:
         "context": request.context,
         "page_context": request.page_context.model_dump(mode="json") if request.page_context else None,
     }
-    return (
+    prompt = (
         "You are Hermes Agent connected to the MOSS business analytics system. "
         "Answer the user's question directly. If you use tools or evidence, summarize the evidence and limitations. "
         "Do not claim formal financial correctness unless the provided evidence proves it.\n\n"
         f"User question:\n{request.question}\n\n"
         f"MOSS request context:\n{context}"
     )
+    ontology_block = _build_ontology_context_block(request.question)
+    if ontology_block:
+        prompt += (
+            "\n\nMOSS ontology context (authoritative semantic anchors; definitions only, no values):\n"
+            f"{ontology_block}\n"
+            "When you rely on these anchors, cite the entity id and authority reference in your answer."
+        )
+    return prompt
+
+
+def _build_ontology_context_block(question: str) -> str:
+    try:
+        from backend.app.ontology.loader import load_ontology_index
+        from backend.app.services.knowledge_index_service import (
+            knowledge_summaries_for_entities,
+            knowledge_vault_available,
+        )
+
+        entities = load_ontology_index().resolve_from_text(question)
+        if not entities:
+            return ""
+        if not knowledge_vault_available():
+            return ""
+    except Exception:
+        return ""
+
+    entities = entities[:_ONTOLOGY_CONTEXT_MAX_ENTITIES]
+    try:
+        summaries = knowledge_summaries_for_entities([entity.entity_id for entity in entities])
+    except Exception:
+        summaries = []
+
+    summaries_by_entity_id = {entity.entity_id: [] for entity in entities}
+    for summary in summaries:
+        entity_id, separator, _ = str(summary).removeprefix("[").partition("]")
+        if separator and entity_id in summaries_by_entity_id:
+            summaries_by_entity_id[entity_id].append(summary)
+
+    lines: list[str] = []
+    for entity in entities:
+        authority = "; ".join(entity.authority[:2]) or "-"
+        lines.append(
+            f"- {entity.entity_id} | {entity.name} | unit={entity.unit or '-'} | "
+            f"basis={entity.basis or '-'} | time={entity.time_semantics or '-'} | "
+            f"status={entity.status} | authority={authority}"
+        )
+        lines.extend(f"- note: {summary}" for summary in summaries_by_entity_id[entity.entity_id])
+    return _join_ontology_context_lines(lines)
+
+
+def _join_ontology_context_lines(lines: list[str]) -> str:
+    accepted: list[str] = []
+    current_length = 0
+    for line in lines:
+        next_length = current_length + len(line) + (1 if accepted else 0)
+        if next_length > _ONTOLOGY_CONTEXT_MAX_CHARS:
+            break
+        accepted.append(line)
+        current_length = next_length
+    return "\n".join(accepted)
 
 
 def _should_answer_open_chat_locally(question: str) -> bool:
