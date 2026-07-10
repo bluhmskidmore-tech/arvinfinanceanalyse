@@ -27,6 +27,7 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.research_calendar_upstream_fetch",
     "backend.app.tasks.macro_toolkit_refresh",
     "backend.app.tasks.livermore_position_snapshot_materialize",
+    "backend.app.tasks.ledger_import",
 )
 
 

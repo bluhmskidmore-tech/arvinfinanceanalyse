@@ -7,6 +7,7 @@ from typing import Any
 import duckdb
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 
 LEDGER_IMPORT_LOCK = LockDefinition(
@@ -89,6 +90,7 @@ class LedgerImportRepository:
         source_version: str,
         rule_version: str,
     ) -> dict[str, Any]:
+        require_repository_task_write_scope("ledger_import.insert")
         duckdb_file = Path(self.path)
         duckdb_file.parent.mkdir(parents=True, exist_ok=True)
         conn = duckdb.connect(str(duckdb_file), read_only=False)

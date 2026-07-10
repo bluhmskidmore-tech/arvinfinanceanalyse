@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import re
 from importlib import import_module
+from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
@@ -11,17 +13,26 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 router = APIRouter(prefix="/api")
+MAX_LEDGER_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+
+
+class _LedgerImportTooLargeError(ValueError):
+    pass
 
 
 def _svc():
     return import_module("backend.app.services.ledger_import_service")
 
 
+def _import_task():
+    return import_module("backend.app.tasks.ledger_import")
+
+
 def _analytics_svc():
     return import_module("backend.app.services.ledger_analytics_service")
 
 
-@router.post("/ledger/import")
+@router.post("/ledger/import", status_code=202)
 async def import_ledger(
     request: Request,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
@@ -36,11 +47,23 @@ async def import_ledger(
             message=str(exc),
             retryable=False,
         )
-    service = _svc().LedgerImportService(str(settings.duckdb_path))
     try:
         _reject_unknown_query_params(request, set())
-        file_name, content = await _extract_multipart_file(request)
-        payload = service.import_file(file_name=file_name, content=content)
+        service_module = _svc()
+        file_name, content = await _extract_multipart_file(
+            request,
+            max_file_bytes=service_module.MAX_LEDGER_IMPORT_BYTES,
+        )
+        suffix = Path(file_name).suffix.lower()
+        if suffix not in service_module.SUPPORTED_SUFFIXES:
+            raise ValueError(f"Unsupported ledger import file type: {suffix or '<none>'}")
+    except _LedgerImportTooLargeError as exc:
+        return _error_response(
+            status_code=413,
+            code="LEDGER_IMPORT_TOO_LARGE",
+            message=str(exc),
+            retryable=False,
+        )
     except ValueError as exc:
         return _error_response(
             status_code=400,
@@ -48,7 +71,18 @@ async def import_ledger(
             message=str(exc),
             retryable=False,
         )
-    except RuntimeError as exc:
+
+    run_id = f"ledger_import:{uuid4().hex}"
+    request_id = f"req_ledger_{uuid4().hex[:12]}"
+    try:
+        task_module = _import_task()
+        task_module.run_ledger_import.send(
+            file_name=file_name,
+            content_base64=base64.b64encode(content).decode("ascii"),
+            duckdb_path=str(settings.duckdb_path),
+            run_id=run_id,
+        )
+    except Exception as exc:
         return _error_response(
             status_code=503,
             code="LEDGER_LOADING_FAILURE",
@@ -56,9 +90,20 @@ async def import_ledger(
             retryable=True,
         )
 
-    if payload.get("error", {}).get("code") == "LEDGER_IMPORT_DUPLICATE":
-        return JSONResponse(status_code=409, content=payload)
-    return payload
+    return JSONResponse(
+        status_code=202,
+        content={
+            "data": {
+                "status": "queued",
+                "run_id": run_id,
+                "file_name": file_name,
+            },
+            "trace": {
+                "request_id": request_id,
+                "run_id": run_id,
+            },
+        },
+    )
 
 
 @router.get("/ledger/imports")
@@ -335,13 +380,20 @@ def _error_response(
     )
 
 
-async def _extract_multipart_file(request: Request) -> tuple[str, bytes]:
+async def _extract_multipart_file(
+    request: Request,
+    *,
+    max_file_bytes: int,
+) -> tuple[str, bytes]:
     content_type = request.headers.get("content-type", "")
     boundary = _multipart_boundary(content_type)
     if boundary is None:
         raise ValueError("Content-Type must be multipart/form-data with a file field.")
 
-    body = await request.body()
+    body = await _read_bounded_request_body(
+        request,
+        max_body_bytes=max_file_bytes + MAX_LEDGER_MULTIPART_OVERHEAD_BYTES,
+    )
     marker = b"--" + boundary
     for raw_part in body.split(marker):
         part = raw_part.strip(b"\r\n")
@@ -370,9 +422,37 @@ async def _extract_multipart_file(request: Request) -> tuple[str, bytes]:
             payload = payload[:-2]
         if not payload:
             raise ValueError("Uploaded ledger file is empty.")
+        if len(payload) > max_file_bytes:
+            raise _LedgerImportTooLargeError(
+                f"Ledger import file is too large. Maximum size is {max_file_bytes} bytes."
+            )
         return filename, payload
 
     raise ValueError("Missing multipart file field named 'file'.")
+
+
+async def _read_bounded_request_body(request: Request, *, max_body_bytes: int) -> bytes:
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared_bytes = int(content_length)
+        except ValueError as exc:
+            raise ValueError("Content-Length must be a non-negative integer.") from exc
+        if declared_bytes < 0:
+            raise ValueError("Content-Length must be a non-negative integer.")
+        if declared_bytes > max_body_bytes:
+            raise _LedgerImportTooLargeError(
+                "Ledger import request is too large."
+            )
+
+    chunks: list[bytes] = []
+    received_bytes = 0
+    async for chunk in request.stream():
+        received_bytes += len(chunk)
+        if received_bytes > max_body_bytes:
+            raise _LedgerImportTooLargeError("Ledger import request is too large.")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _multipart_boundary(content_type: str) -> bytes | None:

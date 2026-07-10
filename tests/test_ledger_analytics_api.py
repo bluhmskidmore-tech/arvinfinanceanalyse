@@ -18,6 +18,7 @@ from tests.test_ledger_import_flow import (
     _ledger_csv_bytes,
     _ledger_row_values,
     _pack_sample,
+    _scoped_import,
 )
 
 LEDGER_READ_HEADERS = {"X-User-Id": "ledger-read-user", "X-User-Role": "viewer"}
@@ -348,7 +349,9 @@ def test_ledger_dashboard_keeps_missing_side_null_but_net_uses_known_side(tmp_pa
             ),
         ],
     )
-    service_mod.LedgerImportService(str(duckdb_path)).import_file(
+    _scoped_import(
+        service_mod,
+        duckdb_path,
         file_name="ZQTZSHOW-20260317.csv",
         content=csv_bytes,
     )
@@ -442,7 +445,9 @@ def test_ledger_dashboard_real_pack_20260317_golden_kpis(tmp_path, monkeypatch):
         "backend.app.services.ledger_import_service",
         "backend/app/services/ledger_import_service.py",
     )
-    service_mod.LedgerImportService(str(duckdb_path)).import_file(
+    _scoped_import(
+        service_mod,
+        duckdb_path,
         file_name=Path(sample).name,
         content=Path(sample).read_bytes(),
     )
@@ -510,7 +515,9 @@ def _import_two_position_fixture(duckdb_path: Path) -> None:
             ),
         ],
     )
-    service_mod.LedgerImportService(str(duckdb_path)).import_file(
+    _scoped_import(
+        service_mod,
+        duckdb_path,
         file_name="ZQTZSHOW-20260317.csv",
         content=csv_bytes,
     )

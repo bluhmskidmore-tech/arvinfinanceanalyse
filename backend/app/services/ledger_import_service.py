@@ -23,6 +23,7 @@ from xlrd import xldate_as_datetime
 RULE_VERSION = "position_key_contract_v1"
 NULL_TEXT = "__NULL__"
 SUPPORTED_SUFFIXES = {".xls", ".xlsx", ".csv"}
+MAX_LEDGER_IMPORT_BYTES = 16 * 1024 * 1024
 LEDGER_SHEET_NAME = "ZQTZSHOW"
 
 
