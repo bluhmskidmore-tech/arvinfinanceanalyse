@@ -30,7 +30,7 @@ RISK_TENSOR_MODULE = ensure_formal_module(
         # Governed downstream derivative of bond_analytics formal facts.
         input_sources=("fact_formal_bond_analytics_daily", "fact_formal_tyw_balance_daily"),
         fact_tables=("fact_formal_risk_tensor_daily",),
-        rule_version="rv_risk_tensor_formal_materialize_v2",
+        rule_version="rv_risk_tensor_formal_materialize_v3",
         result_kind_family="risk-tensor",
         supports_standard_queries=True,
         supports_custom_queries=False,
@@ -145,15 +145,27 @@ def _execute_risk_tensor_materialization(
         governance_dir=governance_dir,
         report_date=report_date,
     )
-    if upstream_lineage is None or not upstream_lineage["source_version"]:
+    lineage_fields = ("source_version", "rule_version", "cache_version")
+    normalized_upstream_lineage = {
+        field_name: str((upstream_lineage or {}).get(field_name) or "").strip()
+        for field_name in lineage_fields
+    }
+    missing_lineage_fields = [
+        field_name
+        for field_name, field_value in normalized_upstream_lineage.items()
+        if not field_value
+    ]
+    if missing_lineage_fields:
         raise FormalComputeMaterializeFailure(
             source_version="sv_risk_tensor_upstream_missing",
             vendor_version="vv_none",
             message=(
-                "risk_tensor requires completed bond_analytics lineage "
-                f"for report_date={report_date}"
+                "risk_tensor requires completed bond_analytics lineage with non-empty "
+                "source_version, rule_version, and cache_version; "
+                f"report_date={report_date}; missing={', '.join(missing_lineage_fields)}"
             ),
         )
+    upstream_lineage = normalized_upstream_lineage
 
     bond_repo = BondAnalyticsRepository(str(duckdb_file))
     rows = bond_repo.fetch_bond_analytics_rows(report_date=report_date)
@@ -234,6 +246,8 @@ def _execute_risk_tensor_materialization(
                 tensor=tensor,
                 source_version=source_version,
                 upstream_source_version=upstream_lineage["source_version"],
+                upstream_rule_version=upstream_lineage["rule_version"],
+                upstream_cache_version=upstream_lineage["cache_version"],
                 liability_source_version=liability_source_version,
                 liability_rule_version=liability_rule_version,
                 rule_version=RULE_VERSION,

@@ -10,11 +10,9 @@ import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
 import type {
-  Numeric,
   ResultMeta,
   RiskScenarioStressPayload,
   RiskScenarioStressRow,
-  RiskTensorChangeMetric,
   RiskTensorPayload,
 } from "../../api/contracts";
 import {
@@ -40,19 +38,13 @@ type RadarKey = (typeof RADAR_META)[number]["key"];
 
 const RADAR_NAVIGATION_TARGETS: Record<RadarKey, string> = {
   duration: "risk-tensor-duration-scope",
-  dv01: "risk-tensor-dv01-controls",
+  dv01: "risk-tensor-regulatory-dv01-kpi",
   convexity: "risk-tensor-convexity-kpi",
   cs01: "risk-tensor-cs01-kpi",
   hhi: "risk-tensor-issuer-concentration-detail",
   liq_ratio: "risk-tensor-liquidity-gap-detail",
 };
 
-const PRIOR_CHANGE_NAVIGATION_TARGETS: Record<string, string> = {
-  dominant_krd_bucket: "risk-tensor-tenor-drill",
-  liquidity_gap_30d_ratio: "risk-tensor-liquidity-gap-detail",
-};
-
-const PRIOR_CHANGE_DV01_KEYS = new Set(["regulatory_dv01", "portfolio_dv01"]);
 const KPI_RADAR_ISSUE_KEYS = new Set(["portfolio_modified_duration", "portfolio_dv01", "portfolio_convexity", "cs01"]);
 
 const chartRowStyle = {
@@ -126,7 +118,6 @@ function displayStr(value: Parameters<typeof bondNumericDisplay>[0]) {
 }
 
 type RiskTensorDisplayValue = Parameters<typeof bondNumericDisplay>[0];
-type PriorMetricValueKey = "current" | "previous" | "delta";
 type KrdChartClickParams = { name?: unknown };
 
 const YUAN_PER_WAN = 10_000;
@@ -156,7 +147,7 @@ const MAIN_PAYLOAD_NUMERIC_FIELDS = [
   { key: "liquidity_gap_30d_ratio", label: "liquidity_gap_30d_ratio" },
   { key: "total_market_value", label: "total_market_value" },
 ] as const;
-const OPTIONAL_DURATION_COVERAGE_FIELDS = [
+const REQUIRED_DURATION_SCOPE_FIELDS = [
   { key: "rate_risk_market_value", label: "rate_risk_market_value" },
   { key: "rate_risk_dv01", label: "rate_risk_dv01" },
   { key: "rate_risk_modified_duration", label: "rate_risk_modified_duration" },
@@ -215,14 +206,18 @@ function riskTensorPayloadQualityIssues(result: RiskTensorPayload) {
     const issue = riskTensorScalarIssue(result[field.key]);
     return issue ? [{ ...field, issue }] : [];
   });
-  const durationCoverageIssues = OPTIONAL_DURATION_COVERAGE_FIELDS.flatMap((field) => {
-    if (!Object.prototype.hasOwnProperty.call(result, field.key)) {
-      return [];
-    }
+  const durationCoverageIssues = REQUIRED_DURATION_SCOPE_FIELDS.flatMap((field) => {
     const issue = riskTensorScalarIssue(result[field.key]);
     return issue ? [{ ...field, issue }] : [];
   });
-  return [...mainIssues, ...durationCoverageIssues];
+  const excludedCountIssue =
+    typeof result.duration_excluded_count !== "number" ||
+    !Number.isFinite(result.duration_excluded_count) ||
+    result.duration_excluded_count < 0 ||
+    !Number.isInteger(result.duration_excluded_count)
+      ? [{ key: "duration_excluded_count", label: "duration_excluded_count", issue: "缺失或无效" }]
+      : [];
+  return [...mainIssues, ...durationCoverageIssues, ...excludedCountIssue];
 }
 
 function amountUnit(value: RiskTensorDisplayValue, unit: string) {
@@ -273,18 +268,6 @@ function yuanAsYiWithUnit(value: RiskTensorDisplayValue) {
 function yuanAsWanMagnitudeOrNull(value: RiskTensorDisplayValue) {
   const raw = riskTensorRawOrNull(value);
   return raw === null ? null : raw / YUAN_PER_WAN;
-}
-
-function isWanAmountMetric(key: string) {
-  return key === "portfolio_dv01" || key === "regulatory_dv01" || key === "cs01" || key.startsWith("krd_");
-}
-
-function priorMetricDisplay(metric: RiskTensorChangeMetric, key: PriorMetricValueKey) {
-  if (!isWanAmountMetric(metric.key)) {
-    const displayKey = `${key}_display` as const;
-    return metric[displayKey];
-  }
-  return yuanAsWanWithUnit(metric[key] as Numeric);
 }
 
 function chartMagnitudeOrNull(value: RiskTensorDisplayValue) {
@@ -342,13 +325,6 @@ function durationExclusionTone(result: RiskTensorPayload) {
     return "warning";
   }
   return "default";
-}
-
-function priorMetricTone(tone: string) {
-  if (tone === "good" || tone === "warning") {
-    return tone;
-  }
-  return "neutral";
 }
 
 function qualityFlagLabel(flag: string | undefined) {
@@ -471,17 +447,6 @@ function riskTensorErrorMessage(statusCode: string) {
   return "风险张量主读面加载失败";
 }
 
-function requiredActionSummary(actions: NonNullable<RiskTensorPayload["dv01_controls"]>["control_actions"] | undefined) {
-  if (!actions) {
-    return "控制项未接入";
-  }
-  const required = actions.filter((item) => item.status === "required");
-  if (required.length === 0) {
-    return "暂无必做项";
-  }
-  return `${required.length} 项必做`;
-}
-
 function dynamicAxisMax(raw: number, fallback: number) {
   const base = Math.abs(raw) * 1.5;
   if (!Number.isFinite(base) || base === 0) {
@@ -525,65 +490,6 @@ function regulatoryDv01Tone(value: RiskTensorPayload["regulatory_dv01"]) {
     return "warning";
   }
   return toneFromSignedDisplayString(regulatoryDv01Display(value));
-}
-
-function dv01ControlStatusLabel(status: string) {
-  if (status === "pending_configuration") {
-    return "限额待配置";
-  }
-  if (status === "ok") {
-    return "限额内";
-  }
-  if (status === "near") {
-    return "接近限额";
-  }
-  if (status === "breach") {
-    return "已超限";
-  }
-  return status;
-}
-
-function dv01ControlStatusDescription(status: string) {
-  if (status === "pending_configuration") {
-    return "暂不判定超限";
-  }
-  if (status === "ok") {
-    return "可承受";
-  }
-  if (status === "near") {
-    return "接近预警";
-  }
-  if (status === "breach") {
-    return "需要处置";
-  }
-  return "状态待核对";
-}
-
-function dv01VolatilityLabel(status: string) {
-  if (status === "pending_market_volatility") {
-    return "波动源待接入";
-  }
-  return status;
-}
-
-function dv01VolatilityDescription(status: string) {
-  if (status === "pending_market_volatility") {
-    return "未接入利率波动率源，先看标准冲击。";
-  }
-  return "波动输入已接入。";
-}
-
-function dv01ControlActionStatusLabel(status: string) {
-  if (status === "required") {
-    return "必做项";
-  }
-  if (status === "done") {
-    return "已完成";
-  }
-  if (status === "watch") {
-    return "观察项";
-  }
-  return "待核对";
 }
 
 function scenarioStressCategoryLabel(category: RiskScenarioStressRow["category"]) {
@@ -761,22 +667,6 @@ export default function RiskTensorPage() {
     "idle" | "copied" | "failed"
   >("idle");
   const [combinedQualityRequestCopiedStateKey, setCombinedQualityRequestCopiedStateKey] = useState("");
-  const [dv01MissingControlsCopyStatus, setDv01MissingControlsCopyStatus] = useState<"idle" | "copied" | "failed">(
-    "idle",
-  );
-  const [dv01MissingControlsCopiedStateKey, setDv01MissingControlsCopiedStateKey] = useState("");
-  const [dv01PendingInputsCopyStatus, setDv01PendingInputsCopyStatus] = useState<"idle" | "copied" | "failed">(
-    "idle",
-  );
-  const [dv01PendingInputsCopiedStateKey, setDv01PendingInputsCopiedStateKey] = useState("");
-  const [dv01StressScenariosCopyStatus, setDv01StressScenariosCopyStatus] = useState<
-    "idle" | "copied" | "failed"
-  >("idle");
-  const [dv01StressScenariosCopiedStateKey, setDv01StressScenariosCopiedStateKey] = useState("");
-  const [dv01ControlActionsCopyStatus, setDv01ControlActionsCopyStatus] = useState<"idle" | "copied" | "failed">(
-    "idle",
-  );
-  const [dv01ControlActionsCopiedStateKey, setDv01ControlActionsCopiedStateKey] = useState("");
   const [qualityWarningsCopyStatus, setQualityWarningsCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [qualityWarningsCopiedStateKey, setQualityWarningsCopiedStateKey] = useState("");
   const [tensorErrorCopyStatus, setTensorErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
@@ -794,9 +684,6 @@ export default function RiskTensorPage() {
   const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [emptyPositionCopiedStateKey, setEmptyPositionCopiedStateKey] = useState("");
   const emptyPositionCopyStateKeyRef = useRef("");
-  const [priorPeriodCopyStatus, setPriorPeriodCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
-  const [priorPeriodCopiedStateKey, setPriorPeriodCopiedStateKey] = useState("");
-
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
     queryFn: () => client.getRiskTensorDates(),
@@ -929,15 +816,10 @@ export default function RiskTensorPage() {
     if (tenorRows.length === 0) {
       return undefined;
     }
-    const backendBucket = result?.dv01_controls?.dominant_krd_bucket;
-    const backendRow = backendBucket ? tenorRows.find((row) => row.tenor === backendBucket) : undefined;
-    if (backendRow && backendRow.magnitude !== null) {
-      return backendRow;
-    }
     return [...tenorRows]
       .filter((row) => row.magnitude !== null)
       .sort((left, right) => Math.abs(right.magnitude ?? 0) - Math.abs(left.magnitude ?? 0))[0];
-  }, [result?.dv01_controls?.dominant_krd_bucket, tenorRows]);
+  }, [tenorRows]);
 
   useEffect(() => {
     if (tenorRows.length === 0) {
@@ -961,57 +843,20 @@ export default function RiskTensorPage() {
   const blockedReportDateSummary = `${blockedReportDates.length} 个陈旧日期已拦截`;
   const metadataTablesUsed = tensorMeta?.tables_used?.filter(Boolean).join(" / ") ?? "";
   const metadataFiltersApplied = filtersAppliedLabel(tensorMeta?.filters_applied);
-  const primaryTenor = dominantTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
-  const primaryTenorValue = dominantTenorRow
-    ? yuanAsWanWithUnit(dominantTenorRow.value)
-    : result?.dv01_controls
-      ? yuanAsWanWithUnit(result.dv01_controls.dominant_krd)
-      : "--";
+  const primaryTenor = dominantTenorRow?.tenor ?? "--";
+  const primaryTenorValue = dominantTenorRow ? yuanAsWanWithUnit(dominantTenorRow.value) : "--";
   const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
-  const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
-  const dv01ControlsMissing = Boolean(result && !result.dv01_controls);
-  const dv01ControlInputsPending = Boolean(
-    result?.dv01_controls &&
-      (result.dv01_controls.limit_status === "pending_configuration" ||
-        result.dv01_controls.volatility_status === "pending_market_volatility"),
-  );
-  const firstRequiredAction = requiredActions[0];
-  const priorPeriodChange = result?.prior_period_change ?? null;
-  const priorPeriodMetrics = priorPeriodChange?.metrics ?? [];
-  const priorPeriodMetricsStateKey = JSON.stringify(
-    priorPeriodMetrics.map((metric) => ({
-      key: metric.key,
-      label: metric.label,
-      current: metric.current,
-      previous: metric.previous,
-      delta: metric.delta,
-      current_display: metric.current_display,
-      previous_display: metric.previous_display,
-      delta_display: metric.delta_display,
-      direction: metric.direction,
-      tone: metric.tone,
-      interpretation: metric.interpretation,
-    })),
-  );
-  const priorPeriodSummary =
-    priorPeriodChange?.summary ?? `后端未返回上期变化载荷；trace_id ${tensorMeta?.trace_id ?? "未提供"}。`;
-  const priorPeriodDiagnosticsStatus = priorPeriodChange?.status ?? "missing";
   const actionTileDetail =
-    firstRequiredAction?.title ??
-    (dv01ControlsMissing ? "后端未返回限额控制载荷，请先核对 DV01 控制诊断。" : null) ??
     result?.warnings[0] ??
-    "后端未返回必做控制动作，继续按质量标记和明细核对。";
-  const actionTileCanJump = Boolean(
-    result && (dv01ControlsMissing || requiredActions.length > 0 || result.dv01_controls || result.warnings.length > 0),
-  );
-  const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 || (result?.warnings.length ?? 0) > 0 ? "warning" : "ok";
+    "当前 formal 读面无待补信息；压力估算请在独立 scenario 面复核。";
+  const actionTileCanJump = Boolean(result?.warnings.length);
+  const actionTileTone = (result?.warnings.length ?? 0) > 0 ? "warning" : "ok";
+  const actionTileSummary = result?.warnings.length ? `${result.warnings.length} 条需核对` : "暂无待补项";
   const showDurationScope = result ? hasDurationScopeDisclosure(result) : false;
   const radarNavigationItems = result
     ? RADAR_META.map((item) => {
         const targetTestId =
-          item.key === "dv01" && !result.dv01_controls
-            ? "risk-tensor-dv01-missing-controls"
-            : item.key === "duration" && !showDurationScope
+          item.key === "duration" && !showDurationScope
             ? "risk-tensor-duration-kpi"
             : RADAR_NAVIGATION_TARGETS[item.key];
         return {
@@ -1021,18 +866,6 @@ export default function RiskTensorPage() {
         };
       })
     : [];
-  const priorChangeTargetFor = (metricKey: string) => {
-    if (PRIOR_CHANGE_DV01_KEYS.has(metricKey)) {
-      if (result?.dv01_controls) {
-        return "risk-tensor-dv01-controls";
-      }
-      return metricKey === "regulatory_dv01" ? "risk-tensor-regulatory-dv01-kpi" : "risk-tensor-portfolio-dv01-kpi";
-    }
-    if (metricKey === "dominant_krd_bucket" && !selectedTenorRow && invalidKrdRows.length > 0) {
-      return "risk-tensor-krd-quality-note";
-    }
-    return PRIOR_CHANGE_NAVIGATION_TARGETS[metricKey];
-  };
   const topLineSummary = result
     ? [
         `主风险桶 ${primaryTenor}`,
@@ -1062,7 +895,7 @@ export default function RiskTensorPage() {
   }；tables_used ${metadataTablesUsed || "未提供"}；filters_applied ${metadataFiltersApplied || "未提供"}`;
   const payloadQualityIssues = result ? riskTensorPayloadQualityIssues(result) : [];
   const durationCoverageQualityIssues = payloadQualityIssues.filter((item) =>
-    OPTIONAL_DURATION_COVERAGE_FIELDS.some((field) => field.key === item.key),
+    item.key === "duration_excluded_count" || REQUIRED_DURATION_SCOPE_FIELDS.some((field) => field.key === item.key),
   );
   const payloadQualityIssueLabels = payloadQualityIssues.map((item) => `${item.label} ${item.issue}`);
   const payloadQualityIssueSummary = payloadQualityIssueLabels.join(" / ");
@@ -1089,23 +922,6 @@ export default function RiskTensorPage() {
   const qualityFlagStateKey = `quality_flag:${result?.quality_flag ?? tensorMeta?.quality_flag ?? "missing"}`;
   const qualityResultKindStateKey = `result_kind:${tensorMeta?.result_kind ?? "missing"}`;
   const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}|${qualityFallbackStateKey}|${qualityIssuanceStateKey}|${qualityWarningStateKey}|${qualityBlockedDateStateKey}|${qualityFlagStateKey}|${qualityResultKindStateKey}`;
-  const dv01ControlsStateKey = [
-    `regulatory_dv01:${displayStr(result?.regulatory_dv01 ?? undefined)}`,
-    `limit_status:${result?.dv01_controls?.limit_status ?? "missing"}`,
-    `approved_limit_dv01:${displayStr(result?.dv01_controls?.approved_limit_dv01 ?? undefined)}`,
-    `limit_usage_ratio:${displayStr(result?.dv01_controls?.limit_usage_ratio ?? undefined)}`,
-    `volatility_status:${result?.dv01_controls?.volatility_status ?? "missing"}`,
-    `daily_rate_volatility_bp:${displayStr(result?.dv01_controls?.daily_rate_volatility_bp ?? undefined)}`,
-    `stress:${(result?.dv01_controls?.stress_scenarios ?? [])
-      .map((item) => `${item.scenario_key}:${displayStr(item.shock_bp)}:${displayStr(item.estimated_pnl_impact)}`)
-      .join("/")}`,
-    `actions:${(result?.dv01_controls?.control_actions ?? [])
-      .map((item) => `${item.key}:${item.status}:${item.title}:${item.evidence}:${item.action}`)
-      .join("/")}`,
-    `message:${result?.dv01_controls?.control_message ?? "missing"}`,
-    `hint:${result?.dv01_controls?.action_hint ?? "missing"}`,
-  ].join("|");
-  const dv01ControlActionsCurrentStateKey = `${qualityStateKey}|${dv01ControlsStateKey}`;
 
   useEffect(() => {
     setQualityEvidenceCopyStatus("idle");
@@ -1122,21 +938,9 @@ export default function RiskTensorPage() {
     setPayloadQualityRequestCopiedStateKey("");
     setCombinedQualityRequestCopyStatus("idle");
     setCombinedQualityRequestCopiedStateKey("");
-    setDv01MissingControlsCopyStatus("idle");
     setQualityWarningsCopyStatus("idle");
     setQualityWarningsCopiedStateKey("");
   }, [qualityStateKey]);
-
-  useEffect(() => {
-    setDv01MissingControlsCopyStatus("idle");
-    setDv01MissingControlsCopiedStateKey("");
-    setDv01PendingInputsCopyStatus("idle");
-    setDv01PendingInputsCopiedStateKey("");
-    setDv01StressScenariosCopyStatus("idle");
-    setDv01StressScenariosCopiedStateKey("");
-    setDv01ControlActionsCopyStatus("idle");
-    setDv01ControlActionsCopiedStateKey("");
-  }, [qualityStateKey, dv01ControlsStateKey]);
   const qualityEvidenceReviewItems = [
     {
       key: "evidence_rows",
@@ -1225,79 +1029,6 @@ export default function RiskTensorPage() {
     "",
     qualityEvidenceRequestCopyText,
   ].join("\n");
-  const dv01MissingControlsCopyText = [
-    "风险张量 DV01 控制载荷缺失排查信息",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    `监管口径 DV01 ${result ? regulatoryDv01DisplayWithUnit(result.regulatory_dv01) : "未提供"}`,
-    "dv01_controls 未提供",
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    "页面不会在前端补算 DV01 控制载荷",
-    "请核对正式风险张量主读载荷、DV01 限额控制配置和 result_meta 证据",
-  ].join("\n");
-  const dv01PendingInputsCopyText = [
-    "风险张量 DV01 控制输入排查信息",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    `监管口径 DV01 ${result ? regulatoryDv01DisplayWithUnit(result.regulatory_dv01) : "未提供"}`,
-    `limit_status ${result?.dv01_controls ? dv01ControlStatusLabel(result.dv01_controls.limit_status) : "未提供"}`,
-    `approved_limit_dv01 ${result?.dv01_controls ? yuanAsWanWithUnit(result.dv01_controls.approved_limit_dv01 ?? undefined) : "未提供"}`,
-    `limit_usage_ratio ${result?.dv01_controls ? ratioPercentDisplay(result.dv01_controls.limit_usage_ratio) : "未提供"}`,
-    `volatility_status ${result?.dv01_controls ? dv01VolatilityLabel(result.dv01_controls.volatility_status) : "未提供"}`,
-    `daily_rate_volatility_bp ${result?.dv01_controls ? displayStr(result.dv01_controls.daily_rate_volatility_bp) : "未提供"}`,
-    `stress_scenarios_count ${result?.dv01_controls?.stress_scenarios.length ?? 0}`,
-    `control_actions_count ${result?.dv01_controls?.control_actions.length ?? 0}`,
-    `action_hint ${result?.dv01_controls?.action_hint ?? "未提供"}`,
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    "页面不会在前端补算 DV01 控制输入",
-    "请补充正式限额源、利率波动输入或控制动作明细后重新出具",
-  ].join("\n");
-  const dv01StressScenariosCopyText = [
-    "风险张量 DV01 压力情景排查信息",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    `监管口径 DV01 ${result ? regulatoryDv01DisplayWithUnit(result.regulatory_dv01) : "未提供"}`,
-    `limit_status ${result?.dv01_controls ? dv01ControlStatusLabel(result.dv01_controls.limit_status) : "未提供"}`,
-    `approved_limit_dv01 ${result?.dv01_controls ? yuanAsWanWithUnit(result.dv01_controls.approved_limit_dv01 ?? undefined) : "未提供"}`,
-    `limit_usage_ratio ${result?.dv01_controls ? ratioPercentDisplay(result.dv01_controls.limit_usage_ratio) : "未提供"}`,
-    `volatility_status ${result?.dv01_controls ? dv01VolatilityLabel(result.dv01_controls.volatility_status) : "未提供"}`,
-    `daily_rate_volatility_bp ${result?.dv01_controls ? displayStr(result.dv01_controls.daily_rate_volatility_bp) : "未提供"}`,
-    `stress_scenarios_count ${result?.dv01_controls?.stress_scenarios.length ?? 0}`,
-    `control_actions_count ${result?.dv01_controls?.control_actions.length ?? 0}`,
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    "页面不会在前端补算 DV01 压力情景",
-    "请补充正式压力情景生成结果后重新出具",
-  ].join("\n");
-  const dv01ControlActionsCopyText = [
-    "风险张量 DV01 控制处置清单",
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
-    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
-    ...qualityIssuanceCopyLines,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    `control_status ${result?.dv01_controls ? dv01ControlStatusLabel(result.dv01_controls.limit_status) : "未提供"}`,
-    `volatility_status ${
-      result?.dv01_controls ? dv01VolatilityLabel(result.dv01_controls.volatility_status) : "未提供"
-    }`,
-    `control_actions_count ${result?.dv01_controls?.control_actions.length ?? 0}`,
-    ...(result?.dv01_controls?.control_actions.length
-      ? result.dv01_controls.control_actions.flatMap((item) => [
-          `${item.key} ${item.status} ${item.title}`,
-          `证据 ${item.evidence}`,
-          `处置 ${item.action}`,
-        ])
-      : ["control_actions 后端未返回处置动作", `action_hint ${result?.dv01_controls?.action_hint ?? "未提供"}`]),
-  ].join("\n");
   const qualityWarningsCopyText = [
     "风险张量质量预警清单",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
@@ -1362,38 +1093,6 @@ export default function RiskTensorPage() {
       ? "已复制完整补证包"
       : combinedQualityRequestCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择完整补证包"
-        : "";
-  const dv01MissingControlsCopyStatusForCurrentState =
-    dv01MissingControlsCopiedStateKey === dv01ControlsStateKey ? dv01MissingControlsCopyStatus : "idle";
-  const dv01MissingControlsCopyMessage =
-    dv01MissingControlsCopyStatusForCurrentState === "copied"
-      ? "已复制控制排查信息"
-      : dv01MissingControlsCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择控制排查信息"
-        : "";
-  const dv01PendingInputsCopyStatusForCurrentState =
-    dv01PendingInputsCopiedStateKey === dv01ControlsStateKey ? dv01PendingInputsCopyStatus : "idle";
-  const dv01PendingInputsCopyMessage =
-    dv01PendingInputsCopyStatusForCurrentState === "copied"
-      ? "已复制输入排查信息"
-      : dv01PendingInputsCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择输入排查信息"
-        : "";
-  const dv01StressScenariosCopyStatusForCurrentState =
-    dv01StressScenariosCopiedStateKey === dv01ControlsStateKey ? dv01StressScenariosCopyStatus : "idle";
-  const dv01StressScenariosCopyMessage =
-    dv01StressScenariosCopyStatusForCurrentState === "copied"
-      ? "已复制压力情景排查信息"
-      : dv01StressScenariosCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择压力情景排查信息"
-        : "";
-  const dv01ControlActionsCopyStatusForCurrentState =
-    dv01ControlActionsCopiedStateKey === dv01ControlActionsCurrentStateKey ? dv01ControlActionsCopyStatus : "idle";
-  const dv01ControlActionsCopyMessage =
-    dv01ControlActionsCopyStatusForCurrentState === "copied"
-      ? "已复制处置清单"
-      : dv01ControlActionsCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择处置清单"
         : "";
   const qualityWarningsCopyMessage =
     qualityWarningsCopiedStateKey === qualityStateKey && qualityWarningsCopyStatus === "copied"
@@ -1535,38 +1234,6 @@ export default function RiskTensorPage() {
       : emptyPositionCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择空持仓排查信息"
         : "";
-  const priorPeriodCopyText = [
-    "风险张量较上期变化排查信息",
-    `报告日 ${result?.report_date ?? (reportDate || "未选择")}`,
-    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
-    `状态 ${priorPeriodDiagnosticsStatus}`,
-    `对比日期 ${priorPeriodChange?.comparison_report_date ?? "未提供"}`,
-    `摘要 ${priorPeriodSummary}`,
-    `metrics_count ${priorPeriodMetrics.length}`,
-    ...priorPeriodMetrics.flatMap((metric, index) => [
-      `metric[${index + 1}] ${metric.label}`,
-      `current ${metric.current_display || metric.current.display}`,
-      `previous ${metric.previous_display || metric.previous.display}`,
-      `delta ${metric.delta_display || metric.delta.display}`,
-      `interpretation ${metric.interpretation}`,
-    ]),
-    `quality_flag ${result?.quality_flag ?? tensorMeta?.quality_flag ?? "未提供"}`,
-    `basis ${tensorMeta?.basis ?? "未提供"}`,
-    `cache_version ${tensorMeta?.cache_version ?? "未提供"}`,
-    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
-    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
-    "页面不会在前端补算较上期变化指标",
-    "请核对正式风险张量主读载荷和上期报告日物化结果",
-  ].join("\n");
-  const priorPeriodCopyStateKey = priorPeriodCopyText;
-  const priorPeriodCopyStatusForCurrentState =
-    priorPeriodCopiedStateKey === priorPeriodCopyStateKey ? priorPeriodCopyStatus : "idle";
-  const priorPeriodCopyMessage =
-    priorPeriodCopyStatusForCurrentState === "copied"
-      ? "已复制上期排查信息"
-      : priorPeriodCopyStatusForCurrentState === "failed"
-        ? "复制失败，请手动选择上期排查信息"
-        : "";
 
   useEffect(() => {
     setTensorErrorCopyStatus("idle");
@@ -1594,24 +1261,6 @@ export default function RiskTensorPage() {
     setEmptyPositionCopiedStateKey("");
   }, [emptyPositionCopyStateKey]);
 
-  useEffect(() => {
-    setPriorPeriodCopyStatus("idle");
-    setPriorPeriodCopiedStateKey("");
-  }, [
-    result?.report_date,
-    priorPeriodDiagnosticsStatus,
-    priorPeriodChange?.comparison_report_date,
-    priorPeriodSummary,
-    priorPeriodMetricsStateKey,
-    result?.quality_flag,
-    tensorMeta?.quality_flag,
-    tensorMeta?.trace_id,
-    tensorMeta?.basis,
-    tensorMeta?.cache_version,
-    tensorMeta?.source_version,
-    tensorMeta?.rule_version,
-  ]);
-
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
       scrollRiskTensorTargetIntoView(
@@ -1628,12 +1277,6 @@ export default function RiskTensorPage() {
   const handleQualityDetailJump = () => {
     scrollRiskTensorTargetIntoView(
       document.querySelector<HTMLElement>('[data-testid="risk-tensor-quality-detail"]'),
-    );
-  };
-
-  const handleDv01ControlsJump = () => {
-    scrollRiskTensorTargetIntoView(
-      document.querySelector<HTMLElement>('[data-testid="risk-tensor-dv01-controls"]'),
     );
   };
 
@@ -1733,82 +1376,6 @@ export default function RiskTensorPage() {
       .catch(() => {
         setCombinedQualityRequestCopiedStateKey(copiedStateKey);
         setCombinedQualityRequestCopyStatus("failed");
-      });
-  };
-
-  const handleCopyDv01ControlActions = () => {
-    const copiedStateKey = dv01ControlActionsCurrentStateKey;
-    setDv01ControlActionsCopiedStateKey(copiedStateKey);
-    if (!navigator.clipboard?.writeText) {
-      setDv01ControlActionsCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(dv01ControlActionsCopyText)
-      .then(() => {
-        setDv01ControlActionsCopiedStateKey(copiedStateKey);
-        setDv01ControlActionsCopyStatus("copied");
-      })
-      .catch(() => {
-        setDv01ControlActionsCopiedStateKey(copiedStateKey);
-        setDv01ControlActionsCopyStatus("failed");
-      });
-  };
-
-  const handleCopyDv01MissingControls = () => {
-    const copiedStateKey = dv01ControlsStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setDv01MissingControlsCopiedStateKey(copiedStateKey);
-      setDv01MissingControlsCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(dv01MissingControlsCopyText)
-      .then(() => {
-        setDv01MissingControlsCopiedStateKey(copiedStateKey);
-        setDv01MissingControlsCopyStatus("copied");
-      })
-      .catch(() => {
-        setDv01MissingControlsCopiedStateKey(copiedStateKey);
-        setDv01MissingControlsCopyStatus("failed");
-      });
-  };
-
-  const handleCopyDv01PendingInputs = () => {
-    const copiedStateKey = dv01ControlsStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setDv01PendingInputsCopiedStateKey(copiedStateKey);
-      setDv01PendingInputsCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(dv01PendingInputsCopyText)
-      .then(() => {
-        setDv01PendingInputsCopiedStateKey(copiedStateKey);
-        setDv01PendingInputsCopyStatus("copied");
-      })
-      .catch(() => {
-        setDv01PendingInputsCopiedStateKey(copiedStateKey);
-        setDv01PendingInputsCopyStatus("failed");
-      });
-  };
-
-  const handleCopyDv01StressScenarios = () => {
-    const copiedStateKey = dv01ControlsStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setDv01StressScenariosCopiedStateKey(copiedStateKey);
-      setDv01StressScenariosCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(dv01StressScenariosCopyText)
-      .then(() => {
-        setDv01StressScenariosCopiedStateKey(copiedStateKey);
-        setDv01StressScenariosCopyStatus("copied");
-      })
-      .catch(() => {
-        setDv01StressScenariosCopiedStateKey(copiedStateKey);
-        setDv01StressScenariosCopyStatus("failed");
       });
   };
 
@@ -2019,25 +1586,6 @@ export default function RiskTensorPage() {
       });
   };
 
-  const handleCopyPriorPeriodDiagnostics = () => {
-    const copiedStateKey = priorPeriodCopyStateKey;
-    if (!navigator.clipboard?.writeText) {
-      setPriorPeriodCopiedStateKey(copiedStateKey);
-      setPriorPeriodCopyStatus("failed");
-      return;
-    }
-    void navigator.clipboard
-      .writeText(priorPeriodCopyText)
-      .then(() => {
-        setPriorPeriodCopiedStateKey(copiedStateKey);
-        setPriorPeriodCopyStatus("copied");
-      })
-      .catch(() => {
-        setPriorPeriodCopiedStateKey(copiedStateKey);
-        setPriorPeriodCopyStatus("failed");
-      });
-  };
-
   const handleKrdTenorSelect = (row: (typeof tenorRows)[number], options?: { scrollToDrill?: boolean }) => {
     if (row.magnitude === null) {
       scrollRiskTensorTargetIntoView(
@@ -2062,38 +1610,11 @@ export default function RiskTensorPage() {
     handleKrdTenorSelect(row, { scrollToDrill: true });
   };
 
-  const handlePriorChangeMetricJump = (metric: RiskTensorChangeMetric, targetTestId: string) => {
-    if (metric.key === "dominant_krd_bucket") {
-      const tenor = metric.current_display || metric.current.display;
-      const row = tenorRows.find((item) => item.tenor === tenor);
-      if (row) {
-        handleKrdTenorSelect(row, { scrollToDrill: true });
-        return;
-      }
-      const qualityNote = document.querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]');
-      if (qualityNote) {
-        scrollRiskTensorTargetIntoView(qualityNote);
-        return;
-      }
-    }
-    handleSectionJump(targetTestId);
-  };
-
   const handleRequiredInformationJump = () => {
-    const targetTestId =
-      requiredActions.length > 0
-        ? "risk-tensor-dv01-actions"
-        : dv01ControlsMissing
-          ? "risk-tensor-dv01-missing-controls"
-        : result?.warnings.length
-          ? "risk-tensor-quality-detail"
-          : result?.dv01_controls
-            ? "risk-tensor-dv01-controls"
-            : null;
-    if (!targetTestId) {
+    if (!result?.warnings.length) {
       return;
     }
-    scrollRiskTensorTargetIntoView(document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`));
+    handleQualityDetailJump();
   };
 
   const radarChartOption = useMemo((): EChartsOption | null => {
@@ -2510,9 +2031,7 @@ export default function RiskTensorPage() {
                 <span>风险判读</span>
                 <h2>{topLineSummary}</h2>
                 <p>
-                  {result.prior_period_change?.summary ??
-                    result.dv01_controls?.operating_judgement ??
-                    "暂无可比上期，当前仅展示截面风险读数。"}
+                  当前仅展示已物化的 formal 截面风险读数；压力估算与处置判断由下方独立 scenario 面承载。
                 </p>
                 {conclusionNeedsQualityReview ? (
                   <button
@@ -2565,66 +2084,19 @@ export default function RiskTensorPage() {
                     KRD {primaryTenorValue}，按后端 KRD 桶绝对值定位。
                   </span>
                 </button>
-                {result.dv01_controls ? (
-                  <button
-                    type="button"
-                    className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
-                    data-testid="risk-tensor-dv01-controls-action"
-                    data-tone="warning"
-                    onClick={handleDv01ControlsJump}
-                  >
-                    <span>DV01 控制</span>
-                    <strong>{dv01ControlStatusLabel(result.dv01_controls.limit_status)}</strong>
-                    <span className="risk-tensor-brief__tile-detail">
-                      监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；{result.dv01_controls.control_message}
-                    </span>
-                  </button>
-                ) : (
-                  <article
-                    className="risk-tensor-brief__tile"
-                    data-testid="risk-tensor-dv01-missing-controls"
-                    data-tone="warning"
-                  >
-                    <span>DV01 控制</span>
-                    <strong>控制未接入</strong>
-                    <p>监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；后端未返回限额控制载荷。</p>
-                    <button
-                      type="button"
-                      className="risk-tensor-brief__link-button"
-                      onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
-                    >
-                      定位元数据
-                    </button>
-                    <button
-                      type="button"
-                      className="risk-tensor-brief__link-button"
-                      onClick={handleRetryTensorMainRead}
-                    >
-                      重试主读面
-                    </button>
-                    <button
-                      type="button"
-                      className="risk-tensor-brief__link-button"
-                      onClick={handleCopyDv01MissingControls}
-                    >
-                      复制控制排查信息
-                    </button>
-                    {dv01MissingControlsCopyMessage ? (
-                      <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
-                        {dv01MissingControlsCopyMessage}
-                      </small>
-                    ) : null}
-                    {dv01MissingControlsCopyStatusForCurrentState === "failed" ? (
-                      <pre
-                        className="risk-tensor-quality-detail__manual-copy"
-                        data-testid="risk-tensor-dv01-missing-controls-manual-copy"
-                        tabIndex={0}
-                      >
-                        {dv01MissingControlsCopyText}
-                      </pre>
-                    ) : null}
-                  </article>
-                )}
+                <button
+                  type="button"
+                  className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
+                  data-testid="risk-tensor-scenario-stress-action"
+                  data-tone="neutral"
+                  onClick={() => handleSectionJump("risk-tensor-scenario-stress")}
+                >
+                  <span>压力情景</span>
+                  <strong>独立 scenario 面</strong>
+                  <span className="risk-tensor-brief__tile-detail">
+                    监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；不在 formal 读面补算冲击与限额。
+                  </span>
+                </button>
                 <button
                   type="button"
                   className="risk-tensor-brief__tile risk-tensor-brief__tile--action"
@@ -2674,13 +2146,13 @@ export default function RiskTensorPage() {
                     onClick={handleRequiredInformationJump}
                   >
                     <span>待补信息</span>
-                    <strong>{requiredActionSummary(result.dv01_controls?.control_actions)}</strong>
+                    <strong>{actionTileSummary}</strong>
                     <span className="risk-tensor-brief__tile-detail">{actionTileDetail}</span>
                   </button>
                 ) : (
                   <article className="risk-tensor-brief__tile" data-tone={actionTileTone}>
                     <span>待补信息</span>
-                    <strong>{requiredActionSummary(result.dv01_controls?.control_actions)}</strong>
+                    <strong>{actionTileSummary}</strong>
                     <p>{actionTileDetail}</p>
                   </article>
                 )}
@@ -2921,331 +2393,6 @@ export default function RiskTensorPage() {
                     </button>
                   </div>
                 ) : null}
-              </section>
-            ) : null}
-
-            {result ? (
-              <section className="risk-tensor-prior-change" data-testid="risk-tensor-prior-period-change">
-                <div className="risk-tensor-prior-change__header">
-                  <div>
-                    <span>较上期变化</span>
-                    <h2>风险变化判断</h2>
-                  </div>
-                  <strong>
-                    {priorPeriodChange?.comparison_report_date
-                      ? `对比 ${priorPeriodChange.comparison_report_date}`
-                      : "暂无可比日期"}
-                  </strong>
-                </div>
-                <p className="risk-tensor-prior-change__summary">{priorPeriodSummary}</p>
-                {priorPeriodMetrics.length > 0 ? (
-                  <div className="risk-tensor-prior-change__metrics">
-                    {priorPeriodMetrics.map((metric) => {
-                      const targetTestId = priorChangeTargetFor(metric.key);
-                      const metricContent = (
-                        <>
-                          <span className="risk-tensor-prior-change__metric-label">{metric.label}</span>
-                          <strong>{priorMetricDisplay(metric, "delta")}</strong>
-                          <span className="risk-tensor-prior-change__metric-detail">{metric.interpretation}</span>
-                          <span className="risk-tensor-prior-change__metric-values">
-                            当前 {priorMetricDisplay(metric, "current")} / 上期 {priorMetricDisplay(metric, "previous")}
-                          </span>
-                        </>
-                      );
-                      if (!targetTestId) {
-                        return (
-                          <article
-                            className="risk-tensor-prior-change__metric"
-                            data-tone={priorMetricTone(metric.tone)}
-                            key={metric.key}
-                          >
-                            {metricContent}
-                          </article>
-                        );
-                      }
-                      return (
-                        <button
-                          className="risk-tensor-prior-change__metric"
-                          data-testid={`risk-tensor-prior-change-action-${metric.key}`}
-                          data-tone={priorMetricTone(metric.tone)}
-                          key={metric.key}
-                          type="button"
-                          onClick={() => handlePriorChangeMetricJump(metric, targetTestId)}
-                        >
-                          {metricContent}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
-                <div className="risk-tensor-quality-detail__trace-actions">
-                    <button
-                      type="button"
-                      className="risk-tensor-quality-detail__trace-action"
-                      onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
-                    >
-                      定位元数据
-                    </button>
-                    <button
-                      type="button"
-                      className="risk-tensor-quality-detail__trace-action"
-                      onClick={handleRetryTensorMainRead}
-                    >
-                      重试主读面
-                    </button>
-                    <button
-                      type="button"
-                      className="risk-tensor-quality-detail__trace-action"
-                      onClick={handleCopyPriorPeriodDiagnostics}
-                    >
-                      复制上期排查信息
-                    </button>
-                </div>
-                {priorPeriodCopyMessage ? (
-                  <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
-                    {priorPeriodCopyMessage}
-                  </small>
-                ) : null}
-                {priorPeriodCopyStatusForCurrentState === "failed" ? (
-                  <pre
-                    className="risk-tensor-quality-detail__manual-copy"
-                    data-testid="risk-tensor-prior-period-manual-copy"
-                    tabIndex={0}
-                  >
-                    {priorPeriodCopyText}
-                  </pre>
-                ) : null}
-              </section>
-            ) : null}
-
-            {result.dv01_controls ? (
-              <section className="risk-tensor-dv01-controls" data-testid="risk-tensor-dv01-controls">
-                <div className="risk-tensor-dv01-controls__header">
-                  <div>
-                    <span className="risk-tensor-dv01-controls__eyebrow">DV01 控制</span>
-                    <h2>DV01 限额与波动</h2>
-                  </div>
-                  <div className="risk-tensor-dv01-controls__status">
-                    <span>{dv01ControlStatusLabel(result.dv01_controls.limit_status)}</span>
-                    <strong>{dv01ControlStatusDescription(result.dv01_controls.limit_status)}</strong>
-                  </div>
-                </div>
-
-                <div className="risk-tensor-dv01-controls__grid">
-                  <div className="risk-tensor-dv01-controls__primary">
-                    <span>监管口径 DV01</span>
-                    <strong>{regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}</strong>
-                    <p>{result.dv01_controls.control_message}</p>
-                  </div>
-                  <div className="risk-tensor-dv01-controls__cell">
-                    <span>审批限额</span>
-                    <strong>{yuanAsWanWithUnit(result.dv01_controls.approved_limit_dv01 ?? undefined)}</strong>
-                    <p>未接入正式限额前，不判定使用率。</p>
-                  </div>
-                  <div className="risk-tensor-dv01-controls__cell">
-                    <span>限额使用率</span>
-                    <strong>{ratioPercentDisplay(result.dv01_controls.limit_usage_ratio)}</strong>
-                    <p>等待限额源配置后计算。</p>
-                  </div>
-                  <div className="risk-tensor-dv01-controls__cell">
-                    <span>主风险桶</span>
-                    <strong>{result.dv01_controls.dominant_krd_bucket}</strong>
-                    <p>KRD {yuanAsWanWithUnit(result.dv01_controls.dominant_krd)}</p>
-                  </div>
-                  <div className="risk-tensor-dv01-controls__cell">
-                    <span>利率波动</span>
-                    <strong>{dv01VolatilityLabel(result.dv01_controls.volatility_status)}</strong>
-                    <p>{dv01VolatilityDescription(result.dv01_controls.volatility_status)}</p>
-                  </div>
-                </div>
-
-                <div
-                  className="risk-tensor-dv01-controls__stress"
-                  data-testid="risk-tensor-dv01-stress-scenarios"
-                  aria-label="DV01 stress scenarios"
-                >
-                  {result.dv01_controls.stress_scenarios.length > 0 ? (
-                    result.dv01_controls.stress_scenarios.map((scenario) => (
-                      <div className="risk-tensor-dv01-controls__scenario" key={scenario.scenario_key}>
-                        <span>{scenario.label}</span>
-                        <strong>{yuanAsWanWithUnit(scenario.estimated_pnl_impact)}</strong>
-                        <p>{displayStr(scenario.shock_bp)} 平行冲击</p>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="risk-tensor-dv01-controls__empty" data-testid="risk-tensor-dv01-stress-empty">
-                      <span>暂无压力情景</span>
-                      <p>后端 stress_scenarios 为空，请补充正式压力情景后再判断 DV01 冲击损益。</p>
-                      <button
-                        type="button"
-                        className="risk-tensor-quality-detail__trace-action"
-                        onClick={handleQualityDetailJump}
-                      >
-                        定位质量证据
-                      </button>
-                      <button
-                        type="button"
-                        className="risk-tensor-quality-detail__trace-action"
-                        onClick={handleRetryTensorMainRead}
-                      >
-                        重试主读面
-                      </button>
-                      <button
-                        type="button"
-                        className="risk-tensor-quality-detail__trace-action"
-                        onClick={handleCopyDv01StressScenarios}
-                      >
-                        复制压力情景排查信息
-                      </button>
-                      {dv01StressScenariosCopyMessage ? (
-                        <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
-                          {dv01StressScenariosCopyMessage}
-                        </small>
-                      ) : null}
-                      {dv01StressScenariosCopyStatusForCurrentState === "failed" ? (
-                        <pre
-                          className="risk-tensor-quality-detail__manual-copy"
-                          data-testid="risk-tensor-dv01-stress-manual-copy"
-                          tabIndex={0}
-                        >
-                          {dv01StressScenariosCopyText}
-                        </pre>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-
-                <div className="risk-tensor-dv01-controls__judgement">
-                  <span>经营判断</span>
-                  <p>{result.dv01_controls.operating_judgement}</p>
-                </div>
-
-                {dv01ControlInputsPending ? (
-                  <div className="risk-tensor-quality-detail__trace-actions">
-                    <button
-                      type="button"
-                      className="risk-tensor-quality-detail__trace-action"
-                      onClick={handleQualityDetailJump}
-                    >
-                      定位质量证据
-                    </button>
-                    <button
-                      type="button"
-                      className="risk-tensor-quality-detail__trace-action"
-                      onClick={handleRetryTensorMainRead}
-                    >
-                      重试主读面
-                    </button>
-                    <button
-                      type="button"
-                      className="risk-tensor-quality-detail__trace-action"
-                      onClick={handleCopyDv01PendingInputs}
-                    >
-                      复制输入排查信息
-                    </button>
-                    {dv01PendingInputsCopyMessage ? (
-                      <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
-                        {dv01PendingInputsCopyMessage}
-                      </small>
-                    ) : null}
-                    {dv01PendingInputsCopyStatusForCurrentState === "failed" ? (
-                      <pre
-                        className="risk-tensor-quality-detail__manual-copy"
-                        data-testid="risk-tensor-dv01-pending-inputs-manual-copy"
-                        tabIndex={0}
-                      >
-                        {dv01PendingInputsCopyText}
-                      </pre>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {result.dv01_controls.control_actions.length > 0 ? (
-                  <div
-                    className="risk-tensor-dv01-controls__actions"
-                    data-testid="risk-tensor-dv01-actions"
-                    aria-label="DV01 control actions"
-                  >
-                    <div className="risk-tensor-quality-detail__trace-actions">
-                      <button
-                        type="button"
-                        className="risk-tensor-quality-detail__trace-action"
-                        onClick={handleCopyDv01ControlActions}
-                      >
-                        复制处置清单
-                      </button>
-                      {dv01ControlActionsCopyMessage ? (
-                        <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
-                          {dv01ControlActionsCopyMessage}
-                        </small>
-                      ) : null}
-                    </div>
-                    {dv01ControlActionsCopyStatusForCurrentState === "failed" ? (
-                      <pre
-                        className="risk-tensor-quality-detail__manual-copy"
-                        data-testid="risk-tensor-dv01-actions-manual-copy"
-                      >
-                        {dv01ControlActionsCopyText}
-                      </pre>
-                    ) : null}
-                    {result.dv01_controls.control_actions.map((item) => (
-                      <article className="risk-tensor-dv01-controls__action-card" key={item.key}>
-                        <div>
-                          <span>{dv01ControlActionStatusLabel(item.status)}</span>
-                          <strong>{item.title}</strong>
-                        </div>
-                        <p>{item.evidence}</p>
-                        <p>{item.action}</p>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="risk-tensor-dv01-controls__empty" data-testid="risk-tensor-dv01-actions-empty">
-                    <span>后端未返回 DV01 控制动作明细</span>
-                    <p>请核对控制动作生成链路；页面不会在前端补写处置动作。</p>
-                    {!dv01ControlInputsPending ? (
-                      <>
-                        <button
-                          type="button"
-                          className="risk-tensor-quality-detail__trace-action"
-                          onClick={handleQualityDetailJump}
-                        >
-                          定位质量证据
-                        </button>
-                        <button
-                          type="button"
-                          className="risk-tensor-quality-detail__trace-action"
-                          onClick={handleRetryTensorMainRead}
-                        >
-                          重试主读面
-                        </button>
-                      </>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="risk-tensor-quality-detail__trace-action"
-                      onClick={handleCopyDv01ControlActions}
-                    >
-                      复制处置排查信息
-                    </button>
-                    {dv01ControlActionsCopyMessage ? (
-                      <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
-                        {dv01ControlActionsCopyMessage}
-                      </small>
-                    ) : null}
-                    {dv01ControlActionsCopyStatusForCurrentState === "failed" ? (
-                      <pre
-                        className="risk-tensor-quality-detail__manual-copy"
-                        data-testid="risk-tensor-dv01-actions-empty-manual-copy"
-                        tabIndex={0}
-                      >
-                        {dv01ControlActionsCopyText}
-                      </pre>
-                    ) : null}
-                  </div>
-                )}
-
-                <p className="risk-tensor-dv01-controls__action">{result.dv01_controls.action_hint}</p>
               </section>
             ) : null}
 

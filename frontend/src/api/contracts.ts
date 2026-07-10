@@ -933,69 +933,10 @@ export type AlertsPayload = {
  */
 export type RiskTensorScalar = string | Numeric;
 
-export type Dv01StressScenario = {
-  scenario_key: string;
-  label: string;
-  shock_bp: Numeric;
-  estimated_pnl_impact: Numeric;
-};
-
-export type Dv01ControlAction = {
-  key: string;
-  title: string;
-  status: string;
-  evidence: string;
-  action: string;
-};
-
-export type RiskTensorChangeMetric = {
-  key: string;
-  label: string;
-  current: Numeric;
-  previous: Numeric;
-  delta: Numeric;
-  current_display: string;
-  previous_display: string;
-  delta_display: string;
-  direction: string;
-  tone: string;
-  interpretation: string;
-};
-
-export type RiskTensorPriorPeriodChange = {
-  status: string;
-  comparison_report_date: string | null;
-  summary: string;
-  dominant_krd_bucket: string;
-  previous_dominant_krd_bucket: string | null;
-  dominant_krd_shifted: boolean;
-  metrics: RiskTensorChangeMetric[];
-};
-
-export type Dv01ControlsPayload = {
-  basis: string;
-  limit_status: string;
-  approved_limit_dv01: Numeric | null;
-  limit_usage_ratio: Numeric | null;
-  volatility_status: string;
-  daily_rate_volatility_bp: Numeric | null;
-  dominant_krd_bucket: string;
-  dominant_krd: Numeric;
-  stress_scenarios: Dv01StressScenario[];
-  operating_judgement: string;
-  control_actions: Dv01ControlAction[];
-  control_message: string;
-  action_hint: string;
-};
-
 export type RiskTensorPayload = {
   report_date: string;
   portfolio_dv01: RiskTensorScalar;
   regulatory_dv01?: RiskTensorScalar | null;
-  ac_dv01?: RiskTensorScalar | null;
-  oci_dv01?: RiskTensorScalar | null;
-  tpl_dv01?: RiskTensorScalar | null;
-  other_dv01?: RiskTensorScalar | null;
   krd_1y: RiskTensorScalar;
   krd_3y: RiskTensorScalar;
   krd_5y: RiskTensorScalar;
@@ -1015,16 +956,14 @@ export type RiskTensorPayload = {
   liquidity_gap_90d: RiskTensorScalar;
   liquidity_gap_30d_ratio: RiskTensorScalar;
   total_market_value: RiskTensorScalar;
-  rate_risk_market_value?: RiskTensorScalar | null;
-  rate_risk_dv01?: RiskTensorScalar | null;
-  rate_risk_modified_duration?: RiskTensorScalar | null;
-  duration_excluded_market_value?: RiskTensorScalar | null;
-  duration_excluded_count?: number | null;
+  rate_risk_market_value: RiskTensorScalar;
+  rate_risk_dv01: RiskTensorScalar;
+  rate_risk_modified_duration: RiskTensorScalar;
+  duration_excluded_market_value: RiskTensorScalar;
+  duration_excluded_count: number;
   bond_count: number;
   quality_flag: string;
   warnings: string[];
-  prior_period_change?: RiskTensorPriorPeriodChange | null;
-  dv01_controls?: Dv01ControlsPayload | null;
 };
 
 export type BlockedReportDate = {
@@ -2439,6 +2378,7 @@ export type StockAnalysisWorkbenchPayload = {
   issues: StockAnalysisWorkbenchIssue[];
   links: {
     stock_detail: string;
+    kline_analysis: string;
     candidate_history: string;
     sector_rank_series: string;
     strategy_score: string;
@@ -2483,6 +2423,69 @@ export type LivermoreStockDetailPayload = {
   lookback: number;
   candles: LivermoreStockDetailCandle[];
   factor: LivermoreStockDetailFactor;
+};
+
+export type StockKlineAnalysisState = "ok" | "missing" | "insufficient" | string;
+
+export type StockKlineAnalysisPattern = {
+  key: string;
+  label: string;
+  tone: "positive" | "negative" | "neutral" | string;
+  evidence: string;
+};
+
+export type StockKlineAnalysisPayload = {
+  basis: "analytical";
+  state: StockKlineAnalysisState;
+  contract_status: "observational_only";
+  formal_use_allowed: false;
+  trading_instruction_allowed: false;
+  stock_code: string;
+  requested_as_of_date: string | null;
+  as_of_date: string | null;
+  lookback: number;
+  engine: {
+    name: string;
+    source: string;
+    rule_version: string;
+    coverage: string[];
+  };
+  latest_candle: (LivermoreStockDetailCandle & {
+    pctchange?: number | null;
+    turn?: number | null;
+    amplitude?: number | null;
+  }) | null;
+  indicators: {
+    latest_close?: number | null;
+    ma5?: number | null;
+    ma20?: number | null;
+    ma60?: number | null;
+    return_5d?: number | null;
+    return_20d?: number | null;
+    volume_ratio_20d?: number | null;
+    latest_turnover?: number | null;
+    latest_amplitude?: number | null;
+  };
+  patterns: StockKlineAnalysisPattern[];
+  validity: {
+    state: string;
+    usable: boolean;
+    bar_count: number;
+    required_bar_count: number;
+    recommended_bar_count: number;
+    data_health: Record<string, unknown>;
+    liquidity: Record<string, unknown>;
+    warnings: string[];
+  };
+  observation_signal: {
+    level: string;
+    label: string;
+    score: number | null;
+    confidence: "low" | "medium" | "high" | string;
+    reasons: string[];
+    risks: string[];
+  };
+  diagnostics: Array<Record<string, unknown>>;
 };
 
 export type LivermoreSectorRankSeriesPoint = {
@@ -5293,10 +5296,329 @@ export type LedgerPnlSummaryPayload = {
   by_account: LedgerPnlSummaryByAccount[];
 };
 
+export type LedgerPnlAnalysisDirection = "positive" | "negative" | "flat" | "unavailable";
+export type LedgerPnlAnalysisOtherEffect = "support" | "drag" | "neutral" | "unavailable";
+export type LedgerPnlAnalysisAvailability = "ready" | "no_data";
+
+export type LedgerPnlAnalysisBridgeComponent = {
+  metric_key: "core_pnl" | "other_5_pnl";
+  metric_name: string;
+  amount: LedgerMoneyValue | null;
+};
+
+export type LedgerPnlAnalysisBasisMetricKey =
+  | "assets"
+  | "liabilities"
+  | "net_assets"
+  | "core_pnl"
+  | "all_pnl"
+  | "other_5_pnl";
+
+export type LedgerPnlAnalysisBasisComparisonRow = {
+  metric_key: LedgerPnlAnalysisBasisMetricKey;
+  metric_name: string;
+  cnx: LedgerMoneyValue | null;
+  cny: LedgerMoneyValue | null;
+  cnx_minus_cny: LedgerMoneyValue | null;
+  availability: {
+    CNX: LedgerPnlAnalysisAvailability;
+    CNY: LedgerPnlAnalysisAvailability;
+  };
+  evidence_rows: {
+    CNX: number;
+    CNY: number;
+  };
+};
+
+export type LedgerPnlAnalysisContributor = {
+  rank: number;
+  account_code: string;
+  account_name: string;
+  amount: LedgerMoneyValue;
+  count: number;
+};
+
+export type LedgerPnlAnalysisPeriodStatus =
+  | "available"
+  | "no_previous_period"
+  | "current_basis_no_data"
+  | "previous_basis_no_data";
+
+export type LedgerPnlAnalysisPeriodRow = {
+  metric_key: "core_pnl" | "other_5_pnl" | "all_pnl";
+  metric_name: string;
+  current: LedgerMoneyValue;
+  previous: LedgerMoneyValue;
+  change: LedgerMoneyValue;
+};
+
+export type LedgerPnlAnalysisPayload = {
+  report_date: string;
+  source_version: string;
+  currency_basis: "CNX" | "CNY";
+  basis_availability: {
+    CNX: LedgerPnlAnalysisAvailability;
+    CNY: LedgerPnlAnalysisAvailability;
+  };
+  analysis_status: "ready" | "no_data";
+  metric_status: "candidate";
+  conclusion: {
+    direction: LedgerPnlAnalysisDirection;
+    other_effect: LedgerPnlAnalysisOtherEffect;
+    core_pnl: LedgerMoneyValue | null;
+    other_5_pnl: LedgerMoneyValue | null;
+    all_pnl: LedgerMoneyValue | null;
+  };
+  pnl_bridge: {
+    components: LedgerPnlAnalysisBridgeComponent[];
+    total: LedgerMoneyValue | null;
+    residual: LedgerMoneyValue | null;
+  };
+  basis_comparison: LedgerPnlAnalysisBasisComparisonRow[];
+  contributors: {
+    positive_total: LedgerMoneyValue | null;
+    negative_total: LedgerMoneyValue | null;
+    net_total: LedgerMoneyValue | null;
+    top_positive: LedgerPnlAnalysisContributor[];
+    top_negative: LedgerPnlAnalysisContributor[];
+  };
+  period_comparison: {
+    status: LedgerPnlAnalysisPeriodStatus;
+    previous_report_date: string | null;
+    previous_source_version: string | null;
+    rows: LedgerPnlAnalysisPeriodRow[];
+  };
+  calculation_basis: {
+    core_pnl_prefixes: string[];
+    all_pnl_prefixes: string[];
+    other_5_pnl_formula: string;
+    other_5_pnl_boundary: string;
+    basis_difference_formula: string;
+    basis_boundary: string;
+    basis_availability_boundary: string;
+    metric_boundary: string;
+    previous_period_rule: string;
+    [key: string]: string | string[] | undefined;
+  };
+};
+
+export type LedgerPnlAccountDetailPeriodStatus =
+  | "available"
+  | "current_account_no_data"
+  | "no_previous_period"
+  | "previous_account_no_data";
+
+export type LedgerPnlAccountDetailBasisSnapshot = {
+  report_date: string;
+  source_version: string;
+  cnx: LedgerMoneyValue | null;
+  cny: LedgerMoneyValue | null;
+  cnx_minus_cny: LedgerMoneyValue | null;
+  availability: {
+    CNX: LedgerPnlAnalysisAvailability;
+    CNY: LedgerPnlAnalysisAvailability;
+  };
+  evidence_rows: {
+    CNX: number;
+    CNY: number;
+  };
+};
+
+export type LedgerPnlAccountDetailCanonicalEvidenceRow = {
+  period: "current" | "previous";
+  report_date: string;
+  source_version: string;
+  account_code: string;
+  account_name: string;
+  currency: "CNX" | "CNY";
+  beginning_balance: LedgerMoneyValue;
+  ending_balance: LedgerMoneyValue;
+  monthly_pnl: LedgerMoneyValue;
+  days_in_period: number;
+};
+
+export type LedgerPnlAccountDetailPayload = {
+  report_date: string;
+  source_version: string;
+  currency_basis: "CNX" | "CNY";
+  analysis_status: "ready" | "no_data";
+  metric_status: "candidate";
+  account: {
+    account_code: string;
+    account_name: string | null;
+  };
+  period_comparison: {
+    status: LedgerPnlAccountDetailPeriodStatus;
+    previous_report_date: string | null;
+    previous_source_version: string | null;
+    current_monthly_pnl: LedgerMoneyValue | null;
+    previous_monthly_pnl: LedgerMoneyValue | null;
+    change: LedgerMoneyValue | null;
+    current_evidence_rows: number;
+    previous_evidence_rows: number;
+  };
+  basis_comparison: {
+    current: LedgerPnlAccountDetailBasisSnapshot;
+    previous: LedgerPnlAccountDetailBasisSnapshot | null;
+  };
+  canonical_evidence_rows: LedgerPnlAccountDetailCanonicalEvidenceRow[];
+  calculation_basis: {
+    account_match: "exact";
+    amount_field: "monthly_pnl";
+    change_formula: "current_monthly_pnl - previous_monthly_pnl";
+    basis_difference_formula: "CNX - CNY";
+    basis_boundary: string;
+    previous_period_rule: string;
+    evidence_boundary: string;
+    metric_boundary: string;
+  };
+};
+
 export type LedgerPnlFormalIndicatorSourceStatus =
   | "formal_pending"
   | "candidate_qdb_aligned"
   | "needs_reconciliation";
+
+export type LedgerPnlCandidateFinancialIndicatorCalculationStatus =
+  | "ready"
+  | "warning"
+  | "error"
+  | "no_data";
+
+export type LedgerPnlCandidateFinancialIndicatorMetricStatus =
+  | "ok"
+  | "warning"
+  | "manual_default"
+  | "error";
+
+export type LedgerPnlCandidateFinancialIndicatorSource = {
+  source_kind: "ledger" | "daily";
+  file_name: string;
+  exists: boolean;
+  sha256: string | null;
+  locked_sha256: string | null;
+  locked_hash_match: boolean | null;
+  sheets: string[];
+  periods: LedgerPnlCandidateFinancialIndicatorPeriod[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorPeriod = {
+  evidence_id:
+    | "ledger"
+    | "daily_ytd"
+    | "daily_month"
+    | "microloan_ytd"
+    | "microloan_month"
+    | "microloan_ledger";
+  start: string;
+  end: string;
+  source_cell: string;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorAccountLineage = {
+  lineage_type: "account";
+  source: "main" | "microloan" | "ledger" | "microloan_ledger";
+  basis: "point" | "ytd_average" | "month_average" | "cumulative" | null;
+  level: "l1" | "l2" | "l3" | "full";
+  code: string;
+  weight: string;
+  observed: boolean;
+  raw_yuan: string;
+  contribution_yi: string;
+  evidence_refs: string[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorMetricLineage = {
+  lineage_type: "metric";
+  metric_id: string;
+  weight: string;
+  metric_value_yi: string | null;
+  contribution_yi: string | null;
+  dependency_status: LedgerPnlCandidateFinancialIndicatorMetricStatus;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorManualLineage = {
+  lineage_type: "manual";
+  supplied: boolean;
+  value_yi: string;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorLineage =
+  | LedgerPnlCandidateFinancialIndicatorAccountLineage
+  | LedgerPnlCandidateFinancialIndicatorMetricLineage
+  | LedgerPnlCandidateFinancialIndicatorManualLineage;
+
+export type LedgerPnlCandidateFinancialIndicatorMetric = {
+  metric_id: string;
+  name: string;
+  category: string;
+  basis: "point" | "ytd_average" | "month_average" | "cumulative";
+  unit: "亿元";
+  value: string | null;
+  status: LedgerPnlCandidateFinancialIndicatorMetricStatus;
+  reasons: string[];
+  lineage: LedgerPnlCandidateFinancialIndicatorLineage[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorValidation = {
+  validation_id: string;
+  severity: "warning" | "error";
+  passed: boolean;
+  message: string;
+  delta_yi: string | null;
+  sample: string[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorGap = {
+  gap_id: string;
+  severity: "info" | "warning" | "error";
+  kind:
+    | "source_missing"
+    | "source_hash"
+    | "source_parse"
+    | "validation"
+    | "missing_account"
+    | "manual_input"
+    | "calculation";
+  title: string;
+  detail: string;
+  metric_ids: string[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorsPayload = {
+  report_month: string;
+  report_date: string;
+  currency: "CNX";
+  basis: "ledger";
+  metric_status: "candidate";
+  formal_use_allowed: false;
+  calculation_status: LedgerPnlCandidateFinancialIndicatorCalculationStatus;
+  source_alignment: "matched" | "mismatch" | "not_applicable" | "incomplete";
+  source_version: string;
+  rule_version: "qdb-finance-2026-v1.0.0";
+  rule_hash: string;
+  idempotency_key: string;
+  requested_metric_id: string | null;
+  include_lineage: boolean;
+  sources: LedgerPnlCandidateFinancialIndicatorSource[];
+  summary: {
+    metric_total: 186;
+    metric_evaluated: number;
+    metric_returned: number;
+    ok_count: number;
+    warning_count: number;
+    manual_default_count: number;
+    error_count: number;
+    validation_total: 12;
+    validation_evaluated: number;
+    validation_passed: number;
+    validation_warning_failed: number;
+    validation_error_failed: number;
+  };
+  metrics: LedgerPnlCandidateFinancialIndicatorMetric[];
+  validations: LedgerPnlCandidateFinancialIndicatorValidation[];
+  gaps: LedgerPnlCandidateFinancialIndicatorGap[];
+};
 
 export type LedgerPnlFormalFinancialIndicatorMetric = {
   metric_key: string;
@@ -5376,6 +5698,103 @@ export type LedgerPnlFormalFinancialIndicatorContractPayload = {
   status_semantics: Record<LedgerPnlFormalIndicatorSourceStatus, string>;
   remediation?: LedgerPnlFormalFinancialIndicatorRemediation;
   metrics: LedgerPnlFormalFinancialIndicatorMetric[];
+};
+
+export type LedgerPnlRatioRecomputationStatus = "matched" | "mismatch" | "insufficient_inputs";
+
+export type LedgerPnlRatioRecomputationCheck = {
+  check_key: string;
+  metric_name: string;
+  contract_metric_key: string;
+  contract_value: string;
+  unit: string;
+  status: LedgerPnlRatioRecomputationStatus;
+  formula?: string;
+  numerator_metric_key?: string;
+  numerator_value?: string;
+  denominator_metric_key?: string;
+  denominator_value?: string;
+  recomputed_value?: string;
+  diff?: string;
+  tolerance?: string;
+  missing_inputs?: string[];
+  note?: string;
+};
+
+export type LedgerPnlAdditivityCheckStatus = "exact" | "residual_present";
+
+export type LedgerPnlAdditivityComponent = {
+  metric_key: string;
+  value: string;
+};
+
+export type LedgerPnlAdditivityCheck = {
+  check_key: string;
+  metric_name: string;
+  total_metric_key: string;
+  total_value: string;
+  components: LedgerPnlAdditivityComponent[];
+  components_sum: string;
+  residual: string;
+  unit: string;
+  status: LedgerPnlAdditivityCheckStatus;
+  note?: string;
+};
+
+export type LedgerPnlArrangementRuleStatus =
+  | "pass"
+  | "fail"
+  | "insufficient_inputs"
+  | "informational"
+  | "summary";
+
+export type LedgerPnlArrangementRule = {
+  rule_key: string;
+  rule_name: string;
+  source_ref: string;
+  status: LedgerPnlArrangementRuleStatus;
+  missing_inputs?: string[];
+  note?: string;
+  quarter_end_type?: string;
+  actual_value?: string;
+  target_value?: string;
+  comparator?: string;
+  unit?: string;
+  assumption_value?: string;
+  assumption_unit?: string;
+  referenced_additivity_check_keys?: string[];
+  exact_count?: number;
+  residual_present_count?: number;
+};
+
+export type LedgerPnlFormalIndicatorRuleChecksSummary = {
+  ratio_recomputation: { matched: number; mismatch: number; insufficient_inputs: number; total: number };
+  additivity_checks: { exact: number; residual_present: number; total: number };
+  arrangement_rules: {
+    pass: number;
+    fail: number;
+    insufficient_inputs: number;
+    informational: number;
+    summary: number;
+    total: number;
+  };
+  total_checks: number;
+};
+
+export type LedgerPnlFormalIndicatorRuleChecksPayload = {
+  report_month: string;
+  report_date: string;
+  basis: string;
+  formal_use_allowed: boolean;
+  sample_status: string;
+  source_version: string;
+  rule_version: string;
+  contract_note: string;
+  ratio_recomputation: LedgerPnlRatioRecomputationCheck[];
+  additivity_checks: LedgerPnlAdditivityCheck[];
+  arrangement_rules: LedgerPnlArrangementRule[];
+  summary: LedgerPnlFormalIndicatorRuleChecksSummary;
+  remediation?: LedgerPnlFormalFinancialIndicatorRemediation;
 };
 
 export type CampisiFourEffectsTotals = {

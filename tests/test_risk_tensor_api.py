@@ -4,12 +4,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE
 from tests.test_bond_analytics_service import _configure_and_materialize
@@ -120,6 +120,30 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_risk_tensor_api_503_preserves_structured_result_meta(tmp_path, monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.risk_tensor",
+        "backend/app/api/routes/risk_tensor.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "risk_tensor_envelope",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("materialized fact unavailable")),
+    )
+    client = _risk_tensor_client(tmp_path, monkeypatch, raise_server_exceptions=False)
+
+    response = client.get("/api/risk/tensor", params={"report_date": REPORT_DATE})
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "risk.tensor"
+    assert payload["result_meta"]["source_surface"] == "risk_tensor"
+    assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["quality_flag"] == "error"
+    assert payload["result"]["readiness"] == "unavailable"
+
+
 def test_risk_scenario_stress_api_returns_scenario_envelope(tmp_path, monkeypatch):
     _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
 
@@ -136,6 +160,15 @@ def test_risk_scenario_stress_api_returns_scenario_envelope(tmp_path, monkeypatc
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["result_meta"]["scenario_flag"] is True
     assert payload["result"]["basis"] == "scenario"
+    assert payload["result"]["scenario_set_id"] == "standard_risk_tensor_scenario_v1"
+    assert payload["result"]["rule_version"] == "rv_risk_tensor_scenario_stress_v1"
+    assert payload["result"]["source"]["result_kind"] == "risk.tensor"
+    assert payload["result"]["source"]["rule_version"] == "rv_risk_tensor_formal_materialize_v3"
+    assert payload["result"]["summary"]["scenario_count"] == 4
+    assert payload["result"]["summary"]["available_count"] == 3
+    assert payload["result"]["summary"]["review_required_count"] == 4
+    assert payload["result"]["warnings"]
+    assert payload["result"]["source_warnings"] == []
     assert {row["category"] for row in payload["result"]["scenarios"]} == {
         "rate",
         "credit",
@@ -143,6 +176,23 @@ def test_risk_scenario_stress_api_returns_scenario_envelope(tmp_path, monkeypatc
         "fx",
     }
     assert all(row["human_review_required"] is True for row in payload["result"]["scenarios"])
+    required_row_fields = {
+        "scenario_key",
+        "category",
+        "label",
+        "source_field",
+        "shock",
+        "estimated_impact",
+        "measure",
+        "calculation",
+        "interpretation",
+        "data_status",
+        "human_review_required",
+    }
+    assert all(required_row_fields <= set(row) for row in payload["result"]["scenarios"])
+    rate_scenario = next(row for row in payload["result"]["scenarios"] if row["category"] == "rate")
+    assert rate_scenario["shock"]["raw"] == 10.0
+    assert rate_scenario["estimated_impact"]["raw"] is not None
 
     get_settings.cache_clear()
 
@@ -191,7 +241,7 @@ def test_risk_tensor_api_returns_503_when_upstream_exists_but_downstream_fact_is
     )
 
     assert response.status_code == 503
-    assert "Risk tensor fact missing" in response.json()["detail"]
+    assert "Risk tensor fact missing" in response.json()["result"]["error"]
 
     get_settings.cache_clear()
 
@@ -230,7 +280,7 @@ def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer
     )
 
     assert response.status_code == 503
-    assert "Risk tensor stale against bond analytics lineage" in response.json()["detail"]
+    assert "Risk tensor stale against bond analytics lineage" in response.json()["result"]["error"]
 
     get_settings.cache_clear()
 
@@ -280,7 +330,7 @@ def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer
     )
 
     assert response.status_code == 503
-    assert "Risk tensor stale against TYW liability lineage" in response.json()["detail"]
+    assert "Risk tensor stale against TYW liability lineage" in response.json()["result"]["error"]
 
     get_settings.cache_clear()
 
@@ -309,7 +359,7 @@ def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer
     )
 
     assert response.status_code == 503
-    assert "Risk tensor stale against TYW liability lineage" in response.json()["detail"]
+    assert "Risk tensor stale against TYW liability lineage" in response.json()["result"]["error"]
 
     get_settings.cache_clear()
 

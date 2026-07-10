@@ -106,6 +106,8 @@ def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
     assert row is not None
     assert row["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
     assert row["upstream_source_version"] == "sv_bond_snap_1"
+    assert row["upstream_rule_version"] == bond_task_mod.RULE_VERSION
+    assert row["upstream_cache_version"] == bond_task_mod.CACHE_VERSION
     assert row["cache_version"] == risk_task_mod.CACHE_VERSION
     assert row["bond_count"] == 3
     assert row["regulatory_dv01"] == row["portfolio_dv01"]
@@ -133,6 +135,55 @@ def test_risk_tensor_materialize_requires_completed_upstream_lineage(tmp_path):
             duckdb_path=str(duckdb_path),
             governance_dir=str(governance_dir),
         )
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    ("source_version", "rule_version", "cache_version"),
+)
+def test_risk_tensor_materialize_requires_complete_upstream_lineage_triple(
+    tmp_path,
+    monkeypatch,
+    missing_field,
+):
+    duckdb_path, governance_dir, bond_task_mod = _configure_upstream(tmp_path)
+    risk_task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    upstream_lineage = {
+        "source_version": "sv_bond_snap_1",
+        "rule_version": bond_task_mod.RULE_VERSION,
+        "cache_version": bond_task_mod.CACHE_VERSION,
+    }
+    upstream_lineage[missing_field] = ""
+    monkeypatch.setattr(
+        risk_task_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **_kwargs: upstream_lineage,
+    )
+
+    with pytest.raises(RuntimeError, match="requires complete.*bond_analytics lineage"):
+        risk_task_mod.materialize_risk_tensor_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    row = repo_mod.RiskTensorRepository(str(duckdb_path)).fetch_risk_tensor_row(REPORT_DATE)
+    risk_runs = [
+        record
+        for record in _read_jsonl(governance_dir / "cache_build_run.jsonl")
+        if record["cache_key"] == risk_task_mod.CACHE_KEY
+    ]
+    assert row is None
+    assert risk_runs
+    assert risk_runs[-1]["status"] == "failed"
+    assert all(record["status"] != "completed" for record in risk_runs)
 
 
 def test_risk_tensor_materialize_fails_closed_on_pct_style_bond_rates(tmp_path):

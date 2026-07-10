@@ -672,6 +672,7 @@
   - 后端：
     - `/api/risk/tensor/dates`
     - `/api/risk/tensor`
+    - `/api/risk/scenario-stress`
 - 页面状态：
   - `active`
 
@@ -688,6 +689,7 @@
 - 页面不负责回答的问题：
   - 不负责替代 excluded 的 `/ui/risk/overview`
   - 不负责补算任何风险衍生指标
+  - 压力结果仅由独立 `scenario` endpoint 提供，不进入 formal Risk Tensor DTO
 
 ### C. 信息架构
 
@@ -700,6 +702,7 @@
 | `duration_scope` | 久期口径披露 | 展示利率风险适用市值、DV01、久期，以及被排除的市值/行数 | `/api/risk/tensor` |
 | `krd_chart` | KRD 图 | 展示期限桶风险 | `/api/risk/tensor` |
 | `radar` | 风险雷达 | 展示强弱对比 | `/api/risk/tensor` |
+| `scenario_stress` | 压力情景 | 展示独立 scenario 口径的利率、信用、流动性与 FX 输入缺口 | `/api/risk/scenario-stress` |
 | `result_meta` | provenance / evidence | 展示 dates/tensor meta | meta panel |
 
 #### 禁止 section
@@ -707,6 +710,8 @@
 - 前端重算 KRD / DV01 / CS01 / convexity
 - 前端为无到期日资产合成到期日或久期
 - 用 `portfolio_dv01` 回填或伪装 `regulatory_dv01`
+- 把 `prior_period_change`、`dv01_controls` 或会计分类 DV01 注入 formal Risk Tensor DTO
+- 把 scenario 压力估算、限额判断或处置建议标记为 `formal`
 - 把 excluded 的 `risk-overview` 内容移花接木进来
 
 ### D. 筛选与时间语义
@@ -730,6 +735,7 @@
 | --- | --- | --- | --- | --- |
 | 日期列表 | `/api/risk/tensor/dates` | dates payload | `formal` | 页面初始化 |
 | 风险张量 | `/api/risk/tensor` | `RiskTensorPayload` | `formal` | 页面主读面 |
+| 压力情景 | `/api/risk/scenario-stress` | `RiskScenarioStressPayload` | `scenario` | `formal_use_allowed=false`，仅作人工复核覆盖层 |
 
 ### F. 指标映射
 
@@ -1595,7 +1601,9 @@
   - `GET /api/ledger-pnl/dates`
   - `GET /api/ledger-pnl/data`
   - `GET /api/ledger-pnl/summary`
+  - `GET /api/ledger-pnl/analysis`
   - `GET /api/ledger-pnl/formal-financial-indicators`
+  - `GET /api/ledger-pnl/formal-indicator-rule-checks`
 
 ### B. Primary business question
 
@@ -1606,9 +1614,12 @@
 ### C. Data chain
 
 - Frontend route `/ledger-pnl` consumes ledger PnL read APIs under `/api/ledger-pnl/*`.
+- `GET /api/ledger-pnl/analysis?date=YYYY-MM-DD&currency=CNX|CNY` returns a backend-computed candidate analysis snapshot for the selected accounting basis. It includes the core/other-`5*`/all bridge, CNX-versus-CNY comparison, ranked account contributors, and comparison with the previous available source report date.
 - `GET /api/ledger-pnl/formal-financial-indicators?report_month=202603` returns the frozen formal financial indicator source contract.
+- `GET /api/ledger-pnl/formal-indicator-rule-checks?report_month=202603` checks the frozen contract without producing new formal metric values.
 - Backend route `backend/app/api/routes/ledger_pnl.py` delegates to `backend/app/services/ledger_pnl_service.py`.
 - The formal financial indicator source contract is built by `backend/app/core_finance/formal_financial_indicators.py`.
+- Formal indicator rule checks are built by `backend/app/core_finance/formal_financial_indicator_rules.py` and remain non-formal evidence.
 
 ### D. Formal indicator source-contract boundary
 
@@ -1625,12 +1636,30 @@
 ### E. Units, dates, and status
 
 - `report_date` controls ledger data/detail/summary endpoints.
+- `report_date` and `currency` also control the selected-basis conclusion, account ranking, and period comparison returned by the analysis endpoint. The previous period is the latest available source report date strictly before the requested date; there is no date fallback for the current period.
 - `report_month` controls the formal financial indicator source contract.
+- `currency` is an accounting basis, not an additive currency dimension: `CNX=综本`, `CNY=人民币账`.
+- Omitted currency and legacy/invalid page query values normalize to `CNX`; the API accepts only `CNX` or `CNY`, and never adds the two overlapping bases.
 - `as_of_date` for the source contract is the month-end `report_date` returned by the envelope.
 - Stale/fallback/vendor degradation must remain visible through `result_meta`.
 - No-data and missing-source states must be explicit; pending formal indicators must not be rendered as zero.
 
-### F. Candidate metric bindings
+### F. Candidate analysis contract
+
+- The analysis endpoint remains `result_meta.basis=ledger` and `result_meta.formal_use_allowed=false`; its payload uses `metric_status=candidate` and must never be described as formal PnL attribution.
+- `core_pnl = sum(monthly_pnl where account prefix in {514, 516, 517})`.
+- `all_pnl = sum(monthly_pnl where account prefix is 5*)`.
+- `other_5_pnl = all_pnl - core_pnl`. This is an arithmetic remainder across other `5*` ledger accounts, not an approved attribution category.
+- Every basis-comparison difference is `CNX - CNY`. CNX and CNY are overlapping accounting bases, so they must not be added; the difference must not be labelled FX PnL.
+- `basis_availability.CNX` and `basis_availability.CNY` describe PnL analyzability only. Every basis-comparison row also returns per-metric `availability` and `evidence_rows`; missing metric amounts and differences are `null`, never serialized zero placeholders.
+- Positive and negative contributors are ranked from unrounded `Decimal` amounts after grouping by account code within the selected basis. Display rounding must not change rank order.
+- Period changes compare the requested source month-end with the previous available source month-end in the same accounting basis. Missing current or previous basis data is explicit and must not be displayed as a genuine zero.
+- Bridge, comparison, contributor ranking, and period-change arithmetic are backend-owned. The frontend may format the returned money DTO and map status codes to copy, but must not recompute those amounts.
+- The page functional-audit strip consumes the `/analysis` envelope and metadata for candidate status, source, date, basis, and evidence checks. The retired frontend explainability engine must not re-aggregate money DTOs or emit a second driver/ranking conclusion.
+- The analysis payload and envelope are validated by strict backend Pydantic response models (`extra=forbid`) before the route response is emitted.
+- These derived analysis fields do not create new `MTR-*` entries or change the pending status of `MTR-LPN-001` through `MTR-LPN-003`.
+
+### G. Candidate metric bindings
 
 - Ledger summary cards have dictionary entries only as candidate display metrics; they remain `pending_confirmation=true` and must not be read as formal PnL, product-category PnL, or approved financial-indicator truth.
 - `MTR-LPN-001` -> `LedgerPnlSummaryPayload.ledger_monthly_pnl_core`
@@ -1638,10 +1667,14 @@
 - `MTR-LPN-003` -> `LedgerPnlSummaryPayload.ledger_net_assets`
 - The bound page is `PAGE-LEDGER-PNL-001`; `bound_sample_id=GS-LEDGER-PNL-SUMMARY-A` as a capture-ready candidate DTO sample. This sample does not approve formal use and `pending_confirmation=true` remains in force for `MTR-LPN-001` through `MTR-LPN-003`.
 
-### G. Tests
+### H. Tests
 
 - API/source contract: `tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py`.
 - Ledger summary/detail: `tests/test_ledger_pnl_service.py`.
+- Ledger candidate analysis arithmetic and envelope: `tests/test_ledger_pnl_analysis.py`; `tests/test_ledger_pnl_service.py`.
+- Ledger route validation/permission: `tests/test_ledger_pnl_routes.py`.
+- Accounting-basis URL/client behavior: `frontend/src/test/LedgerPnlCurrencyBasis.test.tsx`; `frontend/src/test/LedgerPnlMockClient.test.ts`.
+- Analysis workbench states and rendering: `frontend/src/test/LedgerPnlAnalysisWorkbench.test.tsx`.
 - Route/page-contract completeness: `tests/test_live_route_page_contract_completeness.py`.
 
 ## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
@@ -2039,6 +2072,7 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Asset analytics: `frontend/src/features/cross-asset/lib/crossAssetAnalytics.test.ts`.
 - First-screen contract: `frontend/src/test/crossAssetDriversPageModel.test.ts`.
 - Page integration: `frontend/src/test/CrossAssetPage.test.tsx`.
+
 ## 14.7 PAGE-RISK-HOME-001 Risk Workbench Home
 
 ### A. Page identity

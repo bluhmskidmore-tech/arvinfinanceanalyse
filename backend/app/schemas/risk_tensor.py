@@ -10,61 +10,6 @@ from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_fro
 from pydantic import BaseModel, Field, model_validator
 
 
-class Dv01StressScenario(BaseModel):
-    scenario_key: str
-    label: str
-    shock_bp: Numeric
-    estimated_pnl_impact: Numeric
-
-
-class Dv01ControlAction(BaseModel):
-    key: str
-    title: str
-    status: str
-    evidence: str
-    action: str
-
-
-class RiskTensorChangeMetric(BaseModel):
-    key: str
-    label: str
-    current: Numeric
-    previous: Numeric
-    delta: Numeric
-    current_display: str
-    previous_display: str
-    delta_display: str
-    direction: str
-    tone: str
-    interpretation: str
-
-
-class RiskTensorPriorPeriodChange(BaseModel):
-    status: str
-    comparison_report_date: date | None = None
-    summary: str
-    dominant_krd_bucket: str
-    previous_dominant_krd_bucket: str | None = None
-    dominant_krd_shifted: bool = False
-    metrics: list[RiskTensorChangeMetric] = Field(default_factory=list)
-
-
-class Dv01ControlsPayload(BaseModel):
-    basis: str
-    limit_status: str
-    approved_limit_dv01: Numeric | None = None
-    limit_usage_ratio: Numeric | None = None
-    volatility_status: str
-    daily_rate_volatility_bp: Numeric | None = None
-    dominant_krd_bucket: str
-    dominant_krd: Numeric
-    stress_scenarios: list[Dv01StressScenario] = Field(default_factory=list)
-    operating_judgement: str
-    control_actions: list[Dv01ControlAction] = Field(default_factory=list)
-    control_message: str
-    action_hint: str
-
-
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
     if value is None:
         return None
@@ -124,16 +69,14 @@ class RiskTensorPayload(BaseModel):
     liquidity_gap_90d: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=True))
     liquidity_gap_30d_ratio: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=True))
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
-    rate_risk_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
-    rate_risk_dv01: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="dv01", sign_aware=False))
-    rate_risk_modified_duration: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="ratio", sign_aware=False))
-    duration_excluded_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
-    duration_excluded_count: int = 0
+    rate_risk_market_value: Numeric
+    rate_risk_dv01: Numeric
+    rate_risk_modified_duration: Numeric
+    duration_excluded_market_value: Numeric
+    duration_excluded_count: int
     bond_count: int = 0
     quality_flag: str = "ok"
     warnings: list[str] = Field(default_factory=list)
-    prior_period_change: RiskTensorPriorPeriodChange | None = None
-    dv01_controls: Dv01ControlsPayload | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "portfolio_dv01": ("dv01", False),

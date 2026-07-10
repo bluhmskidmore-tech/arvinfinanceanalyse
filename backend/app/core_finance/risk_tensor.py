@@ -92,6 +92,11 @@ class PortfolioRiskTensor:
     bond_count: int
     quality_flag: str
     warnings: list[str]
+    rate_risk_market_value: Decimal = ZERO
+    rate_risk_dv01: Decimal = ZERO
+    rate_risk_modified_duration: Decimal = ZERO
+    duration_excluded_market_value: Decimal = ZERO
+    duration_excluded_count: int = 0
 
 
 def compute_portfolio_risk_tensor(
@@ -122,7 +127,10 @@ def compute_portfolio_risk_tensor(
     )
     _warn_duration_exclusion_inputs(rows, warnings)
     duration_rows = _duration_denominator_rows(rows)
+    duration_excluded_rows = _duration_excluded_rows(rows)
     duration_market_value = _sum_field(duration_rows, "market_value")
+    rate_risk_dv01 = _sum_field(duration_rows, "dv01")
+    duration_excluded_market_value = _sum_field(duration_excluded_rows, "market_value")
     portfolio_convexity = _weighted_average(duration_rows, "convexity", duration_market_value)
     portfolio_modified_duration = _weighted_average(
         duration_rows,
@@ -178,6 +186,11 @@ def compute_portfolio_risk_tensor(
         bond_count=len(rows),
         quality_flag=quality_flag,
         warnings=warnings,
+        rate_risk_market_value=duration_market_value,
+        rate_risk_dv01=rate_risk_dv01,
+        rate_risk_modified_duration=portfolio_modified_duration,
+        duration_excluded_market_value=duration_excluded_market_value,
+        duration_excluded_count=len(duration_excluded_rows),
     )
 
 

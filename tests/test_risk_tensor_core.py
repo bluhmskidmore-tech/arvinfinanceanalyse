@@ -382,3 +382,8 @@ def test_duration_exclusion_warning_counts_all_rows_outside_duration_denominator
     assert "market_value=400000000" in warning
     assert "1 without maturity_date" in warning
     assert "1 with non-positive modified_duration" in warning
+    assert tensor.rate_risk_market_value == Decimal("100000000")
+    assert tensor.rate_risk_dv01 == Decimal("40000")
+    assert tensor.rate_risk_modified_duration == Decimal("4")
+    assert tensor.duration_excluded_market_value == Decimal("400000000")
+    assert tensor.duration_excluded_count == 2

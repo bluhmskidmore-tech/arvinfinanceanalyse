@@ -51,6 +51,24 @@ class RiskTensorRepository:
                 "upstream_source_version",
                 "''",
             )
+            upstream_rule_version = _column_or_default(
+                table_columns,
+                "upstream_rule_version",
+                "''",
+                coalesce=True,
+            )
+            upstream_cache_version = _column_or_default(
+                table_columns,
+                "upstream_cache_version",
+                "''",
+                coalesce=True,
+            )
+            cache_version = _column_or_default(
+                table_columns,
+                "cache_version",
+                "''",
+                coalesce=True,
+            )
             liability_source_version = _column_or_default(
                 table_columns,
                 "liability_source_version",
@@ -63,12 +81,37 @@ class RiskTensorRepository:
                 "''",
                 coalesce=True,
             )
+            duration_scope_columns = {
+                field_name: _column_or_default(
+                    table_columns,
+                    field_name,
+                    "cast(null as integer)"
+                    if field_name == "duration_excluded_count"
+                    else "cast(null as decimal(24, 8))",
+                )
+                for field_name in (
+                    "rate_risk_market_value",
+                    "rate_risk_dv01",
+                    "rate_risk_modified_duration",
+                    "duration_excluded_market_value",
+                    "duration_excluded_count",
+                )
+            }
             rows = conn.execute(
                 f"""
                 select cast(report_date as varchar) as report_date,
                        {upstream_source_version},
+                       {upstream_rule_version},
+                       {upstream_cache_version},
                        {liability_source_version},
-                       {liability_rule_version}
+                       {liability_rule_version},
+                       rule_version,
+                       {cache_version},
+                       {duration_scope_columns['rate_risk_market_value']},
+                       {duration_scope_columns['rate_risk_dv01']},
+                       {duration_scope_columns['rate_risk_modified_duration']},
+                       {duration_scope_columns['duration_excluded_market_value']},
+                       {duration_scope_columns['duration_excluded_count']}
                 from {FACT_TABLE}
                 order by cast(report_date as varchar) desc
                 """
@@ -76,8 +119,17 @@ class RiskTensorRepository:
             columns = [
                 "report_date",
                 "upstream_source_version",
+                "upstream_rule_version",
+                "upstream_cache_version",
                 "liability_source_version",
                 "liability_rule_version",
+                "rule_version",
+                "cache_version",
+                "rate_risk_market_value",
+                "rate_risk_dv01",
+                "rate_risk_modified_duration",
+                "duration_excluded_market_value",
+                "duration_excluded_count",
             ]
             return [dict(zip(columns, row, strict=True)) for row in rows]
         finally:
@@ -90,6 +142,8 @@ class RiskTensorRepository:
         tensor: PortfolioRiskTensor,
         source_version: str,
         upstream_source_version: str,
+        upstream_rule_version: str,
+        upstream_cache_version: str,
         liability_source_version: str,
         liability_rule_version: str,
         rule_version: str,
@@ -120,6 +174,11 @@ class RiskTensorRepository:
                     cs01,
                     portfolio_convexity,
                     portfolio_modified_duration,
+                    rate_risk_market_value,
+                    rate_risk_dv01,
+                    rate_risk_modified_duration,
+                    duration_excluded_market_value,
+                    duration_excluded_count,
                     issuer_concentration_hhi,
                     issuer_top5_weight,
                     asset_cashflow_30d,
@@ -135,13 +194,15 @@ class RiskTensorRepository:
                     warnings_json,
                     source_version,
                     upstream_source_version,
+                    upstream_rule_version,
+                    upstream_cache_version,
                     liability_source_version,
                     liability_rule_version,
                     rule_version,
                     cache_version,
                     trace_id
                 ) values (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 [
@@ -157,6 +218,11 @@ class RiskTensorRepository:
                     tensor.cs01,
                     tensor.portfolio_convexity,
                     tensor.portfolio_modified_duration,
+                    tensor.rate_risk_market_value,
+                    tensor.rate_risk_dv01,
+                    tensor.rate_risk_modified_duration,
+                    tensor.duration_excluded_market_value,
+                    tensor.duration_excluded_count,
                     tensor.issuer_concentration_hhi,
                     tensor.issuer_top5_weight,
                     tensor.asset_cashflow_30d,
@@ -172,6 +238,8 @@ class RiskTensorRepository:
                     json.dumps(tensor.warnings, ensure_ascii=False),
                     source_version,
                     upstream_source_version,
+                    upstream_rule_version,
+                    upstream_cache_version,
                     liability_source_version,
                     liability_rule_version,
                     rule_version,
@@ -230,11 +298,39 @@ class RiskTensorRepository:
                 "''",
                 coalesce=True,
             )
+            upstream_rule_version = _column_or_default(
+                table_columns,
+                "upstream_rule_version",
+                "''",
+                coalesce=True,
+            )
+            upstream_cache_version = _column_or_default(
+                table_columns,
+                "upstream_cache_version",
+                "''",
+                coalesce=True,
+            )
             regulatory_dv01 = _column_or_default(
                 table_columns,
                 "regulatory_dv01",
                 "cast(null as decimal(24, 8))",
             )
+            duration_scope_columns = {
+                field_name: _column_or_default(
+                    table_columns,
+                    field_name,
+                    "cast(null as integer)"
+                    if field_name == "duration_excluded_count"
+                    else "cast(null as decimal(24, 8))",
+                )
+                for field_name in (
+                    "rate_risk_market_value",
+                    "rate_risk_dv01",
+                    "rate_risk_modified_duration",
+                    "duration_excluded_market_value",
+                    "duration_excluded_count",
+                )
+            }
             row = conn.execute(
                 f"""
                 select report_date,
@@ -249,6 +345,11 @@ class RiskTensorRepository:
                        cs01,
                        portfolio_convexity,
                        portfolio_modified_duration,
+                       {duration_scope_columns['rate_risk_market_value']},
+                       {duration_scope_columns['rate_risk_dv01']},
+                       {duration_scope_columns['rate_risk_modified_duration']},
+                       {duration_scope_columns['duration_excluded_market_value']},
+                       {duration_scope_columns['duration_excluded_count']},
                        issuer_concentration_hhi,
                        issuer_top5_weight,
                        {asset_cashflow_30d},
@@ -264,6 +365,8 @@ class RiskTensorRepository:
                        warnings_json,
                        source_version,
                        upstream_source_version,
+                       {upstream_rule_version},
+                       {upstream_cache_version},
                        {liability_source_version},
                        {liability_rule_version},
                        rule_version,
@@ -290,6 +393,11 @@ class RiskTensorRepository:
                 "cs01",
                 "portfolio_convexity",
                 "portfolio_modified_duration",
+                "rate_risk_market_value",
+                "rate_risk_dv01",
+                "rate_risk_modified_duration",
+                "duration_excluded_market_value",
+                "duration_excluded_count",
                 "issuer_concentration_hhi",
                 "issuer_top5_weight",
                 "asset_cashflow_30d",
@@ -305,6 +413,8 @@ class RiskTensorRepository:
                 "warnings_json",
                 "source_version",
                 "upstream_source_version",
+                "upstream_rule_version",
+                "upstream_cache_version",
                 "liability_source_version",
                 "liability_rule_version",
                 "rule_version",

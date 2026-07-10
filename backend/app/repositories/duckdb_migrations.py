@@ -82,6 +82,13 @@ def ensure_risk_tensor_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
         "alter table fact_formal_risk_tensor_daily add column if not exists liability_source_version varchar",
         "alter table fact_formal_risk_tensor_daily add column if not exists liability_rule_version varchar",
         "alter table fact_formal_risk_tensor_daily add column if not exists regulatory_dv01 decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_dv01 decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_modified_duration decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists duration_excluded_market_value decimal(24, 8)",
+        "alter table fact_formal_risk_tensor_daily add column if not exists duration_excluded_count integer",
+        "alter table fact_formal_risk_tensor_daily add column if not exists upstream_rule_version varchar",
+        "alter table fact_formal_risk_tensor_daily add column if not exists upstream_cache_version varchar",
     ):
         conn.execute(statement)
 
@@ -299,6 +306,12 @@ def _v32_add_table_constraints(conn: duckdb.DuckDBPyConnection) -> None:
         conn.execute(statement)
 
 
+def _v33_risk_tensor_materialized_metrics(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _main_table_exists(conn, "fact_formal_risk_tensor_daily"):
+        _run_sql_slice(conn, "04_risk_tensor.sql")
+    _run_sql_slice(conn, "35_risk_tensor_materialized_metrics.sql")
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -410,6 +423,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(30, "Formal fact and snapshot read-path indexes", _v30_fact_snapshot_indexes)
     registry.register(31, "Market breadth daily counts for Livermore gate", _v31_market_breadth_daily)
     registry.register(32, "Recover read indexes and constrain governed PnL/FX grains", _v32_add_table_constraints)
+    registry.register(33, "Materialize governed Risk Tensor read metrics and upstream lineage", _v33_risk_tensor_materialized_metrics)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

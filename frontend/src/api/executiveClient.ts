@@ -47,6 +47,11 @@ export type ExecutiveClientMethods = {
 type FetchLike = typeof fetch;
 type Delay = () => Promise<void>;
 
+const RISK_TENSOR_FORMAL_SOURCE_VERSION = "sv_risk_tensor_fact_mock_v3";
+const RISK_TENSOR_FORMAL_RULE_VERSION = "rv_risk_tensor_formal_materialize_v3";
+const RISK_TENSOR_FORMAL_CACHE_VERSION =
+  "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3";
+
 type ExecutiveThinClientMethods = Pick<
   ExecutiveClientMethods,
   | "getOverview"
@@ -185,7 +190,13 @@ export function createDemoExecutiveClient(
         {
           report_dates: ["2026-02-28", "2026-01-31", "2025-12-31"],
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
+          rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
+          cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
+        },
       );
     },
     async getRiskTensor(reportDate: string) {
@@ -198,9 +209,6 @@ export function createDemoExecutiveClient(
           report_date: reportDate,
           portfolio_dv01: "120000.00000000",
           regulatory_dv01: "120000.00000000",
-          ac_dv01: "70000.00000000",
-          oci_dv01: "30000.00000000",
-          tpl_dv01: "20000.00000000",
           krd_1y: "25000.00000000",
           krd_3y: "50000.00000000",
           krd_5y: "30000.00000000",
@@ -230,105 +238,14 @@ export function createDemoExecutiveClient(
           warnings: [
             "2 rows carry market_value=100000000.00000000 and are excluded from portfolio duration denominator.",
           ],
-          prior_period_change: {
-            status: "no_prior",
-            comparison_report_date: null,
-            summary: "暂无可比较的上一报告日；当前仅展示截面风险。",
-            dominant_krd_bucket: "3Y",
-            previous_dominant_krd_bucket: null,
-            dominant_krd_shifted: false,
-            metrics: [],
-          },
-          dv01_controls: {
-            basis: "regulatory_dv01",
-            limit_status: "pending_configuration",
-            approved_limit_dv01: null,
-            limit_usage_ratio: null,
-            volatility_status: "pending_market_volatility",
-            daily_rate_volatility_bp: null,
-            dominant_krd_bucket: "3Y",
-            dominant_krd: {
-              raw: 50000,
-              unit: "dv01",
-              display: "+50,000.00",
-              precision: 2,
-              sign_aware: true,
-            },
-            stress_scenarios: [
-              {
-                scenario_key: "parallel_up_10bp",
-                label: "+10bp",
-                shock_bp: {
-                  raw: 10,
-                  unit: "bp",
-                  display: "+10 bp",
-                  precision: 0,
-                  sign_aware: true,
-                },
-                estimated_pnl_impact: {
-                  raw: -1200000,
-                  unit: "yuan",
-                  display: "-1,200,000.00",
-                  precision: 2,
-                  sign_aware: true,
-                },
-              },
-              {
-                scenario_key: "parallel_up_25bp",
-                label: "+25bp",
-                shock_bp: {
-                  raw: 25,
-                  unit: "bp",
-                  display: "+25 bp",
-                  precision: 0,
-                  sign_aware: true,
-                },
-                estimated_pnl_impact: {
-                  raw: -3000000,
-                  unit: "yuan",
-                  display: "-3,000,000.00",
-                  precision: 2,
-                  sign_aware: true,
-                },
-              },
-            ],
-            operating_judgement:
-              "当前监管口径 DV01 120,000.00；+10bp 平行上行估算影响 -1,200,000.00；主风险桶 3Y。审批限额与利率波动源未接入前，暂不判定超限。",
-            control_actions: [
-              {
-                key: "approved_dv01_limit",
-                title: "配置审批限额",
-                status: "required",
-                evidence: "审批 DV01 限额未接入。",
-                action: "接入投委会或风控审批后的总 DV01 限额，再计算使用率与预警带。",
-              },
-              {
-                key: "rate_volatility_input",
-                title: "接入利率波动",
-                status: "required",
-                evidence: "日度利率波动率未接入。",
-                action: "接入曲线波动率后，把 DV01 敞口转换成日度波动损益观察。",
-              },
-              {
-                key: "bucket_sub_limits",
-                title: "拆分期限桶限额",
-                status: "required",
-                evidence: "当前主风险桶为 3Y。",
-                action: "为 1Y/3Y/5Y/7Y/10Y/30Y 设置桶位限额，避免总 DV01 合规但期限错配。",
-              },
-              {
-                key: "stress_escalation",
-                title: "固化冲击升级",
-                status: "required",
-                evidence: "+10bp 估算影响 -1,200,000.00；+25bp 估算影响 -3,000,000.00。",
-                action: "将标准冲击纳入日例会；超过授权阈值时进入减久期、套保或审批升级流程。",
-              },
-            ],
-            control_message: "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
-            action_hint: "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。",
-          },
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
+          rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
+          cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
+        },
       );
     },
     async getRiskScenarioStress(reportDate: string) {
@@ -357,12 +274,12 @@ export function createDemoExecutiveClient(
       });
       const scenarios = [
         {
-          scenario_key: "rate_parallel_up_25bp",
+          scenario_key: "parallel_rate_up_10bp",
           category: "rate" as const,
-          label: "利率平行上行 25bp",
+          label: "利率平行上行 10bp",
           source_field: "regulatory_dv01",
-          shock: bp(25),
-          estimated_impact: yuan(-3_000_000),
+          shock: bp(10),
+          estimated_impact: yuan(-1_200_000),
           measure: "estimated_pnl_impact",
           calculation: "-regulatory_dv01 * shock_bp",
           interpretation: "利率上行时，按监管口径 DV01 估算组合价格影响。",
@@ -370,12 +287,12 @@ export function createDemoExecutiveClient(
           human_review_required: true,
         },
         {
-          scenario_key: "credit_spread_widen_25bp",
+          scenario_key: "credit_spread_up_10bp",
           category: "credit" as const,
-          label: "信用利差走阔 25bp",
+          label: "信用利差走阔 10bp",
           source_field: "cs01",
-          shock: bp(25),
-          estimated_impact: yuan(-450_000),
+          shock: bp(10),
+          estimated_impact: yuan(-180_000),
           measure: "estimated_pnl_impact",
           calculation: "-cs01 * shock_bp",
           interpretation: "信用利差走阔时，按 CS01 估算信用敏感性影响。",
@@ -424,17 +341,17 @@ export function createDemoExecutiveClient(
           source: {
             result_kind: "risk.tensor",
             trace_id: `mock_risk.tensor_${reportDate}`,
-            source_version: "sv_mock_dashboard_v2",
-            rule_version: "rv_risk_tensor_formal_materialize_v2",
-            cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
+            source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
+            rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
+            cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
             quality_flag: "warning",
           },
           summary: {
             scenario_count: scenarios.length,
             available_count: 3,
             review_required_count: scenarios.length,
-            worst_estimated_impact: yuan(-3_000_000),
-            worst_scenario_key: "rate_parallel_up_25bp",
+            worst_estimated_impact: yuan(-50_000_000),
+            worst_scenario_key: "liquidity_30d_cashflow_10pct",
             message: "已生成标准多情景压力估算；所有结果均为情景口径，需复核后再用于经营判断。",
           },
           scenarios,

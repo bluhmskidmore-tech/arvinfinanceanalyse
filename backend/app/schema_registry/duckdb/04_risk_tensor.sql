@@ -12,6 +12,11 @@ create table if not exists fact_formal_risk_tensor_daily (
     cs01                          decimal(24, 8),
     portfolio_convexity           decimal(24, 8),
     portfolio_modified_duration   decimal(24, 8),
+    rate_risk_market_value        decimal(24, 8),
+    rate_risk_dv01                decimal(24, 8),
+    rate_risk_modified_duration   decimal(24, 8),
+    duration_excluded_market_value decimal(24, 8),
+    duration_excluded_count       integer,
     issuer_concentration_hhi      decimal(24, 8),
     issuer_top5_weight            decimal(24, 8),
     asset_cashflow_30d            decimal(24, 8),
@@ -27,6 +32,8 @@ create table if not exists fact_formal_risk_tensor_daily (
     warnings_json                 varchar,
     source_version                varchar,
     upstream_source_version       varchar,
+    upstream_rule_version         varchar,
+    upstream_cache_version        varchar,
     liability_source_version      varchar,
     liability_rule_version        varchar,
     rule_version                  varchar,
@@ -47,3 +54,17 @@ alter table fact_formal_risk_tensor_daily add column if not exists liability_sou
 alter table fact_formal_risk_tensor_daily add column if not exists liability_rule_version varchar
 -- MOSS:STMT
 alter table fact_formal_risk_tensor_daily add column if not exists regulatory_dv01 decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_dv01 decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists rate_risk_modified_duration decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists duration_excluded_market_value decimal(24, 8)
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists duration_excluded_count integer
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists upstream_rule_version varchar
+-- MOSS:STMT
+alter table fact_formal_risk_tensor_daily add column if not exists upstream_cache_version varchar

@@ -206,6 +206,9 @@ Duration denominator rules:
 - `portfolio_modified_duration` is weighted only by rows with a real `maturity_date`, positive `modified_duration`, and non-zero `market_value`.
 - Fund-like or other no-maturity rows must not receive a synthetic maturity date. They are excluded from the duration denominator and disclosed through `duration_excluded_market_value` / `duration_excluded_count` in the risk tensor API.
 - `rate_risk_market_value`, `rate_risk_dv01`, and `rate_risk_modified_duration` expose the denominator used for the rate-risk duration view; `rate_risk_modified_duration` must reconcile to `portfolio_modified_duration`.
+- `rate_risk_market_value`, `rate_risk_dv01`, `rate_risk_modified_duration`, `duration_excluded_market_value`, and `duration_excluded_count` must be computed by the Risk Tensor materializer and persisted in `fact_formal_risk_tensor_daily`; the formal read path must not recompute or silently backfill them from Bond Analytics.
+- Risk Tensor materialization must persist the upstream Bond Analytics `source_version`, `rule_version`, and `cache_version`; a mismatch in any member of that lineage tuple blocks formal reads until rematerialization.
+- Rollout order is schema migration v33, full-date Risk Tensor v3 rematerialization and lineage tie-out, then read-traffic cutover; legacy rows with NULL materialized metrics are blocked by design.
 
 流动性缺口规则：
 - `liquidity_gap_30d` / `liquidity_gap_90d` 必须按未来 30 / 90 天现金流口径计算，不得再按 `maturity_date` 对 `market_value` 做简单过滤。

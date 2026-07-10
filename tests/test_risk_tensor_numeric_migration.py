@@ -4,12 +4,31 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.risk_tensor import RiskTensorPayload
+from pydantic import ValidationError
 
 
 class TestRiskTensorNumericMigration:
+    def test_requires_materialized_duration_scope_fields(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            RiskTensorPayload(report_date=date(2026, 3, 31))
+
+        missing_fields = {
+            tuple(error["loc"])
+            for error in exc_info.value.errors()
+            if error["type"] == "missing"
+        }
+        assert missing_fields == {
+            ("rate_risk_market_value",),
+            ("rate_risk_dv01",),
+            ("rate_risk_modified_duration",),
+            ("duration_excluded_market_value",),
+            ("duration_excluded_count",),
+        }
+
     def test_accepts_legacy_decimal(self) -> None:
         payload = RiskTensorPayload(
             report_date=date(2026, 3, 31),
@@ -34,6 +53,11 @@ class TestRiskTensorNumericMigration:
             liquidity_gap_90d=Decimal("14.00000000"),
             liquidity_gap_30d_ratio=Decimal("0.03260000"),
             total_market_value=Decimal("429.00000000"),
+            rate_risk_market_value=Decimal("429.00000000"),
+            rate_risk_dv01=Decimal("3.50000000"),
+            rate_risk_modified_duration=Decimal("3.10000000"),
+            duration_excluded_market_value=Decimal("0.00000000"),
+            duration_excluded_count=0,
             bond_count=3,
             quality_flag="ok",
             warnings=[],
@@ -68,6 +92,11 @@ class TestRiskTensorNumericMigration:
             liquidity_gap_90d=Numeric(raw=14.0, unit="yuan", display="+14.00", precision=2, sign_aware=True),
             liquidity_gap_30d_ratio=Numeric(raw=0.0326, unit="ratio", display="+0.03", precision=2, sign_aware=True),
             total_market_value=Numeric(raw=429.0, unit="yuan", display="429.00", precision=2, sign_aware=False),
+            rate_risk_market_value=Numeric(raw=429.0, unit="yuan", display="429.00", precision=2, sign_aware=False),
+            rate_risk_dv01=Numeric(raw=3.5, unit="dv01", display="3.50", precision=2, sign_aware=False),
+            rate_risk_modified_duration=Numeric(raw=3.1, unit="ratio", display="3.10", precision=2, sign_aware=False),
+            duration_excluded_market_value=Numeric(raw=0.0, unit="yuan", display="0.00", precision=2, sign_aware=False),
+            duration_excluded_count=0,
             bond_count=3,
             quality_flag="ok",
             warnings=[],
@@ -100,6 +129,11 @@ class TestRiskTensorNumericMigration:
             liquidity_gap_90d=Decimal("14.00000000"),
             liquidity_gap_30d_ratio=Decimal("0.03260000"),
             total_market_value=Decimal("429.00000000"),
+            rate_risk_market_value=Decimal("429.00000000"),
+            rate_risk_dv01=Decimal("3.50000000"),
+            rate_risk_modified_duration=Decimal("3.10000000"),
+            duration_excluded_market_value=Decimal("0.00000000"),
+            duration_excluded_count=0,
             bond_count=3,
             quality_flag="ok",
             warnings=[],
