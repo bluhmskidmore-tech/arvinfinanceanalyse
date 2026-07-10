@@ -413,7 +413,7 @@ def _livermore_strategy_payload_cache_key(
     stock_readiness: ChoiceStockReadiness,
     backfill_mode: bool,
     stock_candidate_policy: str | None,
-) -> tuple[str, int, int, str, str, bool, str, str] | None:
+) -> tuple[object, ...] | None:
     path = Path(duckdb_path)
     if not path.exists():
         return None
@@ -432,6 +432,7 @@ def _livermore_strategy_payload_cache_key(
         resolved_path,
         stat.st_mtime_ns,
         stat.st_size,
+        livermore_data_version(duckdb_path),
         as_of_date.isoformat() if as_of_date is not None else "",
         readiness_fingerprint,
         backfill_mode,
@@ -4952,3 +4953,13 @@ def _aggregate_lineage(values: list[str], *, empty_value: str) -> str:
     if len(distinct) == 1:
         return distinct[0]
     return "__".join(distinct)
+
+
+def livermore_data_version(duckdb_path: str) -> str:
+    """Stable cross-process version fingerprint for persisted Livermore data."""
+    path = Path(duckdb_path)
+    try:
+        stat = path.stat()
+    except OSError:
+        return "missing"
+    return f"{stat.st_mtime_ns}:{stat.st_size}"

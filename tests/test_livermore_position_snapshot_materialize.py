@@ -4,13 +4,25 @@ import csv
 
 import duckdb
 import pytest
+from backend.app.tasks import livermore_position_snapshot_materialize as materialize_module
 
 from backend.app.repositories.duckdb_migrations import (
     apply_pending_migrations_on_connection,
 )
 from backend.app.tasks.livermore_position_snapshot_materialize import (
-    materialize_livermore_position_snapshot,
+    _materialize_livermore_position_snapshot as materialize_livermore_position_snapshot,
 )
+from backend.app.services.market_data_livermore_service import livermore_data_version
+
+
+def test_livermore_data_version_changes_when_duckdb_file_changes(tmp_path):
+    path = tmp_path / "snapshot.duckdb"
+    path.write_bytes(b"v1")
+    first = livermore_data_version(str(path))
+    path.write_bytes(b"v2-expanded")
+    second = livermore_data_version(str(path))
+    assert first != second
+    assert livermore_data_version(str(path)) == second
 
 
 def test_apply_pending_migrations_creates_livermore_position_snapshot_v22(tmp_path) -> None:
@@ -96,11 +108,13 @@ def test_materialize_livermore_position_snapshot_writes_filtered_rows(tmp_path) 
         as_of_date="2026-04-29",
         csv_path=str(csv_path),
         duckdb_path=str(duckdb_path),
+        run_id="livermore-test-run-001",
     )
 
     assert payload["status"] == "completed"
     assert payload["as_of_date"] == "2026-04-29"
     assert payload["row_count"] == 2
+    assert payload["run_id"] == "livermore-test-run-001"
     assert str(payload["source_version"]).startswith("sv_livermore_position_")
     assert str(payload["vendor_version"]).startswith("vv_livermore_position_csv_")
 
@@ -108,7 +122,7 @@ def test_materialize_livermore_position_snapshot_writes_filtered_rows(tmp_path) 
     try:
         rows = conn.execute(
             """
-            select as_of_date, stock_code, stock_name, entry_cost, bars_since_entry
+            select as_of_date, stock_code, stock_name, entry_cost, bars_since_entry, run_id
             from livermore_position_snapshot
             order by stock_code
             """
@@ -117,9 +131,48 @@ def test_materialize_livermore_position_snapshot_writes_filtered_rows(tmp_path) 
         conn.close()
 
     assert rows == [
-        ("2026-04-29", "000001.SZ", "Alpha", 10.5, 6),
-        ("2026-04-29", "000002.SZ", "Beta", 8.2, 3),
+        ("2026-04-29", "000001.SZ", "Alpha", 10.5, 6, "livermore-test-run-001"),
+        ("2026-04-29", "000002.SZ", "Beta", 8.2, 3, "livermore-test-run-001"),
     ]
+
+
+def test_materialize_livermore_position_snapshot_rolls_back_failed_insert(tmp_path, monkeypatch) -> None:
+    csv_path = tmp_path / "positions.csv"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_position_csv(csv_path, rows=[{"as_of_date": "2026-04-29", "stock_code": "000001.SZ", "stock_name": "Old", "entry_cost": "10", "bars_since_entry": "2"}])
+    materialize_livermore_position_snapshot(as_of_date="2026-04-29", csv_path=str(csv_path), duckdb_path=str(duckdb_path), run_id="old-run")
+    _write_position_csv(csv_path, rows=[
+        {"as_of_date": "2026-04-29", "stock_code": "000001.SZ", "stock_name": "New", "entry_cost": "11", "bars_since_entry": "3"},
+        {"as_of_date": "2026-04-29", "stock_code": "000002.SZ", "stock_name": "Partial", "entry_cost": "12", "bars_since_entry": "4"},
+    ])
+    real_connect = materialize_module.duckdb.connect
+    class FailingConnection:
+        def __init__(self, conn): self._conn = conn
+        def execute(self, *args, **kwargs): return self._conn.execute(*args, **kwargs)
+        def executemany(self, *args, **kwargs): raise RuntimeError("injected executemany failure")
+        def close(self): return self._conn.close()
+    monkeypatch.setattr(materialize_module.duckdb, "connect", lambda *a, **k: FailingConnection(real_connect(*a, **k)))
+    with pytest.raises(RuntimeError, match="injected executemany failure"):
+        materialize_livermore_position_snapshot(as_of_date="2026-04-29", csv_path=str(csv_path), duckdb_path=str(duckdb_path), run_id="new-run")
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute("select stock_name, run_id from livermore_position_snapshot order by stock_code").fetchall()
+    finally:
+        conn.close()
+    assert rows == [("Old", "old-run")]
+
+
+def test_materialize_livermore_position_snapshot_actor_fn_propagates_run_id(tmp_path) -> None:
+    csv_path = tmp_path / "positions.csv"
+    duckdb_path = tmp_path / "moss.duckdb"
+    _write_position_csv(csv_path, rows=[{"as_of_date": "2026-04-29", "stock_code": "000001.SZ", "stock_name": "Actor", "entry_cost": "10", "bars_since_entry": "2"}])
+    payload = materialize_module.materialize_livermore_position_snapshot.fn(as_of_date="2026-04-29", csv_path=str(csv_path), duckdb_path=str(duckdb_path), run_id="actor-run")
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        db_run_id = conn.execute("select run_id from livermore_position_snapshot").fetchone()[0]
+    finally:
+        conn.close()
+    assert payload["run_id"] == db_run_id == "actor-run"
 
 
 def test_materialize_livermore_position_snapshot_is_idempotent_per_as_of_date(tmp_path) -> None:

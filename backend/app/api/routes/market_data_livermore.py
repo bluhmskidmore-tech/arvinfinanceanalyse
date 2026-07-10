@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import date
 from pathlib import Path
 from typing import Annotated
@@ -24,7 +25,7 @@ from backend.app.services.livermore_signal_confluence_service import livermore_s
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
 from backend.app.services.macro_bond_linkage_service import get_macro_context_v1
 from backend.app.services.market_data_livermore_service import (
-    _risk_exit_input_block_reason,
+    livermore_data_version,
     livermore_strategy_envelope_from_catalog,
 )
 from backend.app.services.stock_analysis_workbench_service import stock_analysis_workbench_envelope
@@ -120,7 +121,7 @@ def _invalidate_livermore_response_cache() -> None:
 
 
 def _livermore_strategy_cache_key(*, duckdb_path: str, catalog_file: object, as_of_date: str | None) -> str:
-    return f"livermore/strategy::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
+    return f"livermore/strategy::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
 
 
 def _stock_analysis_workbench_cache_key(
@@ -135,14 +136,14 @@ def _stock_analysis_workbench_cache_key(
     return (
         f"livermore/workbench::as_of={as_of_date or ''}::include={include or ''}"
         f"::sector_window_days={sector_window_days}::top_k={top_k}"
-        f"::catalog={catalog_file}::{duckdb_path}"
+        f"::catalog={catalog_file}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
     )
 
 
 def _livermore_signal_confluence_cache_key(
     *, duckdb_path: str, catalog_file: object, as_of_date: str | None
 ) -> str:
-    return f"livermore/signal-confluence::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
+    return f"livermore/signal-confluence::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
 
 
 def _livermore_stock_detail_cache_key(
@@ -151,6 +152,7 @@ def _livermore_stock_detail_cache_key(
     return (
         f"livermore/stock-detail::stock={stock_code}::as_of={as_of_date or ''}"
         f"::lookback={lookback}::{duckdb_path}"
+        f"::lookback={lookback}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
     )
 
 
@@ -164,7 +166,7 @@ def _livermore_candidate_history_cache_key(
 ) -> str:
     return (
         f"livermore/candidate-history::stock={stock_code or ''}"
-        f"::from={snapshot_from or ''}::to={snapshot_to or ''}::limit={limit}::{duckdb_path}"
+        f"::from={snapshot_from or ''}::to={snapshot_to or ''}::limit={limit}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
     )
 
 
@@ -180,7 +182,7 @@ def _livermore_strategy_score_cache_key(
     return (
         f"livermore/strategy-score::from={snapshot_from or ''}::to={snapshot_to or ''}"
         f"::market_state={current_market_state or ''}::min_sample={min_sample}"
-        f"::primary_horizon={primary_horizon}::{duckdb_path}"
+        f"::primary_horizon={primary_horizon}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
     )
 
 
@@ -196,14 +198,14 @@ def _livermore_strategy_optimization_cache_key(
     return (
         f"livermore/strategy-optimization::from={snapshot_from or ''}::to={snapshot_to or ''}"
         f"::market_state={current_market_state or ''}::min_sample={min_sample}"
-        f"::primary_horizon={primary_horizon}::{duckdb_path}"
+        f"::primary_horizon={primary_horizon}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
     )
 
 
 def _livermore_cycle_proxy_backtest_cache_key(
     *, duckdb_path: str, snapshot_from: str | None, snapshot_to: str | None
 ) -> str:
-    return f"livermore/cycle-proxy-backtest::from={snapshot_from or ''}::to={snapshot_to or ''}::{duckdb_path}"
+    return f"livermore/cycle-proxy-backtest::from={snapshot_from or ''}::to={snapshot_to or ''}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
 
 
 def _livermore_portfolio_backtest_cache_key(
@@ -211,7 +213,7 @@ def _livermore_portfolio_backtest_cache_key(
 ) -> str:
     return (
         f"livermore/candidate-history-portfolio-backtest::from={snapshot_from or ''}"
-        f"::to={snapshot_to or ''}::{duckdb_path}"
+        f"::to={snapshot_to or ''}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
     )
 
 
@@ -225,7 +227,7 @@ def _livermore_sector_rank_series_cache_key(
 ) -> str:
     return (
         f"livermore/sector-rank-series::as_of={as_of_date or ''}::window_days={window_days}"
-        f"::sector={sector_code or ''}::top_k={top_k}::{duckdb_path}"
+        f"::sector={sector_code or ''}::top_k={top_k}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
     )
 
 
@@ -360,29 +362,31 @@ def materialize_position_snapshot(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    if not csv_path.exists():
+        raise HTTPException(status_code=422, detail=f"Livermore position snapshot CSV not found: {csv_path}")
+
     try:
         from backend.app.tasks.livermore_position_snapshot_materialize import (
             materialize_livermore_position_snapshot,
         )
 
-        payload = materialize_livermore_position_snapshot(
+        run_id = f"livermore_position_snapshot:{request.as_of_date}:{uuid.uuid4().hex[:12]}"
+        materialize_livermore_position_snapshot.send(
             as_of_date=request.as_of_date,
             csv_path=str(csv_path),
             duckdb_path=str(settings.duckdb_path),
+            run_id=run_id,
         )
-    except (FileNotFoundError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    block_reason = _risk_exit_input_block_reason(
-        duckdb_path=str(settings.duckdb_path),
-        as_of_date=request.as_of_date,
-    )
-    payload["risk_exit_input_status"] = "blocked" if block_reason else "ready"
-    payload["risk_exit_input_block_reason"] = block_reason
-    _invalidate_livermore_response_cache()
-    return payload
+    return {
+        "status": "queued",
+        "run_id": run_id,
+        "as_of_date": request.as_of_date,
+        "input_mode": "csv",
+        "csv_path": str(csv_path),
+    }
 
 
 @router.post("/livermore/position-snapshot/manual")
@@ -408,24 +412,22 @@ def materialize_manual_position_snapshot(
             materialize_livermore_position_snapshot_rows,
         )
 
-        payload = materialize_livermore_position_snapshot_rows(
+        run_id = f"livermore_position_snapshot:{request.as_of_date}:{uuid.uuid4().hex[:12]}"
+        materialize_livermore_position_snapshot_rows.send(
             as_of_date=request.as_of_date,
             rows=[position.model_dump() for position in request.positions],
             duckdb_path=str(settings.duckdb_path),
+            run_id=run_id,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    block_reason = _risk_exit_input_block_reason(
-        duckdb_path=str(settings.duckdb_path),
-        as_of_date=request.as_of_date,
-    )
-    payload["risk_exit_input_status"] = "blocked" if block_reason else "ready"
-    payload["risk_exit_input_block_reason"] = block_reason
-    _invalidate_livermore_response_cache()
-    return payload
+    return {
+        "status": "queued",
+        "run_id": run_id,
+        "as_of_date": request.as_of_date,
+        "input_mode": "manual",
+    }
 
 
 @router.post("/livermore/refresh-gate-supplement")

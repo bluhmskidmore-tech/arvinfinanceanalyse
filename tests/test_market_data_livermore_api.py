@@ -31,6 +31,7 @@ def _seed_choice_macro_history(
     closes: list[float],
     quality_flag: str = "ok",
 ) -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         conn.execute(
@@ -461,6 +462,7 @@ def _livermore_route_settings(tmp_path) -> SimpleNamespace:
 def test_livermore_read_surfaces_require_explicit_read_scope(
     path, params, tmp_path, monkeypatch
 ) -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
     monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
     client = _build_client(tmp_path, monkeypatch, grant_livermore_read=False)
     _stub_livermore_read_services(monkeypatch)
@@ -3226,39 +3228,9 @@ def test_livermore_gate_supplement_refresh_returns_replay_metadata_without_resha
     get_settings.cache_clear()
 
 
-def test_livermore_position_snapshot_endpoint_materializes_and_checks_risk_inputs(
+def test_livermore_position_snapshot_endpoint_dispatches_async_materialization(
     tmp_path, monkeypatch
 ) -> None:
-    duckdb_path = tmp_path / "moss.duckdb"
-    conn = duckdb.connect(str(duckdb_path), read_only=False)
-    try:
-        conn.execute(
-            """
-            create table choice_stock_daily_observation (
-              stock_code varchar,
-              trade_date varchar,
-              close_value double,
-              source_version varchar,
-              vendor_version varchar
-            )
-            """
-        )
-        start = date(2026, 4, 18)
-        conn.executemany(
-            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?)",
-            [
-                (
-                    "000001.SZ",
-                    (start + timedelta(days=offset)).isoformat(),
-                    10.0 + offset,
-                    "sv_daily",
-                    "vv_daily",
-                )
-                for offset in range(13)
-            ],
-        )
-    finally:
-        conn.close()
     csv_path = tmp_path / "data_input" / "livermore" / "positions.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     csv_path.write_text(
@@ -3272,6 +3244,21 @@ def test_livermore_position_snapshot_endpoint_materializes_and_checks_risk_input
     )
     client = _build_client(tmp_path, monkeypatch)
 
+    task_mod = load_module(
+        "backend.app.tasks.livermore_position_snapshot_materialize",
+        "backend/app/tasks/livermore_position_snapshot_materialize.py",
+    )
+    queued_messages: list[dict[str, object]] = []
+    invalidations: list[bool] = []
+    monkeypatch.setattr(
+        "backend.app.api.routes.market_data_livermore._invalidate_livermore_response_cache", lambda: invalidations.append(True)
+    )
+    monkeypatch.setattr(
+        task_mod.materialize_livermore_position_snapshot,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
     response = client.post(
         "/ui/market-data/livermore/position-snapshot",
         json={"as_of_date": "2026-04-30", "csv_path": str(csv_path)},
@@ -3279,23 +3266,15 @@ def test_livermore_position_snapshot_endpoint_materializes_and_checks_risk_input
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "completed"
-    assert payload["row_count"] == 1
-    assert payload["risk_exit_input_status"] == "ready"
-    assert payload["risk_exit_input_block_reason"] == ""
-    conn = duckdb.connect(str(duckdb_path), read_only=True)
-    try:
-        row = conn.execute(
-            """
-            select stock_code, entry_cost, bars_since_entry, position_status
-            from livermore_position_snapshot
-            where as_of_date = ?
-            """,
-            ["2026-04-30"],
-        ).fetchone()
-    finally:
-        conn.close()
-    assert row == ("000001.SZ", 10.5, 6, "ACTIVE")
+    assert payload["status"] == "queued"
+    assert payload["run_id"] == queued_messages[0]["run_id"]
+    assert payload["as_of_date"] == "2026-04-30"
+    assert payload["input_mode"] == "csv"
+    assert payload["csv_path"] == str(csv_path)
+    assert len(queued_messages) == 1
+    assert invalidations == []
+    assert queued_messages[0]["as_of_date"] == "2026-04-30"
+    assert queued_messages[0]["csv_path"] == str(csv_path)
     get_settings.cache_clear()
 
 
@@ -3324,40 +3303,25 @@ def test_livermore_position_snapshot_endpoint_rejects_csv_outside_input_root(
     get_settings.cache_clear()
 
 
-def test_livermore_position_snapshot_manual_endpoint_materializes_without_csv(
+def test_livermore_position_snapshot_manual_endpoint_dispatches_async_materialization(
     tmp_path, monkeypatch
 ) -> None:
-    duckdb_path = tmp_path / "moss.duckdb"
-    conn = duckdb.connect(str(duckdb_path), read_only=False)
-    try:
-        conn.execute(
-            """
-            create table choice_stock_daily_observation (
-              stock_code varchar,
-              trade_date varchar,
-              close_value double,
-              source_version varchar,
-              vendor_version varchar
-            )
-            """
-        )
-        start = date(2026, 4, 18)
-        conn.executemany(
-            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?)",
-            [
-                (
-                    "000001.SZ",
-                    (start + timedelta(days=offset)).isoformat(),
-                    10.0 + offset,
-                    "sv_daily",
-                    "vv_daily",
-                )
-                for offset in range(13)
-            ],
-        )
-    finally:
-        conn.close()
     client = _build_client(tmp_path, monkeypatch)
+
+    task_mod = load_module(
+        "backend.app.tasks.livermore_position_snapshot_materialize",
+        "backend/app/tasks/livermore_position_snapshot_materialize.py",
+    )
+    queued_messages: list[dict[str, object]] = []
+    invalidations: list[bool] = []
+    monkeypatch.setattr(
+        "backend.app.api.routes.market_data_livermore._invalidate_livermore_response_cache", lambda: invalidations.append(True)
+    )
+    monkeypatch.setattr(
+        task_mod.materialize_livermore_position_snapshot_rows,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
 
     response = client.post(
         "/ui/market-data/livermore/position-snapshot/manual",
@@ -3377,30 +3341,14 @@ def test_livermore_position_snapshot_manual_endpoint_materializes_without_csv(
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["run_id"] == queued_messages[0]["run_id"]
+    assert payload["as_of_date"] == "2026-04-30"
     assert payload["input_mode"] == "manual"
-    assert payload["csv_path"] is None
-    assert payload["row_count"] == 1
-    assert payload["risk_exit_input_status"] == "ready"
-    conn = duckdb.connect(str(duckdb_path), read_only=True)
-    try:
-        row = conn.execute(
-            """
-            select stock_code, stock_name, entry_cost, bars_since_entry, position_status, source_system
-            from livermore_position_snapshot
-            where as_of_date = ?
-            """,
-            ["2026-04-30"],
-        ).fetchone()
-    finally:
-        conn.close()
-    assert row == (
-        "000001.SZ",
-        "Alpha",
-        10.5,
-        6,
-        "ACTIVE",
-        "livermore_position_snapshot_manual",
-    )
+    assert len(queued_messages) == 1
+    assert queued_messages[0]["as_of_date"] == "2026-04-30"
+    assert len(queued_messages[0]["rows"]) == 1
+    assert invalidations == []
     get_settings.cache_clear()
 
 
