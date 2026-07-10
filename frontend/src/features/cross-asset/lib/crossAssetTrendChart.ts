@@ -371,7 +371,7 @@ export function buildCrossAssetTrendSummary(kpis: ResolvedCrossAssetKpi[]): Tren
   const bond = kpiDir("cn_gov_10y");
   const usBond = kpiDir("us_gov_10y");
   const money = kpiDir("money_market_7d");
-  const equity = kpiDir("financial_conditions");
+  const equity = kpiDir("csi300");
   const brent = kpiDir("brent");
   const steel = kpiDir("steel");
   const usdcny = kpiDir("usdcny");

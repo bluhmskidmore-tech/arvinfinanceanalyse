@@ -2010,6 +2010,35 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
+## 14.6.1 PAGE-CROSS-ASSET-001 Cross-Asset Drivers
+
+### A. Page identity and question
+
+- Page ID: `PAGE-CROSS-ASSET-001`
+- Primary front-end route: `/cross-asset`
+- Status: `active analytical page`
+- The first screen answers which governed cross-asset transmission evidence is usable today; it must not promote retained, stale, fallback, or source-blocked observations into a transmission conclusion.
+
+### B. Metric and direction boundaries
+
+- `financial_conditions` binds only `EMM01843735` (中国金融条件指数). It is a zero-centered `z-score`; it must not be replaced by a market index, converted into a percentage return, normalized to first-value `100`, or included in asset-level volatility/correlation calculations.
+- `csi300` binds only `CA.CSI300` (沪深300指数收盘点位). Its display unit is `point`; it is the broad-equity input for market regime, equity evidence, trend summaries, and stock analysis.
+- Raw KPI changes may be described only as `rising` / `falling` / `neutral`. `supportive` / `restrictive` is reserved for governed transmission-axis output and must not be inferred from the sign of a raw KPI change.
+- `EMM01843735` and `CA.CSI300` remain separate even when their report dates differ; freshness never makes them substitutes.
+
+### C. First-screen source gate
+
+- `source-blocked` is a blocking first-screen state alongside permission failure, loading failure, and no data.
+- When blocked, hero, regime, dominant driver, bond judgment, stock judgment, trust badge, and action rail must show `来源受限` / `待确认`; retained rows may remain visible only as auditable raw evidence.
+- When `source-blocked`, the first-screen correlation, transmission, and investment-judgment lower grid must be replaced by the blocking notice, and retained Choice rows in the evidence matrix must show low credibility.
+- A blocked page must not simultaneously emit `dual-source` / `双源就绪`.
+
+### D. Tests
+
+- KPI semantics: `frontend/src/features/cross-asset/lib/crossAssetKpiModel.test.ts`.
+- Asset analytics: `frontend/src/features/cross-asset/lib/crossAssetAnalytics.test.ts`.
+- First-screen contract: `frontend/src/test/crossAssetDriversPageModel.test.ts`.
+- Page integration: `frontend/src/test/CrossAssetPage.test.tsx`.
 ## 14.7 PAGE-RISK-HOME-001 Risk Workbench Home
 
 ### A. Page identity

@@ -10,7 +10,7 @@
  * All functions are pure and stateless; no side effects.
  */
 
-import type { ResolvedCrossAssetKpi, CrossAssetKpiFormat } from "./crossAssetKpiModel";
+import { isAssetLevelKpiKey, type ResolvedCrossAssetKpi, type CrossAssetKpiFormat } from "./crossAssetKpiModel";
 
 /* ================================================================
  *  1. Asset Correlation Matrix
@@ -66,7 +66,7 @@ function pearsonR(xs: number[], ys: number[]): number | null {
  * Correlation is computed on the overlapping tail of each pair.
  */
 export function buildCorrelationMatrix(kpis: ResolvedCrossAssetKpi[]): CorrelationMatrix {
-  const eligible = kpis.filter((k) => k.sparkline.length >= 5);
+  const eligible = kpis.filter((k) => isAssetLevelKpiKey(k.key) && k.sparkline.length >= 5);
   const keys = eligible.map((k) => k.key);
   const labels = eligible.map((k) => k.label);
 
@@ -222,7 +222,7 @@ export function identifyMarketRegime(kpis: ResolvedCrossAssetKpi[]): MarketRegim
   }
 
   const bondDir = dir("cn_gov_10y"); // yield: rising = rates up
-  const equityDir = dir("financial_conditions");
+  const equityDir = dir("csi300");
   const moneyDir = dir("money_market_7d"); // rising = tightening
   const brentDir = dir("brent");
   const steelDir = dir("steel");
@@ -332,7 +332,7 @@ function pctChange(arr: number[], lookback: number): number | null {
 
 export function buildMomentumScoreboard(kpis: ResolvedCrossAssetKpi[]): MomentumRow[] {
   return kpis
-    .filter((k) => k.sparkline.length >= 2)
+    .filter((k) => isAssetLevelKpiKey(k.key) && k.sparkline.length >= 2)
     .map((k) => {
       const chg1d = pctChange(k.sparkline, 1);
       const chg5d = pctChange(k.sparkline, Math.min(5, k.sparkline.length - 1));
@@ -393,7 +393,7 @@ export const TREND_GROUPS: TrendGroup[] = [
   {
     key: "equity",
     label: "权益",
-    kpiKeys: ["financial_conditions", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
+    kpiKeys: ["csi300", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
   },
   {
     key: "commodity_fx",
@@ -466,7 +466,7 @@ export function detectVolatilityClustering(
   recentWindow = 5,
   elevationThreshold = 1.5,
 ): VolatilityAlert {
-  const eligible = kpis.filter((k) => k.sparkline.length >= 8);
+  const eligible = kpis.filter((k) => isAssetLevelKpiKey(k.key) && k.sparkline.length >= 8);
   const assets: VolatilityAssetDetail[] = eligible.map((k) => {
     const fullVol = rollingStdDev(k.sparkline, k.sparkline.length);
     const recentVol = rollingStdDev(k.sparkline, recentWindow);

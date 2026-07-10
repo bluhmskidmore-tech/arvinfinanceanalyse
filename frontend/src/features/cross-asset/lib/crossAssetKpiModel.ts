@@ -9,6 +9,7 @@ export type CrossAssetSingleSlot = {
   label: string;
   format: CrossAssetKpiFormat;
   tag: string;
+  displayUnit?: string;
   candidateSeriesIds: readonly string[];
 };
 
@@ -28,6 +29,11 @@ export type CrossAssetSpreadSlot = {
 };
 
 export type CrossAssetKpiSlot = CrossAssetSingleSlot | CrossAssetSpreadSlot;
+
+/** Zero-centered scores are evidence, not asset levels: no return, vol, correlation, or base-100 transforms. */
+export function isAssetLevelKpiKey(key: string): boolean {
+  return key !== "financial_conditions";
+}
 
 export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
   {
@@ -71,7 +77,17 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
     label: "金融条件指数",
     format: "plain",
     tag: "风险情绪",
-    candidateSeriesIds: ["EMM01843735", "CA.CSI300"],
+    displayUnit: "z-score",
+    candidateSeriesIds: ["EMM01843735"],
+  },
+  {
+    kind: "single",
+    key: "csi300",
+    label: "沪深300指数",
+    format: "index",
+    tag: "权益风险偏好",
+    displayUnit: "point",
+    candidateSeriesIds: ["CA.CSI300"],
   },
   {
     kind: "single",
@@ -307,7 +323,11 @@ function changeLabelForSlot(
   if (format === "bp") {
     return formatBpFromNumber(delta);
   }
-  if (format === "index" || format === "plain") {
+  if (format === "index") {
+    const sign = delta > 0 ? "+" : "";
+    return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}点`;
+  }
+  if (format === "plain") {
     const sign = delta > 0 ? "+" : "";
     return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
   }
@@ -335,7 +355,7 @@ function valueLabelForSlot(
     return formatFx(value);
   }
   if (format === "index") {
-    return value.toFixed(1);
+    return `${value.toFixed(1)}点`;
   }
   return value.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
@@ -429,22 +449,17 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
   const point = pickPoint(byId, slot.candidateSeriesIds);
   const id = point?.series_id ?? slot.candidateSeriesIds[0] ?? slot.key;
   const delta = point?.latest_change ?? null;
-  let label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
-  let tag = slot.tag;
-  if (slot.key === "financial_conditions" && point?.series_id === "CA.CSI300") {
-    label = "沪深300指数";
-    tag = "权益风险偏好";
-  }
+  const label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
   return {
     key: slot.key,
     label,
     format: slot.format,
-    tag,
+    tag: slot.tag,
     resolvedSeriesId: id,
     sourceKind: sourceKindFromSeriesId(id),
     vendorName: point?.vendor_name,
     tradeDate: point?.trade_date ?? null,
-    unit: point?.unit ?? null,
+    unit: slot.displayUnit ?? point?.unit ?? null,
     qualityFlag: point?.quality_flag,
     refreshTier: point?.refresh_tier,
     valueLabel: valueLabelForSlot(slot.format, point?.value_numeric),
@@ -518,6 +533,9 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
 
   for (const slot of CROSS_ASSET_KPI_SLOTS) {
     if (slot.kind === "single") {
+      if (!isAssetLevelKpiKey(slot.key)) {
+        continue;
+      }
       const p = pickPoint(byId, slot.candidateSeriesIds);
       if (!p?.recent_points?.length) {
         continue;

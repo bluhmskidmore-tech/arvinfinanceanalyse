@@ -61,7 +61,7 @@ export function VolatilityClusteringPanel({ alert }: { alert: VolatilityAlert })
     if (asset.key === "gov_spread") return "中美10Y利差";
     if (asset.key === "cn_gov_10y") return "10Y国债";
     if (asset.key === "money_market_7d") return "DR007";
-    if (asset.key === "financial_conditions") return "沪深300";
+    if (asset.key === "csi300") return "沪深300";
     return asset.key;
   };
   const sortedAssets = [...alert.assets].sort((left, right) => Number(right.isElevated) - Number(left.isElevated));

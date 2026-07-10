@@ -20,12 +20,12 @@ import {
   correlationColor,
   formatCorrelation,
   type CorrelationMatrix,
-  type MarketRegimeInfo,
   type MomentumRow,
 } from "../lib/crossAssetAnalytics";
 import {
   type CrossAssetCandidateAction,
   type CrossAssetClassAnalysisRow,
+  type CrossAssetFirstScreenDisplayContract,
   type CrossAssetResearchViewCard,
   type CrossAssetStatusFlag,
   type CrossAssetTransmissionAxisRow,
@@ -56,8 +56,12 @@ function sourceNameForKpi(kpi: ResolvedCrossAssetKpi | null | undefined) {
   return "待补源";
 }
 
-function credibilityForKpi(kpi: ResolvedCrossAssetKpi | null | undefined) {
+function credibilityForKpi(
+  kpi: ResolvedCrossAssetKpi | null | undefined,
+  isSourceBlocked = false,
+) {
   if (!kpi || kpi.sourceKind === "missing") return { label: "低", tone: "low" as const };
+  if (isSourceBlocked && kpi.sourceKind === "choice") return { label: "低", tone: "low" as const };
   if (kpi.qualityFlag === "stale") return { label: "中", tone: "medium" as const };
   if (kpi.sourceKind === "public") return { label: "中", tone: "medium" as const };
   return { label: "高", tone: "high" as const };
@@ -141,25 +145,16 @@ export function CrossAssetReferenceToolbar({
 }
 
 export function CrossAssetReferenceSummary({
-  reportDate,
-  conclusion,
-  marketRegime,
+  display,
   latestMeta,
   linkageMeta,
-  statusFlags,
-  isLoading,
 }: {
-  reportDate: string;
-  conclusion: string | null;
-  marketRegime: MarketRegimeInfo;
+  display: CrossAssetFirstScreenDisplayContract;
   latestMeta?: ResultMeta;
   linkageMeta?: ResultMeta;
-  statusFlags: CrossAssetStatusFlag[];
-  isLoading: boolean;
 }) {
-  const summaryText = isLoading ? "正在加载联动分析…" : conclusion || "宏观环境偏松，利率下行空间，可适度拉长久期";
-  const headlineText = isLoading ? summaryText : "宏观环境偏松，利率下行空间，可适度拉长久期";
-  const warningCount = statusFlags.length;
+  const { bond, stock } = display.judgments;
+  const warningCount = display.status.warningCount;
 
   return (
     <section className="cross-asset-reference-summary" data-testid="cross-asset-reference-summary">
@@ -173,19 +168,51 @@ export function CrossAssetReferenceSummary({
           aria-label="今日传导结论"
         >
           <span className="moss-page-v2-decision-hero__eyebrow">核心结论</span>
-          <h1 className="moss-page-v2-decision-hero__title" title={summaryText}>
-            {headlineText}
+          <h1 className="moss-page-v2-decision-hero__title" title={display.hero.summary}>
+            {display.hero.headline}
           </h1>
           <p className="moss-page-v2-decision-hero__question">
-            风险偏好回暖，主导海外利率；仅作为宏观-债券联动分析，不替代交易指令。
+            {display.hero.question}
           </p>
           <div className="moss-page-v2-decision-hero__report">
-            数据日期 <strong className="cross-asset-drivers-page__report-date">{reportDate || "待定"}</strong>
+            数据日期 <strong className="cross-asset-drivers-page__report-date">{display.hero.reportDate}</strong>
           </div>
           <div className="moss-page-v2-decision-hero__conclusion">
-            <span>今日传导结论：{summaryText}</span>
+            <span>今日传导结论：{display.hero.summary}</span>
           </div>
         </section>
+      </section>
+
+      <section className="cross-asset-driver-chain" data-testid="cross-asset-dominant-driver-chain" aria-label="主导跨资产链路">
+        <div className="cross-asset-driver-chain__head">
+          <span>主导跨资产链路</span>
+          <strong>{display.driverChain.primary}</strong>
+          <em>{display.driverChain.secondary} · {display.driverChain.style}</em>
+        </div>
+        <div className="cross-asset-driver-chain__items">
+          {display.driverChain.items.map((item) => (
+            <article className={`cross-asset-driver-chain__item cross-asset-driver-chain__item--${item.tone}`} key={item.title}>
+              <div>
+                <span>{item.title}</span>
+                <strong>{item.stance}</strong>
+              </div>
+              <p>{item.bullets[0] ?? "等待治理后输入"}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="cross-asset-first-screen-judgments" data-testid="cross-asset-first-screen-judgments" aria-label="债券与股票判断">
+        <article className="cross-asset-first-screen-judgment" data-testid="cross-asset-first-screen-judgment-bond">
+          <span>{bond.label}</span>
+          <strong>{bond.headline}</strong>
+          <p>{bond.summary}</p>
+        </article>
+        <article className="cross-asset-first-screen-judgment" data-testid="cross-asset-first-screen-judgment-stock">
+          <span>{stock.label}</span>
+          <strong>{stock.headline}</strong>
+          <p>{stock.summary}</p>
+        </article>
       </section>
 
       <div className="cross-asset-market-state-strip cross-asset-reference-summary__regime" data-testid="cross-asset-market-state-strip">
@@ -193,8 +220,8 @@ export function CrossAssetReferenceSummary({
           <span className="ca-regime__signal" aria-hidden />
           <div className="ca-regime__body">
             <span className="cross-asset-reference-summary__label">当前格局</span>
-            <strong className="ca-regime__label">{marketRegime.label}</strong>
-            <span className="ca-regime__desc">{marketRegime.description}</span>
+            <strong className="ca-regime__label">{display.hero.regimeLabel}</strong>
+            <span className="ca-regime__desc">{display.hero.regimeDescription}</span>
           </div>
         </div>
       </div>
@@ -214,8 +241,8 @@ export function CrossAssetReferenceSummary({
         </strong>
       </div>
       <div className="cross-asset-reference-summary__review">
-        <strong>{warningCount || "0"} 项提示</strong>
-        <span>{warningCount ? "查看详情" : "暂无阻断"}</span>
+        <strong>{display.loading.isLoading ? "加载中" : warningCount || "0"} 项提示</strong>
+        <span>{display.loading.isLoading ? display.loading.label : warningCount ? "查看详情" : "暂无阻断"}</span>
       </div>
       <div className="cross-asset-reference-summary__boundary">
         <strong>仅分析口径</strong>
@@ -232,7 +259,7 @@ export function CrossAssetReferenceMarketTape({ kpis }: { kpis: ResolvedCrossAss
   }));
 
   return (
-    <div className="cross-asset-reference-market-tape" data-testid="cross-asset-market-tape" role="list" aria-label="跨资产市场快讯">
+    <div className="cross-asset-reference-market-tape cross-asset-market-tape" data-testid="cross-asset-market-tape" role="list" aria-label="跨资产市场快讯">
       {tickerKpis.map(({ label, kpi }) => (
         <div className={`cross-asset-market-tape__item cross-asset-market-tape__item--${kpi?.changeTone ?? "default"}`} role="listitem" key={label}>
           <span>{kpi?.label ?? label}</span>
@@ -244,10 +271,17 @@ export function CrossAssetReferenceMarketTape({ kpis }: { kpis: ResolvedCrossAss
   );
 }
 
-export function CrossAssetReferenceEvidenceMatrix({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
+export function CrossAssetReferenceEvidenceMatrix({
+  kpis,
+  sourceBlockedFlag,
+}: {
+  kpis: ResolvedCrossAssetKpi[];
+  sourceBlockedFlag?: CrossAssetStatusFlag | null;
+}) {
+  const isSourceBlocked = Boolean(sourceBlockedFlag);
   const rows = referenceEvidenceSpecs.map((spec) => {
     const kpi = findReferenceKpi(kpis, spec.labels);
-    const credibility = credibilityForKpi(kpi);
+    const credibility = credibilityForKpi(kpi, isSourceBlocked);
     const direction = referenceDirectionForKpi(kpi);
     return { spec, kpi, credibility, direction };
   });
@@ -308,7 +342,10 @@ export function CrossAssetReferenceEvidenceMatrix({ kpis }: { kpis: ResolvedCros
                   <td>{sourceNameForKpi(kpi)}</td>
                   <td>{kpi?.tradeDate ? compactGeneratedAt(`${kpi.tradeDate}T11:30:00`) : "待定"}</td>
                   <td>
-                    <span className={`cross-asset-reference-credibility cross-asset-reference-credibility--${credibility.tone}`}>
+                    <span
+                      className={`cross-asset-reference-credibility cross-asset-reference-credibility--${credibility.tone}`}
+                      data-testid={`cross-asset-reference-credibility-${kpi?.key ?? "missing"}`}
+                    >
                       {credibility.label}
                     </span>
                   </td>
@@ -319,7 +356,7 @@ export function CrossAssetReferenceEvidenceMatrix({ kpis }: { kpis: ResolvedCros
         </table>
       </div>
       <footer className="cross-asset-reference-evidence__foot">
-        <span>注：信号方向基于对债券利率的边际影响，可信度由时效性、覆盖度与历史稳定性综合评估。</span>
+        <span>注：箭头仅表示指标自身变动；对债券的影响以治理后的传导轴为准。可信度由时效性、覆盖度与历史稳定性综合评估。</span>
         <span>可信度：<i data-tone="high" /> 高 <i data-tone="medium" /> 中 <i data-tone="low" /> 低</span>
       </footer>
     </section>
@@ -331,20 +368,30 @@ function CrossAssetActionRail({
   researchViews,
   warningCount,
   isLoading,
+  isSourceBlocked,
 }: {
   envTags: ReturnType<typeof buildEnvironmentTags>;
   researchViews: CrossAssetResearchViewCard[];
   warningCount: number;
   isLoading: boolean;
+  isSourceBlocked: boolean;
 }) {
-  const readyCount = researchViews.filter((row) => row.status === "ready").length;
-  const primaryView = researchViews[0];
+  const readyCount = isSourceBlocked ? 0 : researchViews.filter((row) => row.status === "ready").length;
+  const primaryView = isSourceBlocked ? undefined : researchViews[0];
   const primaryAction = isLoading
     ? "等待联动分析返回"
+    : isSourceBlocked
+      ? "恢复并核对来源"
     : warningCount > 0
       ? "先核对降级、口径和来源"
       : "复核利率、风险偏好和外部约束";
-  const confidenceLabel = warningCount > 0 ? `${warningCount} 项证据提示` : "证据状态正常";
+  const confidenceLabel = isSourceBlocked
+    ? "来源受限"
+    : warningCount > 0
+      ? `${warningCount} 项证据提示`
+      : "证据状态正常";
+  const primaryDriver = isSourceBlocked ? "待确认" : envTags.primary;
+  const styleConstraint = isSourceBlocked ? "待确认" : envTags.style;
 
   return (
     <aside className="cross-asset-action-rail" data-testid="cross-asset-action-rail" aria-labelledby="cross-asset-action-rail-title">
@@ -354,7 +401,7 @@ function CrossAssetActionRail({
       </div>
       <div className="cross-asset-action-rail__summary">
         <span>当前主导</span>
-        <strong>{envTags.primary}</strong>
+        <strong>{primaryDriver}</strong>
         <small>{primaryView ? `${primaryView.label}：${primaryView.stance}` : "等待四维判断"}</small>
       </div>
       <dl className="cross-asset-action-rail__metrics">
@@ -368,7 +415,7 @@ function CrossAssetActionRail({
         </div>
         <div>
           <dt>风格约束</dt>
-          <dd>{envTags.style}</dd>
+          <dd>{styleConstraint}</dd>
         </div>
       </dl>
       <div className="cross-asset-action-rail__action">
@@ -418,15 +465,18 @@ function CrossAssetTrustPanel({
   const hasFallbackFlag = statusFlags.some((flag) => flag.id === "fallback");
   const hasFallback = hasFallbackMeta || hasFallbackFlag;
   const hasAccessDenied = statusFlags.some((flag) => flag.id === "access-denied");
+  const hasSourceBlocked = statusFlags.some((flag) => flag.id === "source-blocked");
   const nextAction = hasAccessDenied
     ? "申请读取权限"
+    : hasSourceBlocked
+      ? "恢复并核对来源"
     : statusFlags.length > 0
       ? "核对状态"
       : hasBothMeta
         ? "进入四维判断"
         : "等待数据返回";
   const statusLabel = statusFlags.length > 0 ? `${statusFlags.length} 项提示` : hasBothMeta ? "状态正常" : "等待证据";
-  const badgeLabel = hasFallback ? "含降级" : hasBothMeta ? "可读" : "待返回";
+  const badgeLabel = hasSourceBlocked ? "来源受限" : hasFallback ? "含降级" : hasBothMeta ? "可读" : "待返回";
 
   return (
     <aside className="cross-asset-trust-panel" data-testid="cross-asset-trust-panel" aria-label="首屏可信状态">
@@ -554,6 +604,7 @@ export function CrossAssetReferenceSourceAudit({
 }) {
   const sourceCount = latestMeta || linkageMeta ? "8 个（含 2 个外部市场）" : "待返回";
   const firstFlag = statusFlags[0];
+  const isSourceBlocked = statusFlags.some((flag) => flag.id === "source-blocked");
 
   return (
     <aside className="cross-asset-reference-card cross-asset-reference-source-audit" data-testid="cross-asset-reference-source-audit">
@@ -628,7 +679,13 @@ export function CrossAssetReferenceSourceAudit({
         <CrossAssetTrustPanel reportDate={reportDate} latestMeta={latestMeta} linkageMeta={linkageMeta} statusFlags={statusFlags}>
           <CrossAssetStatusEvidenceRows statusFlags={statusFlags} latestMeta={latestMeta} linkageMeta={linkageMeta} />
         </CrossAssetTrustPanel>
-        <CrossAssetActionRail envTags={envTags} researchViews={researchViews} warningCount={statusFlags.length} isLoading={isLoading} />
+        <CrossAssetActionRail
+          envTags={envTags}
+          researchViews={researchViews}
+          warningCount={statusFlags.length}
+          isLoading={isLoading}
+          isSourceBlocked={isSourceBlocked}
+        />
       </div>
     </aside>
   );
@@ -766,11 +823,30 @@ export function CrossAssetReferenceLowerGrid({
   matrix,
   rows,
   cards,
+  sourceBlockedFlag,
 }: {
   matrix: CorrelationMatrix | null;
   rows: CrossAssetTransmissionAxisRow[];
   cards: CrossAssetResearchViewCard[];
+  sourceBlockedFlag?: CrossAssetStatusFlag | null;
 }) {
+  if (sourceBlockedFlag) {
+    return (
+      <section className="cross-asset-reference-lower-grid" data-testid="cross-asset-reference-lower-grid">
+        <article
+          className="cross-asset-reference-card cross-asset-reference-lower-grid__blocked"
+          data-testid="cross-asset-reference-lower-grid-blocked"
+        >
+          <header className="cross-asset-reference-card__head">
+            <h2>{sourceBlockedFlag.label}</h2>
+            <span>首屏派生判断已阻断</span>
+          </header>
+          <p>{sourceBlockedFlag.detail}</p>
+        </article>
+      </section>
+    );
+  }
+
   return (
     <section className="cross-asset-reference-lower-grid" data-testid="cross-asset-reference-lower-grid">
       <div className="cross-asset-reference-card cross-asset-reference-correlation">

@@ -27,7 +27,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
     cue: "风险偏好",
     digest: "风险约束",
     summary: "用指数、估值和权重结构判断风险偏好是否挤压债券。",
-    kpiKeys: ["financial_conditions", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
+    kpiKeys: ["csi300", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
   },
   {
     key: "commodity_inflation",

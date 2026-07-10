@@ -14,12 +14,14 @@ import {
   buildCrossAssetDriversViewModel,
   buildCrossAssetEquityEvidenceItems,
   buildCrossAssetEventItems,
+  buildCrossAssetFirstScreenDisplayContract,
   buildCrossAssetNcdProxyEvidence,
   buildCrossAssetClassAnalysisRows,
   buildResearchSummaryCards,
   buildCrossAssetStatusFlags,
   buildTransmissionAxisRows,
   buildCrossAssetWatchList,
+  type CrossAssetClassAnalysisRow,
 } from "../features/cross-asset/lib/crossAssetDriversPageModel";
 
 const FORMAL_NCD_MATRIX_BLOCKED_STATUS = {
@@ -95,6 +97,78 @@ function makePoint(
   };
 }
 
+function makeFirstScreenAssetRows(): CrossAssetClassAnalysisRow[] {
+  return [
+    {
+      key: "stock",
+      label: "股票分析",
+      status: "ready",
+      direction: "restrictive",
+      explanation: "股票链条压制风险偏好。",
+      lines: [
+        {
+          key: "broad_index",
+          label: "指数层面",
+          status: "ready",
+          stateLabel: "ready",
+          direction: "restrictive",
+          dataLabel: "沪深300 -0.35%",
+          sourceLabel: "Choice",
+          explanation: "宽基指数输入已就绪。",
+        },
+        {
+          key: "mega_cap_weight",
+          label: "大市值权重",
+          status: "pending_signal",
+          stateLabel: "missing_dependency",
+          direction: "pending",
+          dataLabel: "等待权重输入",
+          sourceLabel: "Tushare",
+          explanation: "大市值权重待接入。",
+        },
+      ],
+    },
+    {
+      key: "commodities",
+      label: "大宗商品分析",
+      status: "ready",
+      direction: "neutral",
+      explanation: "商品链条暂不强化通胀交易。",
+      lines: [
+        {
+          key: "energy",
+          label: "能源",
+          status: "ready",
+          stateLabel: "ready",
+          direction: "neutral",
+          dataLabel: "Brent 82.30",
+          sourceLabel: "Choice",
+          explanation: "能源输入已就绪。",
+        },
+      ],
+    },
+    {
+      key: "options",
+      label: "期权分析",
+      status: "pending_signal",
+      direction: "definition_pending",
+      explanation: "期权分析定义待确认。",
+      lines: [
+        {
+          key: "equity_options",
+          label: "权益期权",
+          status: "pending_signal",
+          stateLabel: "pending_definition",
+          direction: "pending",
+          dataLabel: "等待期权输入",
+          sourceLabel: "Choice",
+          explanation: "权益期权待接入。",
+        },
+      ],
+    },
+  ];
+}
+
 describe("crossAssetDriversPageModel", () => {
   it("surfaces analytical-only, fallback, stale, and no-data flags from result meta and series tiers", () => {
     const flags = buildCrossAssetStatusFlags({
@@ -159,7 +233,7 @@ describe("crossAssetDriversPageModel", () => {
     expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("双源就绪");
   });
 
-  it("keeps source_blocked visible when Choice is unavailable but retained Choice rows still exist", () => {
+  it("blocks retained dual-source rows instead of claiming they are ready", () => {
     const flags = buildCrossAssetStatusFlags({
       latestMeta: makeResultMeta({ vendor_status: "vendor_unavailable" }),
       latestSeries: [
@@ -170,8 +244,10 @@ describe("crossAssetDriversPageModel", () => {
       linkageReportDate: "2026-04-24",
     });
 
-    expect(flags.find((flag) => flag.id === "source-blocked")?.label).toBe("来源受限");
-    expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("双源就绪");
+    const sourceBlocked = flags.find((flag) => flag.id === "source-blocked");
+    expect(sourceBlocked?.label).toBe("来源受限");
+    expect(sourceBlocked?.detail).toContain("不得形成首屏结论");
+    expect(flags.find((flag) => flag.id === "dual-source")).toBeUndefined();
   });
 
   it("splits permission denials from transport load failures in status flags", () => {
@@ -386,7 +462,12 @@ describe("crossAssetDriversPageModel", () => {
   it("builds asset-class analysis rows with direction, source, and pending data labels", () => {
     const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
     const kpis = resolveCrossAssetKpis([
-      makePoint("EMM01843735", "CSI 300", 3924.5, { unit: "index", latest_change: 1.8 }),
+      makePoint("EMM01843735", "China financial conditions", -1.54, { unit: "index", latest_change: -0.03 }),
+      makePoint("CA.CSI300", "CSI 300", 3924.5, {
+        unit: "index",
+        latest_change: 1.8,
+        ...vendor("tushare"),
+      }),
       makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, { unit: "x", latest_change: 0.16, ...vendor("tushare") }),
       makePoint("CA.MEGA_CAP_WEIGHT", "CSI300 Top10 weight", 23.5367, {
         unit: "%",
@@ -434,17 +515,18 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows.map((row) => row.key)).toEqual(["stock", "commodities", "options"]);
     expect(rows[0].status).toBe("ready");
     expect(rows[0].lines.map((line) => line.key)).toEqual(["broad_index", "valuation_spread", "mega_cap_weight"]);
-    expect(rows[0].lines[0].direction.length).toBeGreaterThan(0);
+    expect(rows[0].lines[0].direction).toBe("rising");
+    expect(rows[0].lines[0].direction).not.toMatch(/supportive|restrictive/);
     expect(rows[0].lines[0].dataLabel).toContain("2026-04-10");
-    expect(rows[0].lines[0].sourceLabel).toContain("Choice");
-    expect(rows[0].lines[0].sourceLabel).toContain("EMM01843735");
+    expect(rows[0].lines[0].sourceLabel).toContain("Tushare");
+    expect(rows[0].lines[0].sourceLabel).toContain("CA.CSI300");
     expect(rows[0].lines[1].dataLabel).toContain("14.58");
     expect(rows[0].lines[1].dataLabel).toContain("股债利差轴已就绪");
     expect(rows[0].lines[2].dataLabel).toContain("23.54%");
     expect(rows[0].lines[2].dataLabel).toContain("15.53%");
     expect(rows[0].lines[2].sourceLabel).toContain("Tushare: CA.MEGA_CAP_WEIGHT");
     expect(rows[0].lines[2].sourceLabel).toContain("tushare.index.000300.SH.weight");
-    expect(rows[0].lines[0].explanation).toContain("金融条件指数");
+    expect(rows[0].lines[0].explanation).toContain("沪深300指数");
     expect(rows[1].status).toBe("ready");
     expect(rows[1].lines.map((line) => line.key)).toEqual(["energy", "ferrous", "nonferrous"]);
     expect(rows[1].lines[0].sourceLabel).toContain("公共补充源(fred): CA.BRENT");
@@ -573,7 +655,11 @@ describe("crossAssetDriversPageModel", () => {
   it("builds stock index and mega-cap evidence items with unit, date, and source trace", () => {
     const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
     const kpis = resolveCrossAssetKpis([
-      makePoint("EMM01843735", "CSI 300", 3924.5, { unit: "index", latest_change: 1.8 }),
+      makePoint("CA.CSI300", "CSI 300", 3924.5, {
+        unit: "index",
+        latest_change: 1.8,
+        ...vendor("tushare"),
+      }),
       makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, { unit: "x", latest_change: 0.16, ...vendor("tushare") }),
       makePoint("CA.MEGA_CAP_WEIGHT", "CSI300 Top10 weight", 23.5367, {
         unit: "%",
@@ -596,8 +682,8 @@ describe("crossAssetDriversPageModel", () => {
       "mega_cap_top5_weight",
     ]);
     expect(items[0]).toMatchObject({
-      sourceLabel: "Choice接入码: EMM01843735",
-      unitLabel: "指数",
+      sourceLabel: "Tushare: CA.CSI300",
+      unitLabel: "点",
       tradeDate: "2026-04-10",
     });
     expect(items[1].sourceLabel).toBe("Tushare: CA.CSI300_PE");
@@ -610,9 +696,10 @@ describe("crossAssetDriversPageModel", () => {
   it("marks equity evidence item quality from selected data and source availability", () => {
     const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
     const kpis = resolveCrossAssetKpis([
-      makePoint("EMM01843735", "CSI 300", 3924.5, {
+      makePoint("CA.CSI300", "CSI 300", 3924.5, {
         unit: "index",
         quality_flag: "stale",
+        ...vendor("tushare"),
       }),
       makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, {
         unit: "x",
@@ -630,12 +717,12 @@ describe("crossAssetDriversPageModel", () => {
     expect(items.find((item) => item.key === "broad_index")?.status).toBe("stale");
     expect(items.find((item) => item.key === "csi300_pe")?.status).toBe("fallback");
     expect(items.find((item) => item.key === "mega_cap_weight")?.status).toBe("missing_dependency");
-    expect(sourceBlockedItems.find((item) => item.key === "broad_index")?.status).toBe("source_blocked");
+    expect(sourceBlockedItems.find((item) => item.key === "broad_index")?.status).toBe("stale");
   });
 
   it("prioritizes fallback over stale when equity evidence has both quality states", () => {
     const kpis = resolveCrossAssetKpis([
-      makePoint("EMM01843735", "CSI 300", 3924.5, {
+      makePoint("CA.CSI300", "CSI 300", 3924.5, {
         refresh_tier: "fallback",
       }),
     ]);
@@ -645,7 +732,7 @@ describe("crossAssetDriversPageModel", () => {
     expect(items.find((item) => item.key === "broad_index")?.status).toBe("fallback");
   });
 
-  it("marks retained Choice-backed card lines as source_blocked when vendor status is unavailable", () => {
+  it("does not substitute retained financial conditions for a missing broad index", () => {
     const kpis = resolveCrossAssetKpis([
       makePoint("EMM01843735", "Choice financial condition", -1.54, {
         latest_change: -0.01,
@@ -658,7 +745,10 @@ describe("crossAssetDriversPageModel", () => {
       latestMeta: makeResultMeta({ vendor_status: "vendor_unavailable" }),
     });
 
-    expect(rows[0].lines.find((line) => line.key === "broad_index")?.stateLabel).toBe("source_blocked");
+    const broadIndex = rows[0].lines.find((line) => line.key === "broad_index");
+    expect(broadIndex?.stateLabel).toBe("missing_dependency");
+    expect(broadIndex?.dataLabel).toContain("CA.CSI300");
+    expect(broadIndex?.dataLabel).not.toContain("EMM01843735");
   });
 
   it("maps research calendar events into event calendar rows", () => {
@@ -915,6 +1005,199 @@ describe("crossAssetDriversPageModel", () => {
     expect(vm.statusFlags.map((f) => f.id)).toEqual(
       expect.arrayContaining(["analytical-only", "stale", "fallback"]),
     );
+  });
+
+  it("builds a first-screen display contract from conclusion, drivers, and shared asset judgments", () => {
+    const rows = makeFirstScreenAssetRows();
+    const contract = buildCrossAssetFirstScreenDisplayContract({
+      reportDate: "2026-04-10",
+      firstScreenConclusion: "合同结论：股票链条压制风险偏好，债券先看利率主线。",
+      marketRegime: {
+        regime: "mixed",
+        label: "Mixed",
+        description: "多资产信号分歧",
+        color: "#475569",
+        bgColor: "#f8fafc",
+        icon: "",
+      },
+      drivers: [
+        {
+          title: "流动性",
+          stance: "偏多",
+          tone: "bull",
+          bullets: ["DR007 偏松", "NCD 定价稳定"],
+        },
+      ],
+      envTags: {
+        primary: "流动性",
+        secondary: "海外约束",
+        style: "均衡",
+      },
+      assetClassAnalysisRows: rows,
+      statusFlags: [
+        {
+          id: "analytical-only",
+          label: "仅分析口径",
+          tone: "warning",
+          detail: "仅分析口径",
+        },
+      ],
+      isLoading: false,
+    });
+
+    expect(contract.hero.headline).toBe("合同结论：股票链条压制风险偏好，债券先看利率主线。");
+    expect(contract.hero.reportDate).toBe("2026-04-10");
+    expect(contract.driverChain.primary).toBe("流动性");
+    expect(contract.driverChain.items[0].title).toBe("流动性");
+    expect(contract.judgments.bond.label).toBe("债券传导判断");
+    expect(contract.judgments.bond.summary).toContain("股票分析压制");
+    expect(contract.judgments.bond.pendingLineCount).toBe(2);
+    expect(contract.judgments.stock.label).toBe("股票分析");
+    expect(contract.judgments.stock.summary).toBe("股票链条压制风险偏好。");
+    expect(contract.status.flags[0].id).toBe("analytical-only");
+  });
+
+  it("keeps loading as a first-class first-screen contract field separate from status flags", () => {
+    const contract = buildCrossAssetFirstScreenDisplayContract({
+      reportDate: "",
+      firstScreenConclusion: null,
+      marketRegime: {
+        regime: "liquidity_driven",
+        label: "Liquidity",
+        description: "流动性主导",
+        color: "#0f766e",
+        bgColor: "#f0fdfa",
+        icon: "",
+      },
+      drivers: [],
+      envTags: {
+        primary: "流动性",
+        secondary: "政策预期",
+        style: "均衡",
+      },
+      assetClassAnalysisRows: makeFirstScreenAssetRows(),
+      statusFlags: [],
+      isLoading: true,
+    });
+
+    expect(contract.loading.isLoading).toBe(true);
+    expect(contract.loading.label).toBe("正在加载联动分析…");
+    expect(contract.hero.headline).toBe("正在加载联动分析…");
+    expect(contract.hero.question).toContain("状态旗标为空不代表校验通过");
+    expect(contract.status.flags).toEqual([]);
+    expect(contract.status.warningCount).toBe(0);
+  });
+
+  it("keeps blocked first-screen chain and judgments from synthesizing default neutral content", () => {
+    const contract = buildCrossAssetFirstScreenDisplayContract({
+      reportDate: "2026-04-10",
+      firstScreenConclusion: "联动分析权限受限；首屏参考市场体制 Mixed：多资产信号分歧",
+      marketRegime: {
+        regime: "mixed",
+        label: "Mixed",
+        description: "多资产信号分歧",
+        color: "#475569",
+        bgColor: "#f8fafc",
+        icon: "",
+      },
+      drivers: [
+        {
+          title: "流动性",
+          stance: "偏多",
+          tone: "bull",
+          bullets: ["DR007 与资金利率偏松，利于短端。"],
+        },
+      ],
+      envTags: {
+        primary: "流动性",
+        secondary: "海外约束",
+        style: "均衡",
+      },
+      assetClassAnalysisRows: makeFirstScreenAssetRows(),
+      statusFlags: [
+        {
+          id: "access-denied",
+          label: "权限受限 · macro_bond_linkage.analysis",
+          tone: "danger",
+          detail: "当前账号无权读取联动分析。",
+        },
+      ],
+      isLoading: false,
+    });
+
+    expect(contract.driverChain.primary).toContain("权限受限");
+    expect(contract.driverChain.items[0].bullets[0]).toContain("无权读取联动分析");
+    expect(contract.driverChain.items[0].bullets[0]).not.toContain("DR007 与资金利率偏松");
+    expect(contract.judgments.bond.headline).toContain("权限受限");
+    expect(contract.judgments.bond.summary).toContain("无权读取联动分析");
+    expect(contract.judgments.stock.headline).toContain("权限受限");
+    expect(contract.judgments.stock.summary).not.toBe("股票链条压制风险偏好。");
+  });
+
+  it("treats source-blocked lineage as a first-screen blocker", () => {
+    const input: Parameters<typeof buildCrossAssetFirstScreenDisplayContract>[0] = {
+      reportDate: "2026-04-10",
+      firstScreenConclusion: "资金面偏松，权益风险偏好改善。",
+      marketRegime: {
+        regime: "risk_on",
+        label: "Risk-on",
+        description: "权益风险偏强",
+        color: "#0f766e",
+        bgColor: "#f0fdfa",
+        icon: "",
+      },
+      drivers: [
+        {
+          title: "流动性",
+          stance: "偏多",
+          tone: "bull",
+          bullets: ["DR007 与资金利率偏松。"],
+        },
+      ],
+      envTags: {
+        primary: "流动性",
+        secondary: "权益",
+        style: "风险偏好",
+      },
+      assetClassAnalysisRows: makeFirstScreenAssetRows(),
+      statusFlags: [
+        {
+          id: "source-blocked",
+          label: "来源受限",
+          tone: "danger",
+          detail: "Choice 来源不可用，保留行和公共补充源不得形成首屏结论。",
+        },
+      ],
+      isLoading: false,
+    };
+    const contract = buildCrossAssetFirstScreenDisplayContract(input);
+
+    expect(contract.hero.headline).toBe("来源受限");
+    expect(contract.hero.summary).toContain("不得形成首屏结论");
+    expect(contract.hero.regimeLabel).toBe("待确认");
+    expect(contract.driverChain.primary).toBe("来源受限");
+    expect(contract.driverChain.items[0].bullets[0]).toContain("Choice 来源不可用");
+    expect(contract.judgments.bond.headline).toBe("来源受限");
+    expect(contract.judgments.stock.headline).toBe("来源受限");
+    expect(contract.driverChain.items[0].bullets[0]).not.toContain("DR007 与资金利率偏松");
+    expect(contract.status.blockingFlag?.id).toBe("source-blocked");
+    expect(contract.status.sourceBlockedFlag?.id).toBe("source-blocked");
+
+    const combinedContract = buildCrossAssetFirstScreenDisplayContract({
+      ...input,
+      statusFlags: [
+        {
+          id: "access-denied",
+          label: "权限受限 · market_data_ncd_proxy",
+          tone: "danger",
+          detail: "当前账号无权读取 NCD 代理。",
+        },
+        ...input.statusFlags,
+      ],
+    });
+
+    expect(combinedContract.status.blockingFlag?.id).toBe("access-denied");
+    expect(combinedContract.status.sourceBlockedFlag?.id).toBe("source-blocked");
   });
 
   it("derives candidate actions and watch items from research views plus provenance", () => {

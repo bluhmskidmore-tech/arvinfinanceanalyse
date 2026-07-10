@@ -68,7 +68,7 @@ export default function CrossAssetDriversPage() {
     equityEvidenceItems,
     erpData,
     eventItems,
-    firstScreenConclusion,
+    firstScreenDisplay,
     hasPortfolioImpact,
     heatmapRows,
     kpis,
@@ -88,7 +88,6 @@ export default function CrossAssetDriversPage() {
     macroBondLinkage,
     macroBondLinkageQuery,
     macroBondLinkageWarnings,
-    marketRegime,
     momentumRows,
     ncdFundingProxyQuery,
     ncdProxyEvidence,
@@ -119,22 +118,21 @@ export default function CrossAssetDriversPage() {
               void macroBondLinkageQuery.refetch();
             }}
           />
-          <CrossAssetReferenceMarketTape kpis={kpis} />
           <CrossAssetReferenceSummary
-            reportDate={crossAssetDataDate || linkageReportDate}
-            conclusion={firstScreenConclusion}
-            marketRegime={marketRegime}
+            display={firstScreenDisplay}
             latestMeta={latestMeta}
             linkageMeta={linkageMeta}
-            statusFlags={statusFlags}
-            isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
           />
+          <CrossAssetReferenceMarketTape kpis={kpis} />
           <section
             className="cross-asset-command-center cross-asset-first-screen-grid cross-asset-reference-evidence-grid"
             data-testid="cross-asset-first-screen-grid"
           >
             <div className="cross-asset-fusion-layout cross-asset-reference-fusion-layout" data-testid="cross-asset-fusion-layout">
-              <CrossAssetReferenceEvidenceMatrix kpis={kpis} />
+              <CrossAssetReferenceEvidenceMatrix
+                kpis={kpis}
+                sourceBlockedFlag={firstScreenDisplay.status.sourceBlockedFlag}
+              />
               <div className="cross-asset-fusion-side-panel cross-asset-reference-fusion-side-panel" data-testid="cross-asset-fusion-side-panel">
                 <CrossAssetReferenceSourceAudit
                   reportDate={crossAssetDataDate || linkageReportDate}
@@ -158,6 +156,7 @@ export default function CrossAssetDriversPage() {
             matrix={correlationMatrix}
             rows={transmissionAxisRows}
             cards={researchViewCards}
+            sourceBlockedFlag={firstScreenDisplay.status.sourceBlockedFlag}
           />
           <CrossAssetReferenceTrendStrip kpis={kpis} />
         </section>
@@ -235,7 +234,11 @@ export default function CrossAssetDriversPage() {
 
             <CrossAssetDecisionZone testId="cross-asset-zone-transmission" title="传导与行动">
               <TransmissionAxesPanel rows={transmissionAxisRows} />
-              <AssetClassAnalysisPanel rows={assetClassAnalysisRows} equityEvidenceItems={equityEvidenceItems} />
+              <AssetClassAnalysisPanel
+                rows={assetClassAnalysisRows}
+                equityEvidenceItems={equityEvidenceItems}
+                bondJudgment={firstScreenDisplay.judgments.bond}
+              />
               <div className="cross-asset-drivers-page__drivers-grid cross-asset-drivers-page__drivers-grid--flat">
                 {drivers.map((col) => (
                   <div key={col.title} className="cross-asset-drivers-page__driver-cell">

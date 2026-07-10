@@ -70,8 +70,8 @@ const MOCK_RATES_PAYLOAD: ChoiceMacroLatestPayload = {
     macroPoint("M003", "China 1Y government bond yield", 1.56, "%", 0.03, [
       1.51, 1.53, 1.54, 1.56,
     ]),
-    macroPoint("EMM01843735", "China financial conditions index", 98.6, "index", 0.35, [
-      97.9, 98.1, 98.3, 98.6,
+    macroPoint("EMM01843735", "China financial conditions index", -1.54, "z-score", -0.03, [
+      -1.43, -1.48, -1.51, -1.54,
     ]),
     macroPoint("CA.CSI300", "沪深300指数收盘价", 4102.25, "index", 17.13, [
       4060.12, 4088.34, 4119.38, 4102.25,

@@ -24,6 +24,8 @@ import {
   formatCrossAssetLinkageSummary,
 } from "./crossAssetLinkageSummaries";
 import { summarizeCrossAssetLinkageWarnings } from "./crossAssetLinkageWarnings";
+import type { MarketRegimeInfo } from "./crossAssetAnalytics";
+import type { DriverColumn, EnvironmentTags } from "./crossAssetDriversModel";
 
 type StatusTone = "normal" | "caution" | "warning" | "danger";
 type ActionTone = "bull" | "warning" | "bear";
@@ -142,6 +144,77 @@ export type CrossAssetNcdProxyEvidence = {
   proxyWarning: string;
   rowCaptions: string[];
   sourceMeta: "backend" | "unavailable";
+};
+
+export type CrossAssetAssetDirectionTone = "supportive" | "restrictive" | "conflicted" | "pending" | "neutral";
+
+export type CrossAssetAssetJudgmentItem = {
+  key: CrossAssetClassAnalysisRow["key"];
+  label: string;
+  tone: string;
+  direction: string;
+  directionTone: CrossAssetAssetDirectionTone;
+  detail: string;
+};
+
+export type CrossAssetBondTransmissionJudgment = {
+  key: "bond";
+  label: string;
+  headline: string;
+  summary: string;
+  pendingLineCount: number;
+  items: CrossAssetAssetJudgmentItem[];
+};
+
+export type CrossAssetStockTransmissionJudgment = {
+  key: "stock";
+  label: string;
+  headline: string;
+  summary: string;
+  status: CrossAssetClassAnalysisRow["status"];
+  tone: string;
+  direction: string;
+  directionTone: CrossAssetAssetDirectionTone;
+  evidenceCount: number;
+  pendingLineCount: number;
+};
+
+export type CrossAssetFirstScreenDriverChainItem = {
+  title: string;
+  stance: string;
+  tone: DriverColumn["tone"];
+  bullets: string[];
+};
+
+export type CrossAssetFirstScreenDisplayContract = {
+  loading: {
+    isLoading: boolean;
+    label: string;
+  };
+  hero: {
+    headline: string;
+    summary: string;
+    question: string;
+    reportDate: string;
+    regimeLabel: string;
+    regimeDescription: string;
+  };
+  driverChain: {
+    primary: string;
+    secondary: string;
+    style: string;
+    items: CrossAssetFirstScreenDriverChainItem[];
+  };
+  judgments: {
+    bond: CrossAssetBondTransmissionJudgment;
+    stock: CrossAssetStockTransmissionJudgment;
+  };
+  status: {
+    flags: CrossAssetStatusFlag[];
+    warningCount: number;
+    blockingFlag: CrossAssetStatusFlag | null;
+    sourceBlockedFlag: CrossAssetStatusFlag | null;
+  };
 };
 
 /** UI-free aggregate for the cross-asset drivers workbench (single build entry point). */
@@ -436,6 +509,311 @@ export function formatImpactedViewsForDisplay(views: string[]): string {
     .join("、");
 }
 
+export function crossAssetAssetDirectionLabel(direction: string) {
+  const normalized = direction.toLowerCase();
+  if (normalized.includes("rising")) {
+    return "上行";
+  }
+  if (normalized.includes("falling")) {
+    return "下行";
+  }
+  if (normalized.includes("supportive")) {
+    return "支撑";
+  }
+  if (normalized.includes("restrictive")) {
+    return "压制";
+  }
+  if (normalized.includes("neutral")) {
+    return "中性";
+  }
+  if (normalized.includes("conflicted")) {
+    return "分歧";
+  }
+  if (normalized.includes("pending") || normalized.includes("definition")) {
+    return "待接入";
+  }
+  return direction;
+}
+
+export function crossAssetAssetDirectionTone(direction: string): CrossAssetAssetDirectionTone {
+  const normalized = direction.toLowerCase();
+  if (normalized.includes("supportive")) {
+    return "supportive";
+  }
+  if (normalized.includes("restrictive")) {
+    return "restrictive";
+  }
+  if (normalized.includes("conflicted")) {
+    return "conflicted";
+  }
+  if (normalized.includes("pending") || normalized.includes("definition")) {
+    return "pending";
+  }
+  return "neutral";
+}
+
+function assetRowByKey(rows: CrossAssetClassAnalysisRow[], key: CrossAssetClassAnalysisRow["key"]) {
+  return rows.find((row) => row.key === key);
+}
+
+function countPendingAssetLines(rows: CrossAssetClassAnalysisRow[]) {
+  return rows.reduce(
+    (count, row) => count + row.lines.filter((line) => line.status !== "ready").length,
+    0,
+  );
+}
+
+function resolveCrossAssetBondJudgmentHeadline(
+  stockTone: string,
+  commodityTone: string,
+  pendingLineCount: number,
+) {
+  if (stockTone === "压制" && commodityTone === "中性") {
+    return "股票链条压制风险偏好，商品链条暂不强化通胀交易。";
+  }
+  if (stockTone === "压制" && commodityTone === "支撑") {
+    return "风险偏好承压但商品仍有通胀扰动，债券判断需看利率主线确认。";
+  }
+  if (stockTone === "支撑" && commodityTone === "中性") {
+    return "风险偏好改善，商品端中性，债券压力暂不来自跨资产共振。";
+  }
+  if (pendingLineCount > 0) {
+    return "已接入信号先约束风险偏好与通胀方向，待接入项只限定置信度。";
+  }
+  return "跨资产证据可进入债券传导判断，继续跟踪方向共振。";
+}
+
+export function buildCrossAssetBondTransmissionJudgment(
+  rows: CrossAssetClassAnalysisRow[],
+): CrossAssetBondTransmissionJudgment {
+  const stockRow = assetRowByKey(rows, "stock");
+  const commodityRow = assetRowByKey(rows, "commodities");
+  const optionsRow = assetRowByKey(rows, "options");
+  const pendingLineCount = countPendingAssetLines(rows);
+  const stockTone = stockRow ? crossAssetAssetDirectionLabel(stockRow.direction) : "待接入";
+  const commodityTone = commodityRow ? crossAssetAssetDirectionLabel(commodityRow.direction) : "待接入";
+  const optionsTone =
+    optionsRow?.status === "ready" ? crossAssetAssetDirectionLabel(optionsRow.direction) : "待接入";
+  const boundary =
+    pendingLineCount > 0
+      ? `当前仍有 ${pendingLineCount} 项待接入，缺口只降低结论置信度，不用相邻资产替代。`
+      : "当前待接入缺口较少，可更直接追踪跨资产共振对债券的传导。";
+
+  return {
+    key: "bond",
+    label: "债券传导判断",
+    headline: resolveCrossAssetBondJudgmentHeadline(stockTone, commodityTone, pendingLineCount),
+    summary: `${stockRow?.label ?? "股票"}${stockTone}；${commodityRow?.label ?? "商品"}${commodityTone}；${optionsRow?.label ?? "期权"}${optionsTone}。${boundary}`,
+    pendingLineCount,
+    items: [
+      {
+        key: "stock",
+        label: stockRow?.label ?? "股票",
+        tone: stockTone,
+        direction: stockRow?.direction ?? "pending",
+        directionTone: crossAssetAssetDirectionTone(stockRow?.direction ?? "pending"),
+        detail: stockRow?.explanation ?? "股票链条暂无治理后输入，不进入债券主判断。",
+      },
+      {
+        key: "commodities",
+        label: commodityRow?.label ?? "商品",
+        tone: commodityTone,
+        direction: commodityRow?.direction ?? "pending",
+        directionTone: crossAssetAssetDirectionTone(commodityRow?.direction ?? "pending"),
+        detail: commodityRow?.explanation ?? "商品链条暂无治理后输入，不放大通胀或需求判断。",
+      },
+      {
+        key: "options",
+        label: optionsRow?.label ?? "期权",
+        tone: optionsTone,
+        direction: optionsRow?.status === "ready" ? optionsRow.direction : "pending",
+        directionTone: crossAssetAssetDirectionTone(
+          optionsRow?.status === "ready" ? optionsRow.direction : "pending",
+        ),
+        detail:
+          optionsRow?.status === "ready"
+            ? optionsRow.explanation
+            : "期权和波动率口径尚在待接入清单，只作为风险信号缺口提示。",
+      },
+    ],
+  };
+}
+
+export function buildCrossAssetStockTransmissionJudgment(
+  rows: CrossAssetClassAnalysisRow[],
+): CrossAssetStockTransmissionJudgment {
+  const stockRow = assetRowByKey(rows, "stock");
+  const readyLineCount = stockRow?.lines.filter((line) => line.status === "ready").length ?? 0;
+  const pendingLineCount = stockRow?.lines.filter((line) => line.status !== "ready").length ?? 0;
+  const direction = stockRow?.direction ?? "pending";
+  const tone = stockRow ? crossAssetAssetDirectionLabel(direction) : "待接入";
+  const label = stockRow?.label ?? "股票判断";
+  const summary = stockRow?.explanation ?? "股票链条暂无治理后输入，暂不进入跨资产主判断。";
+
+  return {
+    key: "stock",
+    label,
+    headline: stockRow?.status === "ready" ? `${label}${tone}` : "股票链条待接入",
+    summary,
+    status: stockRow?.status ?? "pending_signal",
+    tone,
+    direction,
+    directionTone: crossAssetAssetDirectionTone(direction),
+    evidenceCount: readyLineCount,
+    pendingLineCount,
+  };
+}
+
+function firstBlockingFirstScreenFlag(flags: CrossAssetStatusFlag[]) {
+  return flags.find((flag) =>
+    ["access-denied", "loading-failure", "source-blocked", "no-data"].includes(flag.id),
+  );
+}
+
+function pendingDriverChain(reason: { headline: string; detail: string }): CrossAssetFirstScreenDisplayContract["driverChain"] {
+  return {
+    primary: reason.headline,
+    secondary: "等待证据",
+    style: "待确认",
+    items: [
+      {
+        title: "联动链路",
+        stance: "待确认",
+        tone: "neutral",
+        bullets: [reason.detail],
+      },
+    ],
+  };
+}
+
+function pendingBondJudgment(reason: { headline: string; detail: string }): CrossAssetBondTransmissionJudgment {
+  return {
+    key: "bond",
+    label: "债券传导判断",
+    headline: reason.headline,
+    summary: reason.detail,
+    pendingLineCount: 0,
+    items: [
+      {
+        key: "stock",
+        label: "股票",
+        tone: "待确认",
+        direction: "pending",
+        directionTone: "pending",
+        detail: reason.detail,
+      },
+      {
+        key: "commodities",
+        label: "商品",
+        tone: "待确认",
+        direction: "pending",
+        directionTone: "pending",
+        detail: "联动链路恢复前不使用相邻资产替代判断。",
+      },
+      {
+        key: "options",
+        label: "期权",
+        tone: "待接入",
+        direction: "pending",
+        directionTone: "pending",
+        detail: "期权和波动率口径仍按待接入处理。",
+      },
+    ],
+  };
+}
+
+function pendingStockJudgment(reason: { headline: string; detail: string }): CrossAssetStockTransmissionJudgment {
+  return {
+    key: "stock",
+    label: "股票分析",
+    headline: reason.headline,
+    summary: reason.detail,
+    status: "pending_signal",
+    tone: "待确认",
+    direction: "pending",
+    directionTone: "pending",
+    evidenceCount: 0,
+    pendingLineCount: 0,
+  };
+}
+
+export function buildCrossAssetFirstScreenDisplayContract(input: {
+  reportDate: string;
+  firstScreenConclusion: string | null;
+  marketRegime: MarketRegimeInfo;
+  drivers: DriverColumn[];
+  envTags: EnvironmentTags;
+  assetClassAnalysisRows: CrossAssetClassAnalysisRow[];
+  statusFlags: CrossAssetStatusFlag[];
+  isLoading: boolean;
+}): CrossAssetFirstScreenDisplayContract {
+  const loadingLabel = "正在加载联动分析…";
+  const marketFallback = `首屏参考市场体制 ${input.marketRegime.label}：${input.marketRegime.description}`;
+  const blockingFlag = input.isLoading ? undefined : firstBlockingFirstScreenFlag(input.statusFlags);
+  const sourceBlockedFlag = input.statusFlags.find((flag) => flag.id === "source-blocked");
+  const pendingReason = input.isLoading
+    ? {
+        headline: "等待联动链路返回",
+        detail: "宏观链路或联动链路仍在加载，暂不展示主导跨资产链路、债券传导或股票判断。",
+      }
+    : blockingFlag
+      ? {
+          headline: blockingFlag.label,
+          detail: blockingFlag.detail,
+        }
+      : null;
+  const conclusion = input.firstScreenConclusion ?? marketFallback;
+  const heroHeadline = input.isLoading ? loadingLabel : pendingReason?.headline ?? conclusion;
+  const heroSummary = input.isLoading ? loadingLabel : pendingReason?.detail ?? conclusion;
+  const driverChain = pendingReason
+    ? pendingDriverChain(pendingReason)
+    : {
+        primary: input.envTags.primary,
+        secondary: input.envTags.secondary,
+        style: input.envTags.style,
+        items: input.drivers.slice(0, 4).map((driver) => ({
+          title: driver.title,
+          stance: driver.stance,
+          tone: driver.tone,
+          bullets: driver.bullets.slice(0, 2),
+        })),
+      };
+  const judgments = pendingReason
+    ? {
+        bond: pendingBondJudgment(pendingReason),
+        stock: pendingStockJudgment(pendingReason),
+      }
+    : {
+        bond: buildCrossAssetBondTransmissionJudgment(input.assetClassAnalysisRows),
+        stock: buildCrossAssetStockTransmissionJudgment(input.assetClassAnalysisRows),
+      };
+
+  return {
+    loading: {
+      isLoading: input.isLoading,
+      label: loadingLabel,
+    },
+    hero: {
+      headline: heroHeadline,
+      summary: heroSummary,
+      question: input.isLoading
+        ? "等待宏观链路与联动链路返回；状态旗标为空不代表校验通过。"
+        : "仅作宏观/债券联动分析，不替代交易指令。",
+      reportDate: input.reportDate || "待定",
+      regimeLabel: pendingReason ? "待确认" : input.marketRegime.label,
+      regimeDescription: pendingReason?.detail ?? input.marketRegime.description,
+    },
+    driverChain,
+    judgments,
+    status: {
+      flags: input.statusFlags,
+      warningCount: input.statusFlags.length,
+      blockingFlag: blockingFlag ?? null,
+      sourceBlockedFlag: sourceBlockedFlag ?? null,
+    },
+  };
+}
+
 function stanceTone(stance: string): ActionTone {
   const lowered = stance.toLowerCase();
   if (
@@ -724,10 +1102,10 @@ function directionFromKpi(kpi: ResolvedCrossAssetKpi | undefined) {
     return "pending";
   }
   if (kpi.changeTone === "positive") {
-    return "supportive";
+    return "rising";
   }
   if (kpi.changeTone === "negative") {
-    return "restrictive";
+    return "falling";
   }
   return "neutral";
 }
@@ -820,10 +1198,10 @@ function stateLabelFromKpi(
 const EQUITY_EVIDENCE_DEFINITIONS = [
   {
     key: "broad_index",
-    kpiKey: "financial_conditions",
+    kpiKey: "csi300",
     label: "指数层面",
     unitFallback: "index",
-    sourceFallback: "需登记 Choice 接入码或 Tushare 指数输入",
+    sourceFallback: "需登记 Tushare 沪深300指数输入",
   },
   {
     key: "csi300_pe",
@@ -850,6 +1228,8 @@ const EQUITY_EVIDENCE_DEFINITIONS = [
 
 const CROSS_ASSET_EVIDENCE_UNIT_ZH: Record<string, string> = {
   index: "指数",
+  point: "点",
+  "z-score": "标准分",
   x: "倍",
 };
 
@@ -973,7 +1353,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
   const equityAxis = axisByKey(input.transmissionAxes, "equity_bond_spread");
   const megaCapAxis = axisByKey(input.transmissionAxes, "mega_cap_equities");
   const commodityAxis = axisByKey(input.transmissionAxes, "commodities_inflation");
-  const broadIndex = kpiByKey(input.kpis, "financial_conditions");
+  const broadIndex = kpiByKey(input.kpis, "csi300");
   const csi300Pe = kpiByKey(input.kpis, "csi300_pe");
   const megaCapTop10 = kpiByKey(input.kpis, "mega_cap_weight");
   const megaCapTop5 = kpiByKey(input.kpis, "mega_cap_top5_weight");
@@ -988,8 +1368,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       status: hasUsableKpi(broadIndex) ? "ready" : "pending_signal",
       stateLabel: stateLabelFromKpi(broadIndex, input.latestMeta),
       direction: directionFromKpi(broadIndex),
-      dataLabel: dataLabelFromKpi(broadIndex, "等待 EMM01843735 / CA.CSI300 / Tushare CSI300"),
-      sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Choice 接入码或 Tushare 指数输入"),
+      dataLabel: dataLabelFromKpi(broadIndex, "等待 CA.CSI300 / Tushare CSI300"),
+      sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Tushare 沪深300指数输入"),
       explanation: explanationFromKpi(
         broadIndex,
         "治理后的宽基指数输入待接入，不转成选股或行业轮动结论。",
@@ -1288,6 +1668,7 @@ export function buildCrossAssetStatusFlags(input: {
   moduleFailures?: CrossAssetModuleFailure[];
 }): CrossAssetStatusFlag[] {
   const flags: CrossAssetStatusFlag[] = [];
+  const sourceBlocked = hasBlockedMeta(input.latestMeta) || hasBlockedMeta(input.linkageMeta);
 
   const moduleFailures =
     input.moduleFailures ??
@@ -1347,12 +1728,12 @@ export function buildCrossAssetStatusFlags(input: {
     });
   }
 
-  if (hasBlockedMeta(input.latestMeta) || hasBlockedMeta(input.linkageMeta)) {
+  if (sourceBlocked) {
     flags.push({
       id: "source-blocked",
       label: "来源受限",
       tone: "danger",
-      detail: "存在供应商来源不可用或权限受限；使用保留行和公共补充源时需显式谨慎。",
+      detail: "供应商来源不可用；保留行和公共补充源仅可用于审计，不得形成首屏结论。",
     });
   }
 
@@ -1365,7 +1746,7 @@ export function buildCrossAssetStatusFlags(input: {
     });
   }
 
-  if (hasChoiceSeries(input.latestSeries) && hasPublicSupplementSeries(input.latestSeries)) {
+  if (!sourceBlocked && hasChoiceSeries(input.latestSeries) && hasPublicSupplementSeries(input.latestSeries)) {
     flags.push({
       id: "dual-source",
       label: "双源就绪",

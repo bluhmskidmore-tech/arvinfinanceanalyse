@@ -61,6 +61,16 @@ describe("buildCorrelationMatrix", () => {
     // A and C are perfectly anti-correlated
     expect(m.cells[0][2].value).toBeCloseTo(-1, 4);
   });
+
+  it("excludes the zero-centered financial-conditions score from asset correlations", () => {
+    const matrix = buildCorrelationMatrix([
+      makeKpi("financial_conditions", "金融条件指数", [-1.2, -0.8, -0.2, 0.1, -0.4]),
+      makeKpi("csi300", "沪深300", [3800, 3820, 3810, 3840, 3860]),
+      makeKpi("cn_gov_10y", "10Y国债", [2.1, 2.08, 2.09, 2.05, 2.04]),
+    ]);
+
+    expect(matrix.keys).toEqual(["csi300", "cn_gov_10y"]);
+  });
 });
 
 describe("correlationColor", () => {
@@ -88,7 +98,7 @@ describe("identifyMarketRegime", () => {
   it("identifies risk-on when equity rising and bond yield not falling", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [1.9, 1.91, 1.92, 1.93, 1.95, 1.96, 1.97, 1.98, 1.99, 2.0]),
-      makeKpi("financial_conditions", "沪深300", [3800, 3820, 3850, 3870, 3900, 3920, 3950, 3980, 4000, 4050]),
+      makeKpi("csi300", "沪深300", [3800, 3820, 3850, 3870, 3900, 3920, 3950, 3980, 4000, 4050]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.81, 1.81, 1.82, 1.82, 1.82, 1.83, 1.83, 1.83]),
       makeKpi("brent", "布油", [65, 65, 66, 66, 66, 66, 66, 66, 66, 66], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -100,7 +110,7 @@ describe("identifyMarketRegime", () => {
   it("identifies risk-off when equity falling and bond yield falling", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [2.0, 1.98, 1.96, 1.93, 1.90]),
-      makeKpi("financial_conditions", "沪深300", [4000, 3950, 3900, 3850, 3800]),
+      makeKpi("csi300", "沪深300", [4000, 3950, 3900, 3850, 3800]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.8, 1.8, 1.8]),
       makeKpi("brent", "布油", [65, 65, 65, 65, 65], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -112,7 +122,7 @@ describe("identifyMarketRegime", () => {
   it("returns mixed for unclear signals", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [2.0, 2.0, 2.0, 2.0, 2.0]),
-      makeKpi("financial_conditions", "沪深300", [4000, 4000, 4000, 4000, 4000]),
+      makeKpi("csi300", "沪深300", [4000, 4000, 4000, 4000, 4000]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.8, 1.8, 1.8]),
       makeKpi("brent", "布油", [65, 65, 65, 65, 65], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -179,6 +189,15 @@ describe("buildMomentumScoreboard", () => {
     expect(rows[0].chg1d).not.toBeNull();
     expect(rows[1].direction).toBe("down");
   });
+
+  it("does not calculate percentage momentum for the financial-conditions score", () => {
+    const rows = buildMomentumScoreboard([
+      makeKpi("financial_conditions", "金融条件指数", [-1.2, -0.8, -0.2, 0.1, -0.4]),
+      makeKpi("csi300", "沪深300", [3800, 3820, 3810, 3840, 3860]),
+    ]);
+
+    expect(rows.map((row) => row.key)).toEqual(["csi300"]);
+  });
 });
 
 describe("TREND_GROUPS", () => {
@@ -225,6 +244,15 @@ describe("detectVolatilityClustering", () => {
     ];
     const alert = detectVolatilityClustering(kpis);
     expect(alert.clusterCount).toBeGreaterThan(0);
+  });
+
+  it("does not classify financial-conditions score changes as asset volatility", () => {
+    const alert = detectVolatilityClustering([
+      makeKpi("financial_conditions", "金融条件指数", [-1, -0.8, -0.5, -0.1, 0.2, -0.2, -0.6, -1.1]),
+      makeKpi("csi300", "沪深300", [3800, 3810, 3820, 3815, 3830, 3840, 3850, 3860]),
+    ]);
+
+    expect(alert.assets.map((asset) => asset.key)).toEqual(["csi300"]);
   });
 });
 

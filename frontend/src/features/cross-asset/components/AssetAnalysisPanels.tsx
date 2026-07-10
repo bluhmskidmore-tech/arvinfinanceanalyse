@@ -1,5 +1,7 @@
 import type { ResultMeta } from "../../../api/contracts";
-import type {
+import {
+  crossAssetAssetDirectionLabel,
+  type CrossAssetBondTransmissionJudgment,
   CrossAssetClassAnalysisLine,
   CrossAssetClassAnalysisRow,
   CrossAssetEquityEvidenceItem,
@@ -104,10 +106,6 @@ const UI = {
   pending: "待接入",
   dataReady: "数据可用",
   inputPending: "输入待接入",
-  supportive: "支撑",
-  restrictive: "压制",
-  neutral: "中性",
-  conflicted: "分歧",
   joiner: "，",
   items: "项",
 } as const;
@@ -138,26 +136,6 @@ function evidenceStatusLabel(status: CrossAssetEquityEvidenceItem["status"]) {
   return labels[status];
 }
 
-function assetDirectionLabel(direction: string) {
-  const normalized = direction.toLowerCase();
-  if (normalized.includes("supportive")) {
-    return UI.supportive;
-  }
-  if (normalized.includes("restrictive")) {
-    return UI.restrictive;
-  }
-  if (normalized.includes("neutral")) {
-    return UI.neutral;
-  }
-  if (normalized.includes("conflicted")) {
-    return UI.conflicted;
-  }
-  if (normalized.includes("pending") || normalized.includes("definition")) {
-    return UI.pending;
-  }
-  return direction;
-}
-
 function directionClassName(direction: string) {
   const normalized = direction.toLowerCase();
   if (normalized.includes("supportive")) {
@@ -175,74 +153,14 @@ function directionClassName(direction: string) {
   return "neutral";
 }
 
-function resolveAssetBondJudgmentHeadline(stockTone: string, commodityTone: string, pendingLineCount: number) {
-  if (stockTone === UI.restrictive && commodityTone === UI.neutral) {
-    return "股票链条压制风险偏好，商品链条暂不强化通胀交易。";
-  }
-  if (stockTone === UI.restrictive && commodityTone === UI.supportive) {
-    return "风险偏好承压但商品仍有通胀扰动，债券判断需看利率主线确认。";
-  }
-  if (stockTone === UI.supportive && commodityTone === UI.neutral) {
-    return "风险偏好改善，商品端中性，债券压力暂不来自跨资产共振。";
-  }
-  if (pendingLineCount > 0) {
-    return "已接入信号先约束风险偏好与通胀方向，待接入项只限定置信度。";
-  }
-  return "跨资产证据可进入债券传导判断，继续跟踪方向共振。";
-}
-
-function buildAssetBondJudgment(input: {
-  stockRow: CrossAssetClassAnalysisRow | undefined;
-  commodityRow: CrossAssetClassAnalysisRow | undefined;
-  optionsRow: CrossAssetClassAnalysisRow | undefined;
-  pendingLineCount: number;
-}) {
-  const stockTone = input.stockRow ? assetDirectionLabel(input.stockRow.direction) : UI.pending;
-  const commodityTone = input.commodityRow ? assetDirectionLabel(input.commodityRow.direction) : UI.pending;
-  const optionsTone = input.optionsRow?.status === "ready" ? assetDirectionLabel(input.optionsRow.direction) : UI.pending;
-  const boundary =
-    input.pendingLineCount > 0
-      ? `当前仍有 ${input.pendingLineCount} 项待接入，缺口只降低结论置信度，不用相邻资产替代。`
-      : "当前待接入缺口较少，可更直接追踪跨资产共振对债券的传导。";
-
-  return {
-    headline: resolveAssetBondJudgmentHeadline(stockTone, commodityTone, input.pendingLineCount),
-    summary: `${input.stockRow?.label ?? UI.stock}${stockTone}${UI.joiner}${input.commodityRow?.label ?? UI.commodity}${commodityTone}${UI.joiner}${input.optionsRow?.label ?? UI.options}${optionsTone}。${boundary}`,
-    items: [
-      {
-        key: "stock",
-        label: input.stockRow?.label ?? UI.stock,
-        tone: stockTone,
-        direction: input.stockRow?.direction ?? "pending",
-        detail: input.stockRow?.explanation ?? "股票链条暂无治理后输入，不进入债券主判断。",
-      },
-      {
-        key: "commodities",
-        label: input.commodityRow?.label ?? UI.commodity,
-        tone: commodityTone,
-        direction: input.commodityRow?.direction ?? "pending",
-        detail: input.commodityRow?.explanation ?? "商品链条暂无治理后输入，不放大通胀或需求判断。",
-      },
-      {
-        key: "options",
-        label: input.optionsRow?.label ?? UI.options,
-        tone: optionsTone,
-        direction: input.optionsRow?.status === "ready" ? input.optionsRow.direction : "pending",
-        detail:
-          input.optionsRow?.status === "ready"
-            ? input.optionsRow.explanation
-            : "期权和波动率口径尚在待接入清单，只作为风险信号缺口提示。",
-      },
-    ],
-  };
-}
-
 export function AssetClassAnalysisPanel({
   rows,
   equityEvidenceItems,
+  bondJudgment,
 }: {
   rows: CrossAssetClassAnalysisRow[];
   equityEvidenceItems: CrossAssetEquityEvidenceItem[];
+  bondJudgment: CrossAssetBondTransmissionJudgment;
 }) {
   const stockRow = rows.find((row) => row.key === "stock");
   const commodityRow = rows.find((row) => row.key === "commodities");
@@ -257,11 +175,10 @@ export function AssetClassAnalysisPanel({
     .filter((group) => group.lines.length > 0);
   const pendingLineCount = pendingGroups.reduce((count, group) => count + group.lines.length, 0);
   const verdictParts = [
-    stockRow ? `${UI.stock}${assetDirectionLabel(stockRow.direction)}` : "",
-    commodityRow ? `${UI.commodity}${assetDirectionLabel(commodityRow.direction)}` : "",
-    optionsRow ? `${UI.options}${optionsRow.status === "ready" ? assetDirectionLabel(optionsRow.direction) : UI.pending}` : "",
+    stockRow ? `${UI.stock}${crossAssetAssetDirectionLabel(stockRow.direction)}` : "",
+    commodityRow ? `${UI.commodity}${crossAssetAssetDirectionLabel(commodityRow.direction)}` : "",
+    optionsRow ? `${UI.options}${optionsRow.status === "ready" ? crossAssetAssetDirectionLabel(optionsRow.direction) : UI.pending}` : "",
   ].filter(Boolean);
-  const bondJudgment = buildAssetBondJudgment({ stockRow, commodityRow, optionsRow, pendingLineCount });
 
   return (
     <section data-testid="cross-asset-asset-class-analysis" className="cross-asset-class-analysis">
@@ -312,7 +229,7 @@ export function AssetClassAnalysisPanel({
                         <div className="cross-asset-class-analysis__card-subtitle">{analysisStatusLabel(row.status)}</div>
                       </div>
                       <span className={`cross-asset-class-analysis__direction cross-asset-class-analysis__direction--${directionClassName(row.direction)}`}>
-                        {assetDirectionLabel(row.direction)}
+                        {crossAssetAssetDirectionLabel(row.direction)}
                       </span>
                     </div>
                     <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
@@ -386,7 +303,7 @@ export function AssetClassAnalysisPanel({
                           title={line.sourceLabel}
                         >
                           <span>{line.label}</span>
-                          <span>{assetDirectionLabel(line.direction)}</span>
+                          <span>{crossAssetAssetDirectionLabel(line.direction)}</span>
                           <small>
                             {lineStatusLabel(line.stateLabel)} · {line.dataLabel}
                           </small>

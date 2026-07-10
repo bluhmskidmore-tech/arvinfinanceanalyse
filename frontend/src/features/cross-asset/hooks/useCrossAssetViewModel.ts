@@ -24,6 +24,7 @@ import {
   buildCrossAssetClassAnalysisRows,
   buildCrossAssetEquityEvidenceItems,
   buildCrossAssetEventItems,
+  buildCrossAssetFirstScreenDisplayContract,
   buildCrossAssetNcdProxyEvidence,
   buildCrossAssetStatusFlags,
   buildCrossAssetWatchList,
@@ -305,6 +306,31 @@ export function useCrossAssetViewModel() {
           }),
     [crossAssetDataDate, latestMeta, latestQuery.isLoading, latestSeries, linkageMeta, linkageReportDate, macroBondLinkageQuery.isLoading, macroBondLinkageWarnings, moduleFailures],
   );
+  const firstScreenDisplay = useMemo(
+    () =>
+      buildCrossAssetFirstScreenDisplayContract({
+        reportDate: crossAssetDataDate || linkageReportDate,
+        firstScreenConclusion,
+        marketRegime,
+        drivers,
+        envTags,
+        assetClassAnalysisRows,
+        statusFlags,
+        isLoading: macroBondLinkageQuery.isLoading || latestQuery.isLoading,
+      }),
+    [
+      assetClassAnalysisRows,
+      crossAssetDataDate,
+      drivers,
+      envTags,
+      firstScreenConclusion,
+      latestQuery.isLoading,
+      linkageReportDate,
+      macroBondLinkageQuery.isLoading,
+      marketRegime,
+      statusFlags,
+    ],
+  );
   const hasPortfolioImpact = Object.keys(macroBondLinkage.portfolio_impact ?? {}).length > 0;
   const linkageBodyEmpty =
     macroBondLinkageQuery.isSuccess &&
@@ -332,6 +358,7 @@ export function useCrossAssetViewModel() {
     equityEvidenceItems,
     erpData,
     eventItems,
+    firstScreenDisplay,
     firstScreenConclusion,
     hasPortfolioImpact,
     heatmapRows,
