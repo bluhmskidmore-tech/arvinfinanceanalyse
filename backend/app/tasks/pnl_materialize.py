@@ -193,45 +193,79 @@ def _materialize_pnl_facts_under_writer_lock(
     source_version = "__".join(source_versions) or "sv_pnl_empty"
     failure_context["source_version"] = source_version
 
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        conn.execute("begin transaction")
-        _ensure_tables(conn)
-        conn.execute(
-            "delete from fact_formal_pnl_fi where report_date = ?",
-            [report_date],
+    formal_fi_values = [
+        (
+            row.report_date.isoformat(),
+            row.instrument_code,
+            row.portfolio_name,
+            row.cost_center,
+            row.invest_type_std,
+            row.accounting_basis,
+            row.currency_basis,
+            row.interest_income_514,
+            row.fair_value_change_516,
+            row.capital_gain_517,
+            row.manual_adjustment,
+            row.total_pnl,
+            row.source_version,
+            RULE_VERSION,
+            row.ingest_batch_id,
+            row.trace_id,
         )
+        for row in formal_fi_rows
+    ]
+    formal_fi_keys = {
+        (values[0], values[1], values[2], values[3], values[5], values[6])
+        for values in formal_fi_values
+    }
+    if len(formal_fi_keys) != len(formal_fi_values):
+        raise ValueError("Duplicate fact_formal_pnl_fi canonical grain in materialize input")
+
+    conn = duckdb.connect(str(duckdb_file), read_only=False)
+    transaction_started = False
+    try:
+        _ensure_tables(conn)
+        conn.execute("begin transaction")
+        transaction_started = True
+        existing_formal_fi_keys = {
+            tuple(row)
+            for row in conn.execute(
+                """
+                select report_date, instrument_code, portfolio_name, cost_center,
+                       accounting_basis, currency_basis
+                from fact_formal_pnl_fi
+                where report_date = ?
+                """,
+                [report_date],
+            ).fetchall()
+        }
         conn.execute(
             "delete from fact_nonstd_pnl_bridge where report_date = ?",
             [report_date],
         )
 
-        if formal_fi_rows:
+        if formal_fi_values:
             conn.executemany(
                 """
-                insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                insert or replace into fact_formal_pnl_fi
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                [
-                    (
-                        row.report_date.isoformat(),
-                        row.instrument_code,
-                        row.portfolio_name,
-                        row.cost_center,
-                        row.invest_type_std,
-                        row.accounting_basis,
-                        row.currency_basis,
-                        row.interest_income_514,
-                        row.fair_value_change_516,
-                        row.capital_gain_517,
-                        row.manual_adjustment,
-                        row.total_pnl,
-                        row.source_version,
-                        RULE_VERSION,
-                        row.ingest_batch_id,
-                        row.trace_id,
-                    )
-                    for row in formal_fi_rows
-                ],
+                formal_fi_values,
+            )
+
+        stale_formal_fi_keys = existing_formal_fi_keys - formal_fi_keys
+        if stale_formal_fi_keys:
+            conn.executemany(
+                """
+                delete from fact_formal_pnl_fi
+                where report_date = ?
+                  and instrument_code = ?
+                  and portfolio_name = ?
+                  and cost_center = ?
+                  and accounting_basis = ?
+                  and currency_basis = ?
+                """,
+                list(stale_formal_fi_keys),
             )
 
         if bridge_rows:
@@ -260,8 +294,10 @@ def _materialize_pnl_facts_under_writer_lock(
             )
 
         conn.execute("commit")
+        transaction_started = False
     except Exception:
-        conn.execute("rollback")
+        if transaction_started:
+            conn.execute("rollback")
         raise
     finally:
         conn.close()

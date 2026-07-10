@@ -108,24 +108,23 @@ def _replace_fx_mid_rows(
     duckdb_path: str,
     rows: list[tuple[object, ...]],
 ) -> None:
+    canonical_keys = {
+        (row[0], str(row[1]).upper(), str(row[2]).upper())
+        for row in rows
+    }
+    if len(canonical_keys) != len(rows):
+        raise ValueError("Duplicate fx_daily_mid canonical grain in materialize input")
+
     conn = duckdb.connect(duckdb_path, read_only=False)
+    transaction_started = False
     try:
         _ensure_fx_mid_table(conn)
         conn.execute("begin transaction")
+        transaction_started = True
         if rows:
-            delete_keys = [(row[0], row[1], row[2]) for row in rows]
             conn.executemany(
                 """
-                delete from fx_daily_mid
-                where trade_date = ?
-                  and upper(base_currency) = upper(?)
-                  and upper(quote_currency) = upper(?)
-                """,
-                delete_keys,
-            )
-            conn.executemany(
-                """
-                insert into fx_daily_mid (
+                insert or replace into fx_daily_mid (
                   trade_date,
                   base_currency,
                   quote_currency,
@@ -143,8 +142,10 @@ def _replace_fx_mid_rows(
                 rows,
             )
         conn.execute("commit")
+        transaction_started = False
     except Exception:
-        conn.execute("rollback")
+        if transaction_started:
+            conn.execute("rollback")
         raise
     finally:
         conn.close()

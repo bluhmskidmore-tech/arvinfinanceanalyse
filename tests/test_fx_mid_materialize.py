@@ -202,6 +202,88 @@ def test_fx_mid_materialize_populates_duckdb_from_csv_override(tmp_path):
     ]
 
 
+def test_fx_mid_materialize_replaces_existing_canonical_key(tmp_path):
+    fx_mod = _load_fx_task_module()
+    csv_path = tmp_path / "fx_mid.csv"
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2026-02-27,USD,CNY,7.24,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fx_mod.materialize_fx_mid_rows.fn(
+        csv_path=str(csv_path),
+        duckdb_path=str(duckdb_path),
+    )
+
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2026-02-27,USD,CNY,7.25,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fx_mod.materialize_fx_mid_rows.fn(
+        csv_path=str(csv_path),
+        duckdb_path=str(duckdb_path),
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, base_currency, quote_currency, mid_rate
+            from fx_daily_mid
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [(date(2026, 2, 27), "USD", "CNY", Decimal("7.25000000"))]
+
+
+def test_fx_mid_materialize_preserves_preflight_error_before_transaction(tmp_path):
+    fx_mod = _load_fx_task_module()
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table _schema_migrations (
+              version integer primary key,
+              description text not null
+            )
+            """
+        )
+        conn.executemany(
+            "insert into _schema_migrations values (?, ?)",
+            [(version, "already applied") for version in range(1, 32)],
+        )
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date date,
+              base_currency varchar,
+              quote_currency varchar
+            )
+            """
+        )
+        conn.execute("insert into fx_daily_mid values ('2026-02-27', null, 'CNY')")
+    finally:
+        conn.close()
+
+    with pytest.raises(RuntimeError, match=r"fx_daily_mid\.base_currency.*NULL"):
+        fx_mod._replace_fx_mid_rows(duckdb_path=str(duckdb_path), rows=[])
+
+
 def test_fx_mid_materialize_holds_global_duckdb_writer_lock(tmp_path, monkeypatch):
     fx_mod = _load_fx_task_module()
     materialize_mod = load_module(

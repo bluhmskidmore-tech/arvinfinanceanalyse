@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 Migration = Callable[[duckdb.DuckDBPyConnection], None]
 
 
+def _connection_has_explicit_transaction(conn: duckdb.DuckDBPyConnection) -> bool:
+    """Detect whether consecutive statements share a caller-owned transaction."""
+    first_id = conn.execute("select txid_current()").fetchone()[0]
+    second_id = conn.execute("select txid_current()").fetchone()[0]
+    return first_id == second_id
+
+
 def main_database_file_path(conn: duckdb.DuckDBPyConnection) -> str | None:
     """Return resolved on-disk path for `main`, or None for in-memory databases."""
     rows = conn.execute("PRAGMA database_list").fetchall()
@@ -46,21 +53,59 @@ class DuckDBSchemaRegistry:
             close_conn = True
         applied_descriptions: list[str] = []
         try:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS _schema_migrations (
-                    version INTEGER PRIMARY KEY,
-                    description TEXT NOT NULL,
-                    applied_at TIMESTAMP DEFAULT current_timestamp
+            caller_owns_transaction = _connection_has_explicit_transaction(conn)
+            if caller_owns_transaction:
+                migration_table_exists = conn.execute(
+                    """
+                    select count(*)
+                    from information_schema.tables
+                    where table_schema = 'main' and table_name = '_schema_migrations'
+                    """
+                ).fetchone() == (1,)
+            else:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS _schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        description TEXT NOT NULL,
+                        applied_at TIMESTAMP DEFAULT current_timestamp
+                    )
+                    """
                 )
-                """
+                migration_table_exists = True
+
+            applied = (
+                {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT version FROM _schema_migrations"
+                    ).fetchall()
+                }
+                if migration_table_exists
+                else set()
             )
-            applied = {row[0] for row in conn.execute("SELECT version FROM _schema_migrations").fetchall()}
-            for version, description, fn in sorted(self._migrations, key=lambda item: item[0]):
-                if version in applied:
-                    continue
+            pending_migrations = [
+                migration
+                for migration in sorted(self._migrations, key=lambda item: item[0])
+                if migration[0] not in applied
+            ]
+            if not pending_migrations:
+                return []
+
+            if caller_owns_transaction and not migration_table_exists:
+                conn.execute(
+                    """
+                    CREATE TABLE _schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        description TEXT NOT NULL,
+                        applied_at TIMESTAMP DEFAULT current_timestamp
+                    )
+                    """
+                )
+
+            for version, description, fn in pending_migrations:
                 logger.info("Applying DuckDB migration v%d: %s", version, description)
-                if close_conn:
+                if not caller_owns_transaction:
                     conn.execute("BEGIN TRANSACTION")
                 try:
                     fn(conn)
@@ -68,10 +113,16 @@ class DuckDBSchemaRegistry:
                         "INSERT INTO _schema_migrations (version, description) VALUES (?, ?)",
                         [version, description],
                     )
-                    if close_conn:
+                    if not caller_owns_transaction:
                         conn.execute("COMMIT")
                 except Exception:
-                    if close_conn:
+                    if caller_owns_transaction:
+                        # DuckDB has no savepoints. Discard the whole caller
+                        # transaction, then leave an empty replacement active
+                        # so an outer rollback/commit cannot mask this error.
+                        conn.execute("ROLLBACK")
+                        conn.execute("BEGIN TRANSACTION")
+                    else:
                         conn.execute("ROLLBACK")
                     raise
                 applied_descriptions.append(f"v{version}: {description}")
