@@ -8,6 +8,7 @@ from typing import Any
 ZERO = Decimal("0")
 DAYS_IN_YEAR = Decimal("365")
 TOTAL_CATEGORY_IDS = {"asset_total", "liability_total", "grand_total"}
+TOTAL_ATTRIBUTION_ROLLUP_EXCLUSIONS = {"interest_earning_assets"}
 
 
 def build_product_category_attribution_payload(
@@ -265,16 +266,21 @@ def _build_total(
     fallback_name: str,
     fallback_side: str,
 ) -> dict[str, object]:
-    leaf_rows = [
+    eligible_rows = [
         row
         for row in rows
+        if str(row.get("category_id")) not in TOTAL_ATTRIBUTION_ROLLUP_EXCLUSIONS
+    ]
+    leaf_rows = [
+        row
+        for row in eligible_rows
         if isinstance(row.get("effects"), dict)
         and not (
             _has_children(current_by_id.get(str(row["category_id"])))
             or _has_children(prior_by_id.get(str(row["category_id"])))
         )
     ]
-    effect_rows = leaf_rows or rows
+    effect_rows = leaf_rows or eligible_rows
     effects = _sum_effects(
         [row["effects"] for row in effect_rows if isinstance(row.get("effects"), dict)]
     )

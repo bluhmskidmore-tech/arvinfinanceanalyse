@@ -110,7 +110,25 @@ function readChartOption(panelTestId: string) {
 }
 
 async function waitForTrendDiagnosticsAutoLoad() {
+  const user = userEvent.setup();
+  const diagnosticsWorkspace = await screen.findByTestId("product-category-diagnostics-workspace");
+  if (!diagnosticsWorkspace.hasAttribute("open")) {
+    const diagnosticsSummary = within(diagnosticsWorkspace)
+      .getByText("诊断与负债趋势候选分析", { exact: true })
+      .closest("summary");
+    expect(diagnosticsSummary).not.toBeNull();
+    await user.click(diagnosticsSummary!);
+  }
   await screen.findByTestId("product-category-diagnostics-surface");
+  const trendWorkspace = await screen.findByTestId("product-category-trend-workspace");
+  if (!trendWorkspace.hasAttribute("open")) {
+    const trendSummary = within(trendWorkspace)
+      .getByText("趋势与利差候选图表", { exact: true })
+      .closest("summary");
+    expect(trendSummary).not.toBeNull();
+    await user.click(trendSummary!);
+  }
+  await screen.findByTestId("product-category-derived-chart-grid");
   await waitFor(() => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).not.toHaveTextContent(
       "选择报表日期后",
@@ -228,6 +246,154 @@ describe("ProductCategoryPnlPage", () => {
     expect(formatProductCategoryChartNumberTwoDecimals(undefined)).toBe("-");
   });
 
+  it("offers anchored navigation for the six business views", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const navigation = await screen.findByRole("navigation", {
+      name: "产品分类损益页面分区",
+    });
+    const expectedLinks = [
+      ["经营总览", "#product-category-overview"],
+      ["差异归因", "#product-category-attribution"],
+      ["产品结构", "#product-category-products"],
+      ["负债结构", "#product-category-liabilities"],
+      ["完整报表", "#product-category-report"],
+      ["治理审计", "#product-category-governance"],
+    ] as const;
+
+    expectedLinks.forEach(([name, href]) => {
+      expect(within(navigation).getByRole("link", { name })).toHaveAttribute("href", href);
+      expect(document.querySelector(href)).toBeInTheDocument();
+    });
+  });
+
+  it("places headline totals before expandable governance detail", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const band = await screen.findByTestId("product-category-formal-readiness-band");
+    const totals = within(band).getByTestId("product-category-formal-headline-totals");
+    const contributionRows = within(band).getByTestId(
+      "product-category-first-screen-category-rows",
+    );
+    const governance = within(band).getByTestId(
+      "product-category-formal-readiness-governance",
+    );
+
+    expect(totals.compareDocumentPosition(contributionRows) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(contributionRows.compareDocumentPosition(governance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(governance).not.toHaveAttribute("open");
+    expect(governance).toHaveTextContent("数据口径与认证");
+    expect(governance).toHaveTextContent("数据可用");
+  });
+
+  it("surfaces the monthly delta and closure gap from the attribution API in the headline band", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const band = await screen.findByTestId("product-category-formal-readiness-band");
+
+    await waitFor(() => {
+      expect(band).toHaveTextContent("环比变动");
+      expect(band).toHaveTextContent("闭合误差");
+      expect(band).toHaveTextContent("对比期");
+    });
+  });
+
+  it("presents attribution drivers as first-screen visual evidence", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const driverReadout = await screen.findByTestId(
+      "product-category-formal-driver-readout",
+    );
+
+    expect(driverReadout).toHaveTextContent("变动解释");
+    expect(driverReadout).toHaveTextContent("规模因素");
+    expect(
+      within(driverReadout).getByRole("progressbar", { name: "规模因素" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps full attribution and candidate analysis in closed secondary workspaces", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("product-category-table");
+    const secondaryWorkspaces = [
+      "product-category-attribution-details",
+      "product-category-financial-workspace",
+      "product-category-operating-workspace",
+      "product-category-backtest-workspace",
+      "product-category-diagnostics-workspace",
+    ].map((testId) => screen.getByTestId(testId));
+
+    secondaryWorkspaces.forEach((workspace) => {
+      expect(workspace.tagName).toBe("DETAILS");
+      expect(workspace).not.toHaveAttribute("open");
+    });
+  });
+
+  it("mounts diagnostic charts only after their disclosures open", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const diagnosticsWorkspace = await screen.findByTestId("product-category-diagnostics-workspace");
+    const diagnosticsSummary = within(diagnosticsWorkspace)
+      .getByText("诊断与负债趋势候选分析", { exact: true })
+      .closest("summary");
+    expect(diagnosticsSummary).not.toBeNull();
+    expect(screen.queryByTestId("product-category-diagnostics-surface")).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId("product-category-echarts-stub")).toHaveLength(0);
+
+    await user.click(diagnosticsSummary!);
+
+    await screen.findByTestId("product-category-diagnostics-surface");
+    await waitFor(() => {
+      expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(1);
+    });
+
+    const trendWorkspace = screen.getByTestId("product-category-trend-workspace");
+    const trendSummary = within(trendWorkspace)
+      .getByText("趋势与利差候选图表", { exact: true })
+      .closest("summary");
+    expect(trendSummary).not.toBeNull();
+
+    await user.click(trendSummary!);
+
+    await screen.findByTestId("product-category-derived-chart-grid");
+    await waitFor(() => {
+      expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(12);
+    });
+
+    await user.click(diagnosticsSummary!);
+    await waitFor(() => {
+      expect(screen.queryAllByTestId("product-category-echarts-stub")).toHaveLength(0);
+    });
+  });
+
+  it("collapses technical signing fields behind a Chinese summary", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const signingStatus = await screen.findByTestId("product-category-owner-signable-status");
+    expect(signingStatus.tagName).toBe("DETAILS");
+    expect(signingStatus).not.toHaveAttribute("open");
+    expect(signingStatus).toHaveTextContent("签署状态");
+    expect(signingStatus).toHaveTextContent("待认证");
+    expect(signingStatus).toHaveTextContent("Owner-signable=false");
+  });
+
+  it("keeps result metadata collapsed as an evidence layer", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const metadataWorkspace = await screen.findByTestId(
+      "product-category-result-meta-workspace",
+    );
+
+    expect(metadataWorkspace.tagName).toBe("DETAILS");
+    expect(metadataWorkspace).not.toHaveAttribute("open");
+    expect(metadataWorkspace).toHaveTextContent("结果元信息与证据");
+    expect(
+      within(metadataWorkspace).getByTestId("product-category-result-meta"),
+    ).toBeInTheDocument();
+  });
+
   it("renders the page shell, summary, and table structure", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
@@ -248,19 +414,22 @@ describe("ProductCategoryPnlPage", () => {
     );
     expect(screen.getByTestId("product-category-role-badge")).toHaveTextContent("系统层");
     expect(screen.getByTestId("product-category-boundary-copy")).toHaveTextContent("系统层经营口径");
-    const heroOwnerStatus = screen.getByTestId("product-category-owner-signable-status");
+    const ownerStatus = screen.getByTestId("product-category-owner-signable-status");
     const productCategoryBranch = screen.getByTestId("product-category-branch-product-category-pnl");
     expect(
-      heroOwnerStatus.compareDocumentPosition(productCategoryBranch) &
+      productCategoryBranch.compareDocumentPosition(ownerStatus) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(heroOwnerStatus).toHaveTextContent("Owner-signable=false");
-    expect(heroOwnerStatus).toHaveTextContent("Certified=false");
-    expect(heroOwnerStatus).toHaveTextContent("Owner approval pending");
-    expect(heroOwnerStatus).toHaveTextContent("Golden sample awaiting approval");
-    expect(heroOwnerStatus).toHaveTextContent("Manual audit partial units=10");
+    expect(ownerStatus).toHaveTextContent("Owner-signable=false");
+    expect(ownerStatus).toHaveTextContent("Certified=false");
+    expect(ownerStatus).toHaveTextContent("Owner approval pending");
+    expect(ownerStatus).toHaveTextContent("Golden sample awaiting approval");
+    expect(ownerStatus).toHaveTextContent("Manual audit partial units=10");
     expect(screen.getByTestId("product-category-formal-readiness-band")).toHaveTextContent(
-      "正式主链首屏摘要",
+      "本期经营结果",
+    );
+    expect(screen.getByTestId("product-category-formal-headline-copy")).toHaveTextContent(
+      "本期合计经营净收入",
     );
     expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
       "report_date=2026-02-28",
@@ -303,6 +472,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-formal-table-lead")).toHaveTextContent(
       "正式产品类别损益表",
     );
+    await waitForTrendDiagnosticsAutoLoad();
     expect(screen.getByTestId("product-category-diagnostics-lead")).toHaveTextContent(
       "受治理诊断面板",
     );
@@ -372,9 +542,10 @@ describe("ProductCategoryPnlPage", () => {
     const page = screen.getByTestId("product-category-page");
     const order = [
       "product-category-contract-hero",
-      "product-category-data-status-strip",
       "product-category-scenario-lead",
       "product-category-formal-readiness-band",
+      "product-category-data-status-strip",
+      "product-category-owner-signable-status",
       "product-category-adjustment-lead",
       "product-category-financial-analysis",
       "product-category-operating-analysis",
@@ -401,7 +572,7 @@ describe("ProductCategoryPnlPage", () => {
     const rawGrid = screen.getByTestId("product-category-formal-table-raw-grid");
 
     expect(readout.compareDocumentPosition(rawGrid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(readout).toHaveTextContent("移动正式表读数");
+    expect(readout).toHaveTextContent("关键读数");
     expect(readout).toHaveTextContent("报告日");
     expect(readout).toHaveTextContent("视图");
     expect(readout).toHaveTextContent("合计经营净收入");
@@ -919,6 +1090,7 @@ describe("ProductCategoryPnlPage", () => {
   it("renders the governed diagnostics matrix and negative watchlist from existing payload rows", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-diagnostics-matrix");
     expect(screen.getByTestId("product-category-diagnostics-watchlist")).toBeInTheDocument();
   });
@@ -1022,7 +1194,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await screen.findByTestId("product-category-table");
+    await waitForTrendDiagnosticsAutoLoad();
     expect(screen.getByTestId("product-category-diagnostics-matrix-empty")).toHaveTextContent(
       "当前 payload 未返回可诊断的产品行。",
     );
@@ -1032,7 +1204,6 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-spread-incomplete")).toHaveTextContent(
       "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
     );
-    await waitForTrendDiagnosticsAutoLoad();
     const liabilityOption = readChartOption("product-category-liability-side-trend");
     expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年02月"] });
     expect(liabilityOption.series?.[0]?.data).toEqual([null]);
@@ -1083,7 +1254,7 @@ describe("ProductCategoryPnlPage", () => {
   it("renders the requested derived chart panels with chart stubs", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
-    await screen.findByTestId("product-category-table");
+    await waitForTrendDiagnosticsAutoLoad();
     expect(await screen.findByTestId("product-category-derived-chart-tpl-scale-yield")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-currency-net-income")).toBeInTheDocument();
     expect(
@@ -1922,6 +2093,7 @@ describe("ProductCategoryPnlPage", () => {
         view: "monthly",
       });
     });
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-derived-chart-tpl-scale-yield");
     await waitFor(() => {
       const tplOption = readChartOption("product-category-derived-chart-tpl-scale-yield");
