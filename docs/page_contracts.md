@@ -1602,6 +1602,7 @@
   - `GET /api/ledger-pnl/data`
   - `GET /api/ledger-pnl/summary`
   - `GET /api/ledger-pnl/analysis`
+  - `GET /api/ledger-pnl/candidate-financial-indicators`
   - `GET /api/ledger-pnl/formal-financial-indicators`
   - `GET /api/ledger-pnl/formal-indicator-rule-checks`
 
@@ -1615,6 +1616,7 @@
 
 - Frontend route `/ledger-pnl` consumes ledger PnL read APIs under `/api/ledger-pnl/*`.
 - `GET /api/ledger-pnl/analysis?date=YYYY-MM-DD&currency=CNX|CNY` returns a backend-computed candidate analysis snapshot for the selected accounting basis. It includes the core/other-`5*`/all bridge, CNX-versus-CNY comparison, ranked account contributors, and comparison with the previous available source report date.
+- `GET /api/ledger-pnl/candidate-financial-indicators?report_month=YYYYMM&include_lineage=false&metric_id=` executes the frozen `qdb-finance-2026-v1.0.0` rule pack against the configured monthly ledger/daily workbook pair. It is an isolated candidate result and does not modify the formal source-contract endpoint.
 - `GET /api/ledger-pnl/formal-financial-indicators?report_month=202603` returns the frozen formal financial indicator source contract.
 - `GET /api/ledger-pnl/formal-indicator-rule-checks?report_month=202603` checks the frozen contract without producing new formal metric values.
 - Backend route `backend/app/api/routes/ledger_pnl.py` delegates to `backend/app/services/ledger_pnl_service.py`.
@@ -1659,6 +1661,25 @@
 - The analysis payload and envelope are validated by strict backend Pydantic response models (`extra=forbid`) before the route response is emitted.
 - These derived analysis fields do not create new `MTR-*` entries or change the pending status of `MTR-LPN-001` through `MTR-LPN-003`.
 
+#### F.1 Candidate financial-indicator engine
+
+- The only HTTP source selector is `report_month`; the service resolves `总账对账{YYYYMM}.xlsx` and `日均{YYYYMM}.xlsx` under `settings.product_category_source_dir`. Client-supplied filesystem paths are forbidden. All six parsed source periods must end on that requested month-end; a renamed or stale workbook fails closed with `source_period_mismatch`.
+- The contract is fixed to `currency=CNX`, `basis=ledger`, `metric_status=candidate`, and `formal_use_allowed=false`. The page-level CNX/CNY selector never changes this engine's CNX calculation boundary.
+- The versioned rule asset expands to 186 unique metric IDs: 57 scale outputs (19 definitions × point/YTD-average/month-average), 75 direct outputs, 19 manual inputs, and 35 derived outputs. All values and lineage amounts are decimal strings; raw source amounts remain yuan and displayed metric values remain 亿元.
+- The backend, not React, owns account aggregation, weights, scale/direct/manual/derived evaluation, missing-account substitution, and dependency propagation. A missing referenced account is distinguishable from an observed zero and remains visible in status, reasons, validation, gap, and lineage evidence.
+- Every evaluated response returns the fixed 12 controls covering six source periods, CNX-only consumption, ledger identity/duplicates, referenced-account coverage, four scale reconciliations, and independent non-interest reconciliation. Any failed error-severity control produces `calculation_status=error`; the page must block headline values and the metric catalog in that state.
+- `include_lineage=false` is the default base read. The page requests `include_lineage=true` with one exact `metric_id` only after a user opens trace detail; frontend code must not reconstruct finance lineage.
+- Source SHA-256, rule hash/version, request parameters, manual overrides/references (when supported), and engine-contract version participate in deterministic idempotency. The runtime loader also pins the approved `qdb-finance-2026-v1.0.0` asset SHA-256 and rejects structurally valid byte drift until a new rule version is approved. Locked-sample comparison is a separate visible trust signal and never silently substitutes source files.
+- For 202606, the configured daily source matches the locked rule sample, while the configured ledger source hash differs. The page therefore shows `source_alignment=mismatch`; the calculation may be analytically useful but cannot be represented as the locked sample or formal truth.
+- Missing source files return `no_data` with explicit source gaps. Structural/security parsing failures return a redacted domain `error`. No-data, error, source mismatch, manual defaults, validation failures, and absent lock configuration must remain visibly distinct. An evaluated source without an approved locked hash is at least `warning`, emits a visible source-hash gap, and cannot be labelled `ready`.
+- Every candidate response includes backend-owned `promotion_readiness` contract `promotion-readiness-v1`. Its six ordered checks cover the approved rule asset, source-period/hash evidence, all 12 controls, explicit manual inputs, referenced-account coverage, and frozen-formal-contract registration. The frontend renders these checks before headline values and must not derive or overwrite their status from counts or gaps. The formal-contract check proves registration only; it does not prove that the contract release gate is open.
+- `promotion_readiness.status=review_required` means only that the six technical checks have no blocker. It never changes `formal_use_allowed=false`, never substitutes for the frozen formal contract, and still requires finance/data-governance owner approval. `candidate_idempotency_key` binds the checklist to the exact candidate calculation, while `readiness_evidence_key` separately fingerprints the check states, evidence references, formal sample/source/release status, and readiness contract version.
+- `promotion_readiness.evidence_pack` is the backend-authored, downloadable `candidate-promotion-evidence-v1` blocker handoff. Its `evidence_pack_key` fingerprints the complete canonical pack other than the key itself, including report/rule/source context, checks, formal registration state, owner requirements, required evidence and actions. The strict payload contract also binds those context fields back to the outer candidate result. It contains no candidate metric values, value-bearing validation samples, or formal values; every owner input remains `awaiting_owner_input` with `submitted_value=null`. Downloading it has `certification_effect=none` and cannot approve, register, or promote a metric.
+- The frontend may serialize and download that exact nested object and may expose each check's `evidence_refs`. It must fail closed if the pack is absent or structurally inconsistent, and must not rebuild the pack, infer submitted values, or add an approval/write action.
+- The frontend may also render `owner_requirements` as a read-only evidence worklist in the fixed category order source evidence, validation control, manual input, account coverage, formal contract, and business-owner review. Category filtering and clipboard copy operate only on the already-returned requirements; they must not mutate the evidence pack, submit owner values, call a write endpoint, or imply approval. Clipboard failure must direct the user back to the exact JSON download.
+- `POST /api/ledger-pnl/candidate-financial-indicators/revalidate?report_month=YYYYMM` is a non-persisted dry run bound to both the current candidate idempotency key and evidence-pack key. The frontend may keep its receipt and candidate result in component memory only; refresh or explicit clear discards it. `evidence_received` means the submitted manual value was applied to a candidate recalculation but its evidence is still unverified. Neither `evidence_received` nor `verified` is approval, persistence, certification, or permission for formal use; every receipt remains `revalidation_effect=none`, `persisted=false`, and `formal_use_allowed=false`.
+- Current 202606 evidence cannot resolve the ledger mismatch because the locked ledger binary is absent; it also cannot prove the 11 missing account inputs are zero or approve the 19 manual defaults. The system must keep these as blockers rather than infer values from the candidate result or delivery examples.
+
 ### G. Candidate metric bindings
 
 - Ledger summary cards have dictionary entries only as candidate display metrics; they remain `pending_confirmation=true` and must not be read as formal PnL, product-category PnL, or approved financial-indicator truth.
@@ -1673,7 +1694,10 @@
 - Ledger summary/detail: `tests/test_ledger_pnl_service.py`.
 - Ledger candidate analysis arithmetic and envelope: `tests/test_ledger_pnl_analysis.py`; `tests/test_ledger_pnl_service.py`.
 - Ledger route validation/permission: `tests/test_ledger_pnl_routes.py`.
+- Candidate rule/parser/evaluator/service/schema: `tests/test_finance_metric_rule_contract.py`; `tests/test_finance_metric_xlsx.py`; `tests/test_finance_metric_engine.py`; `tests/test_finance_metric_validations.py`; `tests/test_candidate_financial_indicator_schema.py`; `tests/test_candidate_financial_indicator_service.py`.
+- The frontend 202606 demo fixture keeps the governed 186-ID catalog and dependency topology but contains only deterministic synthetic amounts, hashes, account codes, evidence references, statuses, validations, and gaps. `scripts/capture_candidate_financial_indicator_frontend_fixture.py` uses an explicit output allowlist; `tests/test_candidate_financial_indicator_frontend_fixture.py` guards the synthetic contract, and the production build scans `dist` for captured finance markers. The demo fixture is not a source snapshot, golden sample, or formal approval.
 - Accounting-basis URL/client behavior: `frontend/src/test/LedgerPnlCurrencyBasis.test.tsx`; `frontend/src/test/LedgerPnlMockClient.test.ts`.
+- Candidate analysis panel and lazy trace behavior: `frontend/src/test/LedgerPnlCandidateFinancialIndicatorsPanel.test.tsx`; `frontend/src/test/LedgerPnlPage.test.tsx`.
 - Analysis workbench states and rendering: `frontend/src/test/LedgerPnlAnalysisWorkbench.test.tsx`.
 - Route/page-contract completeness: `tests/test_live_route_page_contract_completeness.py`.
 
@@ -1736,7 +1760,6 @@
 - Frontend boundary and states: `frontend/src/test/LedgerDashboardPage.test.tsx`, `frontend/src/test/LedgerDashboardPageModel.test.ts`.
 - Route and governance completeness: `tests/test_live_route_page_contract_completeness.py`, `tests/test_governance_doc_contract.py`.
 - MCP trace bundle: `tests/test_project_mcp_servers.py::test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_boundary`.
-
 ## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
 
 ### A. 页面身份

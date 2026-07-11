@@ -4,18 +4,39 @@
  */
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import {
-  mockLedgerPnlData,
+  buildMockLedgerPnlCandidateFinancialIndicators,
+  buildMockLedgerPnlFormalIndicatorRuleChecks,
+  getMockLedgerPnlFormalFinancialIndicators,
+  getMockLedgerPnlAccountDetail,
+  getMockLedgerPnlSnapshot,
+  MOCK_LEDGER_PNL_ACCOUNT_DETAIL_CACHE_VERSION,
+  MOCK_LEDGER_PNL_ACCOUNT_DETAIL_RULE_VERSION,
+  MOCK_LEDGER_PNL_ANALYSIS_CACHE_VERSION,
+  MOCK_LEDGER_PNL_ANALYSIS_RULE_VERSION,
+  MOCK_LEDGER_PNL_CACHE_VERSION,
+  MOCK_LEDGER_PNL_CANDIDATE_CAPTURE_META,
+  MOCK_LEDGER_PNL_CURRENCY_BASIS_NOTE,
+  MOCK_LEDGER_PNL_DEFAULT_CURRENCY_BASIS,
+  MOCK_LEDGER_PNL_RULE_VERSION,
+  MOCK_LEDGER_PNL_TABLES_USED,
   mockLedgerPnlDates,
-  mockLedgerPnlFormalFinancialIndicators,
-  mockLedgerPnlSummary,
+  mockLedgerPnlSummaryByBasis,
+  type MockLedgerPnlCurrencyBasis,
 } from "../mocks/ledgerPnlMocks";
 import { formatRawAsNumeric } from "../utils/format";
 import type {
   ApiEnvelope,
   FormalPnlRefreshPayload,
+  LedgerPnlAccountDetailPayload,
   LedgerPnlDataPayload,
   LedgerPnlDatesPayload,
+  LedgerPnlAnalysisPayload,
+  LedgerPnlCandidateFinancialIndicatorsPayload,
+  LedgerPnlCandidateFinancialIndicatorsEnvelope,
+  LedgerPnlCandidateFinancialIndicatorRevalidationReceipt,
+  LedgerPnlCandidateFinancialIndicatorRevalidationRequest,
   LedgerPnlFormalFinancialIndicatorContractPayload,
+  LedgerPnlFormalIndicatorRuleChecksPayload,
   LedgerPnlSummaryPayload,
   NumericUnit,
   PnlBasis,
@@ -41,9 +62,29 @@ export type PnlCoreClientMethods = {
     reportDate: string,
     currency?: string,
   ) => Promise<ApiEnvelope<LedgerPnlSummaryPayload>>;
+  getLedgerPnlAnalysis: (
+    reportDate: string,
+    currency?: string,
+  ) => Promise<ApiEnvelope<LedgerPnlAnalysisPayload>>;
+  getLedgerPnlAccountDetail: (
+    reportDate: string,
+    accountCode: string,
+    currency?: string,
+  ) => Promise<ApiEnvelope<LedgerPnlAccountDetailPayload>>;
   getLedgerPnlFormalFinancialIndicators: (
     reportMonth: string,
   ) => Promise<ApiEnvelope<LedgerPnlFormalFinancialIndicatorContractPayload>>;
+  getLedgerPnlCandidateFinancialIndicators: (
+    reportMonth: string,
+    options?: { includeLineage?: boolean; metricId?: string },
+  ) => Promise<LedgerPnlCandidateFinancialIndicatorsEnvelope>;
+  revalidateLedgerPnlCandidateFinancialIndicators: (
+    reportMonth: string,
+    request: LedgerPnlCandidateFinancialIndicatorRevalidationRequest,
+  ) => Promise<LedgerPnlCandidateFinancialIndicatorRevalidationReceipt>;
+  getLedgerPnlFormalIndicatorRuleChecks: (
+    reportMonth: string,
+  ) => Promise<ApiEnvelope<LedgerPnlFormalIndicatorRuleChecksPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
@@ -74,6 +115,55 @@ export type PnlCoreClientFactoryOptions = {
 
 function buildPnlBasisQuerySegment(basis?: PnlBasis) {
   return basis && basis !== "formal" ? `&basis=${encodeURIComponent(basis)}` : "";
+}
+
+function normalizeMockLedgerPnlCurrencyBasis(currency?: string): MockLedgerPnlCurrencyBasis {
+  const normalized = currency === undefined
+    ? MOCK_LEDGER_PNL_DEFAULT_CURRENCY_BASIS
+    : currency;
+  if (normalized !== "CNX" && normalized !== "CNY") {
+    throw new Error(`Unsupported ledger currency basis: ${JSON.stringify(currency)}. Expected CNX or CNY.`);
+  }
+  return normalized;
+}
+
+function buildMockCandidateFinancialIndicatorsEnvelope(
+  payload: LedgerPnlCandidateFinancialIndicatorsPayload,
+): LedgerPnlCandidateFinancialIndicatorsEnvelope {
+  const qualityFlag = payload.calculation_status === "ready"
+    ? "ok"
+    : payload.calculation_status === "error"
+      ? "error"
+      : "warning";
+  return {
+    result_meta: {
+      ...MOCK_LEDGER_PNL_CANDIDATE_CAPTURE_META,
+      basis: "ledger",
+      result_kind: "ledger_pnl.candidate_financial_indicators",
+      formal_use_allowed: false,
+      amount_currency_basis: "CNX",
+      trace_id: `mock_candidate_financial_indicators_${payload.report_month}_${payload.idempotency_key.slice(0, 12)}`,
+      source_version: payload.source_version,
+      rule_version: payload.rule_version,
+      cache_key: payload.idempotency_key,
+      quality_flag: qualityFlag,
+      requested_report_date: payload.report_month,
+      resolved_report_date: payload.report_date,
+      as_of_date: payload.report_date,
+      filters_applied: {
+        report_month: payload.report_month,
+        include_lineage: payload.include_lineage,
+        metric_id: payload.requested_metric_id,
+      },
+      tables_used: payload.calculation_status === "no_data"
+        ? []
+        : Array.from(new Set(payload.sources.flatMap((source) => source.sheets))),
+      evidence_rows: payload.calculation_status === "no_data"
+        ? 0
+        : MOCK_LEDGER_PNL_CANDIDATE_CAPTURE_META.evidence_rows,
+    },
+    result: payload,
+  };
 }
 
 export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
@@ -124,97 +214,190 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
       return buildMockApiEnvelope("ledger_pnl.dates", mockLedgerPnlDates, {
         basis: "ledger",
         formal_use_allowed: false,
-        source_version: mockLedgerPnlSummary.source_version,
-        rule_version: "rv_ledger_pnl_v1",
-        cache_version: "cv_ledger_pnl_v1",
-        tables_used: ["qdb_general_ledger_workbook"],
+        source_version: mockLedgerPnlSummaryByBasis.CNX.source_version,
+        rule_version: MOCK_LEDGER_PNL_RULE_VERSION,
+        cache_version: MOCK_LEDGER_PNL_CACHE_VERSION,
+        filters_applied: {},
+        tables_used: MOCK_LEDGER_PNL_TABLES_USED,
         evidence_rows: mockLedgerPnlDates.dates.length,
       });
     },
-    async getLedgerPnlData(reportDate: string, currency) {
+    async getLedgerPnlData(reportDate: string, currency?: string) {
+      const currencyBasis = normalizeMockLedgerPnlCurrencyBasis(currency);
       await delay();
+      const snapshot = getMockLedgerPnlSnapshot(reportDate, currencyBasis);
       return buildMockApiEnvelope(
         "ledger_pnl.data",
-        {
-          ...mockLedgerPnlData,
-          report_date: reportDate,
-          items: currency
-            ? mockLedgerPnlData.items.filter((item) => item.currency === currency)
-            : mockLedgerPnlData.items,
-        },
+        snapshot.data,
         {
           basis: "ledger",
           formal_use_allowed: false,
-          source_version: mockLedgerPnlSummary.source_version,
-          rule_version: "rv_ledger_pnl_v1",
-          cache_version: "cv_ledger_pnl_v1",
+          source_version: snapshot.source_version,
+          rule_version: MOCK_LEDGER_PNL_RULE_VERSION,
+          cache_version: MOCK_LEDGER_PNL_CACHE_VERSION,
+          quality_flag: snapshot.quality_flag,
           requested_report_date: reportDate,
           resolved_report_date: reportDate,
           as_of_date: reportDate,
           date_basis: "ledger_report_date",
-          filters_applied: { report_date: reportDate, currency: currency ?? "ALL" },
-          tables_used: ["qdb_general_ledger_workbook"],
-          evidence_rows: currency
-            ? mockLedgerPnlData.items.filter((item) => item.currency === currency).length
-            : mockLedgerPnlData.items.length,
+          filters_applied: {
+            report_date: reportDate,
+            currency: currencyBasis,
+            currency_basis: currencyBasis,
+            currency_basis_note: MOCK_LEDGER_PNL_CURRENCY_BASIS_NOTE,
+          },
+          tables_used: MOCK_LEDGER_PNL_TABLES_USED,
+          evidence_rows: snapshot.evidence_rows.data,
         },
       );
     },
-    async getLedgerPnlSummary(reportDate: string, currency) {
+    async getLedgerPnlSummary(reportDate: string, currency?: string) {
+      const currencyBasis = normalizeMockLedgerPnlCurrencyBasis(currency);
       await delay();
-      const filteredCurrencyRows = currency
-        ? mockLedgerPnlSummary.by_currency.filter((item) => item.currency === currency)
-        : mockLedgerPnlSummary.by_currency;
-      const filteredAccountRows = currency
-        ? mockLedgerPnlData.items.reduce(
-            (total, item) => total + (item.currency === currency ? 1 : 0),
-            0,
-          )
-        : mockLedgerPnlSummary.by_account.reduce((total, item) => total + item.count, 0);
+      const snapshot = getMockLedgerPnlSnapshot(reportDate, currencyBasis);
       return buildMockApiEnvelope(
         "ledger_pnl.summary",
-        {
-          ...mockLedgerPnlSummary,
-          report_date: reportDate,
-          by_currency: filteredCurrencyRows,
-        },
+        snapshot.summary,
         {
           basis: "ledger",
           formal_use_allowed: false,
-          source_version: mockLedgerPnlSummary.source_version,
-          rule_version: "rv_ledger_pnl_v1",
-          cache_version: "cv_ledger_pnl_v1",
+          source_version: snapshot.source_version,
+          rule_version: MOCK_LEDGER_PNL_RULE_VERSION,
+          cache_version: MOCK_LEDGER_PNL_CACHE_VERSION,
+          quality_flag: snapshot.quality_flag,
           requested_report_date: reportDate,
           resolved_report_date: reportDate,
           as_of_date: reportDate,
           date_basis: "ledger_report_date",
-          filters_applied: { report_date: reportDate, currency: currency ?? "ALL" },
-          tables_used: ["qdb_general_ledger_workbook"],
-          evidence_rows: filteredAccountRows,
+          filters_applied: {
+            report_date: reportDate,
+            currency: currencyBasis,
+            currency_basis: currencyBasis,
+            currency_basis_note: MOCK_LEDGER_PNL_CURRENCY_BASIS_NOTE,
+          },
+          tables_used: MOCK_LEDGER_PNL_TABLES_USED,
+          evidence_rows: snapshot.evidence_rows.summary,
+        },
+      );
+    },
+    async getLedgerPnlAnalysis(reportDate: string, currency?: string) {
+      const currencyBasis = normalizeMockLedgerPnlCurrencyBasis(currency);
+      await delay();
+      const snapshot = getMockLedgerPnlSnapshot(reportDate, currencyBasis);
+      const payload = snapshot.analysis;
+      const evidenceRows = payload.basis_comparison
+        .find((row) => row.metric_key === "all_pnl")
+        ?.evidence_rows[currencyBasis] ?? 0;
+      return buildMockApiEnvelope(
+        "ledger_pnl.analysis",
+        payload,
+        {
+          basis: "ledger",
+          formal_use_allowed: false,
+          source_version: payload.source_version,
+          rule_version: MOCK_LEDGER_PNL_ANALYSIS_RULE_VERSION,
+          cache_version: MOCK_LEDGER_PNL_ANALYSIS_CACHE_VERSION,
+          quality_flag: snapshot.quality_flag,
+          requested_report_date: reportDate,
+          resolved_report_date: reportDate,
+          as_of_date: reportDate,
+          date_basis: "ledger_report_date",
+          filters_applied: {
+            report_date: reportDate,
+            currency: currencyBasis,
+            currency_basis: currencyBasis,
+            currency_basis_note: MOCK_LEDGER_PNL_CURRENCY_BASIS_NOTE,
+          },
+          tables_used: MOCK_LEDGER_PNL_TABLES_USED,
+          evidence_rows: evidenceRows,
+        },
+      );
+    },
+    async getLedgerPnlAccountDetail(
+      reportDate: string,
+      accountCode: string,
+      currency?: string,
+    ) {
+      const currencyBasis = normalizeMockLedgerPnlCurrencyBasis(currency);
+      await delay();
+      const payload = getMockLedgerPnlAccountDetail(
+        reportDate,
+        accountCode,
+        currencyBasis,
+      );
+      const evidenceRows = payload.basis_comparison.current.evidence_rows[currencyBasis];
+      return buildMockApiEnvelope(
+        "ledger_pnl.account_detail",
+        payload,
+        {
+          basis: "ledger",
+          formal_use_allowed: false,
+          source_version: payload.source_version,
+          rule_version: MOCK_LEDGER_PNL_ACCOUNT_DETAIL_RULE_VERSION,
+          cache_version: MOCK_LEDGER_PNL_ACCOUNT_DETAIL_CACHE_VERSION,
+          quality_flag: payload.analysis_status === "ready" ? "ok" : "warning",
+          requested_report_date: reportDate,
+          resolved_report_date: reportDate,
+          as_of_date: reportDate,
+          date_basis: "ledger_report_date",
+          filters_applied: {
+            report_date: reportDate,
+            account_code: accountCode.trim(),
+            currency: currencyBasis,
+            currency_basis: currencyBasis,
+            currency_basis_note: MOCK_LEDGER_PNL_CURRENCY_BASIS_NOTE,
+          },
+          tables_used: MOCK_LEDGER_PNL_TABLES_USED,
+          evidence_rows: evidenceRows,
         },
       );
     },
     async getLedgerPnlFormalFinancialIndicators(reportMonth: string) {
       await delay();
-      const normalizedReportMonth = reportMonth.trim() || mockLedgerPnlFormalFinancialIndicators.report_month;
+      const payload = getMockLedgerPnlFormalFinancialIndicators(reportMonth);
       return buildMockApiEnvelope(
         "ledger_pnl.formal_financial_indicator_source_contract",
-        {
-          ...mockLedgerPnlFormalFinancialIndicators,
-          report_month: normalizedReportMonth,
-        },
+        payload,
         {
           basis: "ledger",
           formal_use_allowed: false,
-          source_version: mockLedgerPnlFormalFinancialIndicators.source_version,
-          rule_version: mockLedgerPnlFormalFinancialIndicators.rule_version,
+          source_version: payload.source_version,
+          rule_version: payload.rule_version,
           cache_version: "cv_ledger_pnl_financial_indicator_contract_v1",
           quality_flag: "warning",
-          as_of_date: mockLedgerPnlFormalFinancialIndicators.report_date,
+          as_of_date: payload.report_date,
           date_basis: "report_month_end",
-          evidence_rows: mockLedgerPnlFormalFinancialIndicators.metrics.length,
+          evidence_rows: payload.metrics.length,
         },
       );
+    },
+    async getLedgerPnlCandidateFinancialIndicators(reportMonth, options = {}) {
+      await delay();
+      const payload = await buildMockLedgerPnlCandidateFinancialIndicators(reportMonth, options);
+      return buildMockCandidateFinancialIndicatorsEnvelope(payload);
+    },
+    async revalidateLedgerPnlCandidateFinancialIndicators() {
+      await delay();
+      throw new Error("Candidate revalidation dry-run requires the real API client.");
+    },
+    async getLedgerPnlFormalIndicatorRuleChecks(reportMonth: string) {
+      await delay();
+      const payload = buildMockLedgerPnlFormalIndicatorRuleChecks(reportMonth);
+      const evidenceRows =
+        payload.ratio_recomputation.length +
+        payload.additivity_checks.length +
+        payload.arrangement_rules.length;
+      return buildMockApiEnvelope("ledger_pnl.formal_financial_indicator_rule_checks", payload, {
+        basis: "ledger",
+        formal_use_allowed: false,
+        source_version: payload.source_version,
+        rule_version: payload.rule_version,
+        cache_version: "cv_ledger_pnl_financial_indicator_rule_checks_v1",
+        quality_flag: payload.sample_status === "missing_contract" ? "warning" : "ok",
+        as_of_date: payload.report_date,
+        date_basis: "report_month_end",
+        evidence_rows: evidenceRows,
+      });
     },
     async getPnlBridge(reportDate: string) {
       await delay();
@@ -328,6 +511,37 @@ export function createRealPnlCoreClient(
         `/api/ledger-pnl/summary?${params.toString()}`,
       );
     },
+    getLedgerPnlAnalysis: (reportDate: string, currency?: string) => {
+      const params = new URLSearchParams({
+        date: reportDate,
+      });
+      if (currency?.trim()) {
+        params.set("currency", currency.trim());
+      }
+      return requestJson<LedgerPnlAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/analysis?${params.toString()}`,
+      );
+    },
+    getLedgerPnlAccountDetail: (
+      reportDate: string,
+      accountCode: string,
+      currency?: string,
+    ) => {
+      const params = new URLSearchParams({
+        date: reportDate,
+        account_code: accountCode,
+      });
+      if (currency?.trim()) {
+        params.set("currency", currency.trim());
+      }
+      return requestJson<LedgerPnlAccountDetailPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/account-detail?${params.toString()}`,
+      );
+    },
     getLedgerPnlFormalFinancialIndicators: (reportMonth: string) => {
       const params = new URLSearchParams({
         report_month: reportMonth.trim(),
@@ -336,6 +550,43 @@ export function createRealPnlCoreClient(
         fetchImpl,
         baseUrl,
         `/api/ledger-pnl/formal-financial-indicators?${params.toString()}`,
+      );
+    },
+    getLedgerPnlCandidateFinancialIndicators: (reportMonth, options = {}) => {
+      const params = new URLSearchParams({
+        report_month: reportMonth.trim(),
+      });
+      if (options.includeLineage) {
+        params.set("include_lineage", "true");
+      }
+      if (options.metricId?.trim()) {
+        params.set("metric_id", options.metricId.trim());
+      }
+      return requestJson<LedgerPnlCandidateFinancialIndicatorsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/candidate-financial-indicators?${params.toString()}`,
+      ) as Promise<LedgerPnlCandidateFinancialIndicatorsEnvelope>;
+    },
+    revalidateLedgerPnlCandidateFinancialIndicators: (reportMonth, request) =>
+      requestActionJson<LedgerPnlCandidateFinancialIndicatorRevalidationReceipt>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/candidate-financial-indicators/revalidate?report_month=${encodeURIComponent(reportMonth.trim())}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      ),
+    getLedgerPnlFormalIndicatorRuleChecks: (reportMonth: string) => {
+      const params = new URLSearchParams({
+        report_month: reportMonth.trim(),
+      });
+      return requestJson<LedgerPnlFormalIndicatorRuleChecksPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/formal-indicator-rule-checks?${params.toString()}`,
       );
     },
     getPnlBridge: (reportDate: string) =>

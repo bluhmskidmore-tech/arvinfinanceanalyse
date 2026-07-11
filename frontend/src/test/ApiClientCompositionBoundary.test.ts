@@ -29,12 +29,29 @@ const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/posit
 const liabilityAdbClientSource = readFileSync(resolve(process.cwd(), "src/api/liabilityAdbClient.ts"), "utf8");
 const productCategoryClientSource = readFileSync(resolve(process.cwd(), "src/api/productCategoryClient.ts"), "utf8");
 const qdbGlMonthlyAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/qdbGlMonthlyAnalysisClient.ts"), "utf8");
+const packageJsonSource = readFileSync(resolve(process.cwd(), "package.json"), "utf8");
+const candidateBundleGuardPath = resolve(
+  process.cwd(),
+  "scripts/verifyCandidateFinancialIndicatorBundle.mjs",
+);
 const healthClientPath = resolve(process.cwd(), "src/api/healthClient.ts");
 const healthClientSource = existsSync(healthClientPath)
   ? readFileSync(healthClientPath, "utf8")
   : "";
 
 describe("ApiClient composition boundary", () => {
+  it("fails production builds when captured candidate finance data reaches dist", () => {
+    expect(packageJsonSource).toContain("guard:candidate-financial-indicators");
+    expect(packageJsonSource).toContain("verifyCandidateFinancialIndicatorBundle.mjs");
+    expect(existsSync(candidateBundleGuardPath)).toBe(true);
+    const guardSource = existsSync(candidateBundleGuardPath)
+      ? readFileSync(candidateBundleGuardPath, "utf8")
+      : "";
+    expect(guardSource).toContain("ledger_pnl_candidate_financial_indicators_frontend_demo_capture");
+    expect(guardSource).toContain("-93537785277.75");
+    expect(guardSource).toContain("57.3617558215");
+  });
+
   it("keeps the public market-data source preview surface available from createApiClient", () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -122,7 +139,11 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getLedgerPnlDates).toBe("function");
     expect(typeof client.getLedgerPnlData).toBe("function");
     expect(typeof client.getLedgerPnlSummary).toBe("function");
+    expect(typeof client.getLedgerPnlAnalysis).toBe("function");
+    expect(typeof client.getLedgerPnlAccountDetail).toBe("function");
     expect(typeof client.getLedgerPnlFormalFinancialIndicators).toBe("function");
+    expect(typeof client.getLedgerPnlCandidateFinancialIndicators).toBe("function");
+    expect(typeof client.revalidateLedgerPnlCandidateFinancialIndicators).toBe("function");
     expect(typeof client.getPnlBridge).toBe("function");
     expect(typeof client.refreshFormalPnl).toBe("function");
     expect(typeof client.getFormalPnlImportStatus).toBe("function");
@@ -1561,7 +1582,10 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getLedgerPnlDates\(/);
     expect(clientSource).not.toMatch(/async getLedgerPnlData\(/);
     expect(clientSource).not.toMatch(/async getLedgerPnlSummary\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlAnalysis\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlAccountDetail\(/);
     expect(clientSource).not.toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlCandidateFinancialIndicators\(/);
     expect(clientSource).not.toMatch(/async getPnlBridge\(/);
     expect(clientSource).not.toMatch(/async refreshFormalPnl\(/);
     expect(clientSource).not.toMatch(/async getFormalPnlImportStatus\(/);
@@ -1879,7 +1903,11 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/dates");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/data");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/summary");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/analysis");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/account-detail");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/formal-financial-indicators");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/candidate-financial-indicators");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/candidate-financial-indicators/revalidate");
     expect(pnlCoreClientSource).toContain("/api/pnl/bridge");
     expect(pnlCoreClientSource).toContain("/api/data/refresh_pnl");
     expect(pnlCoreClientSource).toContain("/api/data/import_status/pnl");
@@ -1889,7 +1917,10 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).toContain("ledger_pnl.dates");
     expect(pnlCoreClientSource).toContain("ledger_pnl.data");
     expect(pnlCoreClientSource).toContain("ledger_pnl.summary");
+    expect(pnlCoreClientSource).toContain("ledger_pnl.analysis");
+    expect(pnlCoreClientSource).toContain("ledger_pnl.account_detail");
     expect(pnlCoreClientSource).toContain("ledger_pnl.formal_financial_indicator_source_contract");
+    expect(pnlCoreClientSource).toContain("ledger_pnl.candidate_financial_indicators");
     expect(pnlCoreClientSource).toContain("pnl.bridge");
     expect(pnlCoreClientSource).toMatch(/async getFormalPnlDates\(/);
     expect(pnlCoreClientSource).toMatch(/async getFormalPnlData\(/);
@@ -1897,7 +1928,11 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).toMatch(/async getLedgerPnlDates\(/);
     expect(pnlCoreClientSource).toMatch(/async getLedgerPnlData\(/);
     expect(pnlCoreClientSource).toMatch(/async getLedgerPnlSummary\(/);
+    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlAnalysis\(/);
+    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlAccountDetail\(/);
     expect(pnlCoreClientSource).toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
+    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlCandidateFinancialIndicators\(/);
+    expect(pnlCoreClientSource).toContain("revalidateLedgerPnlCandidateFinancialIndicators");
     expect(pnlCoreClientSource).toMatch(/async getPnlBridge\(/);
     expect(pnlCoreClientSource).toMatch(/async refreshFormalPnl\(/);
     expect(pnlCoreClientSource).toMatch(/async getFormalPnlImportStatus\(/);

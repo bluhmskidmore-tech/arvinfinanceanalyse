@@ -195,7 +195,7 @@ describe("ledger-pnl routed page smoke", () => {
     });
     expect(screen.getByTestId("ledger-pnl-result-meta-panel")).toHaveTextContent("tr_ledger_dates");
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-pnl-summary-cards")).toHaveTextContent("40.00");
+      expect(screen.getByTestId("ledger-pnl-summary-cards")).toHaveTextContent("35.00");
       expect(screen.getByTestId("ledger-pnl-detail-table")).toHaveTextContent("514100");
       expect(screen.getByTestId("ledger-pnl-monthly-analysis-panel")).toHaveTextContent("总账对账 + 日均分析");
       expect(screen.getByTestId("ledger-pnl-monthly-analysis-month")).toHaveTextContent("202512");

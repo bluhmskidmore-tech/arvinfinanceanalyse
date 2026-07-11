@@ -1,0 +1,234 @@
+.ledger-account-detail .ant-drawer-body {
+  padding: 16px;
+}
+
+.ledger-account-detail__body {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ledger-account-detail__header,
+.ledger-account-detail__section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledger-account-detail__header span,
+.ledger-account-detail__section-head span {
+  color: var(--moss-color-primary-600);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.ledger-account-detail__header h2,
+.ledger-account-detail__section-head h3 {
+  margin: 4px 0 0;
+  color: var(--moss-color-neutral-900);
+}
+
+.ledger-account-detail__header h2 {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.ledger-account-detail__header p,
+.ledger-account-detail__section-head small {
+  margin: 5px 0 0;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+}
+
+.ledger-account-detail__badge {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: 999px;
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-700);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.ledger-account-detail__section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-bg-surface, #fff);
+}
+
+.ledger-account-detail__section-head {
+  margin-bottom: 10px;
+}
+
+.ledger-account-detail__section-head h3 {
+  font-size: 14px;
+}
+
+.ledger-account-detail__metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ledger-account-detail__metric-grid article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.ledger-account-detail__metric-grid article > span,
+.ledger-account-detail__metric-grid article > small {
+  color: var(--moss-color-neutral-500);
+  font-size: 10px;
+}
+
+.ledger-account-detail__source-grid {
+  display: grid;
+  gap: 4px;
+  margin-top: 9px;
+  color: var(--moss-color-neutral-500);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.ledger-account-detail__metric-grid strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-account-detail__table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ledger-account-detail__table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.ledger-account-detail__table-wrap th,
+.ledger-account-detail__table-wrap td {
+  padding: 8px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ledger-account-detail__table-wrap th:first-child,
+.ledger-account-detail__table-wrap td:first-child,
+.ledger-account-detail__table-wrap th:nth-child(2),
+.ledger-account-detail__table-wrap td:nth-child(2) {
+  text-align: left;
+}
+
+.ledger-account-detail__exact-money {
+  display: grid;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-account-detail__exact-money small {
+  color: var(--moss-color-neutral-500);
+  font-size: 9px;
+}
+
+.ledger-account-detail__state {
+  padding: 28px 16px;
+  border: 1px dashed var(--moss-color-neutral-300);
+  border-radius: var(--moss-radius-md);
+  color: var(--moss-color-neutral-600);
+  text-align: center;
+}
+
+.ledger-account-detail__state strong,
+.ledger-account-detail__state span,
+.ledger-account-detail__state small {
+  display: block;
+}
+
+.ledger-account-detail__state span,
+.ledger-account-detail__state small {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.ledger-account-detail__state .ant-btn {
+  margin-top: 10px;
+}
+
+.ledger-account-detail__state--error {
+  border-style: solid;
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
+  color: var(--moss-color-danger-800);
+}
+
+.ledger-account-detail__state--warning,
+.ledger-account-detail__source-status {
+  border-style: solid;
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-800, #854d0e);
+}
+
+.ledger-account-detail__source-status {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: var(--moss-radius-sm);
+  font-size: 11px;
+}
+
+.ledger-account-detail__source-status div {
+  display: grid;
+  gap: 3px;
+}
+
+.ledger-account-detail__empty {
+  margin: 0;
+  padding: 14px;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  text-align: center;
+}
+
+.ledger-account-detail__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  color: var(--moss-color-neutral-500);
+  font-size: 10px;
+}
+
+.ledger-account-detail__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .ledger-account-detail .ant-drawer-body {
+    padding: 12px;
+  }
+
+  .ledger-account-detail__metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ledger-account-detail__header,
+  .ledger-account-detail__section-head {
+    display: grid;
+  }
+}

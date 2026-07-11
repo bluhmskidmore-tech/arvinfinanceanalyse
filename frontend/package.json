@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run guard:candidate-financial-indicators",
     "preview": "vite preview",
     "debt:audit": "node ../scripts/audit_frontend_debt.mjs",
     "guard:home-startup": "node scripts/verifyHomeStartupBundle.mjs",
+    "guard:candidate-financial-indicators": "node scripts/verifyCandidateFinancialIndicatorBundle.mjs",
     "guard:home-startup:runtime": "npm run build && node scripts/verifyHomeStartupRuntime.mjs",
     "guard:home-startup:live": "node scripts/sampleHomeStartupLive.mjs",
     "profile:home-snapshot:live": "node scripts/profileHomeSnapshotLive.mjs",

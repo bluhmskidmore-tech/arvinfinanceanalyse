@@ -283,6 +283,21 @@
   white-space: normal;
 }
 
+.ledger-pnl-analysis__status-badge--ok {
+  background: var(--moss-color-success-50);
+  color: var(--moss-color-success-700);
+}
+
+.ledger-pnl-analysis__status-badge--danger {
+  background: var(--moss-color-danger-50);
+  color: var(--moss-color-danger-700);
+}
+
+.ledger-pnl-analysis__status-badge--neutral {
+  background: var(--moss-color-neutral-100);
+  color: var(--moss-color-neutral-700);
+}
+
 .ledger-pnl-analysis__status-value {
   margin-top: var(--moss-space-2);
   color: var(--moss-color-neutral-900);
@@ -1044,17 +1059,15 @@
   }
 
   .ledger-pnl-functional-strip__facts {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
+    overflow: visible;
     gap: 5px;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
   }
 
   .ledger-pnl-functional-strip__facts div {
-    flex: 0 0 126px;
+    min-width: 0;
     padding: 5px 6px;
   }
 
@@ -1085,19 +1098,16 @@
   }
 
   .ledger-pnl-functional-strip__explainability-list {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 5px;
     max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
+    overflow: visible;
   }
 
   .ledger-pnl-functional-strip__explainability-list strong,
   .ledger-pnl-functional-strip__explainability-list em,
   .ledger-pnl-functional-strip__evidence-button {
-    flex: 0 0 auto;
+    flex: 1 1 128px;
     max-width: 210px;
     padding: 4px 6px;
     font-size: 10px;
@@ -1105,17 +1115,15 @@
   }
 
   .ledger-pnl-functional-strip__decision-list {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
+    overflow: visible;
     gap: 5px;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
   }
 
   .ledger-pnl-functional-strip__decision-list div {
-    flex: 0 0 126px;
+    min-width: 0;
     padding: 5px 6px;
   }
 
@@ -1131,18 +1139,16 @@
   }
 
   .ledger-pnl-functional-strip__drill-list {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
+    overflow: visible;
     gap: 5px;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
   }
 
   .ledger-pnl-functional-strip__drill-item {
     display: grid;
-    flex: 0 0 178px;
+    min-width: 0;
     gap: 3px;
     font-size: 10px;
     line-height: 1.3;
@@ -1161,6 +1167,182 @@
     grid-template-columns: 1fr;
   }
 
+  .ledger-pnl-summary-table-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .ledger-pnl-analysis__table,
+  [data-testid="ledger-pnl-currency-summary-table"],
+  [data-testid="ledger-pnl-account-summary-table"],
+  [data-testid="ledger-pnl-detail-table"] {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .ledger-pnl-analysis__table table,
+  [data-testid="ledger-pnl-currency-summary-table"] table,
+  [data-testid="ledger-pnl-account-summary-table"] table,
+  [data-testid="ledger-pnl-detail-table"] table,
+  .ledger-pnl-analysis__residual-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+  }
+
+  .ledger-pnl-analysis__table th,
+  .ledger-pnl-analysis__table td,
+  [data-testid="ledger-pnl-currency-summary-table"] th,
+  [data-testid="ledger-pnl-currency-summary-table"] td,
+  [data-testid="ledger-pnl-account-summary-table"] th,
+  [data-testid="ledger-pnl-account-summary-table"] td,
+  [data-testid="ledger-pnl-detail-table"] th,
+  [data-testid="ledger-pnl-detail-table"] td,
+  .ledger-pnl-analysis__residual-table th,
+  .ledger-pnl-analysis__residual-table td,
+  .ledger-pnl-analysis__th,
+  .ledger-pnl-analysis__td {
+    min-width: 0 !important;
+    padding: 7px 6px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+
+  .ledger-pnl-analysis__residual-table td:first-child {
+    min-width: 0;
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] table,
+  [data-testid="ledger-pnl-account-summary-table"] table,
+  [data-testid="ledger-pnl-detail-table"] table,
+  [data-testid="ledger-pnl-currency-summary-table"] thead,
+  [data-testid="ledger-pnl-account-summary-table"] thead,
+  [data-testid="ledger-pnl-detail-table"] thead,
+  [data-testid="ledger-pnl-currency-summary-table"] tbody,
+  [data-testid="ledger-pnl-account-summary-table"] tbody,
+  [data-testid="ledger-pnl-detail-table"] tbody {
+    display: block !important;
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] thead,
+  [data-testid="ledger-pnl-account-summary-table"] thead,
+  [data-testid="ledger-pnl-detail-table"] thead {
+    display: none !important;
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] tbody,
+  [data-testid="ledger-pnl-account-summary-table"] tbody,
+  [data-testid="ledger-pnl-detail-table"] tbody {
+    display: grid !important;
+    gap: 8px;
+    padding: 8px;
+    width: 100%;
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] tr,
+  [data-testid="ledger-pnl-account-summary-table"] tr,
+  [data-testid="ledger-pnl-detail-table"] tr {
+    display: grid !important;
+    gap: 6px;
+    padding: 8px !important;
+    border: 1px solid var(--moss-color-neutral-100) !important;
+    border-radius: var(--moss-radius-sm);
+    background: var(--moss-color-bg-surface, #ffffff);
+    width: 100%;
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] tr {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+  }
+
+  [data-testid="ledger-pnl-account-summary-table"] tr,
+  [data-testid="ledger-pnl-detail-table"] tr {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-testid="ledger-pnl-account-summary-table"] td:first-child,
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(1),
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] td,
+  [data-testid="ledger-pnl-account-summary-table"] td,
+  [data-testid="ledger-pnl-detail-table"] td {
+    display: grid !important;
+    gap: 2px;
+    align-content: start;
+    padding: 0 !important;
+    border: 0 !important;
+    color: var(--moss-color-neutral-900);
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: left !important;
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] td::before,
+  [data-testid="ledger-pnl-account-summary-table"] td::before,
+  [data-testid="ledger-pnl-detail-table"] td::before {
+    display: block;
+    color: var(--moss-color-neutral-500);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] td:nth-child(1)::before,
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(3)::before {
+    content: "\5e01\79cd";
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] td:nth-child(2)::before,
+  [data-testid="ledger-pnl-account-summary-table"] td:nth-child(2)::before {
+    content: "\635f\76ca";
+  }
+
+  [data-testid="ledger-pnl-account-summary-table"] td:nth-child(1)::before {
+    content: "\79d1\76ee";
+  }
+
+  [data-testid="ledger-pnl-account-summary-table"] td:nth-child(3)::before {
+    content: "\7b14\6570";
+  }
+
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(1)::before {
+    content: "\79d1\76ee\4ee3\7801";
+  }
+
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(2)::before {
+    content: "\79d1\76ee\540d\79f0";
+  }
+
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(4)::before {
+    content: "\671f\521d";
+  }
+
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(5)::before {
+    content: "\671f\672b";
+  }
+
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(6)::before {
+    content: "\6708\635f\76ca";
+  }
+
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(7)::before {
+    content: "\6708\65e5\5747";
+  }
+
+  [data-testid="ledger-pnl-detail-table"] td:nth-child(8)::before {
+    content: "\5929\6570";
+  }
+
+  [data-testid="ledger-pnl-currency-summary-table"] td[colspan]::before,
+  [data-testid="ledger-pnl-account-summary-table"] td[colspan]::before,
+  [data-testid="ledger-pnl-detail-table"] td[colspan]::before {
+    display: none;
+    content: none;
+  }
+
   .ledger-pnl-analysis__source-contract-values {
     grid-template-columns: 1fr;
   }
@@ -1175,5 +1357,46 @@
   .ledger-pnl-functional-strip__facts,
   .ledger-pnl-functional-strip__decision-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.ledger-pnl-detail-account-filter {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-800, #854d0e);
+}
+
+.ledger-pnl-detail-account-filter > div {
+  display: grid;
+  gap: 4px;
+}
+
+.ledger-pnl-detail-account-filter span {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.ledger-pnl-detail-account-filter button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid var(--moss-color-warning-300);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-bg-surface, #fff);
+  color: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 430px) {
+  .ledger-pnl-detail-account-filter {
+    display: grid;
+  }
+
+  .ledger-pnl-detail-account-filter button {
+    width: fit-content;
   }
 }

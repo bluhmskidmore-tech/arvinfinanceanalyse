@@ -5585,6 +5585,84 @@ export type LedgerPnlCandidateFinancialIndicatorGap = {
   metric_ids: string[];
 };
 
+export type LedgerPnlCandidateFinancialIndicatorPromotionCheck = {
+  check_id:
+    | "rule_asset"
+    | "source_evidence"
+    | "validation_controls"
+    | "manual_inputs"
+    | "account_coverage"
+    | "formal_contract";
+  label: string;
+  status: "passed" | "blocked" | "not_evaluated";
+  blocking: boolean;
+  summary: string;
+  evidence_refs: string[];
+  action: string;
+};
+
+export type LedgerPnlCandidatePromotionOwnerRequirement = {
+  requirement_id: string;
+  category:
+    | "source_evidence"
+    | "validation_control"
+    | "manual_input"
+    | "account_coverage"
+    | "formal_contract"
+    | "business_owner_approval";
+  status: "awaiting_owner_input";
+  submitted_value: null;
+  evidence_refs: string[];
+  required_evidence: string[];
+  action: string;
+};
+
+export type LedgerPnlCandidatePromotionEvidencePack = {
+  contract_version: "candidate-promotion-evidence-v1";
+  evidence_pack_key: string;
+  report_month: string;
+  report_date: string;
+  rule_version: "qdb-finance-2026-v1.0.0";
+  rule_hash: string;
+  source_version: string;
+  source_alignment: "matched" | "mismatch" | "not_applicable" | "incomplete";
+  candidate_idempotency_key: string;
+  readiness_contract_version: "promotion-readiness-v1";
+  readiness_evidence_key: string;
+  metric_status: "candidate";
+  formal_use_allowed: false;
+  owner_approval_required: true;
+  contains_metric_values: false;
+  contains_formal_values: false;
+  certification_effect: "none";
+  blocking_count: number;
+  check_total: 6;
+  formal_contract_status: "missing_contract" | "contract_fixture" | "unavailable";
+  formal_sample_id: string;
+  formal_source_version: string;
+  formal_release_gate_status: string | null;
+  formal_metric_count: number;
+  checks: LedgerPnlCandidateFinancialIndicatorPromotionCheck[];
+  owner_requirement_count: number;
+  owner_requirements: LedgerPnlCandidatePromotionOwnerRequirement[];
+  outcome_status: "blocked" | "awaiting_owner_approval";
+};
+
+export type LedgerPnlCandidateFinancialIndicatorPromotionReadiness = {
+  readiness_contract_version: "promotion-readiness-v1";
+  readiness_evidence_key: string;
+  status: "blocked" | "review_required";
+  blocking_count: number;
+  check_total: 6;
+  candidate_idempotency_key: string;
+  formal_contract_status: "missing_contract" | "contract_fixture" | "unavailable";
+  formal_use_allowed: false;
+  owner_approval_required: true;
+  next_action: string;
+  checks: LedgerPnlCandidateFinancialIndicatorPromotionCheck[];
+  evidence_pack: LedgerPnlCandidatePromotionEvidencePack;
+};
+
 export type LedgerPnlCandidateFinancialIndicatorsPayload = {
   report_month: string;
   report_date: string;
@@ -5600,6 +5678,7 @@ export type LedgerPnlCandidateFinancialIndicatorsPayload = {
   idempotency_key: string;
   requested_metric_id: string | null;
   include_lineage: boolean;
+  promotion_readiness: LedgerPnlCandidateFinancialIndicatorPromotionReadiness;
   sources: LedgerPnlCandidateFinancialIndicatorSource[];
   summary: {
     metric_total: 186;
@@ -5618,6 +5697,106 @@ export type LedgerPnlCandidateFinancialIndicatorsPayload = {
   metrics: LedgerPnlCandidateFinancialIndicatorMetric[];
   validations: LedgerPnlCandidateFinancialIndicatorValidation[];
   gaps: LedgerPnlCandidateFinancialIndicatorGap[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorsFilters = {
+  report_month: string;
+  include_lineage: boolean;
+  metric_id: string | null;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorsResultMeta = Omit<
+  ResultMeta,
+  | "basis"
+  | "result_kind"
+  | "formal_use_allowed"
+  | "cache_key"
+  | "quality_flag"
+  | "vendor_status"
+  | "fallback_mode"
+  | "requested_report_date"
+  | "resolved_report_date"
+  | "scenario_flag"
+  | "as_of_date"
+  | "date_basis"
+  | "fallback_date"
+  | "filters_applied"
+  | "tables_used"
+  | "evidence_rows"
+  | "next_drill"
+  | "source_surface"
+> & {
+  basis: "ledger";
+  result_kind: "ledger_pnl.candidate_financial_indicators";
+  formal_use_allowed: false;
+  amount_currency_basis: "CNX";
+  amount_currency_basis_note: string;
+  cache_key: string;
+  quality_flag: "ok" | "warning" | "error";
+  vendor_status: "ok";
+  fallback_mode: "none";
+  requested_report_date: string;
+  resolved_report_date: string;
+  scenario_flag: false;
+  as_of_date: string;
+  date_basis: "report_month_end";
+  fallback_date: null;
+  filters_applied: LedgerPnlCandidateFinancialIndicatorsFilters;
+  tables_used: string[];
+  evidence_rows: number;
+  next_drill: ResultNextDrill[];
+  source_surface: null;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorsEnvelope = {
+  result_meta: LedgerPnlCandidateFinancialIndicatorsResultMeta;
+  result: LedgerPnlCandidateFinancialIndicatorsPayload;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorManualOverride = {
+  value_yi: string;
+  submitted_evidence_refs: string[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorRevalidationRequest = {
+  base_candidate_idempotency_key: string;
+  base_evidence_pack_key: string;
+  manual_overrides: Record<string, LedgerPnlCandidateFinancialIndicatorManualOverride>;
+};
+
+export type LedgerPnlCandidateRequirementResolutionStatus =
+  | "awaiting_owner_input"
+  | "evidence_received"
+  | "validation_failed"
+  | "verified";
+
+export type LedgerPnlCandidateRequirementResolutionItem = {
+  requirement_id: string;
+  status: LedgerPnlCandidateRequirementResolutionStatus;
+  status_detail: string;
+  submitted_evidence_refs: string[];
+  validation_evidence_refs: string[];
+};
+
+export type LedgerPnlCandidateRequirementResolution = {
+  contract_version: "candidate-promotion-resolution-v1";
+  resolution_key: string;
+  base_evidence_pack_key: string;
+  result_evidence_pack_key: string;
+  base_requirement_ids: string[];
+  requirements: LedgerPnlCandidateRequirementResolutionItem[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorRevalidationReceipt = {
+  contract_version: "candidate-financial-indicator-revalidation-v1";
+  revalidation_effect: "none";
+  persisted: false;
+  formal_use_allowed: false;
+  base_candidate_idempotency_key: string;
+  base_evidence_pack_key: string;
+  manual_override_count: number;
+  requirement_resolution: LedgerPnlCandidateRequirementResolution;
+  result: LedgerPnlCandidateFinancialIndicatorsEnvelope;
 };
 
 export type LedgerPnlFormalFinancialIndicatorMetric = {
