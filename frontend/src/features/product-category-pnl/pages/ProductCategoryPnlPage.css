@@ -3700,7 +3700,8 @@
 
   .product-category-formal-table-wrap,
   .product-category-attribution__table-wrap,
-  .product-category-liability-matrix__wrap {
+  .product-category-liability-matrix__wrap,
+  .product-category-liability-matrix__disclosure {
     display: none;
   }
 
@@ -4631,6 +4632,56 @@
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+.product-category-liability-matrix__disclosure {
+  min-width: 0;
+  border-top: 1px solid var(--moss-color-neutral-200);
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+  background: var(--ib-surface);
+}
+
+.product-category-liability-matrix__disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.product-category-liability-matrix__disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.product-category-liability-matrix__disclosure > summary small {
+  margin-left: auto;
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.product-category-liability-matrix__disclosure > summary::after {
+  content: "+";
+  color: var(--ib-ink-muted);
+  font-size: 15px;
+}
+
+.product-category-liability-matrix__disclosure[open] > summary {
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-liability-matrix__disclosure[open] > summary::after {
+  content: "-";
+}
+
+.product-category-liability-matrix__disclosure > .product-category-liability-matrix__wrap {
+  border: 0;
+  border-radius: 0;
 }
 
 .product-category-formal-readiness__table th,

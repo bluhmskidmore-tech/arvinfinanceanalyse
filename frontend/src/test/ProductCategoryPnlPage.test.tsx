@@ -1597,6 +1597,36 @@ describe("ProductCategoryPnlPage", () => {
     expect(foreignReadout).toHaveTextContent("0.97");
   });
 
+  it("keeps raw liability matrices in closed disclosures until requested", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithTwoMonthLiabilityTrend();
+
+    await waitForTrendDiagnosticsAutoLoad();
+    const totalDisclosure = await screen.findByTestId(
+      "product-category-liability-side-detail-disclosure",
+    );
+    const cnyDisclosure = screen.getByTestId(
+      "product-category-liability-side-currency-disclosure-cny",
+    );
+    const foreignDisclosure = screen.getByTestId(
+      "product-category-liability-side-currency-disclosure-foreign",
+    );
+
+    [totalDisclosure, cnyDisclosure, foreignDisclosure].forEach((disclosure) => {
+      expect(disclosure.tagName).toBe("DETAILS");
+      expect(disclosure).not.toHaveAttribute("open");
+    });
+    expect(
+      within(totalDisclosure).getByTestId("product-category-liability-side-detail-matrix"),
+    ).toBeInTheDocument();
+    expect(totalDisclosure).toHaveTextContent("全币种明细矩阵");
+
+    const summary = totalDisclosure.querySelector("summary");
+    expect(summary).toBeTruthy();
+    await user.click(summary as HTMLElement);
+    expect(totalDisclosure).toHaveAttribute("open");
+  });
+
   it("does not render all-currency spread comparison without backend spread fields", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const ratesByDate: Record<string, { asset: string; liability: string }> = {

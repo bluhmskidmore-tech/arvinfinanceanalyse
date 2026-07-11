@@ -5456,7 +5456,18 @@ export default function ProductCategoryPnlPage() {
                 <ProductCategoryLiabilityDetailMatrixMobileReadout
                   matrix={liabilitySideTrendSurface.detailMatrix}
                 />
-                <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
+                <details
+                  className="product-category-liability-matrix__disclosure"
+                  data-testid="product-category-liability-side-detail-disclosure"
+                >
+                  <summary>
+                    <span>全币种明细矩阵</span>
+                    <small>
+                      {liabilitySideTrendSurface.detailMatrix.periods.length}期 ·{" "}
+                      {liabilitySideTrendSurface.detailMatrix.rows.length}行
+                    </small>
+                  </summary>
+                  <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
                   <table
                     className="product-category-diagnostics__table product-category-liability-matrix"
                     data-testid="product-category-liability-side-detail-matrix"
@@ -5539,7 +5550,8 @@ export default function ProductCategoryPnlPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                </details>
                 <div className="product-category-liability-matrix__currency-grid">
                   {liabilitySideTrendSurface.detailMatrix.currencyMatrices.map((currencyMatrix) => (
                     <section
@@ -5553,7 +5565,17 @@ export default function ProductCategoryPnlPage() {
                         matrix={currencyMatrix}
                         periods={liabilitySideTrendSurface.detailMatrix.periods}
                       />
-                      <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
+                      <details
+                        className="product-category-liability-matrix__disclosure"
+                        data-testid={`product-category-liability-side-currency-disclosure-${currencyMatrix.currencyKey}`}
+                      >
+                        <summary>
+                          <span>完整明细矩阵</span>
+                          <small>
+                            {liabilitySideTrendSurface.detailMatrix.periods.length}期 · {currencyMatrix.rows.length}行
+                          </small>
+                        </summary>
+                        <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
                         <table
                           className="product-category-diagnostics__table product-category-liability-matrix product-category-liability-matrix--currency"
                           data-testid={`product-category-liability-side-currency-matrix-${currencyMatrix.currencyKey}`}
@@ -5635,7 +5657,8 @@ export default function ProductCategoryPnlPage() {
                             ))}
                           </tbody>
                         </table>
-                      </div>
+                        </div>
+                      </details>
                     </section>
                   ))}
                 </div>
