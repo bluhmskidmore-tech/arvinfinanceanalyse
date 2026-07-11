@@ -47,9 +47,7 @@ TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
     "/average-balance": (
         "temporary-exception analytical/compat route; formal truth remains on balance analysis."
     ),
-    "/bank-ledger-dashboard": (
-        "temporary-exception ledger cockpit route; contract still pending."
-    ),
+
     "/concentration-monitor": (
         "temporary-exception satellite risk route; no standalone `PAGE-*` contract yet."
     ),

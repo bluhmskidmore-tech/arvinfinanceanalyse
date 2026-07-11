@@ -211,23 +211,34 @@ describe("LedgerDashboardPage", () => {
     vi.useRealTimers();
   });
 
-  it("renders ledger KPI units, trace metadata, and raw-yuan position rows", async () => {
+  it("renders source-blocked KPI units, trace metadata, and native-currency position rows", async () => {
     const client = buildClient();
     renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
 
     expect(await screen.findByTestId("ledger-dashboard-page")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent(
+      "source-blocked",
+    );
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent(
+      "未做币种过滤或 FX 换算",
+    );
+    expect(screen.queryByText("正式读链路")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByLabelText("ledger-dashboard-as-of-date")).toHaveValue("2026-03-17");
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 亿元");
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("1231.77 亿元");
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2057.31 亿元");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 原币合计/1亿");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("1231.77 原币合计/1亿");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2057.31 原币合计/1亿");
+      expect(screen.getByTestId("ledger-dashboard-kpi-alerts")).toHaveTextContent("--");
+      expect(screen.getByTestId("ledger-dashboard-kpi-alerts")).toHaveTextContent("不能解释为 0 条预警");
     });
     expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("sv_ledger_test");
     expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("requested_as_of_date");
     expect(await screen.findByText("asset-key")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-dashboard-positions-table")).toHaveTextContent("面值（原币）");
+    expect(screen.getByTestId("ledger-dashboard-positions-table")).toHaveTextContent("CNY");
     expect(screen.getByTestId("ledger-dashboard-positions-table")).toHaveTextContent("100,000,000.00");
   });
 
@@ -294,7 +305,7 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
 
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 亿元");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 原币合计/1亿");
     });
     expect(screen.queryByText("加载失败")).not.toBeInTheDocument();
     expect(client.getLedgerDashboard).toHaveBeenCalledWith("2026-03-17");
@@ -310,7 +321,7 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
 
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 亿元");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 原币合计/1亿");
     });
     expect(await screen.findByTestId("ledger-dashboard-positions-status")).toHaveTextContent("明细加载失败");
   });

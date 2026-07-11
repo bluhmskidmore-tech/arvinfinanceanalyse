@@ -20,7 +20,7 @@ ALL_SEEDED_RECORD_GAP_PAGE_IDS = [
     "PAGE-DASH-001",
     "PAGE-EXEC-OVERVIEW-001",
     "PAGE-EXEC-SUMMARY-001",
-    "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+    "PAGE-BANK-LEDGER-001",
     "GAP-CONCENTRATION-MONITOR-PAGE",
     "GAP-TEAM-PERFORMANCE-PAGE",
     "GAP-PLATFORM-CONFIG-PAGE",
@@ -2407,7 +2407,7 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
         rows = {row["page_id"]: row for row in payload["pages"]}
 
         assert set(rows) == {
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+            "PAGE-BANK-LEDGER-001",
             "GAP-CASHFLOW-PROJECTION-PAGE",
             "GAP-CONCENTRATION-MONITOR-PAGE",
             "GAP-NEWS-EVENTS-PAGE",
@@ -2445,7 +2445,7 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
         assert rows["PAGE-BRIDGE-001"]["approval_status"] == "formal_or_governed"
         assert rows["PAGE-BALANCE-001"]["approval_status"] == "formal_or_governed"
         assert rows["PAGE-RISK-001"]["approval_status"] == "formal_or_governed"
-        assert rows["GAP-BANK-LEDGER-DASHBOARD-PAGE"]["approval_status"] == "candidate_or_pending"
+        assert rows["PAGE-BANK-LEDGER-001"]["approval_status"] == "candidate_or_pending"
         assert rows["GAP-CASHFLOW-PROJECTION-PAGE"]["approval_status"] == "candidate_or_pending"
         assert rows["GAP-CONCENTRATION-MONITOR-PAGE"]["approval_status"] == "candidate_or_pending"
         assert rows["PAGE-BAL-MOVE-001"]["approval_status"] == "candidate_or_pending"
@@ -3368,6 +3368,7 @@ def test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_bound
         for alias in (
             "bank-ledger-dashboard",
             "/bank-ledger-dashboard",
+            "PAGE-BANK-LEDGER-001",
             "GAP-BANK-LEDGER-DASHBOARD-PAGE",
             "/api/ledger/dashboard",
             "/api/ledger/positions",
@@ -3379,7 +3380,7 @@ def test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_bound
             payload = json.loads(result["content"][0]["text"])
             assert payload["page_slug"] == "bank-ledger-dashboard"
 
-        assert payload["page_id"] == "GAP-BANK-LEDGER-DASHBOARD-PAGE"
+        assert payload["page_id"] == "PAGE-BANK-LEDGER-001"
         assert payload["frontend_route"] == "/bank-ledger-dashboard"
         assert payload["primary_api"] == "/api/ledger/dashboard"
         assert "/api/ledger/dates" in payload["supporting_apis"]
@@ -3390,7 +3391,11 @@ def test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_bound
         assert any("liability_face_amount" in item for item in payload["truth_chain"])
         assert any("net_face_exposure" in item for item in payload["truth_chain"])
         assert any("position_snapshot" in item for item in payload["truth_chain"])
-        assert any("GAP-BANK-LEDGER-DASHBOARD-PAGE" in item for item in payload["truth_chain"])
+        assert any("PAGE-BANK-LEDGER-001" in item for item in payload["truth_chain"])
+        assert any("no currency filter or FX normalization" in item for item in payload["truth_chain"])
+        assert any("alert_count" in item and "placeholder" in item for item in payload["truth_chain"])
+        assert any("defaulted to candidate asset" in item for item in payload["truth_chain"])
+        assert any("non-compliant temporary compatibility debt" in item for item in payload["guardrails"])
         assert any("not formal PnL" in item for item in payload["guardrails"])
         assert any("not formal balance truth" in item for item in payload["guardrails"])
         assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
@@ -8151,7 +8156,7 @@ def test_lineage_evidence_governance_record_blueprint_queue_can_cover_all_seeded
             "PAGE-PORTFOLIO-HOME-001",
             "PAGE-EXEC-SUMMARY-001",
             "PAGE-AGENT-001",
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+            "PAGE-BANK-LEDGER-001",
             "GAP-CASHFLOW-PROJECTION-PAGE",
             "GAP-CONCENTRATION-MONITOR-PAGE",
             "GAP-PLATFORM-CONFIG-PAGE",
@@ -8472,7 +8477,7 @@ def test_lineage_evidence_governance_gap_queue_can_cover_all_seeded_pages(tmp_pa
             "PAGE-PORTFOLIO-HOME-001",
             "PAGE-EXEC-SUMMARY-001",
             "PAGE-AGENT-001",
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+            "PAGE-BANK-LEDGER-001",
             "GAP-CASHFLOW-PROJECTION-PAGE",
             "GAP-CONCENTRATION-MONITOR-PAGE",
             "GAP-PLATFORM-CONFIG-PAGE",
@@ -10375,7 +10380,7 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         assert "does not approve metric/page formal use" in payload["disclaimer"]
         pages = {page["page_id"]: page for page in payload["pages"]}
         assert "GAP-AVERAGE-BALANCE-PAGE" not in pages
-        assert "GAP-BANK-LEDGER-DASHBOARD-PAGE" not in pages
+        assert "PAGE-BANK-LEDGER-001" not in pages
         assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
         assert "GAP-DECISION-ITEMS-PAGE" not in pages
         missing_pages = [
@@ -10480,7 +10485,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_bank_ledger_candidate_bou
 
         assert payload["scope"] == "page-catalog-date-coverage"
         page = payload["pages"][0]
-        assert page["page_id"] == "GAP-BANK-LEDGER-DASHBOARD-PAGE"
+        assert page["page_id"] == "PAGE-BANK-LEDGER-001"
         assert page["page_slug"] == "bank-ledger-dashboard"
         assert page["approval_status"] == "candidate_or_pending"
         assert page["coverage_status"] == "configured_direct_tables"
@@ -10492,7 +10497,7 @@ def test_data_catalog_page_catalog_date_coverage_keeps_bank_ledger_candidate_bou
         ]
         assert page["evidence_scope"]["samples_duckdb_tables"] is False
         assert page["evidence_scope"]["approves_metric_or_page"] is False
-        assert "GAP-BANK-LEDGER-DASHBOARD-PAGE" not in [
+        assert "PAGE-BANK-LEDGER-001" not in [
             item["page_id"] for item in payload["missing_config_queue"]
         ]
         assert payload["summary"] == {

@@ -10,8 +10,8 @@ import {
 } from "../features/ledger-dashboard/pages/ledgerDashboardPageModel";
 
 describe("ledgerDashboardPageModel", () => {
-  it("keeps dashboard KPI values in yi yuan", () => {
-    expect(formatLedgerYiAmount(3289.07)).toBe("3289.07 亿元");
+  it("keeps dashboard KPI values as source-blocked native-amount aggregates", () => {
+    expect(formatLedgerYiAmount(3289.07)).toBe("3289.07 原币合计/1亿");
     expect(formatLedgerYiAmount(null)).toBe("--");
 
     const cards = buildLedgerKpiCards({
@@ -23,14 +23,16 @@ describe("ledgerDashboardPageModel", () => {
     });
 
     expect(cards.map((item) => item.value)).toEqual([
-      "3289.07 亿元",
-      "1231.77 亿元",
-      "2057.31 亿元",
-      "0",
+      "3289.07 原币合计/1亿",
+      "1231.77 原币合计/1亿",
+      "2057.31 原币合计/1亿",
+      "--",
     ]);
+    expect(cards.at(-1)?.detail).toContain("未接入");
+    expect(cards.at(-1)?.detail).toContain("不能解释为 0 条预警");
   });
 
-  it("keeps position amounts as raw yuan for detail rows", () => {
+  it("keeps position amounts as native-currency values for detail rows", () => {
     expect(formatLedgerYuanAmount(100000000)).toBe("100,000,000.00");
     expect(formatLedgerYuanAmount(null)).toBe("--");
   });

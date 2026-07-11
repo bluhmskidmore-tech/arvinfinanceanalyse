@@ -80,6 +80,33 @@ def _page_contract_section(current_heading: str, next_heading: str) -> str:
     return page_contracts.split(current_heading, maxsplit=1)[1].split(next_heading, maxsplit=1)[0]
 
 
+def test_bank_ledger_page_contract_blocks_mixed_currency_and_placeholder_alerts():
+    page_contracts = _read_doc("page_contracts.md")
+    section = page_contracts.split("PAGE-BANK-LEDGER-001", maxsplit=1)[1].split(
+        "\n## ", maxsplit=1
+    )[0]
+
+    for required in (
+        "formal_use_allowed=false",
+        "source-blocked",
+        "face_value_native",
+        "no currency filter or FX normalization",
+        "non-compliant temporary compatibility debt",
+        "defaulted to candidate asset",
+        "requested_as_of_date",
+        "resolved_as_of_date",
+        "may resolve after the requested date",
+        "alert_count",
+        "hard-coded placeholder",
+        "must not be interpreted as zero alerts",
+        "PAGE-BALANCE-001",
+        "PAGE-PNL-001",
+        "no approved MTR-* binding",
+        "no dedicated golden sample",
+    ):
+        assert required in section
+
+
 def _sample_dirs() -> list[str]:
     return sorted(
         path.name

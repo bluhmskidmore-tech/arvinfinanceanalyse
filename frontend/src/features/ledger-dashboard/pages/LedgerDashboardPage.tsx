@@ -127,8 +127,22 @@ export default function LedgerDashboardPage() {
             {actualDate ? `数据日期 ${actualDate}` : "等待可用台账日期"}
           </p>
         </div>
-        <div className="ledger-dashboard__mode">{client.mode === "real" ? "正式读链路" : "本地演示数据"}</div>
+        <div className="ledger-dashboard__mode">
+          {client.mode === "real" ? "真实传输 · 候选读模型" : "本地演示 · 候选读模型"}
+        </div>
       </header>
+
+      <section
+        className="ledger-dashboard__governance-boundary"
+        data-testid="ledger-dashboard-governance-boundary"
+        aria-label="Ledger 指标治理边界"
+      >
+        <strong>source-blocked · 不可用于正式决策</strong>
+        <span>
+          资产、发行负债与净敞口当前汇总原币金额，未做币种过滤或 FX 换算；缩放到 1 亿不代表人民币亿元。
+          请求日缺失时还可能解析到更晚的全局最新日期。
+        </span>
+      </section>
 
       <div className="ledger-dashboard__toolbar">
         <label className="ledger-dashboard__field">
@@ -319,7 +333,8 @@ export default function LedgerDashboardPage() {
                 <th>方向</th>
                 <th>债券代码</th>
                 <th>组合</th>
-                <th>面值（元）</th>
+                <th>币种</th>
+                <th>面值（原币）</th>
                 <th>batch_id</th>
                 <th>row_no</th>
               </tr>
@@ -331,6 +346,7 @@ export default function LedgerDashboardPage() {
                   <td>{item.direction}</td>
                   <td>{item.bond_code}</td>
                   <td>{item.portfolio || "--"}</td>
+                  <td>{item.currency || "--"}</td>
                   <td className="ledger-dashboard__num">{formatLedgerYuanAmount(item.face_amount)}</td>
                   <td>{item.batch_id}</td>
                   <td>{item.row_no}</td>
@@ -338,7 +354,7 @@ export default function LedgerDashboardPage() {
               ))}
               {positions && positions.data.items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="ledger-dashboard__empty">
+                  <td colSpan={8} className="ledger-dashboard__empty">
                     暂无匹配明细
                   </td>
                 </tr>

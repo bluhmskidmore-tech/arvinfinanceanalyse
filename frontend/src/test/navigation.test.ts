@@ -262,6 +262,9 @@ describe("workbench navigation mocks", () => {
     const ledger = workbenchNavigation.find((s) => s.key === "bank-ledger-dashboard");
     expect(ledger?.path).toBe("/bank-ledger-dashboard");
     expect(ledger?.readiness).toBe("live");
+    expect(ledger?.governanceStatus).toBe("temporary-exception");
+    expect(ledger?.readinessNote).toContain("source-blocked");
+    expect(ledger?.readinessNote).toContain("未做币种过滤或 FX 换算");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "bank-ledger-dashboard")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "bank-ledger-dashboard")).toBe(false);
   });

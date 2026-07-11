@@ -561,7 +561,11 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("ledger-dashboard-page")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 亿元");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 原币合计/1亿");
+      expect(screen.getByTestId("ledger-dashboard-kpi-alerts")).toHaveTextContent("--");
+      expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent(
+        "source-blocked",
+      );
     });
   });
 

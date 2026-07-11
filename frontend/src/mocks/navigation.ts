@@ -401,7 +401,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
     readinessNote:
-      "接入 /api/ledger/* 新台账读链路，日期使用 as_of_date，金额 KPI 按亿元展示，明细保留原始元与 trace。",
+      "接入 /api/ledger/* 候选读链路；金额为 source-blocked 原币缩放，未做币种过滤或 FX 换算，不可作为正式余额、净敞口或预警结论。",
   },
   {
     key: "risk-overview",

@@ -52,6 +52,25 @@
   white-space: nowrap;
 }
 
+.ledger-dashboard__governance-boundary {
+  display: grid;
+  gap: var(--moss-space-2);
+  margin-bottom: var(--moss-space-5);
+  padding: var(--moss-space-4);
+  border: 1px solid #d8ad67;
+  border-radius: var(--moss-radius-sm);
+  background: #fff8e8;
+  color: #694613;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ledger-dashboard__governance-boundary strong {
+  color: #8a4f09;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
 .ledger-dashboard__toolbar {
   display: flex;
   align-items: end;

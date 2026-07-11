@@ -28,12 +28,12 @@ DEFAULT_EVIDENCE_READINESS_PAGES = [
 ]
 DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {
     "GAP-AVERAGE-BALANCE-PAGE",
-    "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+    "PAGE-BANK-LEDGER-001",
     "GAP-CASHFLOW-PROJECTION-PAGE",
     "GAP-DECISION-ITEMS-PAGE",
 }
 EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
-    "GAP-BANK-LEDGER-DASHBOARD-PAGE": "candidate_or_pending",
+    "PAGE-BANK-LEDGER-001": "candidate_or_pending",
     "GAP-CASHFLOW-PROJECTION-PAGE": "candidate_or_pending",
     "GAP-CONCENTRATION-MONITOR-PAGE": "candidate_or_pending",
     "GAP-CROSS-ASSET-PAGE": "mixed_source_or_observational",
@@ -127,7 +127,7 @@ PAGE_CATALOG_DATE_TABLES = {
         "ledger_import_batch",
         "ledger_raw_row",
     ],
-    "GAP-BANK-LEDGER-DASHBOARD-PAGE": [
+    "PAGE-BANK-LEDGER-001": [
         "ledger_import_batch",
         "ledger_raw_row",
         "position_snapshot",
@@ -698,10 +698,11 @@ class LineageEvidenceProvider(McpProvider):
             "PAGE-CONTRACT-PENDING:/average-balance",
             "temporary-exception ADB analytical balance boundary",
         ],
-        "gap-bank-ledger-dashboard-page": [
+        "page-bank-ledger-001": [
             "/bank-ledger-dashboard",
             "bank-ledger-dashboard",
             "bank_ledger_dashboard",
+            "PAGE-BANK-LEDGER-001",
             "GAP-BANK-LEDGER-DASHBOARD-PAGE",
             "/api/ledger/dates",
             "/api/ledger/dashboard",
@@ -3055,12 +3056,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
     }
     bank_ledger_dashboard_bundle = {
         "page_slug": "bank-ledger-dashboard",
-        "page_id": "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+        "page_id": "PAGE-BANK-LEDGER-001",
         "page_name": "Bank Ledger Dashboard",
         "aliases": [
             "bank-ledger-dashboard",
             "bank_ledger_dashboard",
             "/bank-ledger-dashboard",
+            "PAGE-BANK-LEDGER-001",
             "GAP-BANK-LEDGER-DASHBOARD-PAGE",
             "/api/ledger/dashboard",
             "/api/ledger/positions",
@@ -3079,14 +3081,18 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "docs/metric_dictionary.md",
         ],
         "truth_chain": [
-            "docs/live_route_maturity.md marks /bank-ledger-dashboard as temporary-exception with page id GAP-BANK-LEDGER-DASHBOARD-PAGE.",
-            "GET /api/ledger/dashboard returns LedgerDashboardData for asset_face_amount, liability_face_amount, net_face_exposure, and alert_count.",
+            "docs/live_route_maturity.md marks /bank-ledger-dashboard as temporary-exception and binds it to source-blocked PAGE-BANK-LEDGER-001.",
+            "GET /api/ledger/dashboard returns candidate asset_face_amount, liability_face_amount, net_face_exposure, and the non-metric alert_count placeholder.",
             "GET /api/ledger/dates selects available as_of_date values and latest ledger metadata.",
             "GET /api/ledger/positions and /api/ledger/export/positions provide position-level detail and trace fields.",
             "backend/app/services/ledger_analytics_service.py keeps metadata source_version, rule_version, batch_id, stale, fallback, and no_data visible.",
-            "backend/app/repositories/ledger_analytics_repo.py reads position_snapshot_agg and position_snapshot after ledger import, with zqtz_bond_daily_snapshot compatibility when available.",
-            "ledger_import_batch, ledger_raw_row, position_snapshot, and position_snapshot_agg are the current catalog/date anchors for this read-model route.",
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE is candidate ledger read-model evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+            "backend/app/repositories/ledger_analytics_repo.py prefers zqtz_bond_daily_snapshot whenever any ZQTZ rows exist; only otherwise does it read position_snapshot. It does not read position_snapshot_agg.",
+            "ZQTZ aggregation sums face_value_native with no currency filter or FX normalization, so the scaled headline values are source-blocked native-amount evidence rather than CNY 亿元.",
+            "ZQTZ null/false is_issuance_like and every imported row not matched as 发行类债券 are defaulted to candidate asset, which can overstate the asset side.",
+            "An exact-date miss resolves to the global latest date, which may be after the requested date; stale currently mirrors fallback rather than an age threshold.",
+            "alert_count is a hard-coded placeholder on the success path and must not be interpreted as zero alerts.",
+            "ledger_import_batch, ledger_raw_row, position_snapshot, and position_snapshot_agg remain catalog/date anchors, but position_snapshot_agg is not a runtime dashboard source.",
+            "PAGE-BANK-LEDGER-001 is a documented candidate ledger read-model boundary with formal_use_allowed=false and no MTR dictionary approval.",
         ],
         "backend_touchpoints": [
             "backend/app/api/routes/ledger.py",
@@ -3116,13 +3122,14 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "golden_samples": [],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for GAP-BANK-LEDGER-DASHBOARD-PAGE; verify through live-route maturity, ledger import/API tests, LedgerDashboardPage tests, and route registry tests.",
-            "Trace /api/ledger/dashboard through ledgerClient, buildLedgerKpiCards, LedgerDashboardPage KPI cards, status banners, evidence panels, and positions table before changing display logic.",
-            "Check as_of_date resolution, requested vs resolved dates, CNY yuan-to-yi display conversion, null-vs-zero behavior, batch_id, source_version, rule_version, stale, fallback, no_data, and position trace fields.",
+            "No dedicated golden sample is currently registered for PAGE-BANK-LEDGER-001; verify through live-route maturity, ledger import/API tests, LedgerDashboardPage tests, and route registry tests.",
+            "Trace /api/ledger/dashboard through ledgerClient, buildLedgerKpiCards, LedgerDashboardPage KPI cards, the first-screen source-blocked warning, evidence panels, and positions table before changing display logic.",
+            "Check requested vs resolved dates including forward fallback, mixed native currencies, lack of FX normalization, null-vs-zero behavior, the alert_count placeholder, batch_id, source_version, rule_version, stale, fallback, no_data, and position trace fields.",
             "Verify position filters preserve direction, page/page_size, account_category_std, asset_class_std, portfolio, cost_center, and bond_code semantics without frontend recalculation.",
         ],
         "guardrails": [
-            "GAP-BANK-LEDGER-DASHBOARD-PAGE is candidate ledger read-model evidence, not formal PnL and not formal balance truth.",
+            "PAGE-BANK-LEDGER-001 is source-blocked candidate ledger read-model evidence, not formal PnL and not formal balance truth, approved net exposure, or alert truth.",
+            "Direct standardized ZQTZ consumption is non-compliant temporary compatibility debt; every workbench read model must move to a governed analytical/materialized layer before the route exits temporary-exception.",
             "Do not use asset_face_amount, liability_face_amount, or net_face_exposure to replace PAGE-BALANCE-001, PAGE-PNL-001, PAGE-LEDGER-PNL-001, or product-category PnL truth.",
             "Do not promote ledger dashboard fields to MTR-* rows until a dedicated PAGE contract, metric dictionary rows, golden sample, lineage records, manual audit, and owner approval exist.",
             "Do not hide stale, fallback, no-data, requested/resolved date, source_version, rule_version, batch_id, or position trace boundaries behind a successful page shell.",

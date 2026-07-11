@@ -42,7 +42,7 @@ export function formatLedgerYiAmount(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "--";
   }
-  return `${value.toFixed(2)} 亿元`;
+  return `${value.toFixed(2)} 原币合计/1亿`;
 }
 
 export function formatLedgerYuanAmount(value: number | null | undefined): string {
@@ -61,28 +61,28 @@ export function buildLedgerKpiCards(data: LedgerDashboardData | null | undefined
       key: "asset",
       label: "资产面值",
       value: formatLedgerYiAmount(data?.asset_face_amount),
-      detail: "direction=ASSET，展示单位为亿元",
+      detail: "后端候选资产分类；展示缩放=原币合计/1亿，未做币种过滤或 FX 换算",
       direction: "ASSET",
     },
     {
       key: "liability",
       label: "发行负债面值",
       value: formatLedgerYiAmount(data?.liability_face_amount),
-      detail: "direction=LIABILITY，展示单位为亿元",
+      detail: "后端候选发行负债分类；展示缩放=原币合计/1亿，未做币种过滤或 FX 换算",
       direction: "LIABILITY",
     },
     {
       key: "net",
       label: "净敞口",
       value: formatLedgerYiAmount(data?.net_face_exposure),
-      detail: "ASSET - LIABILITY，后端按原始元聚合后换算",
+      detail: "资产 - 发行负债；展示缩放=原币合计/1亿，跨币种仅供排查",
       direction: "ALL",
     },
     {
       key: "alerts",
       label: "预警数量",
-      value: data?.alert_count === null || data?.alert_count === undefined ? "--" : String(data.alert_count),
-      detail: "来自 ledger dashboard metadata，缺数时不补 0",
+      value: "--",
+      detail: "告警规则与来源未接入；接口占位值不能解释为 0 条预警",
       direction: "ALL",
     },
   ];

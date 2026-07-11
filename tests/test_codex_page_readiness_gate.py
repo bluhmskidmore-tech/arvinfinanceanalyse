@@ -1905,7 +1905,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["bank-ledger-dashboard"]["classification"] == "evidence-pending"
     assert rows_by_slug["bank-ledger-dashboard"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
     assert rows_by_slug["bank-ledger-dashboard"]["route"] == "/bank-ledger-dashboard"
-    assert rows_by_slug["bank-ledger-dashboard"]["page_id"] == "GAP-BANK-LEDGER-DASHBOARD-PAGE"
+    assert rows_by_slug["bank-ledger-dashboard"]["page_id"] == "PAGE-BANK-LEDGER-001"
     assert rows_by_slug["bank-ledger-dashboard"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["bank-ledger-dashboard"]["run_supported"] is True
     assert rows_by_slug["bank-ledger-dashboard"]["formal_use_allowed"] is False
