@@ -8,10 +8,12 @@ import {
   directionLabel,
   formatLedgerYuanAmount,
   ledgerDataState,
+  ledgerImportPresentation,
   positionRowKey,
   resolvedLedgerDate,
   type LedgerDirectionFilter,
 } from "./ledgerDashboardPageModel";
+import { useLedgerImportWorkflow } from "./useLedgerImportWorkflow";
 import "./LedgerDashboardPage.css";
 
 function queryDirection(value: string | null): LedgerDirectionFilter {
@@ -32,6 +34,7 @@ export default function LedgerDashboardPage() {
   const [direction, setDirection] = useState<LedgerDirectionFilter>(() =>
     queryDirection(searchParams.get("direction")),
   );
+  const ledgerImport = useLedgerImportWorkflow(client);
 
   const datesQuery = useQuery({
     queryKey: ["bank-ledger", "dates", client.mode],
@@ -110,6 +113,9 @@ export default function LedgerDashboardPage() {
   const requestedDate = dashboard?.trace.requested_as_of_date ?? selectedDate;
   const positionsActualDate = resolvedLedgerDate(positions?.trace);
   const positionsRequestedDate = positions?.trace.requested_as_of_date ?? selectedDate;
+  const importPresentation = ledgerImport.run
+    ? ledgerImportPresentation(ledgerImport.run.status)
+    : null;
 
   return (
     <section className="ledger-dashboard" data-testid="ledger-dashboard-page">
@@ -158,6 +164,79 @@ export default function LedgerDashboardPage() {
           ))}
         </div>
       </div>
+
+      <section className="ledger-dashboard__import" aria-labelledby="ledger-import-title">
+        <div className="ledger-dashboard__import-copy">
+          <p className="ledger-dashboard__eyebrow">Operational workflow</p>
+          <h2 id="ledger-import-title">导入台账</h2>
+          <p>候选台账导入证据，不构成正式余额或正式 PnL。支持 .csv、.xls、.xlsx，最大 16 MiB。</p>
+        </div>
+        <div className="ledger-dashboard__import-controls">
+          <label className="ledger-dashboard__file-field">
+            <span>台账文件</span>
+            <input
+              type="file"
+              accept=".csv,.xls,.xlsx"
+              disabled={ledgerImport.isPending || ledgerImport.isSubmitting}
+              onChange={(event) => ledgerImport.chooseFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          <button
+            type="button"
+            className="ledger-dashboard__import-submit"
+            disabled={
+              ledgerImport.isPending ||
+              ledgerImport.isSubmitting ||
+              !ledgerImport.file ||
+              Boolean(ledgerImport.submissionError)
+            }
+            onClick={() => void ledgerImport.submit()}
+          >
+            {ledgerImport.isPending || ledgerImport.isSubmitting ? "正在导入" : "开始导入"}
+          </button>
+        </div>
+        {ledgerImport.file ? (
+          <p className="ledger-dashboard__selected-file">已选择：{ledgerImport.file.name}</p>
+        ) : null}
+        {ledgerImport.submissionError ? (
+          <div className="ledger-dashboard__import-error" role="alert">
+            {ledgerImport.submissionError}
+          </div>
+        ) : null}
+        {ledgerImport.run && importPresentation ? (
+          <div
+            className={`ledger-dashboard__import-status ledger-dashboard__import-status--${importPresentation.tone}`}
+            data-testid="ledger-import-status"
+            role={ledgerImport.run.status === "failed" ? "alert" : "status"}
+            aria-live="polite"
+          >
+            <strong>{importPresentation.label}</strong>
+            <span>文件 {ledgerImport.run.file_name}</span>
+            <span>run_id {ledgerImport.run.run_id}</span>
+            {ledgerImport.run.batch_id != null ? <span>batch_id {ledgerImport.run.batch_id}</span> : null}
+            {ledgerImport.run.duplicate_of_batch_id != null ? (
+              <span>duplicate_of_batch_id {ledgerImport.run.duplicate_of_batch_id}</span>
+            ) : null}
+            {ledgerImport.run.queued_at ? <span>queued_at {ledgerImport.run.queued_at}</span> : null}
+            {ledgerImport.run.started_at ? <span>started_at {ledgerImport.run.started_at}</span> : null}
+            {ledgerImport.run.finished_at ? <span>finished_at {ledgerImport.run.finished_at}</span> : null}
+            {ledgerImport.run.error_category ? (
+              <span>error_category {ledgerImport.run.error_category}</span>
+            ) : null}
+            {ledgerImport.run.error_message ? <span>{ledgerImport.run.error_message}</span> : null}
+          </div>
+        ) : null}
+        {ledgerImport.pollingError ? (
+          <div className="ledger-dashboard__import-confirmation-error" role="alert">
+            <span>{ledgerImport.pollingError}</span>
+            {ledgerImport.run ? (
+              <button type="button" onClick={ledgerImport.retryStatus}>
+                继续查询
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
 
       {datesQuery.isLoading || dashboardQuery.isLoading ? (
         <div className="ledger-dashboard__status" data-testid="ledger-dashboard-loading">

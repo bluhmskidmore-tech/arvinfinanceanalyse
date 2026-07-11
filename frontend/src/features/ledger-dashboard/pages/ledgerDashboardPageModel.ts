@@ -1,6 +1,7 @@
 import type {
   LedgerDashboardData,
   LedgerDirection,
+  LedgerImportStatus,
   LedgerPositionItem,
   LedgerResponseMetadata,
   LedgerResponseTrace,
@@ -15,6 +16,27 @@ export type LedgerKpiCardModel = {
   detail: string;
   direction: LedgerDirectionFilter;
 };
+
+export type LedgerImportPresentation = {
+  label: string;
+  tone: "pending" | "success" | "duplicate" | "failure";
+};
+
+const ledgerImportPresentations: Record<LedgerImportStatus, LedgerImportPresentation> = {
+  queued: { label: "已进入导入队列", tone: "pending" },
+  running: { label: "正在校验并导入", tone: "pending" },
+  succeeded: { label: "导入完成", tone: "success" },
+  duplicate: { label: "文件内容已存在，未新增批次", tone: "duplicate" },
+  failed: { label: "导入失败", tone: "failure" },
+};
+
+export function ledgerImportPresentation(status: LedgerImportStatus): LedgerImportPresentation {
+  return ledgerImportPresentations[status];
+}
+
+export function ledgerImportStatusIsTerminal(status: LedgerImportStatus): boolean {
+  return status === "succeeded" || status === "duplicate" || status === "failed";
+}
 
 export function formatLedgerYiAmount(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {

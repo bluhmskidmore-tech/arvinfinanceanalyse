@@ -4,6 +4,8 @@ import {
   buildLedgerKpiCards,
   formatLedgerYiAmount,
   formatLedgerYuanAmount,
+  ledgerImportPresentation,
+  ledgerImportStatusIsTerminal,
   ledgerDataState,
 } from "../features/ledger-dashboard/pages/ledgerDashboardPageModel";
 
@@ -61,5 +63,16 @@ describe("ledgerDashboardPageModel", () => {
         null,
       ),
     ).toBe("fallback");
+  });
+
+  it.each([
+    ["queued", "已进入导入队列", "pending", false],
+    ["running", "正在校验并导入", "pending", false],
+    ["succeeded", "导入完成", "success", true],
+    ["duplicate", "文件内容已存在，未新增批次", "duplicate", true],
+    ["failed", "导入失败", "failure", true],
+  ] as const)("maps %s without collapsing duplicate into failure", (status, label, tone, terminal) => {
+    expect(ledgerImportPresentation(status)).toEqual({ label, tone });
+    expect(ledgerImportStatusIsTerminal(status)).toBe(terminal);
   });
 });

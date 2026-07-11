@@ -1,12 +1,14 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
+import { LedgerRequestError } from "../api/ledgerClient";
 import type {
   LedgerApiResponse,
   LedgerDashboardData,
   LedgerDatesData,
+  LedgerImportResponse,
   LedgerPositionsData,
   LedgerPositionsOptions,
 } from "../api/ledgerClient";
@@ -140,6 +142,8 @@ function buildClient(
     datesError: Error;
     dashboard: (asOfDate: string) => LedgerApiResponse<LedgerDashboardData>;
     positions: (options: LedgerPositionsOptions) => Promise<LedgerApiResponse<LedgerPositionsData>>;
+    importLedger: (file: File) => Promise<LedgerImportResponse>;
+    importStatus: (runId: string, signal?: AbortSignal) => Promise<LedgerImportResponse>;
   }>,
 ): ApiClient {
   const base = createApiClient({ mode: "real" });
@@ -165,6 +169,32 @@ function buildClient(
     getLedgerPositions: vi.fn(async (options: LedgerPositionsOptions) =>
       overrides?.positions ? overrides.positions(options) : positionsPayload(options),
     ),
+    importLedger: vi.fn(async (file: File): Promise<LedgerImportResponse> =>
+      overrides?.importLedger
+        ? overrides.importLedger(file)
+        : {
+            data: {
+              run_id: "ledger_import:test",
+              status: "queued",
+              file_name: file.name,
+            },
+            trace: { request_id: "req_import_test", run_id: "ledger_import:test" },
+          },
+    ),
+    getLedgerImportStatus: vi.fn(async (runId: string, signal?: AbortSignal): Promise<LedgerImportResponse> =>
+      overrides?.importStatus
+        ? overrides.importStatus(runId, signal)
+        : {
+            data: {
+              run_id: runId,
+              status: "succeeded",
+              file_name: "ledger.xlsx",
+              batch_id: 9,
+              finished_at: "2026-07-11T04:00:00Z",
+            },
+            trace: { request_id: "req_status_test", run_id: runId },
+          },
+    ),
   };
 }
 
@@ -172,6 +202,14 @@ describe("LedgerDashboardPage", () => {
   beforeAll(async () => {
     await preloadWorkbenchRouteModules("bank-ledger-dashboard");
   }, 20_000);
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("renders ledger KPI units, trace metadata, and raw-yuan position rows", async () => {
     const client = buildClient();
@@ -375,5 +413,271 @@ describe("LedgerDashboardPage", () => {
     expect(await screen.findByTestId("ledger-dashboard-status")).toHaveTextContent("暂无数据");
     expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("--");
     expect(client.getLedgerDashboard).not.toHaveBeenCalled();
+  });
+
+  it("uploads a ledger file and polls running through succeeded", async () => {
+    const user = userEvent.setup();
+    const statusResponses: LedgerImportResponse[] = [
+      {
+        data: {
+          run_id: "ledger_import:progress",
+          status: "running",
+          file_name: "ledger.xlsx",
+          started_at: "2026-07-11T04:00:01Z",
+        },
+        trace: { request_id: "req_running", run_id: "ledger_import:progress" },
+      },
+      {
+        data: {
+          run_id: "ledger_import:progress",
+          status: "succeeded",
+          file_name: "ledger.xlsx",
+          batch_id: 12,
+          finished_at: "2026-07-11T04:00:02Z",
+        },
+        trace: { request_id: "req_succeeded", run_id: "ledger_import:progress" },
+      },
+    ];
+    const client = buildClient({
+      importLedger: async (file) => ({
+        data: { run_id: "ledger_import:progress", status: "queued", file_name: file.name },
+        trace: { request_id: "req_queued", run_id: "ledger_import:progress" },
+      }),
+      importStatus: async () => statusResponses.shift() ?? statusResponses[0],
+    });
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+    const file = new File(["ledger"], "ledger.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    await user.upload(await screen.findByLabelText("台账文件"), file);
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("正在校验并导入");
+    expect(screen.getByRole("button", { name: "正在导入" })).toBeDisabled();
+    expect(await screen.findByText("导入完成", {}, { timeout: 3_000 })).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("batch_id 12");
+    expect(client.getLedgerDates).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders duplicate as a successful terminal outcome", async () => {
+    const user = userEvent.setup();
+    const client = buildClient({
+      importStatus: async (runId) => ({
+        data: {
+          run_id: runId,
+          status: "duplicate",
+          file_name: "ledger.csv",
+          duplicate_of_batch_id: 7,
+          finished_at: "2026-07-11T04:00:02Z",
+        },
+        trace: { request_id: "req_duplicate", run_id: runId },
+      }),
+    });
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    await user.upload(
+      await screen.findByLabelText("台账文件"),
+      new File(["ledger"], "ledger.csv", { type: "text/csv" }),
+    );
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByText("文件内容已存在，未新增批次")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("duplicate_of_batch_id 7");
+    expect(screen.queryByText("导入失败")).not.toBeInTheDocument();
+  });
+
+  it("restores a pending run from session storage without re-uploading", async () => {
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:restored", mode: "real", file_name: "restored.xlsx" }),
+    );
+    const client = buildClient();
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByText("导入完成")).toBeInTheDocument();
+    expect(client.getLedgerImportStatus).toHaveBeenCalledWith(
+      "ledger_import:restored",
+      expect.any(AbortSignal),
+    );
+    expect(client.importLedger).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toBeNull();
+  });
+
+  it("keeps polling errors separate from a confirmed import failure", async () => {
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:unknown", mode: "real", file_name: "unknown.xlsx" }),
+    );
+    const client = buildClient({
+      importStatus: async () => {
+        throw new Error("network unavailable");
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("当前无法确认导入状态");
+    expect(screen.queryByText("导入失败")).not.toBeInTheDocument();
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toContain(
+      "ledger_import:unknown",
+    );
+  });
+
+  it("shows a confirmed failure with safe facts and permits resubmission", async () => {
+    const user = userEvent.setup();
+    const client = buildClient({
+      importStatus: async (runId) => ({
+        data: {
+          run_id: runId,
+          status: "failed",
+          file_name: "invalid.xlsx",
+          error_category: "invalid_file",
+          error_message: "Ledger file validation failed.",
+          finished_at: "2026-07-11T04:00:02Z",
+        },
+        trace: { request_id: "req_failed", run_id: runId },
+      }),
+    });
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+    await user.upload(
+      await screen.findByLabelText("台账文件"),
+      new File(["invalid"], "invalid.xlsx", {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+
+    expect(await screen.findByText("导入失败")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("invalid_file");
+    expect(screen.getByTestId("ledger-import-status")).toHaveTextContent(
+      "Ledger file validation failed.",
+    );
+    expect(screen.getByLabelText("台账文件")).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "开始导入" }));
+    expect(client.importLedger).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a forbidden status run recoverable and retries on demand", async () => {
+    const user = userEvent.setup();
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:forbidden", mode: "real", file_name: "forbidden.xlsx" }),
+    );
+    let attempts = 0;
+    const client = buildClient({
+      importStatus: async (runId) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new LedgerRequestError(
+            "Ledger read access denied.",
+            "LEDGER_READ_FORBIDDEN",
+            403,
+            false,
+          );
+        }
+        return {
+          data: {
+            run_id: runId,
+            status: "succeeded",
+            file_name: "forbidden.xlsx",
+            batch_id: 11,
+          },
+          trace: { request_id: "req_recovered", run_id: runId },
+        };
+      },
+    });
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("无权查询导入状态");
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toContain(
+      "ledger_import:forbidden",
+    );
+    await user.click(screen.getByRole("button", { name: "继续查询" }));
+
+    expect(await screen.findByText("导入完成")).toBeInTheDocument();
+    expect(client.getLedgerImportStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears a stale restored run when the backend returns not found", async () => {
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:stale", mode: "real", file_name: "stale.xlsx" }),
+    );
+    const client = buildClient({
+      importStatus: async () => {
+        throw new LedgerRequestError(
+          "Ledger import run was not found.",
+          "LEDGER_IMPORT_RUN_NOT_FOUND",
+          404,
+          false,
+        );
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("导入任务记录不存在");
+    expect(screen.getByLabelText("台账文件")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "开始导入" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "继续查询" })).not.toBeInTheDocument();
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toBeNull();
+  });
+
+  it("aborts an in-flight status request when the page unmounts", async () => {
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:inflight", mode: "real", file_name: "inflight.xlsx" }),
+    );
+    let observedSignal: AbortSignal | undefined;
+    let requestRejected = false;
+    const client = buildClient({
+      importStatus: async (_runId, signal) => {
+        observedSignal = signal;
+        return new Promise<LedgerImportResponse>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            requestRejected = true;
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        });
+      },
+    });
+
+    const view = renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+    await waitFor(() => expect(observedSignal).toBeDefined());
+
+    view.unmount();
+
+    expect(observedSignal?.aborted).toBe(true);
+    await waitFor(() => expect(requestRejected).toBe(true));
+  });
+
+  it("times out and aborts a status request that never settles", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    window.sessionStorage.setItem(
+      "moss.ledgerImport.pendingRun.v1",
+      JSON.stringify({ run_id: "ledger_import:timeout", mode: "real", file_name: "timeout.xlsx" }),
+    );
+    let observedSignal: AbortSignal | undefined;
+    const client = buildClient({
+      importStatus: async (_runId, signal) => {
+        observedSignal = signal;
+        return new Promise<LedgerImportResponse>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        });
+      },
+    });
+
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
+    await waitFor(() => expect(observedSignal).toBeDefined());
+    await vi.advanceTimersByTimeAsync(10_001);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("导入状态请求超时");
+    expect(observedSignal?.aborted).toBe(true);
+    expect(window.sessionStorage.getItem("moss.ledgerImport.pendingRun.v1")).toContain(
+      "ledger_import:timeout",
+    );
   });
 });

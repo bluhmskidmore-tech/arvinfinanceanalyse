@@ -93,6 +93,41 @@ export type LedgerPositionsOptions = {
   pageSize?: number;
 };
 
+export type LedgerImportStatus = "queued" | "running" | "succeeded" | "duplicate" | "failed";
+
+export type LedgerImportRunData = {
+  run_id: string;
+  status: LedgerImportStatus;
+  file_name: string;
+  batch_id?: number | null;
+  duplicate_of_batch_id?: number | null;
+  queued_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error_category?: string | null;
+  error_message?: string | null;
+};
+
+export type LedgerImportResponse = {
+  data: LedgerImportRunData;
+  trace: {
+    request_id: string;
+    run_id: string;
+  };
+};
+
+export class LedgerRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly status: number,
+    readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "LedgerRequestError";
+  }
+}
+
 export type LedgerClientMethods = {
   getLedgerDates: () => Promise<LedgerApiResponse<LedgerDatesData>>;
   getLedgerDashboard: (
@@ -102,6 +137,8 @@ export type LedgerClientMethods = {
     options: LedgerPositionsOptions,
   ) => Promise<LedgerApiResponse<LedgerPositionsData>>;
   exportLedgerPositions: (options: LedgerPositionsOptions) => Promise<Blob>;
+  importLedger: (file: File, signal?: AbortSignal) => Promise<LedgerImportResponse>;
+  getLedgerImportStatus: (runId: string, signal?: AbortSignal) => Promise<LedgerImportResponse>;
 };
 
 type FetchLike = typeof fetch;
@@ -252,6 +289,29 @@ async function requestLedgerJson<TData>(
   return payload as LedgerApiResponse<TData>;
 }
 
+async function requestLedgerImportJson(
+  fetchImpl: FetchLike,
+  baseUrl: string,
+  path: string,
+  init?: RequestInit,
+): Promise<LedgerImportResponse> {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    ...init,
+    headers: { Accept: "application/json", ...init?.headers },
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = payload?.error;
+    const code = typeof error?.code === "string" ? error.code : "LEDGER_REQUEST_FAILED";
+    const message =
+      typeof error?.message === "string"
+        ? error.message
+        : `Request failed: ${path} (${response.status})`;
+    throw new LedgerRequestError(message, code, response.status, error?.retryable === true);
+  }
+  return payload as LedgerImportResponse;
+}
+
 export function createMockLedgerClient(): LedgerClientMethods {
   return {
     async getLedgerDates() {
@@ -315,6 +375,25 @@ export function createMockLedgerClient(): LedgerClientMethods {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       });
     },
+    async importLedger(file: File) {
+      const runId = `ledger_import:mock:${Date.now()}`;
+      return {
+        data: { run_id: runId, status: "queued", file_name: file.name },
+        trace: { request_id: "req_ledger_import_mock", run_id: runId },
+      };
+    },
+    async getLedgerImportStatus(runId: string) {
+      return {
+        data: {
+          run_id: runId,
+          status: "succeeded",
+          file_name: "ledger_mock.xlsx",
+          batch_id: 1,
+          finished_at: new Date().toISOString(),
+        },
+        trace: { request_id: "req_ledger_import_status_mock", run_id: runId },
+      };
+    },
   };
 }
 
@@ -350,5 +429,21 @@ export function createRealLedgerClient({
       }
       return response.blob();
     },
+    importLedger: (file: File, signal?: AbortSignal) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return requestLedgerImportJson(fetchImpl, baseUrl, "/api/ledger/import", {
+        method: "POST",
+        body: formData,
+        signal,
+      });
+    },
+    getLedgerImportStatus: (runId: string, signal?: AbortSignal) =>
+      requestLedgerImportJson(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger/import-status${buildQuery({ run_id: runId })}`,
+        { signal },
+      ),
   };
 }
