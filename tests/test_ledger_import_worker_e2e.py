@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import os
@@ -26,6 +27,8 @@ from tests.helpers import ROOT, load_module
 JOB_TIMEOUT_MS = 60_000
 ALLOWED_PROMETHEUS_FAILURES = {
     ("before_process_message", "inprogress_messages"),
+    ("before_process_message", "inprogress_delayed_messages"),
+    ("before_delay_message", "inprogress_delayed_messages"),
     ("after_process_message", "message_durations"),
     ("after_nack", "total_rejected_messages"),
 }
@@ -126,6 +129,12 @@ def live_ledger(tmp_path, monkeypatch) -> Iterator[_LiveLedger]:
             resource="ledger.data",
             action="import",
         )
+        scopes.grant_scope(
+            user_id="*",
+            role=None,
+            resource="ledger.data",
+            action="read",
+        )
 
         redis_process = _start_redis_server(
             redis_server=redis_server,
@@ -173,8 +182,10 @@ def test_ledger_import_api_real_worker_deduplicates_and_recovers_queued_work(
     first = _post_ledger(live_ledger.client, "ZQTZSHOW-20260317.csv", first_content)
     assert first.status_code == 202
     assert first.json()["data"]["status"] == "queued"
-    assert first.json()["data"]["run_id"].startswith("ledger_import:")
+    first_run_id = first.json()["data"]["run_id"]
+    assert first_run_id.startswith("ledger_import:")
     live_ledger.join()
+    assert _wait_for_status(live_ledger, first_run_id, "succeeded")["status"] == "succeeded"
 
     first_facts = _wait_for_facts(
         live_ledger.duckdb_path,
@@ -190,8 +201,10 @@ def test_ledger_import_api_real_worker_deduplicates_and_recovers_queued_work(
     duplicate = _post_ledger(live_ledger.client, "same-content-new-name.csv", first_content)
     assert duplicate.status_code == 202
     assert duplicate.json()["data"]["status"] == "queued"
-    assert duplicate.json()["data"]["run_id"].startswith("ledger_import:")
+    duplicate_run_id = duplicate.json()["data"]["run_id"]
+    assert duplicate_run_id.startswith("ledger_import:")
     live_ledger.join()
+    assert _wait_for_status(live_ledger, duplicate_run_id, "duplicate")["status"] == "duplicate"
     assert _wait_for_facts(
         live_ledger.duckdb_path,
         batch_count=1,
@@ -212,12 +225,15 @@ def test_ledger_import_api_real_worker_deduplicates_and_recovers_queued_work(
     )
     assert queued_while_stopped.status_code == 202
     assert queued_while_stopped.json()["data"]["status"] == "queued"
-    assert queued_while_stopped.json()["data"]["run_id"].startswith("ledger_import:")
+    queued_run_id = queued_while_stopped.json()["data"]["run_id"]
+    assert queued_run_id.startswith("ledger_import:")
+    assert _wait_for_status(live_ledger, queued_run_id, "queued")["status"] == "queued"
     assert live_ledger.broker.do_qsize(live_ledger.actor.queue_name) > 0
     assert _read_facts_with_retry(live_ledger.duckdb_path) == first_facts
 
     live_ledger.start_worker()
     live_ledger.join()
+    assert _wait_for_status(live_ledger, queued_run_id, "succeeded")["status"] == "succeeded"
     recovered = _wait_for_facts(
         live_ledger.duckdb_path,
         batch_count=2,
@@ -240,16 +256,38 @@ def test_ledger_import_failed_message_does_not_kill_real_worker(
     live_ledger: _LiveLedger,
 ) -> None:
     assert isinstance(live_ledger.broker, RedisBroker)
-    live_ledger.actor.send_with_options(
-        kwargs={
-            "file_name": "invalid.csv",
-            "content_base64": "%%%not-base64%%%",
-            "duckdb_path": str(live_ledger.duckdb_path),
-            "run_id": "ledger_import:invalid-e2e",
-        },
-        max_retries=0,
+    invalid = _post_ledger(
+        live_ledger.client,
+        "invalid.csv",
+        b"not,a,valid,ledger\n",
+    )
+    assert invalid.status_code == 202
+    invalid_run_id = invalid.json()["data"]["run_id"]
+    live_ledger.join()
+    failed = _wait_for_status(live_ledger, invalid_run_id, "failed")
+    assert failed["error_category"] == "invalid_file"
+    assert failed["error_message"] == "Ledger import file is invalid."
+
+    corrupt_xlsx = b"PK-not-a-real-xlsx raw=private"
+    corrupt_encoded = base64.b64encode(corrupt_xlsx).decode("ascii")
+    corrupt_run_id = "ledger_import:corrupt-xlsx-e2e"
+    from backend.app.tasks import ledger_import as task_module
+
+    live_ledger.actor.send(
+        file_name="corrupt.xlsx",
+        content_base64=corrupt_encoded,
+        duckdb_path=str(live_ledger.duckdb_path),
+        run_id=corrupt_run_id,
+        governance_dir=str(live_ledger.tmp_path / "governance"),
+        retry_attempt=task_module.MAX_LEDGER_IMPORT_MANUAL_RETRIES,
     )
     live_ledger.join()
+    corrupt_failed = _wait_for_status(live_ledger, corrupt_run_id, "failed")
+    assert corrupt_failed["error_category"] == "processing_failed"
+    assert live_ledger.worker is not None
+    log_text = _read_log(live_ledger.worker.log_path)
+    assert corrupt_encoded not in log_text
+    assert "raw=private" not in log_text
 
     empty = _wait_for_facts(
         live_ledger.duckdb_path,
@@ -261,6 +299,35 @@ def test_ledger_import_failed_message_does_not_kill_real_worker(
     assert empty == _LedgerFacts(batches=(), raw_rows=(), snapshots=())
     assert live_ledger.worker is not None
     assert live_ledger.worker.proc.poll() is None, _process_diagnostics(live_ledger.worker)
+
+
+def test_ledger_import_real_worker_retry_exhaustion_is_safe_and_drains_queue(
+    live_ledger: _LiveLedger,
+) -> None:
+    from backend.app.tasks import ledger_import as task_module
+
+    content = _ledger_csv_bytes(bond_code="RETRY-FAIL", as_of_date="2026-03-20")
+    encoded = base64.b64encode(content).decode("ascii")
+    invalid_duckdb_path = str(live_ledger.tmp_path)
+    run_id = "ledger_import:retry-exhausted-e2e"
+    live_ledger.actor.send(
+        file_name="retry.csv",
+        content_base64=encoded,
+        duckdb_path=invalid_duckdb_path,
+        run_id=run_id,
+        governance_dir=str(live_ledger.tmp_path / "governance"),
+        retry_attempt=task_module.MAX_LEDGER_IMPORT_MANUAL_RETRIES - 1,
+    )
+    assert _wait_for_status(live_ledger, run_id, "running")["status"] == "running"
+    live_ledger.join()
+
+    failed = _wait_for_status(live_ledger, run_id, "failed")
+    assert failed["error_category"] == "processing_failed"
+    assert live_ledger.broker.do_qsize(live_ledger.actor.queue_name) == 0
+    assert live_ledger.worker is not None
+    log_text = _read_log(live_ledger.worker.log_path)
+    assert encoded not in log_text
+    assert invalid_duckdb_path not in log_text
 
     content = _ledger_csv_bytes(
         bond_code="AFTER-FAILURE",
@@ -287,6 +354,40 @@ def test_ledger_import_failed_message_does_not_kill_real_worker(
     assert recovered.raw_rows == ((1, 1),)
     assert recovered.snapshots == ((1, 1, "2026-03-19", "AFTER-FAILURE"),)
     assert live_ledger.worker.proc.poll() is None, _process_diagnostics(live_ledger.worker)
+
+
+def test_ledger_import_real_reconcile_recovers_durable_terminal_outbox(
+    live_ledger: _LiveLedger,
+) -> None:
+    from backend.app.services.ledger_import_run_service import record_ledger_import_terminal_outbox
+    from backend.app.tasks.ledger_import import reconcile_ledger_import_terminal
+
+    run_id = "ledger_import:outbox-recovery-e2e"
+    governance_dir = str(live_ledger.tmp_path / "governance")
+    record_ledger_import_terminal_outbox(
+        governance_dir=governance_dir,
+        governance_backend="sql-authority",
+        governance_sql_dsn=os.environ["MOSS_GOVERNANCE_SQL_DSN"],
+        run_id=run_id,
+        file_name="recovered.csv",
+        status="completed",
+        outcome="success",
+        batch_id=77,
+        duplicate_of_batch_id=None,
+        source_version="sv_recovered",
+        rule_version="rv_recovered",
+        error_category=None,
+        error_message=None,
+    )
+
+    reconcile_ledger_import_terminal.send(
+        run_id=run_id,
+        governance_dir=governance_dir,
+        retry_attempt=0,
+    )
+    live_ledger.join()
+    recovered = _wait_for_status(live_ledger, run_id, "succeeded")
+    assert recovered["batch_id"] == 77
 
 
 def test_cleanup_runs_every_stage_and_propagates_failure(monkeypatch) -> None:
@@ -462,6 +563,23 @@ def _post_ledger(client: TestClient, file_name: str, content: bytes):
         "/api/ledger/import",
         files={"file": (file_name, content, "text/csv")},
     )
+
+
+def _wait_for_status(live: _LiveLedger, run_id: str, expected: str) -> dict[str, object]:
+    deadline = time.monotonic() + JOB_TIMEOUT_MS / 1000
+    last_response = None
+    while time.monotonic() < deadline:
+        last_response = live.client.get(
+            "/api/ledger/import-status",
+            params={"run_id": run_id},
+        )
+        if last_response.status_code == 200:
+            data = last_response.json()["data"]
+            if data["status"] == expected:
+                return data
+        time.sleep(0.05)
+    detail = None if last_response is None else (last_response.status_code, last_response.text)
+    raise AssertionError(f"Timed out waiting for run {run_id!r} to reach {expected!r}: {detail}")
 
 
 def _ledger_csv_bytes(*, bond_code: str, as_of_date: str) -> bytes:

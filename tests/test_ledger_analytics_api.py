@@ -80,6 +80,7 @@ def test_ledger_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch)
     client = TestClient(app)
 
     for path, params in (
+        ("/api/ledger/import-status", {"run_id": "ledger_import:denied"}),
         ("/api/ledger/imports", {}),
         ("/api/ledger/dates", {}),
         ("/api/ledger/dashboard", {"as_of_date": "2026-03-17"}),
@@ -97,6 +98,7 @@ def test_fastapi_application_registers_ledger_analytics_routes(tmp_path, monkeyp
     paths = {route.path for route in app.routes}
 
     assert "/api/ledger/dates" in paths
+    assert "/api/ledger/import-status" in paths
     assert "/api/ledger/dashboard" in paths
     assert "/api/ledger/positions" in paths
     assert "/api/ledger/export/positions" in paths

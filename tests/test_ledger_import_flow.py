@@ -26,12 +26,15 @@ def _scoped_import(service_mod, duckdb_path, *, run_id="ledger_import:test", **k
     from backend.app.tasks.ledger_import import run_ledger_import
 
     content = kwargs.pop("content")
-    return run_ledger_import.fn(
+    governance_dir = str(get_settings().governance_path)
+    result = run_ledger_import.fn(
         duckdb_path=str(duckdb_path),
         content_base64=base64.b64encode(content).decode("ascii"),
         run_id=run_id,
+        governance_dir=governance_dir,
         **kwargs,
     )
+    return result
 
 
 def test_fastapi_application_registers_ledger_import_routes(tmp_path, monkeypatch):
@@ -46,6 +49,237 @@ def test_fastapi_application_registers_ledger_import_routes(tmp_path, monkeypatc
     assert "202" in responses
     assert "200" not in responses
     get_settings.cache_clear()
+
+
+def test_ledger_import_run_status_reduces_monotonically_and_whitelists_fields(tmp_path):
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+    governance_dir = tmp_path / "governance"
+    kwargs = {
+        "governance_dir": governance_dir,
+        "governance_backend": "jsonl",
+        "governance_sql_dsn": "",
+        "job_state_dsn": "",
+        "run_id": "ledger_import:run-status",
+        "file_name": r"C:\\private\\queued.csv",
+    }
+
+    run_mod.record_ledger_import_transition(status="queued", **kwargs)
+    queued = run_mod.get_ledger_import_run_status(
+        governance_dir=governance_dir,
+        governance_backend="jsonl",
+        governance_sql_dsn="",
+        run_id=kwargs["run_id"],
+    )
+    assert queued == {
+        "run_id": "ledger_import:run-status",
+        "status": "queued",
+        "trigger_mode": "api",
+        "file_name": "queued.csv",
+        "queued_at": queued["queued_at"],
+    }
+
+    run_mod.record_ledger_import_transition(
+        status="failed",
+        error_category="processing_failed",
+        error_message="Ledger import processing failed.",
+        **kwargs,
+    )
+    run_mod.record_ledger_import_transition(status="running", **kwargs)
+    retried = run_mod.get_ledger_import_run_status(
+        governance_dir=governance_dir,
+        governance_backend="jsonl",
+        governance_sql_dsn="",
+        run_id=kwargs["run_id"],
+    )
+    assert retried["status"] == "running"
+    assert "finished_at" not in retried
+    assert "error_message" not in retried
+    run_mod.record_ledger_import_transition(
+        status="completed",
+        outcome="duplicate",
+        batch_id=7,
+        duplicate_of_batch_id=7,
+        **kwargs,
+    )
+    # A later successful retry upgrades duplicate; subsequent duplicate deliveries cannot downgrade it.
+    run_mod.record_ledger_import_transition(
+        status="completed",
+        outcome="success",
+        batch_id=8,
+        source_version="sv_ledger_safe",
+        rule_version="position_key_contract_v1",
+        **kwargs,
+    )
+    run_mod.record_ledger_import_transition(
+        status="completed",
+        outcome="duplicate",
+        batch_id=8,
+        duplicate_of_batch_id=8,
+        **kwargs,
+    )
+
+    completed = run_mod.get_ledger_import_run_status(
+        governance_dir=governance_dir,
+        governance_backend="jsonl",
+        governance_sql_dsn="",
+        run_id=kwargs["run_id"],
+    )
+    assert completed["status"] == "succeeded"
+    assert completed["batch_id"] == 8
+    assert "duplicate_of_batch_id" not in completed
+    assert completed["file_name"] == "queued.csv"
+    assert "source_version" not in completed
+    assert "rule_version" not in completed
+    assert "error_message" not in completed
+    assert set(completed) <= {
+        "run_id",
+        "status",
+        "trigger_mode",
+        "file_name",
+        "batch_id",
+        "duplicate_of_batch_id",
+        "queued_at",
+        "started_at",
+        "finished_at",
+        "error_category",
+        "error_message",
+    }
+
+
+def test_ledger_import_run_status_duplicate_not_found_and_sql_authority_parity(tmp_path):
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+    run_id = "ledger_import:parity"
+    jsonl_dir = tmp_path / "jsonl"
+    sql_dir = tmp_path / "sql"
+    sql_dsn = f"sqlite:///{(tmp_path / 'governance.db').as_posix()}"
+    transition = {
+        "run_id": run_id,
+        "status": "completed",
+        "outcome": "duplicate",
+        "file_name": "../duplicate.csv",
+        "batch_id": 3,
+        "duplicate_of_batch_id": 2,
+    }
+    run_mod.record_ledger_import_transition(
+        governance_dir=jsonl_dir,
+        governance_backend="jsonl",
+        governance_sql_dsn="",
+        job_state_dsn="",
+        **transition,
+    )
+    run_mod.record_ledger_import_transition(
+        governance_dir=sql_dir,
+        governance_backend="sql-authority",
+        governance_sql_dsn=sql_dsn,
+        job_state_dsn="",
+        **transition,
+    )
+
+    jsonl_status = run_mod.get_ledger_import_run_status(
+        governance_dir=jsonl_dir,
+        governance_backend="jsonl",
+        governance_sql_dsn="",
+        run_id=run_id,
+    )
+    sql_status = run_mod.get_ledger_import_run_status(
+        governance_dir=sql_dir,
+        governance_backend="sql-authority",
+        governance_sql_dsn=sql_dsn,
+        run_id=run_id,
+    )
+    for payload in (jsonl_status, sql_status):
+        payload.pop("finished_at")
+    assert sql_status == jsonl_status == {
+        "run_id": run_id,
+        "status": "duplicate",
+        "trigger_mode": "api",
+        "file_name": "duplicate.csv",
+        "batch_id": 3,
+        "duplicate_of_batch_id": 2,
+    }
+
+    with pytest.raises(run_mod.LedgerImportRunNotFoundError):
+        run_mod.get_ledger_import_run_status(
+            governance_dir=jsonl_dir,
+            governance_backend="jsonl",
+            governance_sql_dsn="",
+            run_id="ledger_import:missing",
+        )
+
+
+def test_ledger_import_terminal_outbox_is_private_durable_and_whitelisted(tmp_path):
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+    run_mod.record_ledger_import_terminal_outbox(
+        governance_dir=tmp_path / "governance",
+        run_id="ledger_import:outbox",
+        file_name=r"C:\\private\\safe.csv",
+        status="completed",
+        outcome="success",
+        batch_id=9,
+        duplicate_of_batch_id=None,
+        source_version="sv_safe",
+        rule_version="rv_safe",
+        error_category=None,
+        error_message=None,
+    )
+    for status, outcome in (("completed", "duplicate"), ("failed", None)):
+        run_mod.record_ledger_import_terminal_outbox(
+            governance_dir=tmp_path / "governance",
+            run_id="ledger_import:outbox",
+            file_name="redelivery.csv",
+            status=status,
+            outcome=outcome,
+            batch_id=9,
+            duplicate_of_batch_id=9 if outcome == "duplicate" else None,
+            source_version="sv_safe",
+            rule_version="rv_safe",
+            error_category="processing_failed" if status == "failed" else None,
+            error_message="Ledger import processing failed." if status == "failed" else None,
+        )
+
+    facts = run_mod.get_ledger_import_terminal_outbox(
+        governance_dir=tmp_path / "governance",
+        run_id="ledger_import:outbox",
+    )
+    assert facts["file_name"] == "safe.csv"
+    assert facts["status"] == "completed"
+    assert facts["outcome"] == "success"
+    serialized = json.dumps(facts)
+    assert "private" not in serialized
+    assert "content_base64" not in serialized
+    assert "duckdb_path" not in serialized
+    assert "dsn" not in serialized.lower()
+
+
+def test_ledger_import_run_transition_job_state_failure_is_best_effort(tmp_path, monkeypatch, caplog):
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+
+    class FailingJobStateRepository:
+        def __init__(self, _dsn):
+            pass
+
+        def record_transition(self, **_kwargs):
+            raise RuntimeError("secret mirror failure")
+
+    monkeypatch.setattr(run_mod, "JobStateRepository", FailingJobStateRepository)
+    run_mod.record_ledger_import_transition(
+        governance_dir=tmp_path / "governance",
+        governance_backend="jsonl",
+        governance_sql_dsn="",
+        job_state_dsn="sqlite:///unused.db",
+        run_id="ledger_import:mirror-failure",
+        status="queued",
+        file_name="safe.csv",
+    )
+
+    assert "mirror failed" in caplog.text.lower()
+    assert "secret mirror failure" not in caplog.text
+    assert run_mod.get_ledger_import_run_status(
+        governance_dir=tmp_path / "governance",
+        governance_backend="jsonl",
+        governance_sql_dsn="",
+        run_id="ledger_import:mirror-failure",
+    )["status"] == "queued"
 
 
 def test_ledger_import_api_queues_json_safe_payload_without_writing_batch(tmp_path, monkeypatch):
@@ -70,12 +304,18 @@ def test_ledger_import_api_queues_json_safe_payload_without_writing_batch(tmp_pa
         ],
     ).rstrip(b"\r\n")
     sent: dict[str, object] = {}
-    monkeypatch.setattr(run_ledger_import, "send", lambda **kwargs: sent.update(kwargs))
+    status_seen_at_send: list[str] = []
+
+    def capture_send(**kwargs):
+        status_seen_at_send.append(_get_run_status(str(kwargs["run_id"]))["status"])
+        sent.update(kwargs)
+
+    monkeypatch.setattr(run_ledger_import, "send", capture_send)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
     response = client.post(
         "/api/ledger/import",
-        files={"file": ("ZQTZSHOW-20260317.csv", content, "text/csv")},
+        files={"file": (r"C:\\private\\ZQTZSHOW-20260317.csv", content, "text/csv")},
     )
 
     assert response.status_code == 202
@@ -87,9 +327,13 @@ def test_ledger_import_api_queues_json_safe_payload_without_writing_batch(tmp_pa
     assert payload["trace"]["request_id"].startswith("req_ledger_")
     assert sent["file_name"] == "ZQTZSHOW-20260317.csv"
     assert sent["duckdb_path"] == str(duckdb_path)
+    assert sent["governance_dir"] == str(get_settings().governance_path)
+    assert status_seen_at_send == ["queued"]
+    assert {"governance_sql_dsn", "job_state_dsn"}.isdisjoint(sent)
     assert base64.b64decode(str(sent["content_base64"]), validate=True) == content
     json.dumps(sent)
     assert not any(isinstance(value, bytes) for value in sent.values())
+    assert _get_run_status(str(sent["run_id"]))["status"] == "queued"
 
     listed = client.get("/api/ledger/imports").json()
     assert listed["data"]["items"] == []
@@ -225,6 +469,9 @@ def test_ledger_import_actor_imports_csv_lists_batch_and_preserves_unknown_raw_j
     assert payload["trace"]["source_file_hash"] == payload["data"]["file_hash"]
     assert payload["data"]["run_id"] == "ledger_import:actor-success"
     assert payload["trace"]["run_id"] == "ledger_import:actor-success"
+    actor_status = _get_run_status("ledger_import:actor-success")
+    assert actor_status["status"] == "succeeded"
+    assert actor_status["batch_id"] == 1
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     list_response = client.get("/api/ledger/imports")
@@ -253,7 +500,8 @@ def test_ledger_import_actor_imports_csv_lists_batch_and_preserves_unknown_raw_j
     get_settings.cache_clear()
 
 
-def test_ledger_import_actor_rejects_invalid_base64_before_service_call(monkeypatch):
+def test_ledger_import_actor_rejects_invalid_base64_before_service_call(tmp_path, monkeypatch):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
     from backend.app.tasks import ledger_import as task_mod
 
     called = False
@@ -265,15 +513,30 @@ def test_ledger_import_actor_rejects_invalid_base64_before_service_call(monkeypa
 
     monkeypatch.setattr(task_mod, "LedgerImportService", UnexpectedService)
 
-    with pytest.raises(ValueError, match="base64"):
-        task_mod.run_ledger_import.fn(
-            file_name="ZQTZSHOW-20260317.csv",
-            content_base64="not-base64!",
-            duckdb_path="unused.duckdb",
-            run_id="ledger_import:invalid",
-        )
+    result = task_mod.run_ledger_import.fn(
+        file_name="ZQTZSHOW-20260317.csv",
+        content_base64="not-base64!",
+        duckdb_path="unused.duckdb",
+        run_id="ledger_import:invalid",
+        governance_dir=str(get_settings().governance_path),
+    )
+    task_mod.reconcile_ledger_import_terminal.fn(
+        run_id="ledger_import:invalid",
+        governance_dir=str(get_settings().governance_path),
+    )
 
     assert called is False
+    assert result["data"]["status"] == "failed"
+    assert _get_run_status("ledger_import:invalid") == {
+        "run_id": "ledger_import:invalid",
+        "status": "failed",
+        "trigger_mode": "api",
+        "file_name": "ZQTZSHOW-20260317.csv",
+        "started_at": _get_run_status("ledger_import:invalid")["started_at"],
+        "finished_at": _get_run_status("ledger_import:invalid")["finished_at"],
+        "error_category": "invalid_file",
+        "error_message": "Ledger import file is invalid.",
+    }
 
 
 def test_ledger_import_actor_rejects_oversize_base64_before_decode(monkeypatch):
@@ -286,13 +549,13 @@ def test_ledger_import_actor_rejects_oversize_base64_before_decode(monkeypatch):
     )
     maximum_base64_chars = 4 * ((EXPECTED_MAX_LEDGER_IMPORT_BYTES + 2) // 3)
 
-    with pytest.raises(ValueError, match="too large"):
-        task_mod.run_ledger_import.fn(
-            file_name="ZQTZSHOW-20260317.csv",
-            content_base64="A" * (maximum_base64_chars + 4),
-            duckdb_path="unused.duckdb",
-            run_id="ledger_import:oversize-encoded",
-        )
+    result = task_mod.run_ledger_import.fn(
+        file_name="ZQTZSHOW-20260317.csv",
+        content_base64="A" * (maximum_base64_chars + 4),
+        duckdb_path="unused.duckdb",
+        run_id="ledger_import:oversize-encoded",
+    )
+    assert result["data"]["status"] == "failed"
 
 
 def test_ledger_import_actor_rejects_oversize_decoded_bytes_before_service(monkeypatch):
@@ -308,15 +571,47 @@ def test_ledger_import_actor_rejects_oversize_decoded_bytes_before_service(monke
     monkeypatch.setattr(task_mod, "LedgerImportService", UnexpectedService)
     content_base64 = base64.b64encode(b"x" * (EXPECTED_MAX_LEDGER_IMPORT_BYTES + 1)).decode("ascii")
 
-    with pytest.raises(ValueError, match="too large"):
-        task_mod.run_ledger_import.fn(
-            file_name="ZQTZSHOW-20260317.csv",
-            content_base64=content_base64,
-            duckdb_path="unused.duckdb",
-            run_id="ledger_import:oversize-decoded",
-        )
+    result = task_mod.run_ledger_import.fn(
+        file_name="ZQTZSHOW-20260317.csv",
+        content_base64=content_base64,
+        duckdb_path="unused.duckdb",
+        run_id="ledger_import:oversize-decoded",
+    )
 
     assert called is False
+    assert result["data"]["status"] == "failed"
+
+
+def test_ledger_import_corrupt_xlsx_exhaustion_writes_safe_failed_terminal(
+    tmp_path, monkeypatch, caplog
+):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks import ledger_import as task_mod
+
+    run_id = "ledger_import:corrupt-xlsx"
+    governance_dir = str(get_settings().governance_path)
+    corrupt_content = b"PK-not-a-real-xlsx raw=private"
+    result = task_mod.run_ledger_import.fn(
+        file_name=r"C:\\private\\corrupt.xlsx",
+        content_base64=base64.b64encode(corrupt_content).decode("ascii"),
+        duckdb_path="C:/private.duckdb",
+        run_id=run_id,
+        governance_dir=governance_dir,
+        retry_attempt=task_mod.MAX_LEDGER_IMPORT_MANUAL_RETRIES,
+    )
+
+    assert result["data"]["status"] == "failed"
+    task_mod.reconcile_ledger_import_terminal.fn(
+        run_id=run_id,
+        governance_dir=governance_dir,
+    )
+    failed = _get_run_status(run_id)
+    assert failed["status"] == "failed"
+    assert failed["error_category"] == "processing_failed"
+    assert failed["error_message"] == "Ledger import processing failed."
+    assert "raw=private" not in caplog.text
+    assert "private.duckdb" not in caplog.text
+    assert "corrupt.xlsx" not in caplog.text
 
 
 def test_ledger_import_service_requires_task_scope_while_actor_succeeds(tmp_path, monkeypatch):
@@ -404,14 +699,17 @@ def test_ledger_import_actor_propagates_write_failure_and_rolls_back(tmp_path, m
 
     with monkeypatch.context() as patch:
         patch.setattr(repo_mod.duckdb, "connect", failing_connect)
-        with pytest.raises(RuntimeError, match="injected snapshot failure"):
-            _scoped_import(
-                service_mod,
-                duckdb_path,
-                file_name="ZQTZSHOW-20260317.csv",
-                content=csv_bytes,
-                run_id="ledger_import:rollback",
-            )
+        from backend.app.tasks import ledger_import as task_mod
+
+        result = _scoped_import(
+            service_mod,
+            duckdb_path,
+            file_name="ZQTZSHOW-20260317.csv",
+            content=csv_bytes,
+            run_id="ledger_import:rollback",
+            retry_attempt=task_mod.MAX_LEDGER_IMPORT_MANUAL_RETRIES,
+        )
+        assert result["data"]["status"] == "failed"
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
@@ -420,6 +718,13 @@ def test_ledger_import_actor_propagates_write_failure_and_rolls_back(tmp_path, m
         assert conn.execute("select count(*) from position_snapshot").fetchone()[0] == 0
     finally:
         conn.close()
+    task_mod.reconcile_ledger_import_terminal.fn(
+        run_id="ledger_import:rollback",
+        governance_dir=str(get_settings().governance_path),
+    )
+    failed_status = _get_run_status("ledger_import:rollback")
+    assert failed_status["status"] == "failed"
+    assert failed_status["error_category"] == "processing_failed"
 
 
 def test_ledger_import_position_key_matches_frozen_contract(tmp_path, monkeypatch):
@@ -549,12 +854,12 @@ def test_ledger_import_returns_contract_error_envelope_for_invalid_request(tmp_p
     get_settings.cache_clear()
 
 
-def test_ledger_import_queue_failure_returns_structured_503(tmp_path, monkeypatch):
+def test_ledger_import_queue_failure_returns_structured_503(tmp_path, monkeypatch, caplog):
     _configure_ledger_import_env(tmp_path, monkeypatch)
     from backend.app.tasks.ledger_import import run_ledger_import
 
     def fail_send(**kwargs):
-        raise RuntimeError("queue unavailable")
+        raise RuntimeError("queue unavailable dsn=secret raw=private")
 
     monkeypatch.setattr(run_ledger_import, "send", fail_send)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
@@ -568,10 +873,18 @@ def test_ledger_import_queue_failure_returns_structured_503(tmp_path, monkeypatc
     payload = response.json()
     assert payload["error"] == {
         "code": "LEDGER_LOADING_FAILURE",
-        "message": "queue unavailable",
+        "message": "Ledger import queue dispatch failed.",
         "retryable": True,
     }
     assert payload["trace"]["request_id"].startswith("req_ledger_")
+    run_id = _only_ledger_run_id()
+    status = _get_run_status(run_id)
+    assert status["status"] == "failed"
+    assert status["error_category"] == "dispatch_failed"
+    assert status["error_message"] == "Ledger import queue dispatch failed."
+    assert "queue unavailable" not in json.dumps(payload)
+    assert "dsn=secret" not in caplog.text
+    assert "raw=private" not in caplog.text
 
 
 @pytest.mark.parametrize("error_type", [RuntimeError, ValueError])
@@ -598,10 +911,509 @@ def test_ledger_import_task_import_failure_returns_structured_503(
     assert response.status_code == 503
     assert response.json()["error"] == {
         "code": "LEDGER_LOADING_FAILURE",
-        "message": "task import failed",
+        "message": "Ledger import queue dispatch failed.",
         "retryable": True,
     }
     assert response.json()["trace"]["request_id"].startswith("req_ledger_")
+
+
+def test_ledger_import_queued_governance_failure_does_not_dispatch(tmp_path, monkeypatch, caplog):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    route_mod = import_module("backend.app.api.routes.ledger")
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(route_mod._import_task().run_ledger_import, "send", lambda **kwargs: sent.append(kwargs))
+    monkeypatch.setattr(
+        run_mod,
+        "record_ledger_import_transition",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("dsn=secret")),
+    )
+
+    response = TestClient(load_module("backend.app.main", "backend/app/main.py").app).post(
+        "/api/ledger/import",
+        files={"file": ("safe.csv", b"non-empty", "text/csv")},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["message"] == "Ledger import status is unavailable."
+    assert "secret" not in response.text
+    assert "dsn=secret" not in caplog.text
+    assert sent == []
+
+
+def test_ledger_import_status_endpoint_contract_and_validation(tmp_path, monkeypatch):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+    run_mod.record_ledger_import_transition(
+        governance_dir=get_settings().governance_path,
+        governance_backend=get_settings().governance_backend,
+        governance_sql_dsn=get_settings().governance_sql_dsn,
+        job_state_dsn="",
+        run_id="ledger_import:status-api",
+        status="failed",
+        file_name=r"C:\\sensitive\\bad.csv",
+        error_category="processing_failed",
+        error_message="Ledger import processing failed.",
+    )
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.get("/api/ledger/import-status", params={"run_id": "ledger_import:status-api"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["status"] == "failed"
+    assert payload["data"]["file_name"] == "bad.csv"
+    assert payload["trace"]["run_id"] == "ledger_import:status-api"
+    assert "sensitive" not in response.text
+
+    missing = client.get("/api/ledger/import-status")
+    blank = client.get("/api/ledger/import-status", params={"run_id": " "})
+    extra = client.get("/api/ledger/import-status", params={"run_id": "x", "extra": "y"})
+    unknown = client.get("/api/ledger/import-status", params={"run_id": "ledger_import:missing"})
+    assert {missing.status_code, blank.status_code, extra.status_code} == {400}
+    assert unknown.status_code == 404
+    assert unknown.json()["error"]["code"] == "LEDGER_IMPORT_RUN_NOT_FOUND"
+
+
+def test_ledger_import_status_governance_read_failure_is_safe_503(tmp_path, monkeypatch):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+    monkeypatch.setattr(
+        run_mod,
+        "get_ledger_import_run_status",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("postgresql://secret/path")),
+    )
+
+    response = TestClient(load_module("backend.app.main", "backend/app/main.py").app).get(
+        "/api/ledger/import-status",
+        params={"run_id": "ledger_import:any"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"] == {
+        "code": "LEDGER_IMPORT_STATUS_UNAVAILABLE",
+        "message": "Ledger import status is unavailable.",
+        "retryable": True,
+    }
+    assert "secret" not in response.text
+
+
+def test_ledger_import_actor_running_transition_failure_prevents_import(monkeypatch):
+    from backend.app.tasks import ledger_import as task_mod
+
+    called = False
+
+    class UnexpectedService:
+        def __init__(self, _duckdb_path):
+            nonlocal called
+            called = True
+
+    monkeypatch.setattr(task_mod, "LedgerImportService", UnexpectedService)
+    monkeypatch.setattr(
+        task_mod,
+        "record_ledger_import_transition",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("governance unavailable")),
+    )
+
+    result = task_mod.run_ledger_import.fn(
+        file_name="safe.csv",
+        content_base64=base64.b64encode(b"content").decode("ascii"),
+        duckdb_path="unused.duckdb",
+        run_id="ledger_import:running-failed",
+        governance_dir="unused-governance",
+        retry_attempt=task_mod.MAX_LEDGER_IMPORT_MANUAL_RETRIES,
+    )
+    assert result["data"]["status"] == "failed"
+    assert called is False
+
+
+@pytest.mark.parametrize(
+    ("data_status", "duplicate_of_batch_id", "expected_public_status"),
+    [("success", None, "succeeded"), ("duplicate", 11, "duplicate")],
+)
+def test_ledger_import_terminal_append_failure_reconciles_without_reimport(
+    tmp_path,
+    monkeypatch,
+    data_status,
+    duplicate_of_batch_id,
+    expected_public_status,
+):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks import ledger_import as task_mod
+
+    calls = 0
+
+    class CountingService:
+        def __init__(self, _duckdb_path):
+            pass
+
+        def import_file(self, **_kwargs):
+            nonlocal calls
+            calls += 1
+            return {
+                "data": {
+                    "status": data_status,
+                    "batch_id": 12,
+                    "source_version": "sv_ledger_test",
+                    "rule_version": "position_key_contract_v1",
+                },
+                "trace": {"duplicate_of_batch_id": duplicate_of_batch_id},
+            }
+
+    queued_reconciliation: dict[str, object] = {}
+    real_record = task_mod.record_ledger_import_transition
+    failed_once = False
+
+    def fail_primary_once(**kwargs):
+        nonlocal failed_once
+        if kwargs["status"] == "completed" and not failed_once:
+            failed_once = True
+            raise RuntimeError("primary dsn=secret")
+        return real_record(**kwargs)
+
+    monkeypatch.setattr(task_mod, "LedgerImportService", CountingService)
+    monkeypatch.setattr(task_mod, "record_ledger_import_transition", fail_primary_once)
+    monkeypatch.setattr(
+        task_mod.reconcile_ledger_import_terminal,
+        "send",
+        lambda **kwargs: queued_reconciliation.update(kwargs),
+    )
+
+    payload = task_mod.run_ledger_import.fn(
+        file_name="safe.csv",
+        content_base64=base64.b64encode(b"content").decode("ascii"),
+        duckdb_path="ledger-secret.duckdb",
+        run_id="ledger_import:terminal-reconcile",
+        governance_dir=str(get_settings().governance_path),
+    )
+    assert payload["data"]["status"] == data_status
+    assert calls == 1
+    assert {"duckdb_path", "content_base64", "governance_sql_dsn", "job_state_dsn"}.isdisjoint(
+        queued_reconciliation
+    )
+    serialized_reconciliation = json.dumps(queued_reconciliation)
+    assert "ledger-secret.duckdb" not in serialized_reconciliation
+    assert "content_base64" not in serialized_reconciliation
+    assert "traceback" not in serialized_reconciliation
+
+    task_mod.reconcile_ledger_import_terminal.fn(**queued_reconciliation)
+    assert calls == 1
+    assert _get_run_status("ledger_import:terminal-reconcile")["status"] == expected_public_status
+
+
+def test_ledger_import_actor_manual_retry_message_is_safe_and_exhaustion_reconciles(
+    tmp_path, monkeypatch
+):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks import ledger_import as task_mod
+
+    assert task_mod.run_ledger_import.options["max_retries"] == 0
+    assert "throws" not in task_mod.run_ledger_import.options
+    assert "on_retry_exhausted" not in task_mod.run_ledger_import.options
+
+    class FailingService:
+        def __init__(self, _duckdb_path):
+            pass
+
+        def import_file(self, **_kwargs):
+            raise RuntimeError("duckdb=secret.duckdb raw=private")
+
+    monkeypatch.setattr(task_mod, "LedgerImportService", FailingService)
+    kwargs = {
+        "file_name": "safe.csv",
+        "content_base64": base64.b64encode(b"raw=private").decode("ascii"),
+        "duckdb_path": "secret.duckdb",
+        "run_id": "ledger_import:retry-exhausted",
+        "governance_dir": str(get_settings().governance_path),
+    }
+    queued: dict[str, object] = {}
+    monkeypatch.setattr(
+        task_mod.run_ledger_import,
+        "send_with_options",
+        lambda **options: queued.update(options),
+    )
+    result = task_mod.run_ledger_import.fn(**kwargs)
+    assert result["data"]["status"] == "retrying"
+    assert _get_run_status(kwargs["run_id"])["status"] == "running"
+    assert set(queued) == {"kwargs", "delay"}
+    assert {"traceback", "on_retry_exhausted", "governance_sql_dsn", "job_state_dsn"}.isdisjoint(
+        queued["kwargs"]
+    )
+    assert queued["kwargs"]["retry_attempt"] == 1
+
+    terminal = task_mod.run_ledger_import.fn(
+        **{**kwargs, "retry_attempt": task_mod.MAX_LEDGER_IMPORT_MANUAL_RETRIES}
+    )
+    assert terminal["data"]["status"] == "failed"
+    task_mod.reconcile_ledger_import_terminal.fn(
+        run_id=kwargs["run_id"],
+        governance_dir=kwargs["governance_dir"],
+    )
+    failed = _get_run_status(kwargs["run_id"])
+    assert failed["status"] == "failed"
+    assert failed["error_category"] == "processing_failed"
+    assert failed["error_message"] == "Ledger import processing failed."
+
+
+def test_ledger_import_terminal_reconciliation_enqueue_failure_does_not_reimport_or_leak(
+    tmp_path, monkeypatch, caplog
+):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks import ledger_import as task_mod
+
+    calls = 0
+
+    class SuccessfulService:
+        def __init__(self, _duckdb_path):
+            pass
+
+        def import_file(self, **_kwargs):
+            nonlocal calls
+            calls += 1
+            return {
+                "data": {
+                    "status": "success",
+                    "batch_id": 1,
+                    "source_version": "sv_safe",
+                    "rule_version": "rv_safe",
+                },
+                "trace": {"duplicate_of_batch_id": None},
+            }
+
+    monkeypatch.setattr(task_mod, "LedgerImportService", SuccessfulService)
+    real_record = task_mod.record_ledger_import_transition
+    primary_failed = False
+
+    def fail_primary_once(**kwargs):
+        nonlocal primary_failed
+        if kwargs["status"] == "completed" and not primary_failed:
+            primary_failed = True
+            raise RuntimeError("primary dsn=secret")
+        return real_record(**kwargs)
+
+    monkeypatch.setattr(task_mod, "record_ledger_import_transition", fail_primary_once)
+    monkeypatch.setattr(
+        task_mod.reconcile_ledger_import_terminal,
+        "send",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("broker raw=private")),
+    )
+
+    payload = task_mod.run_ledger_import.fn(
+        file_name="safe.csv",
+        content_base64=base64.b64encode(b"content").decode("ascii"),
+        duckdb_path="C:/private.duckdb",
+        run_id="ledger_import:terminal-enqueue-failed",
+        governance_dir=str(get_settings().governance_path),
+    )
+
+    assert payload["data"]["status"] == "terminal_pending"
+    assert calls == 1
+    assert _get_run_status("ledger_import:terminal-enqueue-failed")["status"] == "running"
+    assert "dsn=secret" not in caplog.text
+    assert "raw=private" not in caplog.text
+    assert "private.duckdb" not in caplog.text
+    task_mod.reconcile_ledger_import_terminal.fn(
+        run_id="ledger_import:terminal-enqueue-failed",
+        governance_dir=str(get_settings().governance_path),
+    )
+    assert _get_run_status("ledger_import:terminal-enqueue-failed")["status"] == "succeeded"
+
+
+def test_ledger_import_reconcile_exhaustion_spools_safe_facts_or_reports_delivery_failure(
+    tmp_path, monkeypatch, caplog
+):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks import ledger_import as task_mod
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+
+    monkeypatch.setattr(
+        task_mod,
+        "record_ledger_import_transition",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("primary dsn=secret")),
+    )
+    facts = {
+        "run_id": "ledger_import:reconcile-exhausted",
+        "governance_dir": str(get_settings().governance_path),
+        "retry_attempt": task_mod.MAX_LEDGER_IMPORT_MANUAL_RETRIES,
+        "file_name": "safe.csv",
+        "status": "completed",
+        "outcome": "success",
+        "batch_id": 8,
+        "duplicate_of_batch_id": None,
+        "source_version": "sv_safe",
+        "rule_version": "rv_safe",
+        "error_category": None,
+        "error_message": None,
+        "finished_at": "2026-07-11T00:00:00+00:00",
+    }
+    pending = task_mod.reconcile_ledger_import_terminal.fn(**facts)
+    assert pending["data"]["status"] == "pending_reconciliation"
+    spooled = run_mod.get_ledger_import_terminal_outbox(
+        governance_dir=facts["governance_dir"],
+        governance_backend=get_settings().governance_backend,
+        governance_sql_dsn=get_settings().governance_sql_dsn,
+        run_id=facts["run_id"],
+    )
+    assert spooled["outcome"] == "success"
+    assert "dsn=secret" not in caplog.text
+
+    monkeypatch.setattr(
+        task_mod,
+        "record_ledger_import_terminal_outbox",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("spool raw=private")),
+    )
+    failed_facts = {**facts, "run_id": "ledger_import:reconcile-delivery-failed"}
+    delivery_failed = task_mod.reconcile_ledger_import_terminal.fn(**failed_facts)
+    assert delivery_failed["data"]["status"] == "delivery_failed"
+    assert "raw=private" not in caplog.text
+
+
+def test_ledger_import_terminal_delivery_total_failure_is_explicit_and_observable(
+    tmp_path, monkeypatch, caplog
+):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks import ledger_import as task_mod
+
+    class SuccessfulService:
+        def __init__(self, _duckdb_path):
+            pass
+
+        def import_file(self, **_kwargs):
+            return {
+                "data": {
+                    "status": "success",
+                    "batch_id": 5,
+                    "source_version": "sv_safe",
+                    "rule_version": "rv_safe",
+                },
+                "trace": {"duplicate_of_batch_id": None},
+            }
+
+    real_record = task_mod.record_ledger_import_transition
+
+    def fail_terminal_primary(**kwargs):
+        if kwargs["status"] == "completed":
+            raise RuntimeError("primary dsn=secret")
+        return real_record(**kwargs)
+
+    monkeypatch.setattr(task_mod, "LedgerImportService", SuccessfulService)
+    monkeypatch.setattr(task_mod, "record_ledger_import_transition", fail_terminal_primary)
+    monkeypatch.setattr(
+        task_mod.reconcile_ledger_import_terminal,
+        "send",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("broker path=C:/private")),
+    )
+    monkeypatch.setattr(
+        task_mod,
+        "record_ledger_import_terminal_outbox",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("spool raw=private")),
+    )
+
+    result = task_mod.run_ledger_import.fn(
+        file_name="safe.csv",
+        content_base64=base64.b64encode(b"content").decode("ascii"),
+        duckdb_path="C:/private.duckdb",
+        run_id="ledger_import:delivery-failed",
+        governance_dir=str(get_settings().governance_path),
+    )
+
+    assert result["data"]["status"] == "delivery_failed"
+    event = "event=ledger_import_terminal_delivery_failed"
+    assert caplog.text.count(event) == 1
+    assert "dsn=secret" not in caplog.text
+    assert "C:/private" not in caplog.text
+    assert "raw=private" not in caplog.text
+
+
+def test_ledger_import_sensitive_failures_do_not_leak_to_logs_or_status(tmp_path, monkeypatch, caplog):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks import ledger_import as task_mod
+
+    class SensitiveFailureService:
+        def __init__(self, _duckdb_path):
+            pass
+
+        def import_file(self, **_kwargs):
+            raise RuntimeError("dsn=secret path=C:/private.duckdb raw=private")
+
+    monkeypatch.setattr(task_mod, "LedgerImportService", SensitiveFailureService)
+    monkeypatch.setattr(task_mod.run_ledger_import, "send_with_options", lambda **_kwargs: None)
+    result = task_mod.run_ledger_import.fn(
+        file_name="safe.csv",
+        content_base64=base64.b64encode(b"raw=private").decode("ascii"),
+        duckdb_path="C:/private.duckdb",
+        run_id="ledger_import:safe-log",
+        governance_dir=str(get_settings().governance_path),
+    )
+    assert result["data"]["status"] == "retrying"
+
+    assert "dsn=secret" not in caplog.text
+    assert "private.duckdb" not in caplog.text
+    assert "raw=private" not in caplog.text
+
+
+def test_ledger_import_invalid_file_outbox_retries_synchronously_then_reconciles(
+    tmp_path, monkeypatch, caplog
+):
+    _configure_ledger_import_env(tmp_path, monkeypatch)
+    from backend.app.tasks import ledger_import as task_mod
+
+    real_outbox = task_mod.record_ledger_import_terminal_outbox
+    attempts = 0
+
+    def flaky_outbox(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise RuntimeError("dsn=secret raw=private")
+        return real_outbox(**kwargs)
+
+    service_called = False
+
+    class UnexpectedService:
+        def __init__(self, _duckdb_path):
+            nonlocal service_called
+            service_called = True
+
+    monkeypatch.setattr(task_mod, "record_ledger_import_terminal_outbox", flaky_outbox)
+    monkeypatch.setattr(task_mod, "LedgerImportService", UnexpectedService)
+    real_record = task_mod.record_ledger_import_transition
+    fail_primary = True
+
+    def flaky_primary(**transition_kwargs):
+        if transition_kwargs["status"] == "failed" and fail_primary:
+            raise RuntimeError("primary dsn=secret")
+        return real_record(**transition_kwargs)
+
+    monkeypatch.setattr(task_mod, "record_ledger_import_transition", flaky_primary)
+    monkeypatch.setattr(
+        task_mod.reconcile_ledger_import_terminal,
+        "send",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("broker raw=private")),
+    )
+    kwargs = {
+        "file_name": "invalid.csv",
+        "content_base64": "not-base64!",
+        "duckdb_path": "C:/private.duckdb",
+        "run_id": "ledger_import:status-retry",
+        "governance_dir": str(get_settings().governance_path),
+    }
+
+    result = task_mod.run_ledger_import.fn(**kwargs)
+    assert result["data"]["status"] == "terminal_pending"
+    assert attempts == 3
+    assert "dsn=secret" not in caplog.text
+    assert "raw=private" not in caplog.text
+    assert _get_run_status(kwargs["run_id"])["status"] == "running"
+    assert service_called is False
+    fail_primary = False
+    task_mod.reconcile_ledger_import_terminal.fn(
+        run_id=kwargs["run_id"],
+        governance_dir=kwargs["governance_dir"],
+    )
+    status = _get_run_status(kwargs["run_id"])
+    assert status["status"] == "failed"
+    assert status["error_category"] == "invalid_file"
+    assert service_called is False
 
 
 def test_ledger_import_actor_duplicate_preserves_run_id_and_does_not_duplicate_snapshots(
@@ -646,6 +1458,9 @@ def test_ledger_import_actor_duplicate_preserves_run_id_and_does_not_duplicate_s
     assert duplicate_payload["data"]["run_id"] == "ledger_import:duplicate"
     assert duplicate_payload["trace"]["run_id"] == "ledger_import:duplicate"
     assert duplicate_payload["trace"]["duplicate_of_batch_id"] == first["data"]["batch_id"]
+    duplicate_status = _get_run_status("ledger_import:duplicate")
+    assert duplicate_status["status"] == "duplicate"
+    assert duplicate_status["duplicate_of_batch_id"] == first["data"]["batch_id"]
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
@@ -860,6 +1675,31 @@ def _configure_ledger_import_env(tmp_path, monkeypatch) -> Path:
         action="read",
     )
     return duckdb_path
+
+
+def _get_run_status(run_id: str) -> dict[str, object]:
+    run_mod = import_module("backend.app.services.ledger_import_run_service")
+    settings = get_settings()
+    return run_mod.get_ledger_import_run_status(
+        governance_dir=settings.governance_path,
+        governance_backend=settings.governance_backend,
+        governance_sql_dsn=settings.governance_sql_dsn,
+        run_id=run_id,
+    )
+
+
+def _only_ledger_run_id() -> str:
+    from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+
+    settings = get_settings()
+    rows = GovernanceRepository(
+        base_dir=settings.governance_path,
+        sql_dsn=settings.governance_sql_dsn,
+        backend_mode=settings.governance_backend,
+    ).read_all(CACHE_BUILD_RUN_STREAM)
+    run_ids = {str(row["run_id"]) for row in rows if row.get("job_name") == "ledger_import"}
+    assert len(run_ids) == 1
+    return run_ids.pop()
 
 
 def _ledger_csv_bytes(service_mod, rows: list[list[object]], *, unknown_value: str = "") -> bytes:

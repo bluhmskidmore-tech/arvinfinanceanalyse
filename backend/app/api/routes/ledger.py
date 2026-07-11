@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import re
 from importlib import import_module
 from pathlib import Path
@@ -13,6 +14,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
 MAX_LEDGER_MULTIPART_OVERHEAD_BYTES = 64 * 1024
 
 
@@ -26,6 +28,10 @@ def _svc():
 
 def _import_task():
     return import_module("backend.app.tasks.ledger_import")
+
+
+def _run_svc():
+    return import_module("backend.app.services.ledger_import_run_service")
 
 
 def _analytics_svc():
@@ -54,6 +60,7 @@ async def import_ledger(
             request,
             max_file_bytes=service_module.MAX_LEDGER_IMPORT_BYTES,
         )
+        file_name = _run_svc().normalize_ledger_import_file_name(file_name)
         suffix = Path(file_name).suffix.lower()
         if suffix not in service_module.SUPPORTED_SUFFIXES:
             raise ValueError(f"Unsupported ledger import file type: {suffix or '<none>'}")
@@ -74,6 +81,29 @@ async def import_ledger(
 
     run_id = f"ledger_import:{uuid4().hex}"
     request_id = f"req_ledger_{uuid4().hex[:12]}"
+    run_service = _run_svc()
+    transition_args = {
+        "governance_dir": settings.governance_path,
+        "governance_backend": settings.governance_backend,
+        "governance_sql_dsn": settings.governance_sql_dsn,
+        "job_state_dsn": settings.job_state_dsn,
+        "run_id": run_id,
+        "file_name": file_name,
+    }
+    try:
+        run_service.record_ledger_import_transition(status="queued", **transition_args)
+    except Exception as exc:
+        logger.error(
+            "Ledger import queued transition failed run_id=%s error_type=%s.",
+            run_id,
+            type(exc).__name__,
+        )
+        return _error_response(
+            status_code=503,
+            code="LEDGER_LOADING_FAILURE",
+            message="Ledger import status is unavailable.",
+            retryable=True,
+        )
     try:
         task_module = _import_task()
         task_module.run_ledger_import.send(
@@ -81,12 +111,31 @@ async def import_ledger(
             content_base64=base64.b64encode(content).decode("ascii"),
             duckdb_path=str(settings.duckdb_path),
             run_id=run_id,
+            governance_dir=str(settings.governance_path),
         )
     except Exception as exc:
+        logger.error(
+            "Ledger import queue dispatch failed run_id=%s error_type=%s.",
+            run_id,
+            type(exc).__name__,
+        )
+        try:
+            run_service.record_ledger_import_transition(
+                status="failed",
+                error_category="dispatch_failed",
+                error_message="Ledger import queue dispatch failed.",
+                **transition_args,
+            )
+        except Exception as transition_exc:
+            logger.error(
+                "Ledger import dispatch failure transition failed run_id=%s error_type=%s.",
+                run_id,
+                type(transition_exc).__name__,
+            )
         return _error_response(
             status_code=503,
             code="LEDGER_LOADING_FAILURE",
-            message=str(exc),
+            message="Ledger import queue dispatch failed.",
             retryable=True,
         )
 
@@ -104,6 +153,64 @@ async def import_ledger(
             },
         },
     )
+
+
+@router.get("/ledger/import-status")
+def get_ledger_import_status(
+    request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str | None = Query(None),
+):
+    settings = get_settings()
+    try:
+        _reject_unknown_query_params(request, {"run_id"})
+        normalized_run_id = str(run_id or "").strip()
+        if not normalized_run_id:
+            raise ValueError("run_id is required.")
+        auth_error = _ledger_read_auth_error(auth, settings)
+        if auth_error is not None:
+            return auth_error
+        run_service = _run_svc()
+        try:
+            data = run_service.get_ledger_import_run_status(
+                governance_dir=settings.governance_path,
+                governance_backend=settings.governance_backend,
+                governance_sql_dsn=settings.governance_sql_dsn,
+                run_id=normalized_run_id,
+            )
+        except run_service.LedgerImportRunNotFoundError:
+            return _error_response(
+                status_code=404,
+                code="LEDGER_IMPORT_RUN_NOT_FOUND",
+                message="Ledger import run was not found.",
+                retryable=False,
+            )
+        return {
+            "data": data,
+            "trace": {
+                "request_id": f"req_ledger_{uuid4().hex[:12]}",
+                "run_id": normalized_run_id,
+            },
+        }
+    except ValueError as exc:
+        return _error_response(
+            status_code=400,
+            code="LEDGER_IMPORT_STATUS_INVALID_REQUEST",
+            message=str(exc),
+            retryable=False,
+        )
+    except Exception as exc:
+        logger.error(
+            "Ledger import status read failed run_id=%s error_type=%s.",
+            str(run_id or "").strip(),
+            type(exc).__name__,
+        )
+        return _error_response(
+            status_code=503,
+            code="LEDGER_IMPORT_STATUS_UNAVAILABLE",
+            message="Ledger import status is unavailable.",
+            retryable=True,
+        )
 
 
 @router.get("/ledger/imports")
