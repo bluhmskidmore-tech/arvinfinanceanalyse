@@ -83,6 +83,7 @@ type ScenarioReviewActionStatus = "pending" | "confirmed" | "issue";
 type ScenarioReviewIssueReason = "basis" | "ftp" | "attribution" | "data";
 type ScenarioComparisonFilter = "all" | "pressure" | "improvement";
 type ScenarioActionClosureStatus = "todo" | "reviewing" | "closed" | "issue";
+type FormalTableDisplayMode = "key" | "full";
 
 const SCENARIO_REVIEW_ACTION_STATUS_OPTIONS: ReadonlyArray<
   readonly [ScenarioReviewActionStatus, string]
@@ -3292,6 +3293,7 @@ function attributionRowClassName(row: ProductCategoryAttributionRow): string | u
 export default function ProductCategoryPnlPage() {
   const client = useApiClient();
   const [selectedBranch, setSelectedBranch] = useState<"product_category_pnl" | "monthly_operating_analysis">("product_category_pnl");
+  const [formalTableDisplayMode, setFormalTableDisplayMode] = useState<FormalTableDisplayMode>("key");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedView, setSelectedView] = useState("monthly");
   const [scenarioRate, setScenarioRate] = useState("1.75");
@@ -4945,65 +4947,142 @@ export default function ProductCategoryPnlPage() {
           rows={rowsToRender}
         />
         <div
+          className="product-category-formal-table-controls"
+          data-testid="product-category-formal-table-display-mode"
+          role="group"
+          aria-label="报表列展示"
+        >
+          <button
+            type="button"
+            aria-pressed={formalTableDisplayMode === "key"}
+            className={`product-category-formal-table-controls__button ${
+              formalTableDisplayMode === "key"
+                ? "product-category-formal-table-controls__button--active"
+                : ""
+            }`}
+            onClick={() => setFormalTableDisplayMode("key")}
+          >
+            关键读数
+          </button>
+          <button
+            type="button"
+            aria-pressed={formalTableDisplayMode === "full"}
+            className={`product-category-formal-table-controls__button ${
+              formalTableDisplayMode === "full"
+                ? "product-category-formal-table-controls__button--active"
+                : ""
+            }`}
+            onClick={() => setFormalTableDisplayMode("full")}
+          >
+            完整口径
+          </button>
+        </div>
+        <div
           data-testid="product-category-formal-table-raw-grid"
           className="product-category-formal-table-wrap"
         >
-          <table data-testid="product-category-table" className="product-category-formal-table">
+          <table
+            data-testid="product-category-table"
+            className={`product-category-formal-table product-category-formal-table--${formalTableDisplayMode}`}
+          >
             <colgroup>
               <col className="product-category-formal-table__col--category" />
               <col className="product-category-formal-table__col--scale" />
-              <col className="product-category-formal-table__col--scale" />
-              <col className="product-category-formal-table__col--scale-foreign" />
-              <col className="product-category-formal-table__col--pnl" />
-              <col className="product-category-formal-table__col--pnl" />
-              <col className="product-category-formal-table__col--pnl-ftp" />
+              {formalTableDisplayMode === "full" ? (
+                <>
+                  <col className="product-category-formal-table__col--scale" />
+                  <col className="product-category-formal-table__col--scale-foreign" />
+                  <col className="product-category-formal-table__col--pnl" />
+                  <col className="product-category-formal-table__col--pnl" />
+                  <col className="product-category-formal-table__col--pnl-ftp" />
+                </>
+              ) : null}
               <col className="product-category-formal-table__col--pnl-net" />
-              <col className="product-category-formal-table__col--pnl-foreign" />
-              <col className="product-category-formal-table__col--pnl-ftp" />
+              {formalTableDisplayMode === "full" ? (
+                <>
+                  <col className="product-category-formal-table__col--pnl-foreign" />
+                  <col className="product-category-formal-table__col--pnl-ftp" />
+                </>
+              ) : null}
               <col className="product-category-formal-table__col--pnl-net" />
               <col className="product-category-formal-table__col--business-net" />
               <col className="product-category-formal-table__col--yield" />
             </colgroup>
             <thead>
-              <tr className="product-category-formal-table__header-row">
-                <th
-                  rowSpan={2}
-                  className="product-category-formal-table__head product-category-formal-table__head--category"
-                >
-                  产品类别
-                </th>
-                <th colSpan={3} className="product-category-formal-table__head product-category-formal-table__head--group">
-                  规模日均
-                </th>
-                <th colSpan={8} className="product-category-formal-table__head product-category-formal-table__head--group">
-                  损益
-                </th>
-                <th
-                  rowSpan={2}
-                  className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--yield"
-                >
-                  加权收益率
-                </th>
-              </tr>
-              <tr className="product-category-formal-table__header-row product-category-formal-table__header-row--metrics">
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">综本</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--group-start">
-                  综本
-                </th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币FTP</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币净收入</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币FTP</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币净收入</th>
-                <th
-                  className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--highlight"
-                >
-                  营业净收入
-                </th>
-              </tr>
+              {formalTableDisplayMode === "key" ? (
+                <>
+                  <tr className="product-category-formal-table__header-row">
+                    <th
+                      rowSpan={2}
+                      className="product-category-formal-table__head product-category-formal-table__head--category"
+                    >
+                      产品类别
+                    </th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--group">
+                      规模日均
+                    </th>
+                    <th colSpan={3} className="product-category-formal-table__head product-category-formal-table__head--group">
+                      净收入
+                    </th>
+                    <th
+                      rowSpan={2}
+                      className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--yield"
+                    >
+                      加权收益率
+                    </th>
+                  </tr>
+                  <tr className="product-category-formal-table__header-row product-category-formal-table__header-row--metrics">
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">综本规模</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--group-start">
+                      人民币净收入
+                    </th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">外币净收入</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--highlight">
+                      营业净收入
+                    </th>
+                  </tr>
+                </>
+              ) : (
+                <>
+                  <tr className="product-category-formal-table__header-row">
+                    <th
+                      rowSpan={2}
+                      className="product-category-formal-table__head product-category-formal-table__head--category"
+                    >
+                      产品类别
+                    </th>
+                    <th colSpan={3} className="product-category-formal-table__head product-category-formal-table__head--group">
+                      规模日均
+                    </th>
+                    <th colSpan={8} className="product-category-formal-table__head product-category-formal-table__head--group">
+                      损益
+                    </th>
+                    <th
+                      rowSpan={2}
+                      className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--yield"
+                    >
+                      加权收益率
+                    </th>
+                  </tr>
+                  <tr className="product-category-formal-table__header-row product-category-formal-table__header-row--metrics">
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">综本</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">外币</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--group-start">
+                      综本
+                    </th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币FTP</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币净收入</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">外币</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">外币FTP</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number">外币净收入</th>
+                    <th className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--highlight">
+                      营业净收入
+                    </th>
+                  </tr>
+                </>
+              )}
             </thead>
             <tbody>
               {rowsToRender.map((row) => (
@@ -5021,35 +5100,44 @@ export default function ProductCategoryPnlPage() {
                   <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
                     {formatProductCategoryRowDisplayValue(row, row.cnx_scale)}
                   </td>
-                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                    {formatProductCategoryRowDisplayValue(row, row.cny_scale)}
-                  </td>
-                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                    {formatProductCategoryForeignDisplayValue(row, row.foreign_scale)}
-                  </td>
-                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--group-start">
-                    {formatProductCategoryRowDisplayValue(row, row.cnx_cash)}
-                  </td>
-                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                    {formatProductCategoryRowDisplayValue(row, row.cny_cash)}
-                  </td>
-                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
-                    {formatProductCategoryRowDisplayValue(row, row.cny_ftp)}
-                  </td>
+                  {formalTableDisplayMode === "full" ? (
+                    <>
+                      <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                        {formatProductCategoryRowDisplayValue(row, row.cny_scale)}
+                      </td>
+                      <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                        {formatProductCategoryForeignDisplayValue(row, row.foreign_scale)}
+                      </td>
+                      <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--group-start">
+                        {formatProductCategoryRowDisplayValue(row, row.cnx_cash)}
+                      </td>
+                      <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                        {formatProductCategoryRowDisplayValue(row, row.cny_cash)}
+                      </td>
+                      <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
+                        {formatProductCategoryRowDisplayValue(row, row.cny_ftp)}
+                      </td>
+                    </>
+                  ) : null}
                   <td
                     className={[
                       "product-category-formal-table__cell product-category-formal-table__cell--number",
+                      formalTableDisplayMode === "key" ? "product-category-formal-table__cell--group-start" : "",
                       formalValueToneClassName(row.cny_net),
                     ].join(" ")}
                   >
                     {formatProductCategoryRowDisplayValue(row, row.cny_net)}
                   </td>
-                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                    {formatProductCategoryForeignDisplayValue(row, row.foreign_cash)}
-                  </td>
-                  <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
-                    {formatProductCategoryForeignDisplayValue(row, row.foreign_ftp)}
-                  </td>
+                  {formalTableDisplayMode === "full" ? (
+                    <>
+                      <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
+                        {formatProductCategoryForeignDisplayValue(row, row.foreign_cash)}
+                      </td>
+                      <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
+                        {formatProductCategoryForeignDisplayValue(row, row.foreign_ftp)}
+                      </td>
+                    </>
+                  ) : null}
                   <td
                     className={[
                       "product-category-formal-table__cell product-category-formal-table__cell--number",

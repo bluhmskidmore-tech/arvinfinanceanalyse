@@ -585,6 +585,32 @@ describe("ProductCategoryPnlPage", () => {
     expect(within(rawGrid).getByTestId("product-category-table")).toBeInTheDocument();
   });
 
+  it("defaults the formal table to key columns and can reveal the complete audit view", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const table = await screen.findByTestId("product-category-table");
+    const displayMode = screen.getByRole("group", { name: "报表列展示" });
+    const keyButton = within(displayMode).getByRole("button", { name: "关键读数" });
+    const fullButton = within(displayMode).getByRole("button", { name: "完整口径" });
+    const keyRow = within(table).getByText("买入返售").closest("tr");
+
+    expect(keyButton).toHaveAttribute("aria-pressed", "true");
+    expect(fullButton).toHaveAttribute("aria-pressed", "false");
+    expect(table).toHaveClass("product-category-formal-table--key");
+    expect(within(table).queryByText("人民币FTP")).not.toBeInTheDocument();
+    expect(within(keyRow as HTMLElement).getAllByRole("cell")).toHaveLength(6);
+
+    await user.click(fullButton);
+
+    const fullRow = within(table).getByText("买入返售").closest("tr");
+    expect(keyButton).toHaveAttribute("aria-pressed", "false");
+    expect(fullButton).toHaveAttribute("aria-pressed", "true");
+    expect(table).toHaveClass("product-category-formal-table--full");
+    expect(within(table).getByText("人民币FTP")).toBeInTheDocument();
+    expect(within(fullRow as HTMLElement).getAllByRole("cell")).toHaveLength(13);
+  });
+
   it("opens an action queue closure drawer from an operating action row", async () => {
     const user = userEvent.setup();
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
@@ -2185,6 +2211,7 @@ describe("ProductCategoryPnlPage", () => {
     ]);
   });
   it("Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention", async () => {
+    const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
     renderWorkbenchAppWithClient({
       ...baseClient,
@@ -2239,6 +2266,7 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     const table = await screen.findByTestId("product-category-table");
+    await user.click(screen.getByRole("button", { name: "完整口径" }));
     const assetRow = within(table).getByText("买入返售").closest("tr");
     expect(assetRow).toBeTruthy();
     expect(within(assetRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
