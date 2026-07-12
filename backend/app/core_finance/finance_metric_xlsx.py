@@ -191,10 +191,58 @@ class FinanceMetricSourceData:
     selected_microloan_ledger_header_row: int
 
 
+@dataclass(frozen=True, slots=True)
+class FinanceMetricLedgerOnlySourceData:
+    report_month: str
+    report_date: date
+    ledger_sha256: str
+    ledger: tuple[LedgerObservation, ...]
+    period: PeriodEvidence
+    issues: tuple[SourceIssue, ...]
+
+
 def read_xlsx(path: str | Path, *, limits: XlsxLimits = DEFAULT_XLSX_LIMITS) -> XlsxWorkbook:
     workbook_path = Path(path)
     snapshot = _read_file_snapshot(workbook_path, limits)
     return _read_xlsx_payload(snapshot.payload, workbook_path.name, limits)
+
+
+def parse_finance_metric_ledger_only_source(
+    ledger_path: str | Path,
+    *,
+    requested_month: str,
+    limits: XlsxLimits = DEFAULT_XLSX_LIMITS,
+) -> FinanceMetricLedgerOnlySourceData:
+    """Read only the main-ledger sheet and require an exact calendar month."""
+
+    if not re.fullmatch(r"\d{4}(?:0[1-9]|1[0-2])", requested_month):
+        raise FinanceMetricXlsxError(
+            "requested period month must be a real YYYYMM month",
+            code="invalid_requested_month",
+        )
+    year = int(requested_month[:4])
+    month = int(requested_month[4:])
+    report_date = date(year, month, monthrange(year, month)[1])
+    ledger_file = Path(ledger_path)
+    snapshot = _read_file_snapshot(ledger_file, limits)
+    workbook = _read_xlsx_payload(snapshot.payload, ledger_file.name, limits)
+    sheet = _required_sheet(workbook, "综本")
+    ledger, period, issues = _parse_main_ledger(sheet)
+    if period.start != report_date.replace(day=1) or period.end != report_date:
+        raise FinanceMetricXlsxError(
+            "ledger source period does not match the requested calendar month",
+            code="source_period_mismatch",
+            sheet=period.sheet,
+            cell=period.cell_ref,
+        )
+    return FinanceMetricLedgerOnlySourceData(
+        report_month=requested_month,
+        report_date=report_date,
+        ledger_sha256=snapshot.sha256,
+        ledger=tuple(ledger),
+        period=period,
+        issues=tuple(issues),
+    )
 
 
 def _read_file_snapshot(path: Path, limits: XlsxLimits) -> _FileSnapshot:

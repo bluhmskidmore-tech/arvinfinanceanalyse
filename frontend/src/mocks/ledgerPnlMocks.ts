@@ -9,6 +9,7 @@ import type {
   LedgerPnlAccountDetailPayload,
   LedgerPnlAnalysisPayload,
   LedgerPnlCandidateFinancialIndicatorLineage,
+  LedgerPnlCandidateFinancialIndicatorPeriodComparison,
   LedgerPnlCandidateFinancialIndicatorsPayload,
   LedgerPnlCandidateFinancialIndicatorsResultMeta,
   LedgerPnlFormalFinancialIndicatorContractPayload,
@@ -2353,5 +2354,164 @@ export function buildMockLedgerPnlFormalIndicatorRuleChecks(
       registration_target: "backend/app/core_finance/formal_financial_indicators.py",
       verification: `python -m pytest tests/test_ledger_pnl_formal_indicator_rule_checks.py -q -k ${normalizedReportMonth}`,
     },
+  };
+}
+
+function previousSyntheticReportMonth(reportMonth: string): string {
+  const year = Number(reportMonth.slice(0, 4));
+  const month = Number(reportMonth.slice(4, 6));
+  return month === 1
+    ? `${year - 1}12`
+    : `${year}${String(month - 1).padStart(2, "0")}`;
+}
+
+function syntheticComparisonSha(reportMonth: string, salt: string): string {
+  return `${reportMonth}${salt}`.padEnd(64, salt).slice(0, 64);
+}
+
+export function buildMockLedgerPnlCandidateFinancialIndicatorPeriodComparison(
+  reportMonth: string,
+): LedgerPnlCandidateFinancialIndicatorPeriodComparison {
+  const normalizedReportMonth = reportMonth.trim();
+  if (!/^\d{4}(?:0[1-9]|1[0-2])$/.test(normalizedReportMonth)) {
+    throw new Error("Candidate period comparison report month must use YYYYMM.");
+  }
+  const comparisonMonth = previousSyntheticReportMonth(normalizedReportMonth);
+  const twoMonthPrior = previousSyntheticReportMonth(comparisonMonth);
+  const currentLedgerSha = syntheticComparisonSha(normalizedReportMonth, "a");
+
+  return {
+    contract_version: "candidate-financial-indicator-period-comparison-v1",
+    report_month: normalizedReportMonth,
+    report_date: reportMonthEnd(normalizedReportMonth),
+    comparison_month: comparisonMonth,
+    two_month_prior: twoMonthPrior,
+    comparison_scope: "ledger_only_key_metrics",
+    full_scope_status: "unavailable",
+    full_scope_reason_code: "missing_required_sheet",
+    full_scope_detail: `演示对比：${comparisonMonth} 日均工作簿缺少必需工作表“微贷”，完整 186 项重放不可用。`,
+    full_scope_gaps: [{
+      reason_code: "missing_required_sheet",
+      source_kind: "daily",
+      month: comparisonMonth,
+      required_sheet: "微贷",
+    }],
+    overall_status: "partial",
+    metric_status: "candidate",
+    formal_use_allowed: false,
+    certification_effect: "none",
+    driver_status: "unclear",
+    rule_version: "qdb-finance-2026-v1.0.1",
+    rule_hash: "1".repeat(64),
+    idempotency_key: syntheticComparisonSha(normalizedReportMonth, "d"),
+    source_periods: [
+      {
+        month: normalizedReportMonth,
+        report_date: reportMonthEnd(normalizedReportMonth),
+        ledger_file_name: `总账对账${normalizedReportMonth}.xlsx`,
+        ledger_sha256: currentLedgerSha,
+        locked_sha256: currentLedgerSha,
+        lock_status: "locked_match",
+      },
+      {
+        month: comparisonMonth,
+        report_date: reportMonthEnd(comparisonMonth),
+        ledger_file_name: `总账对账${comparisonMonth}.xlsx`,
+        ledger_sha256: syntheticComparisonSha(comparisonMonth, "b"),
+        locked_sha256: null,
+        lock_status: "unlocked",
+      },
+      {
+        month: twoMonthPrior,
+        report_date: reportMonthEnd(twoMonthPrior),
+        ledger_file_name: `总账对账${twoMonthPrior}.xlsx`,
+        ledger_sha256: syntheticComparisonSha(twoMonthPrior, "c"),
+        locked_sha256: null,
+        lock_status: "unlocked",
+      },
+    ],
+    metrics: [
+      {
+        metric_id: "income.interest.net",
+        metric_name: "利息净收入",
+        basis: "calendar_month_from_cumulative",
+        method: "finance_metric_cumulative_mom",
+        unit: "亿元",
+        comparison_status: "comparable",
+        current_metric_status: "ok",
+        previous_metric_status: "ok",
+        two_month_prior_metric_status: "ok",
+        current_value_yi: "12.5000",
+        previous_value_yi: "10.0000",
+        current_source_value_yi: "60.0000",
+        previous_source_value_yi: "47.5000",
+        two_month_prior_source_value_yi: "37.5000",
+        delta_yi: "2.5000",
+        change_rate: "0.2500",
+        rate_reason: null,
+        reasons: [],
+        driver_status: "unclear",
+        quality_status: "degraded_candidate",
+      },
+      ...[
+        ["income.noninterest.total", "非息净收入合计", "28.0000", "23.0000", "19.0000"],
+        ["income.operating.mother_bank", "母公司营业收入（可自动口径）", "88.0000", "75.0000", "61.0000"],
+      ].map(([metricId, metricName, currentSourceValue, previousSourceValue, twoMonthPriorSourceValue]) => ({
+        metric_id: metricId,
+        metric_name: metricName,
+        basis: "calendar_month_from_cumulative" as const,
+        method: "finance_metric_cumulative_mom" as const,
+        unit: "亿元" as const,
+        comparison_status: "not_comparable" as const,
+        current_metric_status: "warning" as const,
+        previous_metric_status: "warning" as const,
+        two_month_prior_metric_status: "warning" as const,
+        current_value_yi: null,
+        previous_value_yi: null,
+        current_source_value_yi: currentSourceValue,
+        previous_source_value_yi: previousSourceValue,
+        two_month_prior_source_value_yi: twoMonthPriorSourceValue,
+        delta_yi: null,
+        change_rate: null,
+        rate_reason: "metric_status_not_ok" as const,
+        reasons: [
+          "current:status=warning",
+          "current:manual_required_not_supplied",
+          "previous:status=warning",
+          "previous:manual_required_not_supplied",
+          "two_month_prior:status=warning",
+          "two_month_prior:missing_account:main:cumulative:level1:DEMO_ACCOUNT",
+        ],
+        driver_status: "unclear" as const,
+        quality_status: "not_comparable" as const,
+      })),
+      ...[
+        ["balance.deposit.corporate.total::point", "公司存款合计", "105.0000", "100.0000", "5.0000", "0.0500"],
+        ["balance.deposit.retail.total::point", "储蓄存款合计", "82.0000", "80.0000", "2.0000", "0.0250"],
+        ["balance.loan.corporate.total::point", "公司贷款合计", "121.0000", "120.0000", "1.0000", "0.0083333333"],
+        ["balance.loan.retail.total::point", "个人贷款合计", "49.0000", "50.0000", "-1.0000", "-0.0200"],
+      ].map(([metricId, metricName, currentValue, previousValue, delta, rate]) => ({
+        metric_id: metricId,
+        metric_name: metricName,
+        basis: "month_end_point" as const,
+        method: "finance_metric_point_to_point" as const,
+        unit: "亿元" as const,
+        comparison_status: "comparable" as const,
+        current_metric_status: "ok" as const,
+        previous_metric_status: "ok" as const,
+        two_month_prior_metric_status: null,
+        current_value_yi: currentValue,
+        previous_value_yi: previousValue,
+        current_source_value_yi: currentValue,
+        previous_source_value_yi: previousValue,
+        two_month_prior_source_value_yi: null,
+        delta_yi: delta,
+        change_rate: rate,
+        rate_reason: null,
+        reasons: [],
+        driver_status: "unclear" as const,
+        quality_status: "degraded_candidate" as const,
+      })),
+    ],
   };
 }

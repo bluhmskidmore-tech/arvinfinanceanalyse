@@ -5,6 +5,7 @@
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import {
   buildMockLedgerPnlCandidateFinancialIndicators,
+  buildMockLedgerPnlCandidateFinancialIndicatorPeriodComparison,
   buildMockLedgerPnlFormalIndicatorRuleChecks,
   getMockLedgerPnlFormalFinancialIndicators,
   getMockLedgerPnlAccountDetail,
@@ -33,6 +34,7 @@ import type {
   LedgerPnlAnalysisPayload,
   LedgerPnlCandidateFinancialIndicatorsPayload,
   LedgerPnlCandidateFinancialIndicatorsEnvelope,
+  LedgerPnlCandidateFinancialIndicatorPeriodComparison,
   LedgerPnlCandidateFinancialIndicatorRevalidationReceipt,
   LedgerPnlCandidateFinancialIndicatorRevalidationRequest,
   LedgerPnlFormalFinancialIndicatorContractPayload,
@@ -80,6 +82,10 @@ export type PnlCoreClientMethods = {
     reportMonth: string,
     options?: { includeLineage?: boolean; metricId?: string },
   ) => Promise<LedgerPnlCandidateFinancialIndicatorsEnvelope>;
+  getLedgerPnlCandidateFinancialIndicatorPeriodComparison: (
+    reportMonth: string,
+    options?: { signal?: AbortSignal },
+  ) => Promise<LedgerPnlCandidateFinancialIndicatorPeriodComparison>;
   revalidateLedgerPnlCandidateFinancialIndicators: (
     reportMonth: string,
     request: LedgerPnlCandidateFinancialIndicatorRevalidationRequest,
@@ -382,6 +388,10 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
       const payload = await buildMockLedgerPnlCandidateFinancialIndicators(reportMonth, options);
       return buildMockCandidateFinancialIndicatorsEnvelope(payload);
     },
+    async getLedgerPnlCandidateFinancialIndicatorPeriodComparison(reportMonth) {
+      await delay();
+      return buildMockLedgerPnlCandidateFinancialIndicatorPeriodComparison(reportMonth);
+    },
     async revalidateLedgerPnlCandidateFinancialIndicators() {
       await delay();
       throw new Error("Candidate revalidation dry-run requires the real API client.");
@@ -602,6 +612,13 @@ export function createRealPnlCoreClient(
         `/api/ledger-pnl/candidate-financial-indicators?${params.toString()}`,
       ) as Promise<LedgerPnlCandidateFinancialIndicatorsEnvelope>;
     },
+    getLedgerPnlCandidateFinancialIndicatorPeriodComparison: (reportMonth, options = {}) =>
+      requestActionJson<LedgerPnlCandidateFinancialIndicatorPeriodComparison>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/candidate-financial-indicators/period-comparison?report_month=${encodeURIComponent(reportMonth.trim())}`,
+        { signal: options.signal },
+      ),
     revalidateLedgerPnlCandidateFinancialIndicators: (reportMonth, request) =>
       requestActionJson<LedgerPnlCandidateFinancialIndicatorRevalidationReceipt>(
         fetchImpl,

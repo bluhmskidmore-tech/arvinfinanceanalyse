@@ -143,6 +143,9 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getLedgerPnlAccountDetail).toBe("function");
     expect(typeof client.getLedgerPnlFormalFinancialIndicators).toBe("function");
     expect(typeof client.getLedgerPnlCandidateFinancialIndicators).toBe("function");
+    expect(
+      typeof client.getLedgerPnlCandidateFinancialIndicatorPeriodComparison,
+    ).toBe("function");
     expect(typeof client.revalidateLedgerPnlCandidateFinancialIndicators).toBe("function");
     expect(typeof client.getPnlBridge).toBe("function");
     expect(typeof client.refreshFormalPnl).toBe("function");

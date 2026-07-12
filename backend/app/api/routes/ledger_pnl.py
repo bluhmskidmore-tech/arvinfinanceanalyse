@@ -4,6 +4,9 @@ from importlib import import_module
 from typing import Annotated, Literal
 
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.candidate_financial_indicator_period_comparison import (
+    CandidateFinancialIndicatorPeriodComparisonEnvelope,
+)
 from backend.app.schemas.candidate_financial_indicators import (
     CandidateFinancialIndicatorEnvelope,
     CandidateFinancialIndicatorRevalidationReceipt,
@@ -32,6 +35,12 @@ def _svc():
 def _candidate_svc():
     return import_module(
         "backend.app.services.candidate_financial_indicator_service"
+    )
+
+
+def _period_comparison_svc():
+    return import_module(
+        "backend.app.services.candidate_financial_indicator_period_comparison_service"
     )
 
 
@@ -285,6 +294,30 @@ def candidate_financial_indicators(
             metric_id=metric_id,
         )
     except service.CandidateFinancialIndicatorRequestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/ledger-pnl/candidate-financial-indicators/period-comparison",
+    response_model=CandidateFinancialIndicatorPeriodComparisonEnvelope,
+)
+def candidate_financial_indicator_period_comparison(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_month: str = Query(
+        ...,
+        pattern=_REPORT_MONTH_PATTERN,
+        description="报告月份 YYYYMM",
+    ),
+) -> dict[str, object]:
+    _ensure_ledger_pnl_read_allowed(auth)
+    settings = get_settings()
+    service = _period_comparison_svc()
+    try:
+        return service.candidate_financial_indicator_period_comparison_envelope(
+            source_dir=str(settings.product_category_source_dir),
+            report_month=_validated_report_month(report_month),
+        )
+    except service.CandidateFinancialIndicatorPeriodComparisonRequestError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

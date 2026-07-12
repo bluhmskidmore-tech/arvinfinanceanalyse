@@ -25,6 +25,7 @@ import type {
   LedgerPnlCandidateRequirementResolutionItem,
   LedgerPnlCandidateSourceVersionImpact,
 } from "../../../api/contracts";
+import { LedgerPnlCandidatePeriodComparison } from "./LedgerPnlCandidatePeriodComparison";
 import "./LedgerPnlCandidateFinancialIndicatorsPanel.css";
 
 type Props = {
@@ -1600,6 +1601,10 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
             <div><dt>使用边界</dt><dd>仅分析 · 禁止正式使用</dd></div>
           </dl>
         </section>
+
+        {displayedView === "analysis" ? (
+          <LedgerPnlCandidatePeriodComparison reportMonth={normalizedReportMonth} />
+        ) : null}
 
         <SourceVersionImpactCard impact={sourceVersionImpact} />
 

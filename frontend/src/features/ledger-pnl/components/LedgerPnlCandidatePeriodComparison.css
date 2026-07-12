@@ -1,0 +1,302 @@
+.candidate-period-comparison {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
+  border-left: 3px solid var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  border-radius: 2px;
+  background: var(--candidate-soft, var(--moss-color-neutral-50, #f7f9fb));
+  color: var(--candidate-ink, var(--moss-color-neutral-900, #17212b));
+}
+
+.candidate-period-comparison__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.candidate-period-comparison__header > div:first-child {
+  min-width: 0;
+}
+
+.candidate-period-comparison__header > div:first-child > span {
+  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.candidate-period-comparison__header h3 {
+  margin: 4px 0 0;
+  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.candidate-period-comparison__header p,
+.candidate-period-comparison__scope-gap p {
+  margin: 5px 0 0;
+  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.candidate-period-comparison__boundary {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 4px;
+  justify-items: end;
+  text-align: right;
+}
+
+.candidate-period-comparison__boundary strong {
+  padding: 5px 8px;
+  border: 1px solid var(--moss-color-warning-300, #f0c36a);
+  border-radius: 2px;
+  background: var(--moss-color-warning-50, #fff9e8);
+  color: var(--moss-color-warning-800, #7a4b00);
+  font-size: 11px;
+}
+
+.candidate-period-comparison__boundary small,
+.candidate-period-comparison__scope-gap small,
+.candidate-period-comparison__footer {
+  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  font-size: 11px;
+}
+
+.candidate-period-comparison__source-warning,
+.candidate-period-comparison__scope-ready {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border: 1px solid var(--moss-color-warning-300, #f0c36a);
+  border-radius: 2px;
+  background: var(--moss-color-warning-50, #fff9e8);
+  color: var(--moss-color-warning-900, #603b00);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.candidate-period-comparison__source-warning span {
+  text-align: right;
+}
+
+.candidate-period-comparison__scope-ready {
+  display: grid;
+  border-color: var(--moss-color-info-200, #b8d8ea);
+  background: var(--moss-color-info-50, #f2f8fc);
+  color: var(--moss-color-info-800, #194e70);
+}
+
+.candidate-period-comparison__scope-ready small {
+  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+}
+
+.candidate-period-comparison__scope-gap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr);
+  gap: 12px 18px;
+  padding: 11px 12px;
+  border: 1px solid var(--moss-color-warning-300, #f0c36a);
+  border-radius: 2px;
+  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+}
+
+.candidate-period-comparison__scope-gap > div > strong {
+  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  font-size: 13px;
+}
+
+.candidate-period-comparison__scope-gap ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.candidate-period-comparison__scope-gap li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--moss-color-warning-500, #b7791f);
+  background: var(--moss-color-warning-50, #fff9e8);
+  color: var(--moss-color-warning-900, #603b00);
+  font-size: 11px;
+}
+
+.candidate-period-comparison__scope-gap > small {
+  grid-column: 1 / -1;
+}
+
+.candidate-period-comparison__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
+  border-radius: 2px;
+  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+}
+
+.candidate-period-comparison table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11px;
+}
+
+.candidate-period-comparison th,
+.candidate-period-comparison td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
+  vertical-align: top;
+  text-align: left;
+}
+
+.candidate-period-comparison thead th {
+  background: var(--candidate-soft, var(--moss-color-neutral-50, #f7f9fb));
+  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.candidate-period-comparison thead th:first-child {
+  width: 25%;
+}
+
+.candidate-period-comparison thead th:nth-child(2) {
+  width: 15%;
+}
+
+.candidate-period-comparison tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.candidate-period-comparison tbody tr[data-comparison-status="not_comparable"] {
+  background: var(--moss-color-warning-50, #fff9e8);
+}
+
+.candidate-period-comparison tbody th {
+  display: grid;
+  gap: 3px;
+  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+}
+
+.candidate-period-comparison tbody th code {
+  overflow: hidden;
+  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidate-period-comparison tbody th small {
+  color: var(--moss-color-warning-900, #603b00);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.candidate-period-comparison__number {
+  color: var(--candidate-ink, var(--moss-color-neutral-900, #17212b));
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.candidate-period-comparison__delta {
+  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+}
+
+.candidate-period-comparison tbody td:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.candidate-period-comparison tbody td:last-child strong {
+  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+}
+
+.candidate-period-comparison tbody td:last-child small {
+  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+}
+
+.candidate-period-comparison__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 16px;
+}
+
+.candidate-period-comparison__state {
+  display: grid;
+  min-height: 112px;
+  place-content: center;
+  gap: 6px;
+  padding: 20px;
+  border: 1px dashed var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
+  border-radius: 2px;
+  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+  text-align: center;
+}
+
+.candidate-period-comparison__state strong {
+  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  font-size: 14px;
+}
+
+.candidate-period-comparison__state span {
+  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  font-size: 12px;
+}
+
+.candidate-period-comparison__state--error {
+  border-color: var(--moss-color-danger-300, #e5a2a2);
+  background: var(--moss-color-danger-50, #fff5f5);
+}
+
+.candidate-period-comparison__state button {
+  min-height: 36px;
+  justify-self: center;
+  margin-top: 3px;
+  padding: 6px 11px;
+  border: 1px solid var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  border-radius: 2px;
+  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+@media (max-width: 760px) {
+  .candidate-period-comparison__header,
+  .candidate-period-comparison__source-warning {
+    display: grid;
+  }
+
+  .candidate-period-comparison__boundary {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .candidate-period-comparison__source-warning span {
+    text-align: left;
+  }
+
+  .candidate-period-comparison__scope-gap {
+    grid-template-columns: 1fr;
+  }
+
+  .candidate-period-comparison__scope-gap > small {
+    grid-column: auto;
+  }
+}

@@ -5825,6 +5825,86 @@ export type LedgerPnlCandidateFinancialIndicatorRevalidationReceipt = {
   result: LedgerPnlCandidateFinancialIndicatorsEnvelope;
 };
 
+export type LedgerPnlCandidateFinancialIndicatorComparisonMetricStatus =
+  | "ok"
+  | "warning"
+  | "manual_default"
+  | "error"
+  | "missing";
+
+export type LedgerPnlCandidateFinancialIndicatorComparisonSourcePeriod = {
+  month: string;
+  report_date: string;
+  ledger_file_name: string;
+  ledger_sha256: string;
+  locked_sha256: string | null;
+  lock_status: "locked_match" | "locked_mismatch" | "unlocked";
+};
+
+export type LedgerPnlCandidateFinancialIndicatorPeriodComparisonMetric = {
+  metric_id: string;
+  metric_name: string;
+  basis: "calendar_month_from_cumulative" | "month_end_point";
+  method: "finance_metric_cumulative_mom" | "finance_metric_point_to_point";
+  unit: "亿元";
+  comparison_status: "comparable" | "not_comparable";
+  current_metric_status: LedgerPnlCandidateFinancialIndicatorComparisonMetricStatus;
+  previous_metric_status: LedgerPnlCandidateFinancialIndicatorComparisonMetricStatus;
+  two_month_prior_metric_status: LedgerPnlCandidateFinancialIndicatorComparisonMetricStatus | null;
+  current_value_yi: string | null;
+  previous_value_yi: string | null;
+  current_source_value_yi: string | null;
+  previous_source_value_yi: string | null;
+  two_month_prior_source_value_yi: string | null;
+  delta_yi: string | null;
+  change_rate: string | null;
+  rate_reason: "zero_denominator" | "missing_reference" | "metric_status_not_ok" | null;
+  reasons: string[];
+  driver_status: "unclear";
+  quality_status: "standard_candidate" | "degraded_candidate" | "not_comparable";
+};
+
+export type LedgerPnlCandidateFinancialIndicatorFullScopeGap = {
+  reason_code:
+    | "missing_source_file"
+    | "missing_required_sheet"
+    | "source_parse_error"
+    | "full_replay_incomplete"
+    | "source_evaluation_error";
+  source_kind: "ledger" | "daily";
+  month: string;
+  required_sheet: string | null;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorPeriodComparison = {
+  contract_version: "candidate-financial-indicator-period-comparison-v1";
+  report_month: string;
+  report_date: string;
+  comparison_month: string;
+  two_month_prior: string;
+  comparison_scope: "ledger_only_key_metrics";
+  full_scope_status: "available" | "unavailable";
+  full_scope_reason_code:
+    | "available"
+    | "missing_source_file"
+    | "missing_required_sheet"
+    | "source_parse_error"
+    | "full_replay_incomplete"
+    | "source_evaluation_error";
+  full_scope_detail: string;
+  full_scope_gaps: LedgerPnlCandidateFinancialIndicatorFullScopeGap[];
+  overall_status: "available" | "partial" | "unavailable";
+  metric_status: "candidate";
+  formal_use_allowed: false;
+  certification_effect: "none";
+  driver_status: "unclear";
+  rule_version: "qdb-finance-2026-v1.0.1";
+  rule_hash: string;
+  idempotency_key: string;
+  source_periods: LedgerPnlCandidateFinancialIndicatorComparisonSourcePeriod[];
+  metrics: LedgerPnlCandidateFinancialIndicatorPeriodComparisonMetric[];
+};
+
 export type LedgerPnlFormalFinancialIndicatorMetric = {
   metric_key: string;
   metric_name: string;
