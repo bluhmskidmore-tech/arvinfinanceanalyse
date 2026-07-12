@@ -1381,6 +1381,49 @@ describe("ProductCategoryPnlPage", () => {
     ).toBeNull();
   });
 
+  it("prioritizes the selected product decision and keeps full attribution evidence collapsed", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryAttribution: async (options) =>
+        buildDrilldownAttributionEnvelope(options.reportDate, options.compare),
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "查看 拆放同业 归因证据" }),
+    );
+
+    const evidence = screen.getByTestId("product-category-attribution-selected-detail");
+    const decision = within(evidence).getByTestId(
+      "product-category-attribution-selected-decision",
+    );
+    expect(decision).toHaveTextContent("拆放同业");
+    expect(decision).toHaveTextContent("变动合计");
+    expect(decision).toHaveTextContent("本期经营净收入");
+    expect(decision).toHaveTextContent("对比期经营净收入");
+    expect(decision).toHaveTextContent("闭合误差");
+
+    const drivers = within(evidence).getAllByTestId(
+      "product-category-attribution-selected-driver",
+    );
+    expect(drivers).toHaveLength(3);
+    expect(drivers[0]).toHaveTextContent("规模因素");
+    expect(drivers[1]).toHaveTextContent("利率因素");
+    expect(drivers[2]).toHaveTextContent("天数因素");
+
+    const fullEvidence = within(evidence).getByTestId(
+      "product-category-attribution-selected-full-evidence",
+    );
+    expect(fullEvidence).not.toHaveAttribute("open");
+    expect(fullEvidence).toHaveTextContent("完整口径与证据");
+    expect(fullEvidence).toHaveTextContent("本期规模");
+    expect(fullEvidence).toHaveTextContent("FTP因素");
+
+    await user.click(within(fullEvidence).getByText("完整口径与证据"));
+    expect(fullEvidence).toHaveAttribute("open");
+  });
+
   it("shows a closure-error warning when attribution residual is non-zero", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>

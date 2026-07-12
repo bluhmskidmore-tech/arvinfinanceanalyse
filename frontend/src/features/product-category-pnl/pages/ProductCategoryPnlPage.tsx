@@ -3305,7 +3305,7 @@ function ProductCategoryAttributionSelectedDetail(props: {
   row: ProductCategoryAttributionRow;
   onLocateFormalRow: (categoryId: string) => void;
 }) {
-  const pointFields = [
+  const decisionFields = [
     {
       label: "\u53d8\u52a8\u5408\u8ba1",
       value: formatProductCategoryAttributionEffect(props.row.effects.delta_business_net_income),
@@ -3318,6 +3318,12 @@ function ProductCategoryAttributionSelectedDetail(props: {
       label: "\u5bf9\u6bd4\u671f\u7ecf\u8425\u51c0\u6536\u5165",
       value: formatAttributionPointValue(props.row, props.row.prior, "business_net_income"),
     },
+    {
+      label: "\u95ed\u5408\u8bef\u5dee",
+      value: formatProductCategoryAttributionEffect(props.row.effects.closure_error),
+    },
+  ];
+  const evidencePointFields = [
     {
       label: "\u672c\u671f\u89c4\u6a21",
       value: formatAttributionPointValue(props.row, props.row.current, "scale"),
@@ -3351,55 +3357,112 @@ function ProductCategoryAttributionSelectedDetail(props: {
       value: formatAttributionPointValue(props.row, props.row.prior, "ftp"),
     },
   ];
+  const primaryDrivers = ATTRIBUTION_EFFECT_COLUMNS.filter(
+    ([key]) => key !== "unexplained_effect",
+  )
+    .map(([key, label]) => ({
+      key,
+      label,
+      value: props.row.effects[key],
+      magnitude: Math.abs(Number(props.row.effects[key])),
+    }))
+    .filter((driver) => Number.isFinite(driver.magnitude) && driver.magnitude > 0)
+    .sort((left, right) => right.magnitude - left.magnitude)
+    .slice(0, 3);
   return (
     <section
       className="product-category-attribution__selected-detail"
       data-testid="product-category-attribution-selected-detail"
       id="product-category-attribution-selected-detail"
     >
-      <div className="product-category-attribution__selected-detail-head">
-        <div>
-          <span>{"\u6b63\u5f0f\u4ea7\u54c1\u8bc1\u636e"}</span>
-          <strong>{props.row.category_name}</strong>
+      <div
+        className="product-category-attribution__selected-decision"
+        data-testid="product-category-attribution-selected-decision"
+      >
+        <div className="product-category-attribution__selected-detail-head">
+          <div>
+            <span>{"\u6b63\u5f0f\u4ea7\u54c1\u8bc1\u636e"}</span>
+            <strong>{props.row.category_name}</strong>
+            <small>
+              {formatProductCategoryReportMonthLabel(props.currentReportDate)}
+              {" \u00b7 "}
+              {productCategoryAttributionPriorLabel(props.compare)}
+              {" "}
+              {formatProductCategoryReportMonthLabel(props.priorReportDate)}
+            </small>
+          </div>
+          <div className="product-category-attribution__selected-detail-actions">
+            <b className={attributionToneClass(props.row.effects.delta_business_net_income)}>
+              {formatProductCategoryAttributionEffect(props.row.effects.delta_business_net_income)}
+            </b>
+            <button
+              className="product-category-attribution__selected-detail-action"
+              onClick={() => props.onLocateFormalRow(props.row.category_id)}
+              type="button"
+            >
+              定位正式报表
+            </button>
+          </div>
+        </div>
+        <div className="product-category-attribution__selected-decision-metrics">
+          {decisionFields.map((field) => (
+            <div key={field.label}>
+              <span>{field.label}</span>
+              <strong>{field.value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="product-category-attribution__selected-drivers">
+        <div className="product-category-attribution__selected-drivers-head">
+          <span>主要驱动</span>
+          <small>按绝对影响值排序 · 前 {primaryDrivers.length} 项</small>
+        </div>
+        <div className="product-category-attribution__selected-driver-grid">
+          {primaryDrivers.map((driver) => (
+            <div
+              data-testid="product-category-attribution-selected-driver"
+              key={driver.key}
+            >
+              <span>{driver.label}</span>
+              <strong className={attributionToneClass(driver.value)}>
+                {formatProductCategoryAttributionEffect(driver.value)}
+              </strong>
+            </div>
+          ))}
+        </div>
+      </div>
+      <details
+        className="product-category-attribution__selected-full-evidence"
+        data-testid="product-category-attribution-selected-full-evidence"
+      >
+        <summary>
+          <span>完整口径与证据</span>
           <small>
-            {formatProductCategoryReportMonthLabel(props.currentReportDate)}
-            {" \u00b7 "}
-            {productCategoryAttributionPriorLabel(props.compare)}
-            {" "}
-            {formatProductCategoryReportMonthLabel(props.priorReportDate)}
+            {evidencePointFields.length} 项点位 · {ATTRIBUTION_DETAIL_EFFECT_COLUMNS.length} 项因素
           </small>
-        </div>
-        <div className="product-category-attribution__selected-detail-actions">
-          <b className={attributionToneClass(props.row.effects.delta_business_net_income)}>
-            {formatProductCategoryAttributionEffect(props.row.effects.delta_business_net_income)}
-          </b>
-          <button
-            className="product-category-attribution__selected-detail-action"
-            onClick={() => props.onLocateFormalRow(props.row.category_id)}
-            type="button"
-          >
-            定位正式报表
-          </button>
-        </div>
-      </div>
-      <div className="product-category-attribution__selected-detail-points">
-        {pointFields.map((field) => (
-          <div key={field.label}>
-            <span>{field.label}</span>
-            <strong>{field.value}</strong>
+        </summary>
+        <div className="product-category-attribution__selected-full-evidence-body">
+          <div className="product-category-attribution__selected-detail-points">
+            {evidencePointFields.map((field) => (
+              <div key={field.label}>
+                <span>{field.label}</span>
+                <strong>{field.value}</strong>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="product-category-attribution__selected-detail-effects">
-        {ATTRIBUTION_DETAIL_EFFECT_COLUMNS.map(([key, label]) => (
-          <div key={key}>
-            <span>{label}</span>
-            <strong className={attributionToneClass(props.row.effects[key])}>
-              {formatProductCategoryAttributionEffect(props.row.effects[key])}
-            </strong>
+          <div className="product-category-attribution__selected-detail-effects">
+            {ATTRIBUTION_DETAIL_EFFECT_COLUMNS.map(([key, label]) => (
+              <div key={key}>
+                <span>{label}</span>
+                <strong className={attributionToneClass(props.row.effects[key])}>
+                  {formatProductCategoryAttributionEffect(props.row.effects[key])}
+                </strong>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      </details>
     </section>
   );
 }

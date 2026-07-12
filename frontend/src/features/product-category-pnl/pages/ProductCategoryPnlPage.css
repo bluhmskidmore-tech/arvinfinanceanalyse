@@ -3383,6 +3383,12 @@
   border-bottom: 1px solid var(--moss-color-neutral-200);
 }
 
+.product-category-attribution__selected-decision,
+.product-category-attribution__selected-drivers {
+  display: grid;
+  gap: 8px;
+}
+
 .product-category-attribution__selected-detail-head {
   display: flex;
   align-items: flex-start;
@@ -3398,6 +3404,10 @@
 
 .product-category-attribution__selected-detail-head span,
 .product-category-attribution__selected-detail-head small,
+.product-category-attribution__selected-decision-metrics span,
+.product-category-attribution__selected-drivers-head span,
+.product-category-attribution__selected-drivers-head small,
+.product-category-attribution__selected-driver-grid span,
 .product-category-attribution__selected-detail-points span,
 .product-category-attribution__selected-detail-effects span {
   color: var(--ib-ink-muted);
@@ -3411,6 +3421,8 @@
 }
 
 .product-category-attribution__selected-detail-head > b,
+.product-category-attribution__selected-decision-metrics strong,
+.product-category-attribution__selected-driver-grid strong,
 .product-category-attribution__selected-detail-points strong,
 .product-category-attribution__selected-detail-effects strong {
   font-family: var(--moss-font-mono);
@@ -3421,6 +3433,74 @@
   flex: 0 0 auto;
   color: var(--ib-ink);
   font-size: 14px;
+}
+
+.product-category-attribution__selected-decision-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--moss-color-neutral-100);
+  border-left: 1px solid var(--moss-color-neutral-100);
+}
+
+.product-category-attribution__selected-decision-metrics > div,
+.product-category-attribution__selected-driver-grid > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 7px 8px;
+  border-right: 1px solid var(--moss-color-neutral-100);
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+}
+
+.product-category-attribution__selected-decision-metrics strong,
+.product-category-attribution__selected-driver-grid strong {
+  min-width: 0;
+  color: var(--ib-ink);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.product-category-attribution__selected-drivers-head,
+.product-category-attribution__selected-full-evidence > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.product-category-attribution__selected-drivers-head > span,
+.product-category-attribution__selected-full-evidence > summary > span {
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.product-category-attribution__selected-driver-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--moss-color-neutral-100);
+  border-left: 1px solid var(--moss-color-neutral-100);
+}
+
+.product-category-attribution__selected-full-evidence {
+  border-top: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-attribution__selected-full-evidence > summary {
+  min-height: 38px;
+  cursor: pointer;
+}
+
+.product-category-attribution__selected-full-evidence > summary > small {
+  color: var(--ib-ink-muted);
+  font-size: 10px;
+}
+
+.product-category-attribution__selected-full-evidence-body {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
 }
 
 .product-category-attribution__selected-detail-points,
@@ -3868,7 +3948,8 @@
   }
 
   .product-category-attribution__selected-detail-points,
-  .product-category-attribution__selected-detail-effects {
+  .product-category-attribution__selected-detail-effects,
+  .product-category-attribution__selected-decision-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -4015,13 +4096,32 @@
     padding: 9px 0 10px;
   }
 
+  .product-category-attribution__selected-detail-action {
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
   .product-category-attribution__selected-detail-head {
     gap: 8px;
   }
 
   .product-category-attribution__selected-detail-points,
-  .product-category-attribution__selected-detail-effects {
+  .product-category-attribution__selected-detail-effects,
+  .product-category-attribution__selected-decision-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .product-category-attribution__selected-drivers-head,
+  .product-category-attribution__selected-full-evidence > summary {
+    align-items: flex-start;
+  }
+
+  .product-category-attribution__selected-driver-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .product-category-attribution__selected-full-evidence > summary {
+    min-height: 44px;
   }
 
   .product-category-attribution__selected-detail-points > div,
