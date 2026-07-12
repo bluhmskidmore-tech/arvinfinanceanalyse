@@ -1483,6 +1483,63 @@ describe("productCategoryPnlPageModel", () => {
     expect(surface.emptyCopy).toBeNull();
   });
 
+  it("keeps source precision through waterfall accumulation before displaying yi labels", () => {
+    const grandTotal = attributionRow({
+      category_id: "grand_total",
+      category_name: "全表合计",
+      side: "all",
+      current: {
+        report_date: "2026-06-30",
+        days: 30,
+        scale: "0",
+        yield_pct: null,
+        cash: "0",
+        ftp: "0",
+        business_net_income: "213454412.95768329",
+      },
+      prior: {
+        report_date: "2026-05-31",
+        days: 31,
+        scale: "0",
+        yield_pct: null,
+        cash: "0",
+        ftp: "0",
+        business_net_income: "269149432.85495167",
+      },
+      effects: {
+        day_effect: "-6890096.686272569742747945207",
+        scale_effect: "-2411459.408784240463019178082",
+        rate_effect: "-39211663.32450993363781917808",
+        ftp_effect: "0",
+        direct_effect: "-7181800.08000000",
+        unexplained_effect: "-0.397701626156335495",
+        closure_error: "-0.00000001",
+        explained_effect: "-55695019.49956675",
+        delta_business_net_income: "-55695019.89726838",
+      },
+    });
+    const surface = selectProductCategoryAttributionWaterfallSurface(
+      attributionPayload({
+        totals: {
+          asset_total: attributionRow({ category_id: "asset_total" }),
+          liability_total: attributionRow({ category_id: "liability_total", side: "liability" }),
+          grand_total: grandTotal,
+        },
+      }),
+    );
+
+    const closureRow = surface.rows.find((row) => row.key === "closure_error");
+    const currentRow = surface.rows.find((row) => row.key === "current");
+
+    expect(closureRow).toMatchObject({
+      cumulativeLabel: "2.13",
+    });
+    expect(closureRow?.cumulative).toBeCloseTo(2.134544129576833, 12);
+    expect(currentRow).toMatchObject({
+      cumulativeLabel: "2.13",
+    });
+  });
+
   it("builds a decision focus list from contribution, deterioration, and unexplained drivers", () => {
     const rows = [
       row({
@@ -1657,6 +1714,7 @@ describe("productCategoryPnlPageModel", () => {
       ["unexplained_effect", "未解释", "+0.07", "14.6%"],
       ["direct_effect", "直接因素", "+0.03", "6.3%"],
       ["closure_error", "闭合误差", "+0.01", "2.1%"],
+      ["day_effect", "天数因素", "0.00", "0.0%"],
     ]);
     expect(surface.evidenceItems).toEqual([
       "本期净营收 1.20 亿元",
@@ -1665,6 +1723,57 @@ describe("productCategoryPnlPageModel", () => {
       "当前收益率 2.80%",
       "闭合误差 +0.01 亿元",
     ]);
+  });
+
+  it("includes the formal day effect in the product root-cause driver list", () => {
+    const surface = selectProductCategoryRootCauseSurface({
+      rows: [
+        row({
+          category_id: "bond_tpl",
+          category_name: "TPL",
+          business_net_income: yi(1),
+        }),
+      ],
+      attribution: attributionPayload({
+        rows: [
+          attributionRow({
+            category_id: "bond_tpl",
+            category_name: "TPL",
+            current: {
+              report_date: "2026-02-28",
+              days: 28,
+              scale: yi(100),
+              yield_pct: "2.40",
+              cash: yi(1.2),
+              ftp: yi(0.4),
+              business_net_income: yi(1),
+            },
+            prior: {
+              report_date: "2026-01-31",
+              days: 31,
+              scale: yi(100),
+              yield_pct: "2.40",
+              cash: yi(1.2),
+              ftp: yi(0.4),
+              business_net_income: yi(1.01),
+            },
+            effects: {
+              day_effect: yi(-0.01),
+              delta_business_net_income: yi(-0.01),
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(surface.driverRows).toContainEqual(
+      expect.objectContaining({
+        key: "day_effect",
+        label: "天数因素",
+        valueLabel: "-0.01",
+        shareLabel: "100.0%",
+      }),
+    );
   });
 
   it("formats attribution effects from governed yuan values into yi display values", () => {

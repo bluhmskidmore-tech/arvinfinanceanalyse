@@ -3,9 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { beforeAll, vi } from "vitest";
 
 import { ActionRequestError, createApiClient } from "../api/client";
-import type { ProductCategoryInterestSpreadPayload } from "../api/contracts";
+import type {
+  ApiEnvelope,
+  ProductCategoryAttributionPayload,
+  ProductCategoryAttributionRow,
+  ProductCategoryInterestSpreadPayload,
+} from "../api/contracts";
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
+  buildProductCategoryDataHealth,
   formatProductCategoryChartNumberTwoDecimals,
 } from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
@@ -43,6 +49,14 @@ beforeAll(async () => {
 
 function renderWorkbenchAppWithClient(client: ReturnType<typeof createApiClient>) {
   return renderWorkbenchApp(["/product-category-pnl"], { client });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
 }
 
 function yuan(yi: number): string {
@@ -140,7 +154,7 @@ function buildMockAttributionEnvelope(
   reportDate: string,
   compare: "mom" | "yoy" = "mom",
   options: { closureErrorYi?: number } = {},
-) {
+): ApiEnvelope<ProductCategoryAttributionPayload> {
   const priorReportDate = compare === "yoy" ? "2025-02-28" : "2026-01-31";
   const closureErrorYi = options.closureErrorYi ?? 0;
   const effect = {
@@ -172,7 +186,7 @@ function buildMockAttributionEnvelope(
     ftp: yuan(0.14),
     business_net_income: yuan(0.26),
   };
-  const total = {
+  const total: ProductCategoryAttributionRow = {
     category_id: "asset_total",
     category_name: "资产端合计",
     side: "asset",
@@ -208,6 +222,91 @@ function buildMockAttributionEnvelope(
       grand_total: { ...total, category_id: "grand_total", category_name: "grand_total", side: "all" },
     },
   });
+}
+
+function buildTieOutAttributionEnvelope(
+  reportDate: string,
+  compare: "mom" | "yoy" = "mom",
+) {
+  const envelope = buildMockAttributionEnvelope(reportDate, compare);
+  const totals = envelope.result.totals;
+  if (!totals) {
+    return envelope;
+  }
+  const withTiedCurrent = (row: ProductCategoryAttributionRow): ProductCategoryAttributionRow => ({
+    ...row,
+    current: row.current
+      ? { ...row.current, business_net_income: yuan(0.72) }
+      : row.current,
+  });
+
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      rows: envelope.result.rows.map(withTiedCurrent),
+      totals: {
+        asset_total: withTiedCurrent(totals.asset_total),
+        liability_total: withTiedCurrent(totals.liability_total),
+        grand_total: withTiedCurrent(totals.grand_total),
+      },
+    },
+  };
+}
+
+function buildDrilldownAttributionEnvelope(
+  reportDate: string,
+  compare: "mom" | "yoy" = "mom",
+) {
+  const envelope = buildTieOutAttributionEnvelope(reportDate, compare);
+  const primary = envelope.result.rows[0];
+  if (!primary) {
+    return envelope;
+  }
+  const secondary: ProductCategoryAttributionRow = {
+    ...primary,
+    category_id: "repo_assets",
+    category_name: "买入返售",
+    current: primary.current
+      ? {
+          ...primary.current,
+          scale: yuan(80),
+          yield_pct: "1.70",
+          cash: yuan(0.22),
+          ftp: yuan(0.08),
+          business_net_income: yuan(0.1),
+        }
+      : primary.current,
+    prior: primary.prior
+      ? {
+          ...primary.prior,
+          scale: yuan(90),
+          yield_pct: "1.60",
+          cash: yuan(0.26),
+          ftp: yuan(0.1),
+          business_net_income: yuan(0.2),
+        }
+      : primary.prior,
+    effects: {
+      ...primary.effects,
+      day_effect: yuan(-0.01),
+      scale_effect: yuan(-0.04),
+      rate_effect: yuan(-0.03),
+      ftp_effect: yuan(-0.01),
+      direct_effect: yuan(-0.01),
+      unexplained_effect: yuan(0),
+      explained_effect: yuan(-0.1),
+      delta_business_net_income: yuan(-0.1),
+      closure_error: yuan(0),
+    },
+  };
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      rows: [primary, secondary],
+    },
+  };
 }
 
 function renderWorkbenchAppWithTwoMonthLiabilityTrend() {
@@ -246,12 +345,106 @@ describe("ProductCategoryPnlPage", () => {
     expect(formatProductCategoryChartNumberTwoDecimals(undefined)).toBe("-");
   });
 
+  it("models the report-date and baseline data-health states without silent fallback", () => {
+    const envelope = buildMockProductCategoryPnlEnvelope({
+      reportDate: "2026-02-28",
+      view: "monthly",
+    });
+    const baseInput = {
+      datesLoading: false,
+      datesError: false,
+      reportDates: ["2026-02-28"],
+      selectedDate: "2026-02-28",
+      baselineLoading: false,
+      baselineError: false,
+      baseline: envelope.result,
+      meta: envelope.result_meta,
+    };
+
+    expect(buildProductCategoryDataHealth({ ...baseInput, datesLoading: true })).toMatchObject({
+      state: "loading",
+      judgementState: "pending",
+      judgementLabel: "等待数据完成",
+      retryTarget: null,
+    });
+    expect(buildProductCategoryDataHealth({ ...baseInput, datesError: true })).toMatchObject({
+      state: "error",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      retryTarget: "dates",
+    });
+    expect(buildProductCategoryDataHealth({ ...baseInput, reportDates: [] })).toMatchObject({
+      state: "empty",
+      judgementState: "blocked",
+      retryTarget: null,
+    });
+    expect(buildProductCategoryDataHealth({ ...baseInput, baselineError: true })).toMatchObject({
+      state: "error",
+      judgementState: "blocked",
+      retryTarget: "baseline",
+      facts: [{ label: "报告日期", value: "2026-02-28" }],
+    });
+    expect(
+      buildProductCategoryDataHealth({
+        ...baseInput,
+        baseline: { ...envelope.result, rows: [] },
+      }),
+    ).toMatchObject({ state: "empty", judgementState: "blocked", retryTarget: null });
+    expect(
+      buildProductCategoryDataHealth({
+        ...baseInput,
+        meta: {
+          ...envelope.result_meta,
+          quality_flag: "warning" as const,
+          vendor_status: "vendor_stale" as const,
+          fallback_mode: "latest_snapshot" as const,
+        },
+      }),
+    ).toMatchObject({
+      state: "degraded",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      retryTarget: null,
+    });
+  });
+
+  it("orders ready health evidence as report date, source, rows, and generation time", () => {
+    const envelope = buildMockProductCategoryPnlEnvelope({
+      reportDate: "2026-02-28",
+      view: "monthly",
+    });
+
+    const health = buildProductCategoryDataHealth({
+      datesLoading: false,
+      datesError: false,
+      reportDates: ["2026-02-28"],
+      selectedDate: "2026-02-28",
+      baselineLoading: false,
+      baselineError: false,
+      baseline: envelope.result,
+      meta: envelope.result_meta,
+    });
+
+    expect(health.state).toBe("ready");
+    expect(health).toMatchObject({
+      judgementState: "allowed",
+      judgementLabel: "可用于经营判断",
+    });
+    expect(health.facts.map((fact) => fact.label)).toEqual([
+      "报告日期",
+      "来源版本",
+      "明细",
+      "生成时间",
+    ]);
+  });
+
   it("offers anchored navigation for the six business views", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     const navigation = await screen.findByRole("navigation", {
       name: "产品分类损益页面分区",
     });
+    expect(within(navigation).getByText("分析路径")).toBeInTheDocument();
     const expectedLinks = [
       ["经营总览", "#product-category-overview"],
       ["差异归因", "#product-category-attribution"],
@@ -267,23 +460,54 @@ describe("ProductCategoryPnlPage", () => {
     });
   });
 
-  it("places headline totals before expandable governance detail", async () => {
+  it("leads the second screen with a compact bridge and three primary drivers", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const attribution = await screen.findByTestId("product-category-attribution");
+    const summary = await within(attribution).findByTestId(
+      "product-category-attribution-summary",
+    );
+    expect(
+      within(summary).getAllByTestId("product-category-attribution-summary-metric"),
+    ).toHaveLength(4);
+    expect(summary).toHaveTextContent("变动合计");
+    expect(summary).toHaveTextContent("已解释");
+    expect(summary).toHaveTextContent("未解释");
+    expect(summary).toHaveTextContent("闭合误差");
+    expect(summary).not.toHaveTextContent("本期净营收");
+    expect(summary).not.toHaveTextContent("对比期净营收");
+
+    const bridge = await screen.findByTestId("product-category-attribution-bridge");
+    const rootCause = within(bridge).getByTestId("product-category-root-cause");
+    const fullPath = within(bridge).getByTestId(
+      "product-category-attribution-full-path",
+    );
+    expect(
+      within(rootCause).getAllByTestId("product-category-root-cause-driver"),
+    ).toHaveLength(3);
+    expect(within(rootCause).getByRole("button", { name: "查看正式明细" })).toBeEnabled();
+    expect(fullPath).not.toHaveAttribute("open");
+    expect(fullPath).toHaveTextContent("完整归因路径");
+    expect(
+      rootCause.compareDocumentPosition(fullPath) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("places five headline metrics and top drivers before expandable governance detail", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     const band = await screen.findByTestId("product-category-formal-readiness-band");
     const totals = within(band).getByTestId("product-category-formal-headline-totals");
-    const contributionRows = within(band).getByTestId(
-      "product-category-first-screen-category-rows",
-    );
-    const governance = within(band).getByTestId(
-      "product-category-formal-readiness-governance",
-    );
+    const drivers = within(band).getByTestId("product-category-formal-driver-readout");
+    const governance = await screen.findByTestId("product-category-governance-evidence");
 
-    expect(totals.compareDocumentPosition(contributionRows) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(contributionRows.compareDocumentPosition(governance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(totals).getAllByTestId("product-category-core-metric")).toHaveLength(5);
+    expect(totals.compareDocumentPosition(drivers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(drivers.compareDocumentPosition(governance) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(band).queryByTestId("product-category-first-screen-category-rows")).toBeNull();
     expect(governance).not.toHaveAttribute("open");
-    expect(governance).toHaveTextContent("数据口径与认证");
-    expect(governance).toHaveTextContent("数据可用");
+    expect(governance).toHaveTextContent("治理与证据");
+    expect(governance).toHaveTextContent("3 项认证待完成");
   });
 
   it("surfaces the monthly delta and closure gap from the attribution API in the headline band", async () => {
@@ -305,11 +529,17 @@ describe("ProductCategoryPnlPage", () => {
       "product-category-formal-driver-readout",
     );
 
-    expect(driverReadout).toHaveTextContent("变动解释");
-    expect(driverReadout).toHaveTextContent("规模因素");
-    expect(
-      within(driverReadout).getByRole("progressbar", { name: "规模因素" }),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(driverReadout).getAllByTestId("product-category-driver-item")).toHaveLength(3);
+    });
+    const driverItems = within(driverReadout).getAllByTestId("product-category-driver-item");
+    expect(driverReadout).toHaveTextContent("关键驱动与风险");
+    expect(driverItems.map((item) => item.textContent)).toEqual([
+      expect.stringContaining("规模因素"),
+      expect.stringContaining("利率因素"),
+      expect.stringContaining("天数因素"),
+    ]);
+    expect(within(driverReadout).queryByRole("progressbar")).toBeNull();
   });
 
   it("keeps full attribution and candidate analysis in closed secondary workspaces", async () => {
@@ -371,9 +601,12 @@ describe("ProductCategoryPnlPage", () => {
   it("collapses technical signing fields behind a Chinese summary", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
+    const governance = await screen.findByTestId("product-category-governance-evidence");
     const signingStatus = await screen.findByTestId("product-category-owner-signable-status");
-    expect(signingStatus.tagName).toBe("DETAILS");
-    expect(signingStatus).not.toHaveAttribute("open");
+    expect(governance.tagName).toBe("DETAILS");
+    expect(governance).not.toHaveAttribute("open");
+    expect(signingStatus.tagName).toBe("SECTION");
+    expect(governance).toContainElement(signingStatus);
     expect(signingStatus).toHaveTextContent("签署状态");
     expect(signingStatus).toHaveTextContent("待认证");
     expect(signingStatus).toHaveTextContent("Owner-signable=false");
@@ -410,10 +643,13 @@ describe("ProductCategoryPnlPage", () => {
     );
     expect(screen.getByTestId("product-category-page-title")).toHaveTextContent("产品分类损益");
     expect(screen.getByTestId("product-category-page-subtitle")).toHaveTextContent(
-      "按业务分类查看损益、FTP 和净收入",
+      "报告月 2026年02月",
     );
-    expect(screen.getByTestId("product-category-role-badge")).toHaveTextContent("系统层");
-    expect(screen.getByTestId("product-category-boundary-copy")).toHaveTextContent("系统层经营口径");
+    expect(screen.getByTestId("product-category-report-date-slot")).toHaveTextContent(
+      "2026-02-28 · 正式口径 · 月度视图",
+    );
+    expect(screen.getByTestId("product-category-role-badge")).toHaveTextContent("本地离线契约回放");
+    expect(screen.queryByTestId("product-category-boundary-copy")).not.toBeInTheDocument();
     const ownerStatus = screen.getByTestId("product-category-owner-signable-status");
     const productCategoryBranch = screen.getByTestId("product-category-branch-product-category-pnl");
     expect(
@@ -460,15 +696,12 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-formal-headline-totals")).toHaveTextContent(
       "MTR-PCP-003",
     );
-    expect(screen.getByTestId("product-category-first-screen-category-rows")).toHaveTextContent(
-      "买入返售",
-    );
+    expect(screen.queryByTestId("product-category-first-screen-category-rows")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("product-category-core-metric")).toHaveLength(5);
     expect(screen.getByTestId("product-category-adjustment-lead")).toHaveTextContent(
       "手工调整与审计",
     );
-    expect(screen.getByTestId("product-category-scenario-lead")).toHaveTextContent(
-      "情景查询",
-    );
+    expect(screen.getByTestId("product-category-unified-controls")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-formal-table-lead")).toHaveTextContent(
       "正式产品类别损益表",
     );
@@ -497,9 +730,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 情景敏感度");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("加载矩阵");
     expect(screen.getByTestId("product-category-attribution-waterfall")).toHaveTextContent("经营差异瀑布");
-    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("产品差异根因拆解台");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("主要驱动与明细核查");
     expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("主导原因");
-    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("规模因素");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("FTP因素");
     expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("未解释");
     expect(screen.getByTestId("product-category-decision-focus")).toHaveTextContent("本期决策焦点");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债端趋势分析");
@@ -542,10 +775,19 @@ describe("ProductCategoryPnlPage", () => {
     const page = screen.getByTestId("product-category-page");
     const order = [
       "product-category-contract-hero",
-      "product-category-scenario-lead",
       "product-category-formal-readiness-band",
+      "product-category-formal-headline-totals",
+      "product-category-formal-driver-readout",
+      "product-category-unified-controls",
       "product-category-data-status-strip",
+      "product-category-governance-evidence",
       "product-category-owner-signable-status",
+      "product-category-section-nav",
+      "product-category-next-analysis-preview",
+      "product-category-attribution-workbench",
+      "product-category-attribution",
+      "product-category-attribution-bridge",
+      "product-category-adjustment-workspace",
       "product-category-adjustment-lead",
       "product-category-financial-analysis",
       "product-category-operating-analysis",
@@ -564,6 +806,290 @@ describe("ProductCategoryPnlPage", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
+  it("continues from the next-analysis cue into a tied-out attribution bridge before adjustments", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryAttribution: vi.fn(async (options) =>
+        buildTieOutAttributionEnvelope(options.reportDate, options.compare),
+      ),
+    });
+
+    const preview = await screen.findByTestId("product-category-next-analysis-preview");
+    const workbench = await screen.findByTestId("product-category-attribution-workbench");
+    const bridge = await screen.findByTestId("product-category-attribution-bridge");
+    const adjustment = screen.getByTestId("product-category-adjustment-workspace");
+
+    expect(preview.compareDocumentPosition(workbench) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(workbench.compareDocumentPosition(adjustment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(workbench).toContainElement(screen.getByTestId("product-category-attribution"));
+    expect(workbench).toContainElement(bridge);
+    expect(bridge).toHaveTextContent("候选指标 · 非正式结论");
+    expect(bridge).toHaveTextContent("经营差异瀑布");
+    expect(bridge).toHaveTextContent("主要驱动与明细核查");
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("product-category-driver-item")).toHaveLength(3);
+    });
+    expect(screen.getByTestId("product-category-attribution-bridge-driver-scale_effect")).toHaveTextContent(
+      "+0.30",
+    );
+    expect(screen.getByTestId("product-category-attribution-bridge-driver-rate_effect")).toHaveTextContent(
+      "+0.18",
+    );
+    expect(screen.getByTestId("product-category-attribution-bridge-driver-day_effect")).toHaveTextContent(
+      "-0.04",
+    );
+  });
+
+  it("surfaces ready baseline evidence in the first-screen data health strip", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const health = await screen.findByTestId("product-category-data-health");
+    await waitFor(() => {
+      expect(health).toHaveAttribute("data-health-state", "ready");
+    });
+    expect(health).toHaveTextContent("正式基线已就绪");
+    expect(health).toHaveTextContent("报告日期 2026-02-28");
+    expect(health).toHaveTextContent("生成时间 2026-04-09T10:30:00Z");
+    expect(health).toHaveTextContent("来源版本 sv_mock_dashboard_v2");
+    expect(health).toHaveTextContent("明细 18 行");
+    const judgement = within(health).getByTestId("product-category-formal-judgement-status");
+    expect(judgement).toHaveAttribute("data-judgement-state", "allowed");
+    expect(judgement).toHaveTextContent("可用于经营判断");
+  });
+
+  it("separates signing blockers, source version, and audit evidence without repeating data health", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("product-category-table");
+    const governance = screen.getByTestId("product-category-governance-evidence");
+    expect(governance).toHaveTextContent("3 项认证待完成");
+    expect(governance).not.toHaveTextContent("可用于经营判断");
+
+    const signing = within(governance).getByTestId("product-category-governance-signing-blockers");
+    expect(signing).toHaveTextContent("签署阻断");
+    expect(signing).toHaveTextContent("Owner approval pending");
+
+    const source = within(governance).getByTestId("product-category-governance-source-version");
+    expect(source).toHaveTextContent("来源与版本");
+    expect(source).toHaveTextContent("basis=formal");
+    expect(source).toHaveTextContent("generated_at=2026-04-09T10:30:00Z");
+
+    const audit = within(governance).getByTestId("product-category-governance-audit-evidence");
+    expect(audit).toHaveTextContent("审计证据");
+    expect(audit).toHaveTextContent("Unit=亿元");
+    expect(audit).toHaveTextContent("Date basis=report_date");
+  });
+
+  it("surfaces an explicit no-data state when the selected baseline has no detail rows", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const envelope = buildMockProductCategoryPnlEnvelope(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: [],
+          },
+        };
+      }),
+    });
+
+    const health = await screen.findByTestId("product-category-data-health");
+    await waitFor(() => {
+      expect(health).toHaveAttribute("data-health-state", "empty");
+    });
+    expect(health).toHaveTextContent("所选月份暂无产品明细");
+    expect(health).toHaveTextContent("报告日期 2026-02-28");
+    expect(within(health).getByTestId("product-category-formal-judgement-status")).toHaveTextContent(
+      "正式判断阻断",
+    );
+    expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a first-screen baseline failure and recovers through its retry action", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    let denyBaseline = true;
+    const getProductCategoryPnl = vi.fn(async (options) => {
+      if (denyBaseline) {
+        throw new Error("baseline-unavailable");
+      }
+      return buildMockProductCategoryPnlEnvelope(options);
+    });
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl,
+    });
+
+    const failedHealth = await screen.findByTestId("product-category-data-health");
+    await waitFor(() => {
+      expect(failedHealth).toHaveAttribute("data-health-state", "error");
+    });
+    expect(failedHealth).toHaveTextContent("正式基线加载失败");
+    expect(failedHealth).toHaveAttribute("role", "alert");
+    expect(
+      within(failedHealth).getByTestId("product-category-formal-judgement-status"),
+    ).toHaveTextContent("正式判断阻断");
+    expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-attribution-bridge")).not.toBeInTheDocument();
+
+    denyBaseline = false;
+    await user.click(
+      within(failedHealth).getByRole("button", { name: "重试正式基线" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-data-health")).toHaveAttribute(
+        "data-health-state",
+        "ready",
+      );
+    });
+    expect(await screen.findByTestId("product-category-table")).toBeInTheDocument();
+    expect(await screen.findByTestId("product-category-attribution-bridge")).toBeInTheDocument();
+  });
+
+  it("hides the prior formal conclusion while a newly selected report month is loading", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const pendingBaseline = deferred<
+      Awaited<ReturnType<typeof baseClient.getProductCategoryPnl>>
+    >();
+    let holdNextBaseline = false;
+    const getProductCategoryPnl = vi.fn((options) => {
+      if (holdNextBaseline && !options.scenarioRatePct) {
+        holdNextBaseline = false;
+        return pendingBaseline.promise;
+      }
+      return baseClient.getProductCategoryPnl(options);
+    });
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryPnl,
+    });
+
+    await screen.findByTestId("product-category-table");
+    holdNextBaseline = true;
+    await user.selectOptions(screen.getByRole("combobox", { name: "选择报告月份" }), "2026-01-31");
+
+    const health = screen.getByTestId("product-category-data-health");
+    await waitFor(() => {
+      expect(health).toHaveAttribute("data-health-state", "loading");
+    });
+    expect(within(health).getByTestId("product-category-formal-judgement-status")).toHaveTextContent(
+      "等待数据完成",
+    );
+    expect(screen.queryByTestId("product-category-formal-readiness-band")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
+    expect(screen.getByTestId("product-category-report-date-slot")).toHaveTextContent(
+      "2026-01-31 · 口径待确认",
+    );
+
+    pendingBaseline.resolve(
+      buildMockProductCategoryPnlEnvelope({ reportDate: "2026-01-31", view: "monthly" }),
+    );
+    await waitFor(() => {
+      expect(health).toHaveAttribute("data-health-state", "ready");
+    });
+    expect(await screen.findByTestId("product-category-table")).toBeInTheDocument();
+  });
+
+  it("hides the monthly conclusion while the summary view baseline is loading", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const pendingBaseline = deferred<
+      Awaited<ReturnType<typeof baseClient.getProductCategoryPnl>>
+    >();
+    let holdNextBaseline = false;
+    const getProductCategoryPnl = vi.fn((options) => {
+      if (holdNextBaseline && options.view === "ytd" && !options.scenarioRatePct) {
+        holdNextBaseline = false;
+        return pendingBaseline.promise;
+      }
+      return baseClient.getProductCategoryPnl(options);
+    });
+
+    renderWorkbenchAppWithClient({ ...baseClient, getProductCategoryPnl });
+    await screen.findByTestId("product-category-table");
+    holdNextBaseline = true;
+    await user.click(screen.getByRole("button", { name: "汇总视图" }));
+
+    const health = screen.getByTestId("product-category-data-health");
+    await waitFor(() => {
+      expect(health).toHaveAttribute("data-health-state", "loading");
+    });
+    expect(screen.queryByTestId("product-category-formal-readiness-band")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
+    expect(screen.getByTestId("product-category-report-date-slot")).toHaveTextContent(
+      "口径待确认 · 汇总视图",
+    );
+
+    pendingBaseline.resolve(
+      buildMockProductCategoryPnlEnvelope({ reportDate: "2026-02-28", view: "ytd" }),
+    );
+    await waitFor(() => {
+      expect(health).toHaveAttribute("data-health-state", "ready");
+    });
+    expect(await screen.findByTestId("product-category-table")).toBeInTheDocument();
+  });
+
+  it("announces FTP recalculation and shows the baseline instead of the prior scenario", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const pendingScenario = deferred<
+      Awaited<ReturnType<typeof baseClient.getProductCategoryPnl>>
+    >();
+    let heldScenarioRate: string | null = null;
+    const getProductCategoryPnl = vi.fn((options) => {
+      if (options.scenarioRatePct === heldScenarioRate) {
+        heldScenarioRate = null;
+        return pendingScenario.promise;
+      }
+      return baseClient.getProductCategoryPnl(options);
+    });
+
+    renderWorkbenchAppWithClient({ ...baseClient, getProductCategoryPnl });
+    await screen.findByTestId("product-category-table");
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "FTP 场景" }), "2.00");
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：2.00%");
+    });
+
+    heldScenarioRate = "1.50";
+    await user.selectOptions(screen.getByRole("combobox", { name: "FTP 场景" }), "1.50");
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+
+    const loading = await screen.findByTestId("product-category-scenario-loading");
+    expect(loading).toHaveTextContent("情景计算中，当前展示正式基线");
+    expect(screen.getByTestId("product-category-formal-readiness-band")).toHaveTextContent("正式基线");
+    expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：1.75%");
+    expect(screen.getByTestId("product-category-summary")).not.toHaveTextContent("当前场景：2.00%");
+
+    pendingScenario.resolve(
+      buildMockProductCategoryPnlEnvelope({
+        reportDate: "2026-02-28",
+        view: "monthly",
+        scenarioRatePct: "1.50",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByTestId("product-category-scenario-loading")).not.toBeInTheDocument();
+      expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：1.50%");
+    });
+  });
+
   it("places a mobile formal table readout before the raw formal grid", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
@@ -578,7 +1104,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(readout).toHaveTextContent("合计经营净收入");
     expect(readout).toHaveTextContent("资产端经营净收入");
     expect(readout).toHaveTextContent("负债端经营净收入");
-    expect(readout).toHaveTextContent("首个业务行");
+    expect(readout).toHaveTextContent("当前产品");
     expect(readout).toHaveTextContent("规模日均");
     expect(readout).toHaveTextContent("加权收益率");
     expect(readout).toHaveTextContent("展示行数");
@@ -661,8 +1187,8 @@ describe("ProductCategoryPnlPage", () => {
     expect(attribution).toHaveTextContent("正式基线");
     expect(attribution).toHaveTextContent("拆放同业");
     expect(attribution).toHaveTextContent("规模因素");
-    expect(attribution).toHaveTextContent("本期净营收");
-    expect(attribution).toHaveTextContent("对比期净营收");
+    expect(attribution).toHaveTextContent("本期经营净收入");
+    expect(attribution).toHaveTextContent("对比期经营净收入");
     expect(attribution).toHaveTextContent("0.30");
     expect(attribution).toHaveTextContent("0.18");
     const comparison = screen.getByTestId("product-category-attribution-comparison-table");
@@ -683,6 +1209,91 @@ describe("ProductCategoryPnlPage", () => {
     expect(detailRow).toHaveTextContent("0.30");
     expect(detailRow).toHaveTextContent("0.18");
     expect(pointDetails).toHaveTextContent("0.20");
+  });
+
+  it("keeps attribution evidence and the formal product row in one bidirectional selection", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+      buildDrilldownAttributionEnvelope(options.reportDate, options.compare),
+    );
+    const client = {
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryAttribution: attributionSpy,
+    } as ReturnType<typeof createApiClient> & {
+      getProductCategoryAttribution: typeof attributionSpy;
+    };
+    renderWorkbenchAppWithClient(client);
+
+    const rootCause = await screen.findByTestId("product-category-root-cause");
+    await user.click(within(rootCause).getByRole("button", { name: "查看正式明细" }));
+
+    const details = screen.getByTestId("product-category-attribution-details");
+    expect(details).not.toHaveAttribute("open");
+    expect(
+      screen.getByTestId("product-category-formal-row-interbank_lending_assets"),
+    ).toHaveAttribute("data-selected", "true");
+
+    await user.click(screen.getByRole("button", { name: "查看 拆放同业 归因证据" }));
+    const evidence = screen.getByTestId("product-category-attribution-selected-detail");
+    expect(details).toHaveAttribute("open");
+    expect(evidence).toHaveTextContent("拆放同业");
+    expect(
+      screen.getByTestId("product-category-attribution-comparison-row-interbank_lending_assets"),
+    ).toHaveAttribute("data-selected", "true");
+    expect(
+      screen.getByTestId("product-category-attribution-detail-row-interbank_lending_assets"),
+    ).toHaveAttribute("data-selected", "true");
+
+    await user.click(within(evidence).getByRole("button", { name: "定位正式报表" }));
+    expect(
+      screen.getByTestId("product-category-formal-row-interbank_lending_assets"),
+    ).toHaveAttribute("data-selected", "true");
+
+    await user.click(screen.getByRole("button", { name: "查看 买入返售 归因证据" }));
+    expect(evidence).toHaveTextContent("买入返售");
+    expect(
+      screen.getByTestId("product-category-attribution-comparison-row-repo_assets"),
+    ).toHaveAttribute("data-selected", "true");
+    expect(screen.getByTestId("product-category-formal-row-repo_assets")).toHaveAttribute(
+      "data-selected",
+      "true",
+    );
+    expect(screen.getByTestId("product-category-formal-table-mobile-readout")).toHaveTextContent(
+      "买入返售",
+    );
+
+    await user.selectOptions(screen.getByLabelText("查看产品"), "interbank_lending_assets");
+    expect(evidence).toHaveTextContent("拆放同业");
+
+    await user.click(screen.getByRole("button", { name: "同比" }));
+    await waitFor(() => {
+      expect(attributionSpy).toHaveBeenCalledWith({
+        reportDate: "2026-02-28",
+        compare: "yoy",
+      });
+    });
+    expect(evidence).toHaveTextContent("拆放同业");
+    expect(
+      screen.getByTestId("product-category-formal-row-interbank_lending_assets"),
+    ).toHaveAttribute("data-selected", "true");
+    expect(screen.getByTestId("product-category-formal-row-repo_assets")).not.toHaveAttribute(
+      "data-selected",
+    );
+
+    await user.click(screen.getByRole("button", { name: "汇总视图" }));
+    await screen.findByTestId("product-category-attribution-ineligible");
+    expect(screen.queryByRole("button", { name: "查看 买入返售 归因证据" })).not.toBeInTheDocument();
+    expect(
+      screen
+        .queryByTestId("product-category-formal-row-repo_assets")
+        ?.getAttribute("data-selected") ?? null,
+    ).toBeNull();
   });
 
   it("shows a closure-error warning when attribution residual is non-zero", async () => {
@@ -834,7 +1445,40 @@ describe("ProductCategoryPnlPage", () => {
 
     const ineligible = await screen.findByTestId("product-category-attribution-ineligible");
     expect(ineligible).toHaveTextContent("仅支持月度视图");
+    expect(screen.queryByTestId("product-category-attribution-bridge")).not.toBeInTheDocument();
     expect(attributionSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps attribution failure explicit and restores the bridge after retry", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    let denyAttribution = true;
+    const attributionSpy = vi.fn(
+      async (options: Parameters<typeof baseClient.getProductCategoryAttribution>[0]) => {
+        if (denyAttribution) {
+          throw new Error("attribution unavailable");
+        }
+        return buildTieOutAttributionEnvelope(options.reportDate, options.compare);
+      },
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryAttribution: attributionSpy,
+    });
+
+    const workbench = await screen.findByTestId("product-category-attribution-workbench");
+    await waitFor(() => {
+      expect(within(workbench).getByText("归因数据加载失败。")).toBeInTheDocument();
+    });
+    expect(within(workbench).queryByTestId("product-category-attribution-bridge")).not.toBeInTheDocument();
+
+    denyAttribution = false;
+    await user.click(within(workbench).getByRole("button", { name: "重试" }));
+
+    await waitFor(() => {
+      expect(within(workbench).getByTestId("product-category-attribution-bridge")).toBeInTheDocument();
+    });
+    expect(attributionSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link", async () => {
@@ -1017,6 +1661,14 @@ describe("ProductCategoryPnlPage", () => {
       expect(pnlSpy).not.toHaveBeenCalled();
       expect(adjSpy).not.toHaveBeenCalled();
     });
+    expect(screen.getByTestId("product-category-data-health")).toHaveAttribute(
+      "data-health-state",
+      "empty",
+    );
+    expect(screen.getByTestId("product-category-data-health")).toHaveTextContent(
+      "暂无可选报告月份",
+    );
+    expect(screen.queryByTestId("product-category-formal-readiness-band")).not.toBeInTheDocument();
     expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute("href", "/ledger-pnl");
     const gap = screen.getByTestId("product-category-as-of-date-gap");
     expect(gap.textContent).toBe(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY);
@@ -2556,6 +3208,7 @@ describe("ProductCategoryPnlPage", () => {
           result_meta: {
             ...env.result_meta,
             fallback_mode: "latest_snapshot" as const,
+            fallback_date: "2026-01-31",
             vendor_status: "vendor_stale" as const,
             quality_flag: "warning" as const,
           },
@@ -2573,7 +3226,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-formal-readiness-status")).toHaveTextContent(
       "fallback=latest_snapshot",
     );
-    expect(screen.getByTestId("product-category-formal-readiness-band")).toHaveTextContent(
+    expect(screen.getByTestId("product-category-governance-evidence")).toHaveTextContent(
       "data-state-review-required",
     );
     expect(screen.getByTestId("product-category-governance-notice-fallback_mode")).toHaveTextContent(
@@ -2585,6 +3238,13 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-governance-notice-quality_flag")).toHaveTextContent(
       "预警",
     );
+    const health = screen.getByTestId("product-category-data-health");
+    expect(health).toHaveAttribute("data-health-state", "degraded");
+    expect(health).toHaveAttribute("role", "alert");
+    expect(within(health).getByTestId("product-category-formal-judgement-status")).toHaveTextContent(
+      "正式判断阻断",
+    );
+    expect(health).not.toHaveTextContent("回退日期");
   });
 
   it("Unit 3: refresh shows in-flight status (queued→running), disables refresh, then records last run id", async () => {
@@ -3332,18 +3992,20 @@ describe("ProductCategoryPnlPage", () => {
       getProductCategoryDates: datesSpy,
     });
 
-    const stateSurfaceTitle = await screen.findByText("报告月份加载失败");
-    const stateSurface = stateSurfaceTitle.closest(
-      "[data-testid='product-category-dates-state']",
-    ) as HTMLElement;
-    expect(stateSurface).toHaveAttribute("data-state-variant", "error");
+    const stateSurface = await screen.findByTestId("product-category-data-health");
+    await waitFor(() => {
+      expect(stateSurface).toHaveTextContent("报告月份加载失败");
+      expect(stateSurface).toHaveAttribute("data-health-state", "error");
+    });
+    expect(screen.queryByTestId("product-category-dates-state")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-formal-readiness-band")).not.toBeInTheDocument();
     expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
 
     denyDates = false;
-    await user.click(within(stateSurface).getByRole("button", { name: "重试" }));
+    await user.click(within(stateSurface).getByRole("button", { name: "重试报告月份" }));
 
     await waitFor(() => {
-      expect(screen.queryByTestId("product-category-dates-state")).not.toBeInTheDocument();
+      expect(stateSurface).toHaveAttribute("data-health-state", "ready");
     });
     await screen.findByTestId("product-category-table");
   });

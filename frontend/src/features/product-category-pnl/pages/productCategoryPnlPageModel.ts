@@ -692,6 +692,7 @@ export type ProductCategoryAttributionWaterfallSurface = {
 };
 
 export type ProductCategoryRootCauseDriverKey =
+  | "day_effect"
   | "scale_effect"
   | "rate_effect"
   | "ftp_effect"
@@ -1088,6 +1089,11 @@ function yiNumber(value: DecimalLike | null | undefined): number | null {
     return null;
   }
   return Number((parsed / YUAN_PER_YI).toFixed(2));
+}
+
+function rawYiNumber(value: DecimalLike | null | undefined): number | null {
+  const parsed = decimalNumber(value);
+  return parsed === null ? null : parsed / YUAN_PER_YI;
 }
 
 function percentNumber(value: DecimalLike | null | undefined): number | null {
@@ -2455,6 +2461,7 @@ const PRODUCT_CATEGORY_ATTRIBUTION_WATERFALL_STEPS = [
 ] as const;
 
 const PRODUCT_CATEGORY_ROOT_CAUSE_DRIVER_STEPS = [
+  ["day_effect", "天数因素"],
   ["scale_effect", "规模因素"],
   ["rate_effect", "利率因素"],
   ["ftp_effect", "FTP因素"],
@@ -2477,9 +2484,11 @@ export function selectProductCategoryAttributionWaterfallSurface(
     };
   }
   const prior = yiNumber(headline.prior?.business_net_income);
+  const priorRaw = rawYiNumber(headline.prior?.business_net_income);
   const current = yiNumber(headline.current?.business_net_income);
+  const currentRaw = rawYiNumber(headline.current?.business_net_income);
   const delta = yiNumber(headline.effects.delta_business_net_income);
-  if (prior === null || current === null) {
+  if (prior === null || priorRaw === null || current === null || currentRaw === null) {
     return {
       metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
       title: `${headline.category_name || "全表合计"}经营差异瀑布`,
@@ -2488,30 +2497,31 @@ export function selectProductCategoryAttributionWaterfallSurface(
       emptyCopy: "当前归因缺少本期或对比期净营收。",
     };
   }
-  let cumulative = prior;
+  let cumulative = priorRaw;
   const rows: ProductCategoryAttributionWaterfallRow[] = [
     {
       key: "prior",
       label: "对比期净营收",
       value: prior,
       valueLabel: productCategoryYiNumberLabel(prior),
-      cumulative: prior,
-      cumulativeLabel: productCategoryYiNumberLabel(prior),
+      cumulative: priorRaw,
+      cumulativeLabel: productCategoryYiNumberLabel(priorRaw),
       tone: productCategoryDeltaTone(prior),
     },
   ];
   for (const [key, label] of PRODUCT_CATEGORY_ATTRIBUTION_WATERFALL_STEPS) {
     const value = yiNumber(headline.effects[key]);
-    if (value !== null) {
-      cumulative = Number((cumulative + value).toFixed(2));
+    const rawValue = rawYiNumber(headline.effects[key]);
+    if (rawValue !== null) {
+      cumulative += rawValue;
     }
     rows.push({
       key,
       label,
       value,
       valueLabel: formatSignedProductCategoryYi(value),
-      cumulative: value === null ? null : cumulative,
-      cumulativeLabel: value === null ? "-" : productCategoryYiNumberLabel(cumulative),
+      cumulative: rawValue === null ? null : cumulative,
+      cumulativeLabel: rawValue === null ? "-" : productCategoryYiNumberLabel(cumulative),
       tone: productCategoryDeltaTone(value),
     });
   }
@@ -2520,8 +2530,8 @@ export function selectProductCategoryAttributionWaterfallSurface(
     label: "本期净营收",
     value: current,
     valueLabel: productCategoryYiNumberLabel(current),
-    cumulative: current,
-    cumulativeLabel: productCategoryYiNumberLabel(current),
+    cumulative: currentRaw,
+    cumulativeLabel: productCategoryYiNumberLabel(currentRaw),
     tone: productCategoryDeltaTone(delta),
   });
   return {
@@ -5058,6 +5068,138 @@ export function buildLedgerPnlHrefForReportDate(reportDate: string): string {
 /** Page-visible copy: product-category PnL intentionally has no standalone `as_of_date` field. */
 export const PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY =
   "归属日期：本页不提供独立 as_of_date；请分别查看报告日期和生成时间，二者不互相代替。";
+
+export type ProductCategoryDataHealthState =
+  | "loading"
+  | "ready"
+  | "degraded"
+  | "empty"
+  | "error";
+
+export type ProductCategoryDataHealth = {
+  state: ProductCategoryDataHealthState;
+  judgementState: "pending" | "allowed" | "blocked";
+  judgementLabel: "等待数据完成" | "可用于经营判断" | "正式判断阻断";
+  title: string;
+  description: string;
+  facts: Array<{ label: string; value: string }>;
+  retryTarget: "dates" | "baseline" | null;
+};
+
+export function buildProductCategoryDataHealth(input: {
+  datesLoading: boolean;
+  datesError: boolean;
+  reportDates: string[] | undefined;
+  selectedDate: string;
+  baselineLoading: boolean;
+  baselineError: boolean;
+  baseline: ProductCategoryPnlPayload | null | undefined;
+  meta: ResultMeta | null | undefined;
+}): ProductCategoryDataHealth {
+  if (input.datesLoading) {
+    return {
+      state: "loading",
+      judgementState: "pending",
+      judgementLabel: "等待数据完成",
+      title: "报告月份加载中",
+      description: "正在确认可用报告月份。",
+      facts: [],
+      retryTarget: null,
+    };
+  }
+  if (input.datesError) {
+    return {
+      state: "error",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      title: "报告月份加载失败",
+      description: "无法确定可用报告月份，正式基线尚未查询。",
+      facts: [],
+      retryTarget: "dates",
+    };
+  }
+  if (input.reportDates?.length === 0) {
+    return {
+      state: "empty",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      title: "暂无可选报告月份",
+      description: "日期接口未返回可查询月份。",
+      facts: [],
+      retryTarget: null,
+    };
+  }
+
+  const reportDate = input.baseline?.report_date || input.selectedDate;
+  const facts: Array<{ label: string; value: string }> = [];
+  if (reportDate) {
+    facts.push({ label: "报告日期", value: reportDate });
+  }
+
+  if (input.baselineError) {
+    return {
+      state: "error",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      title: "正式基线加载失败",
+      description: "当前未展示历史缓存结果，请重新查询正式读模型。",
+      facts,
+      retryTarget: "baseline",
+    };
+  }
+  if (input.baselineLoading || !input.baseline) {
+    return {
+      state: "loading",
+      judgementState: "pending",
+      judgementLabel: "等待数据完成",
+      title: "正式基线加载中",
+      description: "正在读取所选月份的正式产品分类损益。",
+      facts,
+      retryTarget: null,
+    };
+  }
+
+  if (input.meta?.source_version) {
+    facts.push({ label: "来源版本", value: input.meta.source_version });
+  }
+  const detailRowCount = input.baseline.rows.filter(
+    (row) => row.category_id !== "grand_total",
+  ).length;
+  facts.push({ label: "明细", value: `${detailRowCount} 行` });
+  if (input.meta?.generated_at) {
+    facts.push({ label: "生成时间", value: input.meta.generated_at });
+  }
+
+  if (detailRowCount === 0) {
+    return {
+      state: "empty",
+      judgementState: "blocked",
+      judgementLabel: "正式判断阻断",
+      title: "所选月份暂无产品明细",
+      description: "正式读模型已响应，但没有返回可展示的分类行。",
+      facts,
+      retryTarget: null,
+    };
+  }
+
+  const degraded = Boolean(
+    input.meta &&
+      (input.meta.quality_flag !== "ok" ||
+        input.meta.vendor_status !== "ok" ||
+        input.meta.fallback_mode !== "none"),
+  );
+  return {
+    state: degraded ? "degraded" : "ready",
+    judgementState: degraded ? "blocked" : "allowed",
+    judgementLabel: degraded ? "正式判断阻断" : "可用于经营判断",
+    title: degraded ? "正式基线需复核" : "正式基线已就绪",
+    description: degraded
+      ? "数据已返回，但后端质量或回退标记要求复核。"
+      : "正式读模型已返回当前报告口径。",
+    facts,
+    retryTarget: null,
+  };
+}
 
 export type ProductCategoryGovernanceNotice = {
   id: "fallback_mode" | "vendor_status" | "quality_flag";
