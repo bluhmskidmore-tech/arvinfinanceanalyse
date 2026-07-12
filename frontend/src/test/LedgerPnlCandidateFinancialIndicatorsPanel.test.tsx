@@ -25,6 +25,10 @@ function renderPanel(
   return render(strictMode ? <StrictMode>{panel}</StrictMode> : panel);
 }
 
+async function openAnalysisView() {
+  fireEvent.click(await screen.findByRole("tab", { name: /^经营分析/ }));
+}
+
 function canonicalizeResolutionJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalizeResolutionJson);
   if (!value || typeof value !== "object") return value;
@@ -92,6 +96,48 @@ async function buildDryRunReceipt(
     .update(JSON.stringify(canonicalizeResolutionJson(resolutionPayload)), "utf8")
     .digest("hex");
   return receipt;
+}
+
+async function buildCurrentSourceImpactResponse(baseClient: ApiClient) {
+  const response = await baseClient.getLedgerPnlCandidateFinancialIndicators("202606");
+  return {
+    ...response,
+    result: {
+      ...response.result,
+      rule_version: "qdb-finance-2026-v1.0.1",
+      source_version_impact: {
+        contract_version: "candidate-source-version-impact-v1",
+        impact_asset_sha256: "b".repeat(64),
+        status: "numerically_unchanged",
+        comparison_basis: "canonical_decimal_value",
+        report_month: "202606",
+        reference_rule_version: "qdb-finance-2026-v1.0.0",
+        current_rule_version: "qdb-finance-2026-v1.0.1",
+        reference_result_sha256: "c".repeat(64),
+        reference_ledger_sha256: "d".repeat(64),
+        current_ledger_sha256: "e".repeat(64),
+        daily_sha256: "f".repeat(64),
+        metric_total: 186,
+        compared_metric_count: 186,
+        reference_numeric_digest: "1".repeat(64),
+        current_numeric_digest: "1".repeat(64),
+        numeric_changed_count: 0,
+        serialization_only_count: 8,
+        serialization_only_metric_ids: response.result.metrics
+          .slice(0, 8)
+          .map((item) => item.metric_id),
+        formal_use_allowed: false,
+        certification_effect: "none",
+      },
+      promotion_readiness: {
+        ...response.result.promotion_readiness,
+        evidence_pack: {
+          ...response.result.promotion_readiness.evidence_pack,
+          rule_version: "qdb-finance-2026-v1.0.1",
+        },
+      },
+    },
+  } as unknown as typeof response;
 }
 
 describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
@@ -419,6 +465,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     expect(candidateRead).toHaveBeenCalledTimes(1);
     expect(candidateRead).toHaveBeenNthCalledWith(1, "202606", { includeLineage: false });
 
+    await openAnalysisView();
     const search = screen.getByRole("searchbox", { name: "搜索全部财务指标" });
     await user.type(search, "input.adjustment.noninterest.r019");
     expect(screen.getByText("显示 1 / 186")).toBeInTheDocument();
@@ -439,21 +486,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
   it("accepts the active v1.0.1 evidence pack without weakening the candidate gate", async () => {
     const baseClient = createApiClient({ mode: "mock" });
-    const response = await baseClient.getLedgerPnlCandidateFinancialIndicators("202606");
-    const activeResponse = {
-      ...response,
-      result: {
-        ...response.result,
-        rule_version: "qdb-finance-2026-v1.0.1",
-        promotion_readiness: {
-          ...response.result.promotion_readiness,
-          evidence_pack: {
-            ...response.result.promotion_readiness.evidence_pack,
-            rule_version: "qdb-finance-2026-v1.0.1",
-          },
-        },
-      },
-    } as unknown as typeof response;
+    const activeResponse = await buildCurrentSourceImpactResponse(baseClient);
     const client: ApiClient = {
       ...baseClient,
       getLedgerPnlCandidateFinancialIndicators: vi.fn(async () => activeResponse),
@@ -463,10 +496,92 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
 
     expect(await screen.findByTestId("candidate-financial-indicators-panel")).toBeInTheDocument();
     expect(screen.queryByTestId("candidate-financial-indicators-contract-error")).not.toBeInTheDocument();
+    expect(screen.getByTestId("candidate-analysis-view")).toBeInTheDocument();
+    expect(screen.getByTestId("candidate-source-version-impact")).toHaveTextContent("186 / 186");
+    expect(screen.getByTestId("candidate-source-version-impact")).toHaveTextContent("8");
+  });
+
+  it("opens on analysis and keeps the governance worklist behind an explicit view switch", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const activeResponse = await buildCurrentSourceImpactResponse(baseClient);
+    const client: ApiClient = {
+      ...baseClient,
+      getLedgerPnlCandidateFinancialIndicators: vi.fn(async () => activeResponse),
+    };
+
+    renderPanel(client);
+
+    const switcher = await screen.findByRole("tablist", { name: "候选财务指标视图" });
+    expect(within(switcher).getByRole("tab", { name: "经营分析 结论、规模、收入与指标目录" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByTestId("candidate-analysis-view")).toBeInTheDocument();
+    expect(screen.getByTestId("candidate-analysis-view")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("candidate-governance-view")).toHaveAttribute("hidden");
+
+    await user.click(within(switcher).getByRole("tab", { name: "治理与补证 3 项门禁仍阻断" }));
+
+    expect(screen.getByTestId("candidate-governance-view")).toBeInTheDocument();
+    expect(screen.getByTestId("candidate-governance-view")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("candidate-analysis-view")).toHaveAttribute("hidden");
     expect(screen.getByTestId("candidate-financial-indicators-promotion-readiness")).toHaveAttribute(
       "data-status",
       "blocked",
     );
+  });
+
+  it("opens on governance when the source-version numeric digest does not match", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const activeResponse = await buildCurrentSourceImpactResponse(baseClient);
+    activeResponse.result.source_version_impact = {
+      ...activeResponse.result.source_version_impact!,
+      status: "numeric_digest_mismatch",
+      current_numeric_digest: "2".repeat(64),
+      numeric_changed_count: null,
+      serialization_only_count: 0,
+      serialization_only_metric_ids: [],
+    };
+    const client: ApiClient = {
+      ...baseClient,
+      getLedgerPnlCandidateFinancialIndicators: vi.fn(async () => activeResponse),
+    };
+
+    renderPanel(client);
+
+    const switcher = await screen.findByRole("tablist", { name: "候选财务指标视图" });
+    expect(within(switcher).getByRole("tab", { name: /^治理与补证/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByTestId("candidate-governance-view")).not.toHaveAttribute("hidden");
+    expect(screen.getByTestId("candidate-analysis-view")).toHaveAttribute("hidden");
+  });
+
+  it("fails closed when an unchanged source-impact claim has inconsistent digests", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const activeResponse = await buildCurrentSourceImpactResponse(baseClient);
+    activeResponse.result.source_version_impact = {
+      ...activeResponse.result.source_version_impact!,
+      current_numeric_digest: "2".repeat(64),
+    };
+    const client: ApiClient = {
+      ...baseClient,
+      getLedgerPnlCandidateFinancialIndicators: vi.fn(async () => activeResponse),
+    };
+
+    renderPanel(client);
+
+    const switcher = await screen.findByRole("tablist", { name: "候选财务指标视图" });
+    expect(within(switcher).getByRole("tab", { name: /^治理与补证/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.click(within(switcher).getByRole("tab", { name: /^经营分析/ }));
+    expect(screen.getByTestId("candidate-source-version-impact-unavailable")).toBeInTheDocument();
+    expect(screen.queryByTestId("candidate-source-version-impact")).not.toBeInTheDocument();
   });
 
   it("downloads the exact backend-authored evidence pack without candidate values", async () => {
@@ -929,6 +1044,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     };
 
     renderPanel(client);
+    await openAnalysisView();
     const scaleHeadline = await screen.findByTestId(
       "candidate-scale-balance.deposit.corporate.total::point",
     );
@@ -1247,6 +1363,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     };
 
     renderPanel(client);
+    await openAnalysisView();
     await user.click(await screen.findByRole("button", { name: /利息净收入.*查看追溯/ }));
 
     const dialog = await screen.findByRole("dialog", { name: "指标追溯详情" });
@@ -1258,6 +1375,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
     renderPanel(client);
+    await openAnalysisView();
 
     const search = await screen.findByRole("searchbox", { name: "搜索全部财务指标" });
     await user.type(search, "income");
@@ -1269,6 +1387,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
     renderPanel(client);
+    await openAnalysisView();
 
     const search = await screen.findByRole("searchbox", { name: "搜索全部财务指标" });
     await user.type(search, "时点余额");
@@ -1291,6 +1410,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
       throw new Error("synthetic interest lineage fixture is incomplete");
     }
     renderPanel(client);
+    await openAnalysisView();
 
     const companyDeposit = await screen.findByTestId(
       "candidate-scale-balance.deposit.corporate.total::point",
@@ -1314,6 +1434,7 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
     renderPanel(client);
+    await openAnalysisView();
     const opener = await screen.findByRole("button", { name: /利息净收入.*查看追溯/ });
 
     await user.click(opener);

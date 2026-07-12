@@ -421,6 +421,66 @@ class CandidateFinancialIndicatorPromotionReadiness(_StrictCandidateModel):
         return self
 
 
+class CandidateFinancialIndicatorSourceVersionImpact(_StrictCandidateModel):
+    contract_version: Literal["candidate-source-version-impact-v1"]
+    impact_asset_sha256: Sha256String
+    status: Literal[
+        "numerically_unchanged",
+        "numeric_digest_mismatch",
+        "comparison_incomplete",
+    ]
+    comparison_basis: Literal["canonical_decimal_value"]
+    report_month: str = Field(pattern=r"^[0-9]{4}(?:0[1-9]|1[0-2])$")
+    reference_rule_version: Literal["qdb-finance-2026-v1.0.0"]
+    current_rule_version: Literal["qdb-finance-2026-v1.0.1"]
+    reference_result_sha256: Sha256String
+    reference_ledger_sha256: Sha256String
+    current_ledger_sha256: Sha256String
+    daily_sha256: Sha256String
+    metric_total: Literal[186]
+    compared_metric_count: int = Field(ge=0, le=186)
+    reference_numeric_digest: Sha256String
+    current_numeric_digest: Sha256String
+    numeric_changed_count: int | None = Field(default=None, ge=0, le=186)
+    serialization_only_count: int = Field(ge=0, le=186)
+    serialization_only_metric_ids: list[MetricId]
+    formal_use_allowed: Literal[False]
+    certification_effect: Literal["none"]
+
+    @model_validator(mode="after")
+    def validate_impact(self) -> CandidateFinancialIndicatorSourceVersionImpact:
+        if self.serialization_only_count != len(self.serialization_only_metric_ids):
+            raise ValueError("serialization_only_count must match metric IDs")
+        if len(self.serialization_only_metric_ids) != len(
+            set(self.serialization_only_metric_ids)
+        ):
+            raise ValueError("serialization-only metric IDs must be unique")
+        if self.status == "numerically_unchanged":
+            if self.compared_metric_count != self.metric_total:
+                raise ValueError("unchanged impact must compare every metric")
+            if self.numeric_changed_count != 0:
+                raise ValueError("unchanged impact must have zero numeric changes")
+            if self.current_numeric_digest != self.reference_numeric_digest:
+                raise ValueError("unchanged impact digests must match")
+        elif self.status == "numeric_digest_mismatch":
+            if self.compared_metric_count != self.metric_total:
+                raise ValueError("mismatched impact must compare every metric")
+            if self.numeric_changed_count is not None:
+                raise ValueError("mismatched impact cannot infer a numeric change count")
+            if self.current_numeric_digest == self.reference_numeric_digest:
+                raise ValueError("mismatched impact digests must differ")
+            if self.serialization_only_count != 0:
+                raise ValueError("mismatched impact cannot claim serialization-only metrics")
+        else:
+            if self.compared_metric_count >= self.metric_total:
+                raise ValueError("incomplete impact must omit at least one metric")
+            if self.numeric_changed_count is not None:
+                raise ValueError("incomplete impact cannot infer a numeric change count")
+            if self.serialization_only_count != 0:
+                raise ValueError("incomplete impact cannot claim serialization-only metrics")
+        return self
+
+
 class CandidateFinancialIndicatorPayload(_StrictCandidateModel):
     report_month: str = Field(pattern=r"^[0-9]{4}(?:0[1-9]|1[0-2])$")
     report_date: date
@@ -436,6 +496,7 @@ class CandidateFinancialIndicatorPayload(_StrictCandidateModel):
     idempotency_key: Sha256String
     requested_metric_id: MetricId | None
     include_lineage: bool
+    source_version_impact: CandidateFinancialIndicatorSourceVersionImpact | None = None
     promotion_readiness: CandidateFinancialIndicatorPromotionReadiness
     sources: list[CandidateFinancialIndicatorSource]
     summary: CandidateFinancialIndicatorSummary
@@ -450,6 +511,27 @@ class CandidateFinancialIndicatorPayload(_StrictCandidateModel):
         expected_date = date(year, month, monthrange(year, month)[1])
         if self.report_date != expected_date:
             raise ValueError("report_date must equal the requested report month end")
+        impact = self.source_version_impact
+        if impact is not None:
+            if impact.report_month != self.report_month:
+                raise ValueError("source impact report_month must bind the payload")
+            if impact.current_rule_version != self.rule_version:
+                raise ValueError("source impact rule_version must bind the payload")
+            source_hashes = {
+                source.source_kind: source.sha256
+                for source in self.sources
+                if source.exists
+            }
+            if (
+                len(source_hashes) != 2
+                or impact.current_ledger_sha256 != source_hashes.get("ledger")
+                or impact.daily_sha256 != source_hashes.get("daily")
+            ):
+                raise ValueError("source impact source hashes must bind the payload")
+            if self.source_alignment != "matched" or not all(
+                source.locked_hash_match is True for source in self.sources
+            ):
+                raise ValueError("source impact requires matched locked sources")
         if self.promotion_readiness.candidate_idempotency_key != self.idempotency_key:
             raise ValueError("promotion readiness must bind the candidate idempotency key")
         evidence_pack = self.promotion_readiness.evidence_pack

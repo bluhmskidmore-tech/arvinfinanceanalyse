@@ -23,6 +23,7 @@ import type {
   LedgerPnlCandidatePromotionOwnerRequirement,
   LedgerPnlCandidateRequirementResolution,
   LedgerPnlCandidateRequirementResolutionItem,
+  LedgerPnlCandidateSourceVersionImpact,
 } from "../../../api/contracts";
 import "./LedgerPnlCandidateFinancialIndicatorsPanel.css";
 
@@ -351,6 +352,77 @@ function isPromotionReadinessContract(
       (evidencePack.outcome_status === "blocked" && blockingCount > 0)
       || (evidencePack.outcome_status === "awaiting_owner_approval" && blockingCount === 0)
     );
+}
+
+function isSourceVersionImpactContract(
+  value: unknown,
+  payload: LedgerPnlCandidateFinancialIndicatorsPayload,
+): value is LedgerPnlCandidateSourceVersionImpact {
+  if (!value || typeof value !== "object") return false;
+  const impact = value as Record<string, unknown>;
+  const hashFields = [
+    "impact_asset_sha256",
+    "reference_result_sha256",
+    "reference_ledger_sha256",
+    "current_ledger_sha256",
+    "daily_sha256",
+    "reference_numeric_digest",
+    "current_numeric_digest",
+  ];
+  if (
+    impact.contract_version !== "candidate-source-version-impact-v1"
+    || impact.comparison_basis !== "canonical_decimal_value"
+    || impact.report_month !== payload.report_month
+    || impact.reference_rule_version !== "qdb-finance-2026-v1.0.0"
+    || impact.current_rule_version !== "qdb-finance-2026-v1.0.1"
+    || impact.current_rule_version !== payload.rule_version
+    || impact.metric_total !== 186
+    || !Number.isInteger(impact.compared_metric_count)
+    || Number(impact.compared_metric_count) < 0
+    || Number(impact.compared_metric_count) > 186
+    || !(
+      impact.numeric_changed_count === null
+      || (
+        Number.isInteger(impact.numeric_changed_count)
+        && Number(impact.numeric_changed_count) >= 0
+        && Number(impact.numeric_changed_count) <= 186
+      )
+    )
+    || !Number.isInteger(impact.serialization_only_count)
+    || Number(impact.serialization_only_count) < 0
+    || Number(impact.serialization_only_count) > 186
+    || !Array.isArray(impact.serialization_only_metric_ids)
+    || impact.serialization_only_count !== impact.serialization_only_metric_ids.length
+    || impact.formal_use_allowed !== false
+    || impact.certification_effect !== "none"
+    || !hashFields.every((field) => (
+      typeof impact[field] === "string" && SHA256_PATTERN.test(impact[field] as string)
+    ))
+  ) return false;
+
+  const metricIds = impact.serialization_only_metric_ids;
+  if (
+    metricIds.some((metricId) => typeof metricId !== "string" || metricId.trim().length === 0)
+    || new Set(metricIds).size !== metricIds.length
+  ) return false;
+
+  if (impact.status === "numerically_unchanged") {
+    return impact.compared_metric_count === 186
+      && impact.numeric_changed_count === 0
+      && impact.current_numeric_digest === impact.reference_numeric_digest;
+  }
+  if (impact.status === "numeric_digest_mismatch") {
+    return impact.compared_metric_count === 186
+      && impact.numeric_changed_count === null
+      && impact.current_numeric_digest !== impact.reference_numeric_digest
+      && impact.serialization_only_count === 0;
+  }
+  if (impact.status === "comparison_incomplete") {
+    return Number(impact.compared_metric_count) < 186
+      && impact.numeric_changed_count === null
+      && impact.serialization_only_count === 0;
+  }
+  return false;
 }
 
 const BASIS_LABELS: Record<LedgerPnlCandidateFinancialIndicatorMetric["basis"], string> = {
@@ -1019,12 +1091,80 @@ function CandidateRevalidationPanel({
   );
 }
 
+function SourceVersionImpactCard({
+  impact,
+}: {
+  impact: LedgerPnlCandidateSourceVersionImpact | null | undefined;
+}) {
+  if (!impact) {
+    return (
+      <section
+        className="candidate-indicators__version-impact candidate-indicators__version-impact--unavailable"
+        data-testid="candidate-source-version-impact-unavailable"
+      >
+        <div>
+          <span>来源版本影响</span>
+          <h3>暂无可核对的版本基准</h3>
+        </div>
+        <p>当前结果仍可按候选口径分析，但不能推断源文件换版是否改变指标数值。</p>
+      </section>
+    );
+  }
+
+  const unchanged = impact.status === "numerically_unchanged";
+  return (
+    <section
+      className="candidate-indicators__version-impact"
+      data-status={impact.status}
+      data-testid="candidate-source-version-impact"
+    >
+      <div className="candidate-indicators__version-impact-copy">
+        <span>来源版本影响</span>
+        <h3>{unchanged ? "规则换版未改变指标数值" : "规则换版数值影响待复核"}</h3>
+        <p>
+          {impact.reference_rule_version} → {impact.current_rule_version}；
+          比较采用 Decimal 规范值，不把尾随零差异误判为金额变化。
+        </p>
+      </div>
+      <div className="candidate-indicators__version-impact-metrics">
+        <article>
+          <span>完成核对</span>
+          <strong>{impact.compared_metric_count} / {impact.metric_total}</strong>
+          <small>候选指标</small>
+        </article>
+        <article>
+          <span>数值变化</span>
+          <strong>{impact.numeric_changed_count ?? "待确认"}</strong>
+          <small>Decimal 数值</small>
+        </article>
+        <article>
+          <span>仅格式差异</span>
+          <strong>{impact.serialization_only_count}</strong>
+          <small>尾随零序列化</small>
+        </article>
+      </div>
+      {impact.serialization_only_metric_ids.length > 0 ? (
+        <details>
+          <summary>查看仅格式差异的指标（{impact.serialization_only_metric_ids.length}）</summary>
+          <ul>
+            {impact.serialization_only_metric_ids.map((metricId) => (
+              <li key={metricId}><code>{metricId}</code></li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      <small>该核对没有正式化效果；正式使用仍受独立治理门禁约束。</small>
+    </section>
+  );
+}
+
 export function LedgerPnlCandidateFinancialIndicatorsPanel({
   reportMonth,
   currency = "CNX",
 }: Props) {
   const client = useApiClient();
   const normalizedReportMonth = reportMonth.trim();
+  const [activeView, setActiveView] = useState<"analysis" | "governance" | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedMetricId, setSelectedMetricId] = useState<string | null>(null);
   const [revalidationReceipt, setRevalidationReceipt] = useState<
@@ -1133,6 +1273,7 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
 
   useEffect(() => {
     setRevalidationReceipt(null);
+    setActiveView(null);
   }, [normalizedReportMonth, basePayload?.idempotency_key]);
 
   const renderHeader = () => (
@@ -1298,6 +1439,15 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
   }
 
   const metricById = new Map(payload.metrics.map((metric) => [metric.metric_id, metric]));
+  const sourceVersionImpact = isSourceVersionImpactContract(
+    payload.source_version_impact,
+    payload,
+  ) ? payload.source_version_impact : null;
+  const displayedView = activeView ?? (
+    sourceVersionImpact?.status === "numerically_unchanged"
+      ? "analysis"
+      : "governance"
+  );
   const mismatchedSources = payload.sources.filter((source) => source.locked_hash_match === false);
   const failedValidations = payload.validations.filter((validation) => !validation.passed);
   const visibleMetrics = filteredMetrics.slice(0, 50);
@@ -1368,22 +1518,90 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
         <div><span>手工默认</span><strong>{payload.summary.manual_default_count} 项</strong></div>
       </div>
 
-      <PromotionReadinessPanel
-        readiness={payload.promotion_readiness}
-        baseEvidencePack={basePayload?.promotion_readiness.evidence_pack}
-        resolution={activeRevalidationReceipt?.requirement_resolution}
-      />
+      <div
+        className="candidate-indicators__view-switcher"
+        role="tablist"
+        aria-label="候选财务指标视图"
+      >
+        <button
+          id="candidate-analysis-tab"
+          type="button"
+          role="tab"
+          aria-controls="candidate-analysis-view"
+          aria-selected={displayedView === "analysis"}
+          onClick={() => setActiveView("analysis")}
+        >
+          <span>经营分析</span>
+          <small>结论、规模、收入与指标目录</small>
+        </button>
+        <button
+          id="candidate-governance-tab"
+          type="button"
+          role="tab"
+          aria-controls="candidate-governance-view"
+          aria-selected={displayedView === "governance"}
+          onClick={() => setActiveView("governance")}
+        >
+          <span>治理与补证</span>
+          <small>{payload.promotion_readiness.blocking_count} 项门禁仍阻断</small>
+        </button>
+      </div>
 
-      {basePayload ? (
-        <CandidateRevalidationPanel
-          reportMonth={normalizedReportMonth}
-          basePayload={basePayload}
-          runRevalidation={client.revalidateLedgerPnlCandidateFinancialIndicators}
-          enabled={client.mode === "real"}
-          receipt={activeRevalidationReceipt}
-          onReceipt={setRevalidationReceipt}
+      <div
+        id="candidate-governance-view"
+        className="candidate-indicators__governance-view"
+        data-testid="candidate-governance-view"
+        role="tabpanel"
+        aria-labelledby="candidate-governance-tab"
+        hidden={displayedView !== "governance"}
+      >
+        <PromotionReadinessPanel
+          readiness={payload.promotion_readiness}
+          baseEvidencePack={basePayload?.promotion_readiness.evidence_pack}
+          resolution={activeRevalidationReceipt?.requirement_resolution}
         />
-      ) : null}
+
+        {basePayload ? (
+          <CandidateRevalidationPanel
+            reportMonth={normalizedReportMonth}
+            basePayload={basePayload}
+            runRevalidation={client.revalidateLedgerPnlCandidateFinancialIndicators}
+            enabled={client.mode === "real"}
+            receipt={activeRevalidationReceipt}
+            onReceipt={setRevalidationReceipt}
+          />
+        ) : null}
+      </div>
+
+      <div
+        id="candidate-analysis-view"
+        className="candidate-indicators__analysis-view"
+        data-testid="candidate-analysis-view"
+        role="tabpanel"
+        aria-labelledby="candidate-analysis-tab"
+        hidden={displayedView !== "analysis"}
+      >
+        <section className="candidate-indicators__decision-brief" aria-labelledby="candidate-decision-title">
+          <div>
+            <span>本期经营判断</span>
+            <h3 id="candidate-decision-title">
+              {sourceVersionImpact?.status === "numerically_unchanged"
+                ? "来源已换版，核心指标数值保持一致"
+                : "候选指标可分析，正式结论仍待治理"}
+            </h3>
+            <p>
+              当前来源状态为 {ALIGNMENT_LABELS[payload.source_alignment]}；
+              页面展示后端候选值与血缘，不在前端补算，也不替代正式财务结果。
+            </p>
+          </div>
+          <dl>
+            <div><dt>规则版本</dt><dd>{payload.rule_version}</dd></div>
+            <div><dt>正式门禁</dt><dd>{payload.promotion_readiness.blocking_count} 项阻断</dd></div>
+            <div><dt>使用边界</dt><dd>仅分析 · 禁止正式使用</dd></div>
+          </dl>
+        </section>
+
+        <SourceVersionImpactCard impact={sourceVersionImpact} />
 
       <div className="candidate-indicators__section-heading">
         <div>
@@ -1447,9 +1665,14 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
           );
         })}
       </div>
+      </div>
 
       <div className="candidate-indicators__evidence-layout">
-        <section className="candidate-indicators__evidence" aria-labelledby="candidate-evidence-title">
+        <section
+          className="candidate-indicators__evidence"
+          aria-labelledby="candidate-evidence-title"
+          hidden={displayedView !== "governance"}
+        >
           <div className="candidate-indicators__section-heading">
             <div>
               <span>审计待办</span>
@@ -1476,7 +1699,11 @@ export function LedgerPnlCandidateFinancialIndicatorsPanel({
           </div>
         </section>
 
-        <section className="candidate-indicators__catalog" aria-labelledby="candidate-catalog-title">
+        <section
+          className="candidate-indicators__catalog candidate-indicators__catalog--full"
+          aria-labelledby="candidate-catalog-title"
+          hidden={displayedView !== "analysis"}
+        >
           <div className="candidate-indicators__section-heading">
             <div>
               <span>指标目录</span>

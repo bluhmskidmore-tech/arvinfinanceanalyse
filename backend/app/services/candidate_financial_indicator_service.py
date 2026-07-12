@@ -29,6 +29,9 @@ from backend.app.core_finance.finance_metric_engine import (
     load_finance_metric_rules,
     validate_finance_metrics,
 )
+from backend.app.core_finance.finance_metric_source_impact import (
+    build_finance_metric_source_impact,
+)
 from backend.app.core_finance.finance_metric_xlsx import (
     LEDGER_HEADERS,
     FinanceMetricSourceData,
@@ -183,6 +186,15 @@ def candidate_financial_indicator_envelope(
         "validation_evaluated": len(validations),
         **validation_counts,
     }
+    source_version_impact = None
+    if not manual_overrides:
+        source_version_impact = build_finance_metric_source_impact(
+            report_month=report_month,
+            rule_version=rules["metadata"]["rule_version"],
+            ledger_sha256=source_data.ledger_sha256,
+            daily_sha256=source_data.daily_sha256,
+            metric_values={item.id: item.value for item in metrics},
+        )
     payload = {
         "result_meta": _result_meta(
             report_month=report_month,
@@ -211,6 +223,7 @@ def candidate_financial_indicator_envelope(
             "idempotency_key": idempotency_key,
             "requested_metric_id": metric_id,
             "include_lineage": include_lineage,
+            "source_version_impact": source_version_impact,
             "promotion_readiness": _promotion_readiness(
                 report_month=report_month,
                 report_date=report_date,

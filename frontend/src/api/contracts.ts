@@ -5665,6 +5665,29 @@ export type LedgerPnlCandidateFinancialIndicatorPromotionReadiness = {
   evidence_pack: LedgerPnlCandidatePromotionEvidencePack;
 };
 
+export type LedgerPnlCandidateSourceVersionImpact = {
+  contract_version: "candidate-source-version-impact-v1";
+  impact_asset_sha256: string;
+  status: "numerically_unchanged" | "numeric_digest_mismatch" | "comparison_incomplete";
+  comparison_basis: "canonical_decimal_value";
+  report_month: string;
+  reference_rule_version: "qdb-finance-2026-v1.0.0";
+  current_rule_version: "qdb-finance-2026-v1.0.1";
+  reference_result_sha256: string;
+  reference_ledger_sha256: string;
+  current_ledger_sha256: string;
+  daily_sha256: string;
+  metric_total: 186;
+  compared_metric_count: number;
+  reference_numeric_digest: string;
+  current_numeric_digest: string;
+  numeric_changed_count: number | null;
+  serialization_only_count: number;
+  serialization_only_metric_ids: string[];
+  formal_use_allowed: false;
+  certification_effect: "none";
+};
+
 export type LedgerPnlCandidateFinancialIndicatorsPayload = {
   report_month: string;
   report_date: string;
@@ -5680,6 +5703,7 @@ export type LedgerPnlCandidateFinancialIndicatorsPayload = {
   idempotency_key: string;
   requested_metric_id: string | null;
   include_lineage: boolean;
+  source_version_impact?: LedgerPnlCandidateSourceVersionImpact | null;
   promotion_readiness: LedgerPnlCandidateFinancialIndicatorPromotionReadiness;
   sources: LedgerPnlCandidateFinancialIndicatorSource[];
   summary: {
