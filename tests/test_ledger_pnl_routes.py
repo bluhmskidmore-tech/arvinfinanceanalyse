@@ -357,6 +357,21 @@ class FakeLedgerPnlService:
             "result": {"report_month": kwargs["report_month"]},
         }
 
+    def qdb_gl_monthly_analysis_dates_envelope(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("monthly_analysis_dates", kwargs))
+        return {
+            "result_meta": {"result_kind": "qdb-gl-monthly-analysis.dates"},
+            "result": {"report_months": ["202606"]},
+        }
+
+    def qdb_gl_monthly_analysis_workbook_envelope(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("monthly_analysis_workbook", kwargs))
+        self._raise_value_error()
+        return {
+            "result_meta": {"result_kind": "qdb-gl-monthly-analysis.workbook"},
+            "result": {"report_month": kwargs["report_month"], "sheets": []},
+        }
+
     def candidate_financial_indicator_envelope(
         self,
         **kwargs: Any,
@@ -402,6 +417,7 @@ def _client_with_read_scope(
     )
     monkeypatch.setattr(route_module, "_svc", lambda: service)
     monkeypatch.setattr(route_module, "_candidate_svc", lambda: service)
+    monkeypatch.setattr(route_module, "_monthly_analysis_svc", lambda: service, raising=False)
 
     sqlite_path = tmp_path / "ledger-pnl-route-read-scope.db"
     dsn = f"sqlite:///{sqlite_path.as_posix()}"
@@ -436,6 +452,7 @@ def _client_without_permission_check(
     )
     monkeypatch.setattr(route_module, "_svc", lambda: service)
     monkeypatch.setattr(route_module, "_candidate_svc", lambda: service)
+    monkeypatch.setattr(route_module, "_monthly_analysis_svc", lambda: service, raising=False)
     monkeypatch.setattr(
         route_module,
         "_ensure_ledger_pnl_read_allowed",
@@ -459,6 +476,7 @@ def _client_without_read_scope(
     )
     monkeypatch.setattr(route_module, "_svc", lambda: service)
     monkeypatch.setattr(route_module, "_candidate_svc", lambda: service)
+    monkeypatch.setattr(route_module, "_monthly_analysis_svc", lambda: service, raising=False)
 
     sqlite_path = tmp_path / "ledger-pnl-route-no-read-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
@@ -795,6 +813,95 @@ def test_ledger_pnl_analysis_route_uses_ledger_read_scope_and_service(
             },
         )
     ]
+
+
+def test_ledger_pnl_monthly_analysis_routes_use_ledger_read_scope(
+    tmp_path,
+    monkeypatch,
+):
+    service = FakeLedgerPnlService()
+    client = _client_with_read_scope(tmp_path, monkeypatch, service)
+
+    dates_response = client.get("/api/ledger-pnl/monthly-analysis/dates")
+    workbook_response = client.get(
+        "/api/ledger-pnl/monthly-analysis/workbook",
+        params={"report_month": "202606"},
+    )
+
+    assert dates_response.status_code == 200
+    assert workbook_response.status_code == 200
+    settings = sys.modules["backend.app.governance.settings"].get_settings()
+    assert service.calls == [
+        (
+            "monthly_analysis_dates",
+            {"source_dir": settings.product_category_source_dir},
+        ),
+        (
+            "monthly_analysis_workbook",
+            {
+                "source_dir": settings.product_category_source_dir,
+                "governance_dir": settings.governance_path,
+                "report_month": "202606",
+            },
+        ),
+    ]
+
+
+def test_ledger_pnl_monthly_analysis_routes_reject_missing_ledger_scope(
+    tmp_path,
+    monkeypatch,
+):
+    service = FakeLedgerPnlService()
+    client = _client_without_read_scope(tmp_path, monkeypatch, service)
+
+    assert client.get("/api/ledger-pnl/monthly-analysis/dates").status_code == 403
+    assert client.get(
+        "/api/ledger-pnl/monthly-analysis/workbook",
+        params={"report_month": "202606"},
+    ).status_code == 403
+    assert service.calls == []
+
+
+@pytest.mark.parametrize("report_month", ["202613", "2026-06"])
+def test_ledger_pnl_monthly_analysis_workbook_rejects_invalid_month(
+    monkeypatch,
+    report_month,
+):
+    service = FakeLedgerPnlService()
+    client = _client_without_permission_check(monkeypatch, service)
+
+    response = client.get(
+        "/api/ledger-pnl/monthly-analysis/workbook",
+        params={"report_month": report_month},
+    )
+
+    assert response.status_code == 422
+    assert service.calls == []
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status"),
+    [(ValueError("month pair missing"), 404), (RuntimeError("build unavailable"), 503)],
+)
+def test_ledger_pnl_monthly_analysis_workbook_maps_service_errors(
+    monkeypatch,
+    error,
+    expected_status,
+):
+    service = FakeLedgerPnlService()
+
+    def fail_workbook(**_kwargs: Any) -> dict[str, Any]:
+        raise error
+
+    monkeypatch.setattr(service, "qdb_gl_monthly_analysis_workbook_envelope", fail_workbook)
+    client = _client_without_permission_check(monkeypatch, service)
+
+    response = client.get(
+        "/api/ledger-pnl/monthly-analysis/workbook",
+        params={"report_month": "202606"},
+    )
+
+    assert response.status_code == expected_status
 
 
 def test_ledger_pnl_analysis_route_declares_strict_response_model(monkeypatch):

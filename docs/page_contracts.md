@@ -1602,6 +1602,8 @@
   - `GET /api/ledger-pnl/data`
   - `GET /api/ledger-pnl/summary`
   - `GET /api/ledger-pnl/analysis`
+  - `GET /api/ledger-pnl/monthly-analysis/dates`
+  - `GET /api/ledger-pnl/monthly-analysis/workbook`
   - `GET /api/ledger-pnl/candidate-financial-indicators`
   - `GET /api/ledger-pnl/formal-financial-indicators`
   - `GET /api/ledger-pnl/formal-indicator-rule-checks`
@@ -1615,6 +1617,7 @@
 ### C. Data chain
 
 - Frontend route `/ledger-pnl` consumes ledger PnL read APIs under `/api/ledger-pnl/*`.
+- The Ledger page reads the existing analytical monthly workbook only through the Ledger-owned dates/workbook endpoints. They require `ledger_pnl:read`, preserve the source analytical envelope and `formal_use_allowed=false`, and do not expose QDB export, refresh, scenario, or manual-adjustment capabilities.
 - `GET /api/ledger-pnl/analysis?date=YYYY-MM-DD&currency=CNX|CNY` returns a backend-computed candidate analysis snapshot for the selected accounting basis. It includes the core/other-`5*`/all bridge, CNX-versus-CNY comparison, ranked account contributors, and comparison with the previous available source report date.
 - `GET /api/ledger-pnl/candidate-financial-indicators?report_month=YYYYMM&include_lineage=false&metric_id=` executes the frozen `qdb-finance-2026-v1.0.0` rule pack against the configured monthly ledger/daily workbook pair. It is an isolated candidate result and does not modify the formal source-contract endpoint.
 - `GET /api/ledger-pnl/formal-financial-indicators?report_month=202603` returns the frozen formal financial indicator source contract.
@@ -1645,6 +1648,7 @@
 - `as_of_date` for the source contract is the month-end `report_date` returned by the envelope.
 - Stale/fallback/vendor degradation must remain visible through `result_meta`.
 - No-data and missing-source states must be explicit; pending formal indicators must not be rendered as zero.
+- Ledger data and summary payloads expose `data_status=ready|no_data`. When it is `no_data`, summary cards render `--` even if legacy money placeholders are serialized as zero; the real transport badge must say the API is read-only and the accounting result remains non-formal.
 
 ### F. Candidate analysis contract
 

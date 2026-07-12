@@ -226,6 +226,7 @@ def get_ledger_pnl_by_date(
     facts, source_version = _load_facts_for_date(source_dir, report_date)
     if not facts:
         return {
+            "data_status": "no_data",
             "report_date": report_date.isoformat(),
             "source_version": source_version,
             "items": [],
@@ -266,6 +267,7 @@ def get_ledger_pnl_by_date(
     items.sort(key=lambda x: abs(to_decimal(x["monthly_pnl"]["yuan"])), reverse=True)
 
     return {
+        "data_status": "ready" if items else "no_data",
         "report_date": report_date.isoformat(),
         "source_version": source_version,
         "items": items,
@@ -301,6 +303,8 @@ def get_ledger_pnl_summary(
         row for row in _supported_currency_facts(facts)
         if row.currency == currency_basis
     ]
+    if not filtered:
+        return _empty_summary(report_date, source_version)
 
     ledger_assets = _sum_by_prefixes(filtered, ("1",), "ending_balance")
     ledger_liabilities = abs(_sum_by_prefixes(filtered, ("2",), "ending_balance"))
@@ -330,6 +334,7 @@ def get_ledger_pnl_summary(
         by_account[code]["count"] += 1
 
     return {
+        "data_status": "ready",
         "report_date": report_date.isoformat(),
         "source_version": source_version,
         "ledger_total_assets": fmt_money(ledger_assets),
@@ -360,6 +365,7 @@ def get_ledger_pnl_summary(
 def _empty_summary(report_date: date, source_version: str) -> dict[str, Any]:
     zero = fmt_money(Decimal("0"))
     return {
+        "data_status": "no_data",
         "report_date": report_date.isoformat(),
         "source_version": source_version,
         "ledger_total_assets": zero,

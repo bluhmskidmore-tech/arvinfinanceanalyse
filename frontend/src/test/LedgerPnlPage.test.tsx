@@ -535,11 +535,11 @@ describe("LedgerPnlPage", () => {
           ],
         },
       })),
-      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+      getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
         result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
         result: { report_months: [] },
       })),
-      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
       getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
         result_meta: {
           ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
@@ -626,11 +626,11 @@ describe("LedgerPnlPage", () => {
           items: [],
         },
       })),
-      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+      getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
         result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
         result: { report_months: [] },
       })),
-      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
       getLedgerPnlFormalFinancialIndicators,
     });
 
@@ -788,11 +788,11 @@ describe("LedgerPnlPage", () => {
           ],
         },
       })),
-      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+      getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
         result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
         result: { report_months: [] },
       })),
-      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
       getLedgerPnlFormalFinancialIndicators,
     });
 
@@ -875,11 +875,11 @@ describe("LedgerPnlPage", () => {
           items: [],
         },
       })),
-      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+      getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
         result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
         result: { report_months: [] },
       })),
-      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
       getLedgerPnlFormalFinancialIndicators,
     });
 
@@ -997,11 +997,11 @@ describe("LedgerPnlPage", () => {
           ],
         },
       })),
-      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+      getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
         result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
         result: { report_months: [] },
       })),
-      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
       getLedgerPnlFormalFinancialIndicators,
     });
 
@@ -1071,11 +1071,11 @@ describe("LedgerPnlPage", () => {
           items: [],
         },
       })),
-      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+      getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
         result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
         result: { report_months: [] },
       })),
-      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
       getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
         result_meta: {
           ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
@@ -1165,11 +1165,11 @@ describe("LedgerPnlPage", () => {
             items: [],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators,
       },
       "/ledger-pnl?report_date=2026-05-31",
@@ -1297,11 +1297,11 @@ describe("LedgerPnlPage", () => {
             items: [],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators,
       },
       "/ledger-pnl?report_date=2026-05-31",
@@ -1399,11 +1399,11 @@ describe("LedgerPnlPage", () => {
             ],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: ["202605"] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook"),
           result: {
             report_month: "202605",
@@ -1547,11 +1547,11 @@ describe("LedgerPnlPage", () => {
             ],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: {
             ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
@@ -1663,11 +1663,11 @@ describe("LedgerPnlPage", () => {
             ],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: ["202605"] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(async () => ({
           result_meta: workbookMeta,
           result: {
             report_month: options.workbookReportMonth ?? "202605",
@@ -1911,10 +1911,10 @@ describe("LedgerPnlPage", () => {
             ],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => {
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => {
           throw new Error("monthly analysis dates unavailable");
         }),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: {
             ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
@@ -1992,11 +1992,11 @@ describe("LedgerPnlPage", () => {
           items: [],
         },
       })),
-      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+      getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
         result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
         result: { report_months: [] },
       })),
-      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
       getLedgerPnlFormalFinancialIndicators,
     });
 
@@ -2093,11 +2093,11 @@ describe("LedgerPnlPage", () => {
             ],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: {
             ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
@@ -2131,11 +2131,11 @@ describe("LedgerPnlPage", () => {
           result_meta: buildMeta("ledger_pnl.dates"),
           result: { dates: [] },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators,
       },
       "/ledger-pnl",
@@ -2192,11 +2192,11 @@ describe("LedgerPnlPage", () => {
           },
           result: { dates: [] },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(),
       },
       "/ledger-pnl",
@@ -2270,11 +2270,11 @@ describe("LedgerPnlPage", () => {
             ],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
           result: buildMissingFormalIndicatorContractPayload(),
@@ -2307,6 +2307,7 @@ describe("LedgerPnlPage", () => {
     renderLedgerPnlPage(
       {
         ...base,
+        mode: "real",
         getLedgerPnlDates: vi.fn(async () => ({
           result_meta: buildMeta("ledger_pnl.dates"),
           result: { dates: ["2026-05-31"] },
@@ -2314,6 +2315,7 @@ describe("LedgerPnlPage", () => {
         getLedgerPnlSummary: vi.fn(async () => ({
           result_meta: buildMeta("ledger_pnl.summary"),
           result: {
+            data_status: "no_data" as const,
             report_date: "2026-05-31",
             source_version: "sv_ledger_test",
             ledger_monthly_pnl_core: money("0.00"),
@@ -2328,6 +2330,7 @@ describe("LedgerPnlPage", () => {
         getLedgerPnlData: vi.fn(async () => ({
           result_meta: buildMeta("ledger_pnl.data"),
           result: {
+            data_status: "no_data" as const,
             report_date: "2026-05-31",
             summary: {
               total_pnl_cnx: money("0.00"),
@@ -2338,11 +2341,11 @@ describe("LedgerPnlPage", () => {
             items: [],
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
           result: buildMissingFormalIndicatorContractPayload(),
@@ -2352,8 +2355,12 @@ describe("LedgerPnlPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-pnl-summary-cards")).toHaveTextContent("0.00 亿元");
+      expect(screen.getByTestId("ledger-pnl-currency-summary-table")).toHaveTextContent("暂无币种汇总数据");
     });
+    const summaryCards = screen.getByTestId("ledger-pnl-summary-cards");
+    expect(within(summaryCards).getAllByText("--")).toHaveLength(5);
+    expect(summaryCards).not.toHaveTextContent("0.00 亿元");
+    expect(screen.getByText("真实 API 只读链路 · 非正式口径")).toBeInTheDocument();
 
     expect(screen.getByTestId("ledger-pnl-currency-summary-table")).toHaveTextContent("暂无币种汇总数据");
     expect(screen.getByTestId("ledger-pnl-account-summary-table")).toHaveTextContent("暂无科目汇总数据");
@@ -2376,11 +2383,11 @@ describe("LedgerPnlPage", () => {
         getLedgerPnlData: vi.fn(async () => {
           throw new Error("detail unavailable");
         }),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
           result: buildMissingFormalIndicatorContractPayload(),
@@ -2563,11 +2570,11 @@ describe("LedgerPnlPage", () => {
             items: detailItems,
           },
         })),
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
           result: buildMissingFormalIndicatorContractPayload(),
@@ -2629,11 +2636,11 @@ describe("LedgerPnlPage", () => {
         getLedgerPnlDates: vi.fn(() => datesRequest),
         getLedgerPnlSummary,
         getLedgerPnlData,
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
           result: buildMissingFormalIndicatorContractPayload(),
@@ -2695,11 +2702,11 @@ describe("LedgerPnlPage", () => {
         })),
         getLedgerPnlSummary,
         getLedgerPnlData,
-        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: [] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
           result: buildMissingFormalIndicatorContractPayload(),
@@ -3114,11 +3121,11 @@ describe("LedgerPnlPage", () => {
       result_meta: buildMeta("ledger_pnl.data"),
       result: dataPayload,
     }));
-    const getQdbGlMonthlyAnalysisDates = vi.fn(async () => ({
+    const getLedgerPnlMonthlyAnalysisDates = vi.fn(async () => ({
       result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
       result: monthlyAnalysisDatesPayload,
     }));
-    const getQdbGlMonthlyAnalysisWorkbook = vi.fn(async () => ({
+    const getLedgerPnlMonthlyAnalysisWorkbook = vi.fn(async () => ({
       result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook"),
       result: monthlyAnalysisWorkbookPayload,
     }));
@@ -3128,14 +3135,14 @@ describe("LedgerPnlPage", () => {
       getLedgerPnlDates,
       getLedgerPnlSummary,
       getLedgerPnlData,
-      getQdbGlMonthlyAnalysisDates,
-      getQdbGlMonthlyAnalysisWorkbook,
+      getLedgerPnlMonthlyAnalysisDates,
+      getLedgerPnlMonthlyAnalysisWorkbook,
     });
 
     await waitFor(() => {
       expect(getLedgerPnlSummary).toHaveBeenCalledWith("2026-03-31", "CNX");
       expect(getLedgerPnlData).toHaveBeenCalledWith("2026-03-31", "CNX");
-      expect(getQdbGlMonthlyAnalysisWorkbook).toHaveBeenCalledWith({ reportMonth: "202603" });
+      expect(getLedgerPnlMonthlyAnalysisWorkbook).toHaveBeenCalledWith({ reportMonth: "202603" });
     });
 
     for (const expected of [
@@ -3287,11 +3294,11 @@ describe("LedgerPnlPage", () => {
         items: [],
       },
     }));
-    const getQdbGlMonthlyAnalysisDates = vi.fn(async () => ({
+    const getLedgerPnlMonthlyAnalysisDates = vi.fn(async () => ({
       result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
       result: { report_months: ["202401", "202402"] },
     }));
-    const getQdbGlMonthlyAnalysisWorkbook = vi.fn(async () => ({
+    const getLedgerPnlMonthlyAnalysisWorkbook = vi.fn(async () => ({
       result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook"),
       result: { report_month: "202401", sheets: [] },
     }));
@@ -3302,18 +3309,18 @@ describe("LedgerPnlPage", () => {
         getLedgerPnlDates,
         getLedgerPnlSummary,
         getLedgerPnlData,
-        getQdbGlMonthlyAnalysisDates,
-        getQdbGlMonthlyAnalysisWorkbook,
+        getLedgerPnlMonthlyAnalysisDates,
+        getLedgerPnlMonthlyAnalysisWorkbook,
       },
       "/ledger-pnl?report_date=2026-04-30",
     );
 
     await waitFor(() => {
       expect(getLedgerPnlSummary).toHaveBeenCalledWith("2026-04-30", "CNX");
-      expect(getQdbGlMonthlyAnalysisDates).toHaveBeenCalled();
+      expect(getLedgerPnlMonthlyAnalysisDates).toHaveBeenCalled();
     });
 
-    expect(getQdbGlMonthlyAnalysisWorkbook).not.toHaveBeenCalled();
+    expect(getLedgerPnlMonthlyAnalysisWorkbook).not.toHaveBeenCalled();
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-month")).toHaveTextContent("202604 无匹配");
     expect(await screen.findByTestId("ledger-pnl-monthly-analysis-missing-month")).toHaveTextContent(
       "当前报告日没有对应月度分析工作簿",

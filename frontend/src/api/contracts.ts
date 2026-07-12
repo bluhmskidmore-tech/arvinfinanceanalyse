@@ -5262,6 +5262,7 @@ export type LedgerPnlDataItem = {
 };
 
 export type LedgerPnlDataPayload = {
+  data_status?: "ready" | "no_data";
   report_date: string;
   items: LedgerPnlDataItem[];
   summary: {
@@ -5285,6 +5286,7 @@ export type LedgerPnlSummaryByAccount = {
 };
 
 export type LedgerPnlSummaryPayload = {
+  data_status?: "ready" | "no_data";
   report_date: string;
   source_version: string;
   ledger_total_assets: LedgerMoneyValue;

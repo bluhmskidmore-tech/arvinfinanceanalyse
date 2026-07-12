@@ -35,6 +35,10 @@ def _candidate_svc():
     )
 
 
+def _monthly_analysis_svc():
+    return import_module("backend.app.services.qdb_gl_monthly_analysis_service")
+
+
 def _ensure_ledger_pnl_read_allowed(auth: AuthContext) -> None:
     try:
         ensure_user_allowed(
@@ -212,6 +216,40 @@ def formal_financial_indicators(
     return _svc().ledger_pnl_formal_financial_indicator_contract_envelope(
         report_month=_validated_report_month(report_month),
     )
+
+
+@router.get("/ledger-pnl/monthly-analysis/dates")
+def monthly_analysis_dates(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    _ensure_ledger_pnl_read_allowed(auth)
+    settings = get_settings()
+    return _monthly_analysis_svc().qdb_gl_monthly_analysis_dates_envelope(
+        source_dir=settings.product_category_source_dir,
+    )
+
+
+@router.get("/ledger-pnl/monthly-analysis/workbook")
+def monthly_analysis_workbook(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_month: str = Query(
+        ...,
+        pattern=_REPORT_MONTH_PATTERN,
+        description="报告月份 YYYYMM",
+    ),
+) -> dict[str, object]:
+    _ensure_ledger_pnl_read_allowed(auth)
+    settings = get_settings()
+    try:
+        return _monthly_analysis_svc().qdb_gl_monthly_analysis_workbook_envelope(
+            source_dir=settings.product_category_source_dir,
+            governance_dir=settings.governance_path,
+            report_month=_validated_report_month(report_month),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get(

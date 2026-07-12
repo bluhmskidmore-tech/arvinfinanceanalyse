@@ -2037,7 +2037,7 @@ export default function LedgerPnlPage() {
 
   const monthlyAnalysisDatesQuery = useQuery({
     queryKey: ["ledger-pnl", "monthly-analysis", "dates", client.mode],
-    queryFn: () => client.getQdbGlMonthlyAnalysisDates(),
+    queryFn: () => client.getLedgerPnlMonthlyAnalysisDates(),
     retry: false,
   });
 
@@ -2101,7 +2101,7 @@ export default function LedgerPnlPage() {
   const monthlyAnalysisWorkbookQuery = useQuery({
     queryKey: ["ledger-pnl", "monthly-analysis", "workbook", client.mode, selectedAnalysisMonth],
     enabled: hasMatchingAnalysisMonth,
-    queryFn: () => client.getQdbGlMonthlyAnalysisWorkbook({ reportMonth: selectedAnalysisMonth }),
+    queryFn: () => client.getLedgerPnlMonthlyAnalysisWorkbook({ reportMonth: selectedAnalysisMonth }),
     retry: false,
   });
 
@@ -2178,29 +2178,29 @@ export default function LedgerPnlPage() {
     {
       key: "ledger_monthly_pnl_core",
       title: "核心损益",
-      value: formatMoney(summary?.ledger_monthly_pnl_core),
+      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_monthly_pnl_core),
       candidateMetricKey: "ledger_monthly_pnl_core",
     },
     {
       key: "ledger_monthly_pnl_all",
       title: "全量损益",
-      value: formatMoney(summary?.ledger_monthly_pnl_all),
+      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_monthly_pnl_all),
       candidateMetricKey: "ledger_monthly_pnl_all",
     },
     {
       key: "ledger_total_assets",
       title: "总资产",
-      value: formatMoney(summary?.ledger_total_assets),
+      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_total_assets),
     },
     {
       key: "ledger_total_liabilities",
       title: "总负债",
-      value: formatMoney(summary?.ledger_total_liabilities),
+      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_total_liabilities),
     },
     {
       key: "ledger_net_assets",
       title: "净资产",
-      value: formatMoney(summary?.ledger_net_assets),
+      value: summary?.data_status === "no_data" ? "--" : formatMoney(summary?.ledger_net_assets),
       candidateMetricKey: "ledger_net_assets",
     },
   ];
@@ -2247,7 +2247,7 @@ export default function LedgerPnlPage() {
             whiteSpace: "nowrap",
           }}
         >
-          {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          {client.mode === "real" ? "真实 API 只读链路 · 非正式口径" : "本地演示数据"}
         </span>
       </div>
 

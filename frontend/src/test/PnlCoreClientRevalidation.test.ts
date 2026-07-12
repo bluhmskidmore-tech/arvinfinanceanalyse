@@ -52,3 +52,31 @@ describe("PnL core candidate revalidation client", () => {
     );
   });
 });
+
+describe("PnL core ledger monthly analysis client", () => {
+  it("reads monthly analysis through the ledger permission boundary", async () => {
+    const requestJson = vi.fn(async () => ({ result_meta: {}, result: {} }));
+    const client = createRealPnlCoreClient({
+      fetchImpl: vi.fn() as unknown as typeof fetch,
+      baseUrl: "http://localhost:8000",
+      requestJson,
+      requestActionJson: vi.fn(),
+    } as unknown as PnlCoreClientFactoryOptions);
+
+    await client.getLedgerPnlMonthlyAnalysisDates();
+    await client.getLedgerPnlMonthlyAnalysisWorkbook({ reportMonth: " 202606 " });
+
+    expect(requestJson).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Function),
+      "http://localhost:8000",
+      "/api/ledger-pnl/monthly-analysis/dates",
+    );
+    expect(requestJson).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      "http://localhost:8000",
+      "/api/ledger-pnl/monthly-analysis/workbook?report_month=202606",
+    );
+  });
+});

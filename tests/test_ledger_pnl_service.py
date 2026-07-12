@@ -87,6 +87,7 @@ def test_ledger_pnl_summary_uses_qdb_1_2_prefix_totals_and_ignores_bad_currency(
         date(2026, 4, 30),
     )
 
+    assert summary["data_status"] == "ready"
     assert summary["ledger_total_assets"]["yuan"] == "150"
     assert summary["ledger_total_liabilities"]["yuan"] == "80"
     assert summary["ledger_net_assets"]["yuan"] == "70"
@@ -145,6 +146,7 @@ def test_ledger_pnl_detail_ignores_bad_currency(monkeypatch):
         date(2026, 4, 30),
     )
 
+    assert payload["data_status"] == "ready"
     assert [item["currency"] for item in payload["items"]] == ["CNX"]
     assert payload["summary"]["count"] == 1
 
@@ -234,6 +236,7 @@ def test_ledger_pnl_summary_keeps_empty_result_when_source_month_is_missing(monk
         date(2026, 5, 15),
     )
 
+    assert summary["data_status"] == "no_data"
     assert summary["source_version"] == "sv_ledger_pnl_empty"
     assert summary["ledger_monthly_pnl_all"]["yuan"] == "0"
     assert summary["by_currency"] == []
@@ -402,6 +405,7 @@ def test_ledger_pnl_data_envelope_marks_filtered_empty_slice_as_warning(monkeypa
         "currency_basis_note": "CNX=综本；CNY=人民币账",
     }
     assert meta["next_drill"][2]["label"] == "核对币种筛选"
+    assert envelope["result"]["data_status"] == "no_data"
     assert envelope["result"]["items"] == []
 
 

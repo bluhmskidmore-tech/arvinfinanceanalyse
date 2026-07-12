@@ -44,6 +44,8 @@ import type {
   PnlDataPayload,
   PnlDatesPayload,
   PnlOverviewPayload,
+  QdbGlMonthlyAnalysisDatesPayload,
+  QdbGlMonthlyAnalysisWorkbookPayload,
 } from "./contracts";
 
 export type PnlCoreClientMethods = {
@@ -85,6 +87,10 @@ export type PnlCoreClientMethods = {
   getLedgerPnlFormalIndicatorRuleChecks: (
     reportMonth: string,
   ) => Promise<ApiEnvelope<LedgerPnlFormalIndicatorRuleChecksPayload>>;
+  getLedgerPnlMonthlyAnalysisDates: () => Promise<ApiEnvelope<QdbGlMonthlyAnalysisDatesPayload>>;
+  getLedgerPnlMonthlyAnalysisWorkbook: (options: {
+    reportMonth: string;
+  }) => Promise<ApiEnvelope<QdbGlMonthlyAnalysisWorkbookPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
@@ -399,6 +405,34 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
         evidence_rows: evidenceRows,
       });
     },
+    async getLedgerPnlMonthlyAnalysisDates() {
+      await delay();
+      return buildMockApiEnvelope(
+        "qdb-gl-monthly-analysis.dates",
+        { report_months: [] },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_qdb_gl_mock",
+          rule_version: "rv_qdb_gl_monthly_analysis_v1",
+          cache_version: "cv_qdb_gl_monthly_analysis_v1",
+        },
+      );
+    },
+    async getLedgerPnlMonthlyAnalysisWorkbook({ reportMonth }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "qdb-gl-monthly-analysis.workbook",
+        { report_month: reportMonth, sheets: [] },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_qdb_gl_mock",
+          rule_version: "rv_qdb_gl_monthly_analysis_v1",
+          cache_version: "cv_qdb_gl_monthly_analysis_v1",
+        },
+      );
+    },
     async getPnlBridge(reportDate: string) {
       await delay();
       const z = (unit: NumericUnit, sign_aware: boolean) =>
@@ -589,6 +623,18 @@ export function createRealPnlCoreClient(
         `/api/ledger-pnl/formal-indicator-rule-checks?${params.toString()}`,
       );
     },
+    getLedgerPnlMonthlyAnalysisDates: () =>
+      requestJson<QdbGlMonthlyAnalysisDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/api/ledger-pnl/monthly-analysis/dates",
+      ),
+    getLedgerPnlMonthlyAnalysisWorkbook: ({ reportMonth }) =>
+      requestJson<QdbGlMonthlyAnalysisWorkbookPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/monthly-analysis/workbook?report_month=${encodeURIComponent(reportMonth.trim())}`,
+      ),
     getPnlBridge: (reportDate: string) =>
       requestJson<PnlBridgePayload>(
         fetchImpl,
