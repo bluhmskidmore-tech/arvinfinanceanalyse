@@ -437,6 +437,38 @@ describe("LedgerPnlCandidateFinancialIndicatorsPanel", () => {
     });
   });
 
+  it("accepts the active v1.0.1 evidence pack without weakening the candidate gate", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const response = await baseClient.getLedgerPnlCandidateFinancialIndicators("202606");
+    const activeResponse = {
+      ...response,
+      result: {
+        ...response.result,
+        rule_version: "qdb-finance-2026-v1.0.1",
+        promotion_readiness: {
+          ...response.result.promotion_readiness,
+          evidence_pack: {
+            ...response.result.promotion_readiness.evidence_pack,
+            rule_version: "qdb-finance-2026-v1.0.1",
+          },
+        },
+      },
+    } as unknown as typeof response;
+    const client: ApiClient = {
+      ...baseClient,
+      getLedgerPnlCandidateFinancialIndicators: vi.fn(async () => activeResponse),
+    };
+
+    renderPanel(client);
+
+    expect(await screen.findByTestId("candidate-financial-indicators-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("candidate-financial-indicators-contract-error")).not.toBeInTheDocument();
+    expect(screen.getByTestId("candidate-financial-indicators-promotion-readiness")).toHaveAttribute(
+      "data-status",
+      "blocked",
+    );
+  });
+
   it("downloads the exact backend-authored evidence pack without candidate values", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });

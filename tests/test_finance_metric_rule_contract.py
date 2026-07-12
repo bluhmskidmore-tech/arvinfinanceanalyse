@@ -10,10 +10,10 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RULE_ASSET = ROOT / "backend" / "app" / "core_finance" / "qdb_finance_2026_v1_0_0.json"
-EXPECTED_RULE_HASH = "7f1b9d47dece2db850ef69cd9ab13b2520ad3bc09d6a2bce3a48ac6017777567"
+RULE_ASSET = ROOT / "backend" / "app" / "core_finance" / "qdb_finance_2026_v1_0_1.json"
+EXPECTED_RULE_HASH = "c67f4c85390992a1929bcff65c2bbdbd5c5c382912af3ebcd49297b1e7ac6a66"
 EXPECTED_METADATA = {
-    "rule_version": "qdb-finance-2026-v1.0.0",
+    "rule_version": "qdb-finance-2026-v1.0.1",
     "schema_version": "1.0",
     "currency": "CNX",
     "raw_amount_unit": "元",
@@ -22,7 +22,7 @@ EXPECTED_METADATA = {
 }
 EXPECTED_SOURCE_HASHES = {
     "2026年财务指标表-3月最终(2).xlsx": "73d475d77d04a89d9d7eae5b9853ef5b604c413625eb308c1af9fd175aa17aeb",
-    "总账对账202606.xlsx": "0ba128f1dca4084cfdf4aff410576f1945c11240a88778e00175cbc977e7493d",
+    "总账对账202606.xlsx": "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7",
     "日均202606.xlsx": "49e9a5b06c30656aaa07ef583d459dfff514ddd478640b0fb6f0b355d9758498",
 }
 EXPECTED_VALIDATION_IDS = (
@@ -124,7 +124,7 @@ def test_rule_loader_rejects_non_string_term_fields(tmp_path: Path, field: str) 
 def test_rule_loader_rejects_wrong_metadata(tmp_path: Path) -> None:
     payload = _mutable_rules()
     payload["metadata"] = deepcopy(payload["metadata"])
-    payload["metadata"]["rule_version"] = "qdb-finance-2026-v1.0.1"
+    payload["metadata"]["rule_version"] = "qdb-finance-2026-v9.0.0"
 
     with pytest.raises(ValueError, match="metadata.rule_version"):
         _load_rules(_write_rules(tmp_path, payload))

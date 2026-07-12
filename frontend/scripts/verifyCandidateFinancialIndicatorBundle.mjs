@@ -5,6 +5,7 @@ const DIST_DIR = resolve(process.cwd(), "dist");
 const SENSITIVE_MARKERS = [
   "ledger_pnl_candidate_financial_indicators_frontend_demo_capture",
   "7f1b9d47dece2db850ef69cd9ab13b2520ad3bc09d6a2bce3a48ac6017777567",
+  "c67f4c85390992a1929bcff65c2bbdbd5c5c382912af3ebcd49297b1e7ac6a66",
   "0ba128f1dca4084cfdf4aff410576f1945c11240a88778e00175cbc977e7493d",
   "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7",
   "49e9a5b06c30656aaa07ef583d459dfff514ddd478640b0fb6f0b355d9758498",

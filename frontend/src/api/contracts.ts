@@ -5624,7 +5624,7 @@ export type LedgerPnlCandidatePromotionEvidencePack = {
   evidence_pack_key: string;
   report_month: string;
   report_date: string;
-  rule_version: "qdb-finance-2026-v1.0.0";
+  rule_version: "qdb-finance-2026-v1.0.0" | "qdb-finance-2026-v1.0.1";
   rule_hash: string;
   source_version: string;
   source_alignment: "matched" | "mismatch" | "not_applicable" | "incomplete";
@@ -5675,7 +5675,7 @@ export type LedgerPnlCandidateFinancialIndicatorsPayload = {
   calculation_status: LedgerPnlCandidateFinancialIndicatorCalculationStatus;
   source_alignment: "matched" | "mismatch" | "not_applicable" | "incomplete";
   source_version: string;
-  rule_version: "qdb-finance-2026-v1.0.0";
+  rule_version: "qdb-finance-2026-v1.0.0" | "qdb-finance-2026-v1.0.1";
   rule_hash: string;
   idempotency_key: string;
   requested_metric_id: string | null;

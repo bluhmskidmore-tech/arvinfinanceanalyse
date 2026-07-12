@@ -11,21 +11,41 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
-RULE_ASSET = Path(__file__).with_name("qdb_finance_2026_v1_0_0.json")
-APPROVED_RULE_SHA256 = "7f1b9d47dece2db850ef69cd9ab13b2520ad3bc09d6a2bce3a48ac6017777567"
-EXPECTED_METADATA = {
-    "rule_version": "qdb-finance-2026-v1.0.0",
+DEFAULT_RULE_VERSION = "qdb-finance-2026-v1.0.1"
+RULE_ASSETS = {
+    "qdb-finance-2026-v1.0.0": Path(__file__).with_name("qdb_finance_2026_v1_0_0.json"),
+    DEFAULT_RULE_VERSION: Path(__file__).with_name("qdb_finance_2026_v1_0_1.json"),
+}
+APPROVED_RULE_SHA256_BY_VERSION = {
+    "qdb-finance-2026-v1.0.0": "7f1b9d47dece2db850ef69cd9ab13b2520ad3bc09d6a2bce3a48ac6017777567",
+    DEFAULT_RULE_VERSION: "c67f4c85390992a1929bcff65c2bbdbd5c5c382912af3ebcd49297b1e7ac6a66",
+}
+EXPECTED_METADATA_BASE = {
     "schema_version": "1.0",
     "currency": "CNX",
     "raw_amount_unit": "元",
     "output_amount_unit": "亿元",
     "conversion_divisor": "100000000",
 }
-EXPECTED_SOURCE_HASHES = {
+HISTORICAL_SOURCE_HASHES = {
     "2026年财务指标表-3月最终(2).xlsx": "73d475d77d04a89d9d7eae5b9853ef5b604c413625eb308c1af9fd175aa17aeb",
     "总账对账202606.xlsx": "0ba128f1dca4084cfdf4aff410576f1945c11240a88778e00175cbc977e7493d",
     "日均202606.xlsx": "49e9a5b06c30656aaa07ef583d459dfff514ddd478640b0fb6f0b355d9758498",
 }
+EXPECTED_SOURCE_HASHES_BY_VERSION = {
+    "qdb-finance-2026-v1.0.0": HISTORICAL_SOURCE_HASHES,
+    DEFAULT_RULE_VERSION: {
+        **HISTORICAL_SOURCE_HASHES,
+        "总账对账202606.xlsx": "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7",
+    },
+}
+
+# Backwards-compatible aliases expose the active contract to existing callers.
+RULE_ASSET = RULE_ASSETS[DEFAULT_RULE_VERSION]
+APPROVED_RULE_SHA256 = APPROVED_RULE_SHA256_BY_VERSION[DEFAULT_RULE_VERSION]
+EXPECTED_METADATA = {"rule_version": DEFAULT_RULE_VERSION, **EXPECTED_METADATA_BASE}
+EXPECTED_SOURCE_HASHES = EXPECTED_SOURCE_HASHES_BY_VERSION[DEFAULT_RULE_VERSION]
+
 EXPECTED_VALIDATION_IDS = {
     "period.same_end_date",
     "period.ytd_starts_jan1",
@@ -1101,43 +1121,73 @@ def _canonical_decimal_text(value: Decimal) -> str:
     return text
 
 
-def load_finance_metric_rules(path: str | Path | None = None) -> dict[str, Any]:
-    rule_path = Path(path) if path is not None else RULE_ASSET
+def load_finance_metric_rules(
+    path: str | Path | None = None,
+    *,
+    rule_version: str | None = None,
+) -> dict[str, Any]:
+    if path is not None and rule_version is not None:
+        raise ValueError("path and rule_version cannot be provided together")
+    requested_version: str | None = None
+    if path is None:
+        requested_version = rule_version or DEFAULT_RULE_VERSION
+        try:
+            rule_path = RULE_ASSETS[requested_version]
+        except KeyError as exc:
+            raise ValueError(f"unsupported finance metric rule_version: {requested_version!r}") from exc
+    else:
+        rule_path = Path(path)
     raw = rule_path.read_bytes()
     payload = json.loads(raw)
     if not isinstance(payload, dict):
         raise ValueError("finance metric rules must be a JSON object")
 
-    _validate_metadata(payload)
+    metadata = payload.get("metadata")
+    selected_version = metadata.get("rule_version") if isinstance(metadata, dict) else None
+    if selected_version not in RULE_ASSETS:
+        raise ValueError(f"unsupported metadata.rule_version: {selected_version!r}")
+    if requested_version is not None and selected_version != requested_version:
+        raise ValueError(
+            f"requested rule_version {requested_version!r} does not match "
+            f"asset metadata.rule_version {selected_version!r}"
+        )
+    expected_metadata = {"rule_version": selected_version, **EXPECTED_METADATA_BASE}
+    expected_source_hashes = EXPECTED_SOURCE_HASHES_BY_VERSION[selected_version]
+    _validate_metadata(payload, expected_metadata, expected_source_hashes)
     _validate_code_and_weight_strings(payload)
     _validate_rule_counts(payload)
 
     rule_hash = hashlib.sha256(raw).hexdigest()
-    if rule_hash != APPROVED_RULE_SHA256:
+    approved_rule_hash = APPROVED_RULE_SHA256_BY_VERSION[selected_version]
+    if rule_hash != approved_rule_hash:
         raise ValueError(
             f"finance metric rule asset SHA-256 {rule_hash} does not match approved "
-            f"SHA-256 {APPROVED_RULE_SHA256}; "
+            f"SHA-256 {approved_rule_hash}; "
             "create a new approved asset and upgrade metadata.rule_version"
         )
     return {**payload, "rule_hash": rule_hash}
 
 
-def _validate_metadata(payload: dict[str, Any]) -> None:
+def _validate_metadata(
+    payload: dict[str, Any],
+    expected_metadata: Mapping[str, str],
+    expected_source_hashes: Mapping[str, str],
+) -> None:
     metadata = payload.get("metadata")
     if not isinstance(metadata, dict):
         raise ValueError("metadata must be an object")
-    for metadata_field, expected in EXPECTED_METADATA.items():
+    for metadata_field, expected in expected_metadata.items():
         if metadata.get(metadata_field) != expected:
             raise ValueError(f"metadata.{metadata_field} must equal {expected!r}")
     derived_from = metadata.get("derived_from")
     if not isinstance(derived_from, list):
         raise ValueError("metadata.derived_from must be a list")
-    if len(derived_from) != len(EXPECTED_SOURCE_HASHES) or not all(
+    if len(derived_from) != len(expected_source_hashes) or not all(
         isinstance(source, dict) for source in derived_from
     ):
         raise ValueError("metadata.derived_from source records must match the frozen contract")
     source_hashes = {source.get("file"): source.get("sha256") for source in derived_from}
-    if source_hashes != EXPECTED_SOURCE_HASHES:
+    if source_hashes != expected_source_hashes:
         raise ValueError("metadata.derived_from source records must match the frozen contract")
     if not isinstance(metadata.get("important_limitations"), list):
         raise ValueError("metadata.important_limitations must be a list")

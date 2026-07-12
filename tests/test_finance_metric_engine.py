@@ -672,7 +672,7 @@ def test_idempotency_key_changes_for_every_semantic_input_and_engine_contract(mo
     changed_rule_hash["rules"]["rule_hash"] = "e" * 64
     variants.append(changed_rule_hash)
     changed_rule_version = deepcopy(inputs)
-    changed_rule_version["rules"]["metadata"]["rule_version"] = "qdb-finance-2026-v1.0.1"
+    changed_rule_version["rules"]["metadata"]["rule_version"] = "qdb-finance-2026-v1.0.0"
     variants.append(changed_rule_version)
 
     assert all(module.build_finance_metric_idempotency_key(**variant) != baseline for variant in variants)

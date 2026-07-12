@@ -320,7 +320,7 @@ class CandidateFinancialIndicatorPromotionEvidencePack(_StrictCandidateModel):
     evidence_pack_key: Sha256String
     report_month: str = Field(pattern=r"^[0-9]{4}(?:0[1-9]|1[0-2])$")
     report_date: date
-    rule_version: Literal["qdb-finance-2026-v1.0.0"]
+    rule_version: Literal["qdb-finance-2026-v1.0.0", "qdb-finance-2026-v1.0.1"]
     rule_hash: Sha256String
     source_version: str = Field(min_length=1)
     source_alignment: Literal["matched", "mismatch", "not_applicable", "incomplete"]
@@ -431,7 +431,7 @@ class CandidateFinancialIndicatorPayload(_StrictCandidateModel):
     calculation_status: Literal["ready", "warning", "error", "no_data"]
     source_alignment: Literal["matched", "mismatch", "not_applicable", "incomplete"]
     source_version: str = Field(min_length=1)
-    rule_version: Literal["qdb-finance-2026-v1.0.0"]
+    rule_version: Literal["qdb-finance-2026-v1.0.0", "qdb-finance-2026-v1.0.1"]
     rule_hash: Sha256String
     idempotency_key: Sha256String
     requested_metric_id: MetricId | None

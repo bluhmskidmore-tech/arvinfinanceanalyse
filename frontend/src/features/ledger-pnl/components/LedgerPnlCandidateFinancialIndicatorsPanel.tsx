@@ -66,6 +66,11 @@ const PROMOTION_CHECK_IDS = [
   "formal_contract",
 ] as const;
 
+const SUPPORTED_RULE_VERSIONS = new Set([
+  "qdb-finance-2026-v1.0.0",
+  "qdb-finance-2026-v1.0.1",
+]);
+
 type PromotionOwnerRequirementCategory = LedgerPnlCandidatePromotionOwnerRequirement["category"];
 type PromotionOwnerRequirementFilter = "all" | PromotionOwnerRequirementCategory;
 
@@ -268,7 +273,7 @@ function isPromotionReadinessContract(
     || typeof evidencePack.report_month !== "string"
     || !/^\d{6}$/.test(evidencePack.report_month)
     || typeof evidencePack.report_date !== "string"
-    || evidencePack.rule_version !== "qdb-finance-2026-v1.0.0"
+    || !SUPPORTED_RULE_VERSIONS.has(String(evidencePack.rule_version))
     || typeof evidencePack.rule_hash !== "string"
     || !/^[0-9a-f]{64}$/.test(evidencePack.rule_hash)
     || typeof evidencePack.source_version !== "string"
