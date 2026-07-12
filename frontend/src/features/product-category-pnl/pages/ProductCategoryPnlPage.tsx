@@ -386,7 +386,9 @@ function ProductCategoryFormalReadinessBand(props: ProductCategoryFormalReadines
           </div>
         ) : (
           <p className="product-category-formal-readiness__driver-empty">
-            归因数据加载中，正式总损益仍按当前口径展示。
+            {props.selectedView === "monthly"
+              ? "归因数据加载中，正式总损益仍按当前口径展示。"
+              : "关键驱动仅支持月度视图，汇总视图继续展示正式总损益。"}
           </p>
         )}
       </section>

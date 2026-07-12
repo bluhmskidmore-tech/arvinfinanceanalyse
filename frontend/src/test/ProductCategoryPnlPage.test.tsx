@@ -1573,6 +1573,9 @@ describe("ProductCategoryPnlPage", () => {
 
     const ineligible = await screen.findByTestId("product-category-attribution-ineligible");
     expect(ineligible).toHaveTextContent("仅支持月度视图");
+    const driverReadout = await screen.findByTestId("product-category-formal-driver-readout");
+    expect(driverReadout).toHaveTextContent("关键驱动仅支持月度视图");
+    expect(driverReadout).not.toHaveTextContent("归因数据加载中");
     expect(screen.queryByTestId("product-category-attribution-bridge")).not.toBeInTheDocument();
     expect(attributionSpy).not.toHaveBeenCalled();
   });
