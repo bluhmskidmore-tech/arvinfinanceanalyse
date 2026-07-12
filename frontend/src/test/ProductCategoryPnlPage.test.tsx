@@ -1176,7 +1176,7 @@ describe("ProductCategoryPnlPage", () => {
 
     expect(context).toHaveTextContent("拆放同业");
     expect(
-      screen.getByTestId("product-category-formal-row-interbank_lending_assets"),
+      await screen.findByTestId("product-category-formal-row-interbank_lending_assets"),
     ).toHaveAttribute("data-selected", "true");
   });
 
@@ -1321,7 +1321,7 @@ describe("ProductCategoryPnlPage", () => {
     const details = screen.getByTestId("product-category-attribution-details");
     expect(details).not.toHaveAttribute("open");
     expect(
-      screen.getByTestId("product-category-formal-row-interbank_lending_assets"),
+      await screen.findByTestId("product-category-formal-row-interbank_lending_assets"),
     ).toHaveAttribute("data-selected", "true");
 
     await user.click(screen.getByRole("button", { name: "查看 拆放同业 归因证据" }));
@@ -2352,6 +2352,8 @@ describe("ProductCategoryPnlPage", () => {
     const readout = screen.getByTestId("product-category-liability-side-detail-matrix-mobile-readout");
 
     expect(readout.compareDocumentPosition(rawMatrix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(readout).toHaveAccessibleName("负债结构核查");
+    expect(readout).toHaveTextContent("全币种");
     expect(readout).toHaveTextContent("1728.58");
     expect(readout).toHaveTextContent("1.63");
     expect(readout).toHaveTextContent("+5bp");
@@ -2371,6 +2373,8 @@ describe("ProductCategoryPnlPage", () => {
 
     expect(cnyReadout.compareDocumentPosition(cnyMatrix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(foreignReadout.compareDocumentPosition(foreignMatrix) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cnyReadout).toHaveAccessibleName("人民币结构核查");
+    expect(foreignReadout).toHaveAccessibleName("外币结构核查");
     expect(cnyReadout).toHaveTextContent("cny");
     expect(cnyReadout).toHaveTextContent("1729.55");
     expect(foreignReadout).toHaveTextContent("foreign");

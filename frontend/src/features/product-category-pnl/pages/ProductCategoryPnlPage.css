@@ -4391,6 +4391,149 @@
   }
 }
 
+.product-category-liability-mobile-readout {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(250px, 1.1fr) minmax(0, 2fr);
+  align-items: stretch;
+  gap: 0;
+  margin: 10px 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--moss-color-neutral-200);
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+  border-radius: 0;
+  background: transparent;
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__header {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 8px 12px 8px 0;
+  border-right: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__eyebrow {
+  color: var(--ib-ink-muted);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__title {
+  margin: 0;
+  font-size: 13px;
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__meta {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__meta span {
+  display: grid;
+  align-items: center;
+  padding: 8px 10px;
+  border-right: 1px solid var(--moss-color-neutral-200);
+  background: transparent;
+  font-size: 10px;
+  text-align: center;
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__fields {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__field {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  gap: 2px;
+  min-height: 0;
+  padding: 8px 10px;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__label,
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__detail {
+  font-size: 9px;
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__value {
+  font-family: var(--moss-font-mono);
+  font-size: 13px;
+}
+
+.product-category-liability-mobile-readout .product-category-attribution-mobile-readout__detail {
+  grid-column: 1;
+}
+
+@media (max-width: 720px) {
+  .product-category-liability-mobile-readout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    margin: 10px 0 14px;
+    border: 0;
+  }
+
+  .product-category-liability-mobile-readout .product-category-attribution-mobile-readout__header {
+    display: flex;
+    align-items: baseline;
+    padding: 0 0 7px;
+    border-right: 0;
+    border-bottom: 1px solid var(--moss-color-neutral-200);
+  }
+
+  .product-category-liability-mobile-readout .product-category-attribution-mobile-readout__meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .product-category-liability-mobile-readout .product-category-attribution-mobile-readout__meta span {
+    padding: 6px 4px;
+    font-size: 9px;
+  }
+
+  .product-category-liability-mobile-readout .product-category-attribution-mobile-readout__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .product-category-liability-mobile-readout .product-category-attribution-mobile-readout__field {
+    min-height: 70px;
+    padding: 8px;
+    border-right: 1px solid var(--moss-color-neutral-200);
+    border-bottom: 1px solid var(--moss-color-neutral-200);
+    border-left: 0;
+  }
+
+  .product-category-liability-mobile-readout .product-category-attribution-mobile-readout__field:nth-child(even) {
+    border-right: 0;
+  }
+
+  .product-category-liability-mobile-readout .product-category-attribution-mobile-readout__field:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  .product-category-liability-matrix__disclosure {
+    display: block;
+  }
+
+  .product-category-page-shell .product-category-liability-matrix__disclosure > summary {
+    min-height: 44px;
+  }
+
+  .product-category-liability-matrix__disclosure > .product-category-liability-matrix__wrap {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
 /* 2026 cockpit refresh: keep the page dense, neutral, and decision-first. */
 .workbench-shell-grid--product-category-pnl .workbench-page-title-display {
   font-size: 24px;

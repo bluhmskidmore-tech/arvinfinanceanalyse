@@ -2993,8 +2993,8 @@ function ProductCategoryLiabilityDetailMatrixMobileReadout(props: {
     <ProductCategoryAttributionMobileReadout
       className="product-category-liability-mobile-readout"
       testId="product-category-liability-side-detail-matrix-mobile-readout"
-      eyebrow="Liability matrix"
-      title={"\u79fb\u52a8\u8d1f\u503a\u8bfb\u6570"}
+      eyebrow="全币种"
+      title="负债结构核查"
       meta={[
         row.categoryLabel,
         latestPeriod?.label ?? "\u6700\u65b0\u671f\u95f4",
@@ -3041,8 +3041,8 @@ function ProductCategoryLiabilityCurrencyMatrixMobileReadout(props: {
     <ProductCategoryAttributionMobileReadout
       className="product-category-liability-mobile-readout"
       testId={`product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout`}
-      eyebrow="Currency split"
-      title={"\u79fb\u52a8\u5e01\u79cd\u8bfb\u6570"}
+      eyebrow="币种结构"
+      title={`${props.matrix.currencyLabel}核查`}
       meta={[
         props.matrix.currencyLabel,
         props.matrix.currencyKey,
@@ -3087,8 +3087,8 @@ function ProductCategoryLiabilityFallbackMobileReadout(props: {
     <ProductCategoryAttributionMobileReadout
       className="product-category-liability-mobile-readout"
       testId="product-category-liability-side-detail-table-mobile-readout"
-      eyebrow="Liability table"
-      title={"\u79fb\u52a8\u8d1f\u503a\u660e\u7ec6"}
+      eyebrow="负债明细"
+      title="负债结构核查"
       meta={[row.categoryLabel, row.comparisonLabel, "\u539f\u8868\u4fdd\u7559"]}
       fields={[
         {
