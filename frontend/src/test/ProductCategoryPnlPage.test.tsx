@@ -1098,16 +1098,17 @@ describe("ProductCategoryPnlPage", () => {
     const rawGrid = screen.getByTestId("product-category-formal-table-raw-grid");
 
     expect(readout.compareDocumentPosition(rawGrid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(readout).toHaveTextContent("关键读数");
-    expect(readout).toHaveTextContent("报告日");
+    expect(readout).toHaveTextContent("当前核查");
+    expect(readout).toHaveTextContent("2026年02月");
     expect(readout).toHaveTextContent("视图");
+    expect(readout).toHaveTextContent("人民币净收入");
+    expect(readout).toHaveTextContent("外币净收入");
+    expect(readout).toHaveTextContent("营业净收入");
     expect(readout).toHaveTextContent("合计经营净收入");
-    expect(readout).toHaveTextContent("资产端经营净收入");
-    expect(readout).toHaveTextContent("负债端经营净收入");
     expect(readout).toHaveTextContent("当前产品");
     expect(readout).toHaveTextContent("规模日均");
     expect(readout).toHaveTextContent("加权收益率");
-    expect(readout).toHaveTextContent("展示行数");
+    expect(readout).toHaveTextContent("总表参照");
     expect(within(rawGrid).getByTestId("product-category-table")).toBeInTheDocument();
   });
 
@@ -1135,6 +1136,90 @@ describe("ProductCategoryPnlPage", () => {
     expect(table).toHaveClass("product-category-formal-table--full");
     expect(within(table).getByText("人民币FTP")).toBeInTheDocument();
     expect(within(fullRow as HTMLElement).getAllByRole("cell")).toHaveLength(13);
+  });
+
+  it("keeps the selected product review context through column mode changes", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(
+      async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+        buildDrilldownAttributionEnvelope(options.reportDate, options.compare),
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryAttribution: attributionSpy,
+    });
+
+    const rootCause = await screen.findByTestId("product-category-root-cause");
+    await user.click(within(rootCause).getByRole("button", { name: "查看正式明细" }));
+
+    const context = await screen.findByTestId("product-category-formal-selection-context");
+    expect(context).toHaveTextContent("当前核查");
+    expect(context).toHaveTextContent("拆放同业");
+    expect(context).toHaveTextContent("2026年02月");
+    expect(context).toHaveTextContent("月度");
+    expect(context).toHaveTextContent("正式基线归因定位");
+    expect(context).toHaveTextContent("规模日均");
+    expect(context).toHaveTextContent("人民币净收入");
+    expect(context).toHaveTextContent("外币净收入");
+    expect(context).toHaveTextContent("营业净收入");
+    expect(context).toHaveTextContent("加权收益率");
+
+    const readout = screen.getByTestId("product-category-formal-table-mobile-readout");
+    expect(within(readout).getByRole("heading", { name: "拆放同业" })).toBeInTheDocument();
+    expect(within(readout).getByText("人民币净收入", { selector: "span" })).toBeInTheDocument();
+    expect(within(readout).getByText("外币净收入", { selector: "span" })).toBeInTheDocument();
+    expect(within(readout).getByText("营业净收入", { selector: "span" })).toBeInTheDocument();
+
+    const displayMode = screen.getByRole("group", { name: "报表列展示" });
+    await user.click(within(displayMode).getByRole("button", { name: "完整口径" }));
+
+    expect(context).toHaveTextContent("拆放同业");
+    expect(
+      screen.getByTestId("product-category-formal-row-interbank_lending_assets"),
+    ).toHaveAttribute("data-selected", "true");
+  });
+
+  it("marks parent and child rows for structural scanning", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const table = await screen.findByTestId("product-category-table");
+    const parentRow = within(table).getByText("债券投资").closest("tr");
+    const childRow = within(table).getByText("TPL").closest("tr");
+
+    expect(parentRow).toHaveAttribute("data-row-level", "0");
+    expect(parentRow).toHaveClass("product-category-formal-table__row--parent");
+    expect(childRow).toHaveAttribute("data-row-level", "1");
+    expect(childRow).toHaveClass("product-category-formal-table__row--child");
+  });
+
+  it("drops a prior row selection when an FTP scenario becomes active", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(
+      async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+        buildDrilldownAttributionEnvelope(options.reportDate, options.compare),
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryAttribution: attributionSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    await user.click(screen.getByRole("button", { name: "查看 买入返售 归因证据" }));
+    const repoRow = screen.getByTestId("product-category-formal-row-repo_assets");
+    expect(repoRow).toHaveAttribute("data-selected", "true");
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "FTP 场景" }), "2.00");
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：2.00%");
+    });
+
+    expect(repoRow).not.toHaveAttribute("data-selected");
+    expect(screen.getByTestId("product-category-formal-selection-context")).not.toHaveTextContent(
+      "买入返售",
+    );
   });
 
   it("opens an action queue closure drawer from an operating action row", async () => {

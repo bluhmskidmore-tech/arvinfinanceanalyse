@@ -491,8 +491,6 @@ type ProductCategoryFormalTableMobileReadoutProps = {
   reportDate: string;
   selectedView: string;
   selectedCategoryId: string | null;
-  assetTotal?: ProductCategoryPnlRow | null;
-  liabilityTotal?: ProductCategoryPnlRow | null;
   grandTotal?: ProductCategoryPnlRow | null;
   rows: ProductCategoryPnlRow[];
   onOpenAttributionEvidence?: (categoryId: string) => void;
@@ -535,40 +533,23 @@ function ProductCategoryFormalTableMobileReadout(
 
   return (
     <section
+      id="product-category-formal-mobile-focus"
       data-testid="product-category-formal-table-mobile-readout"
       className="product-category-formal-table-mobile-readout"
       aria-label="产品分类正式表移动读数"
     >
       <div className="product-category-formal-table-mobile-readout__header">
-        <span className="product-category-formal-table-mobile-readout__eyebrow">正式报表</span>
-        <h3 className="product-category-formal-table-mobile-readout__title">关键读数</h3>
+        <span className="product-category-formal-table-mobile-readout__eyebrow">当前核查</span>
+        <h3 className="product-category-formal-table-mobile-readout__title">
+          {focusedBusinessRow?.category_name ?? "正式报表"}
+        </h3>
       </div>
       <div className="product-category-formal-table-mobile-readout__meta">
-        <span>报告日：{props.reportDate || "待选"}</span>
+        <span>{props.reportDate ? formatProductCategoryReportMonthLabel(props.reportDate) : "报告月待选"}</span>
         <span>视图：{selectedViewLabel}</span>
-        <span>展示行数：{props.rows.length}</span>
+        <span>{focusedBusinessSideLabel}</span>
       </div>
       <div className="product-category-formal-table-mobile-readout__fields">
-        <ProductCategoryFormalTableReadoutField
-          label="合计经营净收入"
-          value={formatProductCategoryValue(props.grandTotal?.business_net_income)}
-          detail="正式总表口径"
-        />
-        <ProductCategoryFormalTableReadoutField
-          label="资产端经营净收入"
-          value={formatProductCategoryValue(props.assetTotal?.business_net_income)}
-          detail="MTR-PCP-001"
-        />
-        <ProductCategoryFormalTableReadoutField
-          label="负债端经营净收入"
-          value={formatProductCategoryValue(props.liabilityTotal?.business_net_income)}
-          detail="MTR-PCP-002"
-        />
-        <ProductCategoryFormalTableReadoutField
-          label={props.selectedCategoryId ? "当前产品" : "首个业务行"}
-          value={focusedBusinessRow?.category_name ?? "无业务行"}
-          detail={focusedBusinessSideLabel}
-        />
         <ProductCategoryFormalTableReadoutField
           label="规模日均"
           value={
@@ -576,12 +557,47 @@ function ProductCategoryFormalTableMobileReadout(
               ? formatProductCategoryRowDisplayValue(focusedBusinessRow, focusedBusinessRow.cnx_scale)
               : "-"
           }
-          detail={props.selectedCategoryId ? "当前产品" : "首个业务行"}
+          detail="综本规模"
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="人民币净收入"
+          value={
+            focusedBusinessRow
+              ? formatProductCategoryRowDisplayValue(focusedBusinessRow, focusedBusinessRow.cny_net)
+              : "-"
+          }
+          detail="正式表返回值"
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="外币净收入"
+          value={
+            focusedBusinessRow
+              ? formatProductCategoryForeignDisplayValue(focusedBusinessRow, focusedBusinessRow.foreign_net)
+              : "-"
+          }
+          detail="外币原值"
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="营业净收入"
+          value={
+            focusedBusinessRow
+              ? formatProductCategoryRowDisplayValue(
+                  focusedBusinessRow,
+                  focusedBusinessRow.business_net_income,
+                )
+              : "-"
+          }
+          detail="当前产品"
         />
         <ProductCategoryFormalTableReadoutField
           label="加权收益率"
           value={focusedBusinessRow ? formatProductCategoryYieldValue(focusedBusinessRow.weighted_yield) : "-"}
-          detail={props.selectedCategoryId ? "当前产品" : "首个业务行"}
+          detail="正式表返回值"
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="合计经营净收入"
+          value={formatProductCategoryValue(props.grandTotal?.business_net_income)}
+          detail="总表参照"
         />
       </div>
       {focusedBusinessRow && props.onOpenAttributionEvidence ? (
@@ -592,6 +608,64 @@ function ProductCategoryFormalTableMobileReadout(
           type="button"
         >
           查看当前产品归因证据
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function ProductCategoryFormalSelectionContext(props: {
+  reportDate: string;
+  selectedView: string;
+  sourceLabel: string;
+  row: ProductCategoryPnlRow;
+  onOpenAttributionEvidence?: (categoryId: string) => void;
+}) {
+  return (
+    <section
+      id="product-category-formal-selection-context"
+      data-testid="product-category-formal-selection-context"
+      className="product-category-formal-selection-context"
+      aria-label={`${props.row.category_name} 正式表核查上下文`}
+    >
+      <div className="product-category-formal-selection-context__identity">
+        <span>当前核查</span>
+        <h3>{props.row.category_name}</h3>
+        <p>
+          {formatProductCategoryReportMonthLabel(props.reportDate)} ·{" "}
+          {props.selectedView === "monthly" ? "月度" : "汇总"} · {props.sourceLabel}
+        </p>
+      </div>
+      <dl className="product-category-formal-selection-context__metrics">
+        <div>
+          <dt>规模日均</dt>
+          <dd>{formatProductCategoryRowDisplayValue(props.row, props.row.cnx_scale)}</dd>
+        </div>
+        <div>
+          <dt>人民币净收入</dt>
+          <dd>{formatProductCategoryRowDisplayValue(props.row, props.row.cny_net)}</dd>
+        </div>
+        <div>
+          <dt>外币净收入</dt>
+          <dd>{formatProductCategoryForeignDisplayValue(props.row, props.row.foreign_net)}</dd>
+        </div>
+        <div>
+          <dt>营业净收入</dt>
+          <dd>
+            {formatProductCategoryRowDisplayValue(props.row, props.row.business_net_income)}
+          </dd>
+        </div>
+        <div>
+          <dt>加权收益率</dt>
+          <dd>{formatProductCategoryYieldValue(props.row.weighted_yield)}</dd>
+        </div>
+      </dl>
+      {props.onOpenAttributionEvidence ? (
+        <button
+          type="button"
+          onClick={() => props.onOpenAttributionEvidence?.(props.row.category_id)}
+        >
+          查看归因证据
         </button>
       ) : null}
     </section>
@@ -3889,10 +3963,12 @@ export default function ProductCategoryPnlPage() {
       attributionCompare,
       attribution.current_report_date,
       attribution.prior_report_date,
+      scenario?.scenario_rate_pct ?? "baseline",
     ].join(":");
   }, [
     attributionCompare,
     attributionQuery.data?.result,
+    scenario?.scenario_rate_pct,
     selectedDate,
     selectedView,
   ]);
@@ -3902,6 +3978,11 @@ export default function ProductCategoryPnlPage() {
       : attributionDetailSelection?.contextKey === attributionDetailContextKey
         ? attributionDetailSelection.categoryId
         : rootCauseSurface.headline?.categoryId ?? null;
+  const selectedFormalRow =
+    rowsToRender.find(
+      (row) =>
+        !row.is_total && row.category_id === selectedAttributionDetailCategoryId,
+    ) ?? null;
   const attributionDetailCategoryIds = useMemo(() => {
     const attribution = attributionQuery.data?.result;
     if (selectedView !== "monthly" || !attribution || attribution.state !== "complete") {
@@ -3946,7 +4027,13 @@ export default function ProductCategoryPnlPage() {
       handleAttributionDetailSelection(categoryId);
       const scrollToFormalRow = () => {
         const formalRow = document.getElementById(`product-category-formal-row-${categoryId}`);
-        formalRow?.scrollIntoView?.({ block: "center" });
+        const mobileFocus = document.getElementById("product-category-formal-mobile-focus");
+        const reviewContext = document.getElementById("product-category-formal-selection-context");
+        const scrollTarget =
+          mobileFocus && mobileFocus.getClientRects().length > 0
+            ? mobileFocus
+            : reviewContext ?? formalRow;
+        scrollTarget?.scrollIntoView?.({ block: "center" });
         formalRow
           ?.querySelector<HTMLButtonElement>("[data-product-category-formal-row-action]")
           ?.focus({ preventScroll: true });
@@ -5331,12 +5418,25 @@ export default function ProductCategoryPnlPage() {
         onRetry={() => void baselineQuery.refetch()}
         extra={reportExtra}
       >
+        {selectedFormalRow ? (
+          <ProductCategoryFormalSelectionContext
+            reportDate={selectedDate}
+            selectedView={selectedView}
+            sourceLabel={
+              scenario?.scenario_rate_pct == null
+                ? "正式基线归因定位"
+                : `FTP ${String(scenario.scenario_rate_pct)}% 场景 · 正式基线归因定位`
+            }
+            row={selectedFormalRow}
+            onOpenAttributionEvidence={
+              attributionDetailContextKey ? handleAttributionDetailDrilldown : undefined
+            }
+          />
+        ) : null}
         <ProductCategoryFormalTableMobileReadout
           reportDate={selectedDate}
           selectedView={selectedView}
           selectedCategoryId={selectedAttributionDetailCategoryId}
-          assetTotal={displayedAssetTotal}
-          liabilityTotal={displayedLiabilityTotal}
           grandTotal={displayedGrandTotal}
           rows={rowsToRender}
           onOpenAttributionEvidence={
@@ -5495,12 +5595,19 @@ export default function ProductCategoryPnlPage() {
                 return (
                 <tr
                   data-selected={isSelectedFormalRow ? "true" : undefined}
+                  data-row-level={row.level}
                   data-testid={`product-category-formal-row-${row.category_id}`}
                   id={`product-category-formal-row-${row.category_id}`}
                   key={row.category_id}
                   className={[
                     "product-category-formal-table__row",
                     row.is_total ? "product-category-formal-table__row--total" : "",
+                    !row.is_total && row.level === 0
+                      ? "product-category-formal-table__row--parent"
+                      : "",
+                    !row.is_total && row.level > 0
+                      ? "product-category-formal-table__row--child"
+                      : "",
                     isSelectedFormalRow ? "product-category-formal-table__row--selected" : "",
                   ].filter(Boolean).join(" ")}
                 >
