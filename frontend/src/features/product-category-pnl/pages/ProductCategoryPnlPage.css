@@ -6165,6 +6165,10 @@
 }
 
 @media (min-width: 769px) {
+  .product-category-next-analysis-preview {
+    display: none;
+  }
+
   .product-category-formal-readiness__table {
     min-width: 0;
     table-layout: fixed;
