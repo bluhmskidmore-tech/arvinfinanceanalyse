@@ -121,10 +121,9 @@ def test_ledger_dates_dashboard_positions_and_export_use_imported_snapshot(tmp_p
     dashboard_payload = dashboard.json()
     assert dashboard_payload["data"] == {
         "as_of_date": "2026-03-17",
-        "asset_face_amount": 1.0,
-        "liability_face_amount": 0.5,
-        "net_face_exposure": 0.5,
-        "alert_count": 0,
+        "currency_breakdown": [
+            {"currency": "CNY", "asset_face_amount": 1.0, "liability_face_amount": 0.5, "net_face_exposure": 0.5},
+        ],
     }
     assert dashboard_payload["metadata"]["stale"] is False
     assert dashboard_payload["metadata"]["fallback"] is False
@@ -184,6 +183,7 @@ def test_ledger_dates_dashboard_positions_and_export_use_imported_snapshot(tmp_p
         "asset_class_std": None,
         "bond_code": None,
         "cost_center": None,
+        "currency": None,
         "direction": "ASSET",
         "portfolio": None,
     }
@@ -226,44 +226,20 @@ def test_ledger_get_read_surfaces_open_duckdb_read_only(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_ledger_dashboard_uses_existing_zqtz_snapshot_source(tmp_path, monkeypatch):
+def test_ledger_dashboard_ignores_existing_zqtz_snapshot_source(tmp_path, monkeypatch):
     duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
     _insert_zqtz_snapshot_fixture(duckdb_path)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
-    dates = client.get("/api/ledger/dates")
-    assert dates.status_code == 200
-    assert dates.json()["data"]["items"] == ["2026-03-31"]
-    assert dates.json()["metadata"]["batch_id"] == "ib-existing-zqtz"
-    assert dates.json()["metadata"]["source_version"] == "sv-existing-zqtz"
-
-    dashboard = client.get("/api/ledger/dashboard", params={"as_of_date": "2026-03-31"})
-    assert dashboard.status_code == 200
-    dashboard_payload = dashboard.json()
-    assert dashboard_payload["data"] == {
-        "as_of_date": "2026-03-31",
-        "asset_face_amount": 1.0,
-        "liability_face_amount": 0.5,
-        "net_face_exposure": 0.5,
-        "alert_count": 0,
-    }
-    assert dashboard_payload["metadata"]["rule_version"] == "rv_snapshot_zqtz_tyw_v1"
-
-    positions = client.get(
-        "/api/ledger/positions",
-        params={"as_of_date": "2026-03-31", "direction": "LIABILITY", "page": 1, "page_size": 10},
-    )
-    assert positions.status_code == 200
-    positions_payload = positions.json()
-    assert positions_payload["data"]["total"] == 1
-    item = positions_payload["data"]["items"][0]
-    assert item["batch_id"] == "ib-existing-zqtz"
-    assert item["direction"] == "LIABILITY"
-    assert item["bond_code"] == "LIAB-ZQTZ-001"
-    assert item["face_amount"] == 50000000.0
-    assert item["trace"]["ingest_batch_id"] == "ib-existing-zqtz"
+    dates = client.get("/api/ledger/dates").json()
+    assert dates["data"]["items"] == []
+    assert dates["metadata"]["no_data"] is True
+    dashboard = client.get("/api/ledger/dashboard", params={"as_of_date": "2026-03-31"}).json()
+    assert dashboard["data"] == {"as_of_date": None, "currency_breakdown": []}
+    assert dashboard["metadata"]["no_data"] is True
+    positions = client.get("/api/ledger/positions", params={"as_of_date": "2026-03-31"}).json()
+    assert positions["data"]["total"] == 0
     get_settings.cache_clear()
-
 
 def test_ledger_imports_and_dates_reject_unknown_query_parameters(tmp_path, monkeypatch):
     duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
@@ -363,9 +339,9 @@ def test_ledger_dashboard_keeps_missing_side_null_but_net_uses_known_side(tmp_pa
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["data"]["asset_face_amount"] is None
-    assert payload["data"]["liability_face_amount"] == 1.0
-    assert payload["data"]["net_face_exposure"] == -1.0
+    assert payload["data"]["currency_breakdown"] == [
+        {"currency": "CNY", "asset_face_amount": None, "liability_face_amount": 1.0, "net_face_exposure": -1.0},
+    ]
     get_settings.cache_clear()
 
 
@@ -377,13 +353,8 @@ def test_ledger_dashboard_no_data_keeps_all_kpis_null(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["data"] == {
-        "as_of_date": None,
-        "asset_face_amount": None,
-        "liability_face_amount": None,
-        "net_face_exposure": None,
-        "alert_count": None,
-    }
+    assert payload["data"] == {"as_of_date": None, "currency_breakdown": []}
+
     assert payload["metadata"]["no_data"] is True
     get_settings.cache_clear()
 
@@ -459,9 +430,16 @@ def test_ledger_dashboard_real_pack_20260317_golden_kpis(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["data"]["asset_face_amount"] == 3289.07
-    assert payload["data"]["liability_face_amount"] == 1231.77
-    assert payload["data"]["net_face_exposure"] == 2057.31
+    cny = next(
+        item for item in payload["data"]["currency_breakdown"] if item["currency"] == "CNY"
+    )
+    assert cny["asset_face_amount"] == 3289.07
+    assert cny["liability_face_amount"] == 1231.77
+    assert cny["net_face_exposure"] == 2057.31
+    assert "asset_face_amount" not in payload["data"]
+    assert "liability_face_amount" not in payload["data"]
+    assert "net_face_exposure" not in payload["data"]
+    assert "alert_count" not in payload["data"]
     assert payload["metadata"]["source_version"].startswith("sv_ledger_")
     assert payload["metadata"]["rule_version"] == "position_key_contract_v1"
     get_settings.cache_clear()
@@ -586,3 +564,87 @@ def _insert_zqtz_snapshot_fixture(duckdb_path: Path) -> None:
         )
     finally:
         conn.close()
+
+
+def test_ledger_unblock_prefers_imported_snapshot_and_splits_currency(tmp_path, monkeypatch):
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    _import_currency_position_fixture(duckdb_path)
+    _insert_zqtz_snapshot_fixture(duckdb_path)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    assert client.get("/api/ledger/dates").json()["data"]["items"] == ["2026-03-17"]
+    payload = client.get("/api/ledger/dashboard", params={"as_of_date": "2026-03-17"}).json()
+    assert payload["data"] == {
+        "as_of_date": "2026-03-17",
+        "currency_breakdown": [
+            {"currency": "CNY", "asset_face_amount": 1.0, "liability_face_amount": 0.5, "net_face_exposure": 0.5},
+            {"currency": "USD", "asset_face_amount": 2.0, "liability_face_amount": None, "net_face_exposure": 2.0},
+        ],
+    }
+    assert "asset_face_amount" not in payload["data"]
+    assert "alert_count" not in payload["data"]
+    get_settings.cache_clear()
+
+
+def test_ledger_unblock_zqtz_only_is_no_data(tmp_path, monkeypatch):
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    _insert_zqtz_snapshot_fixture(duckdb_path)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    assert client.get("/api/ledger/dates").json()["data"]["items"] == []
+    payload = client.get("/api/ledger/dashboard", params={"as_of_date": "2026-03-31"}).json()
+    assert payload["data"] == {"as_of_date": None, "currency_breakdown": []}
+    assert payload["metadata"]["no_data"] is True
+    get_settings.cache_clear()
+
+
+def test_ledger_unblock_fallback_is_past_only(tmp_path, monkeypatch):
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    _import_two_position_fixture(duckdb_path)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    before = client.get("/api/ledger/dashboard", params={"as_of_date": "2026-03-16"}).json()
+    assert before["data"] == {"as_of_date": None, "currency_breakdown": []}
+    assert before["metadata"]["no_data"] is True
+    after = client.get("/api/ledger/dashboard", params={"as_of_date": "2026-03-18"}).json()
+    assert after["data"]["as_of_date"] == "2026-03-17"
+    assert after["metadata"]["fallback"] is True
+    get_settings.cache_clear()
+
+
+def test_ledger_unblock_currency_filters_positions_and_export(tmp_path, monkeypatch):
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    _import_currency_position_fixture(duckdb_path)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    positions = client.get("/api/ledger/positions", params={"as_of_date": "2026-03-17", "currency": " usd "})
+    assert positions.status_code == 200
+    payload = positions.json()
+    assert payload["data"]["total"] == 1
+    assert payload["data"]["items"][0]["currency"] == "USD"
+    assert payload["trace"]["filters"]["currency"] == "USD"
+
+    exported = client.get("/api/ledger/export/positions", params={"as_of_date": "2026-03-17", "currency": "usd"})
+    assert exported.status_code == 200
+    workbook = load_workbook(io.BytesIO(exported.content), read_only=True)
+    try:
+        rows = list(workbook["positions"].iter_rows(values_only=True))
+        metadata = dict(workbook["metadata"].iter_rows(min_row=2, values_only=True))
+    finally:
+        workbook.close()
+    assert len(rows) == 2
+    assert rows[1][rows[0].index("currency")] == "USD"
+    assert json.loads(metadata["filters"])["currency"] == "USD"
+    get_settings.cache_clear()
+
+
+def _import_currency_position_fixture(duckdb_path: Path) -> None:
+    service_mod = load_module("backend.app.services.ledger_import_service", "backend/app/services/ledger_import_service.py")
+    rows = [
+        _ledger_row_values(service_mod, bond_code="ASSET-CNY", account_category="\u94f6\u884c\u8d26\u6237", asset_class="ASSET", face_amount="100000000", as_of_date="2026-03-17"),
+        _ledger_row_values(service_mod, bond_code="LIABILITY-CNY", account_category="\u53d1\u884c\u7c7b\u503a\u5238", asset_class="\u53d1\u884c\u7c7b\u503a\u5238", face_amount="50000000", as_of_date="2026-03-17"),
+        _ledger_row_values(service_mod, bond_code="ASSET-USD", account_category="\u94f6\u884c\u8d26\u6237", asset_class="ASSET", face_amount="200000000", as_of_date="2026-03-17"),
+    ]
+    currency_index = next(index for index, spec in enumerate(service_mod.FIELD_SPECS) if spec.standard_field == "currency")
+    rows[2][currency_index] = " usd "
+    _scoped_import(service_mod, duckdb_path, file_name="ZQTZSHOW-20260317-currency.csv", content=_ledger_csv_bytes(service_mod, rows))

@@ -1,7 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { RouterProvider } from "react-router-dom";
 
+import { AppProviders } from "../app/providers";
 import { createApiClient, type ApiClient } from "../api/client";
 import { LedgerRequestError } from "../api/ledgerClient";
 import type {
@@ -13,7 +15,7 @@ import type {
   LedgerPositionsOptions,
 } from "../api/ledgerClient";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
-import { renderWorkbenchApp } from "./renderWorkbenchApp";
+import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const metadata = {
   source_version: "sv_ledger_test",
@@ -160,10 +162,10 @@ function buildClient(
         ? overrides.dashboard(asOfDate)
         : envelope<LedgerDashboardData>({
             as_of_date: "2026-03-17",
-            asset_face_amount: 3289.07,
-            liability_face_amount: 1231.77,
-            net_face_exposure: 2057.31,
-            alert_count: 0,
+            currency_breakdown: [
+              { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31 },
+              { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2 },
+            ],
           }),
     ),
     getLedgerPositions: vi.fn(async (options: LedgerPositionsOptions) =>
@@ -211,37 +213,20 @@ describe("LedgerDashboardPage", () => {
     vi.useRealTimers();
   });
 
-  it("renders source-blocked KPI units, trace metadata, and native-currency position rows", async () => {
+  it("renders imported currency-bucket KPIs without an alert card", async () => {
     const client = buildClient();
     renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
 
     expect(await screen.findByTestId("ledger-dashboard-page")).toBeInTheDocument();
-    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent(
-      "source-blocked",
-    );
-    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent(
-      "未做币种过滤或 FX 换算",
-    );
-    expect(screen.queryByText("正式读链路")).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByLabelText("ledger-dashboard-as-of-date")).toHaveValue("2026-03-17");
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 原币合计/1亿");
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("1231.77 原币合计/1亿");
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2057.31 原币合计/1亿");
-      expect(screen.getByTestId("ledger-dashboard-kpi-alerts")).toHaveTextContent("--");
-      expect(screen.getByTestId("ledger-dashboard-kpi-alerts")).toHaveTextContent("不能解释为 0 条预警");
-    });
-    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("sv_ledger_test");
-    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("requested_as_of_date");
+    expect(screen.getByTestId("ledger-dashboard-governance-boundary")).toHaveTextContent("imported position_snapshot");
+    await waitFor(() => expect(screen.getByLabelText("ledger-dashboard-currency")).toHaveValue("CNY"));
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("1231.77 CNY/1亿");
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2057.31 CNY/1亿");
+    expect(screen.queryByTestId("ledger-dashboard-kpi-alerts")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId(/ledger-dashboard-kpi-/)).toHaveLength(3);
     expect(await screen.findByText("asset-key")).toBeInTheDocument();
-    expect(screen.getByTestId("ledger-dashboard-positions-table")).toHaveTextContent("面值（原币）");
-    expect(screen.getByTestId("ledger-dashboard-positions-table")).toHaveTextContent("CNY");
-    expect(screen.getByTestId("ledger-dashboard-positions-table")).toHaveTextContent("100,000,000.00");
   });
-
   it("drills from the asset KPI into ASSET positions without changing date口径", async () => {
     const user = userEvent.setup();
     const client = buildClient();
@@ -255,6 +240,7 @@ describe("LedgerDashboardPage", () => {
     await waitFor(() => {
       expect(client.getLedgerPositions).toHaveBeenLastCalledWith({
         asOfDate: "2026-03-17",
+        currency: "CNY",
         direction: "ASSET",
         page: 1,
         pageSize: 20,
@@ -264,16 +250,52 @@ describe("LedgerDashboardPage", () => {
     expect(screen.queryByText("liability-key")).not.toBeInTheDocument();
   });
 
+  it("hydrates currency when the same route URL changes after mount", async () => {
+    const client = buildClient();
+    const router = createWorkbenchMemoryRouter([
+      "/bank-ledger-dashboard?as_of_date=2026-03-17&currency=CNY",
+    ]);
+    render(
+      <AppProviders client={client}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("ledger-dashboard-currency")).toHaveValue("CNY"));
+    const observedSearches: string[] = [];
+    const unsubscribe = router.subscribe((state) => observedSearches.push(state.location.search));
+    await router.navigate("/bank-ledger-dashboard?as_of_date=2026-03-17&currency=USD");
+
+    await waitFor(() => expect(screen.getByLabelText("ledger-dashboard-currency")).toHaveValue("USD"));
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2.00 USD/1亿");
+    await waitFor(() => expect(client.getLedgerPositions).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "USD" })));
+    await waitFor(() => expect(router.state.location.search).toContain("currency=USD"));
+    unsubscribe();
+    expect(observedSearches.filter((search) => search.includes("currency=CNY"))).toEqual([]);
+  });
+  it("switches currency and keeps positions and drill requests in the same bucket", async () => {
+    const user = userEvent.setup();
+    const client = buildClient();
+    renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
+
+    const currency = await screen.findByLabelText("ledger-dashboard-currency");
+    await waitFor(() => expect(currency).toHaveValue("CNY"));
+    await user.selectOptions(currency, "USD");
+    await waitFor(() => expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("2.00 USD/1亿"));
+    await waitFor(() => expect(client.getLedgerPositions).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "USD" })));
+    await user.click(within(screen.getByTestId("ledger-dashboard-kpi-asset")).getByRole("button"));
+    await waitFor(() => expect(client.getLedgerPositions).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "USD", direction: "ASSET" })));
+  });
   it("surfaces fallback dates instead of silently treating them as current data", async () => {
     const client = buildClient({
       dashboard: (asOfDate) =>
         envelope<LedgerDashboardData>(
           {
             as_of_date: "2026-03-17",
-            asset_face_amount: 3289.07,
-            liability_face_amount: 1231.77,
-            net_face_exposure: 2057.31,
-            alert_count: 0,
+            currency_breakdown: [
+              { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31 },
+              { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2 },
+            ],
           },
           {
             metadata: { stale: true, fallback: true },
@@ -305,7 +327,7 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
 
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 原币合计/1亿");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
     });
     expect(screen.queryByText("加载失败")).not.toBeInTheDocument();
     expect(client.getLedgerDashboard).toHaveBeenCalledWith("2026-03-17");
@@ -321,7 +343,7 @@ describe("LedgerDashboardPage", () => {
     renderWorkbenchApp(["/bank-ledger-dashboard?as_of_date=2026-03-17"], { client });
 
     await waitFor(() => {
-      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 原币合计/1亿");
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 CNY/1亿");
     });
     expect(await screen.findByTestId("ledger-dashboard-positions-status")).toHaveTextContent("明细加载失败");
   });
@@ -449,13 +471,62 @@ describe("LedgerDashboardPage", () => {
         trace: { request_id: "req_succeeded", run_id: "ledger_import:progress" },
       },
     ];
+    let dashboardReads = 0;
+    let positionReads = 0;
     const client = buildClient({
+      dashboard: () => {
+        dashboardReads += 1;
+        if (dashboardReads === 1) {
+          return envelope<LedgerDashboardData>({
+            as_of_date: "2026-03-17",
+            currency_breakdown: [
+              { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31 },
+            ],
+          });
+        }
+        return envelope<LedgerDashboardData>(
+          {
+            as_of_date: "2026-03-17",
+            currency_breakdown: [
+              { currency: "CNY", asset_face_amount: 4000, liability_face_amount: 1000, net_face_exposure: 3000 },
+            ],
+          },
+          { metadata: { batch_id: 12 }, trace: { batch_id: 12 } },
+        );
+      },
+      positions: async (options) => {
+        positionReads += 1;
+        const response = positionsPayload(options);
+        if (positionReads === 1) return response;
+        const imported = {
+          ...response.data.items[0],
+          position_key: "imported-batch-12-row",
+          batch_id: 12,
+          bond_code: "IMPORTED-012",
+          face_amount: 250000000,
+          trace: { position_key: "imported-batch-12-row", batch_id: 12, row_no: 1 },
+        };
+        return {
+          ...response,
+          data: { ...response.data, items: [imported], total: 1 },
+          metadata: { ...response.metadata, batch_id: 12 },
+          trace: { ...response.trace, batch_id: 12 },
+        };
+      },
       importLedger: async (file) => ({
         data: { run_id: "ledger_import:progress", status: "queued", file_name: file.name },
         trace: { request_id: "req_queued", run_id: "ledger_import:progress" },
       }),
       importStatus: async () => statusResponses.shift() ?? statusResponses[0],
     });
+    vi.mocked(client.getLedgerDates)
+      .mockResolvedValueOnce(envelope<LedgerDatesData>({ items: ["2026-03-17"] }))
+      .mockResolvedValueOnce(
+        envelope<LedgerDatesData>(
+          { items: ["2026-03-18", "2026-03-17"] },
+          { metadata: { batch_id: 12 }, trace: { batch_id: 12 } },
+        ),
+      );
     renderWorkbenchApp(["/bank-ledger-dashboard"], { client });
     const file = new File(["ledger"], "ledger.xlsx", {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -469,6 +540,12 @@ describe("LedgerDashboardPage", () => {
     expect(await screen.findByText("导入完成", {}, { timeout: 3_000 })).toBeInTheDocument();
     expect(screen.getByTestId("ledger-import-status")).toHaveTextContent("batch_id 12");
     expect(client.getLedgerDates).toHaveBeenCalledTimes(2);
+    expect(client.getLedgerDashboard).toHaveBeenCalledTimes(2);
+    expect(client.getLedgerPositions).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("imported-batch-12-row")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("4000.00 CNY/1亿");
+    expect(screen.getByTestId("ledger-dashboard-evidence")).toHaveTextContent("12");
+    expect(screen.getByLabelText("ledger-dashboard-as-of-date")).toContainHTML("2026-03-18");
   });
 
   it("renders duplicate as a successful terminal outcome", async () => {

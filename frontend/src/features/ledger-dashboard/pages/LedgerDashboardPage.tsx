@@ -11,6 +11,7 @@ import {
   ledgerImportPresentation,
   positionRowKey,
   resolvedLedgerDate,
+  selectLedgerCurrency,
   type LedgerDirectionFilter,
 } from "./ledgerDashboardPageModel";
 import { useLedgerImportWorkflow } from "./useLedgerImportWorkflow";
@@ -25,6 +26,10 @@ function queryDirection(value: string | null): LedgerDirectionFilter {
 
 function queryDate(value: string | null) {
   return value?.trim() ?? "";
+}
+
+function queryCurrency(value: string | null) {
+  return value?.trim().toUpperCase() ?? "";
 }
 
 export default function LedgerDashboardPage() {
@@ -75,6 +80,7 @@ export default function LedgerDashboardPage() {
     } else {
       next.set("direction", direction);
     }
+
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
@@ -87,12 +93,33 @@ export default function LedgerDashboardPage() {
     retry: false,
   });
 
+  const dashboard = dashboardQuery.data;
+  const currencies = useMemo(
+    () => dashboard?.data.currency_breakdown.map((item) => item.currency).sort() ?? [],
+    [dashboard?.data.currency_breakdown],
+  );
+  const requestedCurrency = queryCurrency(searchParams.get("currency"));
+  const selectedCurrency = selectLedgerCurrency(
+    dashboard?.data.currency_breakdown ?? [],
+    requestedCurrency,
+  );
+
+  useEffect(() => {
+    if (currencies.length === 0 || !selectedCurrency || requestedCurrency === selectedCurrency) {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.set("currency", selectedCurrency);
+    setSearchParams(next, { replace: true });
+  }, [currencies.length, requestedCurrency, searchParams, selectedCurrency, setSearchParams]);
+
   const positionsQuery = useQuery({
-    queryKey: ["bank-ledger", "positions", client.mode, selectedDate, direction],
-    enabled: Boolean(selectedDate),
+    queryKey: ["bank-ledger", "positions", client.mode, selectedDate, selectedCurrency, direction],
+    enabled: Boolean(selectedDate && selectedCurrency),
     queryFn: () =>
       client.getLedgerPositions({
         asOfDate: selectedDate,
+        currency: selectedCurrency,
         direction: direction === "ALL" ? undefined : direction,
         page: 1,
         pageSize: 20,
@@ -100,9 +127,8 @@ export default function LedgerDashboardPage() {
     retry: false,
   });
 
-  const dashboard = dashboardQuery.data;
   const positions = positionsQuery.data;
-  const cards = buildLedgerKpiCards(dashboard?.data);
+  const cards = buildLedgerKpiCards(dashboard?.data, selectedCurrency);
   const pageError = dashboardQuery.error ?? (!selectedDate ? datesQuery.error : null);
   const state = ledgerDataState(
     dashboard?.metadata ?? datesQuery.data?.metadata,
@@ -135,15 +161,11 @@ export default function LedgerDashboardPage() {
       <section
         className="ledger-dashboard__governance-boundary"
         data-testid="ledger-dashboard-governance-boundary"
-        aria-label="Ledger 指标治理边界"
+        aria-label="Ledger governance boundary"
       >
-        <strong>source-blocked · 不可用于正式决策</strong>
-        <span>
-          资产、发行负债与净敞口当前汇总原币金额，未做币种过滤或 FX 换算；缩放到 1 亿不代表人民币亿元。
-          请求日缺失时还可能解析到更晚的全局最新日期。
-        </span>
+        <strong>{"candidate · imported position_snapshot · not for formal use"}</strong>
+        <span>{"Currency buckets are independent native amounts / 100m with no FX conversion. Fallback is past-only; UNKNOWN currency and default-to-asset classification remain review risks."}</span>
       </section>
-
       <div className="ledger-dashboard__toolbar">
         <label className="ledger-dashboard__field">
           <span>日期</span>
@@ -165,6 +187,22 @@ export default function LedgerDashboardPage() {
           </select>
         </label>
 
+        <label className="ledger-dashboard__field">
+          <span>Currency</span>
+          <select
+            aria-label="ledger-dashboard-currency"
+            value={selectedCurrency}
+            onChange={(event) => {
+              const next = new URLSearchParams(searchParams);
+              next.set("currency", event.target.value);
+              setSearchParams(next);
+            }}
+            disabled={currencies.length === 0}
+          >
+            {currencies.length === 0 ? <option value="">--</option> : null}
+            {currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+          </select>
+        </label>
         <div className="ledger-dashboard__segmented" role="group" aria-label="ledger-dashboard-direction">
           {(["ALL", "ASSET", "LIABILITY"] as LedgerDirectionFilter[]).map((item) => (
             <button
@@ -392,7 +430,7 @@ export default function LedgerDashboardPage() {
             <dt>resolved_as_of_date</dt>
             <dd>{actualDate ?? "--"}</dd>
             <dt>positions_filter</dt>
-            <dd>{direction === "ALL" ? "ALL" : direction}</dd>
+            <dd>{`${selectedCurrency || "--"} / ${direction === "ALL" ? "ALL" : direction}`}</dd>
           </dl>
         </article>
         <article>

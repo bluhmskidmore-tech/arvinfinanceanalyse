@@ -80,32 +80,18 @@ def _page_contract_section(current_heading: str, next_heading: str) -> str:
     return page_contracts.split(current_heading, maxsplit=1)[1].split(next_heading, maxsplit=1)[0]
 
 
-def test_bank_ledger_page_contract_blocks_mixed_currency_and_placeholder_alerts():
+def test_bank_ledger_page_contract_requires_imported_currency_buckets_and_past_only_fallback():
     page_contracts = _read_doc("page_contracts.md")
-    section = page_contracts.split("PAGE-BANK-LEDGER-001", maxsplit=1)[1].split(
-        "\n## ", maxsplit=1
-    )[0]
-
+    section = page_contracts.split("PAGE-BANK-LEDGER-001", maxsplit=1)[1].split("\n## ", maxsplit=1)[0]
     for required in (
-        "formal_use_allowed=false",
-        "source-blocked",
-        "face_value_native",
-        "no currency filter or FX normalization",
-        "non-compliant temporary compatibility debt",
-        "defaulted to candidate asset",
-        "requested_as_of_date",
-        "resolved_as_of_date",
-        "may resolve after the requested date",
-        "alert_count",
-        "hard-coded placeholder",
-        "must not be interpreted as zero alerts",
-        "PAGE-BALANCE-001",
-        "PAGE-PNL-001",
-        "no approved MTR-* binding",
-        "no dedicated golden sample",
+        "formal_use_allowed=false", "position_snapshot", "currency_breakdown", "UNKNOWN",
+        "past-only", "defaulted to candidate asset", "requested_as_of_date", "resolved_as_of_date",
+        "alert_count is removed", "PAGE-BALANCE-001", "PAGE-PNL-001",
+        "no approved MTR-* binding", "no dedicated golden sample",
     ):
         assert required in section
-
+    assert "zqtz_bond_daily_snapshot whenever" not in section
+    assert "may resolve after the requested date" not in section
 
 def _sample_dirs() -> list[str]:
     return sorted(

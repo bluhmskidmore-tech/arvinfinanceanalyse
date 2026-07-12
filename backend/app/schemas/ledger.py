@@ -3,14 +3,20 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 
 
+class LedgerCurrencyBreakdown(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    currency: str
+    asset_face_amount: float | None
+    liability_face_amount: float | None
+    net_face_exposure: float | None
+
+
 class LedgerDashboardData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     as_of_date: str | None
-    asset_face_amount: float | None
-    liability_face_amount: float | None
-    net_face_exposure: float | None
-    alert_count: int | None
+    currency_breakdown: list[LedgerCurrencyBreakdown]
 
 
 class LedgerPositionItem(BaseModel):

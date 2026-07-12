@@ -27,12 +27,16 @@ export type LedgerDatesData = {
   items: string[];
 };
 
-export type LedgerDashboardData = {
-  as_of_date: string | null;
+export type LedgerCurrencyBreakdown = {
+  currency: string;
   asset_face_amount: number | null;
   liability_face_amount: number | null;
   net_face_exposure: number | null;
-  alert_count: number | null;
+};
+
+export type LedgerDashboardData = {
+  as_of_date: string | null;
+  currency_breakdown: LedgerCurrencyBreakdown[];
 };
 
 export type LedgerPositionItem = {
@@ -89,6 +93,7 @@ export type LedgerPositionsOptions = {
   accountCategoryStd?: string | null;
   assetClassStd?: string | null;
   costCenter?: string | null;
+  currency?: string | null;
   page?: number;
   pageSize?: number;
 };
@@ -263,6 +268,7 @@ function positionsParams(options: LedgerPositionsOptions) {
     account_category_std: options.accountCategoryStd ?? undefined,
     asset_class_std: options.assetClassStd ?? undefined,
     cost_center: options.costCenter ?? undefined,
+    currency: options.currency?.trim().toUpperCase() || undefined,
     page: options.page,
     page_size: options.pageSize,
   };
@@ -326,10 +332,10 @@ export function createMockLedgerClient(): LedgerClientMethods {
       return {
         data: {
           as_of_date: "2026-03-17",
-          asset_face_amount: 3289.07,
-          liability_face_amount: 1231.77,
-          net_face_exposure: 2057.31,
-          alert_count: 0,
+          currency_breakdown: [
+            { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31 },
+            { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2 },
+          ],
         },
         metadata: {
           ...mockMetadata,
@@ -345,9 +351,11 @@ export function createMockLedgerClient(): LedgerClientMethods {
       };
     },
     async getLedgerPositions(options: LedgerPositionsOptions) {
-      const items = options.direction
-        ? mockPositions.filter((item) => item.direction === options.direction)
-        : mockPositions;
+      const items = mockPositions.filter(
+        (item) =>
+          (!options.direction || item.direction === options.direction) &&
+          (!options.currency || item.currency === options.currency.trim().toUpperCase()),
+      );
       return {
         data: {
           items,

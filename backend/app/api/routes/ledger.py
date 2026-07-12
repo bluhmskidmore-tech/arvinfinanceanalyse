@@ -312,6 +312,7 @@ def ledger_positions(
     account_category_std: str | None = Query(None),
     asset_class_std: str | None = Query(None),
     cost_center: str | None = Query(None),
+    currency: str | None = Query(None),
     page: int = Query(1),
     page_size: int = Query(50),
 ):
@@ -328,6 +329,7 @@ def ledger_positions(
                 "account_category_std",
                 "asset_class_std",
                 "cost_center",
+                "currency",
                 "page",
                 "page_size",
             },
@@ -340,6 +342,7 @@ def ledger_positions(
             account_category_std=account_category_std,
             asset_class_std=asset_class_std,
             cost_center=cost_center,
+            currency=currency,
         )
         auth_error = _ledger_read_auth_error(auth, settings)
         if auth_error is not None:
@@ -377,6 +380,7 @@ def export_ledger_positions(
     account_category_std: str | None = Query(None),
     asset_class_std: str | None = Query(None),
     cost_center: str | None = Query(None),
+    currency: str | None = Query(None),
     format: str = Query("xlsx"),
 ):
     settings = get_settings()
@@ -394,6 +398,7 @@ def export_ledger_positions(
                 "account_category_std",
                 "asset_class_std",
                 "cost_center",
+                "currency",
                 "format",
             },
         )
@@ -405,6 +410,7 @@ def export_ledger_positions(
             account_category_std=account_category_std,
             asset_class_std=asset_class_std,
             cost_center=cost_center,
+            currency=currency,
         )
         auth_error = _ledger_read_auth_error(auth, settings)
         if auth_error is not None:

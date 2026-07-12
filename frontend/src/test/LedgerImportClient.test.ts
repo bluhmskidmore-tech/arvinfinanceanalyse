@@ -116,4 +116,18 @@ describe("Ledger import client", () => {
       retryable: false,
     });
   });
+  it("sends normalized currency to positions and export", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { items: [], page: 1, page_size: 20, total: 0 }, metadata: {}, trace: {} }),
+      blob: async () => new Blob(["xlsx"]),
+    }));
+    const client = createRealLedgerClient({ fetchImpl: fetchMock as unknown as typeof fetch, baseUrl: "http://localhost:8000" });
+    await client.getLedgerPositions({ asOfDate: "2026-03-17", currency: " usd ", page: 1, pageSize: 20 });
+    await client.exportLedgerPositions({ asOfDate: "2026-03-17", currency: " usd " });
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit?]>;
+    expect(calls[0][0]).toContain("currency=USD");
+    expect(calls[1][0]).toContain("currency=USD");
+  });
 });

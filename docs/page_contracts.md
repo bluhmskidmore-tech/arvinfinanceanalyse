@@ -1705,61 +1705,51 @@
 
 ### A. Page identity and decision boundary
 
-- Page ID: `PAGE-BANK-LEDGER-001`
-- Primary front-end route: `/bank-ledger-dashboard`
-- Maturity: `temporary-exception`; candidate ledger read model; `formal_use_allowed=false`.
-- The page answers: which candidate ledger snapshot was actually resolved for the requested date, what candidate asset / issued-liability native face amounts and position evidence are available, and can the evidence be traced for review?
-- The page does not answer formal balance, formal PnL, approved net exposure, risk-limit status, or business-owner approval.
-- The three headline amount fields remain `source-blocked / pending-definition`. They have no approved MTR-* binding and no dedicated golden sample.
+- Page ID: `PAGE-BANK-LEDGER-001`; route: `/bank-ledger-dashboard`.
+- Maturity remains `temporary-exception`; this is a candidate ledger read model with `formal_use_allowed=false`.
+- The page does not provide formal balance, formal PnL, approved net exposure, alert truth, or business-owner approval.
+- The three headline fields have no approved MTR-* binding and no dedicated golden sample.
 
-### B. Read, detail, export, and import chain
+### B. Imported snapshot read chain
 
-- `GET /api/ledger/dates` lists available candidate dates.
-- `GET /api/ledger/dashboard?as_of_date=YYYY-MM-DD` returns `asset_face_amount`, `liability_face_amount`, `net_face_exposure`, and the non-metric `alert_count` placeholder.
-- `GET /api/ledger/positions` and `GET /api/ledger/export/positions` return position-level evidence with the same requested date and filters.
-- `POST /api/ledger/import` plus `GET /api/ledger/import-status` expose the asynchronous import workflow. A terminal `succeeded` status proves only that parsing completed and `ledger_import_batch`, `ledger_raw_row`, and `position_snapshot` were written transactionally.
-- Import success does not prove that `position_snapshot_agg` was materialized, that the dashboard selected the imported batch, or that any formal balance / PnL approval occurred.
-- Current dashboard reads use `zqtz_bond_daily_snapshot` whenever that table has any data; only otherwise do they use an imported `position_snapshot` batch. The runtime dashboard does not read `position_snapshot_agg`.
-- Direct ZQTZ consumption by this workbench is non-compliant temporary compatibility debt under `docs/data_contracts.md`; this PAGE contract documents and blocks the debt, and does not authorize the standardized snapshot as an analytical source.
+- `GET /api/ledger/dates`, `GET /api/ledger/dashboard`, `GET /api/ledger/positions`, and `GET /api/ledger/export/positions` read only imported `position_snapshot` batches.
+- Runtime reads no longer consume `zqtz_bond_daily_snapshot` and do not read `position_snapshot_agg`.
+- `POST /api/ledger/import` plus `GET /api/ledger/import-status` write and expose imported batch evidence; succeeded imports invalidate and refetch dates, dashboard, and positions.
+- Dashboard data is `{as_of_date, currency_breakdown}`. Each bucket contains `currency`, `asset_face_amount`, `liability_face_amount`, and `net_face_exposure`; `alert_count is removed` because no governed alert source or rule exists.
 
-### C. Candidate amount definitions and currency block
+### C. Currency and classification boundaries
 
-- ZQTZ compatibility reads classify `is_issuance_like=true` as candidate issued liability; false or null is defaulted to candidate asset through `coalesce(..., false)`, then `face_value_native` is summed.
-- Imported rows match only “发行类债券” to liability; every other or missing category is defaulted to candidate asset before `direction=ASSET` / `direction=LIABILITY` amounts are summed.
-- These default-to-asset rules can systematically overstate candidate assets and remain part of the source block until classification quality is governed.
-- `net_face_exposure = asset_face_amount - liability_face_amount`. If both sides are absent the result is null; if one side is absent, the net calculation treats only that missing side as zero while the missing headline remains null.
-- The backend divides each aggregate by `100,000,000` and rounds to two decimals. This scaling is not a currency conversion.
-- The current implementation performs no currency filter or FX normalization. `face_value_native` can contain multiple currencies, so the scaled values must be labelled as candidate native-amount aggregates, not CNY `亿元`.
-- Until a governed single-currency or FX-normalized analytical fact is introduced, these values are source-blocked and must not drive a business decision.
+- Currency is canonicalized as `upper(trim(currency))`; blank values are the independent `UNKNOWN` bucket. Buckets are stably sorted.
+- Every currency bucket is aggregated separately and scaled as native amount / `100,000,000`. There is no FX conversion and currencies are never added together.
+- Positions and export accept the same normalized `currency` filter. Selecting `UNKNOWN` filters blank-currency rows.
+- Imported rows matched to the issuance category become candidate liabilities; every unmatched or missing category is defaulted to candidate asset. This default-to-asset rule can overstate assets and remains pending owner review.
+- Within each currency bucket, `net_face_exposure = asset_face_amount - liability_face_amount`; a missing side remains null in its headline while net treats only that missing side as zero.
 
 ### D. Date, freshness, and fallback semantics
 
-- `requested_as_of_date` is the user-requested date; `resolved_as_of_date` is the date actually returned and both must remain visible when they differ.
-- On an exact-date miss, the repository selects the global latest available date. The resolved date may resolve after the requested date; fallback therefore must not be described as a snapshot for the requested date.
-- `fallback=true` currently means exact-date resolution failed. `stale=true` mirrors fallback and is not an independently evaluated freshness threshold.
-- Loading failure, no data, fallback, stale, and successful transport must remain distinct. Successful real transport does not promote candidate data to formal truth.
+- Exact `requested_as_of_date` uses the latest batch for that date.
+- An exact miss uses a past-only fallback: the latest `as_of_date <= requested_as_of_date`, then the latest batch on that date. A request before the earliest snapshot returns no data and never falls forward.
+- `requested_as_of_date` and `resolved_as_of_date` remain visible when different. `fallback` and `stale` remain explicit transport/read-model states, not formal freshness approval.
 
-### E. Alert and trace semantics
+### E. Frontend and trace contract
 
-- `alert_count` is a hard-coded placeholder on the current success path. It has no alert source, rule, or lineage and must not be interpreted as zero alerts.
-- The first screen must display the source-blocked currency boundary and the candidate/non-formal status before the headline cards.
-- Metadata must keep `source_version`, `rule_version`, `batch_id`, `stale`, `fallback`, and `no_data` visible.
-- Trace must keep request ID, requested/resolved dates, filters, batch ID, and position keys / row numbers available for drill-through.
-- No frontend fallback may replace null amounts, missing dates, missing positions, or missing trace evidence with static real-mode values.
+- The selected currency is URL state. Default is `CNY` when present, otherwise the first stable currency.
+- Exactly three KPI cards show only the selected currency and use `<CURRENCY>/1亿`; direction drill, positions query key/request, and export options retain the same currency.
+- Metadata preserves `source_version`, `rule_version`, `batch_id`, `stale`, `fallback`, and `no_data`; trace preserves requested/resolved dates, normalized filters, batch ID, position key, and row number.
+- No frontend fallback may fabricate amounts, dates, alerts, positions, or trace evidence.
 
 ### F. Formal-truth exclusions and exit conditions
 
-- `PAGE-BALANCE-001` remains formal balance truth; `PAGE-PNL-001` remains formal PnL truth. `PAGE-LEDGER-PNL-001` and product-category PnL retain their own separate contracts.
-- Do not register the dashboard fields as formal or candidate `MTR-*` rows until metric ownership, currency basis, source precedence, date fallback, and alert semantics are approved.
-- Exit from `temporary-exception` requires every workbench read model to stop consuming standardized ZQTZ directly and instead use a governed analytical/materialized layer, plus explicit currency/FX treatment, governed classification defaults, deterministic as-of fallback policy, real alert lineage or removal of the field, a dedicated capture-ready sample, manual lineage audit, and owner approval.
-- Existing classification remains `evidence-pending`; this PAGE contract closes only the missing-page-description gap.
+- `PAGE-BALANCE-001` remains formal balance truth; `PAGE-PNL-001` and `PAGE-LEDGER-PNL-001` retain their separate PnL contracts.
+- Do not promote these fields to MTR-* rows without metric ownership, dedicated golden evidence, lineage audit, manual review, and owner approval.
+- The route remains `temporary-exception` despite source unblocking because the default-to-asset classification, `UNKNOWN` currency quality, no MTR/golden approval, and owner review remain unresolved.
+- The historical alias `GAP-BANK-LEDGER-DASHBOARD-PAGE` remains accepted for trace lookup only.
 
 ### G. Verification surfaces
 
-- Backend behavior: `tests/test_ledger_analytics_api.py`, `tests/test_ledger_import_flow.py`.
-- Frontend boundary and states: `frontend/src/test/LedgerDashboardPage.test.tsx`, `frontend/src/test/LedgerDashboardPageModel.test.ts`.
-- Route and governance completeness: `tests/test_live_route_page_contract_completeness.py`, `tests/test_governance_doc_contract.py`.
-- MCP trace bundle: `tests/test_project_mcp_servers.py::test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_boundary`.
+- Backend: `tests/test_ledger_analytics_api.py`, `tests/test_ledger_import_flow.py`.
+- Frontend: `frontend/src/test/LedgerDashboardPage.test.tsx`, `frontend/src/test/LedgerDashboardPageModel.test.ts`, `frontend/src/test/LedgerImportClient.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
+- Governance/MCP: `tests/test_governance_doc_contract.py`, `tests/test_project_mcp_servers.py`.
 ## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
 
 ### A. 页面身份

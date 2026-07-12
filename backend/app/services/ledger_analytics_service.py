@@ -34,10 +34,7 @@ class LedgerAnalyticsService:
             return {
                 "data": LedgerDashboardData(
                     as_of_date=None,
-                    asset_face_amount=None,
-                    liability_face_amount=None,
-                    net_face_exposure=None,
-                    alert_count=None,
+                    currency_breakdown=[],
                 ).model_dump(mode="json"),
                 "metadata": _metadata(latest=None, no_data=True),
                 "trace": _trace(
@@ -48,10 +45,7 @@ class LedgerAnalyticsService:
             }
         data = LedgerDashboardData(
             as_of_date=str(dashboard["as_of_date"]),
-            asset_face_amount=dashboard["asset_face_amount"],
-            liability_face_amount=dashboard["liability_face_amount"],
-            net_face_exposure=dashboard["net_face_exposure"],
-            alert_count=0,
+            currency_breakdown=dashboard["currency_breakdown"],
         ).model_dump(mode="json")
         return {
             "data": data,
@@ -192,8 +186,10 @@ def normalize_filters(
     account_category_std: str | None,
     asset_class_std: str | None,
     cost_center: str | None,
+    currency: str | None,
 ) -> dict[str, str | None]:
-    normalized_direction = direction.upper() if direction else None
+    normalized_direction = direction.strip().upper() if direction and direction.strip() else None
+    normalized_currency = currency.strip().upper() if currency and currency.strip() else None
     if normalized_direction not in {None, "ASSET", "LIABILITY"}:
         raise ValueError("direction must be ASSET or LIABILITY.")
     return {
@@ -203,6 +199,7 @@ def normalize_filters(
         "account_category_std": account_category_std,
         "asset_class_std": asset_class_std,
         "cost_center": cost_center,
+        "currency": normalized_currency,
     }
 
 

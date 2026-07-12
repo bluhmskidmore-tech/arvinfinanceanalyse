@@ -263,8 +263,15 @@ describe("workbench navigation mocks", () => {
     expect(ledger?.path).toBe("/bank-ledger-dashboard");
     expect(ledger?.readiness).toBe("live");
     expect(ledger?.governanceStatus).toBe("temporary-exception");
-    expect(ledger?.readinessNote).toContain("source-blocked");
-    expect(ledger?.readinessNote).toContain("未做币种过滤或 FX 换算");
+    expect(ledger?.readinessNote).toContain("imported position_snapshot");
+    expect(ledger?.readinessNote).toContain("currency buckets are independent");
+    expect(ledger?.readinessNote).toContain("no FX");
+    expect(ledger?.readinessNote).toContain("past-only");
+    expect(ledger?.readinessNote).toContain("temporary-exception");
+    expect(ledger?.readinessNote).toContain("not formal");
+    expect(ledger?.readinessNote).toContain("default-to-asset");
+    expect(ledger?.readinessNote).toContain("UNKNOWN");
+    expect(ledger?.readinessNote).not.toContain("source-blocked");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "bank-ledger-dashboard")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "bank-ledger-dashboard")).toBe(false);
   });

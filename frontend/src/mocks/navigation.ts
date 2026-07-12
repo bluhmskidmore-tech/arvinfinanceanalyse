@@ -401,7 +401,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
     readinessNote:
-      "接入 /api/ledger/* 候选读链路；金额为 source-blocked 原币缩放，未做币种过滤或 FX 换算，不可作为正式余额、净敞口或预警结论。",
+      "Candidate imported position_snapshot read model; currency buckets are independent native amounts with no FX, and fallback is past-only. Route remains temporary-exception and not formal; default-to-asset and UNKNOWN risks remain pending.",
   },
   {
     key: "risk-overview",

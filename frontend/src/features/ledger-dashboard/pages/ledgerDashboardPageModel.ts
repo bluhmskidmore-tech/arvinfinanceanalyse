@@ -1,5 +1,6 @@
 import type {
   LedgerDashboardData,
+  LedgerCurrencyBreakdown,
   LedgerDirection,
   LedgerImportStatus,
   LedgerPositionItem,
@@ -10,7 +11,7 @@ import type {
 export type LedgerDirectionFilter = "ALL" | LedgerDirection;
 
 export type LedgerKpiCardModel = {
-  key: "asset" | "liability" | "net" | "alerts";
+  key: "asset" | "liability" | "net";
   label: string;
   value: string;
   detail: string;
@@ -38,11 +39,11 @@ export function ledgerImportStatusIsTerminal(status: LedgerImportStatus): boolea
   return status === "succeeded" || status === "duplicate" || status === "failed";
 }
 
-export function formatLedgerYiAmount(value: number | null | undefined): string {
+export function formatLedgerYiAmount(value: number | null | undefined, currency: string): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "--";
   }
-  return `${value.toFixed(2)} 原币合计/1亿`;
+  return `${value.toFixed(2)} ${currency}/1亿`;
 }
 
 export function formatLedgerYuanAmount(value: number | null | undefined): string {
@@ -55,39 +56,46 @@ export function formatLedgerYuanAmount(value: number | null | undefined): string
   }).format(value);
 }
 
-export function buildLedgerKpiCards(data: LedgerDashboardData | null | undefined): LedgerKpiCardModel[] {
+export function selectLedgerCurrency(
+  breakdown: LedgerCurrencyBreakdown[],
+  requested: string | null | undefined,
+): string {
+  const currencies = breakdown.map((item) => item.currency).sort();
+  const normalized = requested?.trim().toUpperCase();
+  if (normalized && currencies.includes(normalized)) return normalized;
+  if (currencies.includes("CNY")) return "CNY";
+  return currencies[0] ?? "";
+}
+
+export function buildLedgerKpiCards(
+  data: LedgerDashboardData | null | undefined,
+  currency: string,
+): LedgerKpiCardModel[] {
+  const bucket = data?.currency_breakdown.find((item) => item.currency === currency);
   return [
     {
       key: "asset",
       label: "资产面值",
-      value: formatLedgerYiAmount(data?.asset_face_amount),
-      detail: "后端候选资产分类；展示缩放=原币合计/1亿，未做币种过滤或 FX 换算",
+      value: formatLedgerYiAmount(bucket?.asset_face_amount, currency),
+      detail: `导入快照候选资产分类；${currency} 原币/1亿，无 FX 换算`,
       direction: "ASSET",
     },
     {
       key: "liability",
       label: "发行负债面值",
-      value: formatLedgerYiAmount(data?.liability_face_amount),
-      detail: "后端候选发行负债分类；展示缩放=原币合计/1亿，未做币种过滤或 FX 换算",
+      value: formatLedgerYiAmount(bucket?.liability_face_amount, currency),
+      detail: `导入快照候选负债分类；${currency} 原币/1亿，无 FX 换算`,
       direction: "LIABILITY",
     },
     {
       key: "net",
       label: "净敞口",
-      value: formatLedgerYiAmount(data?.net_face_exposure),
-      detail: "资产 - 发行负债；展示缩放=原币合计/1亿，跨币种仅供排查",
-      direction: "ALL",
-    },
-    {
-      key: "alerts",
-      label: "预警数量",
-      value: "--",
-      detail: "告警规则与来源未接入；接口占位值不能解释为 0 条预警",
+      value: formatLedgerYiAmount(bucket?.net_face_exposure, currency),
+      detail: `资产 - 发行负债；仅限 ${currency} 币种桶`,
       direction: "ALL",
     },
   ];
 }
-
 export function ledgerDataState(
   metadata: LedgerResponseMetadata | null | undefined,
   error: unknown,
