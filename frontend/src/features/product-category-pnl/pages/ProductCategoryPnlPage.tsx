@@ -427,14 +427,14 @@ function ProductCategoryGovernanceEvidence(props: ProductCategoryGovernanceEvide
         data-testid="product-category-governance-signing-blockers"
         className="product-category-governance-evidence__layer"
       >
-        <h4>签署阻断</h4>
+        <h3>签署阻断</h3>
         <ProductCategoryOwnerSignableStatus />
       </section>
       <section
         data-testid="product-category-governance-source-version"
         className="product-category-governance-evidence__layer"
       >
-        <h4>来源与版本</h4>
+        <h3>来源与版本</h3>
         <div
           data-testid="product-category-formal-readiness-status"
           className="product-category-formal-readiness__status-grid"
@@ -454,7 +454,7 @@ function ProductCategoryGovernanceEvidence(props: ProductCategoryGovernanceEvide
         data-testid="product-category-governance-audit-evidence"
         className="product-category-governance-evidence__layer"
       >
-        <h4>审计证据</h4>
+        <h3>审计证据</h3>
         <div className="product-category-formal-readiness__certification-strip">
           <span>Fresh pre-signature rerun required</span>
           <span>Unit=亿元</span>

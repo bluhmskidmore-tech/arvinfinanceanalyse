@@ -1,6 +1,13 @@
 .product-category-page-shell {
+  --ib-ink-muted: var(--ib-ink-secondary);
+
   display: grid;
   gap: var(--moss-space-4);
+}
+
+.product-category-page-shell .async-section__loading-text,
+.product-category-page-shell .async-section__empty {
+  color: var(--ib-ink-secondary);
 }
 
 .product-category-attribution__selected-detail-actions {
@@ -56,6 +63,8 @@
 }
 
 .product-category-formal-table__category-button {
+  min-width: 24px;
+  min-height: 24px;
   max-width: 100%;
   padding: 0;
   border: 0;
@@ -220,7 +229,7 @@
 
 .product-category-formal-readiness__metric span,
 .product-category-formal-readiness__metric small {
-  color: var(--moss-color-neutral-500);
+  color: var(--ib-ink-secondary);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -5424,7 +5433,7 @@
   border-top: 0;
 }
 
-.product-category-governance-evidence__layer h4 {
+.product-category-governance-evidence__layer h3 {
   margin: 0;
   color: var(--ib-ink-secondary);
   font-size: 10px;
@@ -6015,6 +6024,7 @@
 }
 
 .product-category-attribution-bridge__root-cause-action > button {
+  min-height: 24px;
   padding: 3px 6px;
   border: 1px solid var(--moss-color-neutral-300);
   border-radius: 2px;

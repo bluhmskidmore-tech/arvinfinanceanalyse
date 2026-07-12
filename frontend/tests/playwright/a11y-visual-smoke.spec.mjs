@@ -53,6 +53,8 @@ const smokePages = [
     slug: "product-category-pnl",
     path: "/product-category-pnl",
     readySelector: '[data-testid="product-category-page"]',
+    blockedAxeImpacts: ["critical", "serious"],
+    minimumControlTargetSize: 24,
   },
   {
     slug: "pnl",
@@ -501,7 +503,8 @@ async function focusTargetFromMain(page, targetSelector, maxSteps = 100) {
 
 test.describe("frontend accessibility + visual smoke", () => {
   for (const smokePage of smokePages) {
-    test(`${smokePage.slug} has no critical axe violations @${smokePage.slug}`, async ({ page }, testInfo) => {
+    const blockedAxeImpacts = smokePage.blockedAxeImpacts ?? ["critical"];
+    test(`${smokePage.slug} has no ${blockedAxeImpacts.join(" or ")} axe violations @${smokePage.slug}`, async ({ page }, testInfo) => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
       expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
@@ -512,18 +515,57 @@ test.describe("frontend accessibility + visual smoke", () => {
         axeBuilder = axeBuilder.exclude(selector);
       }
       const { violations } = await axeBuilder.analyze();
-      const criticalViolations = violations.filter((violation) => violation.impact === "critical");
+      const blockedViolations = violations.filter((violation) =>
+        blockedAxeImpacts.includes(violation.impact),
+      );
+      const undersizedControls = smokePage.minimumControlTargetSize
+        ? await page.locator(
+            `${smokePage.readySelector} button, ${smokePage.readySelector} a[href], ${smokePage.readySelector} select, ${smokePage.readySelector} input, ${smokePage.readySelector} textarea, ${smokePage.readySelector} summary`,
+          ).evaluateAll((controls, minimumSize) =>
+            controls.flatMap((control) => {
+              const box = control.getBoundingClientRect();
+              const style = window.getComputedStyle(control);
+              const visible =
+                box.width > 0 &&
+                box.height > 0 &&
+                style.display !== "none" &&
+                style.visibility !== "hidden";
+              if (!visible || (box.width >= minimumSize && box.height >= minimumSize)) {
+                return [];
+              }
+              return [
+                {
+                  name: (
+                    control.getAttribute("aria-label") ||
+                    control.textContent ||
+                    control.getAttribute("title") ||
+                    ""
+                  )
+                    .replace(/\s+/g, " ")
+                    .trim()
+                    .slice(0, 120),
+                  width: Math.round(box.width),
+                  height: Math.round(box.height),
+                },
+              ];
+            }),
+          smokePage.minimumControlTargetSize)
+        : [];
 
       await page.screenshot({
         path: testInfo.outputPath(`${smokePage.slug}.png`),
         fullPage: smokePage.screenshotFullPage ?? true,
       });
 
-      expect(
-        criticalViolations,
-        criticalViolations
+      expect.soft(
+        blockedViolations,
+        blockedViolations
           .map((violation) => `${violation.id}: ${violation.help}`)
           .join("\n"),
+      ).toEqual([]);
+      expect(
+        undersizedControls,
+        `Controls smaller than ${smokePage.minimumControlTargetSize}px: ${JSON.stringify(undersizedControls)}`,
       ).toEqual([]);
     });
   }

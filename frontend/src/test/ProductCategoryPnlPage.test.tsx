@@ -868,15 +868,18 @@ describe("ProductCategoryPnlPage", () => {
     expect(governance).not.toHaveTextContent("可用于经营判断");
 
     const signing = within(governance).getByTestId("product-category-governance-signing-blockers");
+    expect(within(signing).getByRole("heading", { level: 3, name: "签署阻断" })).toBeInTheDocument();
     expect(signing).toHaveTextContent("签署阻断");
     expect(signing).toHaveTextContent("Owner approval pending");
 
     const source = within(governance).getByTestId("product-category-governance-source-version");
+    expect(within(source).getByRole("heading", { level: 3, name: "来源与版本" })).toBeInTheDocument();
     expect(source).toHaveTextContent("来源与版本");
     expect(source).toHaveTextContent("basis=formal");
     expect(source).toHaveTextContent("generated_at=2026-04-09T10:30:00Z");
 
     const audit = within(governance).getByTestId("product-category-governance-audit-evidence");
+    expect(within(audit).getByRole("heading", { level: 3, name: "审计证据" })).toBeInTheDocument();
     expect(audit).toHaveTextContent("审计证据");
     expect(audit).toHaveTextContent("Unit=亿元");
     expect(audit).toHaveTextContent("Date basis=report_date");
