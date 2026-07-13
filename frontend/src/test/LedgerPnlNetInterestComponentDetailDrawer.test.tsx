@@ -364,12 +364,16 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
     await user.click(screen.getByRole("button", { name: "导出当前视图" }));
 
     expect(downloadedName).toBe(
-      "ledger-pnl-net-interest-component-202606-income.interest.investment.csv",
+      "ledger-pnl-net-interest-component-202606-income.interest.investment-filtered.csv",
     );
     const blob = createObjectURL.mock.calls[0]?.[0];
     expect(blob).toBeInstanceOf(Blob);
     if (!(blob instanceof Blob)) throw new Error("expected component-detail CSV Blob");
     const content = await readBlobText(blob);
+    expect(content).toContain(
+      '"export_scope","export_query","export_status_filter","exported_row_count","backend_total_row_count","is_complete_view"',
+    );
+    expect(content).toContain('"current_filtered_view","alpha","all","1","3","false"');
     expect(content).toContain("ALPHA 收益科目");
     expect(content).not.toContain("其他公允价值变动计入损益的金融资产利息收入");
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:filtered-component-detail");
@@ -415,6 +419,57 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
     );
     await screen.findByText("50101010001");
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toBeEmptyDOMElement();
+  });
+
+  it("keeps clipboard writes serialized while a pending selection is replaced", async () => {
+    let resolveFirstWrite: (() => void) | undefined;
+    const writeText = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => {
+        resolveFirstWrite = resolve;
+      }))
+      .mockResolvedValueOnce(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const client = createApiClient({ mode: "mock" });
+    const view = renderDrawer(client);
+    await screen.findByText("51402010003");
+    await userEvent.click(screen.getByText("查看三期来源定位"));
+    fireEvent.click(screen.getByRole("button", {
+      name: "复制定位 后端位置 #1 51402010003 202606",
+    }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <AppProviders client={client}>
+        <LedgerPnlNetInterestComponentDetailDrawer
+          selection={{
+            ...INVESTMENT_SELECTION,
+            metricId: "income.interest.loan.total",
+            metricName: "贷款利息收入",
+          }}
+          onClose={vi.fn()}
+          onAfterClose={vi.fn()}
+        />
+      </AppProviders>,
+    );
+    await screen.findByText("50101010001");
+    await userEvent.click(screen.getByText("查看三期来源定位"));
+    const replacementCopyButton = screen.getByRole("button", {
+      name: "复制定位 后端位置 #1 50101010001 202606",
+    });
+    expect(replacementCopyButton).toBeDisabled();
+    fireEvent.click(replacementCopyButton);
+    expect(writeText).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveFirstWrite?.());
+    expect(replacementCopyButton).toBeEnabled();
+    await userEvent.click(replacementCopyButton);
+    expect(writeText).toHaveBeenCalledTimes(2);
+    expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining(
+      "指标 income.interest.loan.total 贷款利息收入",
+    ));
+    expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
+      "已复制 后端位置 #1 · 50101010001 · 202606 来源定位",
+    );
   });
 
   it("exposes selectable locator text when the clipboard is unavailable", async () => {
@@ -476,9 +531,12 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
     );
   });
 
-  it("falls back to selectable source text when a clipboard request times out", async () => {
+  it("shows an unconfirmed manual fallback on timeout, then reports eventual clipboard success", async () => {
     const user = userEvent.setup();
-    const writeText = vi.fn(() => new Promise<void>(() => undefined));
+    let resolveWrite: (() => void) | undefined;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => {
+      resolveWrite = resolve;
+    }));
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     renderDrawer(createApiClient({ mode: "mock" }));
     await screen.findByText("51402010003");
@@ -495,45 +553,57 @@ describe("LedgerPnlNetInterestComponentDetailDrawer", () => {
     });
 
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "复制失败，请手工复制 后端位置 #1 · 51402010003 · 202606 来源定位",
+      "复制结果未确认，请手工复制 后端位置 #1 · 51402010003 · 202606 来源定位",
     );
     const fallback = screen.getByRole("textbox", {
       name: "后端位置 1 51402010003 202606 来源定位文本",
     });
     expect((fallback as HTMLTextAreaElement).value).toContain("报告月 202606");
+    expect(copyButton).toBeDisabled();
+
+    await act(async () => resolveWrite?.());
+
+    expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
+      "已复制 后端位置 #1 · 51402010003 · 202606 来源定位",
+    );
+    expect(screen.queryByRole("textbox", {
+      name: "后端位置 1 51402010003 202606 来源定位文本",
+    })).not.toBeInTheDocument();
+    expect(copyButton).toBeEnabled();
   });
 
-  it("keeps the latest locator feedback when clipboard writes resolve out of order", async () => {
+  it("blocks concurrent source-copy clicks while a native clipboard write is pending", async () => {
     const user = userEvent.setup();
-    let resolveFirst: (() => void) | undefined;
-    let resolveSecond: (() => void) | undefined;
-    const writeText = vi.fn()
-      .mockImplementationOnce(() => new Promise<void>((resolve) => {
-        resolveFirst = resolve;
-      }))
-      .mockImplementationOnce(() => new Promise<void>((resolve) => {
-        resolveSecond = resolve;
-      }));
+    let resolveWrite: (() => void) | undefined;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => {
+      resolveWrite = resolve;
+    }));
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     renderDrawer(createApiClient({ mode: "mock" }));
     await screen.findByText("51402010003");
     await user.click(screen.getByText("查看三期来源定位"));
 
-    await user.click(screen.getByRole("button", {
+    const firstCopyButton = screen.getByRole("button", {
       name: "复制定位 后端位置 #1 51402010003 202606",
-    }));
-    await user.click(screen.getByRole("button", {
+    });
+    const secondCopyButton = screen.getByRole("button", {
       name: "复制定位 后端位置 #1 51402010003 202605",
-    }));
-    expect(writeText).toHaveBeenCalledTimes(2);
-    await act(async () => resolveSecond?.());
-    expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "已复制 后端位置 #1 · 51402010003 · 202605 来源定位",
-    );
+    });
+    fireEvent.click(firstCopyButton);
 
-    await act(async () => resolveFirst?.());
+    for (const copyButton of screen.getAllByRole("button", { name: /复制定位/ })) {
+      expect(copyButton).toBeDisabled();
+    }
+    fireEvent.click(secondCopyButton);
+    expect(writeText).toHaveBeenCalledTimes(1);
+
+    await act(async () => resolveWrite?.());
     expect(screen.getByRole("status", { name: "来源定位复制反馈" })).toHaveTextContent(
-      "已复制 后端位置 #1 · 51402010003 · 202605 来源定位",
+      "已复制 后端位置 #1 · 51402010003 · 202606 来源定位",
     );
+    expect(writeText).toHaveBeenCalledTimes(1);
+    for (const copyButton of screen.getAllByRole("button", { name: /复制定位/ })) {
+      expect(copyButton).toBeEnabled();
+    }
   });
 });

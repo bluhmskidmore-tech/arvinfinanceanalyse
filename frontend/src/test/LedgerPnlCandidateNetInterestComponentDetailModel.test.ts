@@ -103,6 +103,40 @@ describe("candidate net-interest component detail model", () => {
     expect(model.summary.contributionDisplay).toBe("1.1235");
   });
 
+  it.each([
+    ["0.0000004109", "<0.0001", "0.0000"],
+    ["0.0000000757", "<0.0001", "0.0000"],
+    ["-0.0000328143", ">−0.0001", "−0.0000"],
+    ["-0.0000000004", ">−0.0001", "−0.0000"],
+  ])(
+    "keeps the real 202606 nonzero row contribution %s visible without changing summary precision",
+    (contribution, expectedRowDisplay, expectedSummaryDisplay) => {
+      const payload = buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail(
+        "202606",
+        "income.interest.investment",
+        "b".repeat(64),
+      );
+      payload.parent_contribution_to_net_delta_yi = contribution;
+      payload.account_contribution_total_yi = contribution;
+      payload.rows[0].contribution_to_net_delta_yi = contribution;
+
+      const model = buildCandidateNetInterestComponentDetailViewModel(
+        payload,
+        "202606",
+        "income.interest.investment",
+        "b".repeat(64),
+      );
+
+      expect(model.state).toBe("available");
+      if (model.state !== "available") {
+        throw new Error(`expected available detail, received ${model.state}`);
+      }
+      expect(model.summary.contributionDisplay).toBe(expectedSummaryDisplay);
+      expect(model.rows[0].currentDisplay).toBe("−3.3160");
+      expect(model.rows[0].contributionDisplay).toBe(expectedRowDisplay);
+    },
+  );
+
   it("keeps backend positions, raw Decimal strings, rules, and evidence on every row", () => {
     const payload = buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail(
       "202606",

@@ -1,6 +1,7 @@
 import type { LedgerPnlCandidateFinancialIndicatorComponentSourceEvidence } from "../../../api/contracts";
 import type {
   CandidateNetInterestComponentDetailRowView,
+  CandidateNetInterestComponentDetailRowStatusFilter,
   CandidateNetInterestComponentDetailViewModel,
 } from "./candidateNetInterestComponentDetailModel";
 
@@ -14,12 +15,17 @@ export type CandidateNetInterestComponentDetailCsvArtifact = {
   content: string;
 };
 
+export type CandidateNetInterestComponentDetailCsvContext = {
+  query: string;
+  status: CandidateNetInterestComponentDetailRowStatusFilter;
+};
+
 const DECIMAL_PATTERN = /^-?\d+(?:\.\d+)?$/;
-const FORMULA_PREFIX_PATTERN = /^[\t ]*[=+\-@]/;
+const FORMULA_PREFIX_PATTERN = /^[\u0000-\u0020\u007f-\u009f\u00a0\ufeff]*[=+\-@＝＋－＠]/;
 
 function safeCsvValue(value: string | number | boolean | null): string {
   const raw = value === null ? "" : String(value);
-  const normalized = raw.replace(/\r?\n/g, "\r\n");
+  const normalized = raw.replace(/\r\n|\r|\n/g, "\r\n");
   return !DECIMAL_PATTERN.test(normalized) && FORMULA_PREFIX_PATTERN.test(normalized)
     ? `'${normalized}`
     : normalized;
@@ -92,8 +98,21 @@ export function buildCandidateNetInterestComponentSourceLocator(
 export function buildCandidateNetInterestComponentDetailCsv(
   model: AvailableComponentDetailModel,
   rows: readonly CandidateNetInterestComponentDetailRowView[],
+  context: CandidateNetInterestComponentDetailCsvContext,
 ): CandidateNetInterestComponentDetailCsvArtifact {
+  const normalizedQuery = context.query.trim().toLowerCase();
+  const backendTotalCount = model.rows.length;
+  const isCompleteView = normalizedQuery.length === 0
+    && context.status === "all"
+    && rows.length === backendTotalCount;
+  const exportScope = isCompleteView ? "full_detail" : "current_filtered_view";
   const headers = [
+    "export_scope",
+    "export_query",
+    "export_status_filter",
+    "exported_row_count",
+    "backend_total_row_count",
+    "is_complete_view",
     "backend_position",
     "row_status",
     "account_code",
@@ -121,18 +140,24 @@ export function buildCandidateNetInterestComponentDetailCsv(
     "method",
     "contract_version",
     "analysis_kind",
-    "status",
+    "payload_status",
     "quality_status",
     "formal_use_allowed",
     "certification_effect",
     "driver_status",
-    "foot_status",
+    "full_detail_foot_status",
     "rule_version",
     "rule_hash",
     "parent_idempotency_key",
     "idempotency_key",
   ];
   const records = rows.map((row) => [
+    exportScope,
+    normalizedQuery,
+    context.status,
+    rows.length,
+    backendTotalCount,
+    isCompleteView,
     row.backendPosition,
     row.rowStatus,
     row.accountCode,
@@ -176,8 +201,9 @@ export function buildCandidateNetInterestComponentDetailCsv(
     .join("\r\n");
   const safeMetricId = model.payload.metric_id.replace(/[^a-zA-Z0-9._-]/g, "-");
   const safeReportMonth = model.payload.report_month.replace(/[^0-9]/g, "");
+  const scopeSuffix = isCompleteView ? "" : "-filtered";
   return {
-    filename: `ledger-pnl-net-interest-component-${safeReportMonth}-${safeMetricId}.csv`,
+    filename: `ledger-pnl-net-interest-component-${safeReportMonth}-${safeMetricId}${scopeSuffix}.csv`,
     content: `\uFEFF${content}\r\n`,
   };
 }

@@ -55,7 +55,7 @@ type AvailableComponentDetailModel = Extract<
 const CLIPBOARD_FEEDBACK_TIMEOUT_MS = 1_500;
 
 type CopyFeedback = {
-  state: "success" | "failure";
+  state: "success" | "failure" | "unconfirmed";
   backendPosition: number;
   accountCode: string;
   month: string;
@@ -64,84 +64,39 @@ type CopyFeedback = {
 
 function AvailableComponentDetailContent({
   model,
+  copyFeedback,
+  copyPending,
+  onCopySourceLocator,
 }: {
   model: AvailableComponentDetailModel;
+  copyFeedback: CopyFeedback;
+  copyPending: boolean;
+  onCopySourceLocator: (
+    row: AvailableComponentDetailModel["rows"][number],
+    evidence: AvailableComponentDetailModel["rows"][number]["sourceEvidence"][number],
+  ) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<CandidateNetInterestComponentDetailRowStatusFilter>(
     "all",
   );
-  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>(null);
-  const copyRequestRef = useRef(0);
-  const mountedRef = useRef(true);
   const filteredRows = filterCandidateNetInterestComponentDetailRows(model.rows, {
     query: searchQuery,
     status: statusFilter,
   });
   const filtersActive = searchQuery.length > 0 || statusFilter !== "all";
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      copyRequestRef.current += 1;
-    };
-  }, []);
-
   const resetFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
   };
 
-  const copySourceLocator = async (
-    row: AvailableComponentDetailModel["rows"][number],
-    evidence: AvailableComponentDetailModel["rows"][number]["sourceEvidence"][number],
-  ) => {
-    const requestId = copyRequestRef.current + 1;
-    copyRequestRef.current = requestId;
-    setCopyFeedback(null);
-    const locator = buildCandidateNetInterestComponentSourceLocator(model, row, evidence);
-    const failureFeedback: CopyFeedback = {
-      state: "failure",
-      backendPosition: row.backendPosition,
-      accountCode: row.accountCode,
-      month: evidence.month,
-      locator,
-    };
-    try {
-      const clipboard = globalThis.navigator?.clipboard;
-      if (!clipboard?.writeText) throw new Error("clipboard unavailable");
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<never>((_resolve, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error("clipboard request timed out")),
-          CLIPBOARD_FEEDBACK_TIMEOUT_MS,
-        );
-      });
-      try {
-        await Promise.race([clipboard.writeText(locator), timeout]);
-      } finally {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
-      }
-      if (mountedRef.current && copyRequestRef.current === requestId) {
-        setCopyFeedback({
-          state: "success",
-          backendPosition: row.backendPosition,
-          accountCode: row.accountCode,
-          month: evidence.month,
-          locator,
-        });
-      }
-    } catch {
-      if (mountedRef.current && copyRequestRef.current === requestId) {
-        setCopyFeedback(failureFeedback);
-      }
-    }
-  };
-
   const exportCurrentView = () => {
     downloadCandidateNetInterestComponentDetailCsv(
-      buildCandidateNetInterestComponentDetailCsv(model, filteredRows),
+      buildCandidateNetInterestComponentDetailCsv(model, filteredRows, {
+        query: searchQuery,
+        status: statusFilter,
+      }),
     );
   };
 
@@ -270,7 +225,8 @@ function AvailableComponentDetailContent({
                                 size="small"
                                 type="link"
                                 aria-label={`复制定位 后端位置 #${row.backendPosition} ${row.accountCode} ${evidence.month}`}
-                                onClick={() => void copySourceLocator(row, evidence)}
+                                disabled={copyPending}
+                                onClick={() => onCopySourceLocator(row, evidence)}
                               >
                                 复制定位
                               </AntButton>
@@ -302,9 +258,11 @@ function AvailableComponentDetailContent({
           ? `已复制 后端位置 #${copyFeedback.backendPosition} · ${copyFeedback.accountCode} · ${copyFeedback.month} 来源定位`
           : copyFeedback?.state === "failure"
             ? `复制失败，请手工复制 后端位置 #${copyFeedback.backendPosition} · ${copyFeedback.accountCode} · ${copyFeedback.month} 来源定位`
+            : copyFeedback?.state === "unconfirmed"
+              ? `复制结果未确认，请手工复制 后端位置 #${copyFeedback.backendPosition} · ${copyFeedback.accountCode} · ${copyFeedback.month} 来源定位`
             : null}
       </div>
-      {copyFeedback?.state === "failure" ? (
+      {copyFeedback?.state === "failure" || copyFeedback?.state === "unconfirmed" ? (
         <label className="ledger-net-interest-detail__manual-copy">
           <span>后端位置 #{copyFeedback.backendPosition} · {copyFeedback.accountCode} · {copyFeedback.month} 来源定位文本</span>
           <textarea
@@ -334,6 +292,27 @@ export function LedgerPnlNetInterestComponentDetailDrawer({
   const reportMonth = selection?.reportMonth ?? "";
   const parentKey = selection?.parentIdempotencyKey ?? "";
   const metricId = selection?.metricId ?? "income.interest.loan.total";
+  const selectionIdentity = selection
+    ? `${selection.reportMonth}-${selection.metricId}-${selection.parentIdempotencyKey}`
+    : "__none";
+  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>(null);
+  const [copyPending, setCopyPending] = useState(false);
+  const copyPendingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const activeSelectionIdentityRef = useRef(selectionIdentity);
+  activeSelectionIdentityRef.current = selectionIdentity;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopyFeedback(null);
+  }, [selectionIdentity]);
+
   const detailQuery = useQuery({
     queryKey: [
       "ledger-pnl",
@@ -360,6 +339,47 @@ export function LedgerPnlNetInterestComponentDetailDrawer({
       selection.parentIdempotencyKey,
     )
     : null;
+
+  const copySourceLocator = async (
+    copyModel: AvailableComponentDetailModel,
+    row: AvailableComponentDetailModel["rows"][number],
+    evidence: AvailableComponentDetailModel["rows"][number]["sourceEvidence"][number],
+  ) => {
+    if (copyPendingRef.current) return;
+    copyPendingRef.current = true;
+    setCopyPending(true);
+    setCopyFeedback(null);
+    const requestSelectionIdentity = selectionIdentity;
+    const locator = buildCandidateNetInterestComponentSourceLocator(copyModel, row, evidence);
+    const feedbackFor = (state: NonNullable<CopyFeedback>["state"]): CopyFeedback => ({
+      state,
+      backendPosition: row.backendPosition,
+      accountCode: row.accountCode,
+      month: evidence.month,
+      locator,
+    });
+    const requestIsCurrent = () => (
+      mountedRef.current
+      && activeSelectionIdentityRef.current === requestSelectionIdentity
+    );
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const clipboard = globalThis.navigator?.clipboard;
+      if (!clipboard?.writeText) throw new Error("clipboard unavailable");
+      const write = clipboard.writeText(locator);
+      timeoutId = setTimeout(() => {
+        if (requestIsCurrent()) setCopyFeedback(feedbackFor("unconfirmed"));
+      }, CLIPBOARD_FEEDBACK_TIMEOUT_MS);
+      await write;
+      if (requestIsCurrent()) setCopyFeedback(feedbackFor("success"));
+    } catch {
+      if (requestIsCurrent()) setCopyFeedback(feedbackFor("failure"));
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      copyPendingRef.current = false;
+      if (mountedRef.current) setCopyPending(false);
+    }
+  };
 
   return (
     <AntDrawer
@@ -414,6 +434,11 @@ export function LedgerPnlNetInterestComponentDetailDrawer({
             <AvailableComponentDetailContent
               key={`${selection.reportMonth}-${selection.metricId}-${selection.parentIdempotencyKey}`}
               model={model}
+              copyFeedback={copyFeedback}
+              copyPending={copyPending}
+              onCopySourceLocator={(row, evidence) => {
+                void copySourceLocator(model, row, evidence);
+              }}
             />
           ) : (
             <div className="ledger-net-interest-detail__state" role="status">

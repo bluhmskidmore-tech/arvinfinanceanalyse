@@ -230,7 +230,7 @@
   width: 100%;
   min-width: 880px;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .ledger-net-interest-detail__accounts th,
@@ -244,7 +244,7 @@
 .ledger-net-interest-detail__accounts thead th {
   background: var(--moss-color-neutral-50, #f7f9fb);
   color: var(--moss-color-neutral-600, #5b6875);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .ledger-net-interest-detail__accounts thead th:nth-child(n + 2):nth-child(-n + 5),
@@ -266,7 +266,7 @@
   border: 1px solid var(--moss-color-neutral-200, #dce2e8);
   border-radius: 2px;
   color: var(--moss-color-neutral-600, #5b6875);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -275,7 +275,7 @@
 .ledger-net-interest-detail__accounts li span,
 .ledger-net-interest-detail__accounts li code {
   color: var(--moss-color-neutral-600, #5b6875);
-  font-size: 10px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
@@ -302,9 +302,9 @@
 
 .ledger-net-interest-detail__accounts li .ant-btn {
   justify-self: start;
-  height: 22px;
+  height: 24px;
   padding: 0;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .ledger-net-interest-detail__accounts tr[data-row-status="excluded_offset"] {
@@ -334,7 +334,7 @@
 .ledger-net-interest-detail__copy-feedback:not(:empty) {
   padding: 8px 10px;
   color: var(--moss-color-info-800, #194e70);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -343,7 +343,7 @@
   gap: 5px;
   padding: 9px 10px;
   color: var(--moss-color-neutral-700, #3f4d5a);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .ledger-net-interest-detail__manual-copy textarea {
@@ -355,7 +355,7 @@
   border-radius: 2px;
   background: var(--moss-color-bg-surface, #fff);
   color: var(--moss-color-neutral-900, #17212b);
-  font: 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .ledger-net-interest-detail__state {

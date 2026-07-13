@@ -107,6 +107,15 @@ function isZeroDecimal(value: unknown): value is string {
   return typeof value === "string" && ZERO_DECIMAL_PATTERN.test(value);
 }
 
+function formatCandidateComponentDetailAmount(value: string): string {
+  const display = formatCandidateComparisonAmount(value);
+  if (
+    !ZERO_DECIMAL_PATTERN.test(value)
+    && (display === "0.0000" || display === "\u22120.0000")
+  ) return value.startsWith("-") ? ">\u22120.0001" : "<0.0001";
+  return display;
+}
+
 function isSha256(value: unknown): value is string {
   return typeof value === "string" && SHA256_PATTERN.test(value);
 }
@@ -422,10 +431,10 @@ export function buildCandidateNetInterestComponentDetailViewModel(
       previousValueYi: row.previous_value_yi,
       componentDeltaYi: row.component_delta_yi,
       contributionToNetDeltaYi: row.contribution_to_net_delta_yi,
-      currentDisplay: formatCandidateComparisonAmount(row.current_value_yi),
-      previousDisplay: formatCandidateComparisonAmount(row.previous_value_yi),
-      componentDeltaDisplay: formatCandidateComparisonAmount(row.component_delta_yi),
-      contributionDisplay: formatCandidateComparisonAmount(row.contribution_to_net_delta_yi),
+      currentDisplay: formatCandidateComponentDetailAmount(row.current_value_yi),
+      previousDisplay: formatCandidateComponentDetailAmount(row.previous_value_yi),
+      componentDeltaDisplay: formatCandidateComponentDetailAmount(row.component_delta_yi),
+      contributionDisplay: formatCandidateComponentDetailAmount(row.contribution_to_net_delta_yi),
       sourceEvidence: row.source_evidence,
     })),
   };
