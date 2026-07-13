@@ -72,6 +72,19 @@ const minimalMonthlyBucket = (): PnlByBusinessMonthlyBucket => ({
   period_start_date: "2025-12-01",
   period_end_date: "2025-12-31",
   calendar_days: 31,
+  coverage_days: 1,
+  expected_days: 31,
+  sample_filled: true,
+  sample_fill_method: "observed_days_scaled_to_calendar",
+  source_total_pnl: "150000",
+  classified_parent_total_pnl: "100000",
+  unallocated_pnl: "50000",
+  unallocated_abs_pnl: "90000",
+  unallocated_row_count: 2,
+  reconciliation_delta: "0",
+  unallocated_breakdown: [minimalUnallocatedBreakdownRow],
+  unallocated_items: minimalUnallocatedItems,
+  unallocated_evidence_complete: true,
   summary: {
     interest_income: "100000",
     fair_value_change: "0",
@@ -137,6 +150,56 @@ const minimalAnalysisRow = (patch: Partial<PnlByBusinessAnalysisRow> = {}): PnlB
   ...patch,
 });
 
+const minimalUnallocatedBreakdownRow = {
+  reason_code: "no_business_rule_match" as const,
+  source_kind: "formal_fi",
+  invest_type_std: "A",
+  accounting_basis: "FVOCI",
+  portfolio_name: "Unmapped Desk",
+  cost_center: "CC-UNMAPPED",
+  pnl_row_count: 2,
+  total_pnl: "50000",
+  abs_pnl: "90000",
+  sample_instrument_codes: ["UNALLOCATED-A", "UNALLOCATED-A-NEG"],
+};
+
+const minimalUnallocatedItems = [
+  {
+    report_date: "2025-12-31",
+    reason_code: "no_business_rule_match" as const,
+    source_kind: "formal_fi",
+    instrument_code: "UNALLOCATED-A",
+    portfolio_name: "Unmapped Desk",
+    cost_center: "CC-UNMAPPED",
+    invest_type_std: "A",
+    accounting_basis: "FVOCI",
+    currency_basis: "CNY",
+    interest_income_514: "70000",
+    fair_value_change_516: "0",
+    capital_gain_517: "0",
+    manual_adjustment: "0",
+    total_pnl: "70000",
+    abs_pnl: "70000",
+  },
+  {
+    report_date: "2025-12-31",
+    reason_code: "no_business_rule_match" as const,
+    source_kind: "formal_fi",
+    instrument_code: "UNALLOCATED-A-NEG",
+    portfolio_name: "Unmapped Desk",
+    cost_center: "CC-UNMAPPED",
+    invest_type_std: "A",
+    accounting_basis: "FVOCI",
+    currency_basis: "CNY",
+    interest_income_514: "-20000",
+    fair_value_change_516: "0",
+    capital_gain_517: "0",
+    manual_adjustment: "0",
+    total_pnl: "-20000",
+    abs_pnl: "20000",
+  },
+];
+
 describe("buildPnlByBusinessSheets", () => {
   it("builds monthly report sheets without YTD-only analysis tabs", () => {
     const sheets = buildPnlByBusinessSheets({
@@ -156,12 +219,26 @@ describe("buildPnlByBusinessSheets", () => {
       analysisRows: [minimalAnalysisRow()],
     });
 
-    expect(sheets.map((sheet) => sheet.sheet)).toEqual(["导出说明", "月报业务种类", "月报其中项明细"]);
+    expect(sheets.map((sheet) => sheet.sheet)).toEqual([
+      "导出说明",
+      "月报业务种类",
+      "月报未分类汇总",
+      "月报未分类明细",
+      "月报其中项明细",
+    ]);
     expect(sheets[0]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["月报(ZQTZ)"])]));
     expect(sheets[1]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["政策性金融债"])]));
     expect(sheets[1]?.data).not.toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
-    expect(sheets[2]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
-    const monthlyDetailFirstRow = sheets[2]?.data[0];
+    expect(sheets.find((sheet) => sheet.sheet === "月报未分类汇总")?.data).toEqual(
+      expect.arrayContaining([expect.arrayContaining(["2025-12", 5, 9])]),
+    );
+    expect(sheets.find((sheet) => sheet.sheet === "月报未分类明细")?.data).toEqual(
+      expect.arrayContaining([expect.arrayContaining(["2025-12", "UNALLOCATED-A-NEG", -2, 2])]),
+    );
+    expect(sheets.find((sheet) => sheet.sheet === "月报其中项明细")?.data).toEqual(
+      expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]),
+    );
+    const monthlyDetailFirstRow = sheets.find((sheet) => sheet.sheet === "月报其中项明细")?.data[0];
     expect(monthlyDetailFirstRow?.some((cell) => typeof cell === "string" && cell.includes("重叠"))).toBe(true);
   });
 
@@ -192,13 +269,19 @@ describe("buildPnlByBusinessSheets", () => {
       analysisDimension: "monthly",
       analysisRows: [minimalAnalysisRow({ dimension_key: "2025-12-31", dimension_label: "2025-12-31" })],
       selectedBusinessLabel: "政策性金融债",
+      unallocatedBreakdown: [minimalUnallocatedBreakdownRow],
+      unallocatedItems: minimalUnallocatedItems,
     });
 
     expect(sheets.map((sheet) => sheet.sheet)).toEqual([
       "导出说明",
       "YTD年累计明细",
+      "YTD未分类汇总",
+      "YTD未分类明细",
       "YTD其中项明细",
       "月度业务种类",
+      "月度未分类汇总",
+      "月度未分类明细",
       "月度其中项明细",
       "手工调整当前",
       "手工调整事件",
@@ -215,8 +298,15 @@ describe("buildPnlByBusinessSheets", () => {
     );
     expect(sheets[1]?.data).toEqual(expect.arrayContaining([expect.arrayContaining([10])]));
     expect(sheets[1]?.data).not.toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
-    expect(sheets[2]?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]));
-    const monthlyDetailFirstRow = sheets[4]?.data[0];
+    expect(sheets.find((sheet) => sheet.sheet === "YTD其中项明细")?.data).toEqual(
+      expect.arrayContaining([expect.arrayContaining(["其中：本币专户（成本法）"])]),
+    );
+    const unallocatedSummary = sheets.find((sheet) => sheet.sheet === "YTD未分类汇总");
+    expect(unallocatedSummary?.data).toEqual(expect.arrayContaining([expect.arrayContaining([5, 9])]));
+    const unallocatedItems = sheets.find((sheet) => sheet.sheet === "YTD未分类明细");
+    expect(unallocatedItems?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["UNALLOCATED-A", 7, 7])]));
+    expect(unallocatedItems?.data).toEqual(expect.arrayContaining([expect.arrayContaining(["UNALLOCATED-A-NEG", -2, 2])]));
+    const monthlyDetailFirstRow = sheets.find((sheet) => sheet.sheet === "月度其中项明细")?.data[0];
     expect(monthlyDetailFirstRow?.some((cell) => typeof cell === "string" && cell.includes("重叠"))).toBe(true);
 
     const blob = await writeExcelFile(sheets).toBlob();
