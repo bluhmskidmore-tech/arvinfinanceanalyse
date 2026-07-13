@@ -202,6 +202,47 @@ class PnlByBusinessYtdItem(BaseModel):
     assets_count: int
 
 
+PnlByBusinessYtdUnallocatedReason = Literal[
+    "no_business_rule_match",
+    "detail_only_business_rule_match",
+]
+
+
+class PnlByBusinessYtdUnallocatedBreakdownRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason_code: PnlByBusinessYtdUnallocatedReason
+    source_kind: str
+    invest_type_std: str
+    accounting_basis: str
+    portfolio_name: str
+    cost_center: str
+    pnl_row_count: int
+    total_pnl: Decimal
+    abs_pnl: Decimal
+    sample_instrument_codes: list[str] = Field(default_factory=list)
+
+
+class PnlByBusinessYtdUnallocatedItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    reason_code: PnlByBusinessYtdUnallocatedReason
+    source_kind: str
+    instrument_code: str
+    portfolio_name: str
+    cost_center: str
+    invest_type_std: str
+    accounting_basis: str
+    currency_basis: str
+    interest_income_514: Decimal
+    fair_value_change_516: Decimal
+    capital_gain_517: Decimal
+    manual_adjustment: Decimal
+    total_pnl: Decimal
+    abs_pnl: Decimal
+
+
 class PnlByBusinessYtdPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -211,6 +252,17 @@ class PnlByBusinessYtdPayload(BaseModel):
     period_start_date: str
     period_end_date: str
     total_pnl: Decimal
+    coverage_days: int = 0
+    expected_days: int = 0
+    sample_filled: bool = False
+    sample_fill_method: str | None = None
+    classified_parent_total_pnl: Decimal = Decimal("0")
+    unallocated_pnl: Decimal = Decimal("0")
+    unallocated_abs_pnl: Decimal = Decimal("0")
+    unallocated_row_count: int = 0
+    reconciliation_delta: Decimal = Decimal("0")
+    unallocated_breakdown: list[PnlByBusinessYtdUnallocatedBreakdownRow] = Field(default_factory=list)
+    unallocated_items: list[PnlByBusinessYtdUnallocatedItem] = Field(default_factory=list)
     source_tables: list[str]
     items: list[PnlByBusinessYtdItem]
 
@@ -320,6 +372,19 @@ class PnlByBusinessMonthlyBucket(BaseModel):
     period_start_date: str
     period_end_date: str
     calendar_days: int
+    coverage_days: int = 0
+    expected_days: int = 0
+    sample_filled: bool = False
+    sample_fill_method: str | None = None
+    source_total_pnl: Decimal = Decimal("0")
+    classified_parent_total_pnl: Decimal = Decimal("0")
+    unallocated_pnl: Decimal = Decimal("0")
+    unallocated_abs_pnl: Decimal = Decimal("0")
+    unallocated_row_count: int = 0
+    reconciliation_delta: Decimal = Decimal("0")
+    unallocated_breakdown: list[PnlByBusinessYtdUnallocatedBreakdownRow] = Field(default_factory=list)
+    unallocated_items: list[PnlByBusinessYtdUnallocatedItem] = Field(default_factory=list)
+    unallocated_evidence_complete: bool = False
     summary: PnlByBusinessMonthlySummary
     items: list[PnlByBusinessMonthlyItem]
 
@@ -373,6 +438,10 @@ class PnlByBusinessAnalysisPayload(BaseModel):
     dimension: PnlByBusinessAnalysisDimension
     period_start_date: str
     period_end_date: str
+    coverage_days: int = 0
+    expected_days: int = 0
+    sample_filled: bool = False
+    sample_fill_method: str | None = None
     source_tables: list[str]
     rows: list[PnlByBusinessAnalysisRow]
 

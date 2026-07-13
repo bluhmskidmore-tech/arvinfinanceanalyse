@@ -1,3 +1,4 @@
+from datetime import date
 from importlib import import_module
 from typing import Annotated
 
@@ -144,7 +145,7 @@ def by_business(
 def by_business_ytd(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for V1-compatible PnL by business type."),
-    as_of_date: str | None = Query(
+    as_of_date: date | None = Query(
         None,
         description="Optional report-date cutoff for V1-compatible YTD PnL.",
     ),
@@ -156,7 +157,7 @@ def by_business_ytd(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
             year=year,
-            as_of_date=as_of_date,
+            as_of_date=as_of_date.isoformat() if as_of_date else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -168,7 +169,7 @@ def by_business_ytd(
 def by_business_monthly(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for monthly PnL by business type."),
-    as_of_date: str | None = Query(
+    as_of_date: date | None = Query(
         None,
         description="Optional report-date cutoff for monthly PnL by business type.",
     ),
@@ -180,7 +181,7 @@ def by_business_monthly(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
             year=year,
-            as_of_date=as_of_date,
+            as_of_date=as_of_date.isoformat() if as_of_date else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -192,7 +193,7 @@ def by_business_monthly(
 def by_business_analysis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for PnL by business analysis."),
-    as_of_date: str | None = Query(
+    as_of_date: date | None = Query(
         None,
         description="Optional report-date cutoff for PnL by business analysis.",
     ),
@@ -214,7 +215,7 @@ def by_business_analysis(
                 duckdb_path=str(settings.duckdb_path),
                 governance_dir=str(settings.governance_path),
                 year=year,
-                as_of_date=as_of_date,
+                as_of_date=as_of_date.isoformat() if as_of_date else None,
                 business_key=business_key,
                 dimension=dimension,
             ),

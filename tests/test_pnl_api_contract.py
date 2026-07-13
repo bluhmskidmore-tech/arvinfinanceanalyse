@@ -263,6 +263,52 @@ def test_pnl_by_business_analysis_logs_api_perf(monkeypatch, caplog):
     assert getattr(record, "result_kind") == "pnl.by_business_analysis"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/pnl/by-business-ytd",
+        "/api/pnl/by-business-monthly",
+        "/api/pnl/by-business-analysis",
+    ],
+)
+def test_pnl_by_business_analytical_routes_reject_invalid_calendar_date_before_service(path, monkeypatch):
+    route_module = load_module(
+        f"tests._pnl_routes.invalid_date_{path.rsplit('/', 1)[-1]}_{id(monkeypatch)}",
+        "backend/app/api/routes/pnl.py",
+    )
+    calls: list[dict[str, object]] = []
+
+    class FakePnlService:
+        @staticmethod
+        def pnl_by_business_ytd_envelope(**kwargs):
+            calls.append(kwargs)
+            return {"result_meta": {}, "result": {}}
+
+        @staticmethod
+        def pnl_by_business_monthly_envelope(**kwargs):
+            calls.append(kwargs)
+            return {"result_meta": {}, "result": {}}
+
+        @staticmethod
+        def pnl_by_business_analysis_envelope(**kwargs):
+            calls.append(kwargs)
+            return {"result_meta": {}, "result": {}}
+
+    monkeypatch.setattr(route_module, "_pnl_service", lambda: FakePnlService)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        path,
+        params={"year": 2026, "as_of_date": "2026-02-30"},
+        headers=PNL_READ_HEADERS,
+    )
+
+    assert response.status_code == 422
+    assert calls == []
+
+
 def test_pnl_by_business_analysis_reuses_inputs_for_same_period(monkeypatch):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
@@ -421,7 +467,43 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
         "year": 2025,
         "as_of_date": "2025-12-31",
         "source_tables": ["fact_pnl_by_business_precompute"],
-        "months": [],
+        "months": [
+            {
+                "month_key": "2025-12",
+                "coverage_days": 31,
+                "expected_days": 31,
+                "sample_filled": False,
+                "sample_fill_method": None,
+                "period_start_date": "2025-12-01",
+                "period_end_date": "2025-12-31",
+                "calendar_days": 31,
+                "source_total_pnl": "0.00",
+                "classified_parent_total_pnl": "0.00",
+                "unallocated_pnl": "0.00",
+                "unallocated_abs_pnl": "0.00",
+                "unallocated_row_count": 0,
+                "reconciliation_delta": "0.00",
+                "unallocated_breakdown": [],
+                "unallocated_items": [],
+                "unallocated_evidence_complete": True,
+                "summary": {
+                    "interest_income": "0.00",
+                    "fair_value_change": "0.00",
+                    "capital_gain": "0.00",
+                    "manual_adjustment": "0.00",
+                    "total_pnl": "0.00",
+                    "avg_balance": "0.00",
+                    "current_balance": "0.00",
+                    "annualized_yield_pct": None,
+                    "ftp_rate_pct": "0.00",
+                    "ftp_cost": None,
+                    "ftp_net_pnl": None,
+                    "ftp_net_annualized_yield_pct": None,
+                    "asset_count": 0,
+                },
+                "items": [],
+            }
+        ],
     }
 
     class FakePnlRepository:
@@ -482,6 +564,10 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
         "dimension": "instrument",
         "period_start_date": "2025-01-01",
         "period_end_date": "2025-12-31",
+        "coverage_days": 365,
+        "expected_days": 365,
+        "sample_filled": False,
+        "sample_fill_method": None,
         "source_tables": ["fact_pnl_by_business_precompute"],
         "rows": [],
     }
@@ -532,6 +618,154 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
 
     assert payload["result_meta"]["result_kind"] == "pnl.by_business_analysis"
     assert payload["result"] == cached_payload
+
+
+def test_pnl_by_business_precompute_requires_coverage_diagnostics_before_use():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    required = {
+        "coverage_days": 365,
+        "expected_days": 365,
+        "sample_filled": False,
+        "sample_fill_method": None,
+    }
+    monthly_required = {
+        **required,
+        "source_total_pnl": "1.00",
+        "classified_parent_total_pnl": "1.00",
+        "unallocated_pnl": "0.00",
+        "unallocated_abs_pnl": "0.00",
+        "unallocated_row_count": 0,
+        "reconciliation_delta": "0.00",
+        "unallocated_breakdown": [],
+        "unallocated_items": [],
+        "unallocated_evidence_complete": True,
+    }
+
+    assert pnl_service._pnl_by_business_precompute_has_required_diagnostics(
+        {"rows": [], **required},
+        result_kind="analysis",
+    )
+    assert not pnl_service._pnl_by_business_precompute_has_required_diagnostics(
+        {"rows": []},
+        result_kind="analysis",
+    )
+    assert pnl_service._pnl_by_business_precompute_has_required_diagnostics(
+        {"months": [{"month_key": "2025-12", **monthly_required}]},
+        result_kind="monthly",
+    )
+    assert not pnl_service._pnl_by_business_precompute_has_required_diagnostics(
+        {
+            "months": [
+                {
+                    "month_key": "2025-12",
+                    **{key: value for key, value in monthly_required.items() if key != "unallocated_items"},
+                }
+            ]
+        },
+        result_kind="monthly",
+    )
+    assert not pnl_service._pnl_by_business_precompute_has_required_diagnostics(
+        {"months": []},
+        result_kind="monthly",
+    )
+
+
+def test_pnl_by_business_monthly_manual_adjustment_uses_declared_row_definition():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    manual_row = pnl_service._pnl_by_business_adjustment_record(
+        report_date="2025-12-31",
+        row_key="asset_zqtz_foreign_bond",
+        business_type="Foreign bond manual adjustment",
+        manual_adjustment="25.00",
+        source_note="pnl_by_business_adjustments:foreign-1",
+    )
+
+    month = pnl_service._build_pnl_by_business_monthly_buckets(
+        pnl_rows=(manual_row,),
+        balance_rows=(),
+        loaded_dates=["2025-12-31"],
+        ftp_rate_pct=Decimal("0"),
+    )[0]
+    by_key = {item.row_key: item for item in month.items}
+
+    assert by_key["asset_zqtz_foreign_bond"].manual_adjustment == Decimal("25.00")
+    assert month.source_total_pnl == Decimal("25.00")
+    assert month.classified_parent_total_pnl == Decimal("25.00")
+    assert month.unallocated_pnl == Decimal("0.00")
+    assert month.unallocated_row_count == 0
+    assert month.reconciliation_delta == Decimal("0.00")
+
+
+def test_pnl_by_business_monthly_aggregates_unallocated_before_rounding():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    rows = tuple(
+        {
+            "source_kind": "formal_fi",
+            "report_date": "2025-12-31",
+            "instrument_code": f"UNALLOCATED-{index}",
+            "portfolio_name": "Unmapped Desk",
+            "cost_center": "CC-UNMAPPED",
+            "currency_basis": "CNY",
+            "invest_type_std": "",
+            "accounting_basis": "",
+            "interest_income_514": Decimal("0.004"),
+            "fair_value_change_516": Decimal("0"),
+            "capital_gain_517": Decimal("0"),
+            "manual_adjustment": Decimal("0"),
+            "total_pnl": Decimal("0.004"),
+        }
+        for index in range(2)
+    )
+
+    month = pnl_service._build_pnl_by_business_monthly_buckets(
+        pnl_rows=rows,
+        balance_rows=(),
+        loaded_dates=["2025-12-31"],
+        ftp_rate_pct=Decimal("0"),
+    )[0]
+
+    assert month.source_total_pnl == Decimal("0.01")
+    assert month.unallocated_pnl == Decimal("0.01")
+    assert month.unallocated_abs_pnl == Decimal("0.01")
+    assert month.reconciliation_delta == Decimal("0.00")
+
+
+def test_pnl_by_business_monthly_reconciles_precise_aggregates_before_rounding():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    parent_row = pnl_service._pnl_by_business_adjustment_record(
+        report_date="2025-12-31",
+        row_key="asset_zqtz_foreign_bond",
+        business_type="Foreign bond manual adjustment",
+        manual_adjustment="0.004",
+        source_note="pnl_by_business_adjustments:precision-parent",
+    )
+    unallocated_row = {
+        "source_kind": "formal_fi",
+        "report_date": "2025-12-31",
+        "instrument_code": "UNALLOCATED-PRECISION",
+        "portfolio_name": "Unmapped Desk",
+        "cost_center": "CC-UNMAPPED",
+        "currency_basis": "CNY",
+        "invest_type_std": "",
+        "accounting_basis": "",
+        "interest_income_514": Decimal("0.004"),
+        "fair_value_change_516": Decimal("0"),
+        "capital_gain_517": Decimal("0"),
+        "manual_adjustment": Decimal("0"),
+        "total_pnl": Decimal("0.004"),
+    }
+
+    month = pnl_service._build_pnl_by_business_monthly_buckets(
+        pnl_rows=(parent_row, unallocated_row),
+        balance_rows=(),
+        loaded_dates=["2025-12-31"],
+        ftp_rate_pct=Decimal("0"),
+    )[0]
+
+    assert month.source_total_pnl == Decimal("0.01")
+    assert month.classified_parent_total_pnl == Decimal("0.00")
+    assert month.unallocated_pnl == Decimal("0.00")
+    assert month.reconciliation_delta == Decimal("0.00")
 
 
 def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exists(tmp_path, monkeypatch):
@@ -884,6 +1118,36 @@ def test_pnl_by_business_monthly_contract_returns_independent_month_buckets(monk
                     "manual_adjustment": Decimal("0.00"),
                     "total_pnl": Decimal("200.00"),
                 },
+                {
+                    "source_kind": "formal_fi",
+                    "report_date": "2025-02-28",
+                    "instrument_code": "UNALLOCATED-A",
+                    "portfolio_name": "Unmapped Desk",
+                    "cost_center": "CC-UNMAPPED",
+                    "currency_basis": "CNY",
+                    "invest_type_std": "A",
+                    "accounting_basis": "FVTPL",
+                    "interest_income_514": Decimal("7.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("0.00"),
+                    "manual_adjustment": Decimal("0.00"),
+                    "total_pnl": Decimal("7.00"),
+                },
+                {
+                    "source_kind": "formal_fi",
+                    "report_date": "2025-02-28",
+                    "instrument_code": "UNALLOCATED-A-NEG",
+                    "portfolio_name": "Unmapped Desk",
+                    "cost_center": "CC-UNMAPPED",
+                    "currency_basis": "CNY",
+                    "invest_type_std": "A",
+                    "accounting_basis": "FVTPL",
+                    "interest_income_514": Decimal("-2.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("0.00"),
+                    "manual_adjustment": Decimal("0.00"),
+                    "total_pnl": Decimal("-2.00"),
+                },
             ]
 
         def fetch_by_business_analysis_balance_rows(self, *, start_date, end_date):
@@ -943,6 +1207,10 @@ def test_pnl_by_business_monthly_contract_returns_independent_month_buckets(monk
     assert jan["period_start_date"] == "2025-01-01"
     assert jan["period_end_date"] == "2025-01-31"
     assert jan["calendar_days"] == 31
+    assert jan["coverage_days"] == 1
+    assert jan["expected_days"] == 31
+    assert jan["sample_filled"] is True
+    assert jan["sample_fill_method"] == "observed_days_scaled_to_calendar"
     assert jan["summary"]["total_pnl"] == "100.00"
     assert jan["summary"]["avg_balance"] == "1000.00"
     assert jan["summary"]["current_balance"] == "1100.00"
@@ -981,9 +1249,115 @@ def test_pnl_by_business_monthly_contract_returns_independent_month_buckets(monk
     assert jan_item["asset_count"] == 1
     assert feb["summary"]["total_pnl"] == "200.00"
     assert feb["summary"]["avg_balance"] == "2000.00"
+    assert feb["coverage_days"] == 1
+    assert feb["expected_days"] == 28
+    assert feb["sample_filled"] is True
+    assert feb["sample_fill_method"] == "observed_days_scaled_to_calendar"
+    assert feb["source_total_pnl"] == "205.00"
+    assert feb["classified_parent_total_pnl"] == "200.00"
+    assert feb["unallocated_pnl"] == "5.00"
+    assert feb["unallocated_abs_pnl"] == "9.00"
+    assert feb["unallocated_row_count"] == 2
+    assert feb["reconciliation_delta"] == "0.00"
+    assert feb["unallocated_breakdown"] == [
+        {
+            "reason_code": "no_business_rule_match",
+            "source_kind": "formal_fi",
+            "invest_type_std": "A",
+            "accounting_basis": "FVTPL",
+            "portfolio_name": "Unmapped Desk",
+            "cost_center": "CC-UNMAPPED",
+            "pnl_row_count": 2,
+            "total_pnl": "5.00",
+            "abs_pnl": "9.00",
+            "sample_instrument_codes": ["UNALLOCATED-A", "UNALLOCATED-A-NEG"],
+        }
+    ]
+    assert [item["instrument_code"] for item in feb["unallocated_items"]] == [
+        "UNALLOCATED-A",
+        "UNALLOCATED-A-NEG",
+    ]
+    assert [item["total_pnl"] for item in feb["unallocated_items"]] == ["7.00", "-2.00"]
     assert feb["items"][0]["total_pnl"] != "300.00"
     if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
         pnl_service._clear_pnl_by_business_analysis_cache()
+
+
+def test_pnl_by_business_monthly_reconciliation_delta_is_independently_derived(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    forced_item = pnl_service.PnlByBusinessYtdUnallocatedItem(
+        report_date="2025-01-31",
+        reason_code="no_business_rule_match",
+        source_kind="formal_fi",
+        instrument_code="UNALLOCATED-A",
+        portfolio_name="Unmapped Desk",
+        cost_center="CC-UNMAPPED",
+        invest_type_std="A",
+        accounting_basis="FVTPL",
+        currency_basis="CNY",
+        interest_income_514=Decimal("5.00"),
+        fair_value_change_516=Decimal("0.00"),
+        capital_gain_517=Decimal("0.00"),
+        manual_adjustment=Decimal("0.00"),
+        total_pnl=Decimal("5.00"),
+        abs_pnl=Decimal("5.00"),
+    )
+    monkeypatch.setattr(
+        pnl_service,
+        "_pnl_by_business_ytd_unallocated_item",
+        lambda **_kwargs: forced_item,
+    )
+
+    buckets = pnl_service._build_pnl_by_business_monthly_buckets(
+        pnl_rows=(
+            {
+                "source_kind": "formal_fi",
+                "report_date": "2025-01-31",
+                "instrument_code": "UNALLOCATED-A",
+                "portfolio_name": "Unmapped Desk",
+                "cost_center": "CC-UNMAPPED",
+                "currency_basis": "CNY",
+                "invest_type_std": "A",
+                "accounting_basis": "FVTPL",
+                "interest_income_514": Decimal("7.00"),
+                "fair_value_change_516": Decimal("0.00"),
+                "capital_gain_517": Decimal("0.00"),
+                "manual_adjustment": Decimal("0.00"),
+                "total_pnl": Decimal("7.00"),
+            },
+        ),
+        balance_rows=(),
+        loaded_dates=["2025-01-31"],
+        ftp_rate_pct=Decimal("0"),
+    )
+
+    assert len(buckets) == 1
+    assert buckets[0].source_total_pnl == Decimal("7.00")
+    assert buckets[0].classified_parent_total_pnl == Decimal("0.00")
+    assert buckets[0].unallocated_pnl == Decimal("5.00")
+    assert buckets[0].reconciliation_delta == Decimal("2.00")
+
+
+def test_pnl_by_business_quality_flags_unallocated_rows_even_when_net_is_zero():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    ytd_payload = pnl_service.PnlByBusinessYtdPayload.model_construct(
+        coverage_days=1,
+        expected_days=1,
+        unallocated_pnl=Decimal("0"),
+        unallocated_row_count=2,
+        reconciliation_delta=Decimal("0"),
+    )
+    month = pnl_service.PnlByBusinessMonthlyBucket.model_construct(
+        coverage_days=1,
+        expected_days=1,
+        unallocated_pnl=Decimal("0"),
+        unallocated_row_count=2,
+        reconciliation_delta=Decimal("0"),
+    )
+    monthly_payload = pnl_service.PnlByBusinessMonthlyPayload.model_construct(months=[month])
+
+    assert pnl_service._pnl_by_business_ytd_quality_flag(ytd_payload) == "warning"
+    assert pnl_service._pnl_by_business_monthly_quality_flag(monthly_payload) == "warning"
 
 
 def test_pnl_service_uses_shared_formal_lineage_and_result_meta_helpers():
@@ -1002,6 +1376,48 @@ def test_pnl_service_keeps_intentional_local_cache_version_wrapper():
     assert "def _build_pnl_formal_result_envelope_from_lineage" in src
     assert "use_lineage_cache_version=False" in src
     assert "default_cache_version=PNL_CACHE_VERSION" in src
+
+
+def test_pnl_by_business_analytical_envelope_exposes_requested_resolved_fallback_dates(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {
+            "result_meta": {
+                "result_kind": kwargs["result_kind"],
+                "basis": "formal",
+                "formal_use_allowed": True,
+                "quality_flag": kwargs.get("quality_flag") or "ok",
+                "fallback_mode": "none",
+            },
+            "result": kwargs["result_payload"],
+        },
+    )
+
+    payload = pnl_service._build_pnl_by_business_analytical_result_envelope(
+        governance_dir="fake-governance",
+        requested_report_date="2026-06-15",
+        resolved_report_date="2026-05-31",
+        trace_id="tr_pnl_by_business_dates",
+        result_kind="pnl.by_business_ytd",
+        result_payload={"source_tables": ["fact_formal_pnl_fi"]},
+        quality_flag="warning",
+        filters_applied={"year": 2026},
+    )
+
+    meta = payload["result_meta"]
+    assert meta["basis"] == "analytical"
+    assert meta["formal_use_allowed"] is False
+    assert meta["requested_report_date"] == "2026-06-15"
+    assert meta["resolved_report_date"] == "2026-05-31"
+    assert meta["as_of_date"] == "2026-05-31"
+    assert meta["fallback_date"] == "2026-05-31"
+    assert meta["fallback_mode"] == "latest_snapshot"
+    assert meta["date_basis"] == "formal_report_date_cutoff"
+    assert meta["filters_applied"] == {"year": 2026}
+    assert meta["tables_used"] == ["fact_formal_pnl_fi"]
+    assert meta["source_surface"] == "formal_pnl"
 
 
 def test_pnl_by_business_ytd_runtime_cache_reuses_same_arguments(monkeypatch):
@@ -1583,6 +1999,26 @@ def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypa
                     "interest_income_514": Decimal("200.00"),
                     "total_pnl": Decimal("200.00"),
                 },
+                {
+                    **base,
+                    "report_date": "2025-02-28",
+                    "instrument_code": "UNALLOCATED-A",
+                    "portfolio_name": "Unmapped Desk",
+                    "cost_center": "CC-UNMAPPED",
+                    "invest_type_std": "A",
+                    "interest_income_514": Decimal("7.00"),
+                    "total_pnl": Decimal("7.00"),
+                },
+                {
+                    **base,
+                    "report_date": "2025-02-28",
+                    "instrument_code": "UNALLOCATED-A-NEG",
+                    "portfolio_name": "Unmapped Desk",
+                    "cost_center": "CC-UNMAPPED",
+                    "invest_type_std": "A",
+                    "interest_income_514": Decimal("-2.00"),
+                    "total_pnl": Decimal("-2.00"),
+                },
             ]
 
         def fetch_by_business_analysis_balance_rows(self, *, start_date, end_date):
@@ -1651,9 +2087,229 @@ def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypa
     assert row["ftp_rate_pct"] == "1.750000"
     assert row["ftp_cost"] == "4.24"
     assert row["ftp_net_pnl"] == "295.76"
+    result = payload["result"]
+    assert result["total_pnl"] == "305.00"
+    assert result["coverage_days"] == 2
+    assert result["expected_days"] == 59
+    assert result["sample_filled"] is True
+    assert result["sample_fill_method"] == "observed_days_scaled_to_calendar"
+    assert result["classified_parent_total_pnl"] == "300.00"
+    assert result["unallocated_pnl"] == "5.00"
+    assert result["unallocated_abs_pnl"] == "9.00"
+    assert result["unallocated_row_count"] == 2
+    assert result["reconciliation_delta"] == "0.00"
+    assert result["unallocated_breakdown"] == [
+        {
+            "reason_code": "no_business_rule_match",
+            "source_kind": "formal_fi",
+            "invest_type_std": "A",
+            "accounting_basis": "FVTPL",
+            "portfolio_name": "Unmapped Desk",
+            "cost_center": "CC-UNMAPPED",
+            "pnl_row_count": 2,
+            "total_pnl": "5.00",
+            "abs_pnl": "9.00",
+            "sample_instrument_codes": ["UNALLOCATED-A", "UNALLOCATED-A-NEG"],
+        }
+    ]
+    assert result["unallocated_items"] == [
+        {
+            "report_date": "2025-02-28",
+            "reason_code": "no_business_rule_match",
+            "source_kind": "formal_fi",
+            "instrument_code": "UNALLOCATED-A",
+            "portfolio_name": "Unmapped Desk",
+            "cost_center": "CC-UNMAPPED",
+            "invest_type_std": "A",
+            "accounting_basis": "FVTPL",
+            "currency_basis": "CNY",
+            "interest_income_514": "7.00",
+            "fair_value_change_516": "0.00",
+            "capital_gain_517": "0.00",
+            "manual_adjustment": "0.00",
+            "total_pnl": "7.00",
+            "abs_pnl": "7.00",
+        },
+        {
+            "report_date": "2025-02-28",
+            "reason_code": "no_business_rule_match",
+            "source_kind": "formal_fi",
+            "instrument_code": "UNALLOCATED-A-NEG",
+            "portfolio_name": "Unmapped Desk",
+            "cost_center": "CC-UNMAPPED",
+            "invest_type_std": "A",
+            "accounting_basis": "FVTPL",
+            "currency_basis": "CNY",
+            "interest_income_514": "-2.00",
+            "fair_value_change_516": "0.00",
+            "capital_gain_517": "0.00",
+            "manual_adjustment": "0.00",
+            "total_pnl": "-2.00",
+            "abs_pnl": "2.00",
+        },
+    ]
     assert row["ftp_net_annualized_yield_pct"] == "121.978814"
     if hasattr(pnl_service, "clear_pnl_by_business_ytd_cache"):
         pnl_service.clear_pnl_by_business_ytd_cache()
+
+
+def test_pnl_by_business_ytd_reconciliation_delta_is_independently_derived():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    category_module = load_module(
+        "backend.app.core_finance.zqtz_asset_bond_category",
+        "backend/app/core_finance/zqtz_asset_bond_category.py",
+    )
+    row_def = next(
+        row
+        for row in category_module.ZQTZ_ASSET_BOND_ROWS
+        if str(row["row_key"]) == "asset_zqtz_policy_financial_bond"
+    )
+    group = pnl_service._new_balance_movement_pnl_group(row_def)
+    pnl_service._merge_balance_movement_business_record(
+        {str(row_def["row_key"]): group},
+        row_def,
+        {
+            "bond_code": "PARENT-1",
+            "interest_income": Decimal("4.00"),
+            "fair_value_change": Decimal("0"),
+            "capital_gain": Decimal("0"),
+            "manual_adjustment": Decimal("0"),
+            "total_pnl": Decimal("4.00"),
+        },
+    )
+
+    payload = pnl_service._build_pnl_by_business_ytd_payload_from_groups(
+        year=2025,
+        loaded_dates=["2025-01-31"],
+        total_pnl=Decimal("10.00"),
+        groups={str(row_def["row_key"]): group},
+        duckdb_path="unused.duckdb",
+        source_tables=["test_source"],
+        ftp_rate_pct=Decimal("0"),
+        balance_rows=[],
+        unallocated_items=[
+            {
+                "report_date": "2025-01-31",
+                "reason_code": "no_business_rule_match",
+                "source_kind": "formal_fi",
+                "instrument_code": "UNALLOCATED-1",
+                "portfolio_name": "Unmapped Desk",
+                "cost_center": "CC-UNMAPPED",
+                "invest_type_std": "A",
+                "accounting_basis": "FVTPL",
+                "currency_basis": "CNY",
+                "interest_income_514": Decimal("5.00"),
+                "fair_value_change_516": Decimal("0"),
+                "capital_gain_517": Decimal("0"),
+                "manual_adjustment": Decimal("0"),
+                "total_pnl": Decimal("5.00"),
+                "abs_pnl": Decimal("5.00"),
+            }
+        ],
+    )
+
+    assert payload.classified_parent_total_pnl == Decimal("4.00")
+    assert payload.unallocated_pnl == Decimal("5.00")
+    assert payload.reconciliation_delta == Decimal("1.00")
+
+
+def test_pnl_by_business_ytd_aggregates_unallocated_before_rounding():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    precise_items = [
+        {
+            "report_date": "2025-01-31",
+            "reason_code": "no_business_rule_match",
+            "source_kind": "formal_fi",
+            "instrument_code": f"UNALLOCATED-{index}",
+            "portfolio_name": "Unmapped Desk",
+            "cost_center": "CC-UNMAPPED",
+            "invest_type_std": "",
+            "accounting_basis": "",
+            "currency_basis": "CNY",
+            "interest_income_514": Decimal("0.004"),
+            "fair_value_change_516": Decimal("0"),
+            "capital_gain_517": Decimal("0"),
+            "manual_adjustment": Decimal("0"),
+            "total_pnl": Decimal("0.004"),
+            "abs_pnl": Decimal("0.004"),
+        }
+        for index in range(2)
+    ]
+
+    payload = pnl_service._build_pnl_by_business_ytd_payload_from_groups(
+        year=2025,
+        loaded_dates=["2025-01-31"],
+        total_pnl=Decimal("0.008"),
+        groups={},
+        duckdb_path="unused.duckdb",
+        source_tables=["test_source"],
+        ftp_rate_pct=Decimal("0"),
+        balance_rows=[],
+        unallocated_items=precise_items,
+    )
+
+    assert payload.total_pnl == Decimal("0.01")
+    assert payload.unallocated_pnl == Decimal("0.01")
+    assert payload.unallocated_abs_pnl == Decimal("0.01")
+    assert payload.reconciliation_delta == Decimal("0.00")
+
+
+def test_pnl_by_business_ytd_reconciles_precise_aggregates_before_rounding():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    category_module = load_module(
+        "backend.app.core_finance.zqtz_asset_bond_category",
+        "backend/app/core_finance/zqtz_asset_bond_category.py",
+    )
+    row_def = next(
+        row for row in category_module.ZQTZ_ASSET_BOND_ROWS if str(row["row_key"]) == "asset_zqtz_foreign_bond"
+    )
+    group = pnl_service._new_balance_movement_pnl_group(row_def)
+    pnl_service._merge_balance_movement_business_record(
+        {str(row_def["row_key"]): group},
+        row_def,
+        {
+            "bond_code": "PARENT-PRECISION",
+            "interest_income": Decimal("0"),
+            "fair_value_change": Decimal("0"),
+            "capital_gain": Decimal("0"),
+            "manual_adjustment": Decimal("0.004"),
+            "total_pnl": Decimal("0.004"),
+        },
+    )
+    unallocated_item = {
+        "report_date": "2025-01-31",
+        "reason_code": "no_business_rule_match",
+        "source_kind": "formal_fi",
+        "instrument_code": "UNALLOCATED-PRECISION",
+        "portfolio_name": "Unmapped Desk",
+        "cost_center": "CC-UNMAPPED",
+        "invest_type_std": "",
+        "accounting_basis": "",
+        "currency_basis": "CNY",
+        "interest_income_514": Decimal("0.004"),
+        "fair_value_change_516": Decimal("0"),
+        "capital_gain_517": Decimal("0"),
+        "manual_adjustment": Decimal("0"),
+        "total_pnl": Decimal("0.004"),
+        "abs_pnl": Decimal("0.004"),
+    }
+
+    payload = pnl_service._build_pnl_by_business_ytd_payload_from_groups(
+        year=2025,
+        loaded_dates=["2025-01-31"],
+        total_pnl=Decimal("0.008"),
+        groups={str(row_def["row_key"]): group},
+        duckdb_path="unused.duckdb",
+        source_tables=["test_source"],
+        ftp_rate_pct=Decimal("0"),
+        balance_rows=[],
+        unallocated_items=[unallocated_item],
+    )
+
+    assert payload.total_pnl == Decimal("0.01")
+    assert payload.classified_parent_total_pnl == Decimal("0.00")
+    assert payload.unallocated_pnl == Decimal("0.00")
+    assert payload.reconciliation_delta == Decimal("0.00")
 
 
 def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tmp_path, monkeypatch):
@@ -1683,6 +2339,15 @@ def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tm
                 ("2025-01-31", "100.00", "100.00", "trace-switch-jan"),
                 ("2025-02-28", "200.00", "200.00", "trace-switch-feb"),
             ],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-01-31', 'FUTURE001', 'Future Desk', 'CC-FUTURE', 'T', 'FVTPL', 'CNY',
+              0.07, 0.00, 0.00, 0.00, 0.07,
+              'fi-future-v1', 'rv_pnl_phase2_materialize_v1', 'ib-future', 'trace-future-jan'
+            )
+            """
         )
         conn.executemany(
             """
@@ -1723,6 +2388,24 @@ def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tm
                 ),
             ],
         )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, sub_type, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              '2025-02-28', 'FUTURE001', 'future-only classification', 'Future Desk', 'CC-FUTURE',
+              'asset', ?, ?, ?, ?,
+              'T', 'FVTPL', 'asset', 'CNY', 'CNY',
+              3000.00000000, 3000.00000000, 0.00000000, false,
+              'sv-future-zqtz', 'rv-future-zqtz', 'ib-future-zqtz', 'trace-future-zqtz-feb'
+            )
+            """,
+            [commercial_type, commercial_type, commercial_type, commercial_type],
+        )
     finally:
         conn.close()
 
@@ -1733,6 +2416,8 @@ def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tm
     assert ytd_response.status_code == 200
     assert monthly_response.status_code == 200
     ytd_by_key = {item["row_key"]: item for item in ytd_response.json()["result"]["items"]}
+    ytd_result = ytd_response.json()["result"]
+    monthly_result = monthly_response.json()["result"]
     monthly_totals: dict[str, Decimal] = {}
     for month in monthly_response.json()["result"]["months"]:
         for item in month["items"]:
@@ -1746,6 +2431,14 @@ def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tm
         "asset_zqtz_commercial_financial_bond"
     ]
     assert Decimal(ytd_by_key["asset_zqtz_interbank_cd"]["total_pnl"]) == monthly_totals["asset_zqtz_interbank_cd"]
+    monthly_unallocated_items = [
+        item for month in monthly_result["months"] for item in month["unallocated_items"]
+    ]
+    assert [item["instrument_code"] for item in ytd_result["unallocated_items"]] == [
+        item["instrument_code"] for item in monthly_unallocated_items
+    ]
+    assert ytd_result["unallocated_pnl"] == "0.07"
+    assert ytd_result["unallocated_row_count"] == 1
     get_settings.cache_clear()
 
 
@@ -1925,6 +2618,27 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
     assert approve_response.status_code == 200
     assert approve_response.json()["approval_status"] == "approved"
 
+    detail_create_response = client.post(
+        "/api/pnl/by-business/manual-adjustments",
+        json={
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_detail_structured_finance_broker",
+            "business_type": "Structured finance detail manual adjustment",
+            "operator": "DELTA",
+            "approval_status": "pending",
+            "manual_adjustment": "5.00",
+            "reason": "Detail-row reconciliation regression",
+        },
+    )
+    assert detail_create_response.status_code == 200
+    detail_adjustment_id = detail_create_response.json()["adjustment_id"]
+    detail_approve_response = client.post(
+        f"/api/pnl/by-business/manual-adjustments/{detail_adjustment_id}/approve",
+        headers={"X-User-Id": "detail-checker", "X-User-Role": "reviewer"},
+    )
+    assert detail_approve_response.status_code == 200
+    assert detail_approve_response.json()["approval_status"] == "approved"
+
     ytd_response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-12-31"})
     assert ytd_response.status_code == 200
     ytd_result = ytd_response.json()["result"]
@@ -1932,7 +2646,16 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
     adjusted_ytd = ytd_by_key["asset_zqtz_policy_financial_bond"]
     assert adjusted_ytd["manual_adjustment"] == "25.00"
     assert adjusted_ytd["total_pnl"] == "150.50"
-    assert ytd_result["total_pnl"] == "262.00"
+    assert ytd_by_key["asset_zqtz_detail_structured_finance_broker"]["manual_adjustment"] == "5.00"
+    assert ytd_result["total_pnl"] == "267.00"
+    ytd_detail_unallocated = next(
+        item
+        for item in ytd_result["unallocated_items"]
+        if item["source_kind"] == "manual_adjustment"
+        and item["instrument_code"] == "manual::asset_zqtz_detail_structured_finance_broker"
+    )
+    assert ytd_detail_unallocated["total_pnl"] == "5.00"
+    assert ytd_result["reconciliation_delta"] == "0.00"
     assert "pnl_by_business_adjustments" in ytd_result["source_tables"]
 
     monthly_response = client.get(
@@ -1944,7 +2667,11 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
     monthly_by_key = {item["row_key"]: item for item in month["items"]}
     assert monthly_by_key["asset_zqtz_policy_financial_bond"]["manual_adjustment"] == "25.00"
     assert monthly_by_key["asset_zqtz_policy_financial_bond"]["total_pnl"] == "150.50"
+    assert monthly_by_key["asset_zqtz_detail_structured_finance_broker"]["manual_adjustment"] == "5.00"
     assert month["summary"]["manual_adjustment"] == "25.00"
+    assert month["reconciliation_delta"] == "0.00"
+    assert ytd_result["unallocated_pnl"] == month["unallocated_pnl"]
+    assert ytd_result["unallocated_row_count"] == month["unallocated_row_count"]
 
     analysis_response = client.get(
         "/api/pnl/by-business-analysis",
@@ -2945,6 +3672,14 @@ def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path,
                     "capital_gain_517": Decimal("0.00"),
                     "source_version": "sv-fi-commercial",
                 },
+                {
+                    "instrument_code": "U001",
+                    "asset_class": "UNMAPPED_TEST",
+                    "interest_income_514": Decimal("5.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("0.00"),
+                    "source_version": "sv-fi-unmapped",
+                },
             ]
             self.nonstd_rows_by_type = {
                 "514": [
@@ -3045,7 +3780,28 @@ def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path,
     assert by_key["asset_zqtz_detail_local_currency_special_account_cost"]["current_balance"] == "4000.00"
     assert by_key["asset_zqtz_detail_structured_finance_broker"]["balance_yield_pct"] == "1.094527"
     assert by_key["asset_zqtz_central_bank_bill"]["balance_yield_pct"] is None
-    assert result["total_pnl"] == "201.57"
+    assert result["total_pnl"] == "206.57"
+    assert result["unallocated_pnl"] == "5.00"
+    assert result["unallocated_abs_pnl"] == "5.00"
+    assert result["unallocated_row_count"] == 1
+    assert result["reconciliation_delta"] == "0.00"
+    assert result["unallocated_breakdown"] == [
+        {
+            "reason_code": "no_business_rule_match",
+            "source_kind": "refresh_bundle",
+            "invest_type_std": "",
+            "accounting_basis": "",
+            "portfolio_name": "",
+            "cost_center": "",
+            "pnl_row_count": 1,
+            "total_pnl": "5.00",
+            "abs_pnl": "5.00",
+            "sample_instrument_codes": ["U001"],
+        }
+    ]
+    assert result["unallocated_items"][0]["instrument_code"] == "U001"
+    assert result["unallocated_items"][0]["source_kind"] == "refresh_bundle"
+    assert result["unallocated_items"][0]["total_pnl"] == "5.00"
 
     # 不变量：payload.total_pnl = 各条 V1 记录 total_pnl 之和（每条资产/凭证一条）；因 ZQTZ 多行命中，
     # items 各行 total_pnl 之和可大于该值（父级+其中重复分摊）。

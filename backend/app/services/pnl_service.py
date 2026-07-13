@@ -46,6 +46,8 @@ from backend.app.schemas.pnl import (
     PnlByBusinessUntracedBreakdownRow,
     PnlByBusinessYtdItem,
     PnlByBusinessYtdPayload,
+    PnlByBusinessYtdUnallocatedBreakdownRow,
+    PnlByBusinessYtdUnallocatedItem,
     PnlDataPayload,
     PnlDatesPayload,
     PnlFormalFiRow,
@@ -502,6 +504,123 @@ def pnl_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_da
     )
 
 
+def _pnl_by_business_ytd_unallocated_reason(
+    matched_rows: list[dict[str, object]],
+) -> str:
+    return "detail_only_business_rule_match" if matched_rows else "no_business_rule_match"
+
+
+def _pnl_by_business_ytd_unallocated_item(
+    *,
+    record: dict[str, object],
+    classification: dict[str, object],
+    reason_code: str,
+    default_source_kind: str,
+) -> PnlByBusinessYtdUnallocatedItem:
+    total_pnl = _decimal_value(record.get("total_pnl"))
+    return PnlByBusinessYtdUnallocatedItem(
+        report_date=_norm_text(record.get("report_date") or classification.get("report_date")),
+        reason_code=reason_code,
+        source_kind=_norm_text(record.get("source_kind")) or default_source_kind,
+        instrument_code=_norm_text(
+            record.get("instrument_code")
+            or record.get("bond_code")
+            or classification.get("instrument_code")
+        ),
+        portfolio_name=_norm_text(record.get("portfolio_name") or classification.get("portfolio_name")),
+        cost_center=_norm_text(record.get("cost_center") or classification.get("cost_center")),
+        invest_type_std=_norm_text(record.get("invest_type_std") or classification.get("invest_type_std")),
+        accounting_basis=_norm_text(record.get("accounting_basis") or classification.get("accounting_basis")),
+        currency_basis=(
+            _norm_text(
+                record.get("currency_basis")
+                or classification.get("currency_basis")
+                or classification.get("currency_code")
+            )
+            or "CNY"
+        ),
+        interest_income_514=_decimal_value(record.get("interest_income_514") or record.get("interest_income")),
+        fair_value_change_516=_decimal_value(record.get("fair_value_change_516") or record.get("fair_value_change")),
+        capital_gain_517=_decimal_value(record.get("capital_gain_517") or record.get("capital_gain")),
+        manual_adjustment=_decimal_value(record.get("manual_adjustment")),
+        total_pnl=total_pnl,
+        abs_pnl=abs(total_pnl),
+    )
+
+
+def _normalize_pnl_by_business_unallocated_item(
+    item: PnlByBusinessYtdUnallocatedItem,
+) -> PnlByBusinessYtdUnallocatedItem:
+    total_pnl = _quantize_decimal(item.total_pnl)
+    return item.model_copy(
+        update={
+            "interest_income_514": _quantize_decimal(item.interest_income_514),
+            "fair_value_change_516": _quantize_decimal(item.fair_value_change_516),
+            "capital_gain_517": _quantize_decimal(item.capital_gain_517),
+            "manual_adjustment": _quantize_decimal(item.manual_adjustment),
+            "total_pnl": total_pnl,
+            "abs_pnl": abs(total_pnl),
+        }
+    )
+
+
+def _pnl_by_business_ytd_unallocated_breakdown(
+    items: list[PnlByBusinessYtdUnallocatedItem],
+) -> list[PnlByBusinessYtdUnallocatedBreakdownRow]:
+    grouped: dict[tuple[str, str, str, str, str, str], dict[str, object]] = {}
+    for item in items:
+        key = (
+            item.reason_code,
+            item.source_kind,
+            item.invest_type_std,
+            item.accounting_basis,
+            item.portfolio_name,
+            item.cost_center,
+        )
+        bucket = grouped.setdefault(
+            key,
+            {
+                "pnl_row_count": 0,
+                "total_pnl": Decimal("0"),
+                "abs_pnl": Decimal("0"),
+                "instrument_codes": set(),
+            },
+        )
+        bucket["pnl_row_count"] = int(bucket["pnl_row_count"]) + 1
+        bucket["total_pnl"] = Decimal(str(bucket["total_pnl"])) + item.total_pnl
+        bucket["abs_pnl"] = Decimal(str(bucket["abs_pnl"])) + item.abs_pnl
+        if item.instrument_code:
+            bucket["instrument_codes"].add(item.instrument_code)
+
+    rows = [
+        PnlByBusinessYtdUnallocatedBreakdownRow(
+            reason_code=key[0],
+            source_kind=key[1],
+            invest_type_std=key[2],
+            accounting_basis=key[3],
+            portfolio_name=key[4],
+            cost_center=key[5],
+            pnl_row_count=int(bucket["pnl_row_count"]),
+            total_pnl=_quantize_decimal(Decimal(str(bucket["total_pnl"]))),
+            abs_pnl=_quantize_decimal(Decimal(str(bucket["abs_pnl"]))),
+            sample_instrument_codes=sorted(str(code) for code in bucket["instrument_codes"])[:5],
+        )
+        for key, bucket in grouped.items()
+    ]
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row.abs_pnl,
+            row.reason_code,
+            row.source_kind,
+            row.invest_type_std,
+            row.accounting_basis,
+            row.portfolio_name,
+            row.cost_center,
+        ),
+    )
+
+
 def _build_pnl_by_business_ytd_payload_from_groups(
     *,
     year: int,
@@ -512,6 +631,7 @@ def _build_pnl_by_business_ytd_payload_from_groups(
     source_tables: list[str],
     ftp_rate_pct: Decimal,
     balance_rows: list[dict[str, object]] | None = None,
+    unallocated_items: list[PnlByBusinessYtdUnallocatedItem | dict[str, object]] | None = None,
 ) -> PnlByBusinessYtdPayload:
     ytd_balance_rows = balance_rows
     if ytd_balance_rows is None:
@@ -547,15 +667,94 @@ def _build_pnl_by_business_ytd_payload_from_groups(
     end_month = max(loaded_dates)[:7]
     period_start_date = f"{start_month}-01"
     period_end_date = max(loaded_dates)
+    coverage_days, expected_days, sample_filled, sample_fill_method = _balance_coverage_diagnostics(
+        ytd_balance_rows,
+        period_start=period_start_date,
+        period_end=period_end_date,
+    )
+    precise_classified_parent_total_pnl = sum(
+        (
+            Decimal(str(group["total_pnl"]))
+            for group in groups.values()
+            if is_parent_zqtz_business_row(
+                str(group["row_key"]),
+                str(group["business_type"]),
+                group.get("source_note"),
+            )
+        ),
+        Decimal("0"),
+    )
+    source_total_pnl = _quantize_decimal(total_pnl)
+    classified_parent_total_pnl = _quantize_decimal(precise_classified_parent_total_pnl)
+    precise_unallocated_items = [
+        item
+        if isinstance(item, PnlByBusinessYtdUnallocatedItem)
+        else PnlByBusinessYtdUnallocatedItem.model_validate(item)
+        for item in (unallocated_items or [])
+    ]
+    precise_unallocated_items = [
+        item.model_copy(update={"abs_pnl": abs(item.total_pnl)}) for item in precise_unallocated_items
+    ]
+    precise_unallocated_items = sorted(
+        precise_unallocated_items,
+        key=lambda item: (
+            -item.abs_pnl,
+            item.report_date,
+            item.source_kind,
+            item.instrument_code,
+            item.portfolio_name,
+            item.cost_center,
+        ),
+    )
+    normalized_unallocated_items = [
+        _normalize_pnl_by_business_unallocated_item(item) for item in precise_unallocated_items
+    ]
+    unallocated_pnl = _quantize_decimal(
+        sum((item.total_pnl for item in precise_unallocated_items), Decimal("0"))
+    )
+    unallocated_abs_pnl = _quantize_decimal(
+        sum((item.abs_pnl for item in precise_unallocated_items), Decimal("0"))
+    )
+    precise_unallocated_pnl = sum((item.total_pnl for item in precise_unallocated_items), Decimal("0"))
+    reconciliation_delta = total_pnl - precise_classified_parent_total_pnl - precise_unallocated_pnl
     return PnlByBusinessYtdPayload(
         year=year,
         period_label=f"{year}年{start_month[-2:]}-{end_month[-2:]}月累计" if start_month != end_month else f"{year}年{end_month[-2:]}月累计",
         period_start_date=period_start_date,
         period_end_date=period_end_date,
-        total_pnl=_quantize_decimal(total_pnl),
+        total_pnl=source_total_pnl,
+        coverage_days=coverage_days,
+        expected_days=expected_days,
+        sample_filled=sample_filled,
+        sample_fill_method=sample_fill_method,
+        classified_parent_total_pnl=classified_parent_total_pnl,
+        unallocated_pnl=unallocated_pnl,
+        unallocated_abs_pnl=unallocated_abs_pnl,
+        unallocated_row_count=len(normalized_unallocated_items),
+        reconciliation_delta=_quantize_decimal(reconciliation_delta),
+        unallocated_breakdown=_pnl_by_business_ytd_unallocated_breakdown(precise_unallocated_items),
+        unallocated_items=normalized_unallocated_items,
         source_tables=source_tables,
         items=items,
     )
+
+
+def _balance_coverage_diagnostics(
+    balance_rows: list[dict[str, object]] | tuple[dict[str, object], ...],
+    *,
+    period_start: str,
+    period_end: str,
+) -> tuple[int, int, bool, str | None]:
+    coverage_dates = {
+        report_date
+        for row in balance_rows
+        if (report_date := _norm_text(row.get("report_date"))) and period_start <= report_date <= period_end
+    }
+    coverage_days = len(coverage_dates)
+    expected_days = _calendar_days(period_start, period_end)
+    sample_filled = 0 < coverage_days < expected_days
+    sample_fill_method = "observed_days_scaled_to_calendar" if sample_filled else None
+    return coverage_days, expected_days, sample_filled, sample_fill_method
 
 
 def _ytd_business_item_from_group(
@@ -779,11 +978,19 @@ def _apply_pnl_by_business_manual_adjustments_to_ytd_groups(
     groups: dict[str, dict[str, object]],
     total_pnl: Decimal,
     loaded_dates: list[str],
+    unallocated_items: list[PnlByBusinessYtdUnallocatedItem],
 ) -> Decimal:
     adjusted_total = total_pnl
     for report_date in loaded_dates:
         for adjustment in _active_pnl_by_business_manual_adjustments(settings, report_date=report_date):
             row_def = _manual_adjustment_row_def(adjustment)
+            source_record = _pnl_by_business_adjustment_record(
+                report_date=report_date,
+                row_key=str(adjustment.get("row_key") or ""),
+                business_type=str(adjustment.get("business_type") or ""),
+                manual_adjustment=adjustment.get("manual_adjustment"),
+                source_note=f"{PNL_BY_BUSINESS_ADJUSTMENT_STREAM}:{adjustment.get('adjustment_id')}",
+            )
             record = {
                 "bond_code": f"manual::{adjustment['adjustment_id']}",
                 "interest_income": Decimal("0"),
@@ -792,6 +999,19 @@ def _apply_pnl_by_business_manual_adjustments_to_ytd_groups(
                 "manual_adjustment": _decimal_value(adjustment.get("manual_adjustment")),
                 "total_pnl": _decimal_value(adjustment.get("manual_adjustment")),
             }
+            if not is_parent_zqtz_business_row(
+                str(row_def["row_key"]),
+                str(row_def["row_label"]),
+                row_def.get("source_note"),
+            ):
+                unallocated_items.append(
+                    _pnl_by_business_ytd_unallocated_item(
+                        record=source_record,
+                        classification=_pnl_by_business_manual_classification(source_record),
+                        reason_code=_pnl_by_business_ytd_unallocated_reason([row_def]),
+                        default_source_kind="manual_adjustment",
+                    )
+                )
             _merge_balance_movement_business_record(groups, row_def, record)
             adjusted_total += _decimal_value(adjustment.get("manual_adjustment"))
     return adjusted_total
@@ -874,11 +1094,12 @@ def _pnl_by_business_ytd_from_formal_facts(
     if not loaded_dates:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_of_date}.")
 
+    resolved_report_date = max(loaded_dates)
     period_start = f"{min(loaded_dates)[:7]}-01"
-    pnl_rows = repo.fetch_by_business_analysis_pnl_rows(year=year, as_of_date=as_of_date)
+    pnl_rows = repo.fetch_by_business_analysis_pnl_rows(year=year, as_of_date=resolved_report_date)
     balance_rows = repo.fetch_by_business_analysis_balance_rows(
         start_date=period_start,
-        end_date=as_of_date,
+        end_date=resolved_report_date,
     )
 
     if not pnl_rows:
@@ -892,6 +1113,7 @@ def _pnl_by_business_ytd_from_formal_facts(
         str(row_def["row_key"]): _new_balance_movement_pnl_group(row_def) for row_def in ZQTZ_ASSET_BOND_ROWS
     }
     total_pnl = Decimal("0")
+    unallocated_items: list[PnlByBusinessYtdUnallocatedItem] = []
 
     for row in pnl_rows:
         classification = _analysis_classification_for_pnl_row(
@@ -899,7 +1121,7 @@ def _pnl_by_business_ytd_from_formal_facts(
             balance_lookup=balance_lookup,
             historical_balance_lookup=historical_balance_lookup,
             sub_type_by_date_code=sub_type_by_date_code,
-            fallback_date=as_of_date,
+            fallback_date=_norm_text(row.get("report_date")) or resolved_report_date,
         )
         interest = _decimal_value(row.get("interest_income_514"))
         fair = _decimal_value(row.get("fair_value_change_516"))
@@ -917,7 +1139,24 @@ def _pnl_by_business_ytd_from_formal_facts(
             "classification_row": classification,
         }
         total_pnl += total
-        for row_def in match_zqtz_asset_bond_rows(classification):
+        matched_rows = match_zqtz_asset_bond_rows(classification)
+        if not any(
+            is_parent_zqtz_business_row(
+                str(row_def["row_key"]),
+                str(row_def["row_label"]),
+                row_def.get("source_note"),
+            )
+            for row_def in matched_rows
+        ):
+            unallocated_items.append(
+                _pnl_by_business_ytd_unallocated_item(
+                    record=row,
+                    classification=classification,
+                    reason_code=_pnl_by_business_ytd_unallocated_reason(matched_rows),
+                    default_source_kind="formal_fact",
+                )
+            )
+        for row_def in matched_rows:
             _merge_balance_movement_business_record(groups, row_def, record)
 
     settings = get_settings()
@@ -927,6 +1166,7 @@ def _pnl_by_business_ytd_from_formal_facts(
         groups=groups,
         total_pnl=total_pnl,
         loaded_dates=loaded_dates,
+        unallocated_items=unallocated_items,
     )
     source_tables = _source_tables_with_manual_adjustments(
         [
@@ -947,13 +1187,18 @@ def _pnl_by_business_ytd_from_formal_facts(
         source_tables=source_tables,
         ftp_rate_pct=ftp_rate_pct,
         balance_rows=list(balance_rows),
+        unallocated_items=unallocated_items,
     )
-    return _build_pnl_formal_result_envelope_from_lineage(
+    quality_flag = _pnl_by_business_ytd_quality_flag(payload)
+    return _build_pnl_by_business_analytical_result_envelope(
         governance_dir=governance_dir,
-        report_date=max(loaded_dates),
+        requested_report_date=as_of_date,
+        resolved_report_date=resolved_report_date,
         trace_id=f"tr_pnl_by_business_ytd_{year}_{as_of_date}",
         result_kind="pnl.by_business_ytd",
         result_payload=payload.model_dump(mode="json"),
+        quality_flag=quality_flag,
+        filters_applied={"year": year, "as_of_date": as_of_date},
     )
 
 
@@ -988,6 +1233,7 @@ def _pnl_by_business_ytd_from_refresh_bundles(
     }
     loaded_dates: list[str] = []
     total_pnl = Decimal("0")
+    unallocated_items: list[PnlByBusinessYtdUnallocatedItem] = []
 
     for report_date in sorted(report_dates):
         refresh_input = load_latest_pnl_refresh_input(
@@ -1021,8 +1267,26 @@ def _pnl_by_business_ytd_from_refresh_bundles(
             sub_type_map=sub_type_map,
             fx_rates=fx_rates,
         ):
-            total_pnl += Decimal(str(record["total_pnl"]))
-            for row_def in match_zqtz_asset_bond_rows(record.get("classification_row", {})):
+            record_total = Decimal(str(record["total_pnl"]))
+            total_pnl += record_total
+            matched_rows = match_zqtz_asset_bond_rows(record.get("classification_row", {}))
+            if not any(
+                is_parent_zqtz_business_row(
+                    str(row_def["row_key"]),
+                    str(row_def["row_label"]),
+                    row_def.get("source_note"),
+                )
+                for row_def in matched_rows
+            ):
+                unallocated_items.append(
+                    _pnl_by_business_ytd_unallocated_item(
+                        record=record,
+                        classification=dict(record.get("classification_row") or {}),
+                        reason_code=_pnl_by_business_ytd_unallocated_reason(matched_rows),
+                        default_source_kind="refresh_bundle",
+                    )
+                )
+            for row_def in matched_rows:
                 _merge_balance_movement_business_record(groups, row_def, record)
 
     if not loaded_dates:
@@ -1040,6 +1304,7 @@ def _pnl_by_business_ytd_from_refresh_bundles(
         groups=groups,
         total_pnl=total_pnl,
         loaded_dates=loaded_dates,
+        unallocated_items=unallocated_items,
     )
     source_tables = _source_tables_with_manual_adjustments(
         [
@@ -1063,13 +1328,18 @@ def _pnl_by_business_ytd_from_refresh_bundles(
         source_tables=source_tables,
         ftp_rate_pct=ftp_rate_pct,
         balance_rows=balance_rows,
+        unallocated_items=unallocated_items,
     )
-    return _build_pnl_formal_result_envelope_from_lineage(
+    quality_flag = _pnl_by_business_ytd_quality_flag(payload)
+    return _build_pnl_by_business_analytical_result_envelope(
         governance_dir=governance_dir,
-        report_date=max(loaded_dates),
+        requested_report_date=as_of_date,
+        resolved_report_date=max(loaded_dates),
         trace_id=f"tr_pnl_by_business_ytd_{year}" if not as_of_date else f"tr_pnl_by_business_ytd_{year}_{as_of_date}",
         result_kind="pnl.by_business_ytd",
         result_payload=payload.model_dump(mode="json"),
+        quality_flag=quality_flag,
+        filters_applied={"year": year, "as_of_date": as_of_date},
     )
 
 
@@ -1319,6 +1589,41 @@ def _fetch_pnl_by_business_precompute(
     )
 
 
+def _pnl_by_business_precompute_has_required_diagnostics(
+    payload: dict[str, object],
+    *,
+    result_kind: str,
+) -> bool:
+    coverage_fields = {
+        "coverage_days",
+        "expected_days",
+        "sample_filled",
+        "sample_fill_method",
+    }
+    if result_kind == "analysis":
+        return coverage_fields.issubset(payload)
+    if result_kind == "monthly":
+        monthly_fields = coverage_fields | {
+            "source_total_pnl",
+            "classified_parent_total_pnl",
+            "unallocated_pnl",
+            "unallocated_abs_pnl",
+            "unallocated_row_count",
+            "reconciliation_delta",
+            "unallocated_breakdown",
+            "unallocated_items",
+            "unallocated_evidence_complete",
+        }
+        months = payload.get("months")
+        return isinstance(months, list) and bool(months) and all(
+            isinstance(month, dict)
+            and monthly_fields.issubset(month)
+            and month.get("unallocated_evidence_complete") is True
+            for month in months
+        )
+    return False
+
+
 def pnl_by_business_analysis_envelope(
     *,
     duckdb_path: str,
@@ -1354,14 +1659,26 @@ def pnl_by_business_analysis_envelope(
         dimension=dimension,
         business_key=str(business_key or "").strip(),
     )
-    if precomputed is not None and not has_manual_adjustments:
+    if (
+        precomputed is not None
+        and not has_manual_adjustments
+        and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="analysis")
+    ):
         payload = PnlByBusinessAnalysisPayload.model_validate(precomputed)
-        return _build_pnl_formal_result_envelope_from_lineage(
+        return _build_pnl_by_business_analytical_result_envelope(
             governance_dir=governance_dir,
-            report_date=period_end,
+            requested_report_date=as_of_date,
+            resolved_report_date=period_end,
             trace_id=f"tr_pnl_by_business_analysis_{year}_{period_end}_{dimension}_precomputed",
             result_kind="pnl.by_business_analysis",
             result_payload=payload.model_dump(mode="json"),
+            quality_flag=_coverage_quality_flag(payload.coverage_days, payload.expected_days),
+            filters_applied={
+                "year": year,
+                "as_of_date": as_of_date,
+                "business_key": business_key,
+                "dimension": dimension,
+            },
         )
     loaded_dates = sorted(
         d
@@ -1397,6 +1714,11 @@ def pnl_by_business_analysis_envelope(
         settings=settings,
         loaded_dates=loaded_date_list,
     )
+    coverage_days, expected_days, sample_filled, sample_fill_method = _balance_coverage_diagnostics(
+        balance_rows,
+        period_start=period_start,
+        period_end=period_end,
+    )
     payload = PnlByBusinessAnalysisPayload(
         year=year,
         as_of_date=period_end,
@@ -1404,6 +1726,10 @@ def pnl_by_business_analysis_envelope(
         dimension=dimension,
         period_start_date=period_start,
         period_end_date=period_end,
+        coverage_days=coverage_days,
+        expected_days=expected_days,
+        sample_filled=sample_filled,
+        sample_fill_method=sample_fill_method,
         source_tables=source_tables,
         rows=_build_pnl_by_business_analysis_rows(
             pnl_rows=list(pnl_rows),
@@ -1416,12 +1742,20 @@ def pnl_by_business_analysis_envelope(
             ftp_rate_pct=ftp_rate_pct,
         ),
     )
-    return _build_pnl_formal_result_envelope_from_lineage(
+    return _build_pnl_by_business_analytical_result_envelope(
         governance_dir=governance_dir,
-        report_date=period_end,
+        requested_report_date=as_of_date,
+        resolved_report_date=period_end,
         trace_id=f"tr_pnl_by_business_analysis_{year}_{period_end}_{dimension}",
         result_kind="pnl.by_business_analysis",
         result_payload=payload.model_dump(mode="json"),
+        quality_flag=_coverage_quality_flag(coverage_days, expected_days),
+        filters_applied={
+            "year": year,
+            "as_of_date": as_of_date,
+            "business_key": business_key,
+            "dimension": dimension,
+        },
     )
 
 
@@ -1458,14 +1792,21 @@ def pnl_by_business_monthly_envelope(
         dimension="",
         business_key="",
     )
-    if precomputed is not None and not has_manual_adjustments:
+    if (
+        precomputed is not None
+        and not has_manual_adjustments
+        and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="monthly")
+    ):
         payload = PnlByBusinessMonthlyPayload.model_validate(precomputed)
-        return _build_pnl_formal_result_envelope_from_lineage(
+        return _build_pnl_by_business_analytical_result_envelope(
             governance_dir=governance_dir,
-            report_date=period_end,
+            requested_report_date=as_of_date,
+            resolved_report_date=period_end,
             trace_id=f"tr_pnl_by_business_monthly_{year}_{period_end}_precomputed",
             result_kind="pnl.by_business_monthly",
             result_payload=payload.model_dump(mode="json"),
+            quality_flag=_pnl_by_business_monthly_quality_flag(payload),
+            filters_applied={"year": year, "as_of_date": as_of_date},
         )
     loaded_dates = sorted(
         d
@@ -1512,12 +1853,15 @@ def pnl_by_business_monthly_envelope(
             ftp_rate_pct=ftp_rate_pct,
         ),
     )
-    return _build_pnl_formal_result_envelope_from_lineage(
+    return _build_pnl_by_business_analytical_result_envelope(
         governance_dir=governance_dir,
-        report_date=period_end,
+        requested_report_date=as_of_date,
+        resolved_report_date=period_end,
         trace_id=f"tr_pnl_by_business_monthly_{year}_{period_end}",
         result_kind="pnl.by_business_monthly",
         result_payload=payload.model_dump(mode="json"),
+        quality_flag=_pnl_by_business_monthly_quality_flag(payload),
+        filters_applied={"year": year, "as_of_date": as_of_date},
     )
 
 
@@ -1739,13 +2083,18 @@ def _build_pnl_by_business_monthly_buckets(
         groups: dict[str, dict[str, object]] = {
             str(row_def["row_key"]): _new_monthly_business_group(row_def) for row_def in ZQTZ_ASSET_BOND_ROWS
         }
+        source_total_pnl = Decimal("0")
+        unallocated_items: list[PnlByBusinessYtdUnallocatedItem] = []
 
         for pnl_row in pnl_rows:
             if _norm_text(pnl_row.get("report_date"))[:7] != month_key:
                 continue
+            row_total_pnl = _decimal_value(pnl_row.get("total_pnl"))
+            source_total_pnl += row_total_pnl
+            is_manual_adjustment = _norm_text(pnl_row.get("source_kind")) == "manual_adjustment"
             classification = (
                 _pnl_by_business_manual_classification(pnl_row)
-                if _norm_text(pnl_row.get("source_kind")) == "manual_adjustment"
+                if is_manual_adjustment
                 else _analysis_classification_for_pnl_row(
                     pnl_row=pnl_row,
                     balance_lookup=balance_lookup,
@@ -1754,7 +2103,28 @@ def _build_pnl_by_business_monthly_buckets(
                     fallback_date=month_end,
                 )
             )
-            for row_def in match_zqtz_asset_bond_rows(classification):
+            matched_rows = (
+                [_manual_adjustment_row_def(pnl_row)]
+                if is_manual_adjustment
+                else list(match_zqtz_asset_bond_rows(classification))
+            )
+            if not any(
+                is_parent_zqtz_business_row(
+                    str(row_def["row_key"]),
+                    str(row_def["row_label"]),
+                    row_def.get("source_note"),
+                )
+                for row_def in matched_rows
+            ):
+                unallocated_items.append(
+                    _pnl_by_business_ytd_unallocated_item(
+                        record=pnl_row,
+                        classification=classification,
+                        reason_code=_pnl_by_business_ytd_unallocated_reason(matched_rows),
+                        default_source_kind="formal_fact",
+                    )
+                )
+            for row_def in matched_rows:
                 _merge_monthly_business_pnl_row(groups, row_def, pnl_row)
 
         avg_sums: dict[str, Decimal] = {}
@@ -1801,12 +2171,57 @@ def _build_pnl_by_business_monthly_buckets(
             for group, avg_balance, current_balance in item_inputs
         ]
         summary = _monthly_business_summary_from_items(items, calendar_days, ftp_rate_pct)
+        precise_source_total_pnl = source_total_pnl
+        precise_parent_total = parent_total
+        source_total_pnl = _quantize_decimal(precise_source_total_pnl)
+        parent_total = _quantize_decimal(precise_parent_total)
+        precise_unallocated_items = sorted(
+            unallocated_items,
+            key=lambda item: (
+                -item.abs_pnl,
+                item.report_date,
+                item.source_kind,
+                item.instrument_code,
+                item.portfolio_name,
+                item.cost_center,
+            ),
+        )
+        unallocated_pnl = _quantize_decimal(
+            sum((item.total_pnl for item in precise_unallocated_items), Decimal("0"))
+        )
+        unallocated_abs_pnl = _quantize_decimal(
+            sum((item.abs_pnl for item in precise_unallocated_items), Decimal("0"))
+        )
+        normalized_unallocated_items = [
+            _normalize_pnl_by_business_unallocated_item(item) for item in precise_unallocated_items
+        ]
+        precise_unallocated_pnl = sum(
+            (item.total_pnl for item in precise_unallocated_items),
+            Decimal("0"),
+        )
+        reconciliation_delta = _quantize_decimal(
+            precise_source_total_pnl - precise_parent_total - precise_unallocated_pnl
+        )
+        sample_filled = 0 < denom < calendar_days
         buckets.append(
             PnlByBusinessMonthlyBucket(
                 month_key=month_key,
                 period_start_date=month_start,
                 period_end_date=month_end,
                 calendar_days=calendar_days,
+                coverage_days=denom,
+                expected_days=calendar_days,
+                sample_filled=sample_filled,
+                sample_fill_method="observed_days_scaled_to_calendar" if sample_filled else None,
+                source_total_pnl=source_total_pnl,
+                classified_parent_total_pnl=parent_total,
+                unallocated_pnl=unallocated_pnl,
+                unallocated_abs_pnl=unallocated_abs_pnl,
+                unallocated_row_count=len(precise_unallocated_items),
+                reconciliation_delta=reconciliation_delta,
+                unallocated_breakdown=_pnl_by_business_ytd_unallocated_breakdown(precise_unallocated_items),
+                unallocated_items=normalized_unallocated_items,
+                unallocated_evidence_complete=True,
                 summary=summary,
                 items=items,
             )
@@ -2610,6 +3025,72 @@ def _append_unique_value(bucket: dict[str, object], key: str, value: str) -> Non
     if value not in values:
         values.append(value)
     bucket[key] = "__".join(values)
+
+
+def _coverage_quality_flag(coverage_days: int, expected_days: int) -> str | None:
+    if expected_days > 0 and coverage_days < expected_days:
+        return "warning"
+    return None
+
+
+def _pnl_by_business_ytd_quality_flag(payload: PnlByBusinessYtdPayload) -> str | None:
+    if _coverage_quality_flag(payload.coverage_days, payload.expected_days):
+        return "warning"
+    if payload.unallocated_row_count > 0 or payload.reconciliation_delta != Decimal("0"):
+        return "warning"
+    return None
+
+
+def _pnl_by_business_monthly_quality_flag(payload: PnlByBusinessMonthlyPayload) -> str | None:
+    for bucket in payload.months:
+        if _coverage_quality_flag(bucket.coverage_days, bucket.expected_days):
+            return "warning"
+        if bucket.unallocated_row_count > 0 or bucket.reconciliation_delta != Decimal("0"):
+            return "warning"
+    return None
+
+
+def _build_pnl_by_business_analytical_result_envelope(
+    *,
+    governance_dir: str,
+    requested_report_date: str | None,
+    resolved_report_date: str,
+    trace_id: str,
+    result_kind: str,
+    result_payload: dict[str, object],
+    quality_flag: str | None = None,
+    filters_applied: dict[str, object] | None = None,
+) -> dict[str, object]:
+    fallback_used = bool(requested_report_date and requested_report_date != resolved_report_date)
+    envelope = _build_pnl_formal_result_envelope_from_lineage(
+        governance_dir=governance_dir,
+        report_date=resolved_report_date,
+        trace_id=trace_id,
+        result_kind=result_kind,
+        result_payload=result_payload,
+        quality_flag="warning" if fallback_used else quality_flag,
+    )
+    meta = envelope.get("result_meta")
+    if not isinstance(meta, dict):
+        meta = {}
+        envelope["result_meta"] = meta
+    source_tables = result_payload.get("source_tables")
+    meta.update(
+        {
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "requested_report_date": requested_report_date or resolved_report_date,
+            "resolved_report_date": resolved_report_date,
+            "as_of_date": resolved_report_date,
+            "fallback_date": resolved_report_date if fallback_used else None,
+            "fallback_mode": "latest_snapshot" if fallback_used else "none",
+            "date_basis": "formal_report_date_cutoff",
+            "filters_applied": filters_applied or {},
+            "tables_used": list(source_tables) if isinstance(source_tables, list) else [],
+            "source_surface": "formal_pnl",
+        }
+    )
+    return envelope
 
 
 def _build_pnl_formal_result_envelope_from_lineage(

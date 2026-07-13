@@ -3316,6 +3316,41 @@ export type PnlByBusinessYtdItem = {
   assets_count: number;
 };
 
+export type PnlByBusinessYtdUnallocatedReason =
+  | "no_business_rule_match"
+  | "detail_only_business_rule_match";
+
+export type PnlByBusinessYtdUnallocatedBreakdownRow = {
+  reason_code: PnlByBusinessYtdUnallocatedReason;
+  source_kind: string;
+  invest_type_std: string;
+  accounting_basis: string;
+  portfolio_name: string;
+  cost_center: string;
+  pnl_row_count: number;
+  total_pnl: string;
+  abs_pnl: string;
+  sample_instrument_codes: string[];
+};
+
+export type PnlByBusinessYtdUnallocatedItem = {
+  report_date: string;
+  reason_code: PnlByBusinessYtdUnallocatedReason;
+  source_kind: string;
+  instrument_code: string;
+  portfolio_name: string;
+  cost_center: string;
+  invest_type_std: string;
+  accounting_basis: string;
+  currency_basis: string;
+  interest_income_514: string;
+  fair_value_change_516: string;
+  capital_gain_517: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  abs_pnl: string;
+};
+
 export type PnlByBusinessYtdPayload = {
   year: number;
   period_type: "yearly";
@@ -3323,6 +3358,17 @@ export type PnlByBusinessYtdPayload = {
   period_start_date: string;
   period_end_date: string;
   total_pnl: string;
+  coverage_days?: number;
+  expected_days?: number;
+  sample_filled?: boolean;
+  sample_fill_method?: string | null;
+  classified_parent_total_pnl?: string;
+  unallocated_pnl?: string;
+  unallocated_abs_pnl?: string;
+  unallocated_row_count?: number;
+  reconciliation_delta?: string;
+  unallocated_breakdown?: PnlByBusinessYtdUnallocatedBreakdownRow[];
+  unallocated_items?: PnlByBusinessYtdUnallocatedItem[];
   source_tables: string[];
   items: PnlByBusinessYtdItem[];
 };
@@ -3401,6 +3447,19 @@ export type PnlByBusinessMonthlyBucket = {
   period_start_date: string;
   period_end_date: string;
   calendar_days: number;
+  coverage_days?: number;
+  expected_days?: number;
+  sample_filled?: boolean;
+  sample_fill_method?: string | null;
+  source_total_pnl?: string;
+  classified_parent_total_pnl?: string;
+  unallocated_pnl?: string;
+  unallocated_abs_pnl?: string;
+  unallocated_row_count?: number;
+  reconciliation_delta?: string;
+  unallocated_breakdown?: PnlByBusinessYtdUnallocatedBreakdownRow[];
+  unallocated_items?: PnlByBusinessYtdUnallocatedItem[];
+  unallocated_evidence_complete?: boolean;
   summary: PnlByBusinessMonthlySummary;
   items: PnlByBusinessMonthlyItem[];
 };
@@ -3446,6 +3505,10 @@ export type PnlByBusinessAnalysisPayload = {
   dimension: PnlByBusinessAnalysisDimension;
   period_start_date: string;
   period_end_date: string;
+  coverage_days?: number;
+  expected_days?: number;
+  sample_filled?: boolean;
+  sample_fill_method?: string | null;
   source_tables: string[];
   rows: PnlByBusinessAnalysisRow[];
 };
