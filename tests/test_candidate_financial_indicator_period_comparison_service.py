@@ -64,8 +64,8 @@ def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap
     ]
     assert [item["lock_status"] for item in payload["source_periods"]] == [
         "locked_match",
-        "unlocked",
-        "unlocked",
+        "locked_match",
+        "locked_match",
     ]
 
     by_id = {item["metric_id"]: item for item in payload["metrics"]}
@@ -86,7 +86,7 @@ def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap
     assert interest["current_value_yi"] == "8.2235691870"
     assert interest["previous_value_yi"] == "10.7866907288"
     assert interest["delta_yi"] == "-2.5631215418"
-    assert interest["quality_status"] == "degraded_candidate"
+    assert interest["quality_status"] == "standard_candidate"
     bridge = payload["net_interest_component_bridge"]
     assert bridge["analysis_kind"] == "accounting_component_bridge"
     assert bridge["status"] == "available"
@@ -94,7 +94,7 @@ def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap
     assert bridge["basis"] == "calendar_month_from_cumulative"
     assert bridge["method"] == "finance_metric_component_contribution"
     assert bridge["unit"] == "亿元"
-    assert bridge["quality_status"] == "degraded_candidate"
+    assert bridge["quality_status"] == "standard_candidate"
     assert bridge["foot_status"] == "passed"
     assert bridge["net_delta_yi"] == "-2.5631215418"
     assert bridge["component_contribution_total_yi"] == "-2.5631215418"
@@ -126,6 +126,32 @@ def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap
     ]
     assert by_id["income.noninterest.total"]["quality_status"] == "not_comparable"
     assert by_id["income.operating.mother_bank"]["quality_status"] == "not_comparable"
+
+
+def test_source_period_contract_uses_only_the_exact_comparison_source_lock() -> None:
+    source = SimpleNamespace(
+        report_month="202605",
+        report_date="2026-05-31",
+        ledger_sha256="a" * 64,
+    )
+
+    locked = service._source_period_contract(
+        source_locks={"总账对账202605.xlsx": "a" * 64},
+        source=source,
+    )
+    unlocked = service._source_period_contract(
+        source_locks={"总账对账202604.xlsx": "a" * 64},
+        source=source,
+    )
+    mismatch = service._source_period_contract(
+        source_locks={"总账对账202605.xlsx": "b" * 64},
+        source=source,
+    )
+
+    assert locked["lock_status"] == "locked_match"
+    assert unlocked["locked_sha256"] is None
+    assert unlocked["lock_status"] == "unlocked"
+    assert mismatch["lock_status"] == "locked_mismatch"
 
 
 @pytest.mark.parametrize(

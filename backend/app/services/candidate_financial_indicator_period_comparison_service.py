@@ -26,6 +26,10 @@ from backend.app.core_finance.finance_metric_engine import (
     evaluate_finance_metrics,
     load_finance_metric_rules,
 )
+from backend.app.core_finance.finance_metric_ledger_comparison_source_locks import (
+    ledger_comparison_source_hashes,
+    load_finance_metric_ledger_comparison_source_locks,
+)
 from backend.app.core_finance.finance_metric_period_comparison import (
     NET_INTEREST_COMPONENT_DEFINITIONS,
     FinanceMetricNetInterestComponentBridge,
@@ -75,12 +79,18 @@ def candidate_financial_indicator_period_comparison_envelope(
     months = (report_month, comparison_month, two_month_prior)
     root = Path(source_dir)
     rules = load_finance_metric_rules(rule_version="qdb-finance-2026-v1.0.1")
+    source_locks = ledger_comparison_source_hashes(
+        load_finance_metric_ledger_comparison_source_locks()
+    )
 
     source_periods = tuple(_load_ledger_only_period(root=root, report_month=month) for month in months)
-    source_contracts = tuple(_source_period_contract(rules=rules, source=source) for source in source_periods)
+    source_contracts = tuple(
+        _source_period_contract(source_locks=source_locks, source=source)
+        for source in source_periods
+    )
     if any(item["lock_status"] == "locked_mismatch" for item in source_contracts):
         raise CandidateFinancialIndicatorPeriodComparisonRequestError(
-            "A locked ledger source hash does not match the governed rule evidence."
+            "A locked ledger source hash does not match the governed comparison source-lock evidence."
         )
     quality_status: Literal["standard_candidate", "degraded_candidate"] = (
         "standard_candidate"
@@ -250,11 +260,15 @@ def candidate_financial_indicator_component_detail_envelope(
         str(parent_payload["two_month_prior"]),
     )
     rules = load_finance_metric_rules(rule_version="qdb-finance-2026-v1.0.1")
+    source_locks = ledger_comparison_source_hashes(
+        load_finance_metric_ledger_comparison_source_locks()
+    )
     sources = tuple(
         _load_ledger_only_period(root=root, report_month=month) for month in months
     )
     source_contracts = tuple(
-        _source_period_contract(rules=rules, source=source) for source in sources
+        _source_period_contract(source_locks=source_locks, source=source)
+        for source in sources
     )
     parent_sources = tuple(parent_payload["source_periods"])
     if any(
@@ -552,14 +566,11 @@ def _evaluate_ledger_only(
 
 def _source_period_contract(
     *,
-    rules: dict[str, Any],
+    source_locks: Mapping[str, str],
     source: FinanceMetricLedgerOnlySourceData,
 ) -> dict[str, Any]:
     file_name = f"{LEDGER_FILE_PREFIX}{source.report_month}.xlsx"
-    locked_sha256 = next(
-        (item.get("sha256") for item in rules["metadata"].get("derived_from", ()) if item.get("file") == file_name),
-        None,
-    )
+    locked_sha256 = source_locks.get(file_name)
     lock_status = (
         "unlocked"
         if locked_sha256 is None

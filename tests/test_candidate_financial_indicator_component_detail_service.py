@@ -57,7 +57,7 @@ def test_real_component_detail_is_lazy_source_backed_and_reconciled(
         "candidate-financial-indicator-component-detail-v1"
     )
     assert payload["status"] == "available"
-    assert payload["quality_status"] == "degraded_candidate"
+    assert payload["quality_status"] == "standard_candidate"
     assert payload["foot_status"] == "passed"
     assert payload["formal_use_allowed"] is False
     assert payload["driver_status"] == "unclear"

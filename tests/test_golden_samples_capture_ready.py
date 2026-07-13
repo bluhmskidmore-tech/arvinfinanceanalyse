@@ -2655,11 +2655,43 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     ),
 }
 
+SPECIALIZED_CAPTURE_READY_CASE_TESTS: dict[str, tuple[str, str]] = {
+    "GS-LEDGER-PNL-NET-INTEREST-202606-A": (
+        "tests/test_ledger_pnl_net_interest_golden_sample.py",
+        "test_committed_synthetic_fixture_executes_the_production_calculation_chain",
+    ),
+}
+CAPTURE_READY_SAMPLE_IDS = frozenset(CAPTURE_READY_CASES) | frozenset(
+    SPECIALIZED_CAPTURE_READY_CASE_TESTS
+)
+
 SUPPORTING_ONLY_SAMPLE_IDS = {"GS-PORTFOLIO-HOME-A"}
 
 
 def test_capture_ready_golden_sample_files_exist() -> None:
     for sample_id in CAPTURE_READY_CASES:
+        for filename in ("request.json", "response.json", "assertions.md", "approval.md"):
+            assert _sample_file(sample_id, filename).exists()
+
+
+def test_specialized_capture_ready_cases_have_dedicated_gate_and_files() -> None:
+    from scripts.backend_release_suite import RELEASE_SUITE_TESTS
+
+    for sample_id, (test_path, test_name) in SPECIALIZED_CAPTURE_READY_CASE_TESTS.items():
+        assert sample_id not in CAPTURE_READY_CASES
+        assert (ROOT / test_path).exists()
+        assert test_path in RELEASE_SUITE_TESTS
+        module = load_module(
+            f"tests._specialized_capture_ready_{sample_id.lower().replace('-', '_')}",
+            test_path,
+        )
+        test_callable = getattr(module, test_name)
+        assert callable(test_callable)
+        module_marks = getattr(module, "pytestmark", ())
+        if not isinstance(module_marks, (list, tuple)):
+            module_marks = (module_marks,)
+        all_marks = (*module_marks, *getattr(test_callable, "pytestmark", ()))
+        assert not {mark.name for mark in all_marks} & {"skip", "skipif", "xfail"}
         for filename in ("request.json", "response.json", "assertions.md", "approval.md"):
             assert _sample_file(sample_id, filename).exists()
 

@@ -99,7 +99,7 @@ def test_component_detail_real_accounts_reconcile_exactly(
 
     contributing = [item for item in result.rows if item.row_status == "contributing"]
     assert result.status == "available"
-    assert result.quality_status == "degraded_candidate"
+    assert result.quality_status == "standard_candidate"
     assert result.foot_status == "passed"
     assert len(contributing) == expected_count
     assert result.account_component_delta_total_yi == Decimal(expected_delta)

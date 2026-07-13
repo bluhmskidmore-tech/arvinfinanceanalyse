@@ -379,6 +379,32 @@ describe("candidate period comparison view model", () => {
     expect(model.hasUnlockedHistoricalSource).toBe(true);
   });
 
+  it("surfaces the backend standard candidate when all three source hashes are locked", () => {
+    const payload = mutableSyntheticComparison();
+    payload.source_periods = payload.source_periods.map((period) => ({
+      ...period,
+      locked_sha256: period.ledger_sha256,
+      lock_status: "locked_match" as const,
+    }));
+    payload.metrics = payload.metrics.map((metric) => (
+      metric.comparison_status === "comparable"
+        ? { ...metric, quality_status: "standard_candidate" as const }
+        : metric
+    ));
+    payload.net_interest_component_bridge = {
+      ...payload.net_interest_component_bridge,
+      quality_status: "standard_candidate",
+    };
+
+    const model = buildCandidatePeriodComparisonViewModel(payload, "202606");
+
+    expect(model.status).toBe("ready");
+    if (model.status !== "ready") throw new Error("expected a ready view model");
+    expect(model.headline).toBe("5项标准候选、2项暂不可比");
+    expect(model.hasUnlockedHistoricalSource).toBe(false);
+    expect(model.rows[0].qualityLabel).toBe("标准候选");
+  });
+
   it("explains a null comparable rate when the backend marks a zero denominator", () => {
     const payload = mutableSyntheticComparison();
     payload.metrics[0].change_rate = null;

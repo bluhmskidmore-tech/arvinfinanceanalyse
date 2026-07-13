@@ -1480,6 +1480,8 @@ def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries(
             "PAGE-LEDGER-PNL-001",
             "/api/ledger-pnl/summary",
             "/api/ledger-pnl/formal-financial-indicators",
+            "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+            "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
         ):
             result = server.request(
                 "tools/call",
@@ -1493,7 +1495,12 @@ def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries(
         assert "/api/ledger-pnl/dates" in payload["supporting_apis"]
         assert "/api/ledger-pnl/data" in payload["supporting_apis"]
         assert "/api/ledger-pnl/formal-financial-indicators" in payload["supporting_apis"]
-        assert payload["golden_samples"] == ["tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A"]
+        assert "/api/ledger-pnl/candidate-financial-indicators/period-comparison" in payload["supporting_apis"]
+        assert "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail" in payload["supporting_apis"]
+        assert payload["golden_samples"] == [
+            "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A",
+            "tests/golden_samples/GS-LEDGER-PNL-NET-INTEREST-202606-A",
+        ]
         assert any("MTR-LPN-001" in item for item in payload["truth_chain"])
         assert any("MTR-LPN-003" in item for item in payload["truth_chain"])
         assert any("ledger_pnl.formal_financial_indicator_source_contract" in item for item in payload["truth_chain"])
@@ -1507,6 +1514,9 @@ def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries(
         assert any("candidate sign-off evidence only" in item for item in payload["truth_chain"])
         assert any("remains unsigned" in item for item in payload["truth_chain"])
         assert any("without promoting Ledger PnL to formal PnL truth" in item for item in payload["truth_chain"])
+        assert any("qdb-ledger-comparison-source-locks-2026-v1.0.0" in item for item in payload["truth_chain"])
+        assert "backend/app/core_finance/finance_metric_ledger_comparison_source_locks.py" in payload["backend_touchpoints"]
+        assert "tests/test_ledger_pnl_net_interest_golden_sample.py" in payload["test_touchpoints"]
         assert any("pending_confirmation=true" in item for item in payload["guardrails"])
         assert any("formal PnL" in item for item in payload["guardrails"])
         assert any("formal financial indicator truth" in item for item in payload["guardrails"])
@@ -5245,6 +5255,8 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_collects_ready_
                     "/api/ledger-pnl/dates",
                     "/api/ledger-pnl/data",
                     "/api/ledger-pnl/formal-financial-indicators",
+                    "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+                    "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
                 ],
             },
             {
@@ -6236,6 +6248,8 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_collects_ready_
                                 "/api/ledger-pnl/dates",
                                 "/api/ledger-pnl/data",
                                 "/api/ledger-pnl/formal-financial-indicators",
+                                "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+                                "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
                             ],
                         },
                         "configured_table_names": [
@@ -6421,6 +6435,8 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_collects_ready_
                                 "/api/ledger-pnl/dates",
                                 "/api/ledger-pnl/data",
                                 "/api/ledger-pnl/formal-financial-indicators",
+                                "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+                                "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
                             ],
                         },
                         "configured_table_names": [

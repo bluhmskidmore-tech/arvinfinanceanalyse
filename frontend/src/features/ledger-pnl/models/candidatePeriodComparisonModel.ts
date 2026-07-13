@@ -617,10 +617,15 @@ export function buildCandidatePeriodComparisonViewModel(
     metric.comparison_status === "comparable"
     && metric.quality_status === "degraded_candidate"
   ));
+  const headline = comparableCount === 0
+    ? `${comparableCount}项可比、${notComparableCount}项暂不可比（候选）`
+    : degraded
+      ? `${comparableCount}项可比、${notComparableCount}项暂不可比（降级候选）`
+      : `${comparableCount}项标准候选、${notComparableCount}项暂不可比`;
   return {
     status: "ready",
     payload: parsed,
-    headline: `${comparableCount}项可比、${notComparableCount}项暂不可比（${degraded ? "降级候选" : "候选"}）`,
+    headline,
     comparableCount,
     notComparableCount,
     netInterestBridge: buildNetInterestBridgeViewModel(

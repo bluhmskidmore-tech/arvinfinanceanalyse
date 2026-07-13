@@ -18,7 +18,7 @@
 ## 2.1 已经具备的样本基础
 
 - `tests/test_golden_samples_capture_ready.py` 已经存在，并且会校验每个样本目录下的 `request.json`、`response.json`、`assertions.md`、`approval.md`。
-- `tests/golden_samples/` 已经存在 **25** 个样本包（其中 24 个与 `tests/test_golden_samples_capture_ready.py` 矩阵一致，1 个为 supporting-only）：
+- `tests/golden_samples/` 已经存在 **26** 个样本包（其中 24 个使用通用 endpoint replay、1 个使用专用复合快照 replay、1 个为 supporting-only）：
   - `GS-BAL-OVERVIEW-A`
   - `GS-BAL-WORKBOOK-A`
   - `GS-PNL-OVERVIEW-A`
@@ -40,6 +40,7 @@
   - `GS-EXEC-SUMMARY-A`
   - `GS-EXEC-PNL-ATTR-A`
   - `GS-LEDGER-PNL-SUMMARY-A`
+  - `GS-LEDGER-PNL-NET-INTEREST-202606-A`
   - `GS-BANK-LEDGER-CLASSIFICATION-A`
   - `GS-CASHFLOW-PROJECTION-A`
   - `GS-PNL-BUSINESS-INSIGHTS-A`
@@ -60,6 +61,7 @@
 - `GS-MKT-RATES-FRAGMENT-A` 已落地为 **capture-ready formal rates fragment 样本**：`tests/golden_samples/GS-MKT-RATES-FRAGMENT-A/` 已存在，且已纳入 `tests/test_golden_samples_capture_ready.py`。当前只冻结 `/market-data` 的 `GET /ui/market-data/rates` formal rates 片段，不关闭 `GAP-MKT-DATA`，也不批准 full-page market-data formal use。
 - `GS-AVERAGE-BALANCE-A` has landed as a **capture-ready candidate daily ADB DTO sample**: `tests/golden_samples/GS-AVERAGE-BALANCE-A/` exists and is registered in `tests/test_golden_samples_capture_ready.py`. It keeps `formal_use_allowed=false`, freezes only `GET /api/analysis/adb` daily DTO evidence, and does not approve formal balance truth, monthly ADB/NIM truth, manual audit closure, or business-owner approval.
 - `GS-AVERAGE-BALANCE-MONTHLY-A` has landed as a **capture-ready candidate monthly ADB/NIM DTO sample**: `tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A/` exists and is registered in `tests/test_golden_samples_capture_ready.py`. It keeps `formal_use_allowed=false`, freezes selected `GET /api/analysis/adb/monthly` fields for `MTR-ADB-003`, and does not approve formal balance truth, manual audit closure, or business-owner approval.
+- `GS-LEDGER-PNL-NET-INTEREST-202606-A` 已落地为 **capture-ready 专用复合快照样本**：统一 gate 通过 `CAPTURE_READY_SAMPLE_IDS` 登记样本身份，并强制绑定一个不可跳过的 clean-CI 测试；`tests/test_ledger_pnl_net_interest_golden_sample.py` 使用 aggregate-preserving fixture 跑父比较和四个 component-detail 的生产计算链，同时保留受治理本地工作簿的可选真实快照重放。fixture 不含真实账户名称或真实三期逐户余额，只复用 compact 已披露的科目代码、贡献和当前定位锚点，其余科目与余额为合成；其中源 SHA 仅作为锁分支 identity anchor。它保持 `formal_use_allowed=false`、`driver_status=unclear`，不批准完整 186 项、正式财务真值或业务 owner 签核。
 - Wave 1 四条工作台路由已在本文件 §7.4 与 `docs/metric_dictionary.md` §12.5 做 **文档层** `page_id → metric_id → sample_id → test file` 绑定；全量强约束（含 CI 校验矩阵）仍待后续。
 
 ## 3. 什么样的样本才算“黄金样本”
@@ -105,6 +107,7 @@
 | `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | 已有样本包 | `tests/test_executive_service_contract.py` + 样本目录 | 与 page contract 对齐 |
 | `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | 已有样本包 | `tests/test_executive_service_contract.py` + 样本目录 | 与 page contract 对齐 |
 | `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | 已有样本包 | `tests/test_ledger_pnl_service.py` + `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 Ledger PnL 页面级 summary DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
+| `GS-LEDGER-PNL-NET-INTEREST-202606-A` | `GET period-comparison` + four component-detail reads | 已有样本包 | `tests/test_ledger_pnl_net_interest_golden_sample.py` + `tests/test_golden_samples_capture_ready.py` + synthetic replay fixture + 样本目录 | 冻结三期总账源锁、净息四类贡献、11 位科目行集指纹与勾稽；clean CI 必跑 synthetic production-chain replay，真实工作簿 replay 为附加检查；保持 candidate-only / `formal_use_allowed=false` / awaiting owner approval |
 | `GS-BANK-LEDGER-CLASSIFICATION-A` | `GET /api/ledger/dashboard` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 Bank Ledger v2 分类矩阵、亿元单位、覆盖率和日期元数据；保持 `formal_use_allowed=false` / pending owner approval |
 | `GS-PNL-BUSINESS-INSIGHTS-A` | `GET /api/pnl/by-business-candidate-insights` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 candidate business-insights DTO；保持 `formal_use_allowed=false` / pending owner approval |
 
@@ -188,7 +191,7 @@ tests/golden_samples/
 ### 8.1 本周必须完成
 
 1. 把 `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md`、`tests/golden_samples/` 纳入版本控制。
-2. 复核 24 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持 capture-ready 与 supporting-only 口径分离。
+2. 复核 25 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持通用 replay、专用复合 replay 与 supporting-only 口径分离。
 3. 在 catalog 中补充每个样本对应的 `page_id`、`metric_id`、`tests/...`。
 
 ### 8.2 下周必须完成

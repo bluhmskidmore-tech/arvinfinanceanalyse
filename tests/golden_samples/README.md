@@ -11,13 +11,16 @@ Current rule:
   - `approval.md`
 - `response.json` must come from an explicit capture step against a verified
   environment or a deterministic fixture-backed run.
+- specialized compact captures may pair aggregate-and-digest real evidence with a
+  mandatory aggregate-preserving synthetic production-chain replay; synthetic
+  source hashes are identity anchors only, never source-provenance claims.
 
 Reason:
 
 - avoid freezing guessed or partially inferred payloads as business truth
 - keep sample packs aligned with `docs/golden_sample_catalog.md`
 
-Current capture-ready sample packs (24 total):
+Current capture-ready sample packs (25 total):
 
 - `GS-BAL-OVERVIEW-A`
 - `GS-BAL-WORKBOOK-A`
@@ -37,6 +40,7 @@ Current capture-ready sample packs (24 total):
 - `GS-EXEC-PNL-ATTR-A`
 - `GS-EXEC-SUMMARY-A`
 - `GS-LEDGER-PNL-SUMMARY-A`
+- `GS-LEDGER-PNL-NET-INTEREST-202606-A`
 - `GS-BANK-LEDGER-CLASSIFICATION-A`
 - `GS-CASHFLOW-PROJECTION-A`
 - `GS-PNL-BUSINESS-INSIGHTS-A`

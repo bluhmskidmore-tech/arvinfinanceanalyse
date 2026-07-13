@@ -36,6 +36,7 @@ RELEASE_SUITE_TESTS = [
     "tests/test_result_meta_on_all_ui_endpoints.py",
     "tests/test_governance_doc_contract.py",
     "tests/test_golden_samples_capture_ready.py",
+    "tests/test_ledger_pnl_net_interest_golden_sample.py",
     "tests/test_executive_release_contract.py",
     "tests/test_golden_sample_release_matrix.py",
     "tests/test_live_route_page_contract_completeness.py",

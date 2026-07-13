@@ -4,7 +4,7 @@ import json
 import re
 
 from tests.helpers import ROOT
-from tests.test_golden_samples_capture_ready import CAPTURE_READY_CASES, SUPPORTING_ONLY_SAMPLE_IDS
+from tests.test_golden_samples_capture_ready import CAPTURE_READY_SAMPLE_IDS, SUPPORTING_ONLY_SAMPLE_IDS
 
 DOCS_DIR = ROOT / "docs"
 GOLDEN_ROOT = ROOT / "tests" / "golden_samples"
@@ -500,7 +500,7 @@ def test_capture_ready_sample_count_stays_in_sync_across_docs_and_gate():
     golden_samples_readme = (GOLDEN_ROOT / "README.md").read_text(encoding="utf-8")
 
     assert actual_count == capture_ready_count + supporting_only_count
-    assert sorted(CAPTURE_READY_CASES) == capture_ready_sample_ids
+    assert sorted(CAPTURE_READY_SAMPLE_IDS) == capture_ready_sample_ids
     assert sorted(SUPPORTING_ONLY_SAMPLE_IDS) == supporting_only_sample_ids
     assert metric_dictionary_sample_ids == capture_ready_sample_ids
 
