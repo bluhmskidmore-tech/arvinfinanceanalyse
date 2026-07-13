@@ -5864,6 +5864,39 @@ export type LedgerPnlCandidateFinancialIndicatorPeriodComparisonMetric = {
   quality_status: "standard_candidate" | "degraded_candidate" | "not_comparable";
 };
 
+export type LedgerPnlCandidateFinancialIndicatorNetInterestComponent = {
+  metric_id: string;
+  metric_name: string;
+  formula_weight: -1 | 1;
+  current_metric_status: LedgerPnlCandidateFinancialIndicatorComparisonMetricStatus;
+  previous_metric_status: LedgerPnlCandidateFinancialIndicatorComparisonMetricStatus;
+  two_month_prior_metric_status: LedgerPnlCandidateFinancialIndicatorComparisonMetricStatus;
+  current_value_yi: string | null;
+  previous_value_yi: string | null;
+  current_source_value_yi: string | null;
+  previous_source_value_yi: string | null;
+  two_month_prior_source_value_yi: string | null;
+  component_delta_yi: string | null;
+  contribution_to_net_delta_yi: string | null;
+  reasons: string[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorNetInterestComponentBridge = {
+  analysis_kind: "accounting_component_bridge";
+  status: "available" | "not_evaluable";
+  metric_id: "income.interest.net";
+  basis: "calendar_month_from_cumulative";
+  method: "finance_metric_component_contribution";
+  unit: "亿元";
+  quality_status: "standard_candidate" | "degraded_candidate" | "not_evaluable";
+  foot_status: "passed" | "failed" | "not_evaluable";
+  net_delta_yi: string | null;
+  component_contribution_total_yi: string | null;
+  reconciliation_delta_yi: string | null;
+  reasons: string[];
+  components: LedgerPnlCandidateFinancialIndicatorNetInterestComponent[];
+};
+
 export type LedgerPnlCandidateFinancialIndicatorFullScopeGap = {
   reason_code:
     | "missing_source_file"
@@ -5877,7 +5910,7 @@ export type LedgerPnlCandidateFinancialIndicatorFullScopeGap = {
 };
 
 export type LedgerPnlCandidateFinancialIndicatorPeriodComparison = {
-  contract_version: "candidate-financial-indicator-period-comparison-v1";
+  contract_version: "candidate-financial-indicator-period-comparison-v2";
   report_month: string;
   report_date: string;
   comparison_month: string;
@@ -5902,6 +5935,7 @@ export type LedgerPnlCandidateFinancialIndicatorPeriodComparison = {
   rule_hash: string;
   idempotency_key: string;
   source_periods: LedgerPnlCandidateFinancialIndicatorComparisonSourcePeriod[];
+  net_interest_component_bridge: LedgerPnlCandidateFinancialIndicatorNetInterestComponentBridge;
   metrics: LedgerPnlCandidateFinancialIndicatorPeriodComparisonMetric[];
 };
 

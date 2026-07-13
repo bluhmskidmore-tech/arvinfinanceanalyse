@@ -20,7 +20,9 @@ from backend.app.core_finance.finance_metric_engine import (
     load_finance_metric_rules,
 )
 from backend.app.core_finance.finance_metric_period_comparison import (
+    FinanceMetricNetInterestComponentBridge,
     build_finance_metric_period_comparisons,
+    build_net_interest_component_bridge,
 )
 from backend.app.core_finance.finance_metric_xlsx import (
     LEDGER_HEADERS,
@@ -40,7 +42,7 @@ from backend.app.services.candidate_financial_indicator_service import (
 LEDGER_FILE_PREFIX = "总账对账"
 DAILY_FILE_PREFIX = "日均"
 REQUIRED_DAILY_SHEETS = ("年", "月", "微贷")
-CONTRACT_VERSION = "candidate-financial-indicator-period-comparison-v1"
+CONTRACT_VERSION = "candidate-financial-indicator-period-comparison-v2"
 LOGGER = logging.getLogger(__name__)
 
 
@@ -60,12 +62,8 @@ def candidate_financial_indicator_period_comparison_envelope(
     root = Path(source_dir)
     rules = load_finance_metric_rules(rule_version="qdb-finance-2026-v1.0.1")
 
-    source_periods = tuple(
-        _load_ledger_only_period(root=root, report_month=month) for month in months
-    )
-    source_contracts = tuple(
-        _source_period_contract(rules=rules, source=source) for source in source_periods
-    )
+    source_periods = tuple(_load_ledger_only_period(root=root, report_month=month) for month in months)
+    source_contracts = tuple(_source_period_contract(rules=rules, source=source) for source in source_periods)
     if any(item["lock_status"] == "locked_mismatch" for item in source_contracts):
         raise CandidateFinancialIndicatorPeriodComparisonRequestError(
             "A locked ledger source hash does not match the governed rule evidence."
@@ -83,6 +81,17 @@ def candidate_financial_indicator_period_comparison_envelope(
         two_month_prior_metrics=evaluated[2],
         comparable_quality_status=quality_status,
     )
+    net_interest_row = next(item for item in rows if item.metric_id == "income.interest.net")
+    net_interest_component_bridge = _net_interest_component_bridge_contract(
+        build_net_interest_component_bridge(
+            report_month=report_month,
+            current_metrics=evaluated[0],
+            previous_metrics=evaluated[1],
+            two_month_prior_metrics=evaluated[2],
+            net_interest_row=net_interest_row,
+            comparable_quality_status=quality_status,
+        )
+    )
     full_scope = _probe_previous_full_scope(
         root=root,
         comparison_month=comparison_month,
@@ -90,15 +99,9 @@ def candidate_financial_indicator_period_comparison_envelope(
         rule_hash=rules["rule_hash"],
     )
     metrics = [_comparison_row_contract(row) for row in rows]
-    comparable_count = sum(
-        item["comparison_status"] == "comparable" for item in metrics
-    )
+    comparable_count = sum(item["comparison_status"] == "comparable" for item in metrics)
     overall_status = (
-        "available"
-        if comparable_count == len(metrics)
-        else "unavailable"
-        if comparable_count == 0
-        else "partial"
+        "available" if comparable_count == len(metrics) else "unavailable" if comparable_count == 0 else "partial"
     )
     payload = {
         "contract_version": CONTRACT_VERSION,
@@ -122,13 +125,13 @@ def candidate_financial_indicator_period_comparison_envelope(
             source_contracts=list(source_contracts),
             full_scope=full_scope,
             metrics=metrics,
+            net_interest_component_bridge=net_interest_component_bridge,
         ),
         "source_periods": list(source_contracts),
+        "net_interest_component_bridge": net_interest_component_bridge,
         "metrics": metrics,
     }
-    return CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(
-        payload
-    ).model_dump(mode="json")
+    return CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(payload).model_dump(mode="json")
 
 
 def _load_ledger_only_period(
@@ -201,11 +204,7 @@ def _source_period_contract(
 ) -> dict[str, Any]:
     file_name = f"{LEDGER_FILE_PREFIX}{source.report_month}.xlsx"
     locked_sha256 = next(
-        (
-            item.get("sha256")
-            for item in rules["metadata"].get("derived_from", ())
-            if item.get("file") == file_name
-        ),
+        (item.get("sha256") for item in rules["metadata"].get("derived_from", ()) if item.get("file") == file_name),
         None,
     )
     lock_status = (
@@ -234,9 +233,7 @@ def _probe_previous_full_scope(
 ) -> dict[str, Any]:
     ledger_path = root / f"{LEDGER_FILE_PREFIX}{comparison_month}.xlsx"
     daily_path = root / f"{DAILY_FILE_PREFIX}{comparison_month}.xlsx"
-    missing_kind = (
-        "ledger" if not ledger_path.is_file() else "daily" if not daily_path.is_file() else None
-    )
+    missing_kind = "ledger" if not ledger_path.is_file() else "daily" if not daily_path.is_file() else None
     if missing_kind is not None:
         return _full_scope_unavailable(
             comparison_month=comparison_month,
@@ -324,6 +321,7 @@ def _build_period_comparison_idempotency_key(
     source_contracts: list[dict[str, Any]],
     full_scope: dict[str, Any],
     metrics: list[dict[str, Any]],
+    net_interest_component_bridge: dict[str, Any],
 ) -> str:
     canonical_payload = {
         "contract_version": contract_version,
@@ -332,6 +330,7 @@ def _build_period_comparison_idempotency_key(
         "source_contracts": source_contracts,
         "full_scope": full_scope,
         "metrics": metrics,
+        "net_interest_component_bridge": net_interest_component_bridge,
     }
     return hashlib.sha256(
         json.dumps(
@@ -394,15 +393,51 @@ def _comparison_row_contract(row: Any) -> dict[str, Any]:
         "previous_value_yi": _decimal_text(row.previous_value_yi),
         "current_source_value_yi": _decimal_text(row.current_source_value_yi),
         "previous_source_value_yi": _decimal_text(row.previous_source_value_yi),
-        "two_month_prior_source_value_yi": _decimal_text(
-            row.two_month_prior_source_value_yi
-        ),
+        "two_month_prior_source_value_yi": _decimal_text(row.two_month_prior_source_value_yi),
         "delta_yi": _decimal_text(row.delta_yi),
         "change_rate": _decimal_text(row.change_rate),
         "rate_reason": row.rate_reason,
         "reasons": list(row.reasons),
         "driver_status": row.driver_status,
         "quality_status": row.quality_status,
+    }
+
+
+def _net_interest_component_bridge_contract(
+    bridge: FinanceMetricNetInterestComponentBridge,
+) -> dict[str, Any]:
+    return {
+        "analysis_kind": bridge.analysis_kind,
+        "status": bridge.status,
+        "metric_id": bridge.metric_id,
+        "basis": bridge.basis,
+        "method": bridge.method,
+        "unit": bridge.unit,
+        "quality_status": bridge.quality_status,
+        "foot_status": bridge.foot_status,
+        "net_delta_yi": _decimal_text(bridge.net_delta_yi),
+        "component_contribution_total_yi": _decimal_text(bridge.component_contribution_total_yi),
+        "reconciliation_delta_yi": _decimal_text(bridge.reconciliation_delta_yi),
+        "reasons": list(bridge.reasons),
+        "components": [
+            {
+                "metric_id": item.metric_id,
+                "metric_name": item.metric_name,
+                "formula_weight": item.formula_weight,
+                "current_metric_status": item.current_metric_status,
+                "previous_metric_status": item.previous_metric_status,
+                "two_month_prior_metric_status": (item.two_month_prior_metric_status),
+                "current_value_yi": _decimal_text(item.current_value_yi),
+                "previous_value_yi": _decimal_text(item.previous_value_yi),
+                "current_source_value_yi": _decimal_text(item.current_source_value_yi),
+                "previous_source_value_yi": _decimal_text(item.previous_source_value_yi),
+                "two_month_prior_source_value_yi": _decimal_text(item.two_month_prior_source_value_yi),
+                "component_delta_yi": _decimal_text(item.component_delta_yi),
+                "contribution_to_net_delta_yi": _decimal_text(item.contribution_to_net_delta_yi),
+                "reasons": list(item.reasons),
+            }
+            for item in bridge.components
+        ],
     }
 
 

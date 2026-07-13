@@ -32,7 +32,9 @@ REAL_SOURCE_WORKBOOKS = (
     not all(path.is_file() for path in REAL_SOURCE_WORKBOOKS),
     reason="requires local governed source workbooks for 202604/202605/202606",
 )
-def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap() -> None:
+def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap() -> (
+    None
+):
     from backend.app.services.candidate_financial_indicator_period_comparison_service import (
         candidate_financial_indicator_period_comparison_envelope,
     )
@@ -42,6 +44,9 @@ def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap
         report_month="202606",
     )
 
+    assert payload["contract_version"] == (
+        "candidate-financial-indicator-period-comparison-v2"
+    )
     assert payload["report_month"] == "202606"
     assert payload["comparison_month"] == "202605"
     assert payload["two_month_prior"] == "202604"
@@ -64,12 +69,16 @@ def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap
     ]
 
     by_id = {item["metric_id"]: item for item in payload["metrics"]}
-    assert sum(
-        item["comparison_status"] == "comparable" for item in payload["metrics"]
-    ) == 5
-    assert sum(
-        item["comparison_status"] == "not_comparable" for item in payload["metrics"]
-    ) == 2
+    assert (
+        sum(item["comparison_status"] == "comparable" for item in payload["metrics"])
+        == 5
+    )
+    assert (
+        sum(
+            item["comparison_status"] == "not_comparable" for item in payload["metrics"]
+        )
+        == 2
+    )
     interest = by_id["income.interest.net"]
     assert interest["current_source_value_yi"] == "57.3617558215"
     assert interest["previous_source_value_yi"] == "49.1381866345"
@@ -78,6 +87,43 @@ def test_real_202606_period_comparison_is_partial_with_controlled_full_scope_gap
     assert interest["previous_value_yi"] == "10.7866907288"
     assert interest["delta_yi"] == "-2.5631215418"
     assert interest["quality_status"] == "degraded_candidate"
+    bridge = payload["net_interest_component_bridge"]
+    assert bridge["analysis_kind"] == "accounting_component_bridge"
+    assert bridge["status"] == "available"
+    assert bridge["metric_id"] == "income.interest.net"
+    assert bridge["basis"] == "calendar_month_from_cumulative"
+    assert bridge["method"] == "finance_metric_component_contribution"
+    assert bridge["unit"] == "亿元"
+    assert bridge["quality_status"] == "degraded_candidate"
+    assert bridge["foot_status"] == "passed"
+    assert bridge["net_delta_yi"] == "-2.5631215418"
+    assert bridge["component_contribution_total_yi"] == "-2.5631215418"
+    assert bridge["reconciliation_delta_yi"] == "0"
+    assert bridge["reasons"] == []
+    assert [item["metric_id"] for item in bridge["components"]] == [
+        "income.interest.loan.total",
+        "expense.interest.deposit.total",
+        "income.interest.investment",
+        "income.interest.interbank_net",
+    ]
+    assert [item["formula_weight"] for item in bridge["components"]] == [
+        1,
+        -1,
+        1,
+        1,
+    ]
+    assert [item["component_delta_yi"] for item in bridge["components"]] == [
+        "-0.3473924741",
+        "-0.0830909629",
+        "-1.7260319538",
+        "-0.5727880768",
+    ]
+    assert [item["contribution_to_net_delta_yi"] for item in bridge["components"]] == [
+        "-0.3473924741",
+        "0.0830909629",
+        "-1.7260319538",
+        "-0.5727880768",
+    ]
     assert by_id["income.noninterest.total"]["quality_status"] == "not_comparable"
     assert by_id["income.operating.mother_bank"]["quality_status"] == "not_comparable"
 
@@ -235,34 +281,74 @@ def test_period_comparison_idempotency_binds_complete_metric_contract(
         "full_scope_detail": "controlled",
         "full_scope_gaps": [],
     }
+    bridge = {
+        "analysis_kind": "accounting_component_bridge",
+        "status": "available",
+        "metric_id": "income.interest.net",
+        "basis": "calendar_month_from_cumulative",
+        "method": "finance_metric_component_contribution",
+        "unit": "亿元",
+        "quality_status": "degraded_candidate",
+        "foot_status": "passed",
+        "net_delta_yi": "2",
+        "component_contribution_total_yi": "2",
+        "reconciliation_delta_yi": "0",
+        "reasons": [],
+        "components": [
+            {
+                "metric_id": "income.interest.loan.total",
+                "formula_weight": 1,
+                "contribution_to_net_delta_yi": "2",
+            }
+        ],
+    }
     kwargs = {
-        "contract_version": "candidate-financial-indicator-period-comparison-v1",
+        "contract_version": "candidate-financial-indicator-period-comparison-v2",
         "months": ("202606", "202605", "202604"),
         "rule_hash": "b" * 64,
         "source_contracts": source_contracts,
         "full_scope": full_scope,
         "metrics": metrics,
+        "net_interest_component_bridge": bridge,
     }
     baseline = service._build_period_comparison_idempotency_key(**kwargs)
     assert service._build_period_comparison_idempotency_key(**kwargs) == baseline
 
     changed_metrics = deepcopy(metrics)
     changed_metrics[0][field] = changed_value
-    assert service._build_period_comparison_idempotency_key(
-        **{**kwargs, "metrics": changed_metrics}
-    ) != baseline
+    assert (
+        service._build_period_comparison_idempotency_key(
+            **{**kwargs, "metrics": changed_metrics}
+        )
+        != baseline
+    )
 
     changed_sources = deepcopy(source_contracts)
     changed_sources[0]["lock_status"] = "unlocked"
-    assert service._build_period_comparison_idempotency_key(
-        **{**kwargs, "source_contracts": changed_sources}
-    ) != baseline
+    assert (
+        service._build_period_comparison_idempotency_key(
+            **{**kwargs, "source_contracts": changed_sources}
+        )
+        != baseline
+    )
 
     changed_scope = deepcopy(full_scope)
     changed_scope["full_scope_detail"] = "changed"
-    assert service._build_period_comparison_idempotency_key(
-        **{**kwargs, "full_scope": changed_scope}
-    ) != baseline
+    assert (
+        service._build_period_comparison_idempotency_key(
+            **{**kwargs, "full_scope": changed_scope}
+        )
+        != baseline
+    )
+
+    changed_bridge = deepcopy(bridge)
+    changed_bridge["components"][0]["contribution_to_net_delta_yi"] = "3"
+    assert (
+        service._build_period_comparison_idempotency_key(
+            **{**kwargs, "net_interest_component_bridge": changed_bridge}
+        )
+        != baseline
+    )
 
 
 def _prepare_structural_full_scope(

@@ -11,13 +11,19 @@ describe("candidate financial indicator period comparison client", () => {
     );
 
     expect(response).toMatchObject({
-      contract_version: "candidate-financial-indicator-period-comparison-v1",
+      contract_version: "candidate-financial-indicator-period-comparison-v2",
       report_month: "202606",
       comparison_month: "202605",
       two_month_prior: "202604",
       overall_status: "partial",
       metric_status: "candidate",
       formal_use_allowed: false,
+      net_interest_component_bridge: {
+        status: "available",
+        foot_status: "passed",
+        net_delta_yi: "2.5000",
+        reconciliation_delta_yi: "0.0000",
+      },
     });
     expect(response.metrics).toHaveLength(7);
     expect(response.metrics.filter((item) => item.comparison_status === "comparable")).toHaveLength(5);

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useApiClient } from "../../../api/client";
 import {
   buildCandidatePeriodComparisonViewModel,
+  type CandidatePeriodComparisonViewModel,
 } from "../models/candidatePeriodComparisonModel";
 import "./LedgerPnlCandidatePeriodComparison.css";
 
@@ -12,6 +13,91 @@ type Props = {
 
 function readableComparisonError(error: unknown): string {
   return error instanceof Error ? error.message : "跨期变化接口返回未知错误。";
+}
+
+type NetInterestBridgeModel = Extract<
+  CandidatePeriodComparisonViewModel,
+  { status: "ready" }
+>["netInterestBridge"];
+
+function NetInterestComponentBridge({ bridge }: { bridge: NetInterestBridgeModel }) {
+  if (bridge.status === "not_evaluable") {
+    return (
+      <section
+        className="candidate-period-comparison__interest-bridge candidate-period-comparison__interest-bridge--quiet"
+        aria-label="净利息收入算术贡献"
+        data-state="not-evaluable"
+      >
+        <h4>净利息收入算术贡献暂不可用</h4>
+        <p>后端未能形成完整四项贡献，未展示伪贡献；外层七项跨期结果不受影响。</p>
+      </section>
+    );
+  }
+
+  if (bridge.status === "failed") {
+    return (
+      <section
+        className="candidate-period-comparison__interest-bridge candidate-period-comparison__interest-bridge--failed"
+        aria-label="净利息收入算术贡献"
+        data-state="failed"
+      >
+        <h4>净利息收入算术贡献勾稽失败</h4>
+        <p>
+          后端勾稽差额：<strong>{bridge.reconciliationDisplay} 亿元</strong>；
+          四项结果不作为有效解释展示。
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className="candidate-period-comparison__interest-bridge"
+      aria-labelledby="candidate-net-interest-bridge-title"
+      data-state="available"
+    >
+      <header className="candidate-period-comparison__interest-bridge-header">
+        <div>
+          <h4 id="candidate-net-interest-bridge-title">净利息收入算术贡献</h4>
+          <p>后端固定四项公式 · 自然月单月对比</p>
+        </div>
+        <div className="candidate-period-comparison__interest-bridge-result">
+          <strong>净息变动 {bridge.netDeltaDisplay} 亿元</strong>
+          <span>{bridge.footLabel}</span>
+        </div>
+      </header>
+      <div className="candidate-period-comparison__interest-bridge-table-wrap">
+        <table aria-label="净利息收入四项算术贡献">
+          <thead>
+            <tr>
+              <th scope="col">构成项</th>
+              <th scope="col">本月</th>
+              <th scope="col">上月</th>
+              <th scope="col">构成项变动</th>
+              <th scope="col">对净息贡献</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bridge.rows.map((row) => (
+              <tr key={row.metricId}>
+                <th scope="row">
+                  <strong>{row.metricName}</strong>
+                  <code>{row.metricId}</code>
+                </th>
+                <td>{row.currentDisplay}</td>
+                <td>{row.previousDisplay}</td>
+                <td>{row.componentDeltaDisplay}</td>
+                <td>{row.contributionDisplay}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="candidate-period-comparison__interest-bridge-note">
+        后端按固定公式生成的算术贡献，不代表规模、利率或业务原因归因。
+      </p>
+    </section>
+  );
 }
 
 export function LedgerPnlCandidatePeriodComparison({
@@ -165,6 +251,8 @@ export function LedgerPnlCandidatePeriodComparison({
           <small>本区仍仅展示固定七项关键候选指标。</small>
         </div>
       )}
+
+      <NetInterestComponentBridge bridge={model.netInterestBridge} />
 
       <div className="candidate-period-comparison__table-wrap">
         <table aria-label="候选财务指标跨期变化明细">

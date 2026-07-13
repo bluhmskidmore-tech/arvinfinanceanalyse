@@ -136,6 +136,113 @@
   grid-column: 1 / -1;
 }
 
+.candidate-period-comparison__interest-bridge {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--moss-color-info-200, #b8d8ea);
+  border-radius: 2px;
+  background: var(--candidate-paper, var(--moss-color-bg-surface, #fff));
+}
+
+.candidate-period-comparison__interest-bridge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--moss-color-info-200, #b8d8ea);
+  background: var(--moss-color-info-50, #f2f8fc);
+}
+
+.candidate-period-comparison__interest-bridge h4 {
+  margin: 0;
+  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.candidate-period-comparison__interest-bridge-header p,
+.candidate-period-comparison__interest-bridge-note,
+.candidate-period-comparison__interest-bridge--quiet p,
+.candidate-period-comparison__interest-bridge--failed p {
+  margin: 3px 0 0;
+  color: var(--candidate-muted, var(--moss-color-neutral-600, #5b6875));
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.candidate-period-comparison__interest-bridge-result {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.candidate-period-comparison__interest-bridge-result strong {
+  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  font-size: 12px;
+}
+
+.candidate-period-comparison__interest-bridge-result span {
+  padding: 3px 6px;
+  border: 1px solid var(--moss-color-info-200, #b8d8ea);
+  border-radius: 2px;
+  color: var(--moss-color-info-800, #194e70);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.candidate-period-comparison__interest-bridge-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.candidate-period-comparison .candidate-period-comparison__interest-bridge table {
+  min-width: 720px;
+}
+
+.candidate-period-comparison .candidate-period-comparison__interest-bridge thead th:first-child {
+  width: 34%;
+}
+
+.candidate-period-comparison__interest-bridge tbody td {
+  color: var(--candidate-ink, var(--moss-color-neutral-900, #17212b));
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.candidate-period-comparison .candidate-period-comparison__interest-bridge tbody td:last-child {
+  display: table-cell;
+  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+}
+
+.candidate-period-comparison__interest-bridge-note {
+  padding: 7px 12px;
+  border-top: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
+}
+
+.candidate-period-comparison__interest-bridge--quiet,
+.candidate-period-comparison__interest-bridge--failed {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border-color: var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
+  background: var(--candidate-soft, var(--moss-color-neutral-50, #f7f9fb));
+}
+
+.candidate-period-comparison__interest-bridge--failed {
+  border-color: var(--moss-color-danger-300, #e5a2a2);
+  background: var(--moss-color-danger-50, #fff5f5);
+}
+
+.candidate-period-comparison__interest-bridge--failed p strong {
+  color: var(--moss-color-danger-800, #8c2f2f);
+  font-variant-numeric: tabular-nums;
+}
+
 .candidate-period-comparison__table-wrap {
   overflow-x: auto;
   border: 1px solid var(--candidate-line, var(--moss-color-neutral-200, #dce2e8));
@@ -290,6 +397,12 @@
 
   .candidate-period-comparison__source-warning span {
     text-align: left;
+  }
+
+  .candidate-period-comparison__interest-bridge-header,
+  .candidate-period-comparison__interest-bridge-result {
+    display: grid;
+    justify-items: start;
   }
 
   .candidate-period-comparison__scope-gap {

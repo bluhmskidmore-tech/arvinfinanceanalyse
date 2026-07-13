@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from calendar import monthrange
 from datetime import date
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -50,6 +51,13 @@ EXPECTED_METRICS = (
     ),
 )
 
+EXPECTED_NET_INTEREST_COMPONENTS = (
+    ("income.interest.loan.total", "贷款利息收入", 1),
+    ("expense.interest.deposit.total", "存款利息支出", -1),
+    ("income.interest.investment", "金融投资利息收入", 1),
+    ("income.interest.interbank_net", "同业资产负债利息净收入", 1),
+)
+
 
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -75,11 +83,7 @@ class CandidateFinancialIndicatorComparisonSourcePeriod(_StrictModel):
         expected_lock_status = (
             "unlocked"
             if self.locked_sha256 is None
-            else (
-                "locked_match"
-                if self.ledger_sha256 == self.locked_sha256
-                else "locked_mismatch"
-            )
+            else ("locked_match" if self.ledger_sha256 == self.locked_sha256 else "locked_mismatch")
         )
         if self.lock_status != expected_lock_status:
             raise ValueError("lock_status must match the source hash evidence")
@@ -98,9 +102,7 @@ class CandidateFinancialIndicatorPeriodComparisonMetric(_StrictModel):
     comparison_status: Literal["comparable", "not_comparable"]
     current_metric_status: Literal["ok", "warning", "manual_default", "error", "missing"]
     previous_metric_status: Literal["ok", "warning", "manual_default", "error", "missing"]
-    two_month_prior_metric_status: (
-        Literal["ok", "warning", "manual_default", "error", "missing"] | None
-    )
+    two_month_prior_metric_status: Literal["ok", "warning", "manual_default", "error", "missing"] | None
     current_value_yi: DecimalString | None
     previous_value_yi: DecimalString | None
     current_source_value_yi: DecimalString | None
@@ -108,16 +110,17 @@ class CandidateFinancialIndicatorPeriodComparisonMetric(_StrictModel):
     two_month_prior_source_value_yi: DecimalString | None
     delta_yi: DecimalString | None
     change_rate: DecimalString | None
-    rate_reason: Literal[
-        "zero_denominator",
-        "missing_reference",
-        "metric_status_not_ok",
-    ] | None
+    rate_reason: (
+        Literal[
+            "zero_denominator",
+            "missing_reference",
+            "metric_status_not_ok",
+        ]
+        | None
+    )
     reasons: list[str]
     driver_status: Literal["unclear"]
-    quality_status: Literal[
-        "standard_candidate", "degraded_candidate", "not_comparable"
-    ]
+    quality_status: Literal["standard_candidate", "degraded_candidate", "not_comparable"]
 
     @model_validator(mode="after")
     def validate_metric_coherence(self) -> CandidateFinancialIndicatorPeriodComparisonMetric:
@@ -146,15 +149,9 @@ class CandidateFinancialIndicatorPeriodComparisonMetric(_StrictModel):
                 raise ValueError("comparable metric requires all source statuses to be ok")
             if any(value is None for value in values):
                 raise ValueError("comparable metric requires current, previous and delta values")
-            if (
-                self.current_source_value_yi is None
-                or self.previous_source_value_yi is None
-            ):
+            if self.current_source_value_yi is None or self.previous_source_value_yi is None:
                 raise ValueError("comparable metric requires current and previous source values")
-            if (
-                self.basis == "calendar_month_from_cumulative"
-                and self.two_month_prior_source_value_yi is None
-            ):
+            if self.basis == "calendar_month_from_cumulative" and self.two_month_prior_source_value_yi is None:
                 raise ValueError("comparable cumulative metric requires two-prior source value")
             if self.rate_reason not in {None, "zero_denominator"}:
                 raise ValueError("comparable metric has an invalid rate reason")
@@ -176,6 +173,146 @@ class CandidateFinancialIndicatorPeriodComparisonMetric(_StrictModel):
         return self
 
 
+class CandidateFinancialIndicatorNetInterestComponent(_StrictModel):
+    metric_id: str = Field(min_length=1)
+    metric_name: str = Field(min_length=1)
+    formula_weight: Literal[-1, 1]
+    current_metric_status: Literal["ok", "warning", "manual_default", "error", "missing"]
+    previous_metric_status: Literal["ok", "warning", "manual_default", "error", "missing"]
+    two_month_prior_metric_status: Literal["ok", "warning", "manual_default", "error", "missing"]
+    current_value_yi: DecimalString | None
+    previous_value_yi: DecimalString | None
+    current_source_value_yi: DecimalString | None
+    previous_source_value_yi: DecimalString | None
+    two_month_prior_source_value_yi: DecimalString | None
+    component_delta_yi: DecimalString | None
+    contribution_to_net_delta_yi: DecimalString | None
+    reasons: list[str]
+
+    @model_validator(mode="after")
+    def validate_component(
+        self,
+    ) -> CandidateFinancialIndicatorNetInterestComponent:
+        statuses = (
+            self.current_metric_status,
+            self.previous_metric_status,
+            self.two_month_prior_metric_status,
+        )
+        source_values = (
+            self.current_source_value_yi,
+            self.previous_source_value_yi,
+            self.two_month_prior_source_value_yi,
+        )
+        computed_values = (
+            self.current_value_yi,
+            self.previous_value_yi,
+            self.component_delta_yi,
+            self.contribution_to_net_delta_yi,
+        )
+        sources_are_evaluable = all(status == "ok" for status in statuses) and all(
+            value is not None for value in source_values
+        )
+        has_all_computed = all(value is not None for value in computed_values)
+        has_any_computed = any(value is not None for value in computed_values)
+        if has_any_computed != has_all_computed:
+            raise ValueError("component computed values must be all present or all null")
+        if has_all_computed:
+            if not sources_are_evaluable:
+                raise ValueError("computed component requires three evaluable sources")
+            if self.reasons:
+                raise ValueError("computed component cannot carry blocking reasons")
+            current_value = Decimal(self.current_value_yi)  # type: ignore[arg-type]
+            previous_value = Decimal(self.previous_value_yi)  # type: ignore[arg-type]
+            delta = Decimal(self.component_delta_yi)  # type: ignore[arg-type]
+            contribution = Decimal(
+                self.contribution_to_net_delta_yi  # type: ignore[arg-type]
+            )
+            if delta != current_value - previous_value:
+                raise ValueError("component delta must equal current minus previous")
+            if contribution != delta * Decimal(self.formula_weight):
+                raise ValueError("component contribution must apply the formula weight")
+        elif not self.reasons:
+            raise ValueError("non-evaluable component requires blocking reasons")
+        return self
+
+
+class CandidateFinancialIndicatorNetInterestComponentBridge(_StrictModel):
+    analysis_kind: Literal["accounting_component_bridge"]
+    status: Literal["available", "not_evaluable"]
+    metric_id: Literal["income.interest.net"]
+    basis: Literal["calendar_month_from_cumulative"]
+    method: Literal["finance_metric_component_contribution"]
+    unit: Literal["亿元"]
+    quality_status: Literal["standard_candidate", "degraded_candidate", "not_evaluable"]
+    foot_status: Literal["passed", "failed", "not_evaluable"]
+    net_delta_yi: DecimalString | None
+    component_contribution_total_yi: DecimalString | None
+    reconciliation_delta_yi: DecimalString | None
+    reasons: list[str]
+    components: list[CandidateFinancialIndicatorNetInterestComponent]
+
+    @model_validator(mode="after")
+    def validate_bridge(
+        self,
+    ) -> CandidateFinancialIndicatorNetInterestComponentBridge:
+        aggregate_values = (
+            self.net_delta_yi,
+            self.component_contribution_total_yi,
+            self.reconciliation_delta_yi,
+        )
+        has_all_aggregates = all(value is not None for value in aggregate_values)
+        has_any_aggregate = any(value is not None for value in aggregate_values)
+        if has_any_aggregate != has_all_aggregates:
+            raise ValueError("bridge aggregate values must be all present or all null")
+        all_components_computed = all(item.contribution_to_net_delta_yi is not None for item in self.components)
+        any_component_computed = any(item.contribution_to_net_delta_yi is not None for item in self.components)
+        if self.status == "available":
+            if self.foot_status != "passed":
+                raise ValueError("available bridge requires a passed foot")
+            if self.quality_status == "not_evaluable":
+                raise ValueError("available bridge requires candidate quality")
+            if not has_all_aggregates or not all_components_computed:
+                raise ValueError("available bridge requires complete Decimal values")
+            if self.reasons:
+                raise ValueError("available bridge cannot carry blocking reasons")
+        else:
+            if self.quality_status != "not_evaluable" or not self.reasons:
+                raise ValueError("not-evaluable bridge requires evidence and quality")
+            if self.foot_status == "passed":
+                raise ValueError("a passed foot cannot be marked not evaluable")
+            if self.foot_status == "not_evaluable":
+                if has_any_aggregate or any_component_computed:
+                    raise ValueError("non-evaluable foot must not expose partial results")
+                return self
+            if not has_all_aggregates or not all_components_computed:
+                raise ValueError("failed foot requires complete reconciliation evidence")
+
+        net_delta = Decimal(self.net_delta_yi)  # type: ignore[arg-type]
+        contribution_total = Decimal(
+            self.component_contribution_total_yi  # type: ignore[arg-type]
+        )
+        reconciliation_delta = Decimal(
+            self.reconciliation_delta_yi  # type: ignore[arg-type]
+        )
+        component_total = sum(
+            (
+                Decimal(item.contribution_to_net_delta_yi)
+                for item in self.components
+                if item.contribution_to_net_delta_yi is not None
+            ),
+            Decimal(0),
+        )
+        if contribution_total != component_total:
+            raise ValueError("bridge total must equal the four component contributions")
+        if reconciliation_delta != net_delta - contribution_total:
+            raise ValueError("bridge reconciliation must equal net delta minus total")
+        if self.foot_status == "passed" and reconciliation_delta != 0:
+            raise ValueError("passed foot requires exact unrounded Decimal equality")
+        if self.foot_status == "failed" and reconciliation_delta == 0:
+            raise ValueError("failed foot requires a non-zero reconciliation delta")
+        return self
+
+
 class CandidateFinancialIndicatorFullScopeGap(_StrictModel):
     reason_code: Literal[
         "missing_source_file",
@@ -190,17 +327,13 @@ class CandidateFinancialIndicatorFullScopeGap(_StrictModel):
 
     @model_validator(mode="after")
     def validate_gap(self) -> CandidateFinancialIndicatorFullScopeGap:
-        if (self.reason_code == "missing_required_sheet") != (
-            self.required_sheet is not None
-        ):
+        if (self.reason_code == "missing_required_sheet") != (self.required_sheet is not None):
             raise ValueError("required_sheet is exclusive to missing_required_sheet")
         return self
 
 
 class CandidateFinancialIndicatorPeriodComparisonEnvelope(_StrictModel):
-    contract_version: Literal[
-        "candidate-financial-indicator-period-comparison-v1"
-    ]
+    contract_version: Literal["candidate-financial-indicator-period-comparison-v2"]
     report_month: ReportMonth
     report_date: date
     comparison_month: ReportMonth
@@ -226,6 +359,7 @@ class CandidateFinancialIndicatorPeriodComparisonEnvelope(_StrictModel):
     rule_hash: Sha256String
     idempotency_key: Sha256String
     source_periods: list[CandidateFinancialIndicatorComparisonSourcePeriod]
+    net_interest_component_bridge: CandidateFinancialIndicatorNetInterestComponentBridge
     metrics: list[CandidateFinancialIndicatorPeriodComparisonMetric]
 
     @model_validator(mode="after")
@@ -243,28 +377,36 @@ class CandidateFinancialIndicatorPeriodComparisonEnvelope(_StrictModel):
         ]:
             raise ValueError("source_periods must contain the exact three months in order")
 
-        actual_metrics = [
-            (item.metric_id, item.basis, item.method) for item in self.metrics
-        ]
+        actual_metrics = [(item.metric_id, item.basis, item.method) for item in self.metrics]
         if actual_metrics != list(EXPECTED_METRICS):
             raise ValueError("metrics must match the fixed seven-item comparison contract")
         lock_statuses = [item.lock_status for item in self.source_periods]
         if "locked_mismatch" in lock_statuses:
             raise ValueError("locked source mismatches cannot enter the comparison envelope")
         expected_quality = (
-            "standard_candidate"
-            if all(status == "locked_match" for status in lock_statuses)
-            else "degraded_candidate"
+            "standard_candidate" if all(status == "locked_match" for status in lock_statuses) else "degraded_candidate"
         )
         if any(
-            item.comparison_status == "comparable"
-            and item.quality_status != expected_quality
-            for item in self.metrics
+            item.comparison_status == "comparable" and item.quality_status != expected_quality for item in self.metrics
         ):
             raise ValueError("comparable metric quality must match source lock evidence")
-        comparable_count = sum(
-            item.comparison_status == "comparable" for item in self.metrics
-        )
+        bridge = self.net_interest_component_bridge
+        expected_components = list(EXPECTED_NET_INTEREST_COMPONENTS)
+        actual_components = [(item.metric_id, item.metric_name, item.formula_weight) for item in bridge.components]
+        if actual_components != expected_components:
+            raise ValueError("net-interest bridge must match the fixed four components")
+        if bridge.status == "available" and bridge.quality_status != expected_quality:
+            raise ValueError("available bridge quality must match source lock evidence")
+        if bridge.status == "not_evaluable" and bridge.quality_status != "not_evaluable":
+            raise ValueError("not-evaluable bridge cannot claim candidate quality")
+        net_metric = next(item for item in self.metrics if item.metric_id == "income.interest.net")
+        if bridge.net_delta_yi is not None:
+            if net_metric.delta_yi is None or Decimal(bridge.net_delta_yi) != Decimal(net_metric.delta_yi):
+                raise ValueError("bridge net delta must equal the outer net-interest delta")
+        if bridge.status == "available" and net_metric.comparison_status != "comparable":
+            raise ValueError("available bridge requires comparable outer net interest")
+        self._validate_bridge_calendar_month_values()
+        comparable_count = sum(item.comparison_status == "comparable" for item in self.metrics)
         expected_status = (
             "available"
             if comparable_count == len(EXPECTED_METRICS)
@@ -281,13 +423,36 @@ class CandidateFinancialIndicatorPeriodComparisonEnvelope(_StrictModel):
             self.full_scope_reason_code == "available"
             or not self.full_scope_gaps
             or any(item.month != self.comparison_month for item in self.full_scope_gaps)
-            or any(
-                item.reason_code != self.full_scope_reason_code
-                for item in self.full_scope_gaps
-            )
+            or any(item.reason_code != self.full_scope_reason_code for item in self.full_scope_gaps)
         ):
             raise ValueError("unavailable full scope requires controlled previous-month gaps")
         return self
+
+    def _validate_bridge_calendar_month_values(self) -> None:
+        month = int(self.report_month[4:])
+        for component in self.net_interest_component_bridge.components:
+            if component.current_value_yi is None:
+                continue
+            assert component.current_source_value_yi is not None
+            assert component.previous_source_value_yi is not None
+            assert component.two_month_prior_source_value_yi is not None
+            current_source = Decimal(component.current_source_value_yi)
+            previous_source = Decimal(component.previous_source_value_yi)
+            two_month_prior_source = Decimal(component.two_month_prior_source_value_yi)
+            if month == 1:
+                expected_current = current_source
+                expected_previous = previous_source - two_month_prior_source
+            elif month == 2:
+                expected_current = current_source - previous_source
+                expected_previous = previous_source
+            else:
+                expected_current = current_source - previous_source
+                expected_previous = previous_source - two_month_prior_source
+            if Decimal(component.current_value_yi) != expected_current:
+                raise ValueError("component current month must derive from cumulative sources")
+            assert component.previous_value_yi is not None
+            if Decimal(component.previous_value_yi) != expected_previous:
+                raise ValueError("component previous month must derive from cumulative sources")
 
 
 def _month_end(report_month: str) -> date:

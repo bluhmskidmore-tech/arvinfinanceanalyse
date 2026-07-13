@@ -31,15 +31,17 @@ def _payload() -> dict[str, object]:
             {
                 "metric_id": metric_id,
                 "metric_name": metric_id,
-                "basis": "calendar_month_from_cumulative" if cumulative else "month_end_point",
-                "method": "finance_metric_cumulative_mom" if cumulative else "finance_metric_point_to_point",
+                "basis": "calendar_month_from_cumulative"
+                if cumulative
+                else "month_end_point",
+                "method": "finance_metric_cumulative_mom"
+                if cumulative
+                else "finance_metric_point_to_point",
                 "unit": "亿元",
                 "comparison_status": "comparable" if comparable else "not_comparable",
                 "current_metric_status": "ok" if comparable else "warning",
                 "previous_metric_status": "ok" if comparable else "warning",
-                "two_month_prior_metric_status": (
-                    "ok" if comparable else "warning"
-                )
+                "two_month_prior_metric_status": ("ok" if comparable else "warning")
                 if cumulative
                 else None,
                 "current_value_yi": "3" if comparable else None,
@@ -52,11 +54,79 @@ def _payload() -> dict[str, object]:
                 "rate_reason": None if comparable else "metric_status_not_ok",
                 "reasons": [] if comparable else ["warning source metric"],
                 "driver_status": "unclear",
-                "quality_status": "degraded_candidate" if comparable else "not_comparable",
+                "quality_status": "degraded_candidate"
+                if comparable
+                else "not_comparable",
             }
         )
+    bridge_components = [
+        {
+            "metric_id": "income.interest.loan.total",
+            "metric_name": "贷款利息收入",
+            "formula_weight": 1,
+            "current_metric_status": "ok",
+            "previous_metric_status": "ok",
+            "two_month_prior_metric_status": "ok",
+            "current_value_yi": "3",
+            "previous_value_yi": "2",
+            "current_source_value_yi": "10",
+            "previous_source_value_yi": "7",
+            "two_month_prior_source_value_yi": "5",
+            "component_delta_yi": "1",
+            "contribution_to_net_delta_yi": "1",
+            "reasons": [],
+        },
+        {
+            "metric_id": "expense.interest.deposit.total",
+            "metric_name": "存款利息支出",
+            "formula_weight": -1,
+            "current_metric_status": "ok",
+            "previous_metric_status": "ok",
+            "two_month_prior_metric_status": "ok",
+            "current_value_yi": "1",
+            "previous_value_yi": "1",
+            "current_source_value_yi": "3",
+            "previous_source_value_yi": "2",
+            "two_month_prior_source_value_yi": "1",
+            "component_delta_yi": "0",
+            "contribution_to_net_delta_yi": "0",
+            "reasons": [],
+        },
+        {
+            "metric_id": "income.interest.investment",
+            "metric_name": "金融投资利息收入",
+            "formula_weight": 1,
+            "current_metric_status": "ok",
+            "previous_metric_status": "ok",
+            "two_month_prior_metric_status": "ok",
+            "current_value_yi": "2",
+            "previous_value_yi": "2",
+            "current_source_value_yi": "6",
+            "previous_source_value_yi": "4",
+            "two_month_prior_source_value_yi": "2",
+            "component_delta_yi": "0",
+            "contribution_to_net_delta_yi": "0",
+            "reasons": [],
+        },
+        {
+            "metric_id": "income.interest.interbank_net",
+            "metric_name": "同业资产负债利息净收入",
+            "formula_weight": 1,
+            "current_metric_status": "ok",
+            "previous_metric_status": "ok",
+            "two_month_prior_metric_status": "ok",
+            "current_value_yi": "1",
+            "previous_value_yi": "1",
+            "current_source_value_yi": "3",
+            "previous_source_value_yi": "2",
+            "two_month_prior_source_value_yi": "1",
+            "component_delta_yi": "0",
+            "contribution_to_net_delta_yi": "0",
+            "reasons": [],
+        },
+    ]
     return {
-        "contract_version": "candidate-financial-indicator-period-comparison-v1",
+        "contract_version": "candidate-financial-indicator-period-comparison-v2",
         "report_month": "202606",
         "report_date": "2026-06-30",
         "comparison_month": "202605",
@@ -99,17 +169,37 @@ def _payload() -> dict[str, object]:
                 start=1,
             )
         ],
+        "net_interest_component_bridge": {
+            "analysis_kind": "accounting_component_bridge",
+            "status": "available",
+            "metric_id": "income.interest.net",
+            "basis": "calendar_month_from_cumulative",
+            "method": "finance_metric_component_contribution",
+            "unit": "亿元",
+            "quality_status": "degraded_candidate",
+            "foot_status": "passed",
+            "net_delta_yi": "1",
+            "component_contribution_total_yi": "1",
+            "reconciliation_delta_yi": "0",
+            "reasons": [],
+            "components": bridge_components,
+        },
         "metrics": metrics,
     }
 
 
 def test_period_comparison_schema_serializes_decimal_fields_as_strings() -> None:
-    envelope = CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(_payload())
+    envelope = CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(
+        _payload()
+    )
 
     dumped = envelope.model_dump(mode="json")
 
     assert dumped["metrics"][0]["current_value_yi"] == "3"
     assert dumped["metrics"][0]["change_rate"] == "0.5"
+    bridge = dumped["net_interest_component_bridge"]
+    assert bridge["components"][1]["formula_weight"] == -1
+    assert bridge["reconciliation_delta_yi"] == "0"
 
 
 @pytest.mark.parametrize("mutation", ["extra", "order", "basis", "null_incoherent"])
@@ -181,6 +271,150 @@ def test_period_comparison_schema_rejects_incoherent_source_values(
         metrics[0]["two_month_prior_source_value_yi"] = None
     else:
         metrics[3]["two_month_prior_source_value_yi"] = "1"
+
+    with pytest.raises(ValidationError):
+        CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "legacy_contract_version",
+        "component_order",
+        "component_weight",
+        "component_delta",
+        "component_contribution",
+        "bridge_total",
+        "bridge_reconciliation",
+        "bridge_outer_net_delta",
+        "bridge_lock_quality",
+    ],
+)
+def test_period_comparison_schema_rejects_net_interest_bridge_drift(
+    mutation: str,
+) -> None:
+    payload = deepcopy(_payload())
+    bridge = payload["net_interest_component_bridge"]
+    assert isinstance(bridge, dict)
+    components = bridge["components"]
+    assert isinstance(components, list)
+    if mutation == "legacy_contract_version":
+        payload["contract_version"] = (
+            "candidate-financial-indicator-period-comparison-v1"
+        )
+    elif mutation == "component_order":
+        components[0], components[1] = components[1], components[0]
+    elif mutation == "component_weight":
+        components[1]["formula_weight"] = 1
+    elif mutation == "component_delta":
+        components[0]["component_delta_yi"] = "2"
+    elif mutation == "component_contribution":
+        components[1]["contribution_to_net_delta_yi"] = "1"
+    elif mutation == "bridge_total":
+        bridge["component_contribution_total_yi"] = "2"
+    elif mutation == "bridge_reconciliation":
+        bridge["reconciliation_delta_yi"] = "0.1"
+    elif mutation == "bridge_outer_net_delta":
+        bridge["net_delta_yi"] = "2"
+    else:
+        bridge["quality_status"] = "standard_candidate"
+
+    with pytest.raises(ValidationError):
+        CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(payload)
+
+
+def test_period_comparison_schema_accepts_failed_foot_only_as_not_evaluable() -> None:
+    payload = deepcopy(_payload())
+    bridge = payload["net_interest_component_bridge"]
+    assert isinstance(bridge, dict)
+    bridge.update(
+        {
+            "status": "not_evaluable",
+            "quality_status": "not_evaluable",
+            "foot_status": "failed",
+            "net_delta_yi": "2",
+            "component_contribution_total_yi": "1",
+            "reconciliation_delta_yi": "1",
+            "reasons": ["net_interest_component_reconciliation_failed"],
+        }
+    )
+    metrics = payload["metrics"]
+    assert isinstance(metrics, list)
+    metrics[0]["delta_yi"] = "2"
+    metrics[0]["current_value_yi"] = "4"
+    metrics[0]["current_source_value_yi"] = "11"
+    metrics[0]["change_rate"] = "1"
+
+    envelope = CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(
+        payload
+    )
+
+    assert envelope.net_interest_component_bridge.foot_status == "failed"
+    assert envelope.net_interest_component_bridge.status == "not_evaluable"
+
+
+def test_period_comparison_schema_accepts_all_or_nothing_not_evaluable_bridge() -> None:
+    payload = deepcopy(_payload())
+    bridge = payload["net_interest_component_bridge"]
+    assert isinstance(bridge, dict)
+    bridge.update(
+        {
+            "status": "not_evaluable",
+            "quality_status": "not_evaluable",
+            "foot_status": "not_evaluable",
+            "net_delta_yi": None,
+            "component_contribution_total_yi": None,
+            "reconciliation_delta_yi": None,
+            "reasons": ["component_metric_status_not_ok"],
+        }
+    )
+    components = bridge["components"]
+    assert isinstance(components, list)
+    for component in components:
+        component["current_value_yi"] = None
+        component["previous_value_yi"] = None
+        component["component_delta_yi"] = None
+        component["contribution_to_net_delta_yi"] = None
+        component["reasons"] = ["bridge_not_evaluable"]
+    components[1]["current_metric_status"] = "warning"
+
+    envelope = CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(
+        payload
+    )
+
+    assert envelope.net_interest_component_bridge.status == "not_evaluable"
+    assert all(
+        component.contribution_to_net_delta_yi is None
+        for component in envelope.net_interest_component_bridge.components
+    )
+
+
+def test_period_comparison_schema_rejects_partial_not_evaluable_bridge_results() -> (
+    None
+):
+    payload = deepcopy(_payload())
+    bridge = payload["net_interest_component_bridge"]
+    assert isinstance(bridge, dict)
+    bridge.update(
+        {
+            "status": "not_evaluable",
+            "quality_status": "not_evaluable",
+            "foot_status": "not_evaluable",
+            "net_delta_yi": None,
+            "component_contribution_total_yi": None,
+            "reconciliation_delta_yi": None,
+            "reasons": ["component_metric_status_not_ok"],
+        }
+    )
+    components = bridge["components"]
+    assert isinstance(components, list)
+    for component in components[1:]:
+        component["current_value_yi"] = None
+        component["previous_value_yi"] = None
+        component["component_delta_yi"] = None
+        component["contribution_to_net_delta_yi"] = None
+        component["reasons"] = ["bridge_not_evaluable"]
+    components[1]["current_metric_status"] = "warning"
 
     with pytest.raises(ValidationError):
         CandidateFinancialIndicatorPeriodComparisonEnvelope.model_validate(payload)

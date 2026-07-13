@@ -18,6 +18,69 @@ function renderComparison(client: ApiClient, reportMonth = "202606") {
 }
 
 describe("LedgerPnlCandidatePeriodComparison", () => {
+  it("renders the four-item backend net-interest bridge before the seven metrics", async () => {
+    const client = createApiClient({ mode: "mock" });
+    renderComparison(client);
+
+    const bridge = await screen.findByRole("region", { name: "净利息收入算术贡献" });
+    const metricsTable = screen.getByRole("table", { name: "候选财务指标跨期变化明细" });
+    expect(
+      bridge.compareDocumentPosition(metricsTable) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(bridge).getByText("净息变动 +2.5000 亿元")).toBeInTheDocument();
+    expect(within(bridge).getByText("勾稽通过")).toBeInTheDocument();
+    expect(within(bridge).getAllByRole("row")).toHaveLength(5);
+    const loanRow = within(bridge).getByRole("row", { name: /贷款利息收入/ });
+    expect(within(loanRow).getByText("11.0000")).toBeInTheDocument();
+    expect(within(loanRow).getByText("10.0000")).toBeInTheDocument();
+    expect(within(loanRow).getAllByText("+1.0000")).toHaveLength(2);
+    const depositRow = within(bridge).getByRole("row", { name: /存款利息支出/ });
+    expect(within(depositRow).getByText("6.0000")).toBeInTheDocument();
+    expect(within(depositRow).getByText("5.5000")).toBeInTheDocument();
+    expect(within(depositRow).getByText("+0.5000")).toBeInTheDocument();
+    expect(within(depositRow).getByText("−0.5000")).toBeInTheDocument();
+    expect(within(bridge).getByText(
+      "后端按固定公式生成的算术贡献，不代表规模、利率或业务原因归因。",
+    )).toBeInTheDocument();
+    expect(within(bridge).queryByText(/息差原因|利好|利空/)).not.toBeInTheDocument();
+  });
+
+  it("shows a quiet bridge-unavailable message while keeping the seven metrics", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const response = await baseClient.getLedgerPnlCandidateFinancialIndicatorPeriodComparison("202606");
+    const bridge = response.net_interest_component_bridge;
+    const client: ApiClient = {
+      ...baseClient,
+      getLedgerPnlCandidateFinancialIndicatorPeriodComparison: vi.fn(async () => ({
+        ...response,
+        net_interest_component_bridge: {
+          ...bridge,
+          status: "not_evaluable" as const,
+          quality_status: "not_evaluable" as const,
+          foot_status: "not_evaluable" as const,
+          net_delta_yi: null,
+          component_contribution_total_yi: null,
+          reconciliation_delta_yi: null,
+          reasons: ["component_metric_status_not_ok"],
+          components: bridge.components.map((component) => ({
+            ...component,
+            current_value_yi: null,
+            previous_value_yi: null,
+            component_delta_yi: null,
+            contribution_to_net_delta_yi: null,
+            reasons: ["metric_status_not_ok"],
+          })),
+        },
+      })),
+    };
+
+    renderComparison(client);
+
+    expect(await screen.findByText("净利息收入算术贡献暂不可用")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "净利息收入四项算术贡献" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "候选财务指标跨期变化明细" })).toBeInTheDocument();
+  });
+
   it("leads with the comparable conclusion and preserves the candidate boundary", async () => {
     const client = createApiClient({ mode: "mock" });
     renderComparison(client);
@@ -38,7 +101,10 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
     expect(within(region).getByText("202605 · 日均源")).toBeInTheDocument();
     expect(within(region).getByText("缺少工作表：微贷")).toBeInTheDocument();
 
-    const interestRow = within(region).getByRole("row", { name: /利息净收入/ });
+    const metricsTable = within(region).getByRole("table", {
+      name: "候选财务指标跨期变化明细",
+    });
+    const interestRow = within(metricsTable).getByRole("row", { name: /利息净收入/ });
     expect(within(interestRow).getByText("自然月单月环比")).toBeInTheDocument();
     expect(within(interestRow).getByText("+2.5000")).toBeInTheDocument();
     expect(within(interestRow).getByText("+25.00%")).toBeInTheDocument();
@@ -155,6 +221,24 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
     const unavailable = {
       ...response,
       overall_status: "unavailable" as const,
+      net_interest_component_bridge: {
+        ...response.net_interest_component_bridge,
+        status: "not_evaluable" as const,
+        quality_status: "not_evaluable" as const,
+        foot_status: "not_evaluable" as const,
+        net_delta_yi: null,
+        component_contribution_total_yi: null,
+        reconciliation_delta_yi: null,
+        reasons: ["net_interest_comparison_not_evaluable"],
+        components: response.net_interest_component_bridge.components.map((component) => ({
+          ...component,
+          current_value_yi: null,
+          previous_value_yi: null,
+          component_delta_yi: null,
+          contribution_to_net_delta_yi: null,
+          reasons: ["bridge_not_evaluable"],
+        })),
+      },
       metrics: response.metrics.map((metric) => ({
         ...metric,
         comparison_status: "not_comparable" as const,
@@ -188,7 +272,10 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
     expect(within(region).getAllByText(
       "连续月份指标状态未通过，跨期结果暂不可比。",
     )).toHaveLength(7);
-    const dataRows = within(region).getAllByRole("row").slice(1);
+    const metricsTable = within(region).getByRole("table", {
+      name: "候选财务指标跨期变化明细",
+    });
+    const dataRows = within(metricsTable).getAllByRole("row").slice(1);
     expect(dataRows).toHaveLength(7);
     for (const row of dataRows) {
       expect(within(row).getAllByText("--")).toHaveLength(4);
