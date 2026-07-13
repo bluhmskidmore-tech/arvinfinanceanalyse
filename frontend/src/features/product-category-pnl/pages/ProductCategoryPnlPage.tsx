@@ -4801,6 +4801,8 @@ export default function ProductCategoryPnlPage() {
     baseline,
     meta: baselineQuery.data?.result_meta,
   });
+  const canRenderBaselineDerivedAnalysis =
+    Boolean(baseline) && (dataHealth.state === "ready" || dataHealth.state === "degraded");
   const formalScenarioDistinct =
     baselineQuery.data?.result_meta && scenarioQuery.data?.result_meta
       ? formatProductCategoryDualMetaDistinctLine(
@@ -4810,7 +4812,7 @@ export default function ProductCategoryPnlPage() {
       : null;
 
   const reportExtra =
-    baseline && !baselineQuery.isError ? (
+    canRenderBaselineDerivedAnalysis ? (
       <div
         data-testid="product-category-summary"
         className="product-category-summary"
@@ -4958,7 +4960,7 @@ export default function ProductCategoryPnlPage() {
         </div>
       </PageDecisionHero>
 
-      {baseline && !baselineQuery.isError ? (
+      {canRenderBaselineDerivedAnalysis ? (
         <ProductCategoryFormalReadinessBand
           reportDate={selectedDate}
           selectedView={selectedView}
@@ -5258,30 +5260,32 @@ export default function ProductCategoryPnlPage() {
         data-testid="product-category-attribution-workbench"
         id="product-category-attribution"
       >
-        <ProductCategoryAttributionPanel
-          selectedView={selectedView}
-          compare={attributionCompare}
-          payload={attributionQuery.data?.result}
-          resultMeta={attributionQuery.data?.result_meta}
-          isLoading={attributionQuery.isLoading}
-          isError={attributionQuery.isError}
-          detailsOpen={attributionDetailsOpen}
-          detailsRef={attributionDetailsRef}
-          selectedDetailCategoryId={selectedAttributionDetailCategoryId}
-          onCompareChange={setAttributionCompare}
-          onDetailsOpenChange={setAttributionDetailsOpen}
-          onLocateFormalRow={handleLocateFormalRow}
-          onSelectDetailCategory={handleAttributionDetailSelection}
-          onRetry={() => void attributionQuery.refetch()}
-        />
-        {!baselineQuery.isError &&
-        selectedView === "monthly" &&
-        attributionQuery.data?.result.state === "complete" ? (
-          <ProductCategoryAttributionBridge
-            waterfall={attributionWaterfallSurface}
-            rootCause={rootCauseSurface}
-            onOpenDetails={handleLocateFormalRow}
-          />
+        {canRenderBaselineDerivedAnalysis ? (
+          <>
+            <ProductCategoryAttributionPanel
+              selectedView={selectedView}
+              compare={attributionCompare}
+              payload={attributionQuery.data?.result}
+              resultMeta={attributionQuery.data?.result_meta}
+              isLoading={attributionQuery.isLoading}
+              isError={attributionQuery.isError}
+              detailsOpen={attributionDetailsOpen}
+              detailsRef={attributionDetailsRef}
+              selectedDetailCategoryId={selectedAttributionDetailCategoryId}
+              onCompareChange={setAttributionCompare}
+              onDetailsOpenChange={setAttributionDetailsOpen}
+              onLocateFormalRow={handleLocateFormalRow}
+              onSelectDetailCategory={handleAttributionDetailSelection}
+              onRetry={() => void attributionQuery.refetch()}
+            />
+            {selectedView === "monthly" && attributionQuery.data?.result.state === "complete" ? (
+              <ProductCategoryAttributionBridge
+                waterfall={attributionWaterfallSurface}
+                rootCause={rootCauseSurface}
+                onOpenDetails={handleLocateFormalRow}
+              />
+            ) : null}
+          </>
         ) : null}
       </section>
 
@@ -5394,7 +5398,7 @@ export default function ProductCategoryPnlPage() {
         </div>
       </details>
 
-      {!baselineQuery.isError ? (
+      {canRenderBaselineDerivedAnalysis ? (
         <details
           className="product-category-secondary-workspace"
           data-testid="product-category-financial-workspace"
@@ -5433,7 +5437,7 @@ export default function ProductCategoryPnlPage() {
       ) : null}
 
       <span id="product-category-products" className="product-category-section-anchor" aria-hidden="true" />
-      {!baselineQuery.isError ? (
+      {canRenderBaselineDerivedAnalysis ? (
         <details
           className="product-category-secondary-workspace"
           data-testid="product-category-operating-workspace"
@@ -5447,7 +5451,7 @@ export default function ProductCategoryPnlPage() {
           />
         </details>
       ) : null}
-      {!baselineQuery.isError ? (
+      {canRenderBaselineDerivedAnalysis ? (
         <details
           className="product-category-secondary-workspace"
           data-testid="product-category-backtest-workspace"
@@ -5788,7 +5792,7 @@ export default function ProductCategoryPnlPage() {
         />
       </details>
 
-      {displayedGrandTotal && !baselineQuery.isError ? (
+      {displayedGrandTotal && canRenderBaselineDerivedAnalysis ? (
         <div
           data-testid="product-category-footer-total"
           className="product-category-footer-total"
@@ -5798,7 +5802,7 @@ export default function ProductCategoryPnlPage() {
       ) : null}
 
       <span id="product-category-liabilities" className="product-category-section-anchor" aria-hidden="true" />
-      {!baselineQuery.isError && hasDiagnosticsSurface ? (
+      {canRenderBaselineDerivedAnalysis && hasDiagnosticsSurface ? (
         <details
           className="product-category-secondary-workspace product-category-secondary-workspace--diagnostics"
           data-testid="product-category-diagnostics-workspace"

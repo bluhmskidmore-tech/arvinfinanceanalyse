@@ -910,6 +910,14 @@ describe("ProductCategoryPnlPage", () => {
     expect(within(health).getByTestId("product-category-formal-judgement-status")).toHaveTextContent(
       "正式判断阻断",
     );
+    expect(screen.queryByTestId("product-category-formal-readiness-band")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-attribution")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-financial-workspace")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-operating-workspace")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-backtest-workspace")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-footer-total")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-diagnostics-workspace")).not.toBeInTheDocument();
     expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
   });
 
@@ -3382,6 +3390,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(within(health).getByTestId("product-category-formal-judgement-status")).toHaveTextContent(
       "正式判断阻断",
     );
+    expect(screen.getByTestId("product-category-formal-readiness-band")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-attribution")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-footer-total")).toBeInTheDocument();
     expect(health).not.toHaveTextContent("回退日期");
   });
 
