@@ -4,6 +4,9 @@ from importlib import import_module
 from typing import Annotated, Literal
 
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.candidate_financial_indicator_component_detail import (
+    CandidateFinancialIndicatorComponentDetailEnvelope,
+)
 from backend.app.schemas.candidate_financial_indicator_period_comparison import (
     CandidateFinancialIndicatorPeriodComparisonEnvelope,
 )
@@ -316,6 +319,43 @@ def candidate_financial_indicator_period_comparison(
         return service.candidate_financial_indicator_period_comparison_envelope(
             source_dir=str(settings.product_category_source_dir),
             report_month=_validated_report_month(report_month),
+        )
+    except service.CandidateFinancialIndicatorPeriodComparisonRequestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
+    response_model=CandidateFinancialIndicatorComponentDetailEnvelope,
+)
+def candidate_financial_indicator_component_detail(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_month: str = Query(
+        ...,
+        pattern=_REPORT_MONTH_PATTERN,
+        description="报告月份 YYYYMM",
+    ),
+    metric_id: Literal[
+        "income.interest.loan.total",
+        "expense.interest.deposit.total",
+        "income.interest.investment",
+        "income.interest.interbank_net",
+    ] = Query(..., description="固定净息构成指标 ID"),
+    parent_idempotency_key: str = Query(
+        ...,
+        pattern=r"^[0-9a-f]{64}$",
+        description="页面当前 period-comparison 幂等键",
+    ),
+) -> dict[str, object]:
+    _ensure_ledger_pnl_read_allowed(auth)
+    settings = get_settings()
+    service = _period_comparison_svc()
+    try:
+        return service.candidate_financial_indicator_component_detail_envelope(
+            source_dir=str(settings.product_category_source_dir),
+            report_month=_validated_report_month(report_month),
+            metric_id=metric_id,
+            parent_idempotency_key=parent_idempotency_key,
         )
     except service.CandidateFinancialIndicatorPeriodComparisonRequestError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

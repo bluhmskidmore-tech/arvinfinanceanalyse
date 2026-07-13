@@ -7,6 +7,38 @@ import { createApiClient, type ApiClient } from "../api/client";
 import { LedgerPnlCandidateFinancialIndicatorsPanel } from "../features/ledger-pnl/components/LedgerPnlCandidateFinancialIndicatorsPanel";
 import { LedgerPnlCandidatePeriodComparison } from "../features/ledger-pnl/components/LedgerPnlCandidatePeriodComparison";
 
+vi.mock("antd", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("antd")>();
+  return {
+    ...actual,
+    Drawer: ({
+      open,
+      onClose,
+      afterOpenChange,
+      title,
+      children,
+    }: {
+      open?: boolean;
+      onClose?: () => void;
+      afterOpenChange?: (open: boolean) => void;
+      title?: import("react").ReactNode;
+      children?: import("react").ReactNode;
+    }) => (
+      <>
+        {open ? (
+          <div role="dialog" aria-label={typeof title === "string" ? title : undefined}>
+            {children}
+            <button type="button" onClick={onClose}>模拟 Escape 关闭</button>
+          </div>
+        ) : null}
+        <button type="button" onClick={() => afterOpenChange?.(false)}>
+          完成 Drawer 关闭
+        </button>
+      </>
+    ),
+  };
+});
+
 function renderComparison(client: ApiClient, reportMonth = "202606") {
   return render(
     <AppProviders client={client}>
@@ -45,6 +77,68 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
     expect(within(bridge).queryByText(/息差原因|利好|利空/)).not.toBeInTheDocument();
   });
 
+  it("opens the selected contribution detail from four accessible row-header buttons", async () => {
+    const user = userEvent.setup();
+    const client = createApiClient({ mode: "mock" });
+    const detailRead = vi.spyOn(client, "getLedgerPnlCandidateFinancialIndicatorComponentDetail");
+    renderComparison(client);
+
+    const triggers = await screen.findAllByRole("button", { name: /^查看贡献项穿透 / });
+    expect(triggers).toHaveLength(4);
+    for (const trigger of triggers) {
+      expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+    }
+    const investmentTrigger = screen.getByRole("button", {
+      name: "查看贡献项穿透 金融投资利息收入",
+    });
+    await user.click(investmentTrigger);
+
+    expect(investmentTrigger).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByRole("dialog", { name: "净息贡献项科目穿透" })).toBeInTheDocument();
+    await waitFor(() => expect(detailRead).toHaveBeenCalledWith(
+      "202606",
+      "income.interest.investment",
+      expect.any(String),
+      { signal: expect.any(AbortSignal) },
+    ));
+    await user.click(screen.getByRole("button", { name: "模拟 Escape 关闭" }));
+    expect(investmentTrigger).not.toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "完成 Drawer 关闭" }));
+    await waitFor(() => expect(investmentTrigger).toHaveFocus());
+  });
+
+  it("closes and aborts detail when the report month changes", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    let detailSignal: AbortSignal | undefined;
+    const client: ApiClient = {
+      ...baseClient,
+      getLedgerPnlCandidateFinancialIndicatorComponentDetail: vi.fn(
+        (_month, _metric, _parent, options) => {
+          detailSignal = options?.signal;
+          return new Promise<never>(() => undefined);
+        },
+      ),
+    };
+    const view = renderComparison(client);
+    const trigger = await screen.findByRole("button", {
+      name: "查看贡献项穿透 金融投资利息收入",
+    });
+    await user.click(trigger);
+    await waitFor(() => expect(detailSignal).toBeDefined());
+    expect(detailSignal?.aborted).toBe(false);
+
+    view.rerender(
+      <AppProviders client={client}>
+        <LedgerPnlCandidatePeriodComparison reportMonth="202607" />
+      </AppProviders>,
+    );
+
+    await waitFor(() => expect(detailSignal?.aborted).toBe(true));
+    expect(screen.queryByRole("dialog", { name: "净息贡献项科目穿透" })).not.toBeInTheDocument();
+  });
+
   it("shows a quiet bridge-unavailable message while keeping the seven metrics", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const response = await baseClient.getLedgerPnlCandidateFinancialIndicatorPeriodComparison("202606");
@@ -78,6 +172,7 @@ describe("LedgerPnlCandidatePeriodComparison", () => {
 
     expect(await screen.findByText("净利息收入算术贡献暂不可用")).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "净利息收入四项算术贡献" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^查看贡献项穿透 / })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "候选财务指标跨期变化明细" })).toBeInTheDocument();
   });
 

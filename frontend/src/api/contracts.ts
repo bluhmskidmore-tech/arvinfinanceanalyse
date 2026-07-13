@@ -5939,6 +5939,92 @@ export type LedgerPnlCandidateFinancialIndicatorPeriodComparison = {
   metrics: LedgerPnlCandidateFinancialIndicatorPeriodComparisonMetric[];
 };
 
+export type LedgerPnlCandidateFinancialIndicatorComponentMetricId =
+  | "income.interest.loan.total"
+  | "expense.interest.deposit.total"
+  | "income.interest.investment"
+  | "income.interest.interbank_net";
+
+export type LedgerPnlCandidateFinancialIndicatorComponentMatchedTerm = {
+  source: "ledger";
+  level: "l1" | "l2" | "l3" | "full";
+  code: string;
+  weight: string;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorComponentSourceEvidence = {
+  month: string;
+  report_date: string;
+  ledger_file_name: string;
+  ledger_sha256: string;
+  locked_sha256: string | null;
+  lock_status: "locked_match" | "unlocked";
+  sheet: "综本";
+  row: number;
+  account_code_cell: string;
+  ending_cell: string;
+  ending_yuan: string;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorComponentDetailRow = {
+  row_status: "contributing" | "excluded_offset";
+  account_code: string;
+  account_name: string;
+  currency: "CNX";
+  effective_component_weight: string;
+  effective_net_weight: string;
+  matched_terms: LedgerPnlCandidateFinancialIndicatorComponentMatchedTerm[];
+  current_ending_yuan: string;
+  previous_ending_yuan: string;
+  two_month_prior_ending_yuan: string;
+  current_value_yi: string;
+  previous_value_yi: string;
+  component_delta_yi: string;
+  contribution_to_net_delta_yi: string;
+  source_evidence: LedgerPnlCandidateFinancialIndicatorComponentSourceEvidence[];
+};
+
+export type LedgerPnlCandidateFinancialIndicatorComponentDetail = {
+  contract_version: "candidate-financial-indicator-component-detail-v1";
+  analysis_kind: "accounting_component_account_detail";
+  report_month: string;
+  report_date: string;
+  comparison_month: string;
+  two_month_prior: string;
+  metric_id: LedgerPnlCandidateFinancialIndicatorComponentMetricId;
+  metric_name: string;
+  formula_weight: -1 | 1;
+  currency: "CNX";
+  basis: "calendar_month_from_cumulative";
+  method: "finance_metric_account_contribution";
+  unit: "亿元";
+  status: "available" | "not_evaluable" | "stale_parent";
+  quality_status: "standard_candidate" | "degraded_candidate" | "not_evaluable";
+  foot_status: "passed" | "failed" | "not_evaluable";
+  formal_use_allowed: false;
+  certification_effect: "none";
+  driver_status: "unclear";
+  rule_version: "qdb-finance-2026-v1.0.1";
+  rule_hash: string;
+  parent_idempotency_key: string;
+  idempotency_key: string;
+  source_periods: LedgerPnlCandidateFinancialIndicatorComparisonSourcePeriod[];
+  parent_current_value_yi: string | null;
+  parent_previous_value_yi: string | null;
+  parent_component_delta_yi: string | null;
+  parent_contribution_to_net_delta_yi: string | null;
+  account_current_total_yi: string | null;
+  account_previous_total_yi: string | null;
+  account_component_delta_total_yi: string | null;
+  account_contribution_total_yi: string | null;
+  current_reconciliation_yi: string | null;
+  previous_reconciliation_yi: string | null;
+  component_delta_reconciliation_yi: string | null;
+  contribution_reconciliation_yi: string | null;
+  reasons: string[];
+  rows: LedgerPnlCandidateFinancialIndicatorComponentDetailRow[];
+};
+
 export type LedgerPnlFormalFinancialIndicatorMetric = {
   metric_key: string;
   metric_name: string;

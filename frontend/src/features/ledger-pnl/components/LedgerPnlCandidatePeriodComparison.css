@@ -214,6 +214,29 @@
   white-space: nowrap;
 }
 
+.candidate-period-comparison__interest-bridge-trigger {
+  display: inline;
+  width: fit-content;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.candidate-period-comparison__interest-bridge-trigger:hover,
+.candidate-period-comparison__interest-bridge-trigger:focus-visible,
+.candidate-period-comparison__interest-bridge-trigger[aria-expanded="true"] {
+  color: var(--candidate-navy, var(--moss-color-primary-900, #102a43));
+  outline: 2px solid var(--moss-color-info-200, #b8d8ea);
+  outline-offset: 2px;
+}
+
 .candidate-period-comparison .candidate-period-comparison__interest-bridge tbody td:last-child {
   display: table-cell;
   color: var(--candidate-blue, var(--moss-color-primary-700, #22577a));

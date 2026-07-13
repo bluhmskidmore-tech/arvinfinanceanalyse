@@ -9,6 +9,8 @@ import type {
   LedgerPnlAccountDetailPayload,
   LedgerPnlAnalysisPayload,
   LedgerPnlCandidateFinancialIndicatorLineage,
+  LedgerPnlCandidateFinancialIndicatorComponentDetail,
+  LedgerPnlCandidateFinancialIndicatorComponentMetricId,
   LedgerPnlCandidateFinancialIndicatorPeriodComparison,
   LedgerPnlCandidateFinancialIndicatorsPayload,
   LedgerPnlCandidateFinancialIndicatorsResultMeta,
@@ -2369,6 +2371,23 @@ function syntheticComparisonSha(reportMonth: string, salt: string): string {
   return `${reportMonth}${salt}`.padEnd(64, salt).slice(0, 64);
 }
 
+function syntheticComponentDetailSha(
+  reportMonth: string,
+  metricId: string,
+  parentIdempotencyKey: string,
+): string {
+  const input = `${reportMonth}|${metricId}|${parentIdempotencyKey}`;
+  const mask = (1n << 64n) - 1n;
+  return [0n, 1n, 2n, 3n].map((seed) => {
+    let hash = (0xcbf29ce484222325n ^ seed) & mask;
+    for (let index = 0; index < input.length; index += 1) {
+      hash ^= BigInt(input.charCodeAt(index));
+      hash = (hash * 0x100000001b3n) & mask;
+    }
+    return hash.toString(16).padStart(16, "0");
+  }).join("");
+}
+
 export function buildMockLedgerPnlCandidateFinancialIndicatorPeriodComparison(
   reportMonth: string,
 ): LedgerPnlCandidateFinancialIndicatorPeriodComparison {
@@ -2593,5 +2612,213 @@ export function buildMockLedgerPnlCandidateFinancialIndicatorPeriodComparison(
         quality_status: "degraded_candidate" as const,
       })),
     ],
+  };
+}
+
+const SYNTHETIC_COMPONENT_DETAIL_IDENTITIES: Record<
+  LedgerPnlCandidateFinancialIndicatorComponentMetricId,
+  {
+    name: string;
+    formulaWeight: -1 | 1;
+    accountCode: string;
+    accountName: string;
+    effectiveComponentWeight: string;
+    effectiveNetWeight: string;
+    matchedTerm: { level: "l1" | "l2"; code: string; weight: string };
+  }
+> = {
+  "income.interest.loan.total": {
+    name: "贷款利息收入",
+    formulaWeight: 1,
+    accountCode: "50101010001",
+    accountName: "公司贷款利息收入",
+    effectiveComponentWeight: "-1",
+    effectiveNetWeight: "-1",
+    matchedTerm: { level: "l1", code: "501", weight: "-1" },
+  },
+  "expense.interest.deposit.total": {
+    name: "存款利息支出",
+    formulaWeight: -1,
+    accountCode: "52101010001",
+    accountName: "公司存款利息支出",
+    effectiveComponentWeight: "1",
+    effectiveNetWeight: "-1",
+    matchedTerm: { level: "l1", code: "521", weight: "1" },
+  },
+  "income.interest.investment": {
+    name: "金融投资利息收入",
+    formulaWeight: 1,
+    accountCode: "51402010003",
+    accountName: "其他公允价值变动计入损益的金融资产利息收入",
+    effectiveComponentWeight: "-1",
+    effectiveNetWeight: "-1",
+    matchedTerm: { level: "l1", code: "514", weight: "-1" },
+  },
+  "income.interest.interbank_net": {
+    name: "同业资产负债利息净收入",
+    formulaWeight: 1,
+    accountCode: "52201010001",
+    accountName: "同业存放利息支出",
+    effectiveComponentWeight: "-1",
+    effectiveNetWeight: "-1",
+    matchedTerm: { level: "l1", code: "522", weight: "-1" },
+  },
+};
+
+const SYNTHETIC_COMPONENT_DETAIL_VALUES: Record<
+  LedgerPnlCandidateFinancialIndicatorComponentMetricId,
+  {
+    currentEnding: string;
+    previousEnding: string;
+    twoMonthPriorEnding: string;
+    currentValue: string;
+    previousValue: string;
+    delta: string;
+    contribution: string;
+  }
+> = {
+  "income.interest.loan.total": {
+    currentEnding: "10500000000",
+    previousEnding: "10200000000",
+    twoMonthPriorEnding: "10000000000",
+    currentValue: "-3",
+    previousValue: "-2",
+    delta: "-1",
+    contribution: "-1",
+  },
+  "expense.interest.deposit.total": {
+    currentEnding: "10500000000",
+    previousEnding: "10200000000",
+    twoMonthPriorEnding: "10000000000",
+    currentValue: "3",
+    previousValue: "2",
+    delta: "1",
+    contribution: "-1",
+  },
+  "income.interest.investment": {
+    currentEnding: "10531602669.74",
+    previousEnding: "10200000000",
+    twoMonthPriorEnding: "10000000000",
+    currentValue: "-3.3160266974",
+    previousValue: "-2",
+    delta: "-1.3160266974",
+    contribution: "-1.3160266974",
+  },
+  "income.interest.interbank_net": {
+    currentEnding: "10350000000",
+    previousEnding: "10200000000",
+    twoMonthPriorEnding: "10100000000",
+    currentValue: "-1.5",
+    previousValue: "-1",
+    delta: "-0.5",
+    contribution: "-0.5",
+  },
+};
+
+export function buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail(
+  reportMonth: string,
+  metricId: LedgerPnlCandidateFinancialIndicatorComponentMetricId,
+  parentIdempotencyKey: string,
+): LedgerPnlCandidateFinancialIndicatorComponentDetail {
+  const normalizedReportMonth = reportMonth.trim();
+  const normalizedMetricId = metricId.trim() as LedgerPnlCandidateFinancialIndicatorComponentMetricId;
+  const normalizedParentKey = parentIdempotencyKey.trim();
+  if (!/^\d{4}(?:0[1-9]|1[0-2])$/.test(normalizedReportMonth)) {
+    throw new Error("Candidate component detail report month must use YYYYMM.");
+  }
+  const identity = SYNTHETIC_COMPONENT_DETAIL_IDENTITIES[normalizedMetricId];
+  const values = SYNTHETIC_COMPONENT_DETAIL_VALUES[normalizedMetricId];
+  if (!identity || !values) {
+    throw new Error("Candidate component detail metric is outside the fixed bridge.");
+  }
+  if (!/^[0-9a-f]{64}$/.test(normalizedParentKey)) {
+    throw new Error("Candidate component detail parent key must be a SHA-256 string.");
+  }
+  const comparisonMonth = previousSyntheticReportMonth(normalizedReportMonth);
+  const twoMonthPrior = previousSyntheticReportMonth(comparisonMonth);
+  const months = [normalizedReportMonth, comparisonMonth, twoMonthPrior];
+  const sourcePeriods = months.map((month, index) => {
+    const ledgerSha = syntheticComparisonSha(month, ["a", "b", "c"][index]);
+    return {
+      month,
+      report_date: reportMonthEnd(month),
+      ledger_file_name: `总账对账${month}.xlsx`,
+      ledger_sha256: ledgerSha,
+      locked_sha256: index === 0 ? ledgerSha : null,
+      lock_status: index === 0 ? "locked_match" as const : "unlocked" as const,
+    };
+  });
+  const endings = [values.currentEnding, values.previousEnding, values.twoMonthPriorEnding];
+  const rowNumber = 12;
+
+  return {
+    contract_version: "candidate-financial-indicator-component-detail-v1",
+    analysis_kind: "accounting_component_account_detail",
+    report_month: normalizedReportMonth,
+    report_date: reportMonthEnd(normalizedReportMonth),
+    comparison_month: comparisonMonth,
+    two_month_prior: twoMonthPrior,
+    metric_id: normalizedMetricId,
+    metric_name: identity.name,
+    formula_weight: identity.formulaWeight,
+    currency: "CNX",
+    basis: "calendar_month_from_cumulative",
+    method: "finance_metric_account_contribution",
+    unit: "亿元",
+    status: "available",
+    quality_status: "degraded_candidate",
+    foot_status: "passed",
+    formal_use_allowed: false,
+    certification_effect: "none",
+    driver_status: "unclear",
+    rule_version: "qdb-finance-2026-v1.0.1",
+    rule_hash: "f".repeat(64),
+    parent_idempotency_key: normalizedParentKey,
+    idempotency_key: syntheticComponentDetailSha(
+      normalizedReportMonth,
+      normalizedMetricId,
+      normalizedParentKey,
+    ),
+    source_periods: sourcePeriods,
+    parent_current_value_yi: values.currentValue,
+    parent_previous_value_yi: values.previousValue,
+    parent_component_delta_yi: values.delta,
+    parent_contribution_to_net_delta_yi: values.contribution,
+    account_current_total_yi: values.currentValue,
+    account_previous_total_yi: values.previousValue,
+    account_component_delta_total_yi: values.delta,
+    account_contribution_total_yi: values.contribution,
+    current_reconciliation_yi: "0",
+    previous_reconciliation_yi: "0",
+    component_delta_reconciliation_yi: "0",
+    contribution_reconciliation_yi: "0",
+    reasons: [],
+    rows: [{
+      row_status: "contributing",
+      account_code: identity.accountCode,
+      account_name: identity.accountName,
+      currency: "CNX",
+      effective_component_weight: identity.effectiveComponentWeight,
+      effective_net_weight: identity.effectiveNetWeight,
+      matched_terms: [{
+        source: "ledger",
+        ...identity.matchedTerm,
+      }],
+      current_ending_yuan: values.currentEnding,
+      previous_ending_yuan: values.previousEnding,
+      two_month_prior_ending_yuan: values.twoMonthPriorEnding,
+      current_value_yi: values.currentValue,
+      previous_value_yi: values.previousValue,
+      component_delta_yi: values.delta,
+      contribution_to_net_delta_yi: values.contribution,
+      source_evidence: sourcePeriods.map((period, index) => ({
+        ...period,
+        sheet: "综本" as const,
+        row: rowNumber,
+        account_code_cell: `A${rowNumber}`,
+        ending_cell: `Q${rowNumber}`,
+        ending_yuan: endings[index],
+      })),
+    }],
   };
 }

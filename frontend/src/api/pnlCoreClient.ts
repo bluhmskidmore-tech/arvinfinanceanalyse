@@ -5,6 +5,7 @@
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import {
   buildMockLedgerPnlCandidateFinancialIndicators,
+  buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail,
   buildMockLedgerPnlCandidateFinancialIndicatorPeriodComparison,
   buildMockLedgerPnlFormalIndicatorRuleChecks,
   getMockLedgerPnlFormalFinancialIndicators,
@@ -34,6 +35,8 @@ import type {
   LedgerPnlAnalysisPayload,
   LedgerPnlCandidateFinancialIndicatorsPayload,
   LedgerPnlCandidateFinancialIndicatorsEnvelope,
+  LedgerPnlCandidateFinancialIndicatorComponentDetail,
+  LedgerPnlCandidateFinancialIndicatorComponentMetricId,
   LedgerPnlCandidateFinancialIndicatorPeriodComparison,
   LedgerPnlCandidateFinancialIndicatorRevalidationReceipt,
   LedgerPnlCandidateFinancialIndicatorRevalidationRequest,
@@ -86,6 +89,12 @@ export type PnlCoreClientMethods = {
     reportMonth: string,
     options?: { signal?: AbortSignal },
   ) => Promise<LedgerPnlCandidateFinancialIndicatorPeriodComparison>;
+  getLedgerPnlCandidateFinancialIndicatorComponentDetail: (
+    reportMonth: string,
+    metricId: LedgerPnlCandidateFinancialIndicatorComponentMetricId,
+    parentIdempotencyKey: string,
+    options?: { signal?: AbortSignal },
+  ) => Promise<LedgerPnlCandidateFinancialIndicatorComponentDetail>;
   revalidateLedgerPnlCandidateFinancialIndicators: (
     reportMonth: string,
     request: LedgerPnlCandidateFinancialIndicatorRevalidationRequest,
@@ -392,6 +401,18 @@ export function createDemoPnlCoreClient(delay: Delay): PnlCoreClientMethods {
       await delay();
       return buildMockLedgerPnlCandidateFinancialIndicatorPeriodComparison(reportMonth);
     },
+    async getLedgerPnlCandidateFinancialIndicatorComponentDetail(
+      reportMonth,
+      metricId,
+      parentIdempotencyKey,
+    ) {
+      await delay();
+      return buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail(
+        reportMonth,
+        metricId,
+        parentIdempotencyKey,
+      );
+    },
     async revalidateLedgerPnlCandidateFinancialIndicators() {
       await delay();
       throw new Error("Candidate revalidation dry-run requires the real API client.");
@@ -619,6 +640,24 @@ export function createRealPnlCoreClient(
         `/api/ledger-pnl/candidate-financial-indicators/period-comparison?report_month=${encodeURIComponent(reportMonth.trim())}`,
         { signal: options.signal },
       ),
+    getLedgerPnlCandidateFinancialIndicatorComponentDetail: (
+      reportMonth,
+      metricId,
+      parentIdempotencyKey,
+      options = {},
+    ) => {
+      const params = new URLSearchParams({
+        report_month: reportMonth.trim(),
+        metric_id: metricId.trim(),
+        parent_idempotency_key: parentIdempotencyKey.trim(),
+      });
+      return requestActionJson<LedgerPnlCandidateFinancialIndicatorComponentDetail>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail?${params.toString()}`,
+        { signal: options.signal },
+      );
+    },
     revalidateLedgerPnlCandidateFinancialIndicators: (reportMonth, request) =>
       requestActionJson<LedgerPnlCandidateFinancialIndicatorRevalidationReceipt>(
         fetchImpl,

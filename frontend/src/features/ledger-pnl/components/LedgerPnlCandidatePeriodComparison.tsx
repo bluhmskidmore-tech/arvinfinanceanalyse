@@ -1,10 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import {
   buildCandidatePeriodComparisonViewModel,
   type CandidatePeriodComparisonViewModel,
 } from "../models/candidatePeriodComparisonModel";
+import {
+  LedgerPnlNetInterestComponentDetailDrawer,
+  type LedgerPnlNetInterestComponentSelection,
+} from "./LedgerPnlNetInterestComponentDetailDrawer";
 import "./LedgerPnlCandidatePeriodComparison.css";
 
 type Props = {
@@ -20,7 +25,17 @@ type NetInterestBridgeModel = Extract<
   { status: "ready" }
 >["netInterestBridge"];
 
-function NetInterestComponentBridge({ bridge }: { bridge: NetInterestBridgeModel }) {
+function NetInterestComponentBridge({
+  bridge,
+  selection,
+  onSelect,
+  registerTrigger,
+}: {
+  bridge: NetInterestBridgeModel;
+  selection: LedgerPnlNetInterestComponentSelection | null;
+  onSelect: (row: Extract<NetInterestBridgeModel, { status: "available" }>["rows"][number]) => void;
+  registerTrigger: (metricId: string, element: HTMLButtonElement | null) => void;
+}) {
   if (bridge.status === "not_evaluable") {
     return (
       <section
@@ -81,7 +96,17 @@ function NetInterestComponentBridge({ bridge }: { bridge: NetInterestBridgeModel
             {bridge.rows.map((row) => (
               <tr key={row.metricId}>
                 <th scope="row">
-                  <strong>{row.metricName}</strong>
+                  <button
+                    type="button"
+                    className="candidate-period-comparison__interest-bridge-trigger"
+                    aria-label={`查看贡献项穿透 ${row.metricName}`}
+                    aria-haspopup="dialog"
+                    aria-expanded={selection?.metricId === row.metricId}
+                    ref={(element) => registerTrigger(row.metricId, element)}
+                    onClick={() => onSelect(row)}
+                  >
+                    <strong>{row.metricName}</strong>
+                  </button>
                   <code>{row.metricId}</code>
                 </th>
                 <td>{row.currentDisplay}</td>
@@ -105,6 +130,9 @@ export function LedgerPnlCandidatePeriodComparison({
 }: Props) {
   const client = useApiClient();
   const normalizedReportMonth = reportMonth.trim();
+  const [detailSelection, setDetailSelection] = useState<LedgerPnlNetInterestComponentSelection | null>(null);
+  const closingMetricIdRef = useRef<string | null>(null);
+  const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const comparisonQuery = useQuery({
     queryKey: [
       "ledger-pnl",
@@ -120,6 +148,19 @@ export function LedgerPnlCandidatePeriodComparison({
     enabled: Boolean(normalizedReportMonth),
     retry: false,
   });
+  const comparisonParentKey = comparisonQuery.data?.idempotency_key ?? "";
+  const rawBridgeAvailable = comparisonQuery.data?.net_interest_component_bridge.status === "available"
+    && comparisonQuery.data.net_interest_component_bridge.foot_status === "passed";
+  useEffect(() => {
+    setDetailSelection((current) => (
+      current
+      && current.reportMonth === normalizedReportMonth
+      && current.parentIdempotencyKey === comparisonParentKey
+      && rawBridgeAvailable
+        ? current
+        : null
+    ));
+  }, [comparisonParentKey, normalizedReportMonth, rawBridgeAvailable]);
 
   if (!normalizedReportMonth) {
     return (
@@ -199,6 +240,21 @@ export function LedgerPnlCandidatePeriodComparison({
   }
 
   const { payload } = model;
+  const activeDetailSelection = model.netInterestBridge.status === "available"
+    && detailSelection?.reportMonth === normalizedReportMonth
+    && detailSelection.parentIdempotencyKey === payload.idempotency_key
+    ? detailSelection
+    : null;
+  const restoreTriggerFocus = () => {
+    const metricId = closingMetricIdRef.current;
+    if (!metricId) return;
+    closingMetricIdRef.current = null;
+    triggerRefs.current.get(metricId)?.focus();
+  };
+  const closeDetail = () => {
+    closingMetricIdRef.current = activeDetailSelection?.metricId ?? null;
+    setDetailSelection(null);
+  };
   return (
     <section
       className="candidate-period-comparison"
@@ -252,7 +308,26 @@ export function LedgerPnlCandidatePeriodComparison({
         </div>
       )}
 
-      <NetInterestComponentBridge bridge={model.netInterestBridge} />
+      <NetInterestComponentBridge
+        bridge={model.netInterestBridge}
+        selection={activeDetailSelection}
+        onSelect={(row) => setDetailSelection({
+          reportMonth: normalizedReportMonth,
+          parentIdempotencyKey: payload.idempotency_key,
+          metricId: row.metricId as LedgerPnlNetInterestComponentSelection["metricId"],
+          metricName: row.metricName,
+        })}
+        registerTrigger={(metricId, element) => {
+          if (element) triggerRefs.current.set(metricId, element);
+          else triggerRefs.current.delete(metricId);
+        }}
+      />
+
+      <LedgerPnlNetInterestComponentDetailDrawer
+        selection={activeDetailSelection}
+        onClose={closeDetail}
+        onAfterClose={restoreTriggerFocus}
+      />
 
       <div className="candidate-period-comparison__table-wrap">
         <table aria-label="候选财务指标跨期变化明细">
