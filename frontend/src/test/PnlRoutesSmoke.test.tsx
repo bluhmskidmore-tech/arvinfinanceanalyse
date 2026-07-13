@@ -57,7 +57,6 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
     vendor_status: "ok",
     fallback_mode: "none",
     scenario_flag: false,
-    as_of_date: "2025-12-31",
     generated_at: "2026-04-12T08:00:00Z",
   };
 }
@@ -235,111 +234,6 @@ function buildPnlClient(): ApiClient {
     period_start_date: "2025-12-01",
     period_end_date: "2025-12-31",
     total_pnl: "130000.00",
-    coverage_days: 1,
-    expected_days: 31,
-    sample_filled: true,
-    sample_fill_method: "observed_days_scaled_to_calendar",
-    classified_parent_total_pnl: "123456.78",
-    unallocated_pnl: "64295.80",
-    unallocated_abs_pnl: "64299.08",
-    unallocated_row_count: 400,
-    reconciliation_delta: "0.00",
-    unallocated_breakdown: [
-      {
-        reason_code: "no_business_rule_match",
-        source_kind: "formal_fi",
-        invest_type_std: "A",
-        accounting_basis: "FVOCI",
-        portfolio_name: "FIOA",
-        cost_center: "501060",
-        pnl_row_count: 8,
-        total_pnl: "58139.14",
-        abs_pnl: "58139.14",
-        sample_instrument_codes: ["260304"],
-      },
-      {
-        reason_code: "no_business_rule_match",
-        source_kind: "formal_fi",
-        invest_type_std: "T",
-        accounting_basis: "FVTPL",
-        portfolio_name: "FIOA",
-        cost_center: "506030",
-        pnl_row_count: 392,
-        total_pnl: "6156.66",
-        abs_pnl: "6159.94",
-        sample_instrument_codes: ["012681483"],
-      },
-    ],
-    unallocated_items: [
-      {
-        report_date: "2025-12-31",
-        reason_code: "no_business_rule_match",
-        source_kind: "formal_fi",
-        instrument_code: "260304",
-        portfolio_name: "FIOA",
-        cost_center: "501060",
-        invest_type_std: "A",
-        accounting_basis: "FVOCI",
-        currency_basis: "CNY",
-        interest_income_514: "49314.43",
-        fair_value_change_516: "0.00",
-        capital_gain_517: "0.00",
-        manual_adjustment: "0.00",
-        total_pnl: "49314.43",
-        abs_pnl: "49314.43",
-      },
-      {
-        report_date: "2025-12-31",
-        reason_code: "no_business_rule_match",
-        source_kind: "formal_fi",
-        instrument_code: "012681483",
-        portfolio_name: "FIOA",
-        cost_center: "506030",
-        invest_type_std: "T",
-        accounting_basis: "FVTPL",
-        currency_basis: "CNY",
-        interest_income_514: "3287.67",
-        fair_value_change_516: "0.00",
-        capital_gain_517: "0.00",
-        manual_adjustment: "0.00",
-        total_pnl: "3287.67",
-        abs_pnl: "3287.67",
-      },
-      {
-        report_date: "2025-12-31",
-        reason_code: "no_business_rule_match" as const,
-        source_kind: "formal_fi",
-        instrument_code: "TINYNEG",
-        portfolio_name: "FIOA",
-        cost_center: "506020",
-        invest_type_std: "T",
-        accounting_basis: "FVTPL",
-        currency_basis: "CNY",
-        interest_income_514: "-0.05",
-        fair_value_change_516: "0.00",
-        capital_gain_517: "0.00",
-        manual_adjustment: "0.00",
-        total_pnl: "-0.05",
-        abs_pnl: "0.05",
-      },
-      ...Array.from({ length: 397 }, (_, index) => ({
-        report_date: "2025-12-31",
-        reason_code: "no_business_rule_match" as const,
-        source_kind: "formal_fi",
-        instrument_code: `UNALLOCATED-${String(index + 3).padStart(3, "0")}`,
-        portfolio_name: "FIOA",
-        cost_center: "506020",
-        invest_type_std: "T",
-        accounting_basis: "FVTPL",
-        currency_basis: "CNY",
-        interest_income_514: "0.00",
-        fair_value_change_516: "0.00",
-        capital_gain_517: "0.00",
-        manual_adjustment: "0.00",
-        total_pnl: "0.00",
-        abs_pnl: "0.00",
-      })),
-    ],
     source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
     items: [
       {
@@ -420,19 +314,6 @@ function buildPnlClient(): ApiClient {
         period_start_date: "2025-11-01",
         period_end_date: "2025-11-30",
         calendar_days: 30,
-        coverage_days: 30,
-        expected_days: 30,
-        sample_filled: false,
-        sample_fill_method: null,
-        source_total_pnl: "95000.00",
-        classified_parent_total_pnl: "95000.00",
-        unallocated_pnl: "0.00",
-        unallocated_abs_pnl: "0.00",
-        unallocated_row_count: 0,
-        reconciliation_delta: "0.00",
-        unallocated_breakdown: [],
-        unallocated_items: [],
-        unallocated_evidence_complete: true,
         summary: {
           interest_income: "80000.00",
           fair_value_change: "5000.00",
@@ -476,72 +357,11 @@ function buildPnlClient(): ApiClient {
         period_start_date: "2025-12-01",
         period_end_date: "2025-12-31",
         calendar_days: 31,
-        coverage_days: 1,
-        expected_days: 31,
-        sample_filled: true,
-        sample_fill_method: "observed_days_scaled_to_calendar",
-        source_total_pnl: "180000.00",
-        classified_parent_total_pnl: "130000.00",
-        unallocated_pnl: "50000.00",
-        unallocated_abs_pnl: "90000.00",
-        unallocated_row_count: 2,
-        reconciliation_delta: "0.00",
-        unallocated_breakdown: [
-          {
-            reason_code: "no_business_rule_match",
-            source_kind: "formal_fi",
-            invest_type_std: "A",
-            accounting_basis: "FVOCI",
-            portfolio_name: "Unmapped Desk",
-            cost_center: "CC-UNMAPPED",
-            pnl_row_count: 2,
-            total_pnl: "50000.00",
-            abs_pnl: "90000.00",
-            sample_instrument_codes: ["MONTHLY-A", "MONTHLY-A-NEG"],
-          },
-        ],
-        unallocated_items: [
-          {
-            report_date: "2025-12-31",
-            reason_code: "no_business_rule_match",
-            source_kind: "formal_fi",
-            instrument_code: "MONTHLY-A",
-            portfolio_name: "Unmapped Desk",
-            cost_center: "CC-UNMAPPED",
-            invest_type_std: "A",
-            accounting_basis: "FVOCI",
-            currency_basis: "CNY",
-            interest_income_514: "70000.00",
-            fair_value_change_516: "0.00",
-            capital_gain_517: "0.00",
-            manual_adjustment: "0.00",
-            total_pnl: "70000.00",
-            abs_pnl: "70000.00",
-          },
-          {
-            report_date: "2025-12-31",
-            reason_code: "no_business_rule_match",
-            source_kind: "formal_fi",
-            instrument_code: "MONTHLY-A-NEG",
-            portfolio_name: "Unmapped Desk",
-            cost_center: "CC-UNMAPPED",
-            invest_type_std: "A",
-            accounting_basis: "FVOCI",
-            currency_basis: "CNY",
-            interest_income_514: "-20000.00",
-            fair_value_change_516: "0.00",
-            capital_gain_517: "0.00",
-            manual_adjustment: "0.00",
-            total_pnl: "-20000.00",
-            abs_pnl: "20000.00",
-          },
-        ],
-        unallocated_evidence_complete: true,
         summary: {
           interest_income: "100000.00",
           fair_value_change: "10000.00",
-          capital_gain: "17500.00",
-          manual_adjustment: "2500.00",
+          capital_gain: "20000.00",
+          manual_adjustment: "0.00",
           total_pnl: "130000.00",
           avg_balance: "100000000.00",
           current_balance: "100000000.00",
@@ -559,8 +379,8 @@ function buildPnlClient(): ApiClient {
             business_type: "政策性金融债",
             interest_income: "100000.00",
             fair_value_change: "10000.00",
-            capital_gain: "17500.00",
-            manual_adjustment: "2500.00",
+            capital_gain: "20000.00",
+            manual_adjustment: "0.00",
             total_pnl: "130000.00",
             avg_balance: "100000000.00",
             current_balance: "100000000.00",
@@ -757,11 +577,7 @@ function buildPnlClient(): ApiClient {
       result: byBusiness,
     })),
     getPnlByBusinessYtd: vi.fn(async (year: number, asOfDate?: string) => ({
-      result_meta: {
-        ...buildMeta("pnl.by_business_ytd", "tr_route_business_ytd"),
-        basis: "analytical" as const,
-        formal_use_allowed: false,
-      },
+      result_meta: buildMeta("pnl.by_business_ytd", "tr_route_business_ytd"),
       result: {
         ...byBusinessYtd,
         year,
@@ -1025,10 +841,6 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByLabelText("pnl-by-business-report-date")).toHaveValue("2025-12-31");
     });
     expect(screen.getByLabelText("pnl-by-business-view-mode")).toHaveValue("monthly");
-    expect(screen.getByRole("link", { name: "全行生息资产利差 →" })).toHaveAttribute(
-      "href",
-      "/product-category-pnl",
-    );
     await waitFor(() => {
       expect(client.getPnlByBusinessMonthly).toHaveBeenCalledWith(2025, "2025-12-31");
     });
@@ -1043,7 +855,6 @@ describe("pnl routed pages smoke", () => {
     expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent("2025-12-31");
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("未读取");
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("1 条手工调整");
       expect(screen.getByText("报表月份")).toBeInTheDocument();
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("月报合计损益");
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("13 万元");
@@ -1054,7 +865,6 @@ describe("pnl routed pages smoke", () => {
     });
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("政策性金融债");
-      expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP成本（万元）");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP后收益（万元）");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).not.toHaveTextContent(
         "其中：本币专户（成本法）",
@@ -1062,54 +872,10 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-monthly-detail-table-2025-12")).toHaveTextContent(
         "其中：本币专户（成本法）",
       );
-      expect(screen.getByTestId("pnl-by-business-monthly-reconciliation-2025-12")).toHaveTextContent(
-        "源损益 18 万元 = 父级 13 万元 + 未分类 5 万元",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-reconciliation-2025-12")).toHaveTextContent(
-        "差异 0 万元 · 已闭合",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-unallocated-2025-12-panel")).toHaveTextContent(
-        "2 条 · 净额 5 万元 · 绝对金额 9 万元",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-unallocated-2025-12-toggle")).toHaveAttribute(
-        "aria-expanded",
-        "false",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent(
-        "政策性金融债 · 2025-12 损益桥",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent(
-        "补数前损益（对账值）",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent("12.75 万元");
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent("0.25 万元");
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent("13 万元");
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent("13.59 万元");
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent("-0.59 万元");
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent(
-        "月报接口已生效金额",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent(
-        "当月自然日/365",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent("复核后补录");
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent(
-        "系统暂无结构化税前额、增值税额或税后净额字段",
-      );
-    });
-    fireEvent.click(screen.getByTestId("pnl-by-business-monthly-unallocated-2025-12-toggle"));
-    await waitFor(() => {
-      expect(screen.getByTestId("pnl-by-business-monthly-unallocated-2025-12-breakdown-table")).toHaveTextContent(
-        "CC-UNMAPPED",
-      );
-      expect(screen.getByTestId("pnl-by-business-monthly-unallocated-2025-12-items-table")).toHaveTextContent(
-        "MONTHLY-A-NEG",
-      );
     });
     fireEvent.click(screen.getByRole("button", { name: /2025-11/ }));
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-11")).toHaveTextContent("政策性金融债");
-      expect(screen.queryByTestId("pnl-by-business-monthly-unallocated-2025-11-panel")).not.toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
@@ -1162,13 +928,10 @@ describe("pnl routed pages smoke", () => {
     await waitFor(() => {
       expect(screen.getByText("分析截止日")).toBeInTheDocument();
       expect(screen.getAllByText("结果元信息 / 证据").length).toBeGreaterThan(0);
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("管理摘要");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("分析路径");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("可分析");
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("Bottom 拖累");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("Top 贡献");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("FTP 可分析");
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent(
-        "1 条所选报表日已批准调整",
-      );
       expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent("下一步下钻");
       expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent("证券级下钻");
@@ -1181,7 +944,6 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("合计损益（万元）");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("FTP后收益（万元）");
-      expect(screen.getByTestId("pnl-by-business-table")).not.toHaveTextContent("FTP成本（万元）");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("日均(亿元)");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("1.00");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("年化收益率");
@@ -1190,27 +952,7 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-table")).not.toHaveTextContent("其中：本币专户（成本法）");
       expect(screen.getByTestId("pnl-by-business-detail-table")).toHaveTextContent("其中：本币专户（成本法）");
       expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("父级汇总");
-      expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("12.35");
-      const ytdTable = within(screen.getByTestId("pnl-by-business-table")).getByRole("table");
-      expect(within(ytdTable).getAllByRole("columnheader")).toHaveLength(12);
-      const ytdParentRow = within(ytdTable).getByText("政策性金融债").closest("tr");
-      expect(ytdParentRow).not.toBeNull();
-      expect(ytdParentRow!.querySelectorAll("td")).toHaveLength(12);
-      expect(screen.getByTestId("pnl-by-business-table-unallocated-footer")).toHaveTextContent("6.43");
-      expect(screen.getByTestId("pnl-by-business-table-unallocated-footer")).toHaveTextContent("400");
-      const selectedTrend = screen.getByTestId("pnl-by-business-selected-monthly-trend");
-      expect(selectedTrend).toHaveTextContent("政策性金融债");
-      expect(selectedTrend).toHaveTextContent("1/1 个月");
-      expect(selectedTrend).toHaveTextContent("日均与期末余额（亿元）");
-      expect(selectedTrend).toHaveTextContent("损益与FTP后收益（万元）");
-      expect(selectedTrend).toHaveTextContent("收益率与FTP（%）");
-      expect(within(selectedTrend).getAllByTestId("pnl-routes-echarts-stub")).toHaveLength(3);
-      expect(screen.getByTestId("pnl-by-business-unallocated-panel")).toHaveTextContent("查看未分类明细");
-      expect(screen.getByTestId("pnl-by-business-unallocated-panel")).toHaveTextContent("400 条");
-      expect(screen.getByTestId("pnl-by-business-unallocated-panel")).toHaveTextContent("绝对金额 6.43 万元");
-      expect(screen.getByTestId("pnl-by-business-unallocated-toggle")).toHaveAttribute("aria-expanded", "false");
-      expect(screen.getByTestId("pnl-by-business-state-coverage-partial")).toBeVisible();
-      expect(screen.getByTestId("pnl-by-business-state-unallocated")).toBeVisible();
+      expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("13");
       expect(screen.getByTestId("pnl-by-business-bond-bucket-analysis")).toHaveTextContent("债券四类统计");
       expect(screen.getByTestId("pnl-by-business-bond-bucket-table")).toHaveTextContent("利率债");
       expect(screen.getByTestId("pnl-by-business-bond-bucket-table")).toHaveTextContent("FTP成本（万元）");
@@ -1225,25 +967,11 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("FTP 后为负");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240001.IB 负FTP资产");
       expect(screen.getByTestId("pnl-by-business-driver-overview")).toHaveTextContent("1.53%");
-      expect(screen.getByTestId("pnl-by-business-driver-overview")).not.toHaveTextContent(
-        "其中：本币专户（成本法）",
-      );
       expect(screen.getByTestId("pnl-by-business-analysis-panel")).toHaveTextContent("2025-12-31");
       expect(screen.getByTestId("pnl-by-business-analysis-table")).toHaveTextContent("1.00");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("未读取");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月报业务种类明细");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
-    });
-    fireEvent.click(screen.getByTestId("pnl-by-business-unallocated-toggle"));
-    await waitFor(() => {
-      expect(screen.getByTestId("pnl-by-business-unallocated-toggle")).toHaveAttribute("aria-expanded", "true");
-      expect(screen.getByTestId("pnl-by-business-unallocated-breakdown-table")).toHaveTextContent("501060");
-      expect(screen.getByTestId("pnl-by-business-unallocated-breakdown-table")).toHaveTextContent("A");
-      expect(screen.getByTestId("pnl-by-business-unallocated-breakdown-table")).toHaveTextContent("未命中业务分类规则");
-      expect(screen.getByTestId("pnl-by-business-unallocated-items-table")).toHaveTextContent("260304");
-      expect(screen.getByTestId("pnl-by-business-unallocated-items-table")).toHaveTextContent("4.93");
-      expect(screen.getByText("TINYNEG").closest("tr")).not.toHaveTextContent("-0");
-      expect(screen.getByTestId("pnl-by-business-unallocated-panel")).toHaveTextContent("Excel 导出包含全部 400 条");
     });
     fireEvent.click(screen.getByRole("button", { name: /信用债/ }));
     await waitFor(() => {
@@ -1259,15 +987,6 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240002.IB 信用债贡献券");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240003.IB 信用债拖累券");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).not.toHaveTextContent("240001.IB 负FTP资产");
-      expect(screen.getByTestId("pnl-by-business-selected-monthly-trend")).toHaveTextContent("信用债");
-      expect(screen.getByTestId("pnl-by-business-selected-monthly-trend")).toHaveTextContent(
-        "暂无所选业务月度趋势",
-      );
-      expect(
-        within(screen.getByTestId("pnl-by-business-selected-monthly-trend")).queryAllByTestId(
-          "pnl-routes-echarts-stub",
-        ),
-      ).toHaveLength(0);
     });
     fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "monthly" } });
     await waitFor(() => {
@@ -1345,135 +1064,6 @@ describe("pnl routed pages smoke", () => {
     expect(await screen.findByTestId("pnl-by-business-formal-table")).toHaveTextContent("政策性金融债");
     expect(screen.getByTestId("pnl-by-business-formal-table")).toHaveTextContent("表内收益率");
     expect(screen.getByTestId("pnl-by-business-formal-table-footer")).toHaveTextContent("全表合计");
-  });
-
-  it("falls back to YTD daily averages when supplemental ADB comparison is forbidden", async () => {
-    const client = buildPnlClient();
-    vi.mocked(client.getAdbComparison).mockRejectedValue(
-      new Error("403: User is not allowed to read adb_analysis."),
-    );
-
-    renderWorkbenchApp(["/pnl-by-business"], { client });
-    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
-
-    const fallbackSurface = await screen.findByTestId("pnl-by-business-state-adb-comparison-fallback");
-    expect(fallbackSurface).toHaveTextContent("ADB 补充复核不可用，已使用 YTD 日均");
-    expect(fallbackSurface).toHaveTextContent("这不代表缺日均");
-
-    await waitFor(() => {
-      const insight = screen.getByTestId("pnl-by-business-insight-strip");
-      expect(insight).toHaveTextContent("预警/降级");
-      expect(insight).toHaveTextContent("FTP 可分析（YTD 日均）");
-      expect(insight).not.toHaveTextContent("项缺日均");
-    });
-    expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent("YTD 日均回退");
-    expect(screen.getByTestId("pnl-by-business-driver-overview")).toHaveTextContent(
-      "YTD 主端点（ADB 补充复核不可用）",
-    );
-    expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("1.00");
-    expect(screen.getByTestId("pnl-by-business-ftp-bridge")).toHaveTextContent("-0.59 万元");
-    await waitFor(() => {
-      expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
-        year: 2025,
-        asOfDate: "2025-12-31",
-        businessKey: "asset_zqtz_policy_financial_bond",
-        dimension: "instrument",
-      });
-    });
-  });
-
-  it("scopes FTP status by view and does not block YTD trends on pending ADB evidence", async () => {
-    const client = buildPnlClient();
-    vi.mocked(client.getAdbComparison).mockImplementation(() => new Promise(() => undefined));
-
-    renderWorkbenchApp(["/pnl-by-business"], { client });
-    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
-    await waitFor(() => {
-      const insight = screen.getByTestId("pnl-by-business-insight-strip");
-      expect(insight).toHaveTextContent("月度 FTP 可分析");
-      expect(insight).not.toHaveTextContent("ADB 复核中");
-    });
-
-    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
-    fireEvent.change(screen.getByLabelText("pnl-by-business-report-date"), { target: { value: "2025-11-30" } });
-
-    await waitFor(() => {
-      expect(client.getPnlByBusinessMonthly).toHaveBeenCalledWith(2025, "2025-11-30");
-    });
-    expect(await screen.findByTestId("pnl-by-business-selected-monthly-trend")).toHaveTextContent("1/1 个月");
-    expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("FTP 可分析（ADB 复核中）");
-
-    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "formal" } });
-    await waitFor(() => {
-      const insight = screen.getByTestId("pnl-by-business-insight-strip");
-      expect(insight).toHaveTextContent("不适用（仅对账）");
-      expect(insight).not.toHaveTextContent("缺 FTP 字段");
-    });
-  });
-
-  it("queries monthly adjustment evidence for the actual fallback bucket date", async () => {
-    const client = buildPnlClient();
-    const monthlyResponse = await client.getPnlByBusinessMonthly(2025, "2025-12-31");
-    vi.mocked(client.getPnlByBusinessMonthly).mockResolvedValue({
-      ...monthlyResponse,
-      result: {
-        ...monthlyResponse.result,
-        months: monthlyResponse.result.months.filter((month) => month.period_end_date === "2025-11-30"),
-      },
-    });
-    vi.mocked(client.getPnlByBusinessManualAdjustments).mockClear();
-
-    renderWorkbenchApp(["/pnl-by-business"], { client });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("pnl-by-business-report-date")).toHaveValue("2025-12-31");
-      expect(client.getPnlByBusinessManualAdjustments).toHaveBeenCalledWith("2025-11-30");
-    });
-    expect(screen.getByText(/月报（截至 2025-11）/)).toBeInTheDocument();
-  });
-
-  it("surfaces monthly adjustment audit read failures without hiding the booked bridge", async () => {
-    const client = buildPnlClient();
-    vi.mocked(client.getPnlByBusinessManualAdjustments).mockRejectedValue(new Error("audit unavailable"));
-
-    renderWorkbenchApp(["/pnl-by-business"], { client });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent(
-        "审批记录读取失败，当前仅展示月报已入账金额",
-      );
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("手工调整审批数量待核对");
-    });
-
-    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
-    await waitFor(() => {
-      expect(screen.getByTestId("pnl-by-business-manual-adjustments")).toHaveTextContent(
-        "审批记录不可用，未按 0 条处理",
-      );
-      expect(screen.getByRole("button", { name: "保存调整" })).toBeDisabled();
-    });
-  });
-
-  it("rejects monthly adjustment evidence whose returned report date does not match the displayed month", async () => {
-    const client = buildPnlClient();
-    vi.mocked(client.getPnlByBusinessManualAdjustments).mockResolvedValue({
-      report_date: "2025-11-30",
-      adjustment_count: 0,
-      event_total: 0,
-      adjustments: [],
-      events: [],
-    });
-
-    renderWorkbenchApp(["/pnl-by-business"], { client });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("pnl-by-business-monthly-adjustment-bridge")).toHaveTextContent(
-        "审批记录报表日 2025-11-30 与实际展示日 2025-12-31 不一致，未采用该审批证据",
-      );
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("手工调整审批数量待核对");
-    });
   });
 
   it("passes loaded /pnl-by-business data to the Excel export helper", async () => {
@@ -1558,12 +1148,6 @@ describe("pnl routed pages smoke", () => {
         periodEnd: "2025-12-31",
         periodLabel: "2025年12月累计",
         ytdRows: expect.arrayContaining([expect.objectContaining({ business_type: "政策性金融债" })]),
-        unallocatedBreakdown: expect.arrayContaining([
-          expect.objectContaining({ cost_center: "501060", pnl_row_count: 8 }),
-        ]),
-        unallocatedItems: expect.arrayContaining([
-          expect.objectContaining({ instrument_code: "260304", total_pnl: "49314.43" }),
-        ]),
         months: expect.arrayContaining([expect.objectContaining({ month_key: "2025-12" })]),
         adjustments: expect.arrayContaining([expect.objectContaining({ reason: "复核后补录" })]),
         bondBucketRows: expect.arrayContaining([expect.objectContaining({ dimension_label: "利率债" })]),

@@ -85,11 +85,6 @@
   margin-bottom: 2px;
 }
 
-.pnl-by-business-leadership-summary {
-  display: grid;
-  gap: 10px;
-}
-
 .pnl-by-business-kpi-item {
   min-width: 0;
 }
@@ -156,12 +151,52 @@
 }
 
 .pnl-by-business-data-status-strip {
+  display: grid;
+  gap: 10px;
   width: 100%;
 }
 
-.pnl-by-business-data-status-strip > span strong {
+.pnl-by-business-data-status-strip__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pnl-by-business-data-status-strip__item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+}
+
+.pnl-by-business-data-status-strip__item small,
+.pnl-by-business-data-status-strip__meta {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pnl-by-business-data-status-strip__item strong {
+  overflow: hidden;
   color: var(--moss-color-neutral-900);
+  font-size: 13px;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-by-business-data-status-strip__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.pnl-by-business-data-status-strip__meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .pnl-by-business-filter-label {
@@ -205,95 +240,6 @@
   font-size: 13px;
   font-weight: 700;
   line-height: 1.5;
-}
-
-.pnl-by-business-unallocated-panel {
-  overflow: hidden;
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--moss-radius-lg);
-  background: var(--moss-color-card-bg);
-}
-
-.pnl-by-business-unallocated-toggle {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 16px;
-  border: 0;
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-900);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.pnl-by-business-unallocated-toggle span:first-child {
-  font-weight: 800;
-}
-
-.pnl-by-business-unallocated-toggle span:last-child {
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-
-.pnl-by-business-unallocated-toggle:hover {
-  background: var(--moss-color-warning-100);
-}
-
-.pnl-by-business-unallocated-body {
-  display: grid;
-  gap: 12px;
-  padding: 16px;
-}
-
-.pnl-by-business-unallocated-note,
-.pnl-by-business-unallocated-heading p {
-  margin: 0;
-  color: var(--moss-color-neutral-600);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.pnl-by-business-unallocated-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.pnl-by-business-unallocated-heading h3 {
-  margin: 0;
-  color: var(--moss-color-neutral-900);
-  font-size: 15px;
-}
-
-.pnl-by-business-monthly-reconciliation {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  padding: 10px 12px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-sm);
-  color: var(--moss-color-neutral-700);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.5;
-}
-
-.pnl-by-business-monthly-reconciliation--closed {
-  border-color: var(--moss-color-success-200);
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-900);
-}
-
-.pnl-by-business-monthly-reconciliation--warning {
-  border-color: var(--moss-color-warning-200);
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-900);
 }
 
 .pnl-by-business-table {
@@ -476,7 +422,7 @@
 
 .pnl-by-business-insight-strip__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -701,47 +647,6 @@
   color: var(--moss-color-primary-700);
   font-size: 12px;
   font-weight: 700;
-}
-
-.pnl-by-business-selected-trend__quality {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  padding: 8px 10px;
-  border: 1px solid var(--moss-color-warning-200);
-  border-radius: var(--moss-radius-sm);
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-900);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.pnl-by-business-selected-trend__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.pnl-by-business-selected-trend__card {
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-card-bg);
-}
-
-.pnl-by-business-selected-trend__card h3 {
-  margin: 0;
-  color: var(--moss-color-neutral-900);
-  font-size: 14px;
-}
-
-.pnl-by-business-selected-trend__card p {
-  min-height: 36px;
-  margin: 4px 0 0;
-  color: var(--moss-color-neutral-600);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .pnl-by-business-monthly-section {
@@ -1022,12 +927,12 @@
     grid-template-columns: 1fr;
   }
 
-  .pnl-by-business-insight-strip__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .pnl-by-business-data-status-strip__grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .pnl-by-business-selected-trend__grid {
-    grid-template-columns: minmax(0, 1fr);
+  .pnl-by-business-insight-strip__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .pnl-by-business-drilldown-recommendation__grid {

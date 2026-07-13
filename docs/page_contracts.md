@@ -2300,12 +2300,9 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 
 - Monthly analysis uses `GET /api/pnl/by-business-monthly`.
 - YTD analysis uses `GET /api/pnl/by-business-ytd`.
-- YTD row-level `avg_balance`, annualized yield, FTP cost, and FTP-after-PnL come from `GET /api/pnl/by-business-ytd`; the front end must not recalculate them.
-- `GET /api/analysis/adb/comparison` is supplemental cross-source evidence for category/rollup coverage and ADB-vs-current drivers, not a required source for the YTD row fields. If it is unavailable or returns a different interval, the page may use the YTD row `avg_balance` for this page only, but must visibly downgrade the cross-source ADB conclusion.
+- YTD FTP and annualized-yield analysis also consumes `GET /api/adb/comparison` through the existing PnL page client flow; front-end code may only resolve category rollups already defined for ZQTZ display alignment.
 - Formal reconciliation uses `GET /api/pnl/by-business`.
 - Manual adjustment audit/actions use `/api/pnl/by-business/manual-adjustments*`; they are displayed as audit/reconciliation controls and must not create a new official metric definition.
-- Monthly and YTD reconciliation diagnostics are backend-owned. For each period, `source_total_pnl = classified_parent_total_pnl + unallocated_pnl + reconciliation_delta`; the front end may format these values but must not derive or rebalance them.
-- `unallocated_items` contains source rows that did not hit a parent business rule, while `unallocated_breakdown` is the backend aggregation of the same evidence. `unallocated_evidence_complete=true` means the monthly bucket returned both reconciliation totals and its governed unallocated evidence; false or missing must remain `待核对`, never be treated as a closed zero difference.
 - The front-end model may derive presentation-only insight labels from returned payload fields, but must not recalculate official PnL, balance, FTP cost, or formal yield formulas.
 
 ### D. Required sections
@@ -2314,10 +2311,9 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 | --- | --- | --- |
 | `decision_hero` | State the selected view, report date, and current business question | page model + `result_meta` |
 | `data_status` | Keep `quality_flag`, fallback, vendor status, trace, and generated time visible | active endpoint `result_meta` |
-| `analysis_strip` | Put the leadership summary before the long analysis body; summarize contribution, drag, FTP/ADB status, formal reconciliation warning, and next drilldown without repeating the KPI band | page model derived from active payload fields |
+| `analysis_strip` | Summarize contribution, drag, share, FTP/ADB status, formal reconciliation warning, and next drilldown | page model derived from active payload fields |
+| `driver_overview` | In YTD, rank contribution, drag, yield, and ADB-vs-current-balance drivers before the large table | YTD rows + ADB comparison |
 | `main_table` | Show monthly/YTD/formal detail table with explicit units | active payload rows |
-| `selected_business_trend` | In YTD, show the selected row's monthly ADB/current balance, PnL/FTP-after-PnL, and returned yield/FTP fields immediately after the table; match by stable `row_key`, use YTD `period_start_date`/`period_end_date` as the expected boundary, preserve every missing bucket or row as `null`, and perform presentation-only yuan-to-`亿元`/`万元` conversion | `/api/pnl/by-business-ytd` period boundary + `/api/pnl/by-business-monthly` items |
-| `driver_overview` | In YTD, rank contribution, drag, yield, and ADB-vs-current-balance drivers after the selected-business decision chain | YTD rows + optional ADB comparison cross-check |
 | `monthly_breakdown` | In monthly/YTD, allow monthly reconciliation against published monthly buckets | monthly payload |
 | `drilldown` | In YTD, show FTP bridge, bond-bucket, instrument, and multidimensional drilldowns | `/api/pnl/by-business-analysis` |
 | `evidence` | Show source, lineage, and result metadata below the decision summary | `result_meta` |
@@ -2326,7 +2322,6 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 
 - Amount columns displayed in the page are in `万元` unless the table header explicitly says `亿元`.
 - ADB and current balance displays are `亿元`.
-- Reconciliation and unallocated payload amounts are serialized in `元` and displayed in `万元`; row counts and coverage days are not currency values.
 - Yield fields are displayed as `%`; formal primary `yield_pct` comes from the backend formal query and is not recomputed in the page model.
 - Monthly view date semantics use the selected report month/bucket from `/api/pnl/by-business-monthly`.
 - YTD view date semantics use selected `year` and `as_of_date` from `/api/pnl/by-business-ytd`.
@@ -2334,8 +2329,6 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Empty, loading, error, stale, fallback, and warning states must remain visible in the first screen status strip or state surfaces.
 - YTD `缺日均` confidence may only count parent rows with actual business activity; zero-PnL/zero-asset parent rows must not block FTP analysis.
 - ZQTZ parent rows whose ADB can be resolved through existing rollup children must not be counted as missing ADB.
-- A failed supplemental ADB comparison must not be interpreted as missing YTD daily averages. Positive YTD `avg_balance` values may support page analysis when the returned FTP fields are complete; a YTD zero denominator remains pending confirmation when the independent ADB comparison is unavailable.
-- `coverage_days` is the count of distinct governed balance dates in the returned period; `expected_days` is the inclusive calendar-day count. `sample_filled=true` and `sample_fill_method=observed_days_scaled_to_calendar` identify an observed-day average carried as a calendar-period estimate, not complete daily coverage.
 
 ### F. Metric status and boundaries
 
@@ -2345,7 +2338,6 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Ledger-account PnL truth/candidate display remains governed by `PAGE-LEDGER-PNL-001`.
 - Formal PnL overview truth remains governed by `PAGE-PNL-001`; PnL bridge truth remains governed by `PAGE-BRIDGE-001`.
 - The formal primary tab is `仅对账`; it is source evidence for tracing `fact_formal_pnl_fi`, `fact_nonstd_pnl_bridge`, and `fact_formal_zqtz_balance_daily`, not the page's primary business contribution analysis.
-- Monthly/YTD analytical `result_meta.quality_flag` is `warning` when balance coverage is incomplete, any unallocated row exists (including net-zero groups), or `reconciliation_delta` is non-zero. A non-zero unallocated amount must not be silently assigned to A/T without a governed rule.
 
 ### G. Known data-quality risks
 
@@ -2361,7 +2353,6 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 ### H. Tests
 
 - Frontend page/model: `frontend/src/features/pnl/pnlByBusinessPageModel.test.ts`.
-- Selected-business monthly trend selector: `frontend/src/features/pnl/pnlByBusinessMonthlyTrend.test.ts`.
 - Route smoke: `frontend/src/test/PnlRoutesSmoke.test.tsx`.
 - API contract: `tests/test_pnl_api_contract.py`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
