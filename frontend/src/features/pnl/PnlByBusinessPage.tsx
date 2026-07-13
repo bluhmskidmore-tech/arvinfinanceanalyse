@@ -35,6 +35,7 @@ import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { formatAnnualizedYieldPctDisplay, inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
 import { buildAdbAvgByBusinessTypeMap, buildYtdAvgByBusinessTypeMap } from "./pnlByBusinessAdbMap";
 import { downloadPnlByBusinessExcel } from "./pnlByBusinessExport";
+import { PnlByBusinessManagementChangePanel } from "./PnlByBusinessManagementChangePanel";
 import { PnlByBusinessMonthlyTrendPanel } from "./PnlByBusinessMonthlyTrendPanel";
 import {
   VIEW_MODE_SUBTITLES,
@@ -335,51 +336,6 @@ function BusinessRowsTable({
   const parentRows = useMemo(() => rows.filter(isParentZqtzBusinessRow), [rows]);
   const detailRows = useMemo(() => rows.filter(isDetailZqtzBusinessRow), [rows]);
 
-  const parentFooter = useMemo(() => {
-    let interest = 0;
-    let fairValue = 0;
-    let capital = 0;
-    let manual = 0;
-    let totalPnl = 0;
-    let assets = 0;
-    let avgBalance = 0;
-    let hasAnyAvgBalance = false;
-    let ftpNetPnl = 0;
-    let hasAnyFtpNetPnl = false;
-    for (const row of parentRows) {
-      interest += numeric(row.interest_income) ?? 0;
-      fairValue += numeric(row.fair_value_change) ?? 0;
-      capital += numeric(row.capital_gain) ?? 0;
-      manual += numeric(row.manual_adjustment) ?? 0;
-      totalPnl += numeric(row.total_pnl) ?? 0;
-      assets += row.assets_count;
-      const rowAvgBalance = numeric(row.avg_balance);
-      if (rowAvgBalance !== null) {
-        hasAnyAvgBalance = true;
-        avgBalance += rowAvgBalance;
-      }
-      const rowFtpNetPnl = numeric(row.ftp_net_pnl);
-      if (rowFtpNetPnl !== null) {
-        hasAnyFtpNetPnl = true;
-        ftpNetPnl += rowFtpNetPnl;
-      }
-    }
-    const adbCell = hasAnyAvgBalance ? formatAvgBalanceYi(avgBalance) : "-";
-    return {
-      interest,
-      fairValue,
-      capital,
-      manual,
-      totalPnl: numeric(classifiedParentTotalPnl) ?? totalPnl,
-      assets,
-      adbSum: avgBalance,
-      adbCell,
-      yieldPct: "—",
-      ftpNetPnl: hasAnyFtpNetPnl ? ftpNetPnl : null,
-      ftpNetYieldPct: null,
-    };
-  }, [classifiedParentTotalPnl, parentRows]);
-
   const renderRow = (row: PnlByBusinessYtdItem, selectable: boolean) => {
     const avgDisplay = formatAvgBalanceYi(row.avg_balance);
     const totalPnlTone = toneFromSigned(row.total_pnl);
@@ -458,20 +414,18 @@ function BusinessRowsTable({
           {parentRows.length > 0 ? (
             <tfoot>
               <tr data-testid="pnl-by-business-table-parent-footer">
-                <td className="pnl-by-business-table-footer-cell">父级汇总</td>
-                <td className="pnl-by-business-table-footer-cell">{parentFooter.adbCell}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.interest)}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.fairValue)}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.capital)}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.manual)}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.totalPnl)}</td>
-                <td className="pnl-by-business-table-footer-cell">{parentFooter.yieldPct}</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(parentFooter.ftpNetPnl)}</td>
-                <td className="pnl-by-business-table-footer-cell">
-                  {formatAnalysisYieldPct(parentFooter.ftpNetYieldPct)}
-                </td>
+                <td className="pnl-by-business-table-footer-cell">父级损益（系统汇总）</td>
                 <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">{parentFooter.assets}</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(classifiedParentTotalPnl)}</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">—</td>
               </tr>
             </tfoot>
           ) : null}
@@ -2440,20 +2394,36 @@ export default function PnlByBusinessPage() {
     (viewMode === "monthly" && !monthlyBusinessQuery.isSuccess) ||
     (viewMode === "formal" && !formalBusinessQuery.isSuccess);
 
-  const evidenceMetaSections =
-    viewMode === "monthly" && monthlyBusinessQuery.data
-      ? [{ key: "by-business-monthly", title: "业务种类月报", meta: monthlyBusinessQuery.data.result_meta }]
-      : viewMode === "ytd" && businessQuery.data
-        ? [{ key: "by-business-ytd", title: "业务种类损益", meta: businessQuery.data.result_meta }]
-        : viewMode === "formal" && formalBusinessQuery.data
-          ? [
-              {
-                key: "by-business-formal",
-                title: "业务种类损益（formal）",
-                meta: formalBusinessQuery.data.result_meta,
-              },
-            ]
-          : [];
+  const evidenceMetaSections = (() => {
+    if (viewMode === "monthly" && monthlyBusinessQuery.data) {
+      return [
+        { key: "by-business-monthly", title: "业务种类月报", meta: monthlyBusinessQuery.data.result_meta },
+      ];
+    }
+    if (viewMode === "ytd" && businessQuery.data) {
+      const sections = [
+        { key: "by-business-ytd", title: "业务种类损益", meta: businessQuery.data.result_meta },
+      ];
+      if (monthlyBusinessQuery.data) {
+        sections.push({
+          key: "by-business-monthly-change",
+          title: "月度经营环比",
+          meta: monthlyBusinessQuery.data.result_meta,
+        });
+      }
+      return sections;
+    }
+    if (viewMode === "formal" && formalBusinessQuery.data) {
+      return [
+        {
+          key: "by-business-formal",
+          title: "业务种类损益（formal）",
+          meta: formalBusinessQuery.data.result_meta,
+        },
+      ];
+    }
+    return [];
+  })();
 
   return (
     <section data-testid="pnl-by-business-page" className="pnl-by-business-page">
@@ -2539,6 +2509,19 @@ export default function PnlByBusinessPage() {
                 viewMode !== "formal" && (manualAdjustmentQuery.isError || manualAdjustmentDateMismatch)
               }
             />
+            {viewMode !== "formal" ? (
+              <PnlByBusinessManagementChangePanel
+                managementChange={monthlyBusinessQuery.data?.result.management_change}
+                expectedCurrentMonthKey={
+                  viewMode === "monthly"
+                    ? activeMonthlyBucket?.month_key ?? null
+                    : ytdResult?.period_end_date.slice(0, 7) ?? null
+                }
+                selectedRowKey={viewMode === "ytd" ? selectedBusinessRow?.row_key ?? null : null}
+                isLoading={monthlyBusinessQuery.isLoading}
+                isError={monthlyBusinessQuery.isError}
+              />
+            ) : null}
           </section>
         ) : null}
 
@@ -2694,7 +2677,7 @@ export default function PnlByBusinessPage() {
               <PageSectionLead
                 eyebrow="Business Type"
                 title={`${selectedYear} 年累计明细`}
-                description="金额列为万元，日均为亿元；年化收益率与 FTP 后结果直接使用后端 YTD 字段。点击父级行查看月度趋势；表末父级汇总排除「其中项」，父级与其中项存在重叠，不可简单相加。"
+                description="金额列为万元，日均为亿元；年化收益率与 FTP 后结果直接使用后端 YTD 字段。点击父级行查看月度趋势；表末仅展示系统返回的父级损益汇总，其他指标不在前端相加。父级与「其中项」存在重叠，不可简单相加。"
               />
               <BusinessRowsTable
                 rows={ytdRows}
@@ -2823,12 +2806,12 @@ export default function PnlByBusinessPage() {
                     tone={toneFromSigned(selectedBusinessRow?.total_pnl)}
                   />
                   <KpiCard
-                    label="日均"
+                    label="日均（亿元）"
                     value={formatAvgBalanceYi(selectedBusinessRow?.avg_balance)}
                     detail="ADB 同区间"
                   />
                   <KpiCard
-                    label="期末余额"
+                    label="期末余额（亿元）"
                     value={formatYuanAsYiCell(selectedBusinessRow?.current_balance)}
                     detail={ytdResult?.period_end_date ?? selectedReportDate}
                   />

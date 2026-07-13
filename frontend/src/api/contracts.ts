@@ -3515,11 +3515,54 @@ export type PnlByBusinessMonthlyBucket = {
   items: PnlByBusinessMonthlyItem[];
 };
 
+export type PnlByBusinessMonthlyChangeMetrics = {
+  interest_income_delta: string | null;
+  fair_value_change_delta: string | null;
+  capital_gain_delta: string | null;
+  manual_adjustment_delta: string | null;
+  total_pnl_delta: string | null;
+  avg_balance_delta: string | null;
+  current_balance_delta: string | null;
+  annualized_yield_delta_bp: string | null;
+  ftp_cost_delta: string | null;
+  ftp_net_pnl_delta: string | null;
+  ftp_net_annualized_yield_delta_bp: string | null;
+};
+
+export type PnlByBusinessMonthlyChangeRow = PnlByBusinessMonthlyChangeMetrics & {
+  row_key: string;
+  sort_order: number;
+  business_type: string;
+  comparison_available: boolean;
+  comparison_reason: "available" | "current_row_missing" | "previous_row_missing";
+};
+
+export type PnlByBusinessMonthlyManagementChange = {
+  comparison_basis: "latest_month_vs_previous_calendar_month";
+  comparison_scope: "requested_year";
+  comparison_status:
+    | "available"
+    | "data_quality_warning"
+    | "current_month_missing"
+    | "previous_month_missing"
+    | "previous_month_outside_request_scope"
+    | "period_incomplete";
+  comparison_available: boolean;
+  current_month_key: string;
+  previous_month_key: string;
+  coverage_warning_months: string[];
+  reconciliation_warning_months: string[];
+  incomplete_months: string[];
+  summary: PnlByBusinessMonthlyChangeMetrics | null;
+  rows: PnlByBusinessMonthlyChangeRow[];
+};
+
 export type PnlByBusinessMonthlyPayload = {
   year: number;
   as_of_date: string;
   source_tables: string[];
   months: PnlByBusinessMonthlyBucket[];
+  management_change: PnlByBusinessMonthlyManagementChange | null;
 };
 
 export type PnlByBusinessAnalysisDimension =

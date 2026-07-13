@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import fields
 from decimal import Decimal
 
+from backend.app.core_finance import pnl as pnl_core
 from backend.app.core_finance import (
     FiPnlRecord,
     FormalPnlFiFactRow,
@@ -137,3 +138,50 @@ def test_pnl_by_business_yield_and_ftp_returns_null_metrics_without_denominator(
     assert result.ftp_cost is None
     assert result.ftp_net_pnl is None
     assert result.ftp_net_annualized_yield_pct is None
+
+
+def test_pnl_by_business_monthly_change_contract_returns_amount_and_bp_deltas():
+    assert hasattr(pnl_core, "PnlByBusinessMonthlyMeasure")
+    assert hasattr(pnl_core, "compute_pnl_by_business_monthly_change")
+
+    measure_type = pnl_core.PnlByBusinessMonthlyMeasure
+    result = pnl_core.compute_pnl_by_business_monthly_change(
+        current=measure_type(
+            interest_income=Decimal("200.00"),
+            fair_value_change=Decimal("4.00"),
+            capital_gain=Decimal("6.00"),
+            manual_adjustment=Decimal("10.00"),
+            total_pnl=Decimal("220.00"),
+            avg_balance=Decimal("2000.00"),
+            current_balance=Decimal("2200.00"),
+            annualized_yield_pct=Decimal("2.100000"),
+            ftp_cost=Decimal("30.00"),
+            ftp_net_pnl=Decimal("190.00"),
+            ftp_net_annualized_yield_pct=Decimal("0.500000"),
+        ),
+        previous=measure_type(
+            interest_income=Decimal("120.00"),
+            fair_value_change=Decimal("5.00"),
+            capital_gain=Decimal("2.00"),
+            manual_adjustment=Decimal("0.00"),
+            total_pnl=Decimal("127.00"),
+            avg_balance=Decimal("1500.00"),
+            current_balance=Decimal("1700.00"),
+            annualized_yield_pct=Decimal("1.950000"),
+            ftp_cost=Decimal("24.00"),
+            ftp_net_pnl=Decimal("103.00"),
+            ftp_net_annualized_yield_pct=None,
+        ),
+    )
+
+    assert result.interest_income_delta == Decimal("80.00")
+    assert result.fair_value_change_delta == Decimal("-1.00")
+    assert result.capital_gain_delta == Decimal("4.00")
+    assert result.manual_adjustment_delta == Decimal("10.00")
+    assert result.total_pnl_delta == Decimal("93.00")
+    assert result.avg_balance_delta == Decimal("500.00")
+    assert result.current_balance_delta == Decimal("500.00")
+    assert result.annualized_yield_delta_bp == Decimal("15.0000")
+    assert result.ftp_cost_delta == Decimal("6.00")
+    assert result.ftp_net_pnl_delta == Decimal("87.00")
+    assert result.ftp_net_annualized_yield_delta_bp is None

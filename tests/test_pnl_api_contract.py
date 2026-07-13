@@ -549,7 +549,22 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
     )
 
     assert payload["result_meta"]["result_kind"] == "pnl.by_business_monthly"
-    assert payload["result"] == cached_payload
+    assert payload["result"] == {
+        **cached_payload,
+        "management_change": {
+            "comparison_basis": "latest_month_vs_previous_calendar_month",
+            "comparison_scope": "requested_year",
+            "comparison_status": "previous_month_missing",
+            "comparison_available": False,
+            "current_month_key": "2025-12",
+            "previous_month_key": "2025-11",
+            "coverage_warning_months": [],
+            "reconciliation_warning_months": [],
+            "incomplete_months": [],
+            "summary": None,
+            "rows": [],
+        },
+    }
 
 
 def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
@@ -1279,8 +1294,232 @@ def test_pnl_by_business_monthly_contract_returns_independent_month_buckets(monk
     ]
     assert [item["total_pnl"] for item in feb["unallocated_items"]] == ["7.00", "-2.00"]
     assert feb["items"][0]["total_pnl"] != "300.00"
+    management_change = result["management_change"]
+    assert management_change["comparison_basis"] == "latest_month_vs_previous_calendar_month"
+    assert management_change["comparison_scope"] == "requested_year"
+    assert management_change["comparison_status"] == "data_quality_warning"
+    assert management_change["comparison_available"] is True
+    assert management_change["current_month_key"] == "2025-02"
+    assert management_change["previous_month_key"] == "2025-01"
+    assert management_change["coverage_warning_months"] == ["2025-01", "2025-02"]
+    assert management_change["reconciliation_warning_months"] == ["2025-02"]
+    assert management_change["incomplete_months"] == []
+    assert management_change["summary"] == {
+        "interest_income_delta": "100.00",
+        "fair_value_change_delta": "0.00",
+        "capital_gain_delta": "0.00",
+        "manual_adjustment_delta": "0.00",
+        "total_pnl_delta": "100.00",
+        "avg_balance_delta": "1000.00",
+        "current_balance_delta": "1100.00",
+        "annualized_yield_delta_bp": "1261.5208",
+        "ftp_cost_delta": "1.19",
+        "ftp_net_pnl_delta": "98.81",
+        "ftp_net_annualized_yield_delta_bp": "1261.5208",
+    }
+    policy_change = next(
+        row
+        for row in management_change["rows"]
+        if row["row_key"] == "asset_zqtz_policy_financial_bond"
+    )
+    assert policy_change["comparison_available"] is True
+    assert policy_change["comparison_reason"] == "available"
+    assert policy_change["total_pnl_delta"] == "100.00"
+    assert policy_change["avg_balance_delta"] == "1000.00"
+    assert policy_change["ftp_net_pnl_delta"] == "98.81"
+    assert policy_change["ftp_net_annualized_yield_delta_bp"] == "1261.5208"
     if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
         pnl_service._clear_pnl_by_business_analysis_cache()
+
+
+def _monthly_management_change_bucket(
+    pnl_service,
+    *,
+    month_key: str,
+    period_end_date: str,
+    calendar_days: int,
+    coverage_days: int,
+    expected_days: int,
+    total_pnl: str,
+    avg_balance: str,
+    current_balance: str,
+):
+    has_balance = coverage_days > 0
+    item = pnl_service.PnlByBusinessMonthlyItem(
+        row_key="asset_zqtz_policy_financial_bond",
+        sort_order=66,
+        business_type="政策性金融债",
+        interest_income=Decimal(total_pnl),
+        fair_value_change=Decimal("0"),
+        capital_gain=Decimal("0"),
+        manual_adjustment=Decimal("0"),
+        total_pnl=Decimal(total_pnl),
+        avg_balance=Decimal(avg_balance),
+        current_balance=Decimal(current_balance),
+        annualized_yield_pct=Decimal("2.000000") if has_balance else None,
+        ftp_rate_pct=Decimal("1.600000"),
+        ftp_cost=Decimal("10.00") if has_balance else None,
+        ftp_net_pnl=Decimal(total_pnl) - Decimal("10.00") if has_balance else None,
+        ftp_net_annualized_yield_pct=Decimal("0.400000") if has_balance else None,
+        proportion=Decimal("1.000000"),
+        asset_count=1,
+        source_note="ZQTZ_ASSET_BOND_ROWS",
+    )
+    summary = pnl_service.PnlByBusinessMonthlySummary(
+        interest_income=item.interest_income,
+        fair_value_change=item.fair_value_change,
+        capital_gain=item.capital_gain,
+        manual_adjustment=item.manual_adjustment,
+        total_pnl=item.total_pnl,
+        avg_balance=item.avg_balance,
+        current_balance=item.current_balance,
+        annualized_yield_pct=item.annualized_yield_pct,
+        ftp_rate_pct=item.ftp_rate_pct,
+        ftp_cost=item.ftp_cost,
+        ftp_net_pnl=item.ftp_net_pnl,
+        ftp_net_annualized_yield_pct=item.ftp_net_annualized_yield_pct,
+        asset_count=1,
+    )
+    return pnl_service.PnlByBusinessMonthlyBucket(
+        month_key=month_key,
+        period_start_date=f"{month_key}-01",
+        period_end_date=period_end_date,
+        calendar_days=calendar_days,
+        coverage_days=coverage_days,
+        expected_days=expected_days,
+        sample_filled=0 < coverage_days < expected_days,
+        sample_fill_method=(
+            "observed_days_scaled_to_calendar" if 0 < coverage_days < expected_days else None
+        ),
+        source_total_pnl=Decimal(total_pnl),
+        classified_parent_total_pnl=Decimal(total_pnl),
+        unallocated_pnl=Decimal("0"),
+        unallocated_abs_pnl=Decimal("0"),
+        unallocated_row_count=0,
+        reconciliation_delta=Decimal("0"),
+        unallocated_breakdown=[],
+        unallocated_items=[],
+        unallocated_evidence_complete=True,
+        summary=summary,
+        items=[item],
+    )
+
+
+def test_pnl_by_business_monthly_change_does_not_treat_zero_coverage_as_zero_balance():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    january = _monthly_management_change_bucket(
+        pnl_service,
+        month_key="2025-01",
+        period_end_date="2025-01-31",
+        calendar_days=31,
+        coverage_days=31,
+        expected_days=31,
+        total_pnl="100.00",
+        avg_balance="1000.00",
+        current_balance="1100.00",
+    )
+    february = _monthly_management_change_bucket(
+        pnl_service,
+        month_key="2025-02",
+        period_end_date="2025-02-28",
+        calendar_days=28,
+        coverage_days=0,
+        expected_days=28,
+        total_pnl="200.00",
+        avg_balance="0.00",
+        current_balance="0.00",
+    )
+    payload = pnl_service.PnlByBusinessMonthlyPayload(
+        year=2025,
+        as_of_date="2025-02-28",
+        source_tables=["test"],
+        months=[january, february],
+    )
+
+    change = pnl_service._pnl_by_business_monthly_with_management_change(payload).management_change
+
+    assert change is not None
+    assert change.comparison_status == "data_quality_warning"
+    assert change.summary is not None
+    assert change.summary.total_pnl_delta == Decimal("100.00")
+    assert change.summary.avg_balance_delta is None
+    assert change.summary.current_balance_delta is None
+    assert change.summary.annualized_yield_delta_bp is None
+    assert change.summary.ftp_cost_delta is None
+    assert change.summary.ftp_net_pnl_delta is None
+    assert change.summary.ftp_net_annualized_yield_delta_bp is None
+    assert change.rows[0].avg_balance_delta is None
+    assert change.rows[0].current_balance_delta is None
+
+
+def test_pnl_by_business_monthly_change_fails_closed_for_incomplete_current_month():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    january = _monthly_management_change_bucket(
+        pnl_service,
+        month_key="2025-01",
+        period_end_date="2025-01-31",
+        calendar_days=31,
+        coverage_days=31,
+        expected_days=31,
+        total_pnl="100.00",
+        avg_balance="1000.00",
+        current_balance="1100.00",
+    )
+    partial_february = _monthly_management_change_bucket(
+        pnl_service,
+        month_key="2025-02",
+        period_end_date="2025-02-15",
+        calendar_days=15,
+        coverage_days=15,
+        expected_days=15,
+        total_pnl="120.00",
+        avg_balance="1200.00",
+        current_balance="1250.00",
+    )
+    payload = pnl_service.PnlByBusinessMonthlyPayload(
+        year=2025,
+        as_of_date="2025-02-15",
+        source_tables=["test"],
+        months=[january, partial_february],
+    )
+
+    change = pnl_service._pnl_by_business_monthly_with_management_change(payload).management_change
+
+    assert change is not None
+    assert change.comparison_status == "period_incomplete"
+    assert change.comparison_available is False
+    assert change.incomplete_months == ["2025-02"]
+    assert change.summary is None
+    assert change.rows == []
+
+
+def test_pnl_by_business_monthly_change_marks_previous_month_outside_year_scope():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    january = _monthly_management_change_bucket(
+        pnl_service,
+        month_key="2026-01",
+        period_end_date="2026-01-31",
+        calendar_days=31,
+        coverage_days=31,
+        expected_days=31,
+        total_pnl="100.00",
+        avg_balance="1000.00",
+        current_balance="1100.00",
+    )
+    payload = pnl_service.PnlByBusinessMonthlyPayload(
+        year=2026,
+        as_of_date="2026-01-31",
+        source_tables=["test"],
+        months=[january],
+    )
+
+    change = pnl_service._pnl_by_business_monthly_with_management_change(payload).management_change
+
+    assert change is not None
+    assert change.comparison_status == "previous_month_outside_request_scope"
+    assert change.comparison_available is False
+    assert change.previous_month_key == "2025-12"
+    assert change.summary is None
 
 
 def test_pnl_by_business_monthly_reconciliation_delta_is_independently_derived(monkeypatch):

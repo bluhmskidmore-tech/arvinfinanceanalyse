@@ -414,6 +414,50 @@ function buildPnlClient(): ApiClient {
     year: 2025,
     as_of_date: "2025-12-31",
     source_tables: ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
+    management_change: {
+      comparison_basis: "latest_month_vs_previous_calendar_month",
+      comparison_scope: "requested_year",
+      comparison_status: "data_quality_warning",
+      comparison_available: true,
+      current_month_key: "2025-12",
+      previous_month_key: "2025-11",
+      coverage_warning_months: ["2025-12"],
+      reconciliation_warning_months: ["2025-12"],
+      incomplete_months: [],
+      summary: {
+        interest_income_delta: "20000.00",
+        fair_value_change_delta: "5000.00",
+        capital_gain_delta: "7500.00",
+        manual_adjustment_delta: "2500.00",
+        total_pnl_delta: "35000.00",
+        avg_balance_delta: "10000000.00",
+        current_balance_delta: "8000000.00",
+        annualized_yield_delta_bp: "24.6386",
+        ftp_cost_delta: "17534.25",
+        ftp_net_pnl_delta: "17465.75",
+        ftp_net_annualized_yield_delta_bp: "24.6386",
+      },
+      rows: [
+        {
+          row_key: "asset_zqtz_policy_financial_bond",
+          sort_order: 66,
+          business_type: "政策性金融债",
+          comparison_available: true,
+          comparison_reason: "available",
+          interest_income_delta: "20000.00",
+          fair_value_change_delta: "5000.00",
+          capital_gain_delta: "7500.00",
+          manual_adjustment_delta: "2500.00",
+          total_pnl_delta: "35000.00",
+          avg_balance_delta: "10000000.00",
+          current_balance_delta: "8000000.00",
+          annualized_yield_delta_bp: "24.6386",
+          ftp_cost_delta: "17534.25",
+          ftp_net_pnl_delta: "17465.75",
+          ftp_net_annualized_yield_delta_bp: "24.6386",
+        },
+      ],
+    },
     months: [
       {
         month_key: "2025-11",
@@ -1052,8 +1096,10 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
     });
     const leadershipSummary = screen.getByTestId("pnl-by-business-leadership-summary");
+    const managementChange = screen.getByTestId("pnl-by-business-management-change");
     const dataStatusStrip = screen.getByTestId("pnl-by-business-data-status-strip");
     const filterTray = screen.getByTestId("pnl-by-business-filter-tray");
+    expect(leadershipSummary).toContainElement(managementChange);
     expect(leadershipSummary.compareDocumentPosition(dataStatusStrip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(dataStatusStrip.compareDocumentPosition(filterTray) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await waitFor(() => {
@@ -1164,6 +1210,8 @@ describe("pnl routed pages smoke", () => {
       });
     });
     expect(await screen.findByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_ytd");
+    expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("月度经营环比");
+    expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_monthly");
     expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent("tr_route_business_ytd");
 
     await waitFor(() => {
@@ -1196,8 +1244,35 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("100.00%");
       expect(screen.getByTestId("pnl-by-business-table")).not.toHaveTextContent("其中：本币专户（成本法）");
       expect(screen.getByTestId("pnl-by-business-detail-table")).toHaveTextContent("其中：本币专户（成本法）");
-      expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("父级汇总");
+      expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("父级损益（系统汇总）");
       expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("12.35");
+      const parentFooterCells = screen
+        .getByTestId("pnl-by-business-table-parent-footer")
+        .querySelectorAll("td");
+      expect(parentFooterCells).toHaveLength(12);
+      expect(parentFooterCells[0]).toHaveTextContent("父级损益（系统汇总）");
+      expect(parentFooterCells[1]).toHaveTextContent("—");
+      expect(parentFooterCells[2]).toHaveTextContent("—");
+      expect(parentFooterCells[5]).toHaveTextContent("—");
+      expect(parentFooterCells[6]).toHaveTextContent("12.35");
+      expect(parentFooterCells[8]).toHaveTextContent("—");
+      expect(parentFooterCells[11]).toHaveTextContent("—");
+      const managementChange = screen.getByTestId("pnl-by-business-management-change");
+      expect(managementChange).toHaveTextContent("2025-12 较 2025-11");
+      expect(managementChange).toHaveTextContent("日均变化");
+      expect(managementChange).toHaveTextContent("+0.10 亿元");
+      expect(managementChange).toHaveTextContent("已分类父级损益变化");
+      expect(managementChange).toHaveTextContent("+3.50 万元");
+      expect(managementChange).toHaveTextContent("FTP净损益变化");
+      expect(managementChange).toHaveTextContent("+1.75 万元");
+      expect(managementChange).toHaveTextContent("FTP后年化变化");
+      expect(managementChange).toHaveTextContent("+24.64 bp");
+      expect(managementChange).toHaveTextContent("数据质量提示");
+      expect(managementChange).toHaveTextContent("2025-12 已分类父级损益较上月增加 3.50 万元");
+      expect(managementChange).toHaveTextContent("最大波动业务为政策性金融债（增加 3.50 万元）");
+      expect(managementChange).toHaveTextContent("日均余额增加 0.10 亿元，期末余额增加 0.08 亿元");
+      expect(managementChange).toHaveTextContent("损益构成变化");
+      expect(screen.getByTestId("pnl-by-business-management-change-drivers")).toHaveTextContent("政策性金融债");
       const ytdTable = within(screen.getByTestId("pnl-by-business-table")).getByRole("table");
       expect(within(ytdTable).getAllByRole("columnheader")).toHaveLength(12);
       const ytdParentRow = within(ytdTable).getByText("政策性金融债").closest("tr");

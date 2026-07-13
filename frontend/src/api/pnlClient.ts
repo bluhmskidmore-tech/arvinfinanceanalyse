@@ -145,7 +145,7 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
           source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
           items: [],
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false },
       );
     },
     async createPnlByBusinessManualAdjustment(payload) {
@@ -228,8 +228,9 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
             "ZQTZ_ASSET_BOND_ROWS",
           ],
           months: [],
+          management_change: null,
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false },
       );
     },
     async getPnlByBusinessAnalysis(options) {
@@ -251,7 +252,7 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
           ],
           rows: [],
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis: "analytical", formal_use_allowed: false },
       );
     },
     async getPnlByBusinessCandidateInsights(year: number, asOfDate: string) {

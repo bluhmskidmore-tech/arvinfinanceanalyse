@@ -125,6 +125,7 @@ function q1MonthlyPayload(items: PnlByBusinessMonthlyItem[]): PnlByBusinessMonth
     year: 2026,
     as_of_date: "2026-03-31",
     source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    management_change: null,
     months: [
       {
         month_key: "2026-03",

@@ -39,6 +39,7 @@ SIGN_FLIP_JOURNAL_TYPES: frozenset[str] = frozenset(LEDGER_PNL_ACCOUNT_PREFIXES)
 ZERO = Decimal("0")
 TWOPLACES = Decimal("0.01")
 YIELD_PCT_PLACES = Decimal("0.000001")
+BP_PLACES = Decimal("0.0001")
 _FORMAL_517_EVENT_SEMANTICS: frozenset[str] = frozenset(
     {
         "realized_formal",
@@ -169,6 +170,36 @@ class PnlByBusinessYieldAndFtp:
     ftp_net_annualized_yield_pct: Decimal | None
 
 
+@dataclass(slots=True, frozen=True)
+class PnlByBusinessMonthlyMeasure:
+    interest_income: Decimal
+    fair_value_change: Decimal
+    capital_gain: Decimal
+    manual_adjustment: Decimal
+    total_pnl: Decimal
+    avg_balance: Decimal
+    current_balance: Decimal
+    annualized_yield_pct: Decimal | None
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
+
+
+@dataclass(slots=True, frozen=True)
+class PnlByBusinessMonthlyChange:
+    interest_income_delta: Decimal
+    fair_value_change_delta: Decimal
+    capital_gain_delta: Decimal
+    manual_adjustment_delta: Decimal
+    total_pnl_delta: Decimal
+    avg_balance_delta: Decimal
+    current_balance_delta: Decimal
+    annualized_yield_delta_bp: Decimal | None
+    ftp_cost_delta: Decimal | None
+    ftp_net_pnl_delta: Decimal | None
+    ftp_net_annualized_yield_delta_bp: Decimal | None
+
+
 def compute_pnl_by_business_yield_and_ftp(
     *,
     total_pnl: Decimal,
@@ -197,6 +228,34 @@ def compute_pnl_by_business_yield_and_ftp(
         ftp_cost=ftp_cost,
         ftp_net_pnl=_quantize_amount(total_pnl - ftp_cost),
         ftp_net_annualized_yield_pct=_quantize_yield_pct(annualized_yield_pct - normalized_ftp_rate_pct),
+    )
+
+
+def compute_pnl_by_business_monthly_change(
+    *,
+    current: PnlByBusinessMonthlyMeasure,
+    previous: PnlByBusinessMonthlyMeasure,
+) -> PnlByBusinessMonthlyChange:
+    """Return current month minus previous calendar month without zero-filling nullable metrics."""
+
+    return PnlByBusinessMonthlyChange(
+        interest_income_delta=_quantize_amount(current.interest_income - previous.interest_income),
+        fair_value_change_delta=_quantize_amount(current.fair_value_change - previous.fair_value_change),
+        capital_gain_delta=_quantize_amount(current.capital_gain - previous.capital_gain),
+        manual_adjustment_delta=_quantize_amount(current.manual_adjustment - previous.manual_adjustment),
+        total_pnl_delta=_quantize_amount(current.total_pnl - previous.total_pnl),
+        avg_balance_delta=_quantize_amount(current.avg_balance - previous.avg_balance),
+        current_balance_delta=_quantize_amount(current.current_balance - previous.current_balance),
+        annualized_yield_delta_bp=_optional_yield_delta_bp(
+            current.annualized_yield_pct,
+            previous.annualized_yield_pct,
+        ),
+        ftp_cost_delta=_optional_amount_delta(current.ftp_cost, previous.ftp_cost),
+        ftp_net_pnl_delta=_optional_amount_delta(current.ftp_net_pnl, previous.ftp_net_pnl),
+        ftp_net_annualized_yield_delta_bp=_optional_yield_delta_bp(
+            current.ftp_net_annualized_yield_pct,
+            previous.ftp_net_annualized_yield_pct,
+        ),
     )
 
 
@@ -394,10 +453,13 @@ __all__ = [
     "JournalType",
     "NonStdJournalEntry",
     "NonStdPnlBridgeRow",
+    "PnlByBusinessMonthlyChange",
+    "PnlByBusinessMonthlyMeasure",
     "PnlByBusinessYieldAndFtp",
     "build_formal_pnl_fi_fact_rows",
     "build_nonstd_pnl_bridge_rows",
     "compute_nonstd_signed_ledger_amount",
+    "compute_pnl_by_business_monthly_change",
     "compute_pnl_by_business_yield_and_ftp",
     "normalize_fi_pnl_records",
     "normalize_nonstd_journal_entries",
@@ -550,6 +612,18 @@ def _quantize_amount(value: Decimal) -> Decimal:
 
 def _quantize_yield_pct(value: object) -> Decimal:
     return Decimal(str(value)).quantize(YIELD_PCT_PLACES)
+
+
+def _optional_amount_delta(current: Decimal | None, previous: Decimal | None) -> Decimal | None:
+    if current is None or previous is None:
+        return None
+    return _quantize_amount(current - previous)
+
+
+def _optional_yield_delta_bp(current: Decimal | None, previous: Decimal | None) -> Decimal | None:
+    if current is None or previous is None:
+        return None
+    return ((current - previous) * Decimal("100")).quantize(BP_PLACES)
 
 
 def _recognized_pnl_components(row: FiPnlRecord) -> RecognizedPnlComponents:

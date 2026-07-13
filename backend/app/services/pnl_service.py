@@ -9,7 +9,12 @@ from uuid import uuid4
 from backend.app.config.product_category_mapping import resolve_product_category_ftp_rate_pct
 from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCOUNT_PREFIXES
 from backend.app.core_finance.field_normalization import is_approved_status
-from backend.app.core_finance.pnl import compute_nonstd_signed_ledger_amount, compute_pnl_by_business_yield_and_ftp
+from backend.app.core_finance.pnl import (
+    PnlByBusinessMonthlyMeasure,
+    compute_nonstd_signed_ledger_amount,
+    compute_pnl_by_business_monthly_change,
+    compute_pnl_by_business_yield_and_ftp,
+)
 from backend.app.core_finance.reconciliation_checks import pnl_vs_ledger_diff
 from backend.app.core_finance.zqtz_asset_bond_category import (
     ZQTZ_ASSET_BOND_ROWS,
@@ -37,7 +42,10 @@ from backend.app.schemas.pnl import (
     PnlByBusinessManualAdjustmentPayload,
     PnlByBusinessManualAdjustmentRequest,
     PnlByBusinessMonthlyBucket,
+    PnlByBusinessMonthlyChangeMetrics,
+    PnlByBusinessMonthlyChangeRow,
     PnlByBusinessMonthlyItem,
+    PnlByBusinessMonthlyManagementChange,
     PnlByBusinessMonthlyPayload,
     PnlByBusinessMonthlySummary,
     PnlByBusinessPayload,
@@ -1797,7 +1805,9 @@ def pnl_by_business_monthly_envelope(
         and not has_manual_adjustments
         and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="monthly")
     ):
-        payload = PnlByBusinessMonthlyPayload.model_validate(precomputed)
+        payload = _pnl_by_business_monthly_with_management_change(
+            PnlByBusinessMonthlyPayload.model_validate(precomputed)
+        )
         return _build_pnl_by_business_analytical_result_envelope(
             governance_dir=governance_dir,
             requested_report_date=as_of_date,
@@ -1853,6 +1863,7 @@ def pnl_by_business_monthly_envelope(
             ftp_rate_pct=ftp_rate_pct,
         ),
     )
+    payload = _pnl_by_business_monthly_with_management_change(payload)
     return _build_pnl_by_business_analytical_result_envelope(
         governance_dir=governance_dir,
         requested_report_date=as_of_date,
@@ -2347,6 +2358,218 @@ def _monthly_business_summary_from_items(
 
 def _is_parent_monthly_business_item(item: PnlByBusinessMonthlyItem) -> bool:
     return is_parent_zqtz_business_row(item.row_key, item.business_type, item.source_note)
+
+
+def _pnl_by_business_monthly_with_management_change(
+    payload: PnlByBusinessMonthlyPayload,
+) -> PnlByBusinessMonthlyPayload:
+    current_month_key = payload.as_of_date[:7]
+    current_month_start = date.fromisoformat(f"{current_month_key}-01")
+    previous_month_key = (current_month_start - timedelta(days=1)).isoformat()[:7]
+    buckets_by_key = {bucket.month_key: bucket for bucket in payload.months}
+    current_bucket = buckets_by_key.get(current_month_key)
+    previous_bucket = buckets_by_key.get(previous_month_key)
+
+    if current_bucket is None:
+        management_change = PnlByBusinessMonthlyManagementChange(
+            comparison_basis="latest_month_vs_previous_calendar_month",
+            comparison_scope="requested_year",
+            comparison_status="current_month_missing",
+            comparison_available=False,
+            current_month_key=current_month_key,
+            previous_month_key=previous_month_key,
+            coverage_warning_months=[],
+            reconciliation_warning_months=[],
+            incomplete_months=[],
+            summary=None,
+            rows=[],
+        )
+        return payload.model_copy(update={"management_change": management_change})
+
+    if not previous_month_key.startswith(f"{payload.year:04d}-"):
+        management_change = PnlByBusinessMonthlyManagementChange(
+            comparison_basis="latest_month_vs_previous_calendar_month",
+            comparison_scope="requested_year",
+            comparison_status="previous_month_outside_request_scope",
+            comparison_available=False,
+            current_month_key=current_month_key,
+            previous_month_key=previous_month_key,
+            coverage_warning_months=[],
+            reconciliation_warning_months=[],
+            incomplete_months=[],
+            summary=None,
+            rows=[],
+        )
+        return payload.model_copy(update={"management_change": management_change})
+
+    if previous_bucket is None:
+        management_change = PnlByBusinessMonthlyManagementChange(
+            comparison_basis="latest_month_vs_previous_calendar_month",
+            comparison_scope="requested_year",
+            comparison_status="previous_month_missing",
+            comparison_available=False,
+            current_month_key=current_month_key,
+            previous_month_key=previous_month_key,
+            coverage_warning_months=[],
+            reconciliation_warning_months=[],
+            incomplete_months=[],
+            summary=None,
+            rows=[],
+        )
+        return payload.model_copy(update={"management_change": management_change})
+
+    warning_months = sorted(
+        bucket.month_key
+        for bucket in (previous_bucket, current_bucket)
+        if bucket.sample_filled or _coverage_quality_flag(bucket.coverage_days, bucket.expected_days)
+    )
+    reconciliation_warning_months = sorted(
+        bucket.month_key
+        for bucket in (previous_bucket, current_bucket)
+        if bucket.unallocated_row_count > 0
+        or bucket.reconciliation_delta != Decimal("0")
+        or not bucket.unallocated_evidence_complete
+    )
+    incomplete_months = sorted(
+        bucket.month_key
+        for bucket in (previous_bucket, current_bucket)
+        if not _is_calendar_month_end(bucket.period_end_date)
+    )
+    if incomplete_months:
+        management_change = PnlByBusinessMonthlyManagementChange(
+            comparison_basis="latest_month_vs_previous_calendar_month",
+            comparison_scope="requested_year",
+            comparison_status="period_incomplete",
+            comparison_available=False,
+            current_month_key=current_month_key,
+            previous_month_key=previous_month_key,
+            coverage_warning_months=warning_months,
+            reconciliation_warning_months=reconciliation_warning_months,
+            incomplete_months=incomplete_months,
+            summary=None,
+            rows=[],
+        )
+        return payload.model_copy(update={"management_change": management_change})
+
+    balance_comparable = current_bucket.coverage_days > 0 and previous_bucket.coverage_days > 0
+    current_items = {
+        item.row_key: item for item in current_bucket.items if _is_parent_monthly_business_item(item)
+    }
+    previous_items = {
+        item.row_key: item for item in previous_bucket.items if _is_parent_monthly_business_item(item)
+    }
+    rows: list[PnlByBusinessMonthlyChangeRow] = []
+    for row_key in sorted(
+        current_items.keys() | previous_items.keys(),
+        key=lambda key: (
+            (current_items.get(key) or previous_items[key]).sort_order,
+            key,
+        ),
+    ):
+        current_item = current_items.get(row_key)
+        previous_item = previous_items.get(row_key)
+        reference_item = current_item or previous_item
+        if reference_item is None:  # pragma: no cover - union guarantees a reference row
+            continue
+        if current_item is None or previous_item is None:
+            rows.append(
+                PnlByBusinessMonthlyChangeRow(
+                    row_key=row_key,
+                    sort_order=reference_item.sort_order,
+                    business_type=reference_item.business_type,
+                    comparison_available=False,
+                    comparison_reason=("current_row_missing" if current_item is None else "previous_row_missing"),
+                )
+            )
+            continue
+        rows.append(
+            PnlByBusinessMonthlyChangeRow(
+                row_key=row_key,
+                sort_order=current_item.sort_order,
+                business_type=current_item.business_type,
+                comparison_available=True,
+                comparison_reason="available",
+                **_pnl_by_business_monthly_change_metrics(
+                    current_item,
+                    previous_item,
+                    balance_comparable=balance_comparable,
+                ).model_dump(),
+            )
+        )
+
+    management_change = PnlByBusinessMonthlyManagementChange(
+        comparison_basis="latest_month_vs_previous_calendar_month",
+        comparison_scope="requested_year",
+        comparison_status=(
+            "data_quality_warning"
+            if warning_months or reconciliation_warning_months
+            else "available"
+        ),
+        comparison_available=True,
+        current_month_key=current_month_key,
+        previous_month_key=previous_month_key,
+        coverage_warning_months=warning_months,
+        reconciliation_warning_months=reconciliation_warning_months,
+        incomplete_months=[],
+        summary=_pnl_by_business_monthly_change_metrics(
+            current_bucket.summary,
+            previous_bucket.summary,
+            balance_comparable=balance_comparable,
+        ),
+        rows=rows,
+    )
+    return payload.model_copy(update={"management_change": management_change})
+
+
+def _pnl_by_business_monthly_change_metrics(
+    current: PnlByBusinessMonthlyItem | PnlByBusinessMonthlySummary,
+    previous: PnlByBusinessMonthlyItem | PnlByBusinessMonthlySummary,
+    *,
+    balance_comparable: bool = True,
+) -> PnlByBusinessMonthlyChangeMetrics:
+    change = compute_pnl_by_business_monthly_change(
+        current=_pnl_by_business_monthly_measure(current),
+        previous=_pnl_by_business_monthly_measure(previous),
+    )
+    metrics = PnlByBusinessMonthlyChangeMetrics(**{
+        field_name: getattr(change, field_name)
+        for field_name in PnlByBusinessMonthlyChangeMetrics.model_fields
+    })
+    if balance_comparable:
+        return metrics
+    return metrics.model_copy(
+        update={
+            "avg_balance_delta": None,
+            "current_balance_delta": None,
+            "annualized_yield_delta_bp": None,
+            "ftp_cost_delta": None,
+            "ftp_net_pnl_delta": None,
+            "ftp_net_annualized_yield_delta_bp": None,
+        }
+    )
+
+
+def _pnl_by_business_monthly_measure(
+    value: PnlByBusinessMonthlyItem | PnlByBusinessMonthlySummary,
+) -> PnlByBusinessMonthlyMeasure:
+    return PnlByBusinessMonthlyMeasure(
+        interest_income=value.interest_income,
+        fair_value_change=value.fair_value_change,
+        capital_gain=value.capital_gain,
+        manual_adjustment=value.manual_adjustment,
+        total_pnl=value.total_pnl,
+        avg_balance=value.avg_balance,
+        current_balance=value.current_balance,
+        annualized_yield_pct=value.annualized_yield_pct,
+        ftp_cost=value.ftp_cost,
+        ftp_net_pnl=value.ftp_net_pnl,
+        ftp_net_annualized_yield_pct=value.ftp_net_annualized_yield_pct,
+    )
+
+
+def _is_calendar_month_end(value: str) -> bool:
+    period_end = date.fromisoformat(value)
+    return (period_end + timedelta(days=1)).day == 1
 
 
 def _new_analysis_dimension_bucket(dimension_key: str, dimension_label: str) -> dict[str, object]:

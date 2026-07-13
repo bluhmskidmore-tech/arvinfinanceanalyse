@@ -389,6 +389,61 @@ class PnlByBusinessMonthlyBucket(BaseModel):
     items: list[PnlByBusinessMonthlyItem]
 
 
+PnlByBusinessMonthlyComparisonStatus = Literal[
+    "available",
+    "data_quality_warning",
+    "current_month_missing",
+    "previous_month_missing",
+    "previous_month_outside_request_scope",
+    "period_incomplete",
+]
+PnlByBusinessMonthlyRowComparisonReason = Literal[
+    "available",
+    "current_row_missing",
+    "previous_row_missing",
+]
+
+
+class PnlByBusinessMonthlyChangeMetrics(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interest_income_delta: Decimal | None = None
+    fair_value_change_delta: Decimal | None = None
+    capital_gain_delta: Decimal | None = None
+    manual_adjustment_delta: Decimal | None = None
+    total_pnl_delta: Decimal | None = None
+    avg_balance_delta: Decimal | None = None
+    current_balance_delta: Decimal | None = None
+    annualized_yield_delta_bp: Decimal | None = None
+    ftp_cost_delta: Decimal | None = None
+    ftp_net_pnl_delta: Decimal | None = None
+    ftp_net_annualized_yield_delta_bp: Decimal | None = None
+
+
+class PnlByBusinessMonthlyChangeRow(PnlByBusinessMonthlyChangeMetrics):
+    row_key: str
+    sort_order: int
+    business_type: str
+    comparison_available: bool
+    comparison_reason: PnlByBusinessMonthlyRowComparisonReason
+
+
+class PnlByBusinessMonthlyManagementChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comparison_basis: Literal["latest_month_vs_previous_calendar_month"]
+    comparison_scope: Literal["requested_year"]
+    comparison_status: PnlByBusinessMonthlyComparisonStatus
+    comparison_available: bool
+    current_month_key: str
+    previous_month_key: str
+    coverage_warning_months: list[str]
+    reconciliation_warning_months: list[str]
+    incomplete_months: list[str]
+    summary: PnlByBusinessMonthlyChangeMetrics | None
+    rows: list[PnlByBusinessMonthlyChangeRow]
+
+
 class PnlByBusinessMonthlyPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -396,6 +451,7 @@ class PnlByBusinessMonthlyPayload(BaseModel):
     as_of_date: str
     source_tables: list[str]
     months: list[PnlByBusinessMonthlyBucket]
+    management_change: PnlByBusinessMonthlyManagementChange | None = None
 
 
 PnlByBusinessAnalysisDimension = Literal[

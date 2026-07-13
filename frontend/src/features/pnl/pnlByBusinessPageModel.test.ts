@@ -286,6 +286,7 @@ describe("pnlByBusinessPageModel", () => {
         year: 2026,
         as_of_date: "2026-06-30",
         source_tables: ["monthly"],
+        management_change: null,
         months: [monthlyBucket({ month_key: "2026-06" })],
       },
       monthlyMeta: meta({ as_of_date: "2026-06-30" }),
@@ -439,6 +440,7 @@ describe("pnlByBusinessPageModel", () => {
         year: 2026,
         as_of_date: "2026-04-30",
         source_tables: ["monthly"],
+        management_change: null,
         months: [monthlyBucket()],
       },
       monthlyMeta: meta({ quality_flag: "ok", as_of_date: "2026-04-30", fallback_mode: "none" }),
@@ -536,6 +538,7 @@ describe("pnlByBusinessPageModel", () => {
         year: 2026,
         as_of_date: "2026-04-30",
         source_tables: ["monthly"],
+        management_change: null,
         months: [monthlyBucket()],
       },
       monthlyMeta: meta({ quality_flag: "ok" }),
@@ -614,6 +617,7 @@ describe("pnlByBusinessPageModel", () => {
         year: 2026,
         as_of_date: "2026-04-30",
         source_tables: ["monthly"],
+        management_change: null,
         months: [
           monthlyBucket({
             summary: {
@@ -668,6 +672,7 @@ describe("pnlByBusinessPageModel", () => {
         year: 2026,
         as_of_date: "2026-04-30",
         source_tables: ["monthly"],
+        management_change: null,
         months: [monthlyBucket()],
       },
       monthlyMeta: meta({ quality_flag: "ok" }),
