@@ -13,6 +13,7 @@ import {
   buildPnlByBusinessPageModel,
   buildPnlByBusinessSelectionModel,
   formatAvgBalanceYi,
+  formatPnlByBusinessFtpStatus,
   isParentZqtzBusinessRow,
   resolvePnlByBusinessActiveMonthlyBucket,
   VIEW_MODE_BUSINESS_QUESTIONS,
@@ -214,6 +215,17 @@ function formalPayload(partial: Partial<PnlByBusinessPayload> = {}): PnlByBusine
 }
 
 describe("pnlByBusinessPageModel", () => {
+  it("distinguishes FTP transition, zero, missing-base, and unavailable states", () => {
+    expect(formatPnlByBusinessFtpStatus("100", null)).toBe("FTP 后不可算");
+    expect(formatPnlByBusinessFtpStatus("100", "-1")).toBe("FTP 后转负");
+    expect(formatPnlByBusinessFtpStatus("-100", "-101")).toBe("FTP 后为负");
+    expect(formatPnlByBusinessFtpStatus(null, "-1")).toBe("FTP 后为负（扣前损益待返回）");
+    expect(formatPnlByBusinessFtpStatus("100", "0")).toBe("FTP 后为零");
+    expect(formatPnlByBusinessFtpStatus("-100", "1")).toBe("FTP 后转正");
+    expect(formatPnlByBusinessFtpStatus("100", "1")).toBe("FTP 后仍为正");
+    expect(formatPnlByBusinessFtpStatus(null, "1")).toBe("FTP 后为正（扣前损益待返回）");
+  });
+
   it("builds the monthly manual-adjustment and FTP bridge from governed API fields", () => {
     const baseItem = monthlyBucket().items[0]!;
     const bridge = buildPnlByBusinessMonthlyAdjustmentBridge(
@@ -734,6 +746,75 @@ describe("pnlByBusinessPageModel", () => {
       actionLabel: "先补齐 ADB 再判断 FTP 后收益",
       evidenceLabel: "缺日均 2 项",
     });
+  });
+
+  it("does not promote null YTD proportions into the maximum-share conclusion", () => {
+    const payload = ytdPayload({
+      items: ytdPayload().items.map((row) =>
+        isParentZqtzBusinessRow(row) ? { ...row, proportion: null } : row,
+      ),
+    });
+
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "ytd",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      adbAvgByBusinessType: new Map([
+        ["债券投资", 100_000_000],
+        ["非底层投资资产", 200_000_000],
+      ]),
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      ytdResult: payload,
+      ytdMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(model.insight.topShareLabel).toBe("暂无占比");
+    expect(model.insight.topShareDisplay).toBe("-");
+    expect(model.summaryCards[3]).toMatchObject({ label: "最大占比", value: "-", detail: "无明细" });
+  });
+
+  it("uses the true maximum-share row for YTD KPI and keeps a real zero share", () => {
+    const payload = ytdPayload({
+      items: ytdPayload().items.map((row) => {
+        if (row.row_key === "asset_zqtz_parent_a") {
+          return { ...row, total_pnl: "10000000", proportion: null };
+        }
+        if (row.row_key === "asset_zqtz_parent_b") {
+          return { ...row, proportion: "0" };
+        }
+        return row;
+      }),
+    });
+
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "ytd",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      adbAvgByBusinessType: new Map([
+        ["债券投资", 100_000_000],
+        ["非底层投资资产", 200_000_000],
+      ]),
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      ytdResult: payload,
+      ytdMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(model.summaryCards[2]).toMatchObject({ label: "最大损益业务", value: "债券投资" });
+    expect(model.summaryCards[3]).toMatchObject({
+      label: "最大占比",
+      value: "0.00%",
+      detail: "非底层投资资产",
+    });
+    expect(model.insight.topShareLabel).toBe("非底层投资资产");
+    expect(model.insight.topShareDisplay).toBe("0.00%");
   });
 
   it("does not mark YTD ADB missing when parent rows resolve from rollup children", () => {

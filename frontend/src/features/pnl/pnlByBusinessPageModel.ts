@@ -204,6 +204,30 @@ function numeric(raw: string | number | null | undefined): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+export function formatPnlByBusinessFtpStatus(
+  totalPnlRaw: string | number | null | undefined,
+  ftpNetPnlRaw: string | number | null | undefined,
+): string {
+  const totalPnl = numeric(totalPnlRaw);
+  const ftpNetPnl = numeric(ftpNetPnlRaw);
+  if (ftpNetPnl === null) {
+    return "FTP 后不可算";
+  }
+  if (ftpNetPnl === 0) {
+    return "FTP 后为零";
+  }
+  if (ftpNetPnl > 0) {
+    if (totalPnl === null) {
+      return "FTP 后为正（扣前损益待返回）";
+    }
+    return totalPnl <= 0 ? "FTP 后转正" : "FTP 后仍为正";
+  }
+  if (totalPnl === null) {
+    return "FTP 后为负（扣前损益待返回）";
+  }
+  return totalPnl >= 0 ? "FTP 后转负" : "FTP 后为负";
+}
+
 export function buildPnlByBusinessSelectedDrilldownModel(
   rows: PnlByBusinessAnalysisRow[],
   limit = 3,
@@ -469,13 +493,20 @@ function pickTopNegativeYtdRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdIt
 }
 
 function pickTopShareYtdRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdItem | undefined {
-  return rows.reduce<PnlByBusinessYtdItem | undefined>((current, row) => {
-    const value = Math.abs(numeric(row.proportion) ?? 0);
-    if (!current) {
-      return row;
+  let selected: PnlByBusinessYtdItem | undefined;
+  let selectedShare = Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    const proportion = numeric(row.proportion);
+    if (proportion === null) {
+      continue;
     }
-    return value > Math.abs(numeric(current.proportion) ?? 0) ? row : current;
-  }, undefined);
+    const absoluteShare = Math.abs(proportion);
+    if (!selected || absoluteShare > selectedShare) {
+      selected = row;
+      selectedShare = absoluteShare;
+    }
+  }
+  return selected;
 }
 
 function hasAnalysisWarning(meta: ResultMeta | undefined): boolean {
@@ -891,6 +922,7 @@ function buildYtdSummaryCards(input: {
   topYtdRow?: PnlByBusinessYtdItem;
 }): PnlSummaryCard[] {
   const { ytdResult, topYtdRow } = input;
+  const topShareRow = pickTopShareYtdRow(input.parentYtdRows);
   return [
     {
       label: "年累计损益",
@@ -912,8 +944,8 @@ function buildYtdSummaryCards(input: {
     },
     {
       label: "最大占比",
-      value: formatRatioPct(topYtdRow?.proportion),
-      detail: topYtdRow?.business_type ?? "无明细",
+      value: formatRatioPct(topShareRow?.proportion),
+      detail: topShareRow?.business_type ?? "无明细",
     },
   ];
 }

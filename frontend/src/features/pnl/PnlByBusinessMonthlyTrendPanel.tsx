@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import type { PnlByBusinessMonthlyBucket } from "../../api/contracts";
 import { BaseChart } from "../../components/charts/BaseChart";
 import { createLineChartOption, mossChartPalette } from "../../components/charts/chartTheme";
 import type { EChartsOption } from "../../lib/echarts";
+import { ibTokens } from "../../theme/designSystem";
 import {
   buildSelectedBusinessMonthlyTrend,
   type PnlByBusinessMonthlyTrendPoint,
@@ -15,6 +16,32 @@ type TrendSeries = {
   color: string;
   values: Array<number | null>;
   lineType?: "solid" | "dashed";
+};
+
+type TrendView = "pnl" | "balance" | "yield";
+
+const TREND_VIEW_META: Record<
+  TrendView,
+  { label: string; title: string; description: string; unit: string }
+> = {
+  pnl: {
+    label: "损益 / FTP后",
+    title: "损益与 FTP 后收益（万元）",
+    description: "优先判断损益方向，以及扣除资金成本后是否仍然为正。",
+    unit: "万元",
+  },
+  balance: {
+    label: "日均 / 期末",
+    title: "日均与期末余额（亿元）",
+    description: "观察规模变化，以及日均余额与月末时点余额的偏离。",
+    unit: "亿元",
+  },
+  yield: {
+    label: "收益率 / FTP",
+    title: "收益率与 FTP（%）",
+    description: "对照年化收益率、FTP 年化利率与 FTP 后年化收益率。",
+    unit: "%",
+  },
 };
 
 type PnlByBusinessMonthlyTrendPanelProps = {
@@ -33,8 +60,19 @@ function formatAxisValue(value: number): string {
 function buildTrendOption(
   points: PnlByBusinessMonthlyTrendPoint[],
   series: TrendSeries[],
+  unit: string,
+  showZeroLine = false,
 ): EChartsOption {
   return createLineChartOption({
+    tooltip: {
+      valueFormatter: (value) => {
+        if (value === null || value === undefined || value === "") {
+          return "-";
+        }
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) ? `${formatAxisValue(numericValue)} ${unit}` : "-";
+      },
+    },
     legend: {
       data: series.map((item) => item.name),
       top: 0,
@@ -49,7 +87,7 @@ function buildTrendOption(
       type: "value",
       axisLabel: { formatter: formatAxisValue },
     },
-    series: series.map((item) => ({
+    series: series.map((item, index) => ({
       name: item.name,
       type: "line" as const,
       data: item.values,
@@ -60,6 +98,15 @@ function buildTrendOption(
       lineStyle: { color: item.color, width: 2, type: item.lineType ?? "solid" },
       itemStyle: { color: item.color },
       emphasis: { focus: "series" as const },
+      markLine: showZeroLine && index === 0
+        ? {
+            silent: true,
+            symbol: "none",
+            label: { show: false },
+            lineStyle: { color: ibTokens.color.inkMuted, width: 1, type: "dashed" as const },
+            data: [{ yAxis: 0 }],
+          }
+        : undefined,
     })),
   });
 }
@@ -72,6 +119,7 @@ export function PnlByBusinessMonthlyTrendPanel({
   isLoading,
   isError,
 }: PnlByBusinessMonthlyTrendPanelProps) {
+  const [activeTrendView, setActiveTrendView] = useState<TrendView>("pnl");
   const trend = useMemo(
     () => buildSelectedBusinessMonthlyTrend(months, selectedBusiness, { periodStartDate, periodEndDate }),
     [months, periodEndDate, periodStartDate, selectedBusiness],
@@ -79,54 +127,70 @@ export function PnlByBusinessMonthlyTrendPanel({
   const chartOptions = useMemo(() => {
     const points = trend.points;
     return {
-      balance: buildTrendOption(points, [
-        {
-          name: "日均余额",
-          color: mossChartPalette[0],
-          values: points.map((point) => point.avgBalanceYi),
-        },
-        {
-          name: "期末余额",
-          color: mossChartPalette[1],
-          values: points.map((point) => point.currentBalanceYi),
-          lineType: "dashed",
-        },
-      ]),
-      pnl: buildTrendOption(points, [
-        {
-          name: "合计损益",
-          color: mossChartPalette[0],
-          values: points.map((point) => point.totalPnlWan),
-        },
-        {
-          name: "FTP后收益",
-          color: mossChartPalette[4],
-          values: points.map((point) => point.ftpNetPnlWan),
-          lineType: "dashed",
-        },
-      ]),
-      yield: buildTrendOption(points, [
-        {
-          name: "年化收益率",
-          color: mossChartPalette[0],
-          values: points.map((point) => point.annualizedYieldPct),
-        },
-        {
-          name: "FTP年化利率",
-          color: mossChartPalette[2],
-          values: points.map((point) => point.ftpRatePct),
-          lineType: "dashed",
-        },
-        {
-          name: "FTP后年化收益率",
-          color: mossChartPalette[4],
-          values: points.map((point) => point.ftpNetAnnualizedYieldPct),
-        },
-      ]),
+      balance: buildTrendOption(
+        points,
+        [
+          {
+            name: "日均余额",
+            color: mossChartPalette[0],
+            values: points.map((point) => point.avgBalanceYi),
+          },
+          {
+            name: "期末余额",
+            color: mossChartPalette[1],
+            values: points.map((point) => point.currentBalanceYi),
+            lineType: "dashed",
+          },
+        ],
+        TREND_VIEW_META.balance.unit,
+      ),
+      pnl: buildTrendOption(
+        points,
+        [
+          {
+            name: "合计损益",
+            color: mossChartPalette[0],
+            values: points.map((point) => point.totalPnlWan),
+          },
+          {
+            name: "FTP后收益",
+            color: mossChartPalette[5],
+            values: points.map((point) => point.ftpNetPnlWan),
+            lineType: "dashed",
+          },
+        ],
+        TREND_VIEW_META.pnl.unit,
+        true,
+      ),
+      yield: buildTrendOption(
+        points,
+        [
+          {
+            name: "年化收益率",
+            color: mossChartPalette[0],
+            values: points.map((point) => point.annualizedYieldPct),
+          },
+          {
+            name: "FTP年化利率",
+            color: mossChartPalette[2],
+            values: points.map((point) => point.ftpRatePct),
+            lineType: "dashed",
+          },
+          {
+            name: "FTP后年化收益率",
+            color: mossChartPalette[5],
+            values: points.map((point) => point.ftpNetAnnualizedYieldPct),
+          },
+        ],
+        TREND_VIEW_META.yield.unit,
+        true,
+      ),
     };
   }, [trend.points]);
 
   const hasAvailableTrend = trend.availablePointCount > 0;
+  const activeTrendMeta = TREND_VIEW_META[activeTrendView];
+  const activeTrendOption = chartOptions[activeTrendView];
 
   return (
     <section
@@ -162,7 +226,7 @@ export function PnlByBusinessMonthlyTrendPanel({
           trend.missingRowMonths.length > 0 ? (
             <div className="pnl-by-business-selected-trend__quality" role="note">
               {trend.coverageWarningMonths.length > 0 ? (
-                <span>覆盖/补样待复核：{trend.coverageWarningMonths.join("、")}</span>
+                <span>该月余额样本覆盖/补样待复核：{trend.coverageWarningMonths.join("、")}</span>
               ) : null}
               {trend.missingBucketMonths.length > 0 ? (
                 <span>月报缺少整月 bucket 并保留断点：{trend.missingBucketMonths.join("、")}</span>
@@ -172,23 +236,31 @@ export function PnlByBusinessMonthlyTrendPanel({
               ) : null}
             </div>
           ) : null}
-          <div className="pnl-by-business-selected-trend__grid">
-            <article className="pnl-by-business-selected-trend__card">
-              <h3>日均与期末余额（亿元）</h3>
-              <p>看规模变化及日均与期末的偏离。</p>
-              <BaseChart option={chartOptions.balance} height={250} />
-            </article>
-            <article className="pnl-by-business-selected-trend__card">
-              <h3>损益与FTP后收益（万元）</h3>
-              <p>看损益变化及资金成本扣除后的方向。</p>
-              <BaseChart option={chartOptions.pnl} height={250} />
-            </article>
-            <article className="pnl-by-business-selected-trend__card">
-              <h3>收益率与FTP（%）</h3>
-              <p>同时观察年化收益率、FTP利率与FTP后年化收益率。</p>
-              <BaseChart option={chartOptions.yield} height={250} />
-            </article>
+          <div className="pnl-by-business-selected-trend__toolbar">
+            <div className="pnl-by-business-selected-trend__tabs" role="group" aria-label="趋势指标">
+              {(Object.keys(TREND_VIEW_META) as TrendView[]).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  aria-pressed={activeTrendView === view}
+                  data-testid={`pnl-by-business-trend-tab-${view}`}
+                  onClick={() => setActiveTrendView(view)}
+                >
+                  {TREND_VIEW_META[view].label}
+                </button>
+              ))}
+            </div>
+            <span>缺月、缺行保留断点，不按 0 补齐</span>
           </div>
+          <article
+            className="pnl-by-business-selected-trend__card"
+            aria-labelledby="pnl-by-business-trend-active-title"
+            data-testid="pnl-by-business-trend-active-panel"
+          >
+            <h3 id="pnl-by-business-trend-active-title">{activeTrendMeta.title}</h3>
+            <p>{activeTrendMeta.description}</p>
+            <BaseChart option={activeTrendOption} height={320} />
+          </article>
         </>
       )}
     </section>

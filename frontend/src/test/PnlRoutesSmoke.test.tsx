@@ -420,7 +420,6 @@ function buildPnlClient(): ApiClient {
         period_start_date: "2025-11-01",
         period_end_date: "2025-11-30",
         calendar_days: 30,
-        coverage_days: 30,
         expected_days: 30,
         sample_filled: false,
         sample_fill_method: null,
@@ -1052,6 +1051,11 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-11");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
     });
+    const leadershipSummary = screen.getByTestId("pnl-by-business-leadership-summary");
+    const dataStatusStrip = screen.getByTestId("pnl-by-business-data-status-strip");
+    const filterTray = screen.getByTestId("pnl-by-business-filter-tray");
+    expect(leadershipSummary.compareDocumentPosition(dataStatusStrip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(dataStatusStrip.compareDocumentPosition(filterTray) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP成本（万元）");
@@ -1109,6 +1113,9 @@ describe("pnl routed pages smoke", () => {
     fireEvent.click(screen.getByRole("button", { name: /2025-11/ }));
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-11")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-monthly-reconciliation-2025-11")).toHaveTextContent(
+        "余额覆盖 待返回/30 天",
+      );
       expect(screen.queryByTestId("pnl-by-business-monthly-unallocated-2025-11-panel")).not.toBeInTheDocument();
     });
 
@@ -1162,9 +1169,9 @@ describe("pnl routed pages smoke", () => {
     await waitFor(() => {
       expect(screen.getByText("分析截止日")).toBeInTheDocument();
       expect(screen.getAllByText("结果元信息 / 证据").length).toBeGreaterThan(0);
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("管理摘要");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("领导判断");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("可分析");
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("Bottom 拖累");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("最大拖累");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("FTP 可分析");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent(
         "1 条所选报表日已批准调整",
@@ -1196,15 +1203,23 @@ describe("pnl routed pages smoke", () => {
       const ytdParentRow = within(ytdTable).getByText("政策性金融债").closest("tr");
       expect(ytdParentRow).not.toBeNull();
       expect(ytdParentRow!.querySelectorAll("td")).toHaveLength(12);
+      expect(ytdParentRow!.querySelector('[data-pnl-tone="positive"]')).toHaveTextContent("13");
+      expect(ytdParentRow!.querySelector('[data-pnl-tone="negative"]')).toHaveTextContent("-0.59");
+      const ytdZeroRow = within(ytdTable).getByText("信用债").closest("tr");
+      expect(ytdZeroRow).not.toBeNull();
+      const ytdZeroDecisionCells = ytdZeroRow!.querySelectorAll("[data-pnl-tone]");
+      expect(ytdZeroDecisionCells).toHaveLength(2);
+      expect(ytdZeroDecisionCells[0]).toHaveAttribute("data-pnl-tone", "default");
+      expect(ytdZeroDecisionCells[1]).toHaveAttribute("data-pnl-tone", "negative");
       expect(screen.getByTestId("pnl-by-business-table-unallocated-footer")).toHaveTextContent("6.43");
       expect(screen.getByTestId("pnl-by-business-table-unallocated-footer")).toHaveTextContent("400");
       const selectedTrend = screen.getByTestId("pnl-by-business-selected-monthly-trend");
       expect(selectedTrend).toHaveTextContent("政策性金融债");
       expect(selectedTrend).toHaveTextContent("1/1 个月");
-      expect(selectedTrend).toHaveTextContent("日均与期末余额（亿元）");
-      expect(selectedTrend).toHaveTextContent("损益与FTP后收益（万元）");
-      expect(selectedTrend).toHaveTextContent("收益率与FTP（%）");
-      expect(within(selectedTrend).getAllByTestId("pnl-routes-echarts-stub")).toHaveLength(3);
+      expect(selectedTrend).toHaveTextContent("损益与 FTP 后收益（万元）");
+      expect(screen.getByTestId("pnl-by-business-trend-tab-pnl")).toHaveAttribute("aria-pressed", "true");
+      expect(within(selectedTrend).getAllByTestId("pnl-routes-echarts-stub")).toHaveLength(1);
+      expect(screen.getByTestId("pnl-by-business-deep-dive")).not.toHaveAttribute("open");
       expect(screen.getByTestId("pnl-by-business-unallocated-panel")).toHaveTextContent("查看未分类明细");
       expect(screen.getByTestId("pnl-by-business-unallocated-panel")).toHaveTextContent("400 条");
       expect(screen.getByTestId("pnl-by-business-unallocated-panel")).toHaveTextContent("绝对金额 6.43 万元");
@@ -1222,7 +1237,7 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("Top 贡献券");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("Top 拖累券");
-      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("FTP 后为负");
+      expect(screen.getByTestId("pnl-by-business-selected-ftp-status")).toHaveTextContent("FTP 后转负");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240001.IB 负FTP资产");
       expect(screen.getByTestId("pnl-by-business-driver-overview")).toHaveTextContent("1.53%");
       expect(screen.getByTestId("pnl-by-business-driver-overview")).not.toHaveTextContent(
@@ -1234,6 +1249,32 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月报业务种类明细");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
     });
+    fireEvent.click(screen.getByTestId("pnl-by-business-trend-tab-balance"));
+    expect(screen.getByTestId("pnl-by-business-trend-active-panel")).toHaveTextContent("日均与期末余额（亿元）");
+    expect(screen.getByTestId("pnl-by-business-trend-tab-balance")).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByTestId("pnl-by-business-selected-monthly-trend")).getAllByRole("button", {
+        pressed: true,
+      }),
+    ).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("pnl-by-business-trend-tab-yield"));
+    expect(screen.getByTestId("pnl-by-business-trend-active-panel")).toHaveTextContent("收益率与 FTP（%）");
+    expect(screen.getByTestId("pnl-by-business-trend-tab-yield")).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByTestId("pnl-by-business-selected-monthly-trend")).getAllByRole("button", {
+        pressed: true,
+      }),
+    ).toHaveLength(1);
+    expect(screen.getByTestId("pnl-by-business-detail-table")).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByTestId("pnl-by-business-detail-table-toggle"));
+    expect(screen.getByTestId("pnl-by-business-detail-table")).toHaveAttribute("open");
+    fireEvent.click(screen.getByTestId("pnl-by-business-deep-dive-toggle"));
+    expect(screen.getByTestId("pnl-by-business-deep-dive")).toHaveAttribute("open");
+    expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toBeVisible();
+    expect(screen.getByTestId("pnl-by-business-evidence-disclosure")).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByTestId("pnl-by-business-evidence-disclosure-toggle"));
+    expect(screen.getByTestId("pnl-by-business-evidence-disclosure")).toHaveAttribute("open");
+    expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toBeVisible();
     fireEvent.click(screen.getByTestId("pnl-by-business-unallocated-toggle"));
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-unallocated-toggle")).toHaveAttribute("aria-expanded", "true");
@@ -1256,6 +1297,7 @@ describe("pnl routed pages smoke", () => {
     });
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("信用债");
+      expect(screen.getByTestId("pnl-by-business-selected-ftp-status")).toHaveTextContent("FTP 后转负");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240002.IB 信用债贡献券");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240003.IB 信用债拖累券");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).not.toHaveTextContent("240001.IB 负FTP资产");
