@@ -669,7 +669,7 @@ describe("ProductCategoryPnlPage", () => {
     ).toHaveLength(3);
     expect(within(rootCause).getByRole("button", { name: "查看正式明细" })).toBeEnabled();
     expect(fullPath).not.toHaveAttribute("open");
-    expect(fullPath).toHaveTextContent("完整归因路径");
+    expect(fullPath).toHaveTextContent("候选归因路径");
     expect(
       rootCause.compareDocumentPosition(fullPath) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -940,8 +940,8 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 情景敏感度");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("加载矩阵");
     expect(screen.getByTestId("product-category-attribution-waterfall")).toHaveTextContent("经营差异瀑布");
-    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("主要驱动与明细核查");
-    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("主导原因");
+    expect(screen.getByTestId("product-category-attribution-bridge")).toHaveTextContent("主导产品与前三驱动");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("主导产品");
     expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("FTP因素");
     expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("未解释");
     expect(screen.getByTestId("product-category-decision-focus")).toHaveTextContent("本期决策焦点");
@@ -1027,16 +1027,27 @@ describe("ProductCategoryPnlPage", () => {
 
     const preview = await screen.findByTestId("product-category-next-analysis-preview");
     const workbench = await screen.findByTestId("product-category-attribution-workbench");
+    const attribution = await screen.findByTestId("product-category-attribution");
+    const summary = within(attribution).getByTestId("product-category-attribution-summary");
     const bridge = await screen.findByTestId("product-category-attribution-bridge");
+    const formalDetails = within(attribution).getByTestId("product-category-attribution-details");
     const adjustment = screen.getByTestId("product-category-adjustment-workspace");
 
     expect(preview.compareDocumentPosition(workbench) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(workbench.compareDocumentPosition(adjustment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(workbench).toContainElement(screen.getByTestId("product-category-attribution"));
+    expect(workbench).toContainElement(attribution);
     expect(workbench).toContainElement(bridge);
+    expect(attribution).toContainElement(bridge);
+    expect(summary.compareDocumentPosition(bridge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bridge.compareDocumentPosition(formalDetails) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(formalDetails).not.toHaveAttribute("open");
+    expect(within(bridge).getByTestId("product-category-attribution-full-path")).not.toHaveAttribute(
+      "open",
+    );
+    expect(within(summary).queryByText(/候选指标|不可用于正式签署/)).not.toBeInTheDocument();
     expect(bridge).toHaveTextContent("候选指标 · 非正式结论");
     expect(bridge).toHaveTextContent("经营差异瀑布");
-    expect(bridge).toHaveTextContent("主要驱动与明细核查");
+    expect(bridge).toHaveTextContent("主导产品与前三驱动");
 
     await waitFor(() => {
       expect(screen.getAllByTestId("product-category-driver-item")).toHaveLength(3);
@@ -1050,6 +1061,44 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-attribution-bridge-driver-day_effect")).toHaveTextContent(
       "-0.04",
     );
+  });
+
+  it("keeps the attribution readout on formal rows after an FTP scenario is applied", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryAttribution: vi.fn(async ({ reportDate, compare = "mom" }) => {
+        const envelope = buildMockAttributionEnvelope(reportDate, compare);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: envelope.result.rows.map((row) => ({ ...row, current: null })),
+          },
+        };
+      }),
+    });
+
+    const rootCause = await screen.findByTestId("product-category-root-cause");
+    expect(rootCause).toHaveTextContent("本期 0.10");
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "FTP 场景" }), "2.00");
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：2.00%");
+    });
+
+    expect(rootCause).toHaveTextContent("本期 0.10");
+    expect(rootCause).not.toHaveTextContent("本期 0.03");
+    expect(screen.getByTestId("product-category-attribution-candidate-status")).toHaveTextContent(
+      "候选指标 · 非正式结论",
+    );
+
+    await user.click(within(rootCause).getByRole("button", { name: "查看正式明细" }));
+    const selectionContext = await screen.findByTestId("product-category-formal-selection-context");
+    expect(selectionContext).toHaveTextContent("FTP 2.00% 场景");
+    expect(selectionContext).toHaveTextContent("正式基线归因定位");
   });
 
   it("surfaces ready baseline evidence in the first-screen data health strip", async () => {

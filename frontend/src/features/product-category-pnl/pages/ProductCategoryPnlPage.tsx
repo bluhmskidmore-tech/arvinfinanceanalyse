@@ -1,4 +1,13 @@
-import { Fragment, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import type { EChartsReactProps } from "echarts-for-react/lib/types";
 
@@ -1397,6 +1406,7 @@ function ProductCategoryAttributionPanel(props: {
   resultMeta?: ResultMeta | null;
   isLoading: boolean;
   isError: boolean;
+  decisionReadout?: ReactNode;
   detailsOpen: boolean;
   detailsRef: RefObject<HTMLDetailsElement>;
   selectedDetailCategoryId: string | null;
@@ -1529,6 +1539,8 @@ function ProductCategoryAttributionPanel(props: {
         </div>
       ) : null}
 
+      {props.decisionReadout}
+
       <details
         className="product-category-attribution__details"
         data-testid="product-category-attribution-details"
@@ -1537,7 +1549,7 @@ function ProductCategoryAttributionPanel(props: {
         ref={props.detailsRef}
       >
         <summary>
-          <span>完整归因明细</span>
+          <span>正式归因明细</span>
           <small>{rows.length} 行 · 对比期 {formatProductCategoryReportMonthLabel(props.payload.prior_report_date)}</small>
         </summary>
         <AttributionComparisonTable
@@ -1568,12 +1580,12 @@ function ProductCategoryAttributionBridge(props: {
     >
       <div className="product-category-attribution-bridge__header">
         <div>
-          <span className="product-category-attribution-bridge__eyebrow">归因解读</span>
-          <h3>差异桥与主导根因</h3>
-          <p>沿用正式归因结果做排序与拆解；以下为前端派生解读，不新增正式指标。</p>
+          <span className="product-category-attribution-bridge__eyebrow">候选经营解读</span>
+          <h4>主导产品与前三驱动</h4>
         </div>
         <span
           className="product-category-attribution-bridge__status"
+          data-testid="product-category-attribution-candidate-status"
           title={candidateStatus.disclaimer}
         >
           <strong>{candidateStatus.label}</strong>
@@ -1586,55 +1598,52 @@ function ProductCategoryAttributionBridge(props: {
           className="product-category-attribution-bridge__panel"
           data-testid="product-category-root-cause"
         >
-          <div className="product-category-attribution-bridge__panel-head">
-            <div>
-              <h4>主要驱动与明细核查</h4>
-              <p>先看变动最大的产品和前三项驱动，再进入正式表核查产品行。</p>
-            </div>
-          </div>
           {props.rootCause.emptyCopy || !props.rootCause.headline ? (
             <div className="product-category-attribution-bridge__empty">{props.rootCause.emptyCopy}</div>
           ) : (
             <div className="product-category-attribution-bridge__root-cause">
-              <div className="product-category-attribution-bridge__root-cause-head">
-                <div>
-                  <span>主导原因</span>
-                  <strong>{props.rootCause.headline.categoryLabel}</strong>
-                  <small>{props.rootCause.headline.conclusionLabel}</small>
-                </div>
-                <div className="product-category-attribution-bridge__root-cause-action">
-                  <b className={`is-${props.rootCause.headline.tone}`}>{props.rootCause.headline.deltaLabel}</b>
-                  <button
-                    type="button"
-                    onClick={() => props.onOpenDetails(props.rootCause.headline!.categoryId)}
-                  >
-                    查看正式明细
-                  </button>
-                </div>
-              </div>
-              <div className="product-category-attribution-bridge__root-cause-metrics">
-                <span>本期 {props.rootCause.headline.currentNetIncomeLabel}</span>
-                <span>对比期 {props.rootCause.headline.priorNetIncomeLabel}</span>
-                <span>规模 {props.rootCause.headline.scaleLabel}</span>
-                <span>收益率 {props.rootCause.headline.yieldLabel}</span>
-              </div>
-              <div className="product-category-attribution-bridge__root-cause-drivers">
-                {props.rootCause.driverRows.slice(0, 3).map((row) => (
-                  <div
-                    className="product-category-attribution-bridge__root-cause-driver"
-                    data-testid="product-category-root-cause-driver"
-                    key={row.key}
-                  >
-                    <span>{row.label}</span>
-                    <b className={`is-${row.tone}`}>{row.valueLabel}</b>
-                    <small>{row.shareLabel}</small>
+              <div className="product-category-attribution-bridge__root-cause-overview">
+                <div className="product-category-attribution-bridge__root-cause-head">
+                  <div>
+                    <span>主导产品</span>
+                    <strong>{props.rootCause.headline.categoryLabel}</strong>
+                    <small>{props.rootCause.headline.conclusionLabel}</small>
                   </div>
-                ))}
+                  <div className="product-category-attribution-bridge__root-cause-action">
+                    <b className={`is-${props.rootCause.headline.tone}`}>{props.rootCause.headline.deltaLabel}</b>
+                    <button
+                      type="button"
+                      onClick={() => props.onOpenDetails(props.rootCause.headline!.categoryId)}
+                    >
+                      查看正式明细
+                    </button>
+                  </div>
+                </div>
+                <div className="product-category-attribution-bridge__root-cause-metrics">
+                  <span>本期 {props.rootCause.headline.currentNetIncomeLabel}</span>
+                  <span>对比期 {props.rootCause.headline.priorNetIncomeLabel}</span>
+                  <span>规模 {props.rootCause.headline.scaleLabel}</span>
+                  <span>收益率 {props.rootCause.headline.yieldLabel}</span>
+                </div>
               </div>
-              <div className="product-category-attribution-bridge__evidence">
-                {props.rootCause.evidenceItems.map((item) => (
-                  <small key={item}>{item}</small>
-                ))}
+              <div className="product-category-attribution-bridge__driver-readout">
+                <div className="product-category-attribution-bridge__driver-readout-head">
+                  <strong>前三驱动</strong>
+                  <small>按影响绝对值排序</small>
+                </div>
+                <div className="product-category-attribution-bridge__root-cause-drivers">
+                  {props.rootCause.driverRows.slice(0, 3).map((row) => (
+                    <div
+                      className="product-category-attribution-bridge__root-cause-driver"
+                      data-testid="product-category-root-cause-driver"
+                      key={row.key}
+                    >
+                      <span>{row.label}</span>
+                      <b className={`is-${row.tone}`}>{row.valueLabel}</b>
+                      <small>{row.shareLabel}</small>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -1644,9 +1653,14 @@ function ProductCategoryAttributionBridge(props: {
           data-testid="product-category-attribution-full-path"
         >
           <summary>
-            <span>完整归因路径</span>
-            <small>{props.waterfall.rows.length} 项 · {props.waterfall.title}</small>
+            <span>候选归因路径</span>
+            <small>{props.waterfall.rows.length} 项 · 前端派生</small>
           </summary>
+          <div className="product-category-attribution-bridge__evidence">
+            {props.rootCause.evidenceItems.map((item) => (
+              <small key={item}>{item}</small>
+            ))}
+          </div>
           <article
             className="product-category-attribution-bridge__panel product-category-attribution-bridge__panel--waterfall"
             data-testid="product-category-attribution-waterfall"
@@ -4218,10 +4232,10 @@ export default function ProductCategoryPnlPage() {
   const rootCauseSurface = useMemo(
     () =>
       selectProductCategoryRootCauseSurface({
-        rows: rowsToRender,
+        rows: baseline?.rows ?? [],
         attribution: attributionQuery.data?.result,
       }),
-    [attributionQuery.data?.result, rowsToRender],
+    [attributionQuery.data?.result, baseline?.rows],
   );
   const attributionDetailContextKey = useMemo(() => {
     const attribution = attributionQuery.data?.result;
@@ -5499,6 +5513,15 @@ export default function ProductCategoryPnlPage() {
               resultMeta={attributionQuery.data?.result_meta}
               isLoading={attributionQuery.isLoading}
               isError={attributionQuery.isError}
+              decisionReadout={
+                selectedView === "monthly" && attributionQuery.data?.result.state === "complete" ? (
+                  <ProductCategoryAttributionBridge
+                    waterfall={attributionWaterfallSurface}
+                    rootCause={rootCauseSurface}
+                    onOpenDetails={handleLocateFormalRow}
+                  />
+                ) : null
+              }
               detailsOpen={attributionDetailsOpen}
               detailsRef={attributionDetailsRef}
               selectedDetailCategoryId={selectedAttributionDetailCategoryId}
@@ -5508,13 +5531,6 @@ export default function ProductCategoryPnlPage() {
               onSelectDetailCategory={handleAttributionDetailSelection}
               onRetry={() => void attributionQuery.refetch()}
             />
-            {selectedView === "monthly" && attributionQuery.data?.result.state === "complete" ? (
-              <ProductCategoryAttributionBridge
-                waterfall={attributionWaterfallSurface}
-                rootCause={rootCauseSurface}
-                onOpenDetails={handleLocateFormalRow}
-              />
-            ) : null}
           </>
         ) : null}
       </section>

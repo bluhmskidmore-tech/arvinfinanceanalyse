@@ -64,5 +64,36 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       path: testInfo.outputPath(`product-category-pnl-desktop-${viewport.name}.png`),
       fullPage: false,
     });
+
+    await page.locator('[data-testid="product-category-attribution-workbench"]').evaluate((element) => {
+      element.scrollIntoView({ block: "start" });
+      window.scrollBy(0, -12);
+    });
+    await expect(page.locator('[data-testid="product-category-attribution-summary-metric"]')).toHaveCount(4);
+    await expect(page.locator('[data-testid="product-category-root-cause-driver"]')).toHaveCount(3);
+    await expect(page.locator('[data-testid="product-category-attribution-candidate-status"]')).toContainText(
+      "候选指标 · 非正式结论",
+    );
+    await expect(page.locator('[data-testid="product-category-attribution-full-path"]')).not.toHaveAttribute(
+      "open",
+      "",
+    );
+    await expect(page.locator('[data-testid="product-category-attribution-details"]')).not.toHaveAttribute(
+      "open",
+      "",
+    );
+
+    const attributionDecisionBox = await page
+      .locator('[data-testid="product-category-attribution-workbench"]')
+      .boundingBox();
+    expect(attributionDecisionBox).not.toBeNull();
+    expect(attributionDecisionBox.x).toBeGreaterThanOrEqual(0);
+    expect(attributionDecisionBox.x + attributionDecisionBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(attributionDecisionBox.y + attributionDecisionBox.height).toBeLessThanOrEqual(viewport.height);
+
+    await page.screenshot({
+      path: testInfo.outputPath(`product-category-pnl-attribution-${viewport.name}.png`),
+      fullPage: false,
+    });
   });
 }

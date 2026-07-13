@@ -5960,7 +5960,7 @@
 }
 
 .product-category-attribution-workbench > .product-category-attribution {
-  gap: 10px;
+  gap: 0;
   margin: 0;
   padding: 14px;
   overflow: visible;
@@ -5968,6 +5968,10 @@
   border-radius: 0;
   background: #fff;
   box-shadow: none;
+}
+
+.product-category-attribution-workbench .product-category-attribution__header {
+  padding-bottom: 10px;
 }
 
 .product-category-attribution-workbench .product-category-attribution__summary {
@@ -6002,10 +6006,9 @@
 
 .product-category-attribution-bridge {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 12px 14px 14px;
-  border-top: 1px solid var(--moss-color-neutral-200);
+  padding: 10px 0 0;
 }
 
 .product-category-attribution-bridge__header {
@@ -6028,7 +6031,7 @@
   letter-spacing: 0.08em;
 }
 
-.product-category-attribution-bridge__header h3,
+.product-category-attribution-bridge__header h4,
 .product-category-attribution-bridge__panel h4 {
   margin: 2px 0 0;
   color: var(--ib-ink);
@@ -6066,7 +6069,7 @@
 }
 
 .product-category-attribution-bridge__panel {
-  padding-top: 10px;
+  padding: 10px 0 0;
 }
 
 .product-category-attribution-bridge__panel-head {
@@ -6108,7 +6111,7 @@
 }
 
 .product-category-attribution-bridge__waterfall-row b,
-.product-category-attribution-bridge__root-cause-head > b,
+.product-category-attribution-bridge__root-cause-action > b,
 .product-category-attribution-bridge__root-cause-driver b {
   font-family: var(--moss-font-mono);
   font-variant-numeric: tabular-nums;
@@ -6122,7 +6125,31 @@
 
 .product-category-attribution-bridge__root-cause {
   gap: 8px;
-  margin-top: 6px;
+}
+
+.product-category-attribution-bridge__root-cause-overview,
+.product-category-attribution-bridge__driver-readout {
+  min-width: 0;
+}
+
+.product-category-attribution-bridge__driver-readout {
+  display: grid;
+  gap: 5px;
+}
+
+.product-category-attribution-bridge__driver-readout-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ib-ink);
+  font-size: 10px;
+}
+
+.product-category-attribution-bridge__driver-readout-head small {
+  color: var(--ib-ink-muted);
+  font-size: 9px;
+  font-weight: 500;
 }
 
 .product-category-attribution-bridge__root-cause-head {
@@ -6151,7 +6178,7 @@
   font-size: 13px;
 }
 
-.product-category-attribution-bridge__root-cause-head > b {
+.product-category-attribution-bridge__root-cause-action > b {
   flex: 0 0 auto;
   font-size: 14px;
 }
@@ -6240,8 +6267,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 3px 10px;
-  padding-top: 6px;
-  border-top: 1px solid var(--moss-color-neutral-100);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
 }
 
 .product-category-attribution-bridge__full-path {
@@ -6294,6 +6321,53 @@
 
 .product-category-attribution-bridge .is-negative {
   color: var(--moss-color-danger-600);
+}
+
+@media (min-width: 1200px) {
+  .product-category-attribution-bridge__header {
+    align-items: center;
+  }
+
+  .product-category-attribution-bridge__root-cause {
+    grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.92fr);
+    gap: 0;
+  }
+
+  .product-category-attribution-bridge__root-cause-overview {
+    padding-right: 14px;
+  }
+
+  .product-category-attribution-bridge__driver-readout {
+    padding-left: 14px;
+    border-left: 1px solid var(--moss-color-neutral-200);
+  }
+
+  .product-category-attribution-bridge__root-cause-metrics {
+    border-bottom: 0;
+  }
+
+  .product-category-attribution-bridge__root-cause-drivers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .product-category-attribution-bridge__root-cause-driver,
+  .product-category-attribution-bridge__root-cause-driver:nth-child(3n),
+  .product-category-attribution-bridge__root-cause-driver:nth-last-child(-n + 3) {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--moss-color-neutral-100);
+  }
+
+  .product-category-attribution-bridge__root-cause-driver:last-child {
+    border-bottom: 0;
+  }
+
+  .product-category-attribution-bridge__root-cause-driver small {
+    white-space: nowrap;
+  }
 }
 
 .product-category-attribution-bridge .is-neutral {
@@ -7214,7 +7288,7 @@
   }
 
   .product-category-attribution-bridge {
-    padding: 10px;
+    padding: 10px 0 0;
   }
 
   .product-category-attribution-bridge__header {
