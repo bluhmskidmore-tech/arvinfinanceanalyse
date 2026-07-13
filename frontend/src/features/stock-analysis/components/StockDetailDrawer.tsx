@@ -6,7 +6,9 @@ import { useMemo, useState } from "react";
 import { useApiClient } from "../../../api/client";
 import type {
   ChoiceNewsEvent,
+  LivermoreCandidateHistoryRow,
   LivermoreStockDetailCandle,
+  StockKlineAnalysisPayload,
 } from "../../../api/contracts";
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { designTokens } from "../../../theme/designSystem";
@@ -19,6 +21,10 @@ import "./StockDetailDrawer.css";
 
 const LOOKBACK_CHOICES = [30, 60, 120] as const;
 const STOCK_DETAIL_CHART_HEIGHT = 300;
+
+function receivedToForAsOfDate(asOfDate: string): string {
+  return `${asOfDate.slice(0, 10)}T23:59:59Z`;
+}
 
 function isFiniteNumber(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -131,6 +137,67 @@ function formatStockDetailVolumeRatio(
 ): string {
   if (!isFiniteNumber(value)) return "待补";
   return `${value.toFixed(1)}x`;
+}
+
+const stockKlineSignalLabels: Record<string, string> = {
+  constructive_watch: "观察增强",
+  watch: "继续观察",
+  neutral: "中性",
+  risk_watch: "风险观察",
+  not_applicable: "暂不可判定",
+};
+
+const stockKlineConfidenceLabels: Record<string, string> = {
+  high: "高",
+  medium: "中",
+  low: "低",
+};
+
+const stockKlinePatternLabels: Record<string, string> = {
+  bullish_engulfing: "阳包阴",
+  bearish_engulfing: "阴包阳",
+  doji: "十字星",
+  hammer_like: "锤形",
+  shooting_star_like: "上影压力",
+  wide_body: "实体放大",
+};
+
+function stockKlineSignalLabel(value: string | null | undefined): string {
+  const key = (value ?? "").trim();
+  return stockKlineSignalLabels[key] ?? (key || "暂不可判定");
+}
+
+function stockKlineConfidenceLabel(value: string | null | undefined): string {
+  const key = (value ?? "").trim();
+  return stockKlineConfidenceLabels[key] ?? (key || "低");
+}
+
+function stockKlinePatternLabel(value: string | null | undefined): string {
+  const key = (value ?? "").trim();
+  return stockKlinePatternLabels[key] ?? (key || "形态待补");
+}
+
+function formatStockKlineScore(value: number | null | undefined): string {
+  if (!isFiniteNumber(value)) return "待补";
+  return `${Math.round(value)}/100`;
+}
+
+function formatStockKlinePercent(value: number | null | undefined): string {
+  if (!isFiniteNumber(value)) return "待补";
+  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
+}
+
+function formatStockKlineIndicator(value: number | null | undefined): string {
+  if (!isFiniteNumber(value)) return "待补";
+  return value.toFixed(2);
+}
+
+function firstStockKlinePattern(
+  payload: StockKlineAnalysisPayload | null,
+): string {
+  const pattern = payload?.patterns?.[0];
+  if (!pattern) return "形态待补";
+  return stockKlinePatternLabel(pattern.key);
 }
 
 const stockDetailMetaPendingLabel = "待确认";
@@ -296,6 +363,56 @@ function candidateHistoryDataStatusLabel(status: string): string {
   return labels[normalized] ?? "状态待确认";
 }
 
+type CandidateHistoryDisplayHorizon = "1d" | "5d" | "20d";
+
+function candidateHistoryHorizonStatusLabel(
+  row: LivermoreCandidateHistoryRow,
+  horizon: CandidateHistoryDisplayHorizon,
+): string | null {
+  const maturity = row.forward_maturity;
+  const item = maturity?.horizons[horizon];
+  if (!item) return null;
+  if (maturity?.classification_available === false || maturity?.source_status === "unavailable") {
+    return "成熟分类不可用";
+  }
+  const labels: Record<string, string> = {
+    complete: "已成熟",
+    natural_pending: "自然待成熟",
+    partial_halt: "部分停牌",
+    matured_missing_bar: "窗口已成熟 · 无有效行情",
+    raw_matured_adjustment_missing: "原始收益已成熟 · 复权待补",
+  };
+  return labels[item.status.trim().toLowerCase()] ?? "状态待确认";
+}
+
+function CandidateHistoryMaturityCell({
+  row,
+  horizon,
+}: {
+  row: LivermoreCandidateHistoryRow;
+  horizon: CandidateHistoryDisplayHorizon;
+}) {
+  const returnValue =
+    horizon === "1d" ? row.return_1d : horizon === "5d" ? row.return_5d : row.return_20d;
+  const maturityStatus = row.forward_maturity?.horizons[horizon]?.status ?? "legacy";
+  const statusLabel = candidateHistoryHorizonStatusLabel(row, horizon);
+  return (
+    <td
+      className="stock-detail-drawer__tabular stock-detail-drawer__history-maturity"
+      data-maturity-status={maturityStatus}
+      data-testid={`candidate-maturity-${horizon}`}
+    >
+      <span>{formatCandidateHistoryReturn(returnValue)}</span>
+      {statusLabel ? (
+        <>
+          {" "}
+          <small>{statusLabel}</small>
+        </>
+      ) : null}
+    </td>
+  );
+}
+
 const candidateHistorySignalLabels: Record<string, string> = {
   livermore: "趋势突破",
   hybrid_fusion: "融合策略",
@@ -418,24 +535,43 @@ export function StockDetailDrawer({
     queryKey: [
       "stock-analysis",
       "livermore-stock-detail",
-      stockCode,
+      stockCodeForQuery ?? "__none",
       asOfDate ?? null,
       lookback,
     ] as const,
     queryFn: () =>
       client.getLivermoreStockDetail({
-        stockCode: stockCode ?? "",
+        stockCode: stockCodeForQuery ?? "",
         asOfDate,
         lookback,
       }),
     enabled: open,
   });
 
+  const klineAnalysisQuery = useQuery({
+    queryKey: [
+      "stock-analysis",
+      "kline-analysis",
+      stockCodeForQuery ?? "__none",
+      asOfDate ?? null,
+      lookback,
+    ] as const,
+    queryFn: () =>
+      client.getStockKlineAnalysis({
+        stockCode: stockCodeForQuery ?? "",
+        asOfDate,
+        lookback,
+      }),
+    enabled: open,
+  });
+
+  const resolvedDetailAsOfDate = detailQuery.data?.result?.as_of_date ?? null;
   const choiceNewsQuery = useQuery({
     queryKey: [
       "stock-analysis",
       "choice-news-latest",
       stockCodeForQuery ?? "__none",
+      resolvedDetailAsOfDate,
       open ? 10 : 0,
     ] as const,
     queryFn: () =>
@@ -443,16 +579,17 @@ export function StockDetailDrawer({
         limit: 10,
         offset: 0,
         stockCode: stockCodeForQuery,
+        receivedTo: receivedToForAsOfDate(resolvedDetailAsOfDate ?? ""),
       }),
-    enabled: open,
+    enabled: open && resolvedDetailAsOfDate != null,
   });
 
-  const candidateHistoryAsOfDate = detailQuery.data?.result?.as_of_date ?? null;
+  const candidateHistoryAsOfDate = resolvedDetailAsOfDate;
   const candidateHistoryQuery = useQuery({
     queryKey: [
       "stock-analysis",
       "livermore-candidate-history",
-      stockCode,
+      stockCodeForQuery ?? "__none",
       candidateHistoryAsOfDate,
       10,
     ] as const,
@@ -460,6 +597,7 @@ export function StockDetailDrawer({
       client.getLivermoreCandidateHistory({
         stockCode: stockCodeForQuery,
         snapshotTo: candidateHistoryAsOfDate ?? undefined,
+        evaluationAsOfDate: candidateHistoryAsOfDate ?? undefined,
         limit: 10,
       }),
     enabled: open && candidateHistoryAsOfDate != null,
@@ -483,6 +621,11 @@ export function StockDetailDrawer({
       ? latestCloseValue / previousCloseValue - 1
       : null;
   const volumeRatio = latestVolumeRatio(candles, latestCandle);
+  const klineAnalysis = klineAnalysisQuery.data?.result ?? null;
+  const klineSignal = klineAnalysis?.observation_signal ?? null;
+  const klineIndicators = klineAnalysis?.indicators ?? {};
+  const klineValidity = klineAnalysis?.validity ?? null;
+  const klinePatternLabel = firstStockKlinePattern(klineAnalysis);
   const observationLine = reviewContext?.distanceToBreakoutPct ?? "待补";
   const invalidationLine = firstReviewText(
     reviewContext?.reviewThesis?.invalidation,
@@ -817,6 +960,92 @@ export function StockDetailDrawer({
             </section>
           ) : null}
 
+          {!detailQuery.isError ? (
+            <section
+              className="stock-detail-drawer__kline-analysis"
+              data-testid="stock-detail-kline-analysis"
+              aria-label="K 线观察"
+            >
+              <div className="stock-detail-drawer__section-title-row">
+                <span className="font-semibold">K 线观察</span>
+                <span>
+                  {klineAnalysisQuery.isLoading
+                    ? "分析加载中"
+                    : klineAnalysisQuery.isError
+                      ? "分析暂不可用"
+                      : stockKlineSignalLabel(klineSignal?.level)}
+                </span>
+              </div>
+              {klineAnalysisQuery.isError ? (
+                <p className="stock-detail-drawer__boundary-line">
+                  {stockDetailSubqueryErrorDescription(
+                    klineAnalysisQuery.error,
+                    "K 线分析暂不可用，仍可查看原始价格图。",
+                  )}
+                </p>
+              ) : null}
+              {!klineAnalysisQuery.isError && klineAnalysis == null ? (
+                <p className="stock-detail-drawer__boundary-line">
+                  K 线分析加载中…
+                </p>
+              ) : null}
+              {klineAnalysis ? (
+                <>
+                  <div className="stock-detail-drawer__confirmation-grid stock-detail-drawer__kline-grid">
+                    <div>
+                      <span>观察信号</span>
+                      <strong>{stockKlineSignalLabel(klineSignal?.level)}</strong>
+                      <small>
+                        {formatStockKlineScore(klineSignal?.score)} · 信心{" "}
+                        {stockKlineConfidenceLabel(klineSignal?.confidence)}
+                      </small>
+                    </div>
+                    <div>
+                      <span>均线动量</span>
+                      <strong>
+                        MA20 {formatStockKlineIndicator(klineIndicators.ma20)}
+                      </strong>
+                      <small>
+                        20日 {formatStockKlinePercent(klineIndicators.return_20d)} · 量能{" "}
+                        {formatStockDetailVolumeRatio(klineIndicators.volume_ratio_20d)}
+                      </small>
+                    </div>
+                    <div data-tone={klineValidity?.usable ? undefined : "warning"}>
+                      <span>形态有效性</span>
+                      <strong>{klinePatternLabel}</strong>
+                      <small>
+                        {klineValidity?.bar_count ?? 0} 根K线 ·{" "}
+                        {klineValidity?.usable ? "可观察" : "样本不足"}
+                      </small>
+                    </div>
+                  </div>
+                  {klineAnalysis.patterns.length > 1 ||
+                  (klineSignal?.reasons.length ?? 0) > 0 ||
+                  (klineSignal?.risks.length ?? 0) > 0 ? (
+                    <div
+                      className="stock-detail-drawer__kline-tags"
+                      data-testid="stock-detail-kline-tags"
+                    >
+                      {klineAnalysis.patterns.slice(0, 3).map((pattern) => (
+                        <span key={pattern.key}>
+                          {stockKlinePatternLabel(pattern.key)}
+                        </span>
+                      ))}
+                      {(klineSignal?.reasons ?? []).slice(0, 3).map((reason) => (
+                        <span key={reason}>{reason}</span>
+                      ))}
+                      {(klineSignal?.risks ?? []).slice(0, 2).map((risk) => (
+                        <span key={risk} data-tone="warning">
+                          {risk}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </section>
+          ) : null}
+
           {detailQuery.isError ? (
             <div
               className="p-4 mb-4 text-sm text-danger-800 rounded-lg bg-danger-50 flex items-start gap-3 border border-danger-200"
@@ -826,6 +1055,16 @@ export function StockDetailDrawer({
               <div className="flex flex-col gap-1">
                 <span className="font-semibold text-danger-900">个股复核数据暂不可用</span>
                 <span>请稍后重试，或切换到其他标的复核。</span>
+                <AntButton
+                  type="link"
+                  className="w-fit p-0"
+                  loading={detailQuery.isFetching}
+                  onClick={() => {
+                    void detailQuery.refetch();
+                  }}
+                >
+                  重新读取个股数据
+                </AntButton>
               </div>
             </div>
           ) : null}
@@ -960,6 +1199,16 @@ export function StockDetailDrawer({
                           candidateHistoryQuery.error,
                           "图表与因子仍可继续查看。",
                         )}</span>
+                        <AntButton
+                          type="link"
+                          className="w-fit p-0"
+                          loading={candidateHistoryQuery.isFetching}
+                          onClick={() => {
+                            void candidateHistoryQuery.refetch();
+                          }}
+                        >
+                          重新读取入选历史
+                        </AntButton>
                       </div>
                     </div>
                   ) : null}
@@ -987,7 +1236,7 @@ export function StockDetailDrawer({
                             <th scope="col">T+1</th>
                             <th scope="col">T+5</th>
                             <th scope="col">T+20</th>
-                            <th scope="col">状态</th>
+                            <th scope="col">行汇总</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1013,21 +1262,9 @@ export function StockDetailDrawer({
                               <td className="stock-detail-drawer__tabular">
                                 {row.selection_close ?? "—"}
                               </td>
-                              <td className="stock-detail-drawer__tabular">
-                                {formatCandidateHistoryReturn(
-                                  row.return_1d ?? null,
-                                )}
-                              </td>
-                              <td className="stock-detail-drawer__tabular">
-                                {formatCandidateHistoryReturn(
-                                  row.return_5d ?? null,
-                                )}
-                              </td>
-                              <td className="stock-detail-drawer__tabular">
-                                {formatCandidateHistoryReturn(
-                                  row.return_20d ?? null,
-                                )}
-                              </td>
+                              <CandidateHistoryMaturityCell row={row} horizon="1d" />
+                              <CandidateHistoryMaturityCell row={row} horizon="5d" />
+                              <CandidateHistoryMaturityCell row={row} horizon="20d" />
                               <td>
                                 {candidateHistoryDataStatusLabel(
                                   row.data_status,
@@ -1075,6 +1312,16 @@ export function StockDetailDrawer({
                             choiceNewsQuery.error,
                             "个股复核数据不受影响，可稍后刷新市场事件。",
                           )}</span>
+                          <AntButton
+                            type="link"
+                            className="w-fit p-0"
+                            loading={choiceNewsQuery.isFetching}
+                            onClick={() => {
+                              void choiceNewsQuery.refetch();
+                            }}
+                          >
+                            重新读取市场事件
+                          </AntButton>
                         </div>
                       </div>
                     ) : null}

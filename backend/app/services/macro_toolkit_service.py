@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
+import logging
 import os
 import subprocess
 import sys
@@ -11,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 import duckdb
 import pandas as pd
@@ -25,21 +28,36 @@ from backend.app.core_finance.macro.toolkit.runner import (
 )
 from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_aliases
 from backend.app.governance.locks import LockDefinition, acquire_lock
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from backend.app.security.auth_context import AuthContext
 from backend.app.services.cffex_member_rank_service import materialize_cffex_member_rank
 from backend.app.tasks.choice_stock_materialize import (
     materialize_choice_stock_factor_snapshot,
     materialize_choice_stock_inputs,
 )
+from backend.app.tasks.choice_stock_observation_manifest import (
+    append_choice_stock_refresh_completion,
+    build_choice_stock_observation_manifest,
+    verify_choice_stock_daily_observation_landing,
+)
+from backend.app.tasks.choice_stock_theme_overlay_refresh import (
+    ThemeOverlayRefreshMode,
+    refresh_choice_stock_theme_overlay,
+)
 from backend.app.tasks.commodity_daily_ingest import run_commodity_daily_ingest, run_commodity_daily_ingest_task
 from fastapi import BackgroundTasks
+
+logger = logging.getLogger(__name__)
 
 CHOICE_STOCK_REFRESH_JOB_NAME = "choice_stock_refresh"
 CHOICE_STOCK_REFRESH_CACHE_KEY = "choice_stock.history_and_factor_snapshot"
 CHOICE_STOCK_REFRESH_CACHE_VERSION = "choice_stock_refresh_v1"
 CHOICE_STOCK_REFRESH_LOCK = "lock:choice_stock_refresh"
 CHOICE_STOCK_REFRESH_RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
+CHOICE_STOCK_THEME_OVERLAY_VENDOR_VERSION = "vv_tushare_ths_current_overlay_v1"
 _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running"}
 DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS = ("RB", "I", "CU", "AL", "SC", "AU", "NHCI")
 COMMODITY_FUTURES_REFRESH_JOB_NAME = "commodity_futures_daily_ingest"
@@ -460,13 +478,16 @@ def queue_choice_stock_refresh(
     duckdb_path: str,
     catalog_path: str,
     governance_path: str,
+    archive_root: str = "",
     as_of_date: str,
     refresh_history: bool,
     refresh_factors: bool,
     factor_max_stock_count: int | None,
+    theme_overlay_mode: ThemeOverlayRefreshMode = "off",
     permission: dict[str, object],
     idempotency_key: str | None = None,
 ) -> MacroToolkitActionResult:
+    normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     try:
         with acquire_lock(
@@ -481,6 +502,7 @@ def queue_choice_stock_refresh(
                     refresh_history=refresh_history,
                     refresh_factors=refresh_factors,
                     factor_max_stock_count=factor_max_stock_count,
+                    theme_overlay_mode=normalized_theme_overlay_mode,
                     idempotency_key=normalized_idempotency_key,
                 )
                 if existing_idempotent_run is not None:
@@ -510,6 +532,7 @@ def queue_choice_stock_refresh(
                 refresh_history=refresh_history,
                 refresh_factors=refresh_factors,
                 factor_max_stock_count=factor_max_stock_count,
+                theme_overlay_mode=normalized_theme_overlay_mode,
                 permission=permission,
                 idempotency_key=normalized_idempotency_key,
             )
@@ -519,12 +542,14 @@ def queue_choice_stock_refresh(
                 duckdb_path=duckdb_path,
                 catalog_path=catalog_path,
                 governance_path=governance_path,
+                archive_root=archive_root,
                 run_id=run_id,
                 as_of_date=as_of_date,
                 queued_at=queued_at,
                 refresh_history=refresh_history,
                 refresh_factors=refresh_factors,
                 factor_max_stock_count=factor_max_stock_count,
+                theme_overlay_mode=normalized_theme_overlay_mode,
                 permission=permission,
                 idempotency_key=normalized_idempotency_key,
             )
@@ -556,6 +581,11 @@ def build_choice_stock_refresh_run_payload(
     refresh_history: bool = True,
     refresh_factors: bool = True,
     factor_max_stock_count: int | None = None,
+    theme_overlay_mode: ThemeOverlayRefreshMode = "off",
+    theme_overlay_status: str | None = None,
+    theme_overlay_message: str | None = None,
+    theme_overlay_member_count: int | None = None,
+    theme_overlay_run_id: str | None = None,
     history_row_count: int | None = None,
     factor_row_count: int | None = None,
     source_version: object | None = None,
@@ -566,6 +596,10 @@ def build_choice_stock_refresh_run_payload(
     permission: dict[str, object] | None = None,
     idempotency_key: str | None = None,
 ) -> dict[str, object]:
+    normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
+    normalized_theme_overlay_status = _optional_text(theme_overlay_status) or (
+        "off" if normalized_theme_overlay_mode == "off" else "pending"
+    )
     return {
         "run_id": run_id,
         "job_name": CHOICE_STOCK_REFRESH_JOB_NAME,
@@ -587,6 +621,15 @@ def build_choice_stock_refresh_run_payload(
         "refresh_history": refresh_history,
         "refresh_factors": refresh_factors,
         "factor_max_stock_count": factor_max_stock_count,
+        "theme_overlay_mode": normalized_theme_overlay_mode,
+        "theme_overlay_status": normalized_theme_overlay_status,
+        "theme_overlay_message": _optional_text(theme_overlay_message),
+        "theme_overlay_member_count": (
+            0
+            if normalized_theme_overlay_mode == "off" and theme_overlay_member_count is None
+            else _optional_int(theme_overlay_member_count)
+        ),
+        "theme_overlay_run_id": _optional_text(theme_overlay_run_id),
         "history_row_count": history_row_count,
         "factor_row_count": factor_row_count,
         "permission": permission or build_choice_stock_refresh_permission_payload(),
@@ -650,7 +693,10 @@ def latest_choice_stock_inflight_refresh(
             continue
         by_run_id[str(record.get("run_id") or "")] = record
     for record in reversed(list(by_run_id.values())):
-        if str(record.get("status") or "") in _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES:
+        if (
+            str(record.get("status") or "") in _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES
+            or _choice_stock_refresh_overlay_pending(record)
+        ):
             return record
     return None
 
@@ -662,8 +708,10 @@ def latest_choice_stock_refresh_for_idempotency_key(
     refresh_history: bool,
     refresh_factors: bool,
     factor_max_stock_count: int | None,
+    theme_overlay_mode: ThemeOverlayRefreshMode = "off",
     idempotency_key: str,
 ) -> dict[str, object] | None:
+    normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     for record in reversed(_choice_stock_refresh_records(governance_path)):
         if str(record.get("report_date") or "") != as_of_date:
             continue
@@ -674,6 +722,8 @@ def latest_choice_stock_refresh_for_idempotency_key(
         if bool(record.get("refresh_factors")) != refresh_factors:
             continue
         if _optional_int(record.get("factor_max_stock_count")) != factor_max_stock_count:
+            continue
+        if _normalize_theme_overlay_mode(record.get("theme_overlay_mode") or "off") != (normalized_theme_overlay_mode):
             continue
         return record
     return None
@@ -687,7 +737,7 @@ def build_choice_stock_refresh_permission_payload(auth: AuthContext | None = Non
         "role": auth.role if auth else None,
         "identity_source": auth.identity_source if auth else None,
         "resource": "macro_toolkit.choice_stock",
-        "actions": ["history", "factor_snapshot"],
+        "actions": ["history", "factor_snapshot", "theme_overlay"],
     }
 
 
@@ -1487,16 +1537,20 @@ def _run_choice_stock_refresh_job(
     duckdb_path: str,
     catalog_path: str,
     governance_path: str,
+    archive_root: str = "",
     run_id: str,
     as_of_date: str,
     queued_at: str,
     refresh_history: bool,
     refresh_factors: bool,
     factor_max_stock_count: int | None,
+    theme_overlay_mode: ThemeOverlayRefreshMode = "off",
     permission: dict[str, object],
     idempotency_key: str | None = None,
 ) -> None:
+    normalized_theme_overlay_mode = _normalize_theme_overlay_mode(theme_overlay_mode)
     normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    theme_overlay_run_id = f"{run_id}:theme-overlay" if normalized_theme_overlay_mode != "off" else None
     started_at = datetime.now(UTC).isoformat()
     append_choice_stock_refresh_run(
         governance_path,
@@ -1509,6 +1563,8 @@ def _run_choice_stock_refresh_job(
             refresh_history=refresh_history,
             refresh_factors=refresh_factors,
             factor_max_stock_count=factor_max_stock_count,
+            theme_overlay_mode=normalized_theme_overlay_mode,
+            theme_overlay_run_id=theme_overlay_run_id,
             permission=permission,
             idempotency_key=normalized_idempotency_key,
         ),
@@ -1528,25 +1584,46 @@ def _run_choice_stock_refresh_job(
                 duckdb_path=duckdb_path,
                 max_stock_count=factor_max_stock_count,
             )
-        append_choice_stock_refresh_run(
-            governance_path,
-            build_choice_stock_refresh_run_payload(
-                run_id=run_id,
-                status="completed",
-                as_of_date=as_of_date,
-                queued_at=queued_at,
-                started_at=started_at,
-                finished_at=datetime.now(UTC).isoformat(),
-                refresh_history=refresh_history,
-                refresh_factors=refresh_factors,
-                factor_max_stock_count=factor_max_stock_count,
-                history_row_count=_result_row_count(history_result),
-                factor_row_count=_result_row_count(factor_result),
-                source_version=_latest_result_field("source_version", factor_result, history_result),
-                vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
-                permission=permission,
-                idempotency_key=normalized_idempotency_key,
-            ),
+        finished_at = datetime.now(UTC).isoformat()
+        completed_payload = build_choice_stock_refresh_run_payload(
+            run_id=run_id,
+            status="completed",
+            as_of_date=as_of_date,
+            queued_at=queued_at,
+            started_at=started_at,
+            finished_at=finished_at,
+            refresh_history=refresh_history,
+            refresh_factors=refresh_factors,
+            factor_max_stock_count=factor_max_stock_count,
+            theme_overlay_mode=normalized_theme_overlay_mode,
+            theme_overlay_run_id=theme_overlay_run_id,
+            history_row_count=_result_row_count(history_result),
+            factor_row_count=_result_row_count(factor_result),
+            source_version=_latest_result_field("source_version", factor_result, history_result),
+            vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
+            permission=permission,
+            idempotency_key=normalized_idempotency_key,
+        )
+        observation_manifest = None
+        if refresh_history:
+            if history_result is None:
+                raise RuntimeError("Choice-stock history refresh completed without a result payload")
+            daily_observation_row_count = verify_choice_stock_daily_observation_landing(
+                duckdb_path=duckdb_path,
+                history_result=history_result,
+                report_date=as_of_date,
+            )
+            observation_manifest = build_choice_stock_observation_manifest(
+                history_result=history_result,
+                refresh_run_id=run_id,
+                report_date=as_of_date,
+                daily_observation_row_count=daily_observation_row_count,
+                created_at=finished_at,
+            )
+        append_choice_stock_refresh_completion(
+            governance_repo=GovernanceRepository(base_dir=governance_path),
+            completed_run_payload=completed_payload,
+            observation_manifest=observation_manifest,
         )
     except Exception as exc:
         append_choice_stock_refresh_run(
@@ -1561,6 +1638,9 @@ def _run_choice_stock_refresh_job(
                 refresh_history=refresh_history,
                 refresh_factors=refresh_factors,
                 factor_max_stock_count=factor_max_stock_count,
+                theme_overlay_mode=normalized_theme_overlay_mode,
+                theme_overlay_status=("not_run" if normalized_theme_overlay_mode != "off" else None),
+                theme_overlay_run_id=theme_overlay_run_id,
                 history_row_count=_result_row_count(history_result),
                 factor_row_count=_result_row_count(factor_result),
                 source_version=_latest_result_field("source_version", factor_result, history_result),
@@ -1572,6 +1652,74 @@ def _run_choice_stock_refresh_job(
                 idempotency_key=normalized_idempotency_key,
             ),
         )
+        return
+
+    if normalized_theme_overlay_mode == "off":
+        return
+
+    assert theme_overlay_run_id is not None
+    try:
+        theme_overlay_result = refresh_choice_stock_theme_overlay(
+            mode=normalized_theme_overlay_mode,
+            duckdb_path=duckdb_path,
+            governance_dir=governance_path,
+            archive_root=archive_root,
+            expected_report_date=as_of_date,
+            run_id=theme_overlay_run_id,
+            source_version=_choice_stock_theme_overlay_source_version(
+                parent_run_id=run_id,
+                report_date=as_of_date,
+            ),
+            vendor_version=CHOICE_STOCK_THEME_OVERLAY_VENDOR_VERSION,
+        )
+    except Exception:
+        logger.exception("Choice-stock theme overlay refresh raised for run_id=%s", run_id)
+        theme_overlay_result = {
+            "status": ("archive_failed" if normalized_theme_overlay_mode == "archive" else "dry_run_failed"),
+            "message": "Theme overlay refresh failed; see server logs.",
+            "member_count": 0,
+            "run_id": theme_overlay_run_id,
+        }
+
+    theme_overlay_status = str(
+        theme_overlay_result.get("overlay_status") or theme_overlay_result.get("status") or "unknown"
+    )
+    theme_overlay_message = _optional_text(theme_overlay_result.get("message"))
+    if theme_overlay_status not in {"completed", "dry_run"}:
+        if theme_overlay_message != "Theme overlay refresh failed; see server logs.":
+            logger.warning(
+                "Choice-stock theme overlay ended with status=%s for run_id=%s: %s",
+                theme_overlay_status,
+                run_id,
+                theme_overlay_message,
+            )
+        theme_overlay_message = "Theme overlay refresh failed; see server logs."
+
+    append_choice_stock_refresh_run(
+        governance_path,
+        build_choice_stock_refresh_run_payload(
+            run_id=run_id,
+            status="completed",
+            as_of_date=as_of_date,
+            queued_at=queued_at,
+            started_at=started_at,
+            finished_at=datetime.now(UTC).isoformat(),
+            refresh_history=refresh_history,
+            refresh_factors=refresh_factors,
+            factor_max_stock_count=factor_max_stock_count,
+            theme_overlay_mode=normalized_theme_overlay_mode,
+            theme_overlay_status=theme_overlay_status,
+            theme_overlay_message=theme_overlay_message,
+            theme_overlay_member_count=_optional_int(theme_overlay_result.get("member_count")) or 0,
+            theme_overlay_run_id=(_optional_text(theme_overlay_result.get("run_id")) or theme_overlay_run_id),
+            history_row_count=_result_row_count(history_result),
+            factor_row_count=_result_row_count(factor_result),
+            source_version=_latest_result_field("source_version", factor_result, history_result),
+            vendor_version=_latest_result_field("vendor_version", factor_result, history_result),
+            permission=permission,
+            idempotency_key=normalized_idempotency_key,
+        ),
+    )
 
 
 def _run_toolkit_script_inline(name: str, argv: list[str], *, output_dir: str | Path) -> tuple[str, str, int]:
@@ -2142,9 +2290,20 @@ def _choice_stock_refresh_trigger_lock(*, as_of_date: str) -> LockDefinition:
 
 def _normalize_choice_stock_refresh_record(record: dict[str, object]) -> dict[str, object]:
     normalized = dict(record)
+    if _choice_stock_refresh_overlay_pending(normalized):
+        normalized["choice_completion_status"] = "completed"
+        normalized["status"] = "running"
     normalized["trigger_mode"] = _choice_stock_refresh_trigger_mode(str(normalized.get("status") or ""))
     normalized.setdefault("permission", build_choice_stock_refresh_permission_payload())
     return normalized
+
+
+def _choice_stock_refresh_overlay_pending(record: dict[str, object]) -> bool:
+    return (
+        str(record.get("status") or "") == "completed"
+        and str(record.get("theme_overlay_mode") or "off") in {"dry_run", "archive"}
+        and str(record.get("theme_overlay_status") or "") == "pending"
+    )
 
 
 def _choice_stock_refresh_trigger_mode(status: str) -> str:
@@ -2409,6 +2568,18 @@ def _optional_text(value: object | None) -> str | None:
 def _normalize_idempotency_key(value: str | None) -> str | None:
     text = str(value or "").strip()
     return text or None
+
+
+def _normalize_theme_overlay_mode(value: object) -> ThemeOverlayRefreshMode:
+    mode = str(value or "off").strip()
+    if mode not in {"off", "dry_run", "archive"}:
+        raise ValueError("theme_overlay_mode must be one of: off, dry_run, archive")
+    return cast(ThemeOverlayRefreshMode, mode)
+
+
+def _choice_stock_theme_overlay_source_version(*, parent_run_id: str, report_date: str) -> str:
+    digest = hashlib.sha256(f"{parent_run_id}|{report_date}".encode()).hexdigest()[:16]
+    return f"sv_choice_stock_theme_overlay_{digest}"
 
 
 def _optional_int(value: object | None) -> int | None:

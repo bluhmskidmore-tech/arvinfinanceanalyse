@@ -314,8 +314,26 @@ def _try_market_breadth_payload(
             exc_info=True,
         )
         return None
-    if str(result.get("status")) != "completed":
+    result_status = str(result.get("status") or "")
+    if result_status == "insufficient_data":
         return None
+    if result_status != "completed":
+        return {
+            "status": result_status or "market_breadth_failed",
+            "basis": "market_breadth",
+            "message": str(result.get("message") or "Market breadth materialization failed."),
+            "computed_rows": 0,
+            "market_breadth_result": {
+                "daily_row_count": result.get("daily_row_count"),
+                "table": result.get("table"),
+                "rule_version": result.get("rule_version"),
+                "run_id": result.get("run_id"),
+                "limit_price_basis": result.get("limit_price_basis"),
+                "limit_price_matched_count": result.get("limit_price_matched_count"),
+            },
+            "idempotency_key": idempotency_key,
+            "idempotency_replay": False,
+        }
     if int(result.get("supplement_row_count") or 0) <= 0:
         # The all-market source is landed (status=completed) but no complete
         # 5-day breadth window could be computed (e.g. partial-universe days).

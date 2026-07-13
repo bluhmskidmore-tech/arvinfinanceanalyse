@@ -39,6 +39,7 @@ import type {
   SourcePreviewSummary,
   SourcePreviewTracesPayload,
   StockAnalysisWorkbenchPayload,
+  StockKlineAnalysisPayload,
 } from "./contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
@@ -110,10 +111,16 @@ export type MarketDataClientMethods = {
     asOfDate?: string;
     lookback?: number;
   }) => Promise<ApiEnvelope<LivermoreStockDetailPayload>>;
+  getStockKlineAnalysis: (options: {
+    stockCode: string;
+    asOfDate?: string;
+    lookback?: number;
+  }) => Promise<ApiEnvelope<StockKlineAnalysisPayload>>;
   getLivermoreCandidateHistory: (options?: {
     stockCode?: string;
     snapshotFrom?: string;
     snapshotTo?: string;
+    evaluationAsOfDate?: string;
     limit?: number;
   }) => Promise<ApiEnvelope<LivermoreCandidateHistoryPayload>>;
   getLivermoreStrategyScore: (options?: {
@@ -1083,7 +1090,23 @@ function buildMockStockAnalysisWorkbenchPayload(options?: {
         ...(strategy.risk_exit?.items ?? []),
         ...(strategy.risk_exit?.watch_items ?? []),
       ].slice(0, topK),
-      data_gaps: strategy.data_gaps,
+      data_gaps: strategy.data_gaps.map((gap) => ({
+        ...gap,
+        blocks_review:
+          ([
+            "broad_index_history",
+            "breadth",
+            "limit_up_quality",
+            "sector_strength",
+            "stock_universe",
+            "position_risk",
+          ].includes(gap.input_family) &&
+            gap.status !== "ready") ||
+          gap.status === "stale" ||
+          gap.status === "look_ahead" ||
+          gap.tier === "stale" ||
+          gap.tier === "expired",
+      })),
       diagnostics: strategy.diagnostics,
       supported_outputs: strategy.supported_outputs,
       unsupported_outputs: strategy.unsupported_outputs,
@@ -1101,6 +1124,7 @@ function buildMockStockAnalysisWorkbenchPayload(options?: {
     issues: [],
     links: {
       stock_detail: "/ui/market-data/livermore/stock-detail",
+      kline_analysis: "/ui/market-data/stock-analysis/kline-analysis",
       candidate_history: "/ui/market-data/livermore/candidate-history",
       sector_rank_series: "/ui/market-data/livermore/sector-rank-series",
       strategy_score: "/ui/market-data/livermore/strategy-score",
@@ -1762,6 +1786,7 @@ function buildCandidateHistoryQuery(options?: {
   stockCode?: string;
   snapshotFrom?: string;
   snapshotTo?: string;
+  evaluationAsOfDate?: string;
   limit?: number;
 }) {
   const params = new URLSearchParams();
@@ -1776,6 +1801,10 @@ function buildCandidateHistoryQuery(options?: {
   const st = options?.snapshotTo?.trim();
   if (st) {
     params.set("snapshot_to", st);
+  }
+  const evaluationAsOfDate = options?.evaluationAsOfDate?.trim();
+  if (evaluationAsOfDate) {
+    params.set("evaluation_as_of_date", evaluationAsOfDate);
   }
   if (options?.limit != null) {
     params.set("limit", String(options.limit));
@@ -2568,6 +2597,97 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getStockKlineAnalysis(options: { stockCode: string; asOfDate?: string; lookback?: number }) {
+      await delay();
+      const asOfDate = options.asOfDate ?? "2026-04-09";
+      return buildMockApiEnvelope(
+        "market_data.stock_analysis.kline",
+        {
+          basis: "analytical",
+          state: "ok",
+          contract_status: "observational_only",
+          formal_use_allowed: false,
+          trading_instruction_allowed: false,
+          stock_code: options.stockCode.trim(),
+          requested_as_of_date: options.asOfDate ?? null,
+          as_of_date: asOfDate,
+          lookback: options.lookback ?? 60,
+          engine: {
+            name: "moss_stock_kline_analysis",
+            source: "kline-analysis zip deterministic OHLCV subset",
+            rule_version: "rv_stock_kline_analysis_observation_v1",
+            coverage: ["daily_patterns", "moving_average_trend", "volume_context", "validity_check"],
+          },
+          latest_candle: {
+            trade_date: asOfDate,
+            open_value: 10.2,
+            high_value: 10.5,
+            low_value: 10.1,
+            close_value: 10.35,
+            volume: 1_100_000,
+            amount: 11_500_000,
+            pctchange: 1.47,
+            turn: 1.2,
+            amplitude: 3.9,
+          },
+          indicators: {
+            latest_close: 10.35,
+            ma5: 10.18,
+            ma20: 9.92,
+            ma60: 9.64,
+            return_5d: 0.041,
+            return_20d: 0.087,
+            volume_ratio_20d: 1.4,
+            latest_turnover: 1.2,
+            latest_amplitude: 3.9,
+          },
+          patterns: [
+            {
+              key: "wide_body",
+              label: "wide_body",
+              tone: "positive",
+              evidence: "body/range >= 65%",
+            },
+          ],
+          validity: {
+            state: "usable",
+            usable: true,
+            bar_count: 60,
+            required_bar_count: 30,
+            recommended_bar_count: 60,
+            data_health: { state: "ok", invalid_candle_count: 0, zero_volume_count: 0 },
+            liquidity: { state: "ok", latest_volume: 1_100_000, average_volume_20d: 900_000 },
+            warnings: [],
+          },
+          observation_signal: {
+            level: "constructive_watch",
+            label: "constructive_watch",
+            score: 72,
+            confidence: "high",
+            reasons: ["close_above_ma20", "ma20_above_ma60", "positive_20d_return"],
+            risks: [],
+          },
+          diagnostics: [
+            {
+              severity: "info",
+              code: "observation_only",
+              message: "K-line output is observational evidence only and is not a trading instruction.",
+            },
+          ],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_stock_kline_analysis_mock",
+          vendor_version: "vv_stock_kline_analysis_mock",
+          rule_version: "rv_stock_kline_analysis_observation_v1",
+          cache_version: "cv_stock_kline_analysis_observation_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
     async getLivermoreCandidateHistory(options?: {
       stockCode?: string;
       snapshotFrom?: string;
@@ -3119,10 +3239,17 @@ export function createRealMarketDataClient({
         baseUrl,
         `/ui/market-data/livermore/stock-detail${buildStockDetailQuery(options)}`,
       ),
+    getStockKlineAnalysis: (options: { stockCode: string; asOfDate?: string; lookback?: number }) =>
+      requestJson<StockKlineAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/stock-analysis/kline-analysis${buildStockDetailQuery(options)}`,
+      ),
     getLivermoreCandidateHistory: (options?: {
       stockCode?: string;
       snapshotFrom?: string;
       snapshotTo?: string;
+      evaluationAsOfDate?: string;
       limit?: number;
     }) =>
       requestJson<LivermoreCandidateHistoryPayload>(

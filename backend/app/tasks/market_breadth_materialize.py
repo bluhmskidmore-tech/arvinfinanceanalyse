@@ -1,13 +1,15 @@
 """Materialize daily all-market breadth + limit-up seal/break counts into DuckDB.
 
 Aggregates the already-landed ``choice_stock_daily_observation`` table (full
-A-share daily OHLCV with pctchange and exchange limit prices) into
+A-share daily OHLCV with pctchange) into
 ``fact_market_breadth_daily``, then derives the Livermore market-gate
 supplement inputs (``breadth_5d`` / ``limit_up_quality_ok``) with the formal
 definitions in :mod:`backend.app.core_finance.market_breadth` and writes them
 through the existing gate-supplement materialize task.
 
-No vendor calls are made; this is an offline derivation from landed data.
+Choice ``HIGHLIMIT`` is a yes/no flag, not a price. When the latest landed
+date does not contain numeric limit prices, this task loads that date's
+Tushare ``stk_limit.up_limit`` prices before classifying sealed/broken boards.
 API-safe callers must not use this module (DuckDB write path).
 """
 
@@ -15,11 +17,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import uuid
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
+import requests
 from backend.app.core_finance.market_breadth import (
     BREADTH_WINDOW_DAYS,
     LIMIT_PRICE_TOLERANCE,
@@ -27,7 +32,9 @@ from backend.app.core_finance.market_breadth import (
     build_gate_supplement_values,
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.tushare_adapter import resolve_tushare_token_with_settings_fallback
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.tasks.livermore_gate_supplement import materialize_livermore_gate_supplement_daily
 
@@ -35,9 +42,14 @@ MARKET_BREADTH_LOCK = LockDefinition(
     key="lock:duckdb:market-breadth-daily",
     ttl_seconds=600,
 )
-RULE_VERSION = "rv_market_breadth_daily_v1"
+logger = logging.getLogger(__name__)
+
+RULE_VERSION = "rv_market_breadth_daily_v2"
 SOURCE_TABLE = "choice_stock_daily_observation"
 TABLE_NAME = "fact_market_breadth_daily"
+TUSHARE_PRO_API_URL = "https://api.tushare.pro"
+TUSHARE_PRO_TIMEOUT_SECONDS = (10.0, 30.0)
+LimitPriceLoader = Callable[[date], dict[str, float]]
 # Days with fewer landed observations are treated as partial universe landings
 # and excluded (full A-share universe is ~5000+ stocks per day).
 MIN_OBSERVATIONS_PER_DAY_DEFAULT = 1000
@@ -59,6 +71,7 @@ def materialize_market_breadth_daily(
     lookback_days: int = 30,
     min_observations_per_day: int = MIN_OBSERVATIONS_PER_DAY_DEFAULT,
     run_id: str | None = None,
+    limit_price_loader: LimitPriceLoader | None = None,
 ) -> dict[str, object]:
     """Aggregate daily breadth counts and derive gate supplement rows.
 
@@ -95,7 +108,27 @@ def materialize_market_breadth_daily(
                         f"{window_start.isoformat()} and {target_date.isoformat()}."
                     ),
                 )
-            _replace_daily_rows(conn, daily_rows, run_id=effective_run)
+            write_latest_only = any(
+                int(row.get("numeric_limit_price_count") or 0) < int(row["total_count"])
+                for row in daily_rows
+            )
+            limit_price_evidence = _enrich_latest_limit_counts(
+                conn,
+                daily_rows,
+                limit_price_loader=limit_price_loader or _load_tushare_limit_prices,
+            )
+            if not bool(limit_price_evidence["limit_price_complete"]):
+                return {
+                    "status": str(limit_price_evidence["limit_price_failure_status"]),
+                    "message": str(limit_price_evidence["limit_price_message"]),
+                    "table": TABLE_NAME,
+                    "rule_version": RULE_VERSION,
+                    "daily_row_count": 0,
+                    "supplement_row_count": 0,
+                    **limit_price_evidence,
+                }
+            daily_rows_to_write = [daily_rows[-1]] if write_latest_only else daily_rows
+            _replace_daily_rows(conn, daily_rows_to_write, run_id=effective_run)
         finally:
             conn.close()
 
@@ -110,6 +143,20 @@ def materialize_market_breadth_daily(
         for row in daily_rows
     ]
     supplement_rows = _build_supplement_rows(breadth_rows)
+    if write_latest_only:
+        latest_trade_date = str(daily_rows[-1]["trade_date"])
+        supplement_rows = [
+            row for row in supplement_rows if str(row["trade_date"]) == latest_trade_date
+        ]
+    vendor_version_by_date = {
+        str(row["trade_date"]): str(row.get("vendor_version") or _vendor_version(str(row["trade_date"])))
+        for row in daily_rows
+    }
+    for row in supplement_rows:
+        row["vendor_version"] = vendor_version_by_date.get(
+            str(row["trade_date"]),
+            str(row["vendor_version"]),
+        )
 
     materialize_result: dict[str, object] | None = None
     if supplement_rows:
@@ -127,11 +174,14 @@ def materialize_market_breadth_daily(
         "table": TABLE_NAME,
         "rule_version": RULE_VERSION,
         "daily_row_count": len(daily_rows),
+        "daily_written_row_count": len(daily_rows_to_write),
         "supplement_row_count": len(supplement_rows),
         "first_date": str(daily_rows[0]["trade_date"]),
         "last_date": str(daily_rows[-1]["trade_date"]),
         "first_supplement_date": str(supplement_rows[0]["trade_date"]) if supplement_rows else None,
         "last_supplement_date": str(supplement_rows[-1]["trade_date"]) if supplement_rows else None,
+        "historical_rows_preserved": len(daily_rows) - len(daily_rows_to_write),
+        **limit_price_evidence,
         "materialize_result": materialize_result,
     }
 
@@ -192,7 +242,8 @@ def _aggregate_daily_counts(
           sum(case when limit_price is not null and high_value is not null and close_value is not null
                    and high_value >= limit_price - {LIMIT_PRICE_TOLERANCE}
                    and abs(close_value - limit_price) >= {LIMIT_PRICE_TOLERANCE}
-              then 1 else 0 end) as limit_up_broken_count
+              then 1 else 0 end) as limit_up_broken_count,
+          sum(case when limit_price is not null then 1 else 0 end) as numeric_limit_price_count
         from parsed
         group by trade_date
         having count(*) >= ?
@@ -209,9 +260,163 @@ def _aggregate_daily_counts(
             "unchanged_count": int(row[4]),
             "limit_up_sealed_count": int(row[5]),
             "limit_up_broken_count": int(row[6]),
+            "numeric_limit_price_count": int(row[7]),
         }
         for row in rows
     ]
+
+
+def _enrich_latest_limit_counts(
+    conn: duckdb.DuckDBPyConnection,
+    daily_rows: list[dict[str, object]],
+    *,
+    limit_price_loader: LimitPriceLoader,
+) -> dict[str, object]:
+    latest = daily_rows[-1]
+    trade_date_text = str(latest["trade_date"])
+    total_count = int(latest["total_count"])
+    numeric_count = int(latest.get("numeric_limit_price_count") or 0)
+    if numeric_count == total_count:
+        return {
+            "limit_price_complete": True,
+            "limit_price_basis": "landed_numeric_highlimit",
+            "limit_price_matched_count": numeric_count,
+        }
+    if numeric_count > 0:
+        return {
+            "limit_price_complete": False,
+            "limit_price_failure_status": "limit_price_incomplete",
+            "limit_price_message": (
+                f"Landed numeric limit prices matched {numeric_count} of {total_count} "
+                f"stocks for {trade_date_text}; no rows were written."
+            ),
+            "limit_price_basis": "incomplete_landed_numeric_highlimit",
+            "limit_price_matched_count": numeric_count,
+        }
+
+    trade_date_value = date.fromisoformat(trade_date_text)
+    try:
+        prices = limit_price_loader(trade_date_value)
+    except Exception as exc:
+        logger.warning(
+            "Tushare stk_limit enrichment failed for %s; existing rows are preserved.",
+            trade_date_text,
+            exc_info=True,
+        )
+        return {
+            "limit_price_complete": False,
+            "limit_price_failure_status": "limit_price_unavailable",
+            "limit_price_message": (
+                f"Tushare stk_limit was unavailable for {trade_date_text}; "
+                "no rows were written."
+            ),
+            "limit_price_basis": "unavailable",
+            "limit_price_matched_count": 0,
+            "limit_price_error": f"{type(exc).__name__}: {exc}",
+        }
+
+    matched_count, sealed_count, broken_count = _classify_limit_counts(
+        conn,
+        trade_date=trade_date_value,
+        limit_prices=prices,
+    )
+    if matched_count != total_count:
+        return {
+            "limit_price_complete": False,
+            "limit_price_failure_status": "limit_price_incomplete",
+            "limit_price_message": (
+                f"Tushare stk_limit matched {matched_count} of {total_count} stocks "
+                f"for {trade_date_text}; no rows were written."
+            ),
+            "limit_price_basis": "incomplete_tushare_stk_limit",
+            "limit_price_matched_count": matched_count,
+        }
+
+    digest = hashlib.sha256(
+        json.dumps(prices, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:12]
+    latest["limit_up_sealed_count"] = sealed_count
+    latest["limit_up_broken_count"] = broken_count
+    latest["vendor_version"] = (
+        f"{_vendor_version(trade_date_text)}+"
+        f"vv_tushare_stk_limit_{trade_date_text.replace('-', '')}_{digest}"
+    )
+    return {
+        "limit_price_complete": True,
+        "limit_price_basis": "tushare_stk_limit",
+        "limit_price_matched_count": matched_count,
+    }
+
+
+def _classify_limit_counts(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    trade_date: date,
+    limit_prices: dict[str, float],
+) -> tuple[int, int, int]:
+    rows = conn.execute(
+        f"""
+        select stock_code, high_value, close_value
+        from {SOURCE_TABLE}
+        where cast(trade_date as date) = cast(? as date)
+          and pctchange is not null
+          and high_value is not null
+          and close_value is not null
+        """,
+        [trade_date.isoformat()],
+    ).fetchall()
+    matched_count = 0
+    sealed_count = 0
+    broken_count = 0
+    for stock_code, high_value, close_value in rows:
+        limit_price = limit_prices.get(str(stock_code))
+        if limit_price is None:
+            continue
+        matched_count += 1
+        if float(high_value) < limit_price - LIMIT_PRICE_TOLERANCE:
+            continue
+        if abs(float(close_value) - limit_price) < LIMIT_PRICE_TOLERANCE:
+            sealed_count += 1
+        else:
+            broken_count += 1
+    return matched_count, sealed_count, broken_count
+
+
+def _load_tushare_limit_prices(trade_date: date) -> dict[str, float]:
+    token = resolve_tushare_token_with_settings_fallback(get_settings())
+    if not token:
+        raise RuntimeError("MOSS_TUSHARE_TOKEN or settings.tushare_token is required.")
+    response = requests.post(
+        TUSHARE_PRO_API_URL,
+        json={
+            "api_name": "stk_limit",
+            "token": token,
+            "params": {"trade_date": trade_date.strftime("%Y%m%d")},
+            "fields": "trade_date,ts_code,up_limit,down_limit",
+        },
+        timeout=TUSHARE_PRO_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if int(payload.get("code") or 0) != 0:
+        raise RuntimeError(str(payload.get("msg") or "Tushare stk_limit request failed."))
+    data = payload.get("data") or {}
+    fields = [str(value) for value in data.get("fields") or []]
+    positions = {name: index for index, name in enumerate(fields)}
+    if "ts_code" not in positions or "up_limit" not in positions:
+        raise RuntimeError("Tushare stk_limit response is missing ts_code/up_limit.")
+    prices: dict[str, float] = {}
+    for item in data.get("items") or []:
+        try:
+            code = str(item[positions["ts_code"]]).strip()
+            value = float(item[positions["up_limit"]])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if code and value > 0:
+            prices[code] = value
+    if not prices:
+        raise RuntimeError(f"Tushare stk_limit returned no usable prices for {trade_date.isoformat()}.")
+    return prices
 
 
 def _replace_daily_rows(
@@ -244,7 +449,7 @@ def _replace_daily_rows(
                     row["limit_up_sealed_count"],
                     row["limit_up_broken_count"],
                     _row_source_version(row),
-                    _vendor_version(str(row["trade_date"])),
+                    str(row.get("vendor_version") or _vendor_version(str(row["trade_date"]))),
                     RULE_VERSION,
                     run_id,
                 ],

@@ -1680,6 +1680,10 @@ export type LivermoreDataGap = {
   tier?: ExternalDataFreshnessTier | null;
 };
 
+export type StockAnalysisWorkbenchDataGap = LivermoreDataGap & {
+  blocks_review: boolean;
+};
+
 export type ExternalDataWatermarkEntry = {
   series_id: string;
   series_name: string;
@@ -1840,6 +1844,7 @@ export type LivermoreThemeBreakoutStockItem = {
   close_strength: number;
   closed_up_limit: boolean;
   strong: boolean;
+  concept_source_kind?: "real_concept" | "tushare_current_overlay" | "proxy" | string;
 };
 
 export type LivermoreThemeBreakoutItem = {
@@ -1883,6 +1888,16 @@ export type LivermoreThemeEvidenceInputState = {
   row_count?: number;
   date_row_count?: number;
   matched_row_count?: number;
+  member_count?: number;
+  concept_source_kind?: "real_concept" | "tushare_current_overlay" | "proxy" | string | null;
+  overlay_status?: string | null;
+  overlay_reason?: string | null;
+  source_kind?: "tushare_ths_current_overlay" | string | null;
+  source_version?: string | null;
+  vendor_version?: string | null;
+  run_id?: string | null;
+  point_in_time?: boolean | null;
+  historical_use_allowed?: boolean | null;
   message?: string;
 };
 
@@ -2368,7 +2383,7 @@ export type StockAnalysisWorkbenchPayload = {
     review_queue: Record<string, unknown>[];
     sector_snapshot: Record<string, unknown>[];
     risk_exit_snapshot: Record<string, unknown>[];
-    data_gaps: LivermoreDataGap[] | Record<string, unknown>[];
+    data_gaps: StockAnalysisWorkbenchDataGap[];
     diagnostics: LivermoreDiagnostic[] | Record<string, unknown>[];
     supported_outputs: string[];
     unsupported_outputs: LivermoreUnsupportedOutput[] | Record<string, unknown>[];
@@ -2514,6 +2529,38 @@ export type LivermoreSectorRankSeriesPayload = {
   workbench_summary?: Record<string, unknown>;
 };
 
+export type LivermoreCandidateForwardMaturityStatus =
+  | "natural_pending"
+  | "complete"
+  | "matured_missing_bar"
+  | "raw_matured_adjustment_missing"
+  | "partial_halt"
+  | string;
+
+export type LivermoreCandidateForwardMaturityHorizonKey = "1d" | "5d" | "10d" | "20d";
+
+export type LivermoreCandidateForwardMaturityHorizon = {
+  status: LivermoreCandidateForwardMaturityStatus;
+  reason?: string | null;
+  horizon_bars: number;
+  target_trade_date?: string | null;
+  stock_valid_bar_count?: number;
+  market_trade_date_count?: number;
+  target_observation_verified?: boolean;
+};
+
+export type LivermoreCandidateForwardMaturity = {
+  evaluation_as_of_date: string;
+  horizons: Partial<
+    Record<LivermoreCandidateForwardMaturityHorizonKey, LivermoreCandidateForwardMaturityHorizon>
+  >;
+  maturity_clock?: string;
+  diagnostic_clock?: string;
+  source_status?: "available" | "unavailable" | string;
+  source_issue?: string | null;
+  classification_available?: boolean;
+};
+
 export type LivermoreCandidateHistoryRow = {
   snapshot_as_of_date: string;
   stock_code: string;
@@ -2530,6 +2577,8 @@ export type LivermoreCandidateHistoryRow = {
   return_5d: number | null;
   return_20d: number | null;
   data_status: "complete" | "partial_halt" | "pending" | string;
+  forward_coverage?: "complete" | "pending" | "missing_bar" | "partial_halt" | string;
+  forward_maturity?: LivermoreCandidateForwardMaturity | null;
 };
 
 export type BacktestWindowSummaryStatus = "valid" | "partial" | "unsupported";
@@ -2699,6 +2748,8 @@ export type LivermoreCandidateHistoryPayload = {
   stock_code: string | null;
   snapshot_from: string | null;
   snapshot_to: string | null;
+  effective_snapshot_to?: string | null;
+  evaluation_as_of_date?: string | null;
   limit: number;
   summary?: LivermoreCandidateHistoryLegacySummary | null;
   backtest_window_summary?: BacktestWindowSummary | null;

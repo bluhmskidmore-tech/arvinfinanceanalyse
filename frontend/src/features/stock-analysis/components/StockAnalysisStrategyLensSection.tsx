@@ -1,4 +1,3 @@
-import type { KeyboardEvent, SyntheticEvent } from "react";
 import type { StockStrategyLensItem } from "../lib/stockAnalysisPageModel";
 
 type StockAnalysisStrategyLensSectionProps = {
@@ -32,17 +31,6 @@ export function StockAnalysisStrategyLensSection({
   const backgroundItems = candidateItems.length > 0 ? emptyCandidateItems : [];
   const deferredStrategyItems = [...deferredCandidateItems, ...backgroundItems];
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>, targetId: string) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onScrollToSection(targetId);
-    }
-  };
-
-  const stopCardNavigation = (event: SyntheticEvent<HTMLElement>) => {
-    event.stopPropagation();
-  };
-
   const renderStrategyCard = (item: StockStrategyLensItem) => (
     <article
       key={item.key}
@@ -51,18 +39,24 @@ export function StockAnalysisStrategyLensSection({
       data-tone={item.tone}
       data-state={item.state}
       data-testid={`stock-analysis-strategy-lens-${item.key}`}
-      role="button"
-      tabIndex={0}
       aria-label={`${item.label}, ${item.value} ${item.unitLabel}, ${item.statusLabel}`}
-      onClick={() => onScrollToSection(item.scrollTarget)}
-      onKeyDown={(event) => handleKeyDown(event, item.scrollTarget)}
     >
       <div className="stock-analysis-page__strategy-lens-card-head">
         <div>
           <span className="stock-analysis-page__strategy-lens-label">{item.label}</span>
           <small className="stock-analysis-page__strategy-lens-subtitle">{item.subtitle}</small>
         </div>
-        <span className="stock-analysis-page__strategy-lens-status">{item.statusLabel}</span>
+        <span className="stock-analysis-page__strategy-lens-card-actions">
+          <span className="stock-analysis-page__strategy-lens-status">{item.statusLabel}</span>
+          <button
+            aria-label={`前往${item.label}复核区`}
+            className="stock-analysis-page__strategy-lens-action"
+            onClick={() => onScrollToSection(item.scrollTarget)}
+            type="button"
+          >
+            复核
+          </button>
+        </span>
       </div>
       <div className="stock-analysis-page__strategy-lens-main">
         <strong className="stock-analysis-page__strategy-lens-value">{item.value}</strong>
@@ -74,8 +68,6 @@ export function StockAnalysisStrategyLensSection({
       <details
         className="stock-analysis-page__strategy-lens-meta"
         data-testid={`stock-analysis-strategy-lens-${item.key}-meta`}
-        onClick={stopCardNavigation}
-        onKeyDown={stopCardNavigation}
       >
         <summary className="stock-analysis-page__strategy-lens-meta-summary">
           <span>证据口径</span>
@@ -130,8 +122,6 @@ export function StockAnalysisStrategyLensSection({
             <details
               className="stock-analysis-page__strategy-lens-candidates-more"
               data-testid={`stock-analysis-strategy-lens-${item.key}-more-candidates`}
-              onClick={stopCardNavigation}
-              onKeyDown={stopCardNavigation}
             >
               <summary className="stock-analysis-page__strategy-lens-candidates-more-summary">
                 <span>更多候选</span>
@@ -178,7 +168,7 @@ export function StockAnalysisStrategyLensSection({
       <header className="stock-analysis-page__strategy-lens-header">
         <div>
           <p className="stock-analysis-page__strategy-lens-eyebrow">核心选股策略</p>
-          <h2>4 策略台账</h2>
+          <h2>{items.length} 策略台账</h2>
         </div>
         <div className="stock-analysis-page__strategy-lens-summary" aria-label="策略台账摘要">
           <span>可用 {readyCount}/{items.length}</span>

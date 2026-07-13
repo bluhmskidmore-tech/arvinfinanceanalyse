@@ -841,6 +841,7 @@ export type StockThemeBreakoutLeader = {
   turn: string;
   closeStrength: string;
   tags: string[];
+  sourceKindLabel?: string;
 };
 
 export type StockThemeBreakoutCard = {
@@ -857,6 +858,7 @@ export type StockThemeBreakoutCard = {
   avgPctChangeLabel: string;
   movementLabel: string;
   latestEventLabel: string;
+  sourceKindLabel?: string;
   leaders: StockThemeBreakoutLeader[];
 };
 
@@ -879,6 +881,11 @@ export type StockThemeBreakoutReviewItem = {
   failedGateLabel: string;
   reason: string;
   leaders: StockThemeBreakoutLeader[];
+};
+
+export type StockThemeTaxonomyGapSummary = {
+  state: "ready" | "partial" | "unavailable";
+  detail: string;
 };
 
 function formatNumber(value: number | null | undefined, digits = 2) {
@@ -1633,7 +1640,9 @@ export function localizeStockBackendText(
     return "市场过热门控下暂停题材观察；历史回放显示该桶拖累。";
   }
   if (lower.includes("market gate is available") && lower.includes("pmi") && lower.includes("credit impulse")) {
-    return "市场门控已有可用证据，PMI 与信用脉冲待补。";
+    return /not landed|missing|unavailable|待补|缺失/.test(lower)
+      ? "市场门控已有可用证据，PMI 与信用脉冲待补。"
+      : "市场门控、PMI 与信用脉冲已接入。";
   }
   if (lower.includes("all broad-index and supplement gate inputs are landed")) {
     return "宽基指数与补充门控输入已落地，可用于当前交易日。";
@@ -3154,9 +3163,9 @@ export function buildStockAnalysisEventMonitorRows(
 ): StockAnalysisEventMonitorRow[] {
   const rows: StockAnalysisEventMonitorRow[] = [];
 
-  for (const item of payload.diagnostics) {
+  for (const [index, item] of payload.diagnostics.entries()) {
     rows.push({
-      key: `diagnostic:${item.code}`,
+      key: `diagnostic:${item.code}:${item.input_family ?? "strategy"}:${index}`,
       source: "diagnostic",
       level: eventLevelFromSeverity(item.severity),
       event: item.code,
@@ -3359,6 +3368,12 @@ function localizeThemeGateLabel(gate: string): string {
 export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): StockThemeBreakoutCard[] {
   const isProxy = payload.theme_breakout?.is_proxy ?? true;
   return sortedThemeBreakoutItems(payload).map((item) => {
+    const sourceKindLabel = localizeThemeSourceKind(item.source_kind, isProxy);
+    const usesCurrentOverlay =
+      item.source_kind?.trim().toLowerCase() === "tushare_current_overlay" ||
+      item.items.some(
+        (stock) => stock.concept_source_kind?.trim().toLowerCase() === "tushare_current_overlay",
+      );
     const leaders = [...item.items]
       .sort((left, right) => {
         if (left.closed_up_limit !== right.closed_up_limit) {
@@ -3374,15 +3389,21 @@ export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): Stoc
         pctChange: formatPercent(stock.pctchange),
         turn: formatNumber(stock.turn, 2),
         closeStrength: formatRatioAsPercent(stock.close_strength, 0),
+        sourceKindLabel: localizeThemeSourceKind(
+          stock.concept_source_kind ?? item.source_kind,
+          isProxy,
+        ),
         tags: [
           stock.closed_up_limit ? "涨停" : null,
           stock.strong ? "强势" : null,
         ].filter((tag): tag is string => Boolean(tag)),
       }));
 
-    const boundaryLabel = isProxy
-      ? "代理题材观察：由日线、股票名称和申万一级行业拼接，不是概念库或盘中异动源。"
-      : "真实题材观察：使用已落地概念成分和异动事件；仍只作复核观察。";
+    const boundaryLabel = usesCurrentOverlay
+      ? "当前覆盖 · 非时点 · 不可历史使用 · 仅观察"
+      : isProxy
+        ? "代理题材观察：由日线、股票名称和申万一级行业拼接，不是概念库或盘中异动源。"
+        : "真实题材观察：使用已落地概念成分和异动事件；仍只作复核观察。";
     const movementCount = item.movement_event_count ?? 0;
     const latestEventTitle = item.latest_event_title?.trim() || "暂无最新异动标题";
     const latestEventTime = item.latest_event_time?.trim() || "时间待补";
@@ -3401,6 +3422,7 @@ export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): Stoc
       avgPctChangeLabel: `均涨跌 ${formatPercent(item.avg_pctchange)}`,
       movementLabel: `异动 ${movementCount}`,
       latestEventLabel: movementCount > 0 ? `${latestEventTime} / ${latestEventTitle}` : "异动事件待补",
+      sourceKindLabel,
       leaders,
     };
   });
@@ -3418,6 +3440,7 @@ const themeEvidenceStatusLabels: Record<string, string> = {
   source_table_missing: "数据源缺失",
   landed_no_rows: "已接入无行",
   matched_rows: "已匹配",
+  current_overlay: "当前覆盖 · 非时点 · 不可历史使用 · 仅观察",
 };
 
 function localizeThemeEvidenceDetail(row: LivermoreThemeEvidenceInputState, inputFamily: string, status: string): string {
@@ -3465,6 +3488,7 @@ function themeEvidenceInputs(payload: LivermoreStrategyPayload): LivermoreThemeE
 export function buildThemeEvidenceStateRows(payload: LivermoreStrategyPayload): StockThemeEvidenceStateRow[] {
   return themeEvidenceInputs(payload).map((row, index) => {
     const inputFamily = row.input_family ?? `theme_input_${index + 1}`;
+    const memberCount = finiteCount(row.member_count);
     const rowCount = finiteCount(row.row_count ?? row.date_row_count);
     const matchedCount = finiteCount(row.matched_row_count);
     const status = String(row.status ?? row.state ?? "unknown");
@@ -3474,7 +3498,10 @@ export function buildThemeEvidenceStateRows(payload: LivermoreStrategyPayload): 
       status,
       statusLabel: themeEvidenceStatusLabels[status] ?? "状态待确认",
       detail: localizeThemeEvidenceDetail(row, inputFamily, status),
-      rowCountLabel: `行 ${rowCount} / 命中 ${matchedCount}`,
+      rowCountLabel:
+        status === "current_overlay"
+          ? `成分 ${memberCount} / 命中 ${matchedCount}`
+          : `行 ${rowCount} / 命中 ${matchedCount}`,
     };
   });
 }
@@ -3495,6 +3522,7 @@ function themeReviewLeaders(item: LivermoreThemeBreakoutReviewItem): StockThemeB
       pctChange: formatPercent(stock.pctchange),
       turn: formatNumber(stock.turn, 2),
       closeStrength: formatRatioAsPercent(stock.close_strength, 0),
+      sourceKindLabel: localizeThemeSourceKind(stock.concept_source_kind ?? item.source_kind, false),
       tags: [
         stock.closed_up_limit ? "涨停" : null,
         stock.strong ? "强势" : null,
@@ -4731,19 +4759,48 @@ export function localizeThemeRadarBadge(isProxy: boolean, formulaVersion?: strin
 
 export function localizeThemeSourceKind(sourceKind: string | undefined, isProxyDefault: boolean): string {
   const normalized = (sourceKind ?? "").trim().toLowerCase();
-  if (normalized === "proxy" || (!normalized && isProxyDefault)) {
-    return "代理观察";
+  if (normalized === "tushare_current_overlay" || normalized === "tushare_ths_current_overlay") {
+    return "当前概念覆盖";
   }
-  if (normalized === "real_concept" || normalized === "concept") {
-    return "概念库";
+  if (normalized === "proxy" || (!normalized && isProxyDefault)) {
+    return "代理主题";
+  }
+  if (
+    normalized === "real_concept" ||
+    normalized === "concept" ||
+    normalized === "choice_point_in_time"
+  ) {
+    return "时点概念成分";
   }
   if (normalized.includes("proxy")) {
-    return "代理观察";
+    return "代理主题";
   }
   if (!normalized) {
-    return isProxyDefault ? "代理观察" : "概念库";
+    return isProxyDefault ? "代理主题" : "时点概念成分";
   }
   return "来源待确认";
+}
+
+export function buildThemeTaxonomyGapSummary(
+  dataGaps: readonly Pick<LivermoreStrategyPayload["data_gaps"][number], "input_family" | "status">[],
+): StockThemeTaxonomyGapSummary {
+  const themeGap = dataGaps.find(
+    (gap) => gap.input_family.trim().toLowerCase().replace(/[\s-]+/g, "_") === "theme_taxonomy",
+  );
+  const status = themeGap?.status.trim().toLowerCase();
+  if (!status || status === "ready") {
+    return { state: "ready", detail: "目录状态随主包返回" };
+  }
+  if (status === "partial") {
+    return {
+      state: "partial",
+      detail: "题材分类部分覆盖；证据受限，不阻断只读复核",
+    };
+  }
+  return {
+    state: "unavailable",
+    detail: "题材分类证据不可用；保持只读并等待补证",
+  };
 }
 
 export function localizeMarketDataStatus(status: string | null | undefined): string {
@@ -5013,6 +5070,14 @@ export function buildThemeBreakoutPanelSummary(input: {
   const movementTotal = summarizeThemeMovementCount(input.payload);
   const topCard = input.cards[0];
   const coverageCount = themePayload?.items?.length ?? input.cards.length;
+  const usesCurrentOverlay = Boolean(
+    themePayload?.items?.some(
+      (item) => item.source_kind?.trim().toLowerCase() === "tushare_current_overlay",
+    ) ||
+      themePayload?.evidence_state?.concept_membership?.status === "current_overlay" ||
+      themePayload?.evidence_state?.concept_membership?.concept_source_kind ===
+        "tushare_current_overlay",
+  );
 
   if (input.unsupportedReason) {
     const localized = localizeThemeUnsupportedSummary(input.unsupportedReason);
@@ -5051,8 +5116,8 @@ export function buildThemeBreakoutPanelSummary(input: {
   stats.push({
     key: "mode",
     label: "模式",
-    value: isProxy ? "代理" : "概念",
-    valueTone: isProxy ? "warning" : "emphasis",
+    value: usesCurrentOverlay ? "当前覆盖" : isProxy ? "代理" : "概念",
+    valueTone: usesCurrentOverlay || isProxy ? "warning" : "emphasis",
   });
 
   const headline =
@@ -5068,10 +5133,20 @@ export function buildThemeBreakoutPanelSummary(input: {
         : isProxy
           ? "代理观察：日线+涨停+名称簇，非正式概念库。"
           : "真实概念观察：已落地成分与异动，仍只读复核。",
-    complianceDetail: isProxy ? "代理题材口径：日线、涨停与名称簇观察；不是正式概念库。" : undefined,
-    badgeLabel: input.cards.length > 0 ? "已就绪" : isProxy ? "代理观察" : "概念库",
+    complianceDetail: usesCurrentOverlay
+      ? "当前覆盖 · 非时点 · 不可历史使用 · 仅观察"
+      : isProxy
+        ? "代理题材口径：日线、涨停与名称簇观察；不是正式概念库。"
+        : undefined,
+    badgeLabel: usesCurrentOverlay
+      ? "当前覆盖"
+      : input.cards.length > 0
+        ? "已就绪"
+        : isProxy
+          ? "代理观察"
+          : "概念库",
     stats,
-    tone: input.cards.length > 0 ? "positive" : "neutral",
+    tone: usesCurrentOverlay ? "warning" : input.cards.length > 0 ? "positive" : "neutral",
   };
 }
 

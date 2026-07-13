@@ -52,14 +52,19 @@ export function StockAnalysisObservationPreview({
   const renderFactorPreviewRow = (row: FactorScreenCandidateItem) => (
     <tr
       key={row.stock_code}
-      className="stock-analysis-page__row--clickable"
       data-testid={`factor-preview-row-${row.stock_code}`}
-      onClick={() => onOpenFactorDetail(row)}
     >
       <td className="stock-analysis-page__table-number">{row.rank}</td>
       <td>
-        {row.stock_name}
-        <small className="stock-analysis-page__tabular"> {row.stock_code}</small>
+        <button
+          aria-label={`查看${row.stock_name}（${row.stock_code}）详情`}
+          className="stock-analysis-page__factor-detail-button"
+          onClick={() => onOpenFactorDetail(row)}
+          type="button"
+        >
+          <span>{row.stock_name}</span>
+          <small className="stock-analysis-page__tabular"> {row.stock_code}</small>
+        </button>
       </td>
       <td>{row.sector_name}</td>
       <td className="stock-analysis-page__table-number">{row.score.toFixed(4)}</td>

@@ -509,7 +509,23 @@ function buildStockAnalysisWorkbenchPayload(
         ...(strategy.risk_exit?.items ?? []),
         ...(strategy.risk_exit?.watch_items ?? []),
       ],
-      data_gaps: strategy.data_gaps,
+      data_gaps: strategy.data_gaps.map((gap) => ({
+        ...gap,
+        blocks_review:
+          ([
+            "broad_index_history",
+            "breadth",
+            "limit_up_quality",
+            "sector_strength",
+            "stock_universe",
+            "position_risk",
+          ].includes(gap.input_family) &&
+            gap.status !== "ready") ||
+          gap.status === "stale" ||
+          gap.status === "look_ahead" ||
+          gap.tier === "stale" ||
+          gap.tier === "expired",
+      })),
       diagnostics: strategy.diagnostics,
       supported_outputs: strategy.supported_outputs,
       unsupported_outputs: strategy.unsupported_outputs,
@@ -540,6 +556,7 @@ function buildStockAnalysisWorkbenchPayload(
     issues: [],
     links: {
       stock_detail: "/ui/market-data/livermore/stock-detail",
+      kline_analysis: "/ui/market-data/stock-analysis/kline-analysis",
       candidate_history: "/ui/market-data/livermore/candidate-history",
       sector_rank_series: "/ui/market-data/livermore/sector-rank-series",
       strategy_score: "/ui/market-data/livermore/strategy-score",
@@ -1832,6 +1849,254 @@ describe("StockAnalysisPage", () => {
     await screen.findByTestId("stock-analysis-first-screen-workbench");
     expect(workbenchSpy.mock.calls[0]?.[0]).toEqual({ topK: 3 });
     expect(strategySpy).not.toHaveBeenCalled();
+
+    const contract = await screen.findByTestId("stock-analysis-workbench-contract");
+    expect(contract).toHaveTextContent("页面核心问题");
+    expect(contract).toHaveTextContent("今天是否具备继续复核候选的条件？");
+    expect(contract).toHaveTextContent("结论状态");
+    expect(contract).toHaveTextContent("可复核");
+    expect(contract).toHaveTextContent("候选复核");
+    expect(contract).toHaveTextContent("首要复核标的");
+    expect(contract).toHaveTextContent("Alpha 000001.SZ");
+    expect(contract).toHaveTextContent("使用边界");
+    expect(contract).toHaveTextContent("仅供观察");
+    expect(contract).toHaveTextContent("数据入口 /ui/market-data/stock-analysis/workbench");
+    expect(contract).toHaveTextContent("结果口径 market_data.stock_analysis.workbench");
+    expect(contract).toHaveTextContent("请求模块 证据摘要 / 主策略");
+
+    const audit = screen.getByTestId("stock-analysis-gate-audit-strip");
+    expect(audit).toHaveTextContent("候选复核：可复核");
+    expect(audit).toHaveTextContent("结论状态：可复核");
+    expect(audit).toHaveTextContent("首要阻断：无");
+
+    const queueHead = screen.getByTestId("stock-analysis-queue-report-head");
+    const topbar = screen.getByTestId("market-workbench-topbar");
+    const visibleDecisionText = `${contract.textContent} ${audit.textContent} ${queueHead.textContent} ${topbar.textContent}`;
+    expect(visibleDecisionText).not.toMatch(
+      /Backend page question|answer_state|can_review|formal|\btrue\b|\bfalse\b|\bready\b|正式用途：[是否]|route\s|Can the stock analysis workbench continue candidate review today\?/,
+    );
+    expect(document.querySelectorAll("main")).toHaveLength(1);
+
+    expect(screen.getByTestId("stock-analysis-tailwind-cockpit")).toHaveTextContent("闭环待复核项");
+    expect(screen.getByTestId("stock-analysis-tailwind-cockpit")).toHaveTextContent("数据缺口项");
+  });
+
+  it("shows gate availability and a non-missing limit-up failure on the visible first screen", async () => {
+    const base = buildStrategyPayload();
+    const strategy = buildStrategyPayload({
+      market_gate: {
+        ...base.market_gate,
+        passed_conditions: 1,
+        available_conditions: 4,
+        required_conditions: 4,
+        conditions: [
+          ...base.market_gate.conditions,
+          {
+            key: "limit_up_quality_positive",
+            label: "Limit-up seal/break quality positive",
+            status: "fail",
+            evidence: "Limit-up quality not positive on 2026-07-10.",
+            source_series_id: null,
+          },
+        ],
+      },
+    });
+
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient({ strategy }) });
+
+    await screen.findByTestId("stock-analysis-first-screen-workbench");
+    const summary = screen.getByLabelText("首屏复核摘要");
+    expect(within(summary).getByText("可评估 4/4")).toBeVisible();
+    expect(within(summary).getByText("通过 1/4")).toBeVisible();
+
+    const limitUpQuality = within(summary).getByText("涨停质量").parentElement;
+    expect(limitUpQuality).toHaveTextContent("未通过");
+    expect(limitUpQuality).toHaveTextContent("已到齐，非缺失");
+  });
+
+  it.each([
+    { payloadFormalUseAllowed: false, resultMetaFormalUseAllowed: true },
+    { payloadFormalUseAllowed: true, resultMetaFormalUseAllowed: false },
+  ])(
+    "keeps the GAP page observation-only when formal-use flags conflict %#",
+    async ({ payloadFormalUseAllowed, resultMetaFormalUseAllowed }) => {
+      const strategy = buildStrategyPayload();
+      const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+      (workbench as unknown as { formal_use_allowed: boolean }).formal_use_allowed = payloadFormalUseAllowed;
+      const client: ApiClient = {
+        ...stockClient({ strategy }),
+        getStockAnalysisWorkbench: vi.fn(async () =>
+          buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench, {
+            basis: "analytical",
+            formal_use_allowed: resultMetaFormalUseAllowed,
+          }),
+        ),
+      };
+
+      renderWorkbenchApp(["/stock-analysis"], { client });
+
+      const contract = await screen.findByTestId("stock-analysis-workbench-contract");
+      const topbar = await screen.findByTestId("market-workbench-topbar");
+      const closurePanel = await screen.findByTestId("stock-analysis-observation-closure-panel");
+
+      expect(contract).toHaveTextContent("仅供观察");
+      expect(contract).not.toHaveTextContent("正式口径可用");
+      expect(within(topbar).getByTestId("stock-analysis-toolbar-formal-status")).toHaveTextContent(
+        "使用边界：仅供观察",
+      );
+      expect(closurePanel).toHaveTextContent("正式用途：否");
+      expect(closurePanel.querySelector("[data-formal-use]")).toHaveAttribute("data-formal-use", "false");
+    },
+  );
+
+  it("merges workbench theme memberships into the active queue and keeps them visible through review detail", async () => {
+    const user = userEvent.setup();
+    const strategy = buildStrategyPayload();
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.first_screen.review_queue = [
+      {
+        stock_code: "000001.SZ",
+        stock_name: "Alpha",
+        sector_code: "801001",
+        sector_name: "AI",
+        rank: 4,
+        source_module: "theme_breakout",
+        theme_memberships: [
+          {
+            theme_key: "concept:C001",
+            theme_name: "机器人",
+            rank: 1,
+            member_rank: 2,
+            source_kind: "tushare_current_overlay",
+          },
+          {
+            theme_key: "concept:C002",
+            theme_name: "工业母机",
+            rank: 3,
+            member_rank: 1,
+            source_kind: "real_concept",
+          },
+        ],
+      },
+      {
+        stock_code: "000003.SZ",
+        stock_name: "Theme Only",
+        sector_code: "801003",
+        sector_name: "高端制造",
+        rank: 2,
+        source_module: "theme_breakout",
+        theme_memberships: [
+          {
+            theme_key: "concept:C003",
+            theme_name: "低空经济",
+            rank: 2,
+            member_rank: 4,
+            source_kind: "real_concept",
+          },
+        ],
+      },
+    ];
+    workbench.decision_summary = {
+      ...workbench.decision_summary,
+      review_queue_count: 3,
+    };
+    const client: ApiClient = {
+      ...stockClient({ strategy }),
+      getStockAnalysisWorkbench: vi.fn(async () =>
+        buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench, {
+          basis: "analytical",
+          formal_use_allowed: false,
+        }),
+      ),
+    };
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const gateRow = await screen.findByTestId("stock-analysis-gate-ledger-row-000001.SZ");
+    const comparison = await screen.findByTestId("stock-analysis-candidate-comparison");
+    const leadCard = within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ");
+
+    expect(gateRow).toHaveTextContent("题材归属");
+    expect(gateRow).toHaveTextContent("机器人 #1 · 当前概念覆盖 · 成分 #2");
+    expect(gateRow).toHaveTextContent("工业母机 #3 · 时点概念成分 · 成分 #1");
+    expect(leadCard).toHaveTextContent("题材归属");
+    expect(leadCard).toHaveTextContent("机器人 #1 · 当前概念覆盖 · 成分 #2");
+    expect(leadCard).toHaveTextContent("工业母机 #3 · 时点概念成分 · 成分 #1");
+    expect(within(comparison).getByTestId("stock-comparison-candidate-row-000003.SZ")).toHaveTextContent(
+      "Theme Only",
+    );
+
+    await user.click(within(comparison).getByTestId("stock-comparison-candidate-review-000001.SZ"));
+
+    const thesis = await screen.findByTestId("stock-detail-review-thesis");
+    expect(thesis).toHaveTextContent("题材归属：机器人 #1 · 当前概念覆盖 · 成分 #2");
+    expect(thesis).toHaveTextContent("题材归属：工业母机 #3 · 时点概念成分 · 成分 #1");
+    expect(thesis).toHaveTextContent("当前覆盖 · 非时点 · 不可历史使用 · 仅观察");
+  });
+
+  it("keeps backend review candidates visible as read-only rows when the gate is blocked", async () => {
+    const strategy = buildStrategyPayload({
+      module_states: readyModuleStates().map((state) => ({
+        ...state,
+        state: "partial",
+        render_mode: "evidence_only",
+        evidence_scope: "detail",
+        excludes_from_primary: true,
+      })),
+    });
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.page_question = {
+      ...workbench.page_question,
+      answer_state: "blocked",
+      answer_label: "blocked",
+      reason: "Data gap status is missing.",
+    };
+    workbench.decision_summary = {
+      ...workbench.decision_summary,
+      can_review_candidates: false,
+      primary_blocker: "Data gap status is missing.",
+    };
+    const client: ApiClient = {
+      ...stockClient({ strategy }),
+      getStockAnalysisWorkbench: vi.fn(async () =>
+        buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench, {
+          basis: "analytical",
+          formal_use_allowed: false,
+        }),
+      ),
+    };
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const queue = await screen.findByTestId("stock-analysis-review-queue");
+    expect(queue).toHaveTextContent("Alpha");
+    expect(queue).toHaveTextContent("000001.SZ");
+    expect(queue).toHaveTextContent("阻断");
+    expect(queue).toHaveTextContent("只读");
+    expect(screen.queryByTestId("stock-analysis-review-queue-filter-empty")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-workbench-contract")).toHaveTextContent(
+      "Alpha 000001.SZ",
+    );
+  });
+
+  it("keeps the backend top review stock authoritative when local filters show another row first", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const contract = await screen.findByTestId("stock-analysis-workbench-contract");
+    const topReviewStock = within(contract).getByText("首要复核标的").parentElement;
+    expect(topReviewStock).toHaveTextContent("Alpha 000001.SZ");
+
+    const topbar = screen.getByTestId("market-workbench-topbar");
+    await user.type(within(topbar).getByTestId("stock-analysis-queue-search"), "Beta");
+
+    const queue = await screen.findByTestId("stock-analysis-review-queue");
+    await waitFor(() => {
+      expect(within(queue).getByTestId("stock-comparison-candidate-row-000002.SZ")).toBeInTheDocument();
+    });
+    expect(within(queue).queryByTestId("stock-comparison-candidate-row-000001.SZ")).not.toBeInTheDocument();
+    expect(topReviewStock).toHaveTextContent("Alpha 000001.SZ");
+    expect(topReviewStock).not.toHaveTextContent("Beta 000002.SZ");
   });
 
   it("marks the backend-supply cockpit without changing the stock data path", async () => {
@@ -1901,7 +2166,7 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByTestId("stock-analysis-observation-preview")).toHaveTextContent("多策略观察池");
     const strategyLens = await screen.findByTestId("stock-analysis-strategy-lens");
     expect(strategyLens).toHaveTextContent("核心选股策略");
-    expect(strategyLens).toHaveTextContent("4 策略台账");
+    expect(strategyLens).toHaveTextContent("5 策略台账");
     expect(strategyLens).toHaveTextContent("趋势突破");
     expect(strategyLens).toHaveTextContent("融合策略");
     expect(strategyLens).toHaveTextContent("多因子");
@@ -2051,6 +2316,7 @@ describe("StockAnalysisPage", () => {
     );
     await user.click(within(candidateHistoryEndpoint).getByRole("button"));
     expect(candidateHistoryEndpoint).toHaveAttribute("data-active", "true");
+    expect(await screen.findByText("数据口径诊断")).toBeInTheDocument();
     expect(replayFact).toHaveAttribute("data-active", "false");
     expect(candidateHistoryEndpoint).not.toHaveAttribute("aria-current");
     expect(within(candidateHistoryEndpoint).getByRole("button")).toHaveAttribute("aria-current", "true");
@@ -2081,7 +2347,7 @@ describe("StockAnalysisPage", () => {
 
     const firstScreen = await screen.findByTestId("stock-analysis-first-screen-workbench");
     const diagnosticsEntry = within(firstScreen).getByTestId("stock-analysis-home-rail-diagnostic-entry");
-    expect(diagnosticsEntry).toHaveAttribute("aria-expanded", "false");
+    expect(diagnosticsEntry).toHaveAttribute("aria-expanded", "true");
 
     const openIssuesFact = screen.getByTestId("stock-analysis-workbench-fact-open-issues");
     await user.click(openIssuesFact);
@@ -2792,10 +3058,18 @@ describe("StockAnalysisPage", () => {
 
     const topbar = await screen.findByTestId("market-workbench-topbar");
     const search = within(topbar).getByTestId("stock-analysis-queue-search");
-    expect(within(topbar).getByTestId("stock-analysis-complete-evidence-toggle")).toBeInTheDocument();
-    expect(within(topbar).getByTestId("stock-analysis-toolbar-data-status")).toHaveTextContent("主包 ready");
+    const evidenceToggle = within(topbar).getByTestId("stock-analysis-complete-evidence-toggle");
+    expect(within(evidenceToggle).getByRole("checkbox")).toBeDisabled();
+    expect(evidenceToggle).toHaveTextContent("完整证据口径待确认");
+    expect(within(topbar).getByTestId("stock-analysis-toolbar-data-status")).toHaveTextContent("主包 就绪");
     expect(within(topbar).getByTestId("stock-analysis-toolbar-gate-status")).toHaveTextContent("门控");
     expect(within(topbar).getByTestId("stock-analysis-toolbar-loop-status")).toHaveTextContent("闭环");
+    expect(within(topbar).getByTestId("stock-analysis-toolbar-formal-status")).toHaveTextContent(
+      "使用边界：仅供观察",
+    );
+    expect(within(topbar).getByTestId("stock-analysis-toolbar-route")).toHaveTextContent(
+      "数据入口 /ui/market-data/stock-analysis/workbench",
+    );
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
     expect(await screen.findByTestId("stock-analysis-first-screen-workbench")).toHaveAttribute(
@@ -2829,8 +3103,132 @@ describe("StockAnalysisPage", () => {
       expect(decisionPanel).toHaveTextContent(/1.*Beta/);
     });
     expect(decisionPanel).toHaveTextContent("1/2");
-    expect(decisionPanel).not.toHaveTextContent("Alpha");
     expect(within(queue).getByTestId("stock-review-filter-status")).toHaveTextContent("显示 1 / 2 个候选");
+    expect(within(queue).getByTestId("stock-analysis-sector-review-link")).toHaveTextContent(
+      "全部行业 · 1 个候选",
+    );
+    expect(within(queue).getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("首位 Beta");
+  });
+
+  it("uses the workbench review queue as the single candidate source", async () => {
+    const client = stockClient();
+    const strategy = buildStrategyPayload();
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.first_screen.review_queue = [
+      {
+        stock_code: "600062.SH",
+        stock_name: "权威候选",
+        sector_code: "801150",
+        sector_name: "医药生物",
+        rank: 1,
+        source_module: "stock_candidates",
+        score: 0.91,
+      },
+    ];
+    workbench.decision_summary = {
+      ...workbench.decision_summary,
+      review_queue_count: 1,
+      top_review_stock_code: "600062.SH",
+      top_review_stock_name: "权威候选",
+    };
+    vi.spyOn(client, "getStockAnalysisWorkbench").mockResolvedValue(
+      buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench),
+    );
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    expect(await screen.findByTestId("stock-analysis-gate-ledger-row-600062.SH")).toHaveTextContent("600062.SH");
+    expect(screen.queryByTestId("stock-analysis-gate-ledger-row-000001.SZ")).not.toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-review-queue")).toHaveTextContent("1 条");
+  });
+
+  it("keeps repeated stock codes from separate gate sources as distinct React rows", async () => {
+    const client = stockClient();
+    const strategy = buildStrategyPayload();
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.first_screen.review_queue = [
+      {
+        stock_code: "000001.SZ",
+        stock_name: "Alpha",
+        sector_code: "801001",
+        sector_name: "AI",
+        rank: 1,
+        source_module: "stock_candidates",
+      },
+      {
+        stock_code: "000001.SZ",
+        stock_name: "Alpha",
+        sector_code: "801001",
+        sector_name: "AI",
+        rank: 2,
+        source_module: "factor_screen_candidates",
+      },
+    ];
+    vi.spyOn(client, "getStockAnalysisWorkbench").mockResolvedValue(
+      buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench),
+    );
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+    await screen.findByTestId("stock-analysis-gate-ledger-queue");
+
+    expect(
+      consoleError.mock.calls.some((call) => call.map(String).join(" ").includes("same key")),
+    ).toBe(false);
+    consoleError.mockRestore();
+  });
+
+  it("labels fresh-trend and hybrid gate sources from their canonical keys", async () => {
+    const client = stockClient();
+    const strategy = buildStrategyPayload();
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.first_screen.review_queue = [
+      {
+        stock_code: "000001.SZ",
+        stock_name: "Fresh Alpha",
+        sector_code: "801001",
+        sector_name: "AI",
+        rank: 1,
+        source_module: "fresh_trend_watchlist",
+      },
+      {
+        stock_code: "000002.SZ",
+        stock_name: "Hybrid Beta",
+        sector_code: "801002",
+        sector_name: "制造",
+        rank: 2,
+        source_module: "hybrid_fusion_candidates",
+      },
+    ];
+    vi.spyOn(client, "getStockAnalysisWorkbench").mockResolvedValue(
+      buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench),
+    );
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const freshRow = await screen.findByTestId("stock-analysis-gate-ledger-row-000001.SZ");
+    const hybridRow = await screen.findByTestId("stock-analysis-gate-ledger-row-000002.SZ");
+    expect(freshRow).toHaveTextContent("新趋势观察");
+    expect(freshRow).toHaveTextContent("主快照");
+    expect(hybridRow).toHaveTextContent("融合观察");
+    expect(hybridRow).toHaveTextContent("融合池");
+    expect(freshRow).not.toHaveTextContent("来源待确认");
+    expect(hybridRow).not.toHaveTextContent(/来源待确认|输出待确认/);
+  });
+
+  it("explains an empty search and restores the queue without reloading", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const search = await screen.findByTestId("stock-analysis-queue-search");
+    await user.type(search, "不存在的股票");
+
+    const emptyState = await screen.findByTestId("stock-analysis-review-queue-filter-empty");
+    expect(emptyState).toHaveTextContent("搜索“不存在的股票”无匹配候选");
+    await user.click(within(emptyState).getByRole("button", { name: "清除筛选" }));
+
+    expect(await screen.findByTestId("stock-analysis-gate-ledger-row-000001.SZ")).toBeInTheDocument();
+    expect(search).toHaveValue("");
   });
 
   it("keeps the first-screen source summarized without exposing the full source trace", async () => {
@@ -2921,6 +3319,9 @@ describe("StockAnalysisPage", () => {
   it("keeps strategy modules summarized by default and opens details on demand", async () => {
     const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
+    await user.click(within(deepResearch).getByTestId("stock-analysis-deep-research-summary"));
 
     const researchMore = await screen.findByTestId("stock-analysis-strategy-research-more");
     expect(researchMore).not.toHaveAttribute("open");
@@ -3156,6 +3557,24 @@ describe("StockAnalysisPage", () => {
     );
   });
 
+  it("keeps the stock review workflow controls reachable in the browser", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const closureStart = css.indexOf("Functional closure: stock-analysis review workflow");
+    const closureCss = css.slice(closureStart);
+
+    expect(closureStart).toBeGreaterThan(-1);
+    expect(closureCss).toMatch(/stock-analysis-evidence-detail-shell[^}]*display:\s*block\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-page__legacy-candidate-comparison-shell[^}]*display:\s*block\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-page__candidate-comparison[^}]*display:\s*grid\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-page__queue-ledger-details[^}]*display:\s*block\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-page__sector-filter-bar[^}]*display:\s*flex\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-page__home-rail-diagnostic-entry[^}]*display:\s*flex\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-risk-section[^}]*display:\s*grid\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-boundary-rail[^}]*display:\s*grid\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-page__review-filter-empty[^}]*display:\s*grid\s*!important/);
+    expect(closureCss).toMatch(/stock-analysis-review-queue[^}]*height:\s*auto\s*!important[^}]*overflow:\s*visible\s*!important/);
+  });
+
   it("compresses the stock-analysis toolbar, rail, and queue footer on the first screen", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
     const loopPassStart = css.indexOf("IB queue desk loop pass 2");
@@ -3175,20 +3594,62 @@ describe("StockAnalysisPage", () => {
     );
   });
 
-  it("keeps the mobile stock toolbar tight enough to leave room for the queue", () => {
+  it("keeps the stock cockpit shell single-column while the rail is hidden", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
-    const mobileToolbarStart = css.indexOf("Mobile stock toolbar density pass");
-    const mobileToolbarCss = css.slice(mobileToolbarStart);
+    const conflictingDesktopRule = css.indexOf("@media (min-width: 721px)");
+    const containmentOverride = css.indexOf("Intermediate stock cockpit containment");
 
-    expect(mobileToolbarStart).toBeGreaterThan(-1);
-    expect(mobileToolbarCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\[data-testid="market-workbench-topbar"\]\s*\{[\s\S]*?padding:\s*8px 10px\s*!important/,
+    expect(conflictingDesktopRule).toBeGreaterThan(-1);
+    expect(containmentOverride).toBeGreaterThan(conflictingDesktopRule);
+    expect(css.slice(containmentOverride)).toMatch(
+      /@media \(min-width:\s*721px\) and \(max-width:\s*1180px\)[\s\S]*?\.workbench-shell-grid--cockpit\.workbench-shell-grid--stock-analysis\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*!important/,
     );
-    expect(mobileToolbarCss).toMatch(
-      /\.stock-analysis-page__workbench-actions\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*30px\s*30px\s*30px\s*!important[\s\S]*?grid-template-rows:\s*30px\s*30px\s*!important/,
+  });
+
+  it("keeps every stock toolbar control visible and touch-sized on narrow screens", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const figmaStart = css.indexOf("Figma handoff pass: Desktop / Stock Analysis Workbench, node 6:3");
+    const figmaCss = css.slice(figmaStart);
+
+    expect(figmaStart).toBeGreaterThan(-1);
+    expect(figmaCss).toMatch(
+      /\[data-testid="market-workbench-topbar"\]\s*\{[^}]*height:\s*auto\s*!important[^}]*max-height:\s*none\s*!important[^}]*overflow:\s*visible\s*!important/,
     );
-    expect(mobileToolbarCss).toMatch(
-      /\.stock-analysis-page__queue-search\s*\{[\s\S]*?height:\s*30px\s*!important[\s\S]*?padding:\s*0 8px\s*!important/,
+    expect(figmaCss).not.toMatch(
+      /\[data-testid="market-workbench-topbar"\]\s*\{[^}]*(?:height|min-height|max-height):\s*74px\s*!important/,
+    );
+    expect(figmaCss).toMatch(
+      /\.stock-analysis-page__workbench-actions\s*\{[^}]*grid-template-areas:\s*"date search status status status refresh"\s*"route route evidence assistant feedback refresh"\s*!important/,
+    );
+    expect(figmaCss).toMatch(
+      /\[data-testid="stock-analysis-as-of-picker"\]\s*\{[^}]*display:\s*block\s*!important/,
+    );
+    expect(figmaCss).toMatch(
+      /\.stock-analysis-page__queue-search\s*\{[^}]*display:\s*flex\s*!important/,
+    );
+    expect(figmaCss).toMatch(
+      /@media \(max-width:\s*1199px\)[\s\S]*?\.stock-analysis-page__workbench-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*!important[^}]*grid-template-areas:[^}]*"date date"[^}]*"search search"[^}]*"status status"[^}]*"route route"[^}]*"evidence assistant"[^}]*"refresh refresh"/,
+    );
+    expect(figmaCss).toMatch(
+      /@media \(max-width:\s*1199px\)[\s\S]*?\.stock-analysis-page__complete-evidence-toggle,[\s\S]*?\.stock-analysis-page__agent-entry--quiet\.ant-btn,[\s\S]*?\[data-testid="stock-analysis-refresh"\]\.ant-btn\s*\{[^}]*min-height:\s*44px\s*!important/,
+    );
+    expect(figmaCss).toMatch(
+      /@media \(max-width:\s*1199px\)[\s\S]*?\[data-testid="stock-analysis-as-of-picker"\],[\s\S]*?\.stock-analysis-page__queue-search\s*\{[^}]*min-height:\s*44px\s*!important/,
+    );
+    expect(figmaCss).toMatch(
+      /\.stock-analysis-page__queue-search input\s*\{[^}]*height:\s*44px\s*!important[^}]*min-height:\s*44px\s*!important/,
+    );
+    expect(figmaCss).toMatch(
+      /\[data-testid="market-workbench-topbar"\]\s*\{[^}]*container-name:\s*stock-analysis-toolbar;[^}]*container-type:\s*inline-size;/,
+    );
+    expect(figmaCss).toMatch(
+      /@container stock-analysis-toolbar \(max-width:\s*319px\)[\s\S]*?\.stock-analysis-page__workbench-actions\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*!important[^}]*"evidence"[^}]*"assistant"[^}]*"refresh"/,
+    );
+    expect(figmaCss).toMatch(
+      /@container stock-analysis-toolbar \(max-width:\s*319px\)[\s\S]*?\.stock-analysis-page__toolbar-status-dot[^}]*flex:\s*1\s+1\s+100%\s*!important[^}]*overflow-wrap:\s*anywhere\s*!important/,
+    );
+    expect(figmaCss).toMatch(
+      /@container stock-analysis-toolbar \(max-width:\s*319px\)[\s\S]*?\.stock-analysis-page__toolbar-route-chip\s*\{[^}]*white-space:\s*normal\s*!important[^}]*overflow-wrap:\s*anywhere\s*!important/,
     );
   });
 
@@ -3200,10 +3661,11 @@ describe("StockAnalysisPage", () => {
     expect(disclosureStart).toBeGreaterThan(-1);
     expect(disclosureCss).toContain(".stock-analysis-page__api-readiness-disclosure");
     expect(disclosureCss).toContain(".stock-analysis-page__deep-zone-detail-shell");
-    expect(disclosureCss).toMatch(
-      /\.stock-analysis-page__api-readiness-disclosure\s*\{[\s\S]*?order:\s*2;/,
+    expect(disclosureCss).not.toMatch(
+      /\.stock-analysis-page__api-readiness-disclosure\s*\{[^}]*\n\s*order\s*:/,
     );
-    expect(disclosureCss).toMatch(/\.stock-analysis-page__workspace\s*\{[\s\S]*?order:\s*1;/);
+    expect(disclosureCss).not.toMatch(/\.stock-analysis-page__workspace\s*\{[^}]*\n\s*order\s*:/);
+    expect(disclosureCss).not.toMatch(/\.stock-analysis-page__v6-audit-disclosure\s*\{[^}]*\n\s*order\s*:/);
     expect(disclosureCss).toMatch(
       /\.stock-analysis-page__deep-zone-header--compact\s*\{[\s\S]*?padding:\s*10px 12px\s*!important/,
     );
@@ -3750,47 +4212,45 @@ describe("StockAnalysisPage", () => {
     );
   });
 
-  it("keeps the evidence ledger to decision-critical rows in the first-screen rail", () => {
+  it("keeps every evidence-ledger row reachable in the first-screen rail", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
     const compactStart = css.indexOf("Evidence ledger compact pass");
-    const compactCss = css.slice(compactStart);
+    const mobileStart = css.indexOf("Mobile decision rail compact pass", compactStart);
+    const compactCss = css.slice(compactStart, mobileStart);
 
     expect(compactStart).toBeGreaterThan(-1);
     expect(compactCss).toContain(
       '[data-testid="stock-analysis-first-screen-rail"].stock-analysis-page__decision-rail > [data-testid="stock-analysis-evidence-ledger"]',
     );
     expect(compactCss).toMatch(
-      /\[data-testid="stock-analysis-evidence-ledger"\]\s*\{[\s\S]*?max-height:\s*292px\s*!important[\s\S]*?overflow:\s*hidden\s*!important/,
+      /\[data-testid="stock-analysis-evidence-ledger"\]\s*\{[\s\S]*?max-height:\s*292px\s*!important[\s\S]*?overflow-y:\s*auto\s*!important/,
     );
     expect(compactCss).toMatch(
       /\[data-testid="stock-analysis-evidence-ledger"\]\s*>\s*div:first-child\s*\{[\s\S]*?min-height:\s*38px\s*!important[\s\S]*?padding:\s*9px 10px\s*!important/,
     );
     expect(compactCss).toMatch(
-      /\.stock-analysis-page__home-rail-list\s*\{[\s\S]*?grid-template-rows:\s*repeat\(4,\s*1fr\)\s*!important[\s\S]*?height:\s*auto\s*!important/,
+      /\.stock-analysis-page__home-rail-list\s*\{[\s\S]*?grid-template-rows:\s*none\s*!important[\s\S]*?height:\s*auto\s*!important/,
     );
-    expect(compactCss).toMatch(
-      /\.stock-analysis-page__home-rail-list\s*>\s*div:nth-child\(3\),[\s\S]*?\.stock-analysis-page__home-rail-list\s*>\s*div:nth-child\(5\)\s*\{[\s\S]*?display:\s*none\s*!important/,
-    );
+    expect(compactCss).not.toMatch(/\.stock-analysis-page__home-rail-list\s*>\s*div:nth-child/);
   });
 
-  it("keeps the mobile decision rail compact before stock selection", () => {
+  it("lets the mobile decision rail expand without suppressing evidence rows", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
     const compactStart = css.indexOf("Mobile decision rail compact pass");
-    const compactCss = css.slice(compactStart);
+    const nextSectionStart = css.indexOf("Evidence closure strip compact pass", compactStart);
+    const compactCss = css.slice(compactStart, nextSectionStart);
 
     expect(compactStart).toBeGreaterThan(-1);
     expect(compactCss).toMatch(
-      /@media \(max-width:\s*720px\)[\s\S]*?\[data-testid="stock-analysis-first-screen-rail"\]\.stock-analysis-page__decision-rail\s*\{[\s\S]*?max-height:\s*124px\s*!important[\s\S]*?overflow:\s*hidden\s*!important/,
+      /@media \(max-width:\s*720px\)[\s\S]*?\[data-testid="stock-analysis-first-screen-rail"\]\.stock-analysis-page__decision-rail\s*\{[^}]*max-height:\s*none\s*!important[^}]*overflow:\s*visible\s*!important/,
     );
     expect(compactCss).toMatch(
-      /\[data-testid="stock-analysis-evidence-ledger"\]\s*\{[\s\S]*?max-height:\s*118px\s*!important/,
+      /\[data-testid="stock-analysis-evidence-ledger"\]\s*\{[^}]*max-height:\s*none\s*!important[^}]*overflow:\s*visible\s*!important/,
     );
     expect(compactCss).toMatch(
-      /\.stock-analysis-page__home-rail-list\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*!important[\s\S]*?grid-template-rows:\s*none\s*!important/,
+      /\.stock-analysis-page__home-rail-list\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*!important[^}]*grid-template-rows:\s*none\s*!important/,
     );
-    expect(compactCss).toMatch(
-      /\.stock-analysis-page__home-rail-list\s*>\s*div:nth-child\(2\)\s*\{[\s\S]*?display:\s*none\s*!important/,
-    );
+    expect(compactCss).not.toMatch(/\.stock-analysis-page__home-rail-list\s*>\s*div:nth-child/);
   });
 
   it("keeps the evidence closure strip compact until audit details are opened", () => {
@@ -3932,6 +4392,31 @@ describe("StockAnalysisPage", () => {
     expect(consolidationCss).not.toMatch(/max-height:\s*126px/);
   });
 
+  it("keeps the wide stock gate layout content-sized instead of filling the viewport", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const balanceStart = css.indexOf("Wide desktop balance: keep the theme rail content-sized");
+    const balanceCss = css.slice(balanceStart);
+
+    expect(balanceStart).toBeGreaterThan(-1);
+    expect(css).toMatch(
+      /grid-template-columns:\s*minmax\(0,\s*1fr\)\s*minmax\(360px,\s*420px\)\s*!important/,
+    );
+    expect(css).toMatch(
+      /"stale stale"[\s\S]*?"ledger rail"[\s\S]*?"strategy theme-side"[\s\S]*?"queue queue"\s*!important/,
+    );
+    expect(balanceCss).toMatch(/grid-template-rows:\s*auto\s+auto\s+auto\s+auto\s*!important/);
+    expect(balanceCss).toMatch(/\.stock-analysis-page__theme-heavyweights-sidebar\s*\{[\s\S]*?height:\s*auto\s*!important/);
+    expect(balanceCss).toMatch(/max-height:\s*360px\s*!important/);
+    expect(balanceCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\]\s*>\s*\[data-testid="stock-analysis-review-queue-empty"\]\s*\{[\s\S]*?display:\s*grid\s*!important/,
+    );
+    expect(balanceCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\]\s*>\s*\[data-testid="stock-analysis-sector-review-link"\]\s*\{[\s\S]*?display:\s*flex\s*!important/,
+    );
+    expect(balanceCss).not.toContain("calc(100vh - 124px)");
+    expect(balanceCss).not.toContain("clamp(780px");
+  });
+
   it("keeps the trust rail compact on desktop and full-width inside narrow single-column flow", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
     const polishStart = css.indexOf("Trust rail responsive polish");
@@ -3952,6 +4437,83 @@ describe("StockAnalysisPage", () => {
     );
     expect(polishCss).toMatch(
       /@media \(max-width:\s*720px\)[\s\S]*?\.stock-analysis-page__decision-rail\s*>\s*article\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+    );
+  });
+
+  it("keeps desktop visual regions aligned with the declarative focus order", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const figmaStart = css.indexOf("Figma handoff pass: Desktop / Stock Analysis Workbench, node 6:3");
+    const figmaV6Start = css.indexOf("Figma handoff pass: Desktop / Stock Analysis Workbench v6", figmaStart);
+    const figmaDesktopCss = css.slice(figmaStart, figmaV6Start);
+
+    expect(figmaStart).toBeGreaterThan(-1);
+    expect(figmaDesktopCss).toMatch(
+      /> \.stock-analysis-page__first-screen-main\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*766px\)\s*minmax\(340px,\s*376px\)\s*!important[^}]*grid-template-areas:\s*"stale stale"\s*"ledger rail"\s*"strategy strategy"\s*"queue queue"\s*!important/,
+    );
+    expect(css).toMatch(
+      /> \.stock-analysis-page__first-screen-main\s*\{[^}]*grid-template-rows:\s*auto\s+auto\s+auto\s+auto\s*!important/,
+    );
+    expect(figmaDesktopCss).toMatch(
+      /> \[data-testid="stock-analysis-strategy-lens"\]\s*\{[^}]*grid-area:\s*strategy\s*!important/,
+    );
+    expect(css).toMatch(
+      /\.stock-analysis-page__kline-radar-grid\s*\{[^}]*display:\s*grid;[^}]*align-items:\s*start;/,
+    );
+  });
+
+  it("keeps the dark decision desk readable without fixed-height clipping", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const cockpitBlocks = [...css.matchAll(/\[data-testid="stock-analysis-tailwind-cockpit"\]\s*\{([^}]*)\}/g)].map(
+      (match) => match[1],
+    );
+    const riskCellBlocks = [
+      ...css.matchAll(
+        /\[data-testid="stock-analysis-first-screen-rail"\] \.stock-analysis-page__rail-risk-strip > div\s*\{([^}]*)\}/g,
+      ),
+    ].map((match) => match[1]);
+
+    expect(cockpitBlocks.some((block) => /height:\s*254px\s*!important/.test(block))).toBe(false);
+    expect(
+      cockpitBlocks.some(
+        (block) =>
+          /height:\s*auto\s*!important/.test(block) &&
+          /max-height:\s*none\s*!important/.test(block) &&
+          /overflow:\s*visible\s*!important/.test(block),
+      ),
+    ).toBe(true);
+    expect(riskCellBlocks.length).toBeGreaterThan(0);
+    expect(riskCellBlocks.every((block) => !block.includes("--moss-color-card-bg"))).toBe(true);
+    expect(riskCellBlocks.some((block) => /background:\s*var\(--ib-surface\)\s*!important/.test(block))).toBe(true);
+    expect(css).toMatch(
+      /\.stock-analysis-page__deep-research[\s\S]*?\.stock-analysis-page__deep-review-workspace[\s\S]*?\.stock-analysis-page__kline-radar-decision\s*\{[^}]*display:\s*none\s*!important/,
+    );
+    const closureCss = css.slice(css.lastIndexOf("Stock-analysis page closure"));
+    expect(closureCss).toMatch(
+      /@media\s*\(min-width:\s*721px\)[\s\S]*?\[data-testid="stock-analysis-theme-leaders-first-screen"\][\s\S]*?\.stock-analysis-page__theme-leaders-table\s*\{[^}]*min-width:\s*0\s*!important/,
+    );
+    expect(css).toMatch(
+      /\.stock-analysis-page__gate-ledger-summary:focus-visible,[\s\S]*?\.stock-analysis-page__deep-research-summary:focus-visible\s*\{[^}]*outline:\s*2px\s+solid\s+var\(--ib-accent\)/,
+    );
+    const mobileClosureCss = css.slice(css.lastIndexOf("@media (max-width: 720px)"));
+    expect(mobileClosureCss).toMatch(
+      /\.stock-analysis-page__gate-ledger-summary > small,[\s\S]*?\.stock-analysis-page__deep-research-summary > small\s*\{[^}]*display:\s*none/,
+    );
+    expect(mobileClosureCss).not.toMatch(
+      /\.stock-analysis-page__gate-ledger-summary > span,[\s\S]*?\.stock-analysis-page__deep-research-summary > span\s*\{[^}]*display:\s*none/,
+    );
+    expect(mobileClosureCss).not.toMatch(
+      /\.stock-analysis-page__theme-leaders-table\s*\{[^}]*min-width:\s*0\s*!important/,
+    );
+  });
+
+  it("keeps the first-screen regions single-column through intermediate widths", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const figmaStart = css.indexOf("Figma handoff pass: Desktop / Stock Analysis Workbench, node 6:3");
+    const figmaCss = css.slice(figmaStart);
+
+    expect(figmaStart).toBeGreaterThan(-1);
+    expect(figmaCss).toMatch(
+      /@media \(max-width:\s*1499px\)[\s\S]*?\.stock-analysis-page__uses-home-shell\[data-design-target="product-design-option-1"\][\s\S]*?> \.stock-analysis-page__first-screen-main\s*\{[^}]*display:\s*flex\s*!important[^}]*flex-direction:\s*column\s*!important/,
     );
   });
 
@@ -4023,9 +4585,25 @@ describe("StockAnalysisPage", () => {
     expect(consolidationCss).toMatch(
       /\.stock-analysis-page__deep-review-workspace\s*>\s*\*\s*\{[\s\S]*?order:\s*initial\s*!important/,
     );
-    expect(consolidationCss).toMatch(
-      /\.stock-analysis-page__deep-review-workspace\s*\[data-testid="stock-analysis-strategy-lens"\],[\s\S]*?\.stock-analysis-page__deep-review-workspace\s*\[data-testid="stock-analysis-first-screen-analytics"\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1\s*!important/,
+    expect(css).toMatch(
+      /\.stock-analysis-page__uses-home-shell\[data-design-target="product-design-option-1"\][\s\S]*?>\s*\.stock-analysis-page__first-screen-main[\s\S]*?>\s*\[data-testid="stock-analysis-strategy-lens"\]\s*\{[\s\S]*?grid-area:\s*strategy\s*!important/,
     );
+  });
+
+  it("renders the strategy lens once between the first-screen rail and review stack", async () => {
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const firstScreenMain = await screen.findByTestId("stock-analysis-first-screen-main");
+    const rail = await screen.findByTestId("stock-analysis-first-screen-rail");
+    const strategyLens = await screen.findByTestId("stock-analysis-strategy-lens");
+    const reviewSummary = await screen.findByTestId("stock-analysis-review-summary");
+    const stockSelection = await screen.findByTestId("stock-analysis-stock-selection");
+
+    expect(screen.getAllByTestId("stock-analysis-strategy-lens")).toHaveLength(1);
+    expect(within(firstScreenMain).getByTestId("stock-analysis-strategy-lens")).toBe(strategyLens);
+    expect(within(stockSelection).queryByTestId("stock-analysis-strategy-lens")).not.toBeInTheDocument();
+    expectElementBefore(rail, strategyLens);
+    expectElementBefore(strategyLens, reviewSummary);
   });
 
   it("keeps stock trust evidence and review controls before deep analysis", async () => {
@@ -4035,6 +4613,8 @@ describe("StockAnalysisPage", () => {
     const reviewQueue = await screen.findByTestId("stock-analysis-review-queue");
     const reviewStrip = await screen.findByTestId("stock-analysis-review-workbench-strip");
     const consensus = await screen.findByTestId("stock-analysis-consensus-first-screen");
+    const klineRadar = await screen.findByTestId("stock-analysis-kline-radar");
+    const observationPreview = await screen.findByTestId("stock-analysis-observation-preview");
     const consensusStrip = await screen.findByTestId("stock-analysis-consensus-workbench-strip");
     const closedLoop = await screen.findByTestId("stock-analysis-closed-loop-summary");
     const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
@@ -4048,11 +4628,160 @@ describe("StockAnalysisPage", () => {
     expect(verdict).toBeInTheDocument();
     expect(boundary).toBeInTheDocument();
     expect(within(closedLoop).getByTestId("stock-analysis-rail-check-matrix")).toBeInTheDocument();
+    const radarDecision = within(klineRadar).getByTestId("stock-analysis-kline-radar-decision");
+    const radarBuckets = within(klineRadar).getByTestId("stock-analysis-kline-radar-buckets");
+    const radarFocusTable = within(klineRadar).getByTestId("stock-analysis-kline-radar-focus-table");
+    const radarStateStrip = within(klineRadar).getByTestId("stock-analysis-kline-radar-state-strip");
+    const radarExplanation = within(klineRadar).getByTestId("stock-analysis-kline-radar-explanation");
+    const radarTopology = within(radarExplanation).getByTestId("stock-analysis-kline-radar-topology");
+    expect(klineRadar).toHaveTextContent("K线观察队列");
+    expect(radarDecision).toHaveTextContent("今日观察结论");
+    expect(radarDecision).toHaveTextContent(/市场门控 WARM，可观察 \d+ 只，风险触发 1，观察 1/);
+    expect(radarDecision).toHaveTextContent("可复核观察");
+    expect(radarDecision).toHaveTextContent("风险预警");
+    expect(radarDecision).toHaveTextContent("多信号股票");
+    expect(radarDecision).toHaveTextContent("数据日");
+    expect(radarBuckets).toHaveTextContent("观察池");
+    expect(radarBuckets).toHaveTextContent("风险池");
+    expect(radarBuckets).toHaveTextContent("突破复核");
+    expect(radarFocusTable).toHaveTextContent("重点股票");
+    expect(radarFocusTable).toHaveTextContent("股票");
+    expect(radarFocusTable).toHaveTextContent("信号");
+    expect(radarFocusTable).toHaveTextContent("来源模块");
+    expect(radarFocusTable).toHaveTextContent("关键证据");
+    expect(radarFocusTable).toHaveTextContent("打开详情");
+    expect(radarFocusTable.querySelectorAll(".stock-analysis-page__kline-radar-focus-table-row").length).toBeGreaterThan(0);
+    expect(radarStateStrip).toHaveTextContent("页面完整性状态");
+    expect(radarStateStrip).toHaveTextContent("使用边界");
+    expect(radarExplanation).toHaveTextContent("解释层：来源与拓扑");
+    expect(radarExplanation).toHaveTextContent("观察复核表之后");
+    expect(radarExplanation).not.toHaveTextContent("决策表");
+    expect(radarTopology).toHaveTextContent("模块 -> 队列 -> 股票节点");
+    expect(radarTopology).toHaveTextContent("策略模块");
+    expect(radarTopology).toHaveTextContent("雷达队列");
+    expect(radarTopology).toHaveTextContent("股票节点");
+    expect(radarTopology).toHaveTextContent("关联边");
+    expect(radarTopology).toHaveTextContent("多信号");
+    expect(radarTopology).toHaveTextContent("source_module");
+    expect(radarTopology).toHaveTextContent("radar_queue");
+    expect(radarTopology).toHaveTextContent("stock_node");
+    expect(radarTopology).toHaveTextContent("market_gate");
+    expect(radarTopology).toHaveTextContent("market_gate:WARM");
+    expect(radarTopology).toHaveTextContent("edge ledger");
+    expect(radarTopology).toHaveTextContent("feeds");
+    expect(radarTopology).toHaveTextContent("routes");
+    expect(radarTopology).toHaveTextContent("gates");
+    expect(radarTopology).toHaveTextContent("Watch Alpha");
+    expect(radarTopology).not.toHaveTextContent(/\+\d+ 节点/);
+    expect(radarTopology.querySelectorAll('[data-topology-stage="stock_node"] [data-topology-node-id]')).toHaveLength(3);
+    expect(within(klineRadar).getByTestId("stock-analysis-kline-radar-gate-strip")).toHaveTextContent("enabled");
+    expect(
+      within(klineRadar)
+        .getByTestId("stock-analysis-kline-radar-edge-ledger")
+        .querySelectorAll(".stock-analysis-page__kline-radar-edge-ledger-list > span").length,
+    ).toBeGreaterThan(3);
+    expect(within(klineRadar).getByTestId("stock-analysis-kline-radar-queue-breakout")).toBeInTheDocument();
+    expect(within(klineRadar).getByTestId("stock-analysis-kline-radar-queue-risk_exit")).toBeInTheDocument();
+    expectElementBefore(radarDecision, radarBuckets);
+    expectElementBefore(radarBuckets, radarFocusTable);
+    expectElementBefore(radarFocusTable, radarExplanation);
 
     expectElementBefore(decisionPanel, reviewQueue);
     expectElementBefore(reviewQueue, deepZone);
     expectElementBefore(closedLoop, deepZone);
     expectElementBefore(consensus, sector);
+    expectElementBefore(consensus, klineRadar);
+    expectElementBefore(klineRadar, observationPreview);
+  });
+
+  it("keeps secondary research and the duplicate gate ledger collapsed by default", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
+    const deepZone = within(deepResearch).getByTestId("stock-analysis-deep-zone");
+    const gateLedger = await screen.findByTestId("stock-analysis-gate-ledger-disclosure");
+    const candidateComparison = await screen.findByTestId("stock-analysis-candidate-comparison");
+
+    expect(deepResearch).not.toHaveAttribute("open");
+    expect(deepZone).not.toBeVisible();
+    expect(gateLedger).not.toHaveAttribute("open");
+    expect(candidateComparison).toBeVisible();
+
+    await user.click(within(deepResearch).getByTestId("stock-analysis-deep-research-summary"));
+    expect(deepResearch).toHaveAttribute("open");
+    expect(deepZone).toBeVisible();
+
+    await user.click(within(gateLedger).getByTestId("stock-analysis-gate-ledger-summary"));
+    expect(gateLedger).toHaveAttribute("open");
+  });
+
+  it("opens deep research before scrolling from a strategy review shortcut", async () => {
+    const user = userEvent.setup();
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+      const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
+      const target = await screen.findByTestId("stock-analysis-observation-preview");
+      const moreStrategies = await screen.findByTestId("stock-analysis-strategy-lens-more-strategies");
+      expect(deepResearch).not.toHaveAttribute("open");
+
+      await user.click(within(moreStrategies).getByText("更多候选策略"));
+      await user.click(screen.getByRole("button", { name: "前往多因子复核区" }));
+
+      expect(deepResearch).toHaveAttribute("open");
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+      expect(scrollIntoView.mock.instances.at(-1)).toBe(target);
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
+  it("keeps secondary V6 and K-line audit evidence in closed disclosures", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const v6Audit = await screen.findByTestId("stock-analysis-v6-audit-disclosure");
+    const workspace = document.querySelector<HTMLElement>(".stock-analysis-page__workspace");
+    const readiness = await screen.findByTestId("stock-analysis-api-readiness-shell");
+    expect(workspace).not.toBeNull();
+    expectElementBefore(workspace!, v6Audit);
+    expectElementBefore(v6Audit, readiness);
+    expect(v6Audit.tagName).toBe("DETAILS");
+    expect(v6Audit).not.toHaveAttribute("open");
+    expect(within(v6Audit).getByTestId("stock-analysis-v6-endpoint-ledger-section")).not.toBeVisible();
+    expect(within(v6Audit).getByTestId("stock-analysis-v6-endpoint-ledger-section")).toBeInTheDocument();
+    expect(within(v6Audit).getByTestId("stock-analysis-v6-state-variants-section")).toBeInTheDocument();
+
+    const radar = await screen.findByTestId("stock-analysis-kline-radar");
+    expect(within(radar).getByTestId("stock-analysis-kline-radar-decision")).toBeInTheDocument();
+    expect(within(radar).getByTestId("stock-analysis-kline-radar-buckets")).toBeInTheDocument();
+    expect(within(radar).getByTestId("stock-analysis-kline-radar-focus-table")).toBeInTheDocument();
+
+    const radarDetails = within(radar).getByTestId("stock-analysis-kline-radar-details");
+    expect(radarDetails.tagName).toBe("DETAILS");
+    expect(radarDetails).not.toHaveAttribute("open");
+    expect(within(radarDetails).getByTestId("stock-analysis-kline-radar-state-strip")).not.toBeVisible();
+    expect(within(radarDetails).getByTestId("stock-analysis-kline-radar-state-strip")).toBeInTheDocument();
+    expect(within(radarDetails).getByTestId("stock-analysis-kline-radar-explanation")).toBeInTheDocument();
+    expect(within(radarDetails).getByTestId("stock-analysis-kline-radar-queue-breakout")).toBeInTheDocument();
+
+    const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
+    await user.click(within(deepResearch).getByTestId("stock-analysis-deep-research-summary"));
+    await user.click(within(radarDetails).getByText("完整队列、页面状态与来源拓扑"));
+    expect(radarDetails).toHaveAttribute("open");
+    expect(within(radarDetails).getByTestId("stock-analysis-kline-radar-state-strip")).toBeVisible();
   });
 
   it("surfaces backend supply status and stock selection on the first screen", async () => {
@@ -4064,7 +4793,7 @@ describe("StockAnalysisPage", () => {
     expect(decisionPanel).toHaveTextContent("数据日");
     expect(decisionPanel).toHaveTextContent("门控 温和");
     expect(decisionPanel).toHaveTextContent("条件 2/4");
-    expect(decisionPanel).toHaveTextContent("候选队列");
+    expect(decisionPanel).toHaveTextContent("闭环待复核项");
     expect(decisionPanel).toHaveTextContent("风险 触发 1");
     expect(decisionPanel).toHaveTextContent("部分缺失");
     expect(decisionPanel).not.toHaveTextContent("后台供数");
@@ -4289,10 +5018,8 @@ describe("StockAnalysisPage", () => {
     await waitFor(() => {
       expect(strategyScoreSpy).toHaveBeenCalled();
     });
-    expect(strategyOptimizationSpy).toHaveBeenCalled();
-    expect(candidateHistorySpy).toHaveBeenCalledWith(
-      expect.objectContaining({ snapshotTo: "2026-04-29" }),
-    );
+    expect(strategyOptimizationSpy).not.toHaveBeenCalled();
+    expect(candidateHistorySpy).not.toHaveBeenCalled();
   });
 
   it("loads strategy diagnostics when first-screen analytics optimization tab is opened", async () => {
@@ -4311,10 +5038,8 @@ describe("StockAnalysisPage", () => {
     await waitFor(() => {
       expect(strategyOptimizationSpy).toHaveBeenCalled();
     });
-    expect(strategyScoreSpy).toHaveBeenCalled();
-    expect(candidateHistorySpy).toHaveBeenCalledWith(
-      expect.objectContaining({ snapshotTo: "2026-04-29" }),
-    );
+    expect(strategyScoreSpy).not.toHaveBeenCalled();
+    expect(candidateHistorySpy).not.toHaveBeenCalled();
   });
 
   it("renders core sections and candidate evidence", async () => {
@@ -4825,7 +5550,7 @@ describe("StockAnalysisPage", () => {
     expect(preview).not.toHaveTextContent("factor_snapshot");
   });
 
-  it("renders hybrid fusion candidates as the primary review queue", async () => {
+  it("enriches the workbench review queue with hybrid evidence without replacing its order", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
         strategy: buildStrategyPayload({
@@ -4868,12 +5593,12 @@ describe("StockAnalysisPage", () => {
     });
 
     const queue = await screen.findByTestId("stock-analysis-review-queue");
-    expect(queue).toHaveTextContent("融合策略 / 复核队列");
+    expect(queue).toHaveTextContent("候选/ 复核队列");
+    expect(queue).not.toHaveTextContent("融合策略 / 复核队列");
     expect(queue).toHaveTextContent("Fusion Alpha");
     expect(queue).toHaveTextContent("Fusion");
-    expect(queue).toHaveTextContent("0.812345");
-    expect(queue).toHaveTextContent("0.700000");
-    expect(queue).toHaveTextContent("0.600000");
+    expect(queue).toHaveTextContent("融合分 0.8123");
+    expect(queue).toHaveTextContent("景气周期 0.7000");
     expect(queue).toHaveTextContent("复核");
     expect(queue).not.toHaveTextContent("代理信号");
     expect(queue).not.toHaveTextContent("生命法庭代理");
@@ -4882,7 +5607,75 @@ describe("StockAnalysisPage", () => {
     expect(queue).not.toHaveTextContent("买入");
   });
 
+  it("keeps the authoritative workbench source when hybrid evidence enriches the same stock", async () => {
+    const strategy = buildStrategyPayload({
+      supported_outputs: [
+        "market_gate",
+        "sector_rank",
+        "stock_candidates",
+        "factor_screen_candidates",
+        "hybrid_fusion",
+        "risk_exit",
+      ],
+      hybrid_fusion_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_hybrid_fusion_candidates_v1",
+        market_state: "WARM",
+        observation_only: true,
+        candidate_count: 1,
+        coverage_note: "Hybrid evidence donor for the factor queue row.",
+        items: [
+          {
+            rank: 1,
+            stock_code: "000001.SZ",
+            stock_name: "Alpha",
+            sector_code: "801001",
+            sector_name: "AI",
+            fusion_score: 0.812345,
+            cycle_score: 0.7,
+            lifecourt_proxy_score: 0.6,
+            attention_score: 0.55,
+            price_confirm_score: 0.8,
+            crowding_penalty: 0.1,
+            confidence: "medium",
+            reason: "Hybrid evidence only for this authoritative factor row.",
+            evidence: { source_kinds: ["factor_screen"] },
+          },
+        ],
+      },
+    });
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.first_screen.review_queue = [
+      {
+        rank: 1,
+        stock_code: "000001.SZ",
+        stock_name: "Alpha",
+        sector_code: "801001",
+        sector_name: "AI",
+        source_module: "factor_screen_candidates",
+        factor_score: 0.91,
+      },
+    ];
+    workbench.decision_summary.review_queue_count = 1;
+    workbench.decision_summary.top_review_stock_code = "000001.SZ";
+    workbench.decision_summary.top_review_stock_name = "Alpha";
+    const client = stockClient({ strategy });
+    vi.spyOn(client, "getStockAnalysisWorkbench").mockResolvedValue(
+      buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench),
+    );
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const queue = await screen.findByTestId("stock-analysis-review-queue");
+    expect(queue).toHaveTextContent("融合分 0.8123");
+    expect(queue).toHaveTextContent("候选/ 复核队列");
+    expect(queue).not.toHaveTextContent("融合策略 / 复核队列");
+    expect(queue).not.toHaveTextContent("factor_screen_candidates");
+    expect(screen.getByTestId("stock-analysis-gate-ledger-row-000001.SZ")).toHaveTextContent("因子池");
+  });
+
   it("does not label the review queue as hybrid when hybrid output is evidence-only", async () => {
+    const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
         strategy: buildStrategyPayload({
@@ -4945,6 +5738,21 @@ describe("StockAnalysisPage", () => {
     expect(criteria).not.toHaveTextContent("边界");
     expect(criteria).not.toHaveTextContent("置信度");
     expect(criteria).not.toHaveTextContent("动作");
+
+    const radar = await screen.findByTestId("stock-analysis-kline-radar");
+    const pendingEvidence = within(radar).getByTestId("stock-analysis-kline-radar-pending-evidence");
+    expect(pendingEvidence).toHaveTextContent("待补证观察");
+    expect(pendingEvidence).toHaveTextContent("Fusion Alpha");
+    expect(pendingEvidence).toHaveTextContent("不计入可复核观察数");
+    const pendingButton = within(pendingEvidence).getByRole("button", { name: /Fusion Alpha.*待补证/ });
+    expect(pendingButton.tagName).toBe("BUTTON");
+    expect(pendingButton).toHaveAttribute("type", "button");
+    expect(within(radar).getByTestId("stock-analysis-kline-radar-queue-trend_continuation")).not.toHaveTextContent(
+      "Fusion Alpha",
+    );
+
+    await user.click(pendingButton);
+    expect(await screen.findByTestId("stock-detail-drawer")).toHaveTextContent("Fusion Alpha");
   });
 
   it("shows staleness banner when quality_flag is not ok", async () => {
@@ -4956,6 +5764,291 @@ describe("StockAnalysisPage", () => {
     expect(staleBanner).toHaveTextContent("供数异常");
     expect(staleBanner).toHaveTextContent("仅供复核参考");
     expect(staleBanner).not.toHaveTextContent("通道异常");
+  });
+
+  it("surfaces stale source dates even when the backend row status is ready", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          as_of_date: "2026-07-08",
+          data_gaps: [
+            {
+              input_family: "turnover_persistence",
+              status: "ready",
+              evidence: "Available from an older business date.",
+              business_date: "2026-06-26",
+              age_days: 12,
+              tier: "stale",
+            },
+          ],
+          module_states: readyModuleStates("2026-07-08"),
+        }),
+        metaOverrides: { quality_flag: "ok", fallback_mode: "none" },
+      }),
+    });
+
+    const staleBanner = await screen.findByTestId("stock-analysis-stale-banner");
+    expect(staleBanner).toHaveTextContent("页面数据日 2026-07-08");
+    expect(staleBanner).toHaveTextContent("换手持续：源数据日 2026-06-26（滞后 12 天）");
+    expect(staleBanner).not.toHaveTextContent("回退");
+    expect(staleBanner).not.toHaveClass("stock-analysis-page__stale-banner--compressed");
+    expect(await screen.findByTestId("stock-analysis-decision-boundary-tile")).toHaveTextContent("缺口 1");
+    const gapReleasePanel = await screen.findByTestId("stock-analysis-v6-gap-release-panel");
+    expect(gapReleasePanel).toHaveTextContent("已陈旧，阻断复核释放");
+    expect(gapReleasePanel.textContent).not.toMatch(/\bready\b/);
+  });
+
+  it("surfaces the workbench fallback date when result metadata still says no fallback", async () => {
+    const client = stockClient();
+    const strategy = buildStrategyPayload({
+      requested_as_of_date: "2026-07-11",
+      as_of_date: "2026-07-10",
+    });
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.requested_as_of_date = "2026-07-11";
+    workbench.as_of_date = "2026-07-10";
+    workbench.fallback_date = "2026-07-10";
+    workbench.stale = true;
+    vi.spyOn(client, "getStockAnalysisWorkbench").mockResolvedValue(
+      buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench, {
+        quality_flag: "ok",
+        vendor_status: "ok",
+        fallback_mode: "none",
+      }),
+    );
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const staleBanner = await screen.findByTestId("stock-analysis-stale-banner");
+    expect(staleBanner).toHaveTextContent("请求日 2026-07-11 回退至 2026-07-10");
+  });
+
+  it("keeps optional data gaps visible as supplemental warnings when review is allowed", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          data_gaps: [
+            {
+              input_family: "PMI",
+              status: "missing",
+              evidence: "Optional macro component is not landed.",
+            },
+            {
+              input_family: "credit_impulse",
+              status: "missing",
+              evidence: "Optional credit component is not landed.",
+            },
+            {
+              input_family: "macro_score",
+              status: "partial",
+              evidence: "Macro evidence is partial.",
+            },
+          ],
+        }),
+      }),
+    });
+
+    expect(await screen.findByTestId("stock-analysis-workbench-contract")).toHaveTextContent("可复核");
+    const gapReleasePanel = await screen.findByRole("region", { name: "数据缺口与补证条件" });
+    const heading = within(gapReleasePanel).getByRole("heading", { level: 2, name: "数据缺口与补证条件" });
+    expect(gapReleasePanel).toHaveAttribute("aria-labelledby", heading.id);
+    expect(gapReleasePanel).toHaveTextContent("数据缺口与补证条件");
+    expect(gapReleasePanel).not.toHaveTextContent("阻断项与释放条件");
+    expect(gapReleasePanel).toHaveTextContent("明确缺口影响，以及补齐证据后的复核边界");
+    expect(within(gapReleasePanel).getAllByText("缺数据，补证警告")).toHaveLength(2);
+    expect(gapReleasePanel).toHaveTextContent("部分，补证警告");
+    expect(gapReleasePanel).not.toHaveTextContent("阻断复核释放");
+    expect(gapReleasePanel.querySelectorAll('[data-tone="negative"]')).toHaveLength(0);
+    expect(gapReleasePanel.querySelectorAll('[data-tone="warning"]')).toHaveLength(2);
+    expect(gapReleasePanel.querySelectorAll('[data-tone="neutral"]')).toHaveLength(1);
+  });
+
+  it("does not mislabel an unrelated partial gap as a theme-taxonomy warning", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          data_gaps: [
+            {
+              input_family: "PMI",
+              status: "partial",
+              evidence: "PMI evidence is partial.",
+            },
+          ],
+        }),
+      }),
+    });
+
+    const endpointLedger = await screen.findByTestId("stock-analysis-v6-endpoint-ledger-section");
+    const dataCatalogCard = within(endpointLedger).getByText("数据目录").closest("article");
+
+    expect(dataCatalogCard).toHaveTextContent("目录状态随主包返回");
+    expect(dataCatalogCard).not.toHaveTextContent("theme_taxonomy");
+    expect(dataCatalogCard).not.toHaveTextContent("题材分类部分覆盖");
+  });
+
+  it("shows theme-taxonomy partial as limited non-blocking evidence", async () => {
+    const strategy = buildStrategyPayload({
+      data_gaps: [
+        {
+          input_family: "theme_taxonomy",
+          status: "partial",
+          evidence: "Current overlay is non-point-in-time.",
+        },
+      ],
+    });
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.page_question = {
+      ...workbench.page_question,
+      answer_state: "limited_review",
+      answer_label: "limited_review",
+    };
+    workbench.decision_summary = {
+      ...workbench.decision_summary,
+      can_review_candidates: true,
+      primary_blocker: null,
+    };
+    const client: ApiClient = {
+      ...stockClient({ strategy }),
+      getStockAnalysisWorkbench: vi.fn(async () =>
+        buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench, {
+          basis: "analytical",
+          formal_use_allowed: false,
+        }),
+      ),
+    };
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const contract = await screen.findByTestId("stock-analysis-workbench-contract");
+    expect(contract).toHaveTextContent("有限复核");
+    expect(contract).toHaveTextContent("仅供观察");
+    const endpointLedger = await screen.findByTestId("stock-analysis-v6-endpoint-ledger-section");
+    const dataCatalogCard = within(endpointLedger).getByText("数据目录").closest("article");
+    expect(dataCatalogCard).toHaveTextContent("题材分类部分覆盖");
+    expect(dataCatalogCard).toHaveTextContent("不阻断只读复核");
+  });
+
+  it("prioritizes a later blocking gap without marking optional gaps as blockers", async () => {
+    const strategy = buildStrategyPayload({
+      data_gaps: [
+        {
+          input_family: "PMI",
+          status: "missing",
+          evidence: "Optional macro component is not landed.",
+        },
+        {
+          input_family: "credit_impulse",
+          status: "missing",
+          evidence: "Optional credit component is not landed.",
+        },
+        {
+          input_family: "position_risk",
+          status: "missing",
+          evidence: "No ACTIVE A-share position snapshot is available.",
+        },
+      ],
+    });
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.first_screen.data_gaps = [
+      { ...strategy.data_gaps[0], blocks_review: false },
+      { ...strategy.data_gaps[1], blocks_review: false },
+      { ...strategy.data_gaps[2], blocks_review: true },
+    ];
+    workbench.page_question = {
+      ...workbench.page_question,
+      answer_state: "blocked",
+      answer_label: "blocked",
+      reason: "Risk exit requires an ACTIVE A-share position snapshot.",
+    };
+    workbench.decision_summary = {
+      ...workbench.decision_summary,
+      can_review_candidates: false,
+      primary_blocker: "Risk exit requires an ACTIVE A-share position snapshot.",
+    };
+    const client: ApiClient = {
+      ...stockClient({ strategy }),
+      getStockAnalysisWorkbench: vi.fn(async () =>
+        buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench, {
+          basis: "analytical",
+          formal_use_allowed: false,
+        }),
+      ),
+    };
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const gapReleasePanel = await screen.findByRole("region", { name: "数据缺口与补证条件" });
+    const gapCards = gapReleasePanel.querySelectorAll(".stock-analysis-page__v6-gap-release-card");
+    expect(gapCards).toHaveLength(3);
+    expect(gapCards[0]).toHaveTextContent("持仓风险");
+    expect(gapCards[0]).toHaveTextContent("缺数据，阻断复核释放");
+    expect(gapCards[0]).toHaveAttribute("data-tone", "negative");
+    expect(gapReleasePanel.querySelectorAll('[data-tone="negative"]')).toHaveLength(1);
+    expect(within(gapReleasePanel).getAllByText("缺数据，补证警告")).toHaveLength(2);
+    expect(gapReleasePanel).toHaveTextContent("PMI");
+    expect(gapReleasePanel).toHaveTextContent("信用脉冲");
+  });
+
+  it("keeps mixed workbench gaps fail-closed when a required row omits blocks_review", async () => {
+    const strategy = buildStrategyPayload({
+      data_gaps: [
+        {
+          input_family: "PMI",
+          status: "missing",
+          evidence: "Optional macro component is not landed.",
+        },
+        {
+          input_family: "position_risk",
+          status: "missing",
+          evidence: "No ACTIVE A-share position snapshot is available.",
+        },
+      ],
+    });
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.first_screen.data_gaps = [
+      {
+        input_family: "PMI",
+        status: "missing",
+        evidence: "Optional macro component is not landed.",
+        blocks_review: false,
+      },
+      {
+        input_family: "position_risk",
+        status: "missing",
+        evidence: "No ACTIVE A-share position snapshot is available.",
+      },
+    ] as unknown as StockAnalysisWorkbenchPayload["first_screen"]["data_gaps"];
+    workbench.page_question = {
+      ...workbench.page_question,
+      answer_state: "blocked",
+      answer_label: "blocked",
+      reason: "Risk exit requires an ACTIVE A-share position snapshot.",
+    };
+    workbench.decision_summary = {
+      ...workbench.decision_summary,
+      can_review_candidates: false,
+      primary_blocker: "Risk exit requires an ACTIVE A-share position snapshot.",
+    };
+    const client: ApiClient = {
+      ...stockClient({ strategy }),
+      getStockAnalysisWorkbench: vi.fn(async () =>
+        buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench, {
+          basis: "analytical",
+          formal_use_allowed: false,
+        }),
+      ),
+    };
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const gapReleasePanel = await screen.findByRole("region", { name: "数据缺口与补证条件" });
+    const gapCards = gapReleasePanel.querySelectorAll(".stock-analysis-page__v6-gap-release-card");
+    expect(gapCards).toHaveLength(2);
+    expect(gapCards[0]).toHaveTextContent("持仓风险");
+    expect(gapCards[0]).toHaveTextContent("缺数据，阻断复核释放");
+    expect(gapCards[0]).toHaveAttribute("data-tone", "negative");
+    expect(gapCards[1]).toHaveTextContent("PMI");
+    expect(gapCards[1]).toHaveTextContent("缺数据，补证警告");
   });
 
   it("shows fallback snapshots as data that needs review", async () => {
@@ -5237,7 +6330,7 @@ describe("StockAnalysisPage", () => {
   it("renders refresh control and exposes as-of picker", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
-    expect(await screen.findByTestId("stock-analysis-refresh")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-refresh")).toHaveTextContent("重算选股与门禁");
     expect(screen.getByTestId("stock-analysis-as-of-picker")).toBeInTheDocument();
   });
 
@@ -5247,6 +6340,7 @@ describe("StockAnalysisPage", () => {
     const workbenchSpy = vi.spyOn(client, "getStockAnalysisWorkbench");
     const refreshSpy = vi.spyOn(client, "refreshChoiceStock");
     const refreshStatusSpy = vi.spyOn(client, "getChoiceStockRefreshStatus");
+    const gateRefreshSpy = vi.spyOn(client, "refreshGateSupplement");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
 
@@ -5267,9 +6361,38 @@ describe("StockAnalysisPage", () => {
       expect(refreshStatusSpy).toHaveBeenCalledWith("choice_stock_refresh:mock");
     });
     await waitFor(() => {
+      expect(gateRefreshSpy).toHaveBeenCalledWith({ asOfDate: "2026-04-29" });
+    });
+    await waitFor(() => {
       expect(workbenchSpy.mock.calls.length).toBeGreaterThan(initialWorkbenchCalls);
     });
     expect(screen.getByTestId("stock-analysis-refresh-feedback")).toHaveTextContent("选股已重新计算");
+  });
+
+  it("refreshes the resolved trading date after a requested date falls back", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategySpy = mockStrategyLatestSnapshotFallback(client);
+    const choiceRefreshSpy = vi.spyOn(client, "refreshChoiceStock");
+    const gateRefreshSpy = vi.spyOn(client, "refreshGateSupplement");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await requestStockAnalysisAsOfDate(user, strategySpy, "2026-05-08", "2026-04-29");
+    await user.click(screen.getByTestId("stock-analysis-refresh"));
+
+    await waitFor(() =>
+      expect(choiceRefreshSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ asOfDate: "2026-04-29" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(gateRefreshSpy).toHaveBeenCalledWith({ asOfDate: "2026-04-29" }),
+    );
+    expect(choiceRefreshSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ asOfDate: "2026-05-08" }),
+    );
+    expect(gateRefreshSpy).not.toHaveBeenCalledWith({ asOfDate: "2026-05-08" });
   });
 
   it("keeps failed choice-stock recompute auditable and retryable", async () => {
@@ -5439,7 +6562,7 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("无候选风险");
     expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("无候选");
     expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("该行业暂无线索");
-    expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("行业筛选");
+    expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("筛选结果");
     expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("0 候选");
     expect(screen.queryByTestId("stock-analysis-review-queue-ranking-chart")).not.toBeInTheDocument();
   });
@@ -5651,6 +6774,33 @@ describe("StockAnalysisPage", () => {
     expect(screen.queryByText("股票分析结果加载失败。")).not.toBeInTheDocument();
   });
 
+  it("retries a failed workbench read without starting a data recompute", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategy = buildStrategyPayload();
+    const workbenchSpy = vi
+      .spyOn(client, "getStockAnalysisWorkbench")
+      .mockRejectedValueOnce(new Error("strategy unavailable"))
+      .mockResolvedValue(
+        buildMockApiEnvelope(
+          "market_data.stock_analysis.workbench",
+          buildStockAnalysisWorkbenchPayload(strategy),
+        ),
+      );
+    const choiceRefreshSpy = vi.spyOn(client, "refreshChoiceStock");
+    const gateRefreshSpy = vi.spyOn(client, "refreshGateSupplement");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const errorPanel = await screen.findByTestId("stock-analysis-error-workbench");
+    await user.click(within(errorPanel).getByRole("button", { name: "重新读取" }));
+
+    expect(await screen.findByTestId("stock-analysis-decision-panel")).toBeInTheDocument();
+    expect(workbenchSpy).toHaveBeenCalledTimes(2);
+    expect(choiceRefreshSpy).not.toHaveBeenCalled();
+    expect(gateRefreshSpy).not.toHaveBeenCalled();
+  });
+
   it("localizes permission failures without exposing backend table names", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
@@ -5723,26 +6873,86 @@ describe("StockAnalysisPage", () => {
       client: stockClient({
         strategy: buildStrategyPayload({
           supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+          rule_readiness: [
+            {
+              key: "risk_exit",
+              title: "Risk exit",
+              status: "blocked",
+              summary: "Risk exit is unavailable.",
+              required_inputs: ["position_snapshot"],
+              missing_inputs: ["position_snapshot"],
+            },
+          ],
           unsupported_outputs: [
             {
               key: "risk_exit",
               reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
             },
           ],
-          risk_exit: undefined,
+          stock_candidates: undefined,
         }),
       }),
     });
 
     const section = await screen.findByTestId("stock-analysis-risk-section");
-    expect(within(section).getByText("风险退出待补")).toBeInTheDocument();
+    expect(within(section).getByText("风险退出不可用")).toBeInTheDocument();
     expect(section).toHaveTextContent("持仓快照缺失");
+    expect(section).not.toHaveTextContent(/\d+\s*触发/);
+    expect(section).not.toHaveTextContent(/\d+\s*观察/);
     expect(section).not.toHaveTextContent("livermore_position_snapshot has no ACTIVE A-share rows.");
+
+    const closedLoop = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    expect(closedLoop).toHaveTextContent("阻断");
+    expect(closedLoop).toHaveTextContent("持仓快照缺失");
+    expect(closedLoop).not.toHaveTextContent(/\d+\s*触发/);
+
+    const firstScreenRisk = await screen.findByTestId("stock-analysis-decision-risk-tile");
+    expect(firstScreenRisk).toHaveTextContent("阻断");
+    expect(firstScreenRisk).toHaveTextContent("持仓快照缺失");
+    expect(firstScreenRisk).not.toHaveTextContent("未触发");
+
+    const marketContextRisk = (await screen.findAllByTestId("stock-analysis-market-context-risk")).find((item) =>
+      item.textContent?.includes("风险退出"),
+    );
+    expect(marketContextRisk).toBeDefined();
+    expect(marketContextRisk).toHaveTextContent("阻断");
+    expect(marketContextRisk).toHaveTextContent("持仓快照缺失");
+    expect(marketContextRisk).toHaveAttribute("data-tone", "negative");
+
+    const readinessShell = await screen.findByTestId("stock-analysis-api-readiness-shell");
+    expect(readinessShell).toHaveTextContent("退出规则阻断");
+    expect(readinessShell).toHaveTextContent("持仓快照缺失");
+
+    const endpointLedger = await screen.findByTestId("stock-analysis-v6-endpoint-ledger-section");
+    const riskEndpoint = within(endpointLedger).getByText("风险退出", { selector: "strong" }).closest("article");
+    expect(riskEndpoint).toHaveTextContent("unsupported");
+    expect(riskEndpoint).toHaveTextContent("持仓快照缺失");
+
+    const radar = await screen.findByTestId("stock-analysis-kline-radar");
+    const radarDecision = within(radar).getByTestId("stock-analysis-kline-radar-decision");
+    expect(radarDecision).toHaveTextContent("风险退出不可用（持仓快照缺失）");
+    expect(radarDecision).not.toHaveTextContent("等待策略快照");
+    expect(radar).toHaveTextContent("风险退出不可用");
+    expect(radar).toHaveTextContent("持仓快照缺失");
+    expect(radar).not.toHaveTextContent("风险触发 0");
+    expect(within(radar).getByTestId("stock-analysis-kline-radar-queue-risk_exit")).toHaveTextContent("不可用");
 
     await userEvent.click(within(section).getByText("供数原因"));
 
     expect(section).toHaveTextContent("持仓快照缺失");
     expect(section).not.toHaveTextContent("livermore_position_snapshot has no ACTIVE A-share rows.");
+  });
+
+  it("preserves supported risk counts in the first-screen queue headline", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({ data_gaps: [] }),
+      }),
+    });
+
+    const headline = await screen.findByTestId("stock-analysis-queue-report-head");
+    expect(headline).toHaveTextContent("风险退出触发 1");
+    expect(headline).not.toHaveTextContent("风险退出未触发");
   });
 
   it("localizes unknown risk exit blocker reasons before showing the first-screen rail", async () => {
@@ -5763,7 +6973,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const section = await screen.findByTestId("stock-analysis-risk-section");
-    expect(section).toHaveTextContent("风险退出待补");
+    expect(section).toHaveTextContent("风险退出不可用");
     expect(section).toHaveTextContent("风险退出待确认");
     expect(section).not.toHaveTextContent(sourceTableRiskExitSignal);
 
@@ -5790,7 +7000,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const section = await screen.findByTestId("stock-analysis-risk-section");
-    expect(section).toHaveTextContent("风险退出待补");
+    expect(section).toHaveTextContent("风险退出不可用");
     expect(section).toHaveTextContent("供数状态待确认");
     expect(section).not.toHaveTextContent("后端原因待补");
   });
@@ -5843,7 +7053,7 @@ describe("StockAnalysisPage", () => {
     expect(screen.queryByTestId("stock-analysis-supply-details-toggle")).not.toBeInTheDocument();
 
     const riskSection = await screen.findByTestId("stock-analysis-risk-section");
-    expect(riskSection).toHaveTextContent("风险退出待补");
+    expect(riskSection).toHaveTextContent("风险退出不可用");
     expect(riskSection).toHaveTextContent("持仓快照缺失");
     expect(riskSection).not.toHaveTextContent("risk_exit");
     expect(riskSection).not.toHaveTextContent("livermore_position_snapshot");
@@ -5858,11 +7068,15 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client });
 
     expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "首屏分析视图" })).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "板块排行视图" })).toBeInTheDocument();
     expect(spy).not.toHaveBeenCalled();
     expect(screen.getByTestId("stock-analysis-sector-strength-panel")).not.toHaveTextContent("avg_pctchange");
     expect(screen.getByTestId("stock-analysis-sector-strength-panel")).not.toHaveTextContent("unsupported_notes");
 
     await user.click(screen.getByRole("button", { name: /多日强弱/ }));
+
+    expect(await screen.findByRole("tablist", { name: "板块序列周期" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(spy).toHaveBeenCalled();

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date
 
 PMI_SERIES_ID = "M0017126"
 SOCIAL_FINANCING_YOY_SERIES_ID = "M5525763"
@@ -76,6 +77,7 @@ def build_cycle_macro_snapshot(
     *,
     pmi_points: Iterable[tuple[str, float]] | None,
     social_financing_yoy_points: Iterable[tuple[str, float]] | None,
+    credit_impulse_series_id: str = SOCIAL_FINANCING_YOY_SERIES_ID,
     pe: float | None,
     cn10y: float | None,
     as_of_date: str,
@@ -101,22 +103,28 @@ def build_cycle_macro_snapshot(
     credit_value: float | None = None
     credit_ready = False
     credit_lineage: dict[str, object] = {}
-    ordered_sf = _ordered_points(social_financing_yoy_points, as_of_date=as_of_date)
-    if len(ordered_sf) >= 2:
-        prior_date, prior_yoy = ordered_sf[-2]
-        current_date, current_yoy = ordered_sf[-1]
+    credit_pair = _latest_adjacent_month_pair(
+        social_financing_yoy_points,
+        as_of_date=as_of_date,
+    )
+    if credit_pair is not None and credit_impulse_series_id in {
+        SOCIAL_FINANCING_YOY_SERIES_ID,
+        M2_YOY_SERIES_ID,
+    }:
+        prior_date, prior_yoy, current_date, current_yoy = credit_pair
         credit_signal, credit_value = compute_credit_impulse_signal(
             current_yoy=current_yoy,
             prior_yoy=prior_yoy,
         )
         credit_ready = True
         credit_lineage = {
-            "series_id": SOCIAL_FINANCING_YOY_SERIES_ID,
-            "current_trade_date": current_date,
-            "prior_trade_date": prior_date,
+            "series_id": credit_impulse_series_id,
+            "current_reference_date": current_date,
+            "prior_reference_date": prior_date,
             "current_yoy": current_yoy,
             "prior_yoy": prior_yoy,
             "impulse_ppt": credit_value,
+            "unit": "ppt",
         }
 
     price_signal: float | None = None
@@ -161,7 +169,7 @@ def build_cycle_macro_snapshot(
     if pmi_ready and pmi_value is not None:
         evidence_parts.append(f"PMI {pmi_value:.1f} ({PMI_SERIES_ID})")
     if credit_ready and credit_value is not None:
-        evidence_parts.append(f"credit_impulse {credit_value:+.2f}ppt ({SOCIAL_FINANCING_YOY_SERIES_ID})")
+        evidence_parts.append(f"credit_impulse {credit_value:+.2f}ppt ({credit_impulse_series_id})")
     if price_ready and spread_ppt is not None:
         evidence_parts.append(f"price_spread {spread_ppt:.2f}ppt")
     if macro_score is not None:
@@ -207,6 +215,45 @@ def _ordered_points(
     if as_of_date is not None:
         rows = (row for row in rows if row[0] <= as_of_date)
     return sorted(rows, key=lambda row: row[0])
+
+
+def _latest_adjacent_month_pair(
+    points: Iterable[tuple[str, float]] | None,
+    *,
+    as_of_date: str,
+) -> tuple[str, float, str, float] | None:
+    if not points:
+        return None
+    try:
+        evaluation_date = date.fromisoformat(as_of_date)
+    except ValueError:
+        return None
+
+    rows: list[tuple[date, float]] = []
+    months: set[tuple[int, int]] = set()
+    for raw_date, raw_value in points:
+        try:
+            reference_date = date.fromisoformat(str(raw_date)[:10])
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            return None
+        if reference_date > evaluation_date:
+            return None
+        month = (reference_date.year, reference_date.month)
+        if month in months:
+            return None
+        months.add(month)
+        rows.append((reference_date, value))
+
+    rows.sort(key=lambda row: row[0])
+    if len(rows) < 2:
+        return None
+    prior, current = rows[-2:]
+    prior_month = prior[0].year * 12 + prior[0].month
+    current_month = current[0].year * 12 + current[0].month
+    if current_month - prior_month != 1:
+        return None
+    return prior[0].isoformat(), prior[1], current[0].isoformat(), current[1]
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:

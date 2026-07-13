@@ -170,12 +170,25 @@ function evidenceText(item: { label: string; value: string } | null | undefined)
 }
 
 function buildReviewQueueThesis(card: ReviewQueueDetailSelectionInput["card"]): StockDetailReviewThesis {
-  const evidence = [...(card.primaryEvidence ?? []), ...(card.supportingEvidence ?? [])].map(evidenceText);
-  const boundaries = uniqueNonEmpty((card.boundaryEvidence ?? []).filter((item) => !isGenericBoundaryCopy(item)), 2);
+  const visibleEvidence = [...(card.primaryEvidence ?? []), ...(card.supportingEvidence ?? [])];
+  const themeEvidence = visibleEvidence.filter((item) => item.label === "题材归属").map(evidenceText);
+  const evidence = visibleEvidence
+    .filter((item) => item.label !== "题材归属")
+    .map(evidenceText);
+  const explicitBoundaries = (card.boundaryEvidence ?? []).filter((item) => !isGenericBoundaryCopy(item));
+  const themeBoundaries = explicitBoundaries.filter((item) => item.includes("当前覆盖") || item.includes("非时点"));
+  const otherBoundaries = explicitBoundaries.filter((item) => !themeBoundaries.includes(item));
+  const boundaries = uniqueNonEmpty(
+    [...themeBoundaries, ...otherBoundaries],
+    Math.max(2, themeBoundaries.length + 1),
+  );
   const invalidation = uniqueNonEmpty([...(card.invalidationRules ?? []), card.invalidationFocus], 2);
 
   return {
-    whySelected: uniqueNonEmpty([card.reviewFocus, ...evidence], 3),
+    whySelected: uniqueNonEmpty(
+      themeEvidence.length > 0 ? [...themeEvidence, card.reviewFocus, ...evidence] : [card.reviewFocus, ...evidence],
+      Math.max(3, themeEvidence.length + 2),
+    ),
     boundaries: boundaries.length > 0 ? boundaries : ["边界清洁"],
     invalidation: invalidation.length > 0 ? invalidation : ["失效条件待补"],
     nextActions: [

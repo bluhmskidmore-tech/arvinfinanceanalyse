@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from bisect import bisect_right
 from collections.abc import Callable
@@ -36,7 +37,7 @@ EMPTY_SOURCE_VERSION = "sv_livermore_candidate_history_empty"
 EMPTY_VENDOR_VERSION = "vv_none"
 RESULT_KIND = "market_data.livermore.candidate_history"
 RULE_VERSION = "rv_livermore_candidate_history_v1"
-CACHE_VERSION = "cv_livermore_candidate_history_v1"
+CACHE_VERSION = "cv_livermore_candidate_history_v2"
 STRATEGY_SCORE_RESULT_KIND = "market_data.livermore.strategy_score"
 STRATEGY_SCORE_RULE_VERSION = "rv_livermore_strategy_score_v1"
 STRATEGY_SCORE_CACHE_VERSION = "cv_livermore_strategy_score_v1"
@@ -122,6 +123,14 @@ _FORWARD_COVERAGE_STATUSES = (
     _FORWARD_COVERAGE_PARTIAL_HALT,
 )
 _FORWARD_COVERAGE_MATURITY_FORWARD_BARS = 20
+_FORWARD_MATURITY_HORIZONS = {"1d": 1, "5d": 5, "10d": 10, "20d": 20}
+_FORWARD_MATURITY_STATUSES = (
+    "natural_pending",
+    "complete",
+    "matured_missing_bar",
+    "raw_matured_adjustment_missing",
+    "partial_halt",
+)
 _FORWARD_RETURN_KEYS = ("return_1d", "return_5d", "return_10d", "return_20d")
 _ADJUSTED_FORWARD_RETURN_KEYS = {
     "return_1d": "return_1d_adj",
@@ -240,27 +249,38 @@ def livermore_candidate_history_envelope(
     snapshot_from: str | None,
     snapshot_to: str | None,
     limit: int,
+    evaluation_as_of_date: str | None = None,
 ) -> dict[str, object]:
     """Read persisted candidate history slice; DuckDB SELECT only (API read-only)."""
     trimmed_code = stock_code.strip().upper() if stock_code else None
     trimmed_code = trimmed_code if trimmed_code else None
     normalized_snapshot_from = snapshot_from.strip() if snapshot_from else None
     normalized_snapshot_to = snapshot_to.strip() if snapshot_to else None
+    requested_evaluation_date = _strict_optional_date(evaluation_as_of_date)
+    empty_evaluation_date = requested_evaluation_date or _normalize_date_text(normalized_snapshot_to) or date.today().isoformat()
+    empty_snapshot_to = _safe_optional_date(normalized_snapshot_to)
+    empty_effective_snapshot_to = min(
+        empty_evaluation_date,
+        empty_snapshot_to or empty_evaluation_date,
+    )
 
     def build_empty_payload() -> dict[str, object]:
         return {
             "items": [],
-            "summary": _build_summary([]),
+            "summary": _build_summary([], evaluation_as_of_date=empty_evaluation_date),
             "backtest_window_summary": livermore_candidate_history_backtest_window_summary(
                 duckdb_path=duckdb_path,
                 stock_code=trimmed_code,
                 snapshot_from=normalized_snapshot_from,
-                snapshot_to=normalized_snapshot_to,
+                snapshot_to=empty_effective_snapshot_to,
+                evaluation_as_of_date=empty_evaluation_date,
             ),
             "stock_code": trimmed_code,
             "snapshot_from": normalized_snapshot_from,
             "snapshot_to": normalized_snapshot_to,
+            "effective_snapshot_to": empty_effective_snapshot_to,
             "limit": limit,
+            "evaluation_as_of_date": empty_evaluation_date,
         }
 
     path = Path(duckdb_path)
@@ -273,6 +293,16 @@ def livermore_candidate_history_envelope(
         if TABLE_HIST not in tables:
             return _wrap_empty_envelope(payload=build_empty_payload())
         available_columns = _available_columns(conn)
+        resolved_evaluation_date = _resolve_evaluation_as_of_date(
+            conn,
+            tables=tables,
+            requested_evaluation_as_of_date=requested_evaluation_date,
+            fallback_date=normalized_snapshot_to,
+        )
+        effective_snapshot_to = min(
+            resolved_evaluation_date,
+            _safe_optional_date(normalized_snapshot_to) or resolved_evaluation_date,
+        )
 
         where_clauses: list[str] = []
         bindings: list[object] = []
@@ -282,11 +312,10 @@ def livermore_candidate_history_envelope(
         if normalized_snapshot_from:
             where_clauses.append("snapshot_as_of_date >= ?")
             bindings.append(normalized_snapshot_from[:10])
-        if normalized_snapshot_to:
-            where_clauses.append("snapshot_as_of_date <= ?")
-            bindings.append(normalized_snapshot_to[:10])
+        where_clauses.append("try_cast(snapshot_as_of_date as date) <= cast(? as date)")
+        bindings.append(effective_snapshot_to)
         sql_where = f"where {' AND '.join(where_clauses)}" if where_clauses else ""
-        bindings.append(limit)
+        filter_bindings = list(bindings)
 
         rows = conn.execute(
             f"""
@@ -296,16 +325,23 @@ def livermore_candidate_history_envelope(
             order by snapshot_as_of_date desc, candidate_rank asc
             limit ?
             """,
-            bindings,
+            [*filter_bindings, limit],
         ).fetchall()
         items = [_normalize_row(row) for row in rows]
-        _annotate_forward_coverage(
-            items,
-            observation_trade_dates=_load_observation_trade_dates(
-                conn,
-                tables=tables,
-                min_snapshot_date=_min_snapshot_date(items),
-            ),
+        _annotate_forward_maturity(
+            conn,
+            items=items,
+            tables=tables,
+            evaluation_as_of_date=resolved_evaluation_date,
+            rewrite_legacy_status=requested_evaluation_date is not None,
+        )
+        all_filtered_maturity = _all_filtered_forward_maturity_summary(
+            conn,
+            tables=tables,
+            available_columns=available_columns,
+            sql_where=sql_where,
+            filter_bindings=filter_bindings,
+            evaluation_as_of_date=resolved_evaluation_date,
         )
         execution_rows = (
             _load_execution_window_rows(
@@ -327,6 +363,9 @@ def livermore_candidate_history_envelope(
             if MATCHED_BASELINE_TABLE in tables
             else None
         )
+        if requested_evaluation_date is not None:
+            execution_rows = None
+            matched_baseline_rows = None
     finally:
         conn.close()
 
@@ -337,21 +376,36 @@ def livermore_candidate_history_envelope(
         duckdb_path=duckdb_path,
         stock_code=trimmed_code,
         snapshot_from=normalized_snapshot_from,
-        snapshot_to=normalized_snapshot_to,
+        snapshot_to=effective_snapshot_to,
+        evaluation_as_of_date=resolved_evaluation_date,
     )
+    backtest_window_summary = dict(backtest_window_summary)
+    backtest_window_summary["forward_coverage_row_counts"] = _forward_coverage_counts(items)
+    backtest_window_summary["outcome_evaluation_as_of_date"] = resolved_evaluation_date
+    summary = _build_summary(
+        items,
+        backtest_window_summary=backtest_window_summary,
+        execution_rows=execution_rows,
+        matched_baseline_rows=matched_baseline_rows,
+        evaluation_as_of_date=resolved_evaluation_date,
+    )
+    returned_maturity = summary.get("forward_maturity")
+    if isinstance(returned_maturity, dict):
+        returned_maturity["scope"] = "returned_slice"
+        returned_maturity["returned_slice_row_count"] = len(items)
+        returned_maturity["all_filtered"] = all_filtered_maturity
     result_payload = {
         "items": items,
-        "summary": _build_summary(
-            items,
-            backtest_window_summary=backtest_window_summary,
-            execution_rows=execution_rows,
-            matched_baseline_rows=matched_baseline_rows,
-        ),
+        "summary": summary,
         "backtest_window_summary": backtest_window_summary,
         "stock_code": trimmed_code,
         "snapshot_from": normalized_snapshot_from,
         "snapshot_to": normalized_snapshot_to,
+        "effective_snapshot_to": effective_snapshot_to,
         "limit": limit,
+        "returned_row_count": len(items),
+        "all_filtered_row_count": all_filtered_maturity["row_count"],
+        "evaluation_as_of_date": resolved_evaluation_date,
     }
 
     return build_result_envelope(
@@ -361,7 +415,12 @@ def livermore_candidate_history_envelope(
         cache_version=CACHE_VERSION,
         source_version=lineage_src,
         rule_version=RULE_VERSION,
-        quality_flag=cast(QualityFlag, "warning" if not items else "ok"),
+        quality_flag=cast(
+            QualityFlag,
+            "warning"
+            if not items or all_filtered_maturity.get("classification_available") is False
+            else "ok",
+        ),
         vendor_version=lineage_vend or EMPTY_VENDOR_VERSION,
         vendor_status=cast(VendorStatus, "ok"),
         fallback_mode=cast(FallbackMode, "none"),
@@ -369,9 +428,12 @@ def livermore_candidate_history_envelope(
             "stock_code": trimmed_code,
             "snapshot_from": result_payload["snapshot_from"],
             "snapshot_to": result_payload["snapshot_to"],
+            "effective_snapshot_to": effective_snapshot_to,
             "limit": limit,
+            "evaluation_as_of_date": resolved_evaluation_date,
         },
         tables_used=[TABLE_HIST]
+        + ([TABLE_OBS] if TABLE_OBS in tables else [])
         + ([TABLE_EXECUTION_HIST] if execution_rows is not None else [])
         + ([MATCHED_BASELINE_TABLE] if matched_baseline_rows is not None else []),
         evidence_rows=len(items),
@@ -813,12 +875,22 @@ def livermore_candidate_history_backtest_window_summary(
     stock_code: str | None,
     snapshot_from: str | None,
     snapshot_to: str | None,
+    evaluation_as_of_date: str | None = None,
 ) -> dict[str, Any]:
     trimmed_code = stock_code.strip().upper() if stock_code else None
     trimmed_code = trimmed_code if trimmed_code else None
     normalized_from = _normalize_date_text(snapshot_from)
     normalized_to = _normalize_date_text(snapshot_to)
-    base_summary = _empty_backtest_window_summary(snapshot_from=normalized_from, snapshot_to=normalized_to)
+    normalized_evaluation_date = _strict_optional_date(evaluation_as_of_date)
+    effective_snapshot_to = (
+        min(normalized_to or normalized_evaluation_date, normalized_evaluation_date)
+        if normalized_evaluation_date
+        else normalized_to
+    )
+    base_summary = _empty_backtest_window_summary(
+        snapshot_from=normalized_from,
+        snapshot_to=effective_snapshot_to,
+    )
 
     path = Path(duckdb_path)
     if not path.is_file():
@@ -834,14 +906,23 @@ def livermore_candidate_history_backtest_window_summary(
             conn,
             stock_code=trimmed_code,
             snapshot_from=normalized_from,
-            snapshot_to=normalized_to,
+            snapshot_to=effective_snapshot_to,
+            evaluation_as_of_date=normalized_evaluation_date,
         )
-        row_dates = sorted({str(row.get("snapshot_as_of_date") or "")[:10] for row in rows if row.get("snapshot_as_of_date")})
+        if normalized_evaluation_date:
+            _annotate_forward_maturity(
+                conn,
+                items=rows,
+                tables=tables,
+                evaluation_as_of_date=normalized_evaluation_date,
+                rewrite_legacy_status=True,
+            )
+        row_dates = _snapshot_row_dates(rows)
         trade_dates = _resolve_replay_trade_dates(
             conn,
             tables=tables,
             snapshot_from=normalized_from,
-            snapshot_to=normalized_to,
+            snapshot_to=effective_snapshot_to,
             row_dates=row_dates,
         )
     finally:
@@ -857,7 +938,13 @@ def livermore_candidate_history_backtest_window_summary(
 
 
 def _snapshot_row_dates(rows: list[dict[str, Any]]) -> list[str]:
-    return sorted({str(row.get("snapshot_as_of_date") or "")[:10] for row in rows if row.get("snapshot_as_of_date")})
+    return sorted(
+        {
+            normalized
+            for row in rows
+            if (normalized := _safe_optional_date(str(row.get("snapshot_as_of_date") or "")))
+        }
+    )
 
 
 def _build_backtest_window_summary_from_rows(
@@ -991,6 +1078,7 @@ def _load_backtest_window_rows(
     stock_code: str | None,
     snapshot_from: str | None,
     snapshot_to: str | None,
+    evaluation_as_of_date: str | None = None,
 ) -> list[dict[str, Any]]:
     tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
     if TABLE_HIST not in tables:
@@ -1018,6 +1106,8 @@ def _load_backtest_window_rows(
         bindings,
     ).fetchall()
     items = [_normalize_row(row) for row in rows]
+    if evaluation_as_of_date:
+        return items
     return _annotate_forward_coverage(
         items,
         observation_trade_dates=_load_observation_trade_dates(
@@ -1214,6 +1304,719 @@ def _forward_coverage_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _annotate_forward_maturity(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    items: list[dict[str, Any]],
+    tables: set[str],
+    evaluation_as_of_date: str,
+    rewrite_legacy_status: bool,
+) -> list[dict[str, Any]]:
+    stock_observations, market_dates, source_issue = _load_forward_maturity_observations(
+        conn,
+        tables=tables,
+        min_snapshot_date=_min_snapshot_date(items),
+        evaluation_as_of_date=evaluation_as_of_date,
+        stock_codes={str(item.get("stock_code") or "").strip().upper() for item in items},
+    )
+    for item in items:
+        maturity = _derive_forward_maturity(
+            item,
+            stock_observations=stock_observations,
+            market_dates=market_dates,
+            evaluation_as_of_date=evaluation_as_of_date,
+            source_issue=source_issue,
+        )
+        item["forward_maturity"] = maturity
+        _mask_unverified_forward_outcomes(
+            item,
+            maturity=maturity,
+            rewrite_legacy_status=rewrite_legacy_status,
+        )
+    return items
+
+
+def _mask_unverified_forward_outcomes(
+    item: dict[str, Any],
+    *,
+    maturity: dict[str, Any],
+    rewrite_legacy_status: bool,
+) -> None:
+    raw_horizons = maturity.get("horizons")
+    horizons = raw_horizons if isinstance(raw_horizons, dict) else {}
+    statuses: dict[str, str] = {}
+    for horizon in _FORWARD_MATURITY_HORIZONS:
+        raw_horizon = horizons.get(horizon)
+        horizon_item = raw_horizon if isinstance(raw_horizon, dict) else {}
+        status = str(horizon_item.get("status") or "natural_pending")
+        statuses[horizon] = status
+        target_verified = bool(horizon_item.get("target_observation_verified"))
+        raw_return = _maturity_finite_float(item.get(f"return_{horizon}"))
+        adjusted_return = _maturity_finite_float(item.get(f"return_{horizon}_adj"))
+        if not target_verified:
+            item[f"forward_trade_date_{horizon}"] = None
+            item[f"return_{horizon}"] = None
+            item[f"return_{horizon}_adj"] = None
+        elif raw_return is None:
+            item[f"return_{horizon}"] = None
+            item[f"return_{horizon}_adj"] = None
+        elif adjusted_return is None:
+            item[f"return_{horizon}"] = raw_return
+            item[f"return_{horizon}_adj"] = None
+        else:
+            item[f"return_{horizon}"] = raw_return
+            item[f"return_{horizon}_adj"] = adjusted_return
+
+    if not rewrite_legacy_status:
+        stored_status = str(item.get("data_status") or "").strip()
+        item["forward_coverage"] = (
+            stored_status if stored_status in _FORWARD_COVERAGE_STATUSES else _FORWARD_COVERAGE_PENDING
+        )
+        return
+
+    if statuses and all(status == "complete" for status in statuses.values()):
+        item["data_status"] = "complete"
+    elif "partial_halt" in statuses.values():
+        item["data_status"] = "partial_halt"
+    else:
+        item["data_status"] = "pending"
+
+    long_status = statuses.get("20d", "natural_pending")
+    item["forward_coverage"] = {
+        "complete": _FORWARD_COVERAGE_COMPLETE,
+        "matured_missing_bar": _FORWARD_COVERAGE_MISSING_BAR,
+        "partial_halt": _FORWARD_COVERAGE_PARTIAL_HALT,
+    }.get(long_status, _FORWARD_COVERAGE_PENDING)
+
+
+def _load_forward_maturity_observations(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    min_snapshot_date: str | None,
+    evaluation_as_of_date: str,
+    stock_codes: set[str],
+) -> tuple[dict[str, dict[str, dict[str, Any]]], list[str], str | None]:
+    stock_codes = {code for code in stock_codes if code}
+    if TABLE_OBS not in tables:
+        return {}, [], "observation_table_missing"
+    columns = {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_OBS}')").fetchall()}
+    missing_columns = sorted({"trade_date", "stock_code", "close_value"} - columns)
+    if missing_columns:
+        return {}, [], f"observation_required_columns_missing:{','.join(missing_columns)}"
+    if not min_snapshot_date or not stock_codes:
+        return {}, [], None
+    has_trade_status = "tradestatus" in columns
+    status_select = "tradestatus" if has_trade_status else "null as tradestatus"
+    valid_status_sql = (
+        "and lower(trim(cast(tradestatus as varchar))) in ('trading', '交易', '正常交易')"
+        if has_trade_status
+        else ""
+    )
+    code_placeholders = ", ".join("?" for _ in stock_codes)
+    rows = conn.execute(
+        f"""
+        with latest_revisions as (
+          select
+            trade_date,
+            stock_code,
+            close_value,
+            {status_select},
+            row_number() over (
+              partition by
+                upper(trim(cast(stock_code as varchar))),
+                try_cast(trade_date as date)
+              order by rowid desc
+            ) as revision_rank
+          from {TABLE_OBS}
+          where try_cast(trade_date as date) > cast(? as date)
+            and try_cast(trade_date as date) <= cast(? as date)
+            and upper(trim(cast(stock_code as varchar))) in ({code_placeholders})
+        )
+        select trade_date, stock_code, close_value, tradestatus
+        from latest_revisions
+        where revision_rank = 1
+        order by trade_date, stock_code
+        """,
+        [min_snapshot_date, evaluation_as_of_date, *sorted(stock_codes)],
+    ).fetchall()
+    market_rows = conn.execute(
+        f"""
+        with latest_revisions as (
+          select
+            trade_date,
+            stock_code,
+            close_value,
+            {status_select},
+            row_number() over (
+              partition by
+                upper(trim(cast(stock_code as varchar))),
+                try_cast(trade_date as date)
+              order by rowid desc
+            ) as revision_rank
+          from {TABLE_OBS}
+          where try_cast(trade_date as date) > cast(? as date)
+            and try_cast(trade_date as date) <= cast(? as date)
+        )
+        select distinct try_cast(trade_date as date)
+        from latest_revisions
+        where revision_rank = 1
+          and try_cast(close_value as double) > 0
+          and isfinite(try_cast(close_value as double))
+          {valid_status_sql}
+        order by 1
+        """,
+        [min_snapshot_date, evaluation_as_of_date],
+    ).fetchall()
+    observations: dict[str, dict[str, dict[str, Any]]] = {}
+    market_dates = {
+        normalized
+        for row in market_rows
+        if (normalized := _safe_optional_date(str(row[0] or "")))
+    }
+    for trade_date_raw, stock_code_raw, close_raw, trade_status_raw in rows:
+        trade_date = _safe_optional_date(str(trade_date_raw or ""))
+        stock_code = str(stock_code_raw or "").strip().upper()
+        close_value = _maturity_positive_float(close_raw)
+        if not trade_date or not stock_code:
+            continue
+        trade_status = str(trade_status_raw or "").strip()
+        valid_close = close_value is not None and (
+            not has_trade_status or _maturity_is_trading_status(trade_status)
+        )
+        observations.setdefault(stock_code, {})[trade_date] = {
+            "close": close_value,
+            "trade_status": trade_status,
+            "valid_close": valid_close,
+        }
+    return observations, sorted(market_dates), None
+
+
+def _derive_forward_maturity(
+    item: dict[str, Any],
+    *,
+    stock_observations: dict[str, dict[str, dict[str, Any]]],
+    market_dates: list[str],
+    evaluation_as_of_date: str,
+    source_issue: str | None = None,
+) -> dict[str, Any]:
+    if source_issue:
+        return {
+            "evaluation_as_of_date": evaluation_as_of_date,
+            "horizons": {
+                horizon: {
+                    "status": "matured_missing_bar",
+                    "reason": "observation_source_unavailable",
+                    "horizon_bars": bar_count,
+                    "target_trade_date": None,
+                    "stock_valid_bar_count": 0,
+                    "market_trade_date_count": 0,
+                    "target_observation_verified": False,
+                }
+                for horizon, bar_count in _FORWARD_MATURITY_HORIZONS.items()
+            },
+            "maturity_clock": "individual_stock_valid_close_bars",
+            "diagnostic_clock": "market_trade_dates",
+            "source_status": "unavailable",
+            "source_issue": source_issue,
+            "classification_available": False,
+        }
+    snapshot_date = _safe_optional_date(str(item.get("snapshot_as_of_date") or ""))
+    stock_code = str(item.get("stock_code") or "").strip().upper()
+    stock_rows = stock_observations.get(stock_code, {})
+    valid_dates = [
+        trade_date
+        for trade_date, row in sorted(stock_rows.items())
+        if snapshot_date
+        and snapshot_date < trade_date <= evaluation_as_of_date
+        and bool(row.get("valid_close"))
+    ]
+    market_after_snapshot = [
+        trade_date
+        for trade_date in market_dates
+        if snapshot_date and snapshot_date < trade_date <= evaluation_as_of_date
+    ]
+    explicit_halt = any(
+        snapshot_date
+        and snapshot_date < trade_date <= evaluation_as_of_date
+        and bool(str(row.get("trade_status") or "").strip())
+        and not _maturity_is_trading_status(str(row.get("trade_status") or ""))
+        for trade_date, row in stock_rows.items()
+    )
+    horizons: dict[str, dict[str, Any]] = {}
+    for horizon, bar_count in _FORWARD_MATURITY_HORIZONS.items():
+        expected_target_date = valid_dates[bar_count - 1] if len(valid_dates) >= bar_count else None
+        stored_target_date = _safe_optional_date(str(item.get(f"forward_trade_date_{horizon}") or ""))
+        target_is_actual = bool(
+            stored_target_date
+            and stored_target_date <= evaluation_as_of_date
+            and stored_target_date == expected_target_date
+        )
+        raw_return = _maturity_finite_float(item.get(f"return_{horizon}"))
+        adjusted_return = _maturity_finite_float(item.get(f"return_{horizon}_adj"))
+        if target_is_actual and raw_return is not None:
+            status = "complete" if adjusted_return is not None else "raw_matured_adjustment_missing"
+        elif len(market_after_snapshot) < bar_count:
+            status = "natural_pending"
+        elif explicit_halt and len(valid_dates) < bar_count:
+            status = "partial_halt"
+        else:
+            status = "matured_missing_bar"
+        horizons[horizon] = {
+            "status": status,
+            "horizon_bars": bar_count,
+            "target_trade_date": stored_target_date if target_is_actual else None,
+            "stock_valid_bar_count": len(valid_dates),
+            "market_trade_date_count": len(market_after_snapshot),
+            "target_observation_verified": target_is_actual,
+        }
+    return {
+        "evaluation_as_of_date": evaluation_as_of_date,
+        "horizons": horizons,
+        "maturity_clock": "individual_stock_valid_close_bars",
+        "diagnostic_clock": "market_trade_dates",
+        "source_status": "available",
+        "classification_available": True,
+    }
+
+
+def _forward_maturity_summary(
+    items: list[dict[str, Any]],
+    *,
+    evaluation_as_of_date: str,
+) -> dict[str, Any]:
+    source_issues = sorted(
+        {
+            str(maturity.get("source_issue"))
+            for item in items
+            if isinstance((maturity := item.get("forward_maturity")), dict)
+            and maturity.get("classification_available") is False
+            and maturity.get("source_issue")
+        }
+    )
+    classification_available = not source_issues
+    horizons: dict[str, dict[str, Any]] = {}
+    for horizon, bar_count in _FORWARD_MATURITY_HORIZONS.items():
+        counts = {status: 0 for status in _FORWARD_MATURITY_STATUSES}
+        mature_dates: list[str] = []
+        pending_dates: list[str] = []
+        for item in items:
+            maturity = item.get("forward_maturity")
+            maturity_horizons = maturity.get("horizons") if isinstance(maturity, dict) else None
+            horizon_item = maturity_horizons.get(horizon) if isinstance(maturity_horizons, dict) else None
+            status = str(horizon_item.get("status") if isinstance(horizon_item, dict) else "natural_pending")
+            if status not in counts:
+                status = "matured_missing_bar"
+            counts[status] += 1
+            snapshot_date = str(item.get("snapshot_as_of_date") or "")[:10]
+            if status == "natural_pending":
+                pending_dates.append(snapshot_date)
+            else:
+                mature_dates.append(snapshot_date)
+        horizons[horizon] = {
+            "horizon_bars": bar_count,
+            "row_count": len(items),
+            "counts": counts,
+            "window_matured_row_count": len(items) - counts["natural_pending"],
+            "natural_pending_row_count": counts["natural_pending"],
+            "latest_mature_snapshot_date": max(mature_dates) if mature_dates else None,
+            "latest_pending_snapshot_date": max(pending_dates) if pending_dates else None,
+            "counts_authoritative": classification_available,
+        }
+    return {
+        "scope": "returned_slice",
+        "row_count": len(items),
+        "evaluation_as_of_date": evaluation_as_of_date,
+        "horizons": horizons,
+        "maturity_clock": "individual_stock_valid_close_bars",
+        "diagnostic_clock": "market_trade_dates",
+        "source_status": "available" if classification_available else "unavailable",
+        "classification_available": classification_available,
+        "counts_authoritative": classification_available,
+        **({"source_issue": source_issues[0]} if source_issues else {}),
+    }
+
+
+def _all_filtered_forward_maturity_summary(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    available_columns: set[str],
+    sql_where: str,
+    filter_bindings: list[object],
+    evaluation_as_of_date: str,
+) -> dict[str, Any]:
+    def date_expr(column: str) -> str:
+        return f"try_cast({column} as date)" if column in available_columns else "cast(null as date)"
+
+    def number_expr(column: str) -> str:
+        return f"try_cast({column} as double)" if column in available_columns else "cast(null as double)"
+
+    stock_expr = (
+        "upper(trim(cast(stock_code as varchar)))"
+        if "stock_code" in available_columns
+        else "cast(null as varchar)"
+    )
+    filtered_sql = f"""
+        select
+          rowid as candidate_rowid,
+          {date_expr("snapshot_as_of_date")} as snapshot_date,
+          {stock_expr} as stock_code,
+          {date_expr("forward_trade_date_1d")} as stored_date_1d,
+          {date_expr("forward_trade_date_5d")} as stored_date_5d,
+          {date_expr("forward_trade_date_10d")} as stored_date_10d,
+          {date_expr("forward_trade_date_20d")} as stored_date_20d,
+          {number_expr("return_1d")} as raw_return_1d,
+          {number_expr("return_5d")} as raw_return_5d,
+          {number_expr("return_10d")} as raw_return_10d,
+          {number_expr("return_20d")} as raw_return_20d,
+          {number_expr("return_1d_adj")} as adjusted_return_1d,
+          {number_expr("return_5d_adj")} as adjusted_return_5d,
+          {number_expr("return_10d_adj")} as adjusted_return_10d,
+          {number_expr("return_20d_adj")} as adjusted_return_20d
+        from {TABLE_HIST}
+        {sql_where}
+    """
+    observation_columns = _table_columns_for_service(conn, TABLE_OBS) if TABLE_OBS in tables else set()
+    required_observation_columns = {"trade_date", "stock_code", "close_value"}
+    if not required_observation_columns.issubset(observation_columns):
+        row = conn.execute(
+            f"with filtered as ({filtered_sql}) select count(*)::bigint, max(snapshot_date) from filtered",
+            filter_bindings,
+        ).fetchone()
+        row_count = int(row[0] or 0) if row else 0
+        latest_snapshot = _safe_optional_date(str(row[1] if row else ""))
+        missing_observation_columns = sorted(required_observation_columns - observation_columns)
+        source_issue = (
+            "observation_table_missing"
+            if TABLE_OBS not in tables
+            else f"observation_required_columns_missing:{','.join(missing_observation_columns)}"
+        )
+        return _empty_all_filtered_maturity_summary(
+            row_count=row_count,
+            latest_snapshot_date=latest_snapshot,
+            evaluation_as_of_date=evaluation_as_of_date,
+            source_issue=source_issue,
+        )
+
+    has_trade_status = "tradestatus" in observation_columns
+    latest_status_select = (
+        "first(cast(o.tradestatus as varchar) order by o.rowid desc)"
+        if has_trade_status
+        else "cast(null as varchar)"
+    )
+    scoped_valid_status_sql = (
+        "lower(trim(coalesce(o.trade_status, ''))) in ('trading', '交易', '正常交易')"
+        if has_trade_status
+        else "true"
+    )
+    market_status_sql = (
+        "and lower(trim(coalesce(trade_status, ''))) in ('trading', '交易', '正常交易')"
+        if has_trade_status
+        else ""
+    )
+    explicit_halt_sql = (
+        "trim(coalesce(o.trade_status, '')) <> '' "
+        "and lower(trim(o.trade_status)) not in ('trading', '交易', '正常交易')"
+        if has_trade_status
+        else "false"
+    )
+    rows = conn.execute(
+        f"""
+        with filtered as materialized ({filtered_sql}),
+        candidate_bounds as (
+          select min(snapshot_date) as minimum_snapshot_date
+          from filtered
+          where snapshot_date is not null
+        ),
+        candidate_stocks as (
+          select stock_code, min(snapshot_date) as minimum_snapshot_date
+          from filtered
+          where stock_code is not null and snapshot_date is not null
+          group by stock_code
+        ),
+        market_latest_observations as materialized (
+          select
+            upper(trim(cast(o.stock_code as varchar))) as stock_code,
+            try_cast(o.trade_date as date) as trade_date,
+            first(try_cast(o.close_value as double) order by o.rowid desc) as close_value,
+            {latest_status_select} as trade_status
+          from {TABLE_OBS} o
+          cross join candidate_bounds bounds
+          where bounds.minimum_snapshot_date is not null
+            and try_cast(o.trade_date as date) > bounds.minimum_snapshot_date
+            and try_cast(o.trade_date as date) <= cast(? as date)
+          group by 1, 2
+        ),
+        market_dates as (
+          select distinct trade_date
+          from market_latest_observations
+          where close_value > 0
+            and isfinite(close_value)
+            {market_status_sql}
+        ),
+        market_counts as (
+          select f.candidate_rowid, count(m.trade_date)::bigint as market_count
+          from filtered f
+          left join market_dates m
+            on f.snapshot_date is not null and m.trade_date > f.snapshot_date
+          group by f.candidate_rowid
+        ),
+        candidate_observation_revisions as materialized (
+          select
+            upper(trim(cast(o.stock_code as varchar))) as stock_code,
+            try_cast(o.trade_date as date) as trade_date,
+            first(try_cast(o.close_value as double) order by o.rowid desc) as close_value,
+            {latest_status_select} as trade_status
+          from {TABLE_OBS} o
+          join candidate_stocks stocks
+            on stocks.stock_code = upper(trim(cast(o.stock_code as varchar)))
+           and try_cast(o.trade_date as date) > stocks.minimum_snapshot_date
+          where try_cast(o.trade_date as date) is not null
+            and try_cast(o.trade_date as date) <= cast(? as date)
+          group by 1, 2
+        ),
+        candidate_observations as materialized (
+          select
+            o.stock_code,
+            o.trade_date,
+            (
+              o.close_value > 0
+              and isfinite(o.close_value)
+              and {scoped_valid_status_sql}
+            ) as valid_close,
+            ({explicit_halt_sql}) as explicit_halt
+          from candidate_observation_revisions o
+        ),
+        valid_observations as (
+          select
+            f.candidate_rowid,
+            o.trade_date,
+            row_number() over (
+              partition by f.candidate_rowid
+              order by o.trade_date
+            ) as bar_number
+          from filtered f
+          join candidate_observations o
+            on o.stock_code = f.stock_code
+           and f.snapshot_date is not null
+           and o.trade_date > f.snapshot_date
+           and o.valid_close
+          qualify bar_number <= 20
+        ),
+        targets as (
+          select
+            candidate_rowid,
+            count(*)::bigint as stock_valid_bar_count,
+            max(case when bar_number = 1 then trade_date end) as target_1d,
+            max(case when bar_number = 5 then trade_date end) as target_5d,
+            max(case when bar_number = 10 then trade_date end) as target_10d,
+            max(case when bar_number = 20 then trade_date end) as target_20d
+          from valid_observations
+          group by candidate_rowid
+        ),
+        halt_flags as (
+          select
+            f.candidate_rowid,
+             max(case when o.explicit_halt then 1 else 0 end)::integer as explicit_halt
+          from filtered f
+          left join candidate_observations o
+            on o.stock_code = f.stock_code
+           and f.snapshot_date is not null
+           and o.trade_date > f.snapshot_date
+          group by f.candidate_rowid
+        ),
+        horizon_rows as (
+          select
+            f.candidate_rowid,
+            f.snapshot_date,
+            h.horizon,
+            h.bar_count,
+            case h.horizon
+              when '1d' then f.stored_date_1d when '5d' then f.stored_date_5d
+              when '10d' then f.stored_date_10d else f.stored_date_20d end as stored_date,
+            case h.horizon
+              when '1d' then f.raw_return_1d when '5d' then f.raw_return_5d
+              when '10d' then f.raw_return_10d else f.raw_return_20d end as raw_return,
+            case h.horizon
+              when '1d' then f.adjusted_return_1d when '5d' then f.adjusted_return_5d
+              when '10d' then f.adjusted_return_10d else f.adjusted_return_20d end as adjusted_return,
+            case h.horizon
+              when '1d' then t.target_1d when '5d' then t.target_5d
+              when '10d' then t.target_10d else t.target_20d end as expected_target,
+            coalesce(t.stock_valid_bar_count, 0) as stock_valid_bar_count,
+            coalesce(m.market_count, 0) as market_count,
+            coalesce(hf.explicit_halt, 0) as explicit_halt
+          from filtered f
+          cross join (values ('1d', 1), ('5d', 5), ('10d', 10), ('20d', 20)) h(horizon, bar_count)
+          left join targets t on t.candidate_rowid = f.candidate_rowid
+          left join market_counts m on m.candidate_rowid = f.candidate_rowid
+          left join halt_flags hf on hf.candidate_rowid = f.candidate_rowid
+        ),
+        classified as (
+          select
+            horizon,
+            snapshot_date,
+            case
+              when stored_date is not null and stored_date = expected_target
+                   and raw_return is not null and isfinite(raw_return)
+                then case
+                  when adjusted_return is not null and isfinite(adjusted_return) then 'complete'
+                  else 'raw_matured_adjustment_missing' end
+              when market_count < bar_count then 'natural_pending'
+              when explicit_halt = 1 and stock_valid_bar_count < bar_count then 'partial_halt'
+              else 'matured_missing_bar'
+            end as status
+          from horizon_rows
+        )
+        select horizon, status, count(*)::bigint, max(snapshot_date)
+        from classified
+        group by horizon, status
+        order by horizon, status
+        """,
+        [*filter_bindings, evaluation_as_of_date, evaluation_as_of_date],
+    ).fetchall()
+    return _all_filtered_summary_from_rows(rows, evaluation_as_of_date=evaluation_as_of_date)
+
+
+def _all_filtered_summary_from_rows(
+    rows: list[tuple[Any, ...]],
+    *,
+    evaluation_as_of_date: str,
+) -> dict[str, Any]:
+    horizons: dict[str, dict[str, Any]] = {}
+    row_count = 0
+    for horizon, bar_count in _FORWARD_MATURITY_HORIZONS.items():
+        counts = {status: 0 for status in _FORWARD_MATURITY_STATUSES}
+        latest_mature: str | None = None
+        latest_pending: str | None = None
+        for raw_horizon, raw_status, raw_count, raw_latest in rows:
+            if str(raw_horizon) != horizon:
+                continue
+            status = str(raw_status)
+            count = int(raw_count or 0)
+            counts[status] = count
+            latest = _safe_optional_date(str(raw_latest or ""))
+            if status == "natural_pending":
+                latest_pending = max(filter(None, [latest_pending, latest]), default=None)
+            else:
+                latest_mature = max(filter(None, [latest_mature, latest]), default=None)
+        horizon_row_count = sum(counts.values())
+        row_count = max(row_count, horizon_row_count)
+        horizons[horizon] = {
+            "horizon_bars": bar_count,
+            "row_count": horizon_row_count,
+            "counts": counts,
+            "window_matured_row_count": horizon_row_count - counts["natural_pending"],
+            "natural_pending_row_count": counts["natural_pending"],
+            "latest_mature_snapshot_date": latest_mature,
+            "latest_pending_snapshot_date": latest_pending,
+            "counts_authoritative": True,
+        }
+    return {
+        "scope": "all_filtered",
+        "row_count": row_count,
+        "evaluation_as_of_date": evaluation_as_of_date,
+        "horizons": horizons,
+        "maturity_clock": "individual_stock_valid_close_bars",
+        "diagnostic_clock": "market_trade_dates",
+        "source_status": "available",
+        "classification_available": True,
+        "counts_authoritative": True,
+    }
+
+
+def _empty_all_filtered_maturity_summary(
+    *,
+    row_count: int,
+    latest_snapshot_date: str | None,
+    evaluation_as_of_date: str,
+    source_issue: str,
+) -> dict[str, Any]:
+    rows = [
+        (horizon, "matured_missing_bar", row_count, latest_snapshot_date)
+        for horizon in _FORWARD_MATURITY_HORIZONS
+    ]
+    summary = _all_filtered_summary_from_rows(rows, evaluation_as_of_date=evaluation_as_of_date)
+    for horizon in summary["horizons"].values():
+        horizon["counts_authoritative"] = False
+    summary.update(
+        {
+            "source_status": "unavailable",
+            "source_issue": source_issue,
+            "classification_available": False,
+            "counts_authoritative": False,
+        }
+    )
+    return summary
+
+
+def _table_columns_for_service(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    return {str(row[1]).lower() for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()}
+
+
+def _resolve_evaluation_as_of_date(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    requested_evaluation_as_of_date: str | None,
+    fallback_date: str | None,
+) -> str:
+    if requested_evaluation_as_of_date:
+        return requested_evaluation_as_of_date
+    if TABLE_OBS in tables:
+        columns = {
+            str(row[1]).lower() for row in conn.execute(f"pragma table_info('{TABLE_OBS}')").fetchall()
+        }
+        if "trade_date" in columns:
+            today = date.today().isoformat()
+            row = conn.execute(
+                f"""
+                select max(try_cast(trade_date as date))
+                from {TABLE_OBS}
+                where try_cast(trade_date as date) <= cast(? as date)
+                """,
+                [today],
+            ).fetchone()
+            resolved = _safe_optional_date(str(row[0] if row else ""))
+            if resolved:
+                return resolved
+    return _safe_optional_date(fallback_date) or date.today().isoformat()
+
+
+def _strict_optional_date(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return date.fromisoformat(text[:10]).isoformat()
+
+
+def _safe_optional_date(value: str | None) -> str | None:
+    try:
+        return _strict_optional_date(value)
+    except ValueError:
+        return None
+
+
+def _maturity_finite_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _maturity_positive_float(value: Any) -> float | None:
+    number = _maturity_finite_float(value)
+    return number if number is not None and number > 0 else None
+
+
+def _maturity_is_trading_status(value: str) -> bool:
+    return value.strip().casefold() in {"trading", "交易", "正常交易"}
+
+
 def _resolve_replay_trade_dates(
     conn: duckdb.DuckDBPyConnection,
     *,
@@ -1258,6 +2061,7 @@ def _build_summary(
     backtest_window_summary: dict[str, Any] | None = None,
     execution_rows: list[dict[str, Any]] | None = None,
     matched_baseline_rows: list[dict[str, Any]] | None = None,
+    evaluation_as_of_date: str | None = None,
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "row_count": len(items),
@@ -1276,6 +2080,11 @@ def _build_summary(
         "by_signal_kind": _count_by_signal_kind(items),
         "by_signal_kind_horizon_stats": _build_signal_kind_horizon_stats(items),
     }
+    if evaluation_as_of_date:
+        summary["forward_maturity"] = _forward_maturity_summary(
+            items,
+            evaluation_as_of_date=evaluation_as_of_date,
+        )
     if backtest_window_summary is not None and backtest_window_summary.get("status") in {"valid", "partial"}:
         horizon_usable_items = _horizon_usable_items(items, backtest_window_summary=backtest_window_summary)
         summary["decision_usable_stats"] = _build_decision_usable_stats(

@@ -3446,6 +3446,8 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
         calls.append(("history", dict(kwargs)))
         return {
             "status": "completed",
+            "run_id": "choice_stock_materialize:2026-04-30:fixture",
+            "as_of_date": "2026-04-30",
             "row_count": 111,
             "stock_code_count": 5,
             "source_version": "sv_history",
@@ -3467,6 +3469,11 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
         macro_toolkit_service,
         "materialize_choice_stock_factor_snapshot",
         fake_materialize_choice_stock_factor_snapshot,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "verify_choice_stock_daily_observation_landing",
+        lambda **_kwargs: 5,
     )
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -3527,6 +3534,16 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     assert status_payload["result"]["refresh"]["vendor_version"] == "vv_factor"
     assert status_payload["result"]["refresh"]["rule_version"] == "rv_choice_stock_materialization_front_layer_v1"
     assert status_payload["result"]["refresh"]["cache_version"] == "choice_stock_refresh_v1"
+    observation_manifest = GovernanceRepository(base_dir=governance_path).read_latest_manifest(
+        macro_toolkit_service.CHOICE_STOCK_REFRESH_CACHE_KEY
+    )
+    assert observation_manifest is not None
+    assert observation_manifest["report_date"] == "2026-04-30"
+    assert observation_manifest["source_version"] == "sv_history"
+    assert observation_manifest["vendor_version"] == "vv_history"
+    assert observation_manifest["lineage"]["materialization_run_id"] == (
+        "choice_stock_materialize:2026-04-30:fixture"
+    )
 
 
 def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch) -> None:
@@ -3557,13 +3574,26 @@ def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(
         macro_toolkit_service,
         "materialize_choice_stock_inputs",
         lambda **kwargs: calls.append(("history", dict(kwargs)))
-        or {"status": "completed", "row_count": 111, "source_version": "sv_history"},
+        or {
+            "status": "completed",
+            "run_id": "choice_stock_materialize:2026-04-30:idempotency-fixture",
+            "as_of_date": "2026-04-30",
+            "row_count": 111,
+            "stock_code_count": 5,
+            "source_version": "sv_history",
+            "vendor_version": "vv_history",
+        },
     )
     monkeypatch.setattr(
         macro_toolkit_service,
         "materialize_choice_stock_factor_snapshot",
         lambda **kwargs: calls.append(("factor", dict(kwargs)))
         or {"status": "completed", "row_count": 222, "source_version": "sv_factor"},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "verify_choice_stock_daily_observation_landing",
+        lambda **_kwargs: 5,
     )
 
     app = FastAPI()
@@ -3695,6 +3725,11 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
             "total_added": 42,
             "results": {"SHIBOR:3M": 42},
             "errors": {},
+            "run_id": "backfill_macro_v1:20260712T120000Z",
+            "source_by_series": {"NCD.SHIBOR.3M": "tushare_macro"},
+            "vendor_versions": {
+                "NCD.SHIBOR.3M": "vv_backfill_macro_tushare_macro_20260430_deadbeefdeadbeef",
+            },
         }
 
     monkeypatch.setattr(macro_toolkit_route, "backfill_macro_series", fake_backfill_macro_series)
@@ -3752,6 +3787,11 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     assert refresh["alias"] == "M0041813"
     assert refresh["series_ids"] == ["NCD.SHIBOR.3M"]
     assert refresh["total_added"] == 42
+    assert refresh["run_id"] == "backfill_macro_v1:20260712T120000Z"
+    assert refresh["source_by_series"] == {"NCD.SHIBOR.3M": "tushare_macro"}
+    assert refresh["vendor_versions"] == {
+        "NCD.SHIBOR.3M": "vv_backfill_macro_tushare_macro_20260430_deadbeefdeadbeef",
+    }
     assert calls == [
         {
             "duckdb_path": str(duckdb_path),
@@ -3763,6 +3803,77 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
         }
     ]
     assert source_cache_clears == ["cleared"]
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_source_backfill_preserves_blocked_status_without_cache_clear(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    source_cache_clears: list[str] = []
+    response_cache_invalidations: list[str] = []
+
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "backfill_macro_series",
+        lambda **_kwargs: {
+            "status": "blocked",
+            "dry_run": False,
+            "fetch_preview": False,
+            "processed_count": 1,
+            "total_fetched": 0,
+            "total_added": 0,
+            "results": {"制造业PMI": 0},
+            "errors": {"制造业PMI": "no rows fetched for series_id=M0017126"},
+            "source_by_series": {},
+            "vendor_versions": {},
+        },
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "clear_system_macro_source_cache",
+        lambda: source_cache_clears.append("cleared"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route.market_home_response_cache,
+        "invalidate",
+        lambda: response_cache_invalidations.append("invalidated"),
+    )
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="macro-source-user",
+        role=None,
+        resource="macro_toolkit.source_backfill",
+        action="refresh",
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/ui/macro/toolkit/source-backfill/refresh",
+        json={
+            "alias": "M0017126",
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "sources": ["tushare_macro"],
+        },
+        headers={"X-User-Id": "macro-source-user", "X-User-Role": "viewer"},
+    )
+
+    assert response.status_code == 200, response.text
+    refresh = response.json()["result"]["refresh"]
+    assert refresh["status"] == "blocked"
+    assert refresh["total_added"] == 0
+    assert refresh["errors"] == {"制造业PMI": "no rows fetched for series_id=M0017126"}
+    assert source_cache_clears == []
+    assert response_cache_invalidations == []
     get_settings.cache_clear()
 
 

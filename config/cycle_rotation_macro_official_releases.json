@@ -1,0 +1,99 @@
+{
+  "manifest_version": "2026-07-12.cycle-rotation-official-releases.v2",
+  "policy_note": "Pinned official release artifacts for governed macro backfill previews; update only after source and hash review.",
+  "releases": [
+    {
+      "source": "nbs_pmi_release",
+      "series_id": "M0017126",
+      "series_name": "制造业PMI",
+      "release_url": "https://www.stats.gov.cn/sj/zxfbhjd/202606/t20260630_1964032.html",
+      "artifact_url": "https://www.stats.gov.cn/sj/zxfbhjd/202606/P020260630315076364750.xls",
+      "published_at": "2026-06-30T09:30:00+08:00",
+      "artifact_sha256": "204801316c86ecf848ba83fb5d9a2c6f46fd482c7d306caa5369816d1b965d45",
+      "latest_period": "2026-06-01",
+      "covered_period_start": "2025-06-01",
+      "covered_period_end": "2026-06-01",
+      "sheet_name": "制造业",
+      "value_header": "PMI",
+      "source_unit": "%",
+      "target_unit": "index",
+      "value_transform": "identity_percentage_points_to_index_points"
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M5525763",
+      "series_name": "社会融资规模存量:同比",
+      "release_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026051417030520490/index.html",
+      "artifact_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026051417030520490/index.html",
+      "published_at": "2026-05-14T17:00:02+08:00",
+      "available_at": "2026-05-14T17:03:10+08:00",
+      "artifact_sha256": "4434210d0447e96bcbeab8f02d6ac0436fb76a28e41a66f4f133ff46d8b1182e",
+      "release_title": "2026年4月金融统计数据报告",
+      "report_month": "2026-04",
+      "source_unit": "%",
+      "target_unit": "%",
+      "value_transform": "identity_percentage_points",
+      "field_mappings": {
+        "M5525763": "社会融资规模存量:同比",
+        "M0001385": "广义货币M2:同比"
+      }
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M0001385",
+      "series_name": "M2:同比",
+      "release_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026051417030520490/index.html",
+      "artifact_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026051417030520490/index.html",
+      "published_at": "2026-05-14T17:00:02+08:00",
+      "available_at": "2026-05-14T17:03:10+08:00",
+      "artifact_sha256": "4434210d0447e96bcbeab8f02d6ac0436fb76a28e41a66f4f133ff46d8b1182e",
+      "release_title": "2026年4月金融统计数据报告",
+      "report_month": "2026-04",
+      "source_unit": "%",
+      "target_unit": "%",
+      "value_transform": "identity_percentage_points",
+      "field_mappings": {
+        "M5525763": "社会融资规模存量:同比",
+        "M0001385": "广义货币M2:同比"
+      }
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M5525763",
+      "series_name": "社会融资规模存量:同比",
+      "release_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026061217051611931/index.html",
+      "artifact_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026061217051611931/index.html",
+      "published_at": "2026-06-12T17:00:01+08:00",
+      "available_at": "2026-06-12T17:05:23+08:00",
+      "artifact_sha256": "8f71dd1e651d2e5d8e7120555a000c54a517c41fb01d94b39948183badab9769",
+      "release_title": "2026年5月金融统计数据报告",
+      "report_month": "2026-05",
+      "source_unit": "%",
+      "target_unit": "%",
+      "value_transform": "identity_percentage_points",
+      "field_mappings": {
+        "M5525763": "社会融资规模存量:同比",
+        "M0001385": "广义货币M2:同比"
+      }
+    },
+    {
+      "source": "pbc_financial_statistics_release",
+      "series_id": "M0001385",
+      "series_name": "M2:同比",
+      "release_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026061217051611931/index.html",
+      "artifact_url": "https://www.pbc.gov.cn/diaochatongjisi/116219/116225/2026061217051611931/index.html",
+      "published_at": "2026-06-12T17:00:01+08:00",
+      "available_at": "2026-06-12T17:05:23+08:00",
+      "artifact_sha256": "8f71dd1e651d2e5d8e7120555a000c54a517c41fb01d94b39948183badab9769",
+      "release_title": "2026年5月金融统计数据报告",
+      "report_month": "2026-05",
+      "source_unit": "%",
+      "target_unit": "%",
+      "value_transform": "identity_percentage_points",
+      "field_mappings": {
+        "M5525763": "社会融资规模存量:同比",
+        "M0001385": "广义货币M2:同比"
+      }
+    }
+  ]
+}

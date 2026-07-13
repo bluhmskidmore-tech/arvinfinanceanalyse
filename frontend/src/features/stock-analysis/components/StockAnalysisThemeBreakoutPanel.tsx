@@ -38,6 +38,7 @@ export function StockAnalysisThemeBreakoutPanel({
   reviewItems,
   emptyMessage,
 }: StockAnalysisThemeBreakoutPanelProps) {
+  const evidenceLimited = evidenceRows.some((row) => row.status === "current_overlay");
   return (
     <div className="flex flex-col gap-6">
       {cards.length > 0 ? (
@@ -53,8 +54,8 @@ export function StockAnalysisThemeBreakoutPanel({
       {evidenceRows.length > 0 && (
         <div data-testid="stock-analysis-theme-evidence-state" className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <strong className="text-sm">题材证据就绪</strong>
-            <ThemePill>{evidenceRows.length} 项证据</ThemePill>
+            <strong className="text-sm">{evidenceLimited ? "题材证据受限" : "题材证据就绪"}</strong>
+            <ThemePill tone={evidenceLimited ? "warning" : "neutral"}>{evidenceRows.length} 项证据</ThemePill>
           </div>
           <div className="bg-background/40 border border-default-100 shadow-sm rounded-lg overflow-hidden">
             <ul className="flex flex-col divide-y divide-default-100">
@@ -105,7 +106,9 @@ function ThemeBreakoutCard({ card }: { card: StockThemeBreakoutCard }) {
             <ThemePill className="mt-1">{card.summary}</ThemePill>
           )}
         </div>
-        <ThemePill tone="success">观察</ThemePill>
+        <ThemePill tone={card.sourceKindLabel === "时点概念成分" ? "success" : "warning"}>
+          {card.sourceKindLabel ?? "观察"}
+        </ThemePill>
       </header>
       <hr className="border-t border-default-200" />
       <div className="p-4 pt-3 flex flex-col gap-3">
@@ -176,6 +179,9 @@ function ThemeLeaderList({
           <span className="text-[10px] text-default-500">
             {leader.stockCode} / {leader.pctChange} / 换手 {leader.turn} / 收盘强度 {leader.closeStrength}
           </span>
+          {leader.sourceKindLabel ? (
+            <span className="text-[10px] text-default-500">{leader.sourceKindLabel}</span>
+          ) : null}
         </div>
           <ThemePill>{leader.tags.join(" / ") || fallbackTag}</ThemePill>
         </div>

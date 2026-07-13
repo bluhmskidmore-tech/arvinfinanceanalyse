@@ -22,13 +22,16 @@ import {
 import {
   tonePillClass,
   toneTextClass,
+  riskExitBlockedSummary,
 } from "../lib/stockAnalysisPageCopy";
+import type { LivermoreUnsupportedOutput } from "../../../api/contracts";
 import { closedLoopRailIcon } from "./stockAnalysisClosedLoopRailIcons";
 
 export function StockAnalysisClosedLoopSummaryRail({
   summary,
   riskTone,
   riskTriggeredCount,
+  riskUnsupportedOutput,
   boundaryIssueCount,
   reviewQueueCount,
   nextActionLabel,
@@ -37,11 +40,16 @@ export function StockAnalysisClosedLoopSummaryRail({
   summary: StockClosedLoopSummary;
   riskTone: Extract<StockClosedLoopTone, "positive" | "warning" | "negative">;
   riskTriggeredCount: number;
+  riskUnsupportedOutput?: LivermoreUnsupportedOutput | null;
   boundaryIssueCount: number;
   reviewQueueCount: number;
   nextActionLabel: string;
   nextActionFullLabel: string;
 }) {
+  const riskBlockedLabel = riskUnsupportedOutput
+    ? riskExitBlockedSummary(riskUnsupportedOutput.reason)
+    : null;
+
   return (
     <section
       className={`${SA_FIRST_CARD} bg-background/40 border-default-100 shadow-sm backdrop-blur-md`}
@@ -117,13 +125,20 @@ export function StockAnalysisClosedLoopSummaryRail({
               <strong className="text-sm text-default-900">{summary.referenceRating.label}</strong>
             </span>
           </div>
-          <div className="flex items-center gap-3 p-3 rounded-lg border border-default-100 bg-background/50" data-tone={riskTone}>
+          <div
+            className="flex items-center gap-3 p-3 rounded-lg border border-default-100 bg-background/50"
+            data-testid="stock-analysis-closed-loop-risk"
+            data-tone={riskBlockedLabel ? "negative" : riskTone}
+          >
             <span className="text-lg text-danger" aria-hidden="true">
               <FireOutlined />
             </span>
             <span className="flex flex-col">
               <span className="text-xs text-default-500">风险</span>
-              <strong className="text-sm text-default-900">{riskTriggeredCount} 触发</strong>
+              <strong className="text-sm text-default-900">
+                {riskBlockedLabel ? "阻断" : `${riskTriggeredCount} 触发`}
+              </strong>
+              {riskBlockedLabel ? <small className="text-xs text-default-500">{riskBlockedLabel}</small> : null}
             </span>
           </div>
           <div className="flex items-center gap-3 p-3 rounded-lg border border-default-100 bg-background/50" data-tone={boundaryIssueCount > 0 ? "warning" : "positive"}>

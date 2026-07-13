@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import logging
+import sqlite3
 import sys
 from datetime import date, timedelta
 from types import SimpleNamespace
@@ -20,7 +21,8 @@ def _perf_records(caplog, endpoint: str):
     return [
         record
         for record in caplog.records
-        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+        if record.name == "backend.app.api.perf"
+        and getattr(record, "endpoint", None) == endpoint
     ]
 
 
@@ -31,7 +33,6 @@ def _seed_choice_macro_history(
     closes: list[float],
     quality_flag: str = "ok",
 ) -> None:
-    from backend.app.api.routes import market_data_livermore as route_module
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         conn.execute(
@@ -132,7 +133,9 @@ def _sample_trading_snapshot_inputs(service, *, tables_used: list[str] | None = 
     )
 
 
-def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade_date: str) -> None:
+def _seed_choice_stock_replay_coverage(
+    conn: duckdb.DuckDBPyConnection, *, trade_date: str
+) -> None:
     conn.execute(
         """
         create table if not exists choice_stock_request_audit (
@@ -195,13 +198,37 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
     conn.executemany(
         "insert into choice_stock_request_audit values (?, ?, ?, ?, ?)",
         [
-            (trade_date, "stock_universe", "a_share_universe_sector_001004", "completed", 1),
-            (trade_date, "sector_membership", "sw2021_industry_membership", "completed", 1),
-            (trade_date, "sector_strength", "daily_return_turnover_amplitude", "completed", 1),
+            (
+                trade_date,
+                "stock_universe",
+                "a_share_universe_sector_001004",
+                "completed",
+                1,
+            ),
+            (
+                trade_date,
+                "sector_membership",
+                "sw2021_industry_membership",
+                "completed",
+                1,
+            ),
+            (
+                trade_date,
+                "sector_strength",
+                "daily_return_turnover_amplitude",
+                "completed",
+                1,
+            ),
             (trade_date, "stock_ohlcv", "daily_ohlcv_amount", "completed", 1),
             (trade_date, "stock_status", "daily_trade_status", "completed", 1),
             (trade_date, "limit_up_quality", "daily_limit_flags", "completed", 1),
-            (trade_date, "limit_up_quality", "point_in_time_limit_streaks", "completed", 1),
+            (
+                trade_date,
+                "limit_up_quality",
+                "point_in_time_limit_streaks",
+                "completed",
+                1,
+            ),
         ],
     )
     conn.execute(
@@ -241,7 +268,9 @@ def _seed_choice_stock_replay_coverage(conn: duckdb.DuckDBPyConnection, *, trade
     )
 
 
-def _seed_minimal_factor_snapshot(conn: duckdb.DuckDBPyConnection, *, as_of_date: str) -> None:
+def _seed_minimal_factor_snapshot(
+    conn: duckdb.DuckDBPyConnection, *, as_of_date: str
+) -> None:
     conn.execute(
         """
         create table if not exists choice_stock_factor_snapshot (
@@ -279,7 +308,9 @@ def _seed_minimal_factor_snapshot(conn: duckdb.DuckDBPyConnection, *, as_of_date
     )
 
 
-def _ensure_livermore_candidate_history_test_schema(conn: duckdb.DuckDBPyConnection) -> None:
+def _ensure_livermore_candidate_history_test_schema(
+    conn: duckdb.DuckDBPyConnection,
+) -> None:
     """Registry DDL omits universe history; create it before materialize schema ensure."""
     conn.execute(
         """
@@ -337,7 +368,9 @@ def _build_client(
     auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
     monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
-    catalog_path = choice_stock_catalog_file or tmp_path / "missing-choice-stock-catalog.json"
+    catalog_path = (
+        choice_stock_catalog_file or tmp_path / "missing-choice-stock-catalog.json"
+    )
     monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(catalog_path))
     get_settings.cache_clear()
     from backend.app.api.response_cache import market_home_response_cache
@@ -426,7 +459,9 @@ def _stub_livermore_read_services(monkeypatch) -> None:
     monkeypatch.setattr(
         route_module,
         "livermore_candidate_history_portfolio_backtest_envelope",
-        lambda **_kwargs: stub_envelope("market_data.livermore.candidate_history_portfolio_backtest"),
+        lambda **_kwargs: stub_envelope(
+            "market_data.livermore.candidate_history_portfolio_backtest"
+        ),
     )
     monkeypatch.setattr(
         route_module,
@@ -462,7 +497,6 @@ def _livermore_route_settings(tmp_path) -> SimpleNamespace:
 def test_livermore_read_surfaces_require_explicit_read_scope(
     path, params, tmp_path, monkeypatch
 ) -> None:
-    from backend.app.api.routes import market_data_livermore as route_module
     monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
     client = _build_client(tmp_path, monkeypatch, grant_livermore_read=False)
     _stub_livermore_read_services(monkeypatch)
@@ -472,7 +506,9 @@ def test_livermore_read_surfaces_require_explicit_read_scope(
     assert response.status_code == 403
 
 
-def test_livermore_read_surface_allows_development_without_explicit_read_scope(tmp_path, monkeypatch) -> None:
+def test_livermore_read_surface_allows_development_without_explicit_read_scope(
+    tmp_path, monkeypatch
+) -> None:
     monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
     client = _build_client(tmp_path, monkeypatch, grant_livermore_read=False)
     _stub_livermore_read_services(monkeypatch)
@@ -592,7 +628,9 @@ def test_livermore_workbench_summary_appends_result_without_replacing_meta() -> 
         },
     }
 
-    out = route_module._with_livermore_workbench_summary(envelope, summary_kind="candidate_history")
+    out = route_module._with_livermore_workbench_summary(
+        envelope, summary_kind="candidate_history"
+    )
 
     assert out["result_meta"] is meta
     assert out["result"]["workbench_summary"] == {
@@ -607,8 +645,12 @@ def test_livermore_workbench_summary_appends_result_without_replacing_meta() -> 
     }
 
 
-def test_livermore_signal_confluence_loader_reraises_nested_missing_dependency(monkeypatch) -> None:
-    from backend.app.services import livermore_signal_confluence_service as service_module
+def test_livermore_signal_confluence_loader_reraises_nested_missing_dependency(
+    monkeypatch,
+) -> None:
+    from backend.app.services import (
+        livermore_signal_confluence_service as service_module,
+    )
 
     original_import = builtins.__import__
 
@@ -625,8 +667,12 @@ def test_livermore_signal_confluence_loader_reraises_nested_missing_dependency(m
     assert excinfo.value.name == "pandas"
 
 
-def test_livermore_signal_confluence_envelope_uses_candidate_history_backtest_summary(monkeypatch) -> None:
-    from backend.app.services import livermore_signal_confluence_service as service_module
+def test_livermore_signal_confluence_envelope_uses_candidate_history_backtest_summary(
+    monkeypatch,
+) -> None:
+    from backend.app.services import (
+        livermore_signal_confluence_service as service_module,
+    )
 
     expected_summary = {
         "status": "partial",
@@ -654,7 +700,11 @@ def test_livermore_signal_confluence_envelope_uses_candidate_history_backtest_su
         "get_macro_environment_context",
         lambda _report_date: {"result_meta": {}, "result": {}},
     )
-    monkeypatch.setattr(service_module, "load_macro_adversarial_signal_payload", lambda **_kwargs: ({}, {}))
+    monkeypatch.setattr(
+        service_module,
+        "load_macro_adversarial_signal_payload",
+        lambda **_kwargs: ({}, {}),
+    )
     monkeypatch.setattr(
         service_module,
         "build_livermore_signal_confluence",
@@ -675,13 +725,17 @@ def test_livermore_signal_confluence_envelope_uses_candidate_history_backtest_su
     }
 
 
-def test_livermore_candidate_history_safe_envelope_returns_none_for_duckdb_errors(monkeypatch) -> None:
+def test_livermore_candidate_history_safe_envelope_returns_none_for_duckdb_errors(
+    monkeypatch,
+) -> None:
     from backend.app.services import livermore_candidate_history_service as service
 
     def raise_duckdb_error(**_kwargs):
         raise duckdb.Error("database is busy")
 
-    monkeypatch.setattr(service, "livermore_candidate_history_envelope", raise_duckdb_error)
+    monkeypatch.setattr(
+        service, "livermore_candidate_history_envelope", raise_duckdb_error
+    )
 
     assert (
         service.livermore_candidate_history_envelope_or_none(
@@ -722,13 +776,33 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert result["supported_outputs"] == ["market_gate"]
     assert "stock_candidates" not in result
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
-    assert "Choice stock catalog is missing" in unsupported_by_key["sector_rank"]["reason"]
-    assert "Choice stock catalog is missing" in unsupported_by_key["stock_candidates"]["reason"]
-    assert "Choice stock catalog is missing" in unsupported_by_key["uptrend_momentum_candidates"]["reason"]
-    assert "Choice stock catalog is missing" in unsupported_by_key["fresh_trend_watchlist"]["reason"]
-    assert "Choice stock catalog is missing" in unsupported_by_key["mean_reversion_candidates"]["reason"]
-    assert "choice_stock_factor_snapshot" in unsupported_by_key["factor_screen_candidates"]["reason"]
-    assert "Choice stock catalog is missing" in unsupported_by_key["theme_breakout"]["reason"]
+    assert (
+        "Choice stock catalog is missing" in unsupported_by_key["sector_rank"]["reason"]
+    )
+    assert (
+        "Choice stock catalog is missing"
+        in unsupported_by_key["stock_candidates"]["reason"]
+    )
+    assert (
+        "Choice stock catalog is missing"
+        in unsupported_by_key["uptrend_momentum_candidates"]["reason"]
+    )
+    assert (
+        "Choice stock catalog is missing"
+        in unsupported_by_key["fresh_trend_watchlist"]["reason"]
+    )
+    assert (
+        "Choice stock catalog is missing"
+        in unsupported_by_key["mean_reversion_candidates"]["reason"]
+    )
+    assert (
+        "choice_stock_factor_snapshot"
+        in unsupported_by_key["factor_screen_candidates"]["reason"]
+    )
+    assert (
+        "Choice stock catalog is missing"
+        in unsupported_by_key["theme_breakout"]["reason"]
+    )
     assert "hybrid fusion" in unsupported_by_key["hybrid_fusion"]["reason"].lower()
     assert "candidate source" in unsupported_by_key["hybrid_fusion"]["reason"].lower()
     unsupported_keys = {row["key"] for row in result["unsupported_outputs"]}
@@ -747,9 +821,14 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert gap_by_family["breadth"]["status"] == "missing"
     assert gap_by_family["limit_up_quality"]["status"] == "missing"
     assert gap_by_family["sector_strength"]["status"] == "missing"
-    assert "Choice stock catalog is missing" in gap_by_family["sector_strength"]["evidence"]
+    assert (
+        "Choice stock catalog is missing"
+        in gap_by_family["sector_strength"]["evidence"]
+    )
     assert gap_by_family["stock_universe"]["status"] == "missing"
-    assert "Choice stock catalog is missing" in gap_by_family["stock_universe"]["evidence"]
+    assert (
+        "Choice stock catalog is missing" in gap_by_family["stock_universe"]["evidence"]
+    )
     assert gap_by_family["position_risk"]["status"] == "missing"
     readiness_by_key = {row["key"]: row for row in result["rule_readiness"]}
     assert readiness_by_key["market_gate"]["status"] == "partial"
@@ -763,14 +842,19 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert "LIVERMORE_STOCK_INPUTS_MISSING" in diag_codes
     assert "LIVERMORE_RISK_INPUTS_MISSING" in diag_codes
     diag_by_code = {row["code"]: row for row in result["diagnostics"]}
-    assert "Choice stock catalog is missing" in diag_by_code["LIVERMORE_STOCK_INPUTS_MISSING"]["message"]
+    assert (
+        "Choice stock catalog is missing"
+        in diag_by_code["LIVERMORE_STOCK_INPUTS_MISSING"]["message"]
+    )
     get_settings.cache_clear()
 
 
 def test_livermore_api_marks_hybrid_fusion_unsupported_when_gate_is_pending_data(
     tmp_path, monkeypatch
 ) -> None:
-    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+    from backend.app.services.market_data_livermore_service import (
+        livermore_strategy_envelope,
+    )
 
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_macro_history(
@@ -821,7 +905,9 @@ def test_livermore_api_embeds_cycle_rotation_framework_without_trade_claims(
     )
     assert "LifeCourtScore" in framework["lifecourt_formula"]
     assert framework["fusion_policy"]["conflict_policy"] == "cycle_filter_life_overlay"
-    assert framework["lifecourt_overlay"]["implementation_stage"] == "proxy_reconstruction"
+    assert (
+        framework["lifecourt_overlay"]["implementation_stage"] == "proxy_reconstruction"
+    )
     layer_by_key = {row["key"]: row for row in framework["layers"]}
     assert set(layer_by_key) == {
         "macro_direction",
@@ -845,7 +931,9 @@ def test_livermore_api_embeds_cycle_rotation_framework_without_trade_claims(
 def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_missing_sources(
     tmp_path, monkeypatch
 ) -> None:
-    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+    from backend.app.services.market_data_livermore_service import (
+        livermore_strategy_envelope,
+    )
 
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_macro_history(
@@ -891,11 +979,11 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
                     51.2,
                     "monthly",
                     "index",
-                    "sv_pmi",
+                    "backfill_macro_v1",
                     "vv_pmi",
                     "rv_choice_macro",
                     "ok",
-                    "run-pmi",
+                    "backfill_macro_v1:20260508T120000Z",
                 ),
                 (
                     "M5525763",
@@ -904,11 +992,11 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
                     8.4,
                     "monthly",
                     "%",
-                    "sv_sf",
+                    "backfill_macro_v1",
                     "vv_sf",
                     "rv_choice_macro",
                     "ok",
-                    "run-sf-1",
+                    "backfill_macro_v1:20260508T120000Z",
                 ),
                 (
                     "M5525763",
@@ -917,11 +1005,11 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
                     9.1,
                     "monthly",
                     "%",
-                    "sv_sf",
+                    "backfill_macro_v1",
                     "vv_sf",
                     "rv_choice_macro",
                     "ok",
-                    "run-sf-2",
+                    "backfill_macro_v1:20260508T120000Z",
                 ),
             ],
         )
@@ -959,8 +1047,26 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
         conn.executemany(
             "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-05-07", "000001.SZ", 10.0, 1.1, "sv_obs", "vv_obs", "rv_obs", "run-obs"),
-                ("2026-05-08", "000001.SZ", 10.2, 1.3, "sv_obs", "vv_obs", "rv_obs", "run-obs"),
+                (
+                    "2026-05-07",
+                    "000001.SZ",
+                    10.0,
+                    1.1,
+                    "sv_obs",
+                    "vv_obs",
+                    "rv_obs",
+                    "run-obs",
+                ),
+                (
+                    "2026-05-08",
+                    "000001.SZ",
+                    10.2,
+                    1.3,
+                    "sv_obs",
+                    "vv_obs",
+                    "rv_obs",
+                    "run-obs",
+                ),
             ],
         )
         conn.execute(
@@ -1011,7 +1117,9 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
     )
 
     result = envelope["result"]
-    layer_by_key = {row["key"]: row for row in result["cycle_rotation_framework"]["layers"]}
+    layer_by_key = {
+        row["key"]: row for row in result["cycle_rotation_framework"]["layers"]
+    }
     assert "price_spread" in layer_by_key["macro_direction"]["available_inputs"]
     assert "price_spread" not in layer_by_key["macro_direction"]["missing_inputs"]
     assert "PMI" in layer_by_key["macro_direction"]["available_inputs"]
@@ -1022,8 +1130,14 @@ def test_livermore_api_marks_landed_cycle_inputs_available_without_fabricating_m
     assert "turnover_persistence" in layer_by_key["market_flow"]["available_inputs"]
     assert "turnover_persistence" not in layer_by_key["market_flow"]["missing_inputs"]
     assert "northbound_flow" in layer_by_key["market_flow"]["missing_inputs"]
-    assert "valuation_percentile_history" in layer_by_key["valuation_support"]["available_inputs"]
-    assert "valuation_percentile_history" not in layer_by_key["valuation_support"]["missing_inputs"]
+    assert (
+        "valuation_percentile_history"
+        in layer_by_key["valuation_support"]["available_inputs"]
+    )
+    assert (
+        "valuation_percentile_history"
+        not in layer_by_key["valuation_support"]["missing_inputs"]
+    )
     assert "earnings_revision" in layer_by_key["valuation_support"]["missing_inputs"]
     gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
     assert gap_by_family["price_spread"]["status"] == "ready"
@@ -1151,15 +1265,22 @@ def test_candidate_history_portfolio_backtest_api_happy_path(tmp_path) -> None:
         snapshot_from="2026-05-01",
         snapshot_to="2026-05-02",
     )
-    assert body["result_meta"]["rule_version"] == "rv_livermore_candidate_history_portfolio_backtest_v1"
+    assert (
+        body["result_meta"]["rule_version"]
+        == "rv_livermore_candidate_history_portfolio_backtest_v1"
+    )
     assert body["result"]["status"] == "portfolio_proxy"
     assert body["result"]["summary"]["invested_rebalance_count"] == 1
     assert body["result"]["summary"]["cumulative_return"] > 0
 
 
-def test_livermore_api_missing_stock_catalog_does_not_call_choice_stock_api(tmp_path, monkeypatch) -> None:
+def test_livermore_api_missing_stock_catalog_does_not_call_choice_stock_api(
+    tmp_path, monkeypatch
+) -> None:
     def fail_choice_call(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("Choice stock API should not be called while catalog is missing.")
+        raise AssertionError(
+            "Choice stock API should not be called while catalog is missing."
+        )
 
     monkeypatch.setattr(ChoiceClient, "css", fail_choice_call)
     monkeypatch.setattr(ChoiceClient, "csd", fail_choice_call)
@@ -1170,11 +1291,16 @@ def test_livermore_api_missing_stock_catalog_does_not_call_choice_stock_api(tmp_
     assert response.status_code == 200
     result = response.json()["result"]
     assert "stock_candidates" not in result
-    assert any("Choice stock catalog is missing" in row["reason"] for row in result["unsupported_outputs"])
+    assert any(
+        "Choice stock catalog is missing" in row["reason"]
+        for row in result["unsupported_outputs"]
+    )
     get_settings.cache_clear()
 
 
-def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(tmp_path, monkeypatch) -> None:
+def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(
+    tmp_path, monkeypatch
+) -> None:
     catalog_path = tmp_path / "choice_stock_catalog.json"
     catalog_path.write_text(
         '{"catalog_version":"test_empty","vendor_name":"choice","generated_from":"unit_test","fields":[]}',
@@ -1186,7 +1312,9 @@ def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(tmp_path, monk
         start=date(2026, 2, 1),
         closes=[3200.0 + day * 5 for day in range(65)],
     )
-    client = _build_client(tmp_path, monkeypatch, choice_stock_catalog_file=catalog_path)
+    client = _build_client(
+        tmp_path, monkeypatch, choice_stock_catalog_file=catalog_path
+    )
 
     response = client.get("/ui/market-data/livermore")
 
@@ -1195,8 +1323,14 @@ def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(tmp_path, monk
     assert result["supported_outputs"] == ["market_gate"]
     assert "stock_candidates" not in result
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
-    assert "Choice stock catalog is incomplete" in unsupported_by_key["stock_candidates"]["reason"]
-    assert "Choice stock catalog is incomplete" in unsupported_by_key["mean_reversion_candidates"]["reason"]
+    assert (
+        "Choice stock catalog is incomplete"
+        in unsupported_by_key["stock_candidates"]["reason"]
+    )
+    assert (
+        "Choice stock catalog is incomplete"
+        in unsupported_by_key["mean_reversion_candidates"]["reason"]
+    )
     get_settings.cache_clear()
 
 
@@ -1218,22 +1352,32 @@ def test_livermore_strategy_default_execution_skips_inactive_exp3b_stock_candida
         "compute_sector_rank",
         lambda **_kwargs: SimpleNamespace(
             ready=True,
-            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+            payload={
+                "items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]
+            },
         ),
     )
 
     def fake_load_stock_candidate_snapshots(**_kwargs):
         nonlocal stock_snapshot_called
         stock_snapshot_called = True
-        raise AssertionError("inactive exp3b policy should skip stock snapshot loading in OVERHEAT")
+        raise AssertionError(
+            "inactive exp3b policy should skip stock snapshot loading in OVERHEAT"
+        )
 
     def fake_compute_stock_candidates(**_kwargs):
         nonlocal compute_called
         compute_called = True
-        raise AssertionError("inactive exp3b policy should skip stock candidate computation in OVERHEAT")
+        raise AssertionError(
+            "inactive exp3b policy should skip stock candidate computation in OVERHEAT"
+        )
 
-    monkeypatch.setattr(service, "_load_stock_candidate_snapshots", fake_load_stock_candidate_snapshots)
-    monkeypatch.setattr(service, "compute_stock_candidates", fake_compute_stock_candidates)
+    monkeypatch.setattr(
+        service, "_load_stock_candidate_snapshots", fake_load_stock_candidate_snapshots
+    )
+    monkeypatch.setattr(
+        service, "compute_stock_candidates", fake_compute_stock_candidates
+    )
     monkeypatch.setattr(
         service,
         "_load_factor_screen_rows",
@@ -1249,7 +1393,9 @@ def test_livermore_strategy_default_execution_skips_inactive_exp3b_stock_candida
         "_load_theme_breakout_snapshots",
         lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
     )
-    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
 
     outputs = service._load_choice_stock_outputs(
@@ -1321,7 +1467,9 @@ def test_livermore_strategy_default_execution_skips_inactive_exp3b_stock_candida
     assert "stock_candidate_policy" not in missing_inputs
 
 
-def test_livermore_strategy_loads_uptrend_momentum_candidates_when_stock_inputs_ready(monkeypatch) -> None:
+def test_livermore_strategy_loads_uptrend_momentum_candidates_when_stock_inputs_ready(
+    monkeypatch,
+) -> None:
     from backend.app.services import market_data_livermore_service as service
 
     called: list[str] = []
@@ -1333,9 +1481,19 @@ def test_livermore_strategy_loads_uptrend_momentum_candidates_when_stock_inputs_
         missing_request_items=[],
     )
 
-    monkeypatch.setattr(service, "load_choice_stock_materialization_coverage", lambda **_kwargs: ready_coverage)
-    monkeypatch.setattr(service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], []))
-    monkeypatch.setattr(service, "compute_sector_rank", lambda **_kwargs: SimpleNamespace(ready=False, payload={}))
+    monkeypatch.setattr(
+        service,
+        "load_choice_stock_materialization_coverage",
+        lambda **_kwargs: ready_coverage,
+    )
+    monkeypatch.setattr(
+        service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], [])
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(ready=False, payload={}),
+    )
     monkeypatch.setattr(
         service,
         "_load_trading_stock_snapshot_inputs",
@@ -1356,7 +1514,9 @@ def test_livermore_strategy_loads_uptrend_momentum_candidates_when_stock_inputs_
         "_load_theme_breakout_snapshots",
         lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
     )
-    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
 
     def fake_compute_uptrend(**kwargs):
@@ -1367,11 +1527,18 @@ def test_livermore_strategy_loads_uptrend_momentum_candidates_when_stock_inputs_
                 "formula_version": "rv_uptrend_momentum_candidates_v1",
                 "market_state": kwargs["market_state"],
                 "candidate_count": 1,
-                "items": [{"rank": 1, "stock_code": "000001.SZ", "stock_name": "Trend A"}],
+                "items": [
+                    {"rank": 1, "stock_code": "000001.SZ", "stock_name": "Trend A"}
+                ],
             }
         )
 
-    monkeypatch.setattr(service, "compute_uptrend_momentum_candidates", fake_compute_uptrend, raising=False)
+    monkeypatch.setattr(
+        service,
+        "compute_uptrend_momentum_candidates",
+        fake_compute_uptrend,
+        raising=False,
+    )
 
     outputs = service._load_choice_stock_outputs(
         duckdb_path="unused.duckdb",
@@ -1404,9 +1571,19 @@ def test_livermore_strategy_pauses_uptrend_momentum_in_overheat(monkeypatch) -> 
         missing_request_items=[],
     )
 
-    monkeypatch.setattr(service, "load_choice_stock_materialization_coverage", lambda **_kwargs: ready_coverage)
-    monkeypatch.setattr(service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], []))
-    monkeypatch.setattr(service, "compute_sector_rank", lambda **_kwargs: SimpleNamespace(ready=False, payload={}))
+    monkeypatch.setattr(
+        service,
+        "load_choice_stock_materialization_coverage",
+        lambda **_kwargs: ready_coverage,
+    )
+    monkeypatch.setattr(
+        service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], [])
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(ready=False, payload={}),
+    )
     monkeypatch.setattr(
         service,
         "_load_trading_stock_snapshot_inputs",
@@ -1433,12 +1610,16 @@ def test_livermore_strategy_pauses_uptrend_momentum_in_overheat(monkeypatch) -> 
         "_load_theme_breakout_snapshots",
         lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
     )
-    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
     monkeypatch.setattr(
         service,
         "_uptrend_momentum_snapshots_from_inputs",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("OVERHEAT should skip uptrend snapshots")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("OVERHEAT should skip uptrend snapshots")
+        ),
     )
 
     outputs = service._load_choice_stock_outputs(
@@ -1459,7 +1640,9 @@ def test_livermore_strategy_pauses_uptrend_momentum_in_overheat(monkeypatch) -> 
     assert "WARM or HOT" in unsupported_by_key["uptrend_momentum_candidates"]["reason"]
 
 
-def test_livermore_strategy_loads_fresh_trend_watchlist_in_overheat(monkeypatch) -> None:
+def test_livermore_strategy_loads_fresh_trend_watchlist_in_overheat(
+    monkeypatch,
+) -> None:
     from backend.app.services import market_data_livermore_service as service
 
     called: list[str] = []
@@ -1471,9 +1654,19 @@ def test_livermore_strategy_loads_fresh_trend_watchlist_in_overheat(monkeypatch)
         missing_request_items=[],
     )
 
-    monkeypatch.setattr(service, "load_choice_stock_materialization_coverage", lambda **_kwargs: ready_coverage)
-    monkeypatch.setattr(service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], []))
-    monkeypatch.setattr(service, "compute_sector_rank", lambda **_kwargs: SimpleNamespace(ready=False, payload={}))
+    monkeypatch.setattr(
+        service,
+        "load_choice_stock_materialization_coverage",
+        lambda **_kwargs: ready_coverage,
+    )
+    monkeypatch.setattr(
+        service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], [])
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(ready=False, payload={}),
+    )
     monkeypatch.setattr(
         service,
         "_load_trading_stock_snapshot_inputs",
@@ -1497,7 +1690,9 @@ def test_livermore_strategy_loads_fresh_trend_watchlist_in_overheat(monkeypatch)
         "_load_theme_breakout_snapshots",
         lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
     )
-    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
 
     def fake_compute_fresh_trend(**kwargs):
@@ -1509,11 +1704,18 @@ def test_livermore_strategy_loads_fresh_trend_watchlist_in_overheat(monkeypatch)
                 "market_state": kwargs["market_state"],
                 "candidate_count": 1,
                 "observation_only": True,
-                "items": [{"rank": 1, "stock_code": "300001.SZ", "stock_name": "Fresh A"}],
+                "items": [
+                    {"rank": 1, "stock_code": "300001.SZ", "stock_name": "Fresh A"}
+                ],
             }
         )
 
-    monkeypatch.setattr(service, "compute_fresh_trend_watchlist_candidates", fake_compute_fresh_trend, raising=False)
+    monkeypatch.setattr(
+        service,
+        "compute_fresh_trend_watchlist_candidates",
+        fake_compute_fresh_trend,
+        raising=False,
+    )
 
     outputs = service._load_choice_stock_outputs(
         duckdb_path="unused.duckdb",
@@ -1538,7 +1740,9 @@ def test_livermore_strategy_loads_fresh_trend_watchlist_in_overheat(monkeypatch)
     assert "fresh_trend_watchlist" not in {row["key"] for row in unsupported}
 
 
-def test_livermore_strategy_reuses_trading_snapshot_inputs_for_warm_stock_modules(monkeypatch) -> None:
+def test_livermore_strategy_reuses_trading_snapshot_inputs_for_warm_stock_modules(
+    monkeypatch,
+) -> None:
     from backend.app.services import market_data_livermore_service as service
 
     ready_coverage = SimpleNamespace(
@@ -1555,10 +1759,22 @@ def test_livermore_strategy_reuses_trading_snapshot_inputs_for_warm_stock_module
         load_count += 1
         return _sample_trading_snapshot_inputs(service)
 
-    monkeypatch.setattr(service, "load_choice_stock_materialization_coverage", lambda **_kwargs: ready_coverage)
-    monkeypatch.setattr(service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], []))
-    monkeypatch.setattr(service, "compute_sector_rank", lambda **_kwargs: SimpleNamespace(ready=False, payload={}))
-    monkeypatch.setattr(service, "_load_trading_stock_snapshot_inputs", counting_trading_inputs)
+    monkeypatch.setattr(
+        service,
+        "load_choice_stock_materialization_coverage",
+        lambda **_kwargs: ready_coverage,
+    )
+    monkeypatch.setattr(
+        service, "_load_sector_rank_inputs", lambda **_kwargs: ([], [], [], [])
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_sector_rank",
+        lambda **_kwargs: SimpleNamespace(ready=False, payload={}),
+    )
+    monkeypatch.setattr(
+        service, "_load_trading_stock_snapshot_inputs", counting_trading_inputs
+    )
     monkeypatch.setattr(
         service,
         "_load_factor_screen_rows",
@@ -1574,7 +1790,9 @@ def test_livermore_strategy_reuses_trading_snapshot_inputs_for_warm_stock_module
         "_load_theme_breakout_snapshots",
         lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
     )
-    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
 
     outputs = service._load_choice_stock_outputs(
@@ -1607,22 +1825,35 @@ def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candid
         "compute_sector_rank",
         lambda **_kwargs: SimpleNamespace(
             ready=True,
-            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+            payload={
+                "items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]
+            },
         ),
     )
     monkeypatch.setattr(
         service,
         "_load_stock_candidate_snapshots",
-        lambda **_kwargs: ([SimpleNamespace(limit_ratio=0.1)], ["choice_stock_daily_observation"], [], []),
+        lambda **_kwargs: (
+            [SimpleNamespace(limit_ratio=0.1)],
+            ["choice_stock_daily_observation"],
+            [],
+            [],
+        ),
     )
 
     def fake_compute_stock_candidates(**kwargs):
         seen_policies.append(kwargs["policy_name"])
         return SimpleNamespace(
-            payload={"selection_policy": kwargs["policy_name"], "candidate_count": 0, "items": []}
+            payload={
+                "selection_policy": kwargs["policy_name"],
+                "candidate_count": 0,
+                "items": [],
+            }
         )
 
-    monkeypatch.setattr(service, "compute_stock_candidates", fake_compute_stock_candidates)
+    monkeypatch.setattr(
+        service, "compute_stock_candidates", fake_compute_stock_candidates
+    )
     monkeypatch.setattr(
         service,
         "_load_factor_screen_rows",
@@ -1638,7 +1869,9 @@ def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candid
         "_load_theme_breakout_snapshots",
         lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
     )
-    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
 
     outputs = service._load_choice_stock_outputs(
@@ -1654,7 +1887,9 @@ def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candid
     assert outputs.stock_candidates_payload["selection_policy"] == "exp3b"
 
 
-def test_livermore_strategy_explicit_stock_candidate_policy_overrides_execution_default(monkeypatch) -> None:
+def test_livermore_strategy_explicit_stock_candidate_policy_overrides_execution_default(
+    monkeypatch,
+) -> None:
     from backend.app.services import market_data_livermore_service as service
 
     seen_policies: list[str] = []
@@ -1669,22 +1904,35 @@ def test_livermore_strategy_explicit_stock_candidate_policy_overrides_execution_
         "compute_sector_rank",
         lambda **_kwargs: SimpleNamespace(
             ready=True,
-            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+            payload={
+                "items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]
+            },
         ),
     )
     monkeypatch.setattr(
         service,
         "_load_stock_candidate_snapshots",
-        lambda **_kwargs: ([SimpleNamespace(limit_ratio=0.1)], ["choice_stock_daily_observation"], [], []),
+        lambda **_kwargs: (
+            [SimpleNamespace(limit_ratio=0.1)],
+            ["choice_stock_daily_observation"],
+            [],
+            [],
+        ),
     )
 
     def fake_compute_stock_candidates(**kwargs):
         seen_policies.append(kwargs["policy_name"])
         return SimpleNamespace(
-            payload={"selection_policy": kwargs["policy_name"], "candidate_count": 1, "items": []}
+            payload={
+                "selection_policy": kwargs["policy_name"],
+                "candidate_count": 1,
+                "items": [],
+            }
         )
 
-    monkeypatch.setattr(service, "compute_stock_candidates", fake_compute_stock_candidates)
+    monkeypatch.setattr(
+        service, "compute_stock_candidates", fake_compute_stock_candidates
+    )
     monkeypatch.setattr(
         service,
         "_load_factor_screen_rows",
@@ -1700,7 +1948,9 @@ def test_livermore_strategy_explicit_stock_candidate_policy_overrides_execution_
         "_load_theme_breakout_snapshots",
         lambda **_kwargs: ([], [], [], [], service._ThemeBreakoutEvidenceProvenance()),
     )
-    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
 
     outputs = service._load_choice_stock_outputs(
@@ -1717,7 +1967,9 @@ def test_livermore_strategy_explicit_stock_candidate_policy_overrides_execution_
     assert outputs.stock_candidates_payload["selection_policy"] == "default"
 
 
-def test_livermore_strategy_default_execution_pauses_theme_breakout_in_overheat(monkeypatch) -> None:
+def test_livermore_strategy_default_execution_pauses_theme_breakout_in_overheat(
+    monkeypatch,
+) -> None:
     from backend.app.services import market_data_livermore_service as service
 
     called = False
@@ -1732,14 +1984,20 @@ def test_livermore_strategy_default_execution_pauses_theme_breakout_in_overheat(
         "compute_sector_rank",
         lambda **_kwargs: SimpleNamespace(
             ready=True,
-            payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+            payload={
+                "items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]
+            },
         ),
     )
-    monkeypatch.setattr(service, "_load_stock_candidate_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_stock_candidate_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(
         service,
         "compute_stock_candidates",
-        lambda **kwargs: SimpleNamespace(payload={"selection_policy": kwargs["policy_name"], "items": []}),
+        lambda **kwargs: SimpleNamespace(
+            payload={"selection_policy": kwargs["policy_name"], "items": []}
+        ),
     )
     monkeypatch.setattr(
         service,
@@ -1754,16 +2012,30 @@ def test_livermore_strategy_default_execution_pauses_theme_breakout_in_overheat(
     monkeypatch.setattr(
         service,
         "_load_theme_breakout_snapshots",
-        lambda **_kwargs: ([SimpleNamespace(stock_code="000001.SZ")], ["choice_stock_daily_observation"], [], [], service._ThemeBreakoutEvidenceProvenance()),
+        lambda **_kwargs: (
+            [SimpleNamespace(stock_code="000001.SZ")],
+            ["choice_stock_daily_observation"],
+            [],
+            [],
+            service._ThemeBreakoutEvidenceProvenance(),
+        ),
     )
 
     def fake_compute_theme_breakout(**_kwargs):
         nonlocal called
         called = True
-        return SimpleNamespace(payload={"items": [{"theme_key": "concept:C1", "items": [{"stock_code": "000001.SZ"}]}]})
+        return SimpleNamespace(
+            payload={
+                "items": [
+                    {"theme_key": "concept:C1", "items": [{"stock_code": "000001.SZ"}]}
+                ]
+            }
+        )
 
     monkeypatch.setattr(service, "compute_theme_breakout", fake_compute_theme_breakout)
-    monkeypatch.setattr(service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], []))
+    monkeypatch.setattr(
+        service, "_load_risk_exit_snapshots", lambda **_kwargs: ([], [], [], [])
+    )
     monkeypatch.setattr(service, "_risk_exit_input_block_reason", lambda **_kwargs: "")
 
     outputs = service._load_choice_stock_outputs(
@@ -1782,7 +2054,10 @@ def test_livermore_strategy_default_execution_pauses_theme_breakout_in_overheat(
         stock_outputs=outputs,
     )
     assert "theme_breakout" not in supported
-    assert "OVERHEAT" in {row["key"]: row["reason"] for row in unsupported}["theme_breakout"]
+    assert (
+        "OVERHEAT"
+        in {row["key"]: row["reason"] for row in unsupported}["theme_breakout"]
+    )
 
 
 def test_livermore_api_returns_explicit_no_data_state(tmp_path, monkeypatch) -> None:
@@ -1796,7 +2071,9 @@ def test_livermore_api_returns_explicit_no_data_state(tmp_path, monkeypatch) -> 
     assert result["market_gate"]["state"] == "NO_DATA"
     assert result["supported_outputs"] == []
     assert any(row["key"] == "market_gate" for row in result["unsupported_outputs"])
-    assert any(row["code"] == "LIVERMORE_BROAD_INDEX_NO_DATA" for row in result["diagnostics"])
+    assert any(
+        row["code"] == "LIVERMORE_BROAD_INDEX_NO_DATA" for row in result["diagnostics"]
+    )
     readiness_by_key = {row["key"]: row for row in result["rule_readiness"]}
     assert "broad_index_history" in readiness_by_key["market_gate"]["missing_inputs"]
     get_settings.cache_clear()
@@ -1851,14 +2128,18 @@ def test_livermore_api_returns_explicit_stale_state_and_requested_date_resolutio
     assert result["market_gate"]["state"] == "STALE"
     condition_by_key = {row["key"]: row for row in result["market_gate"]["conditions"]}
     assert condition_by_key["csi300_close_gt_ma60"]["status"] == "stale"
-    assert any(row["code"] == "LIVERMORE_BROAD_INDEX_STALE" for row in result["diagnostics"])
+    assert any(
+        row["code"] == "LIVERMORE_BROAD_INDEX_STALE" for row in result["diagnostics"]
+    )
     get_settings.cache_clear()
 
 
 def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enrichment_tables(
     tmp_path, monkeypatch
 ) -> None:
-    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+    from backend.app.services.market_data_livermore_service import (
+        livermore_strategy_envelope,
+    )
 
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_macro_history(
@@ -1947,8 +2228,14 @@ def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enr
     assert hybrid["items"][0]["evidence"]["source_kinds"] == ["factor_screen"]
     assert "choice_stock_factor_snapshot" in envelope["result_meta"]["tables_used"]
     assert "choice_stock_universe" not in envelope["result_meta"]["tables_used"]
-    assert "choice_stock_sector_membership" not in envelope["result_meta"]["tables_used"]
-    assert result["supported_outputs"] == ["market_gate", "factor_screen_candidates", "hybrid_fusion"]
+    assert (
+        "choice_stock_sector_membership" not in envelope["result_meta"]["tables_used"]
+    )
+    assert result["supported_outputs"] == [
+        "market_gate",
+        "factor_screen_candidates",
+        "hybrid_fusion",
+    ]
     module_states = {row["key"]: row for row in result["module_states"]}
     assert set(module_states) == {
         "market_gate",
@@ -1973,7 +2260,10 @@ def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enr
     assert factor_state["coverage_ratio"] is None
     assert factor_state["coverage_threshold"] == 0.8
     assert factor_state["excludes_from_primary"] is True
-    assert any("active A-share universe denominator is unavailable" in reason for reason in factor_state["reasons"])
+    assert any(
+        "active A-share universe denominator is unavailable" in reason
+        for reason in factor_state["reasons"]
+    )
     hybrid_state = module_states["hybrid_fusion"]
     assert hybrid_state["state"] == "blocked"
     assert hybrid_state["render_mode"] == "evidence_only"
@@ -1984,14 +2274,21 @@ def test_livermore_api_factor_screen_uses_snapshot_date_and_degrades_without_enr
     assert hybrid_state["coverage_threshold"] == 0.8
     assert hybrid_state["excludes_from_primary"] is True
     assert any("factor" in reason.lower() for reason in hybrid_state["reasons"])
-    assert any("active A-share universe denominator is unavailable" in reason for reason in hybrid_state["reasons"])
+    assert any(
+        "active A-share universe denominator is unavailable" in reason
+        for reason in hybrid_state["reasons"]
+    )
     unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
     assert "factor_screen_candidates" not in unsupported_by_key
     assert "hybrid_fusion" not in unsupported_by_key
 
 
-def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_path, monkeypatch) -> None:
-    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.app.services.market_data_livermore_service import (
+        livermore_strategy_envelope,
+    )
 
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_macro_history(
@@ -2073,7 +2370,9 @@ def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_pat
         conn.executemany(
             "insert into choice_stock_sector_membership values (?, ?, ?, ?)",
             [("2026-04-29", row[1], "801080", "Electronics") for row in factor_rows]
-            + [("2026-05-08", row[1], "801999", "Future Sector") for row in factor_rows],
+            + [
+                ("2026-05-08", row[1], "801999", "Future Sector") for row in factor_rows
+            ],
         )
     finally:
         conn.close()
@@ -2104,7 +2403,9 @@ def test_livermore_api_factor_screen_reports_enrichment_tables_when_used(tmp_pat
 
 
 def test_livermore_sector_rank_loader_attaches_universe_stock_names(tmp_path) -> None:
-    from backend.app.services.market_data_livermore_service import _load_sector_rank_inputs
+    from backend.app.services.market_data_livermore_service import (
+        _load_sector_rank_inputs,
+    )
 
     duckdb_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -2182,8 +2483,12 @@ def test_livermore_sector_rank_loader_attaches_universe_stock_names(tmp_path) ->
     assert {"vv_d", "vv_s"} <= set(vendor_versions)
 
 
-def test_livermore_stock_candidate_loader_attaches_latest_factor_snapshot(tmp_path) -> None:
-    from backend.app.services.market_data_livermore_service import _load_stock_candidate_snapshots
+def test_livermore_stock_candidate_loader_attaches_latest_factor_snapshot(
+    tmp_path,
+) -> None:
+    from backend.app.services.market_data_livermore_service import (
+        _load_stock_candidate_snapshots,
+    )
 
     duckdb_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -2272,8 +2577,32 @@ def test_livermore_stock_candidate_loader_attaches_latest_factor_snapshot(tmp_pa
         conn.executemany(
             "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-05-07", "000001.SZ", 9.8, 10.1, 9.7, 10.0, 1.0, 11.0, 9.0, "sv_d", "vv_d"),
-                ("2026-05-08", "000001.SZ", 10.2, 10.6, 10.1, 10.5, 1.4, 11.0, 9.0, "sv_d", "vv_d"),
+                (
+                    "2026-05-07",
+                    "000001.SZ",
+                    9.8,
+                    10.1,
+                    9.7,
+                    10.0,
+                    1.0,
+                    11.0,
+                    9.0,
+                    "sv_d",
+                    "vv_d",
+                ),
+                (
+                    "2026-05-08",
+                    "000001.SZ",
+                    10.2,
+                    10.6,
+                    10.1,
+                    10.5,
+                    1.4,
+                    11.0,
+                    9.0,
+                    "sv_d",
+                    "vv_d",
+                ),
             ],
         )
         conn.execute(
@@ -2282,17 +2611,47 @@ def test_livermore_stock_candidate_loader_attaches_latest_factor_snapshot(tmp_pa
         conn.executemany(
             "insert into choice_stock_factor_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-05-07", "000001.SZ", 12.0, 1.4, 1.8, 0.16, 0.32, 0.08, 0.18, 0.24, 0.025, "AI"),
-                ("2026-05-09", "000001.SZ", 99.0, 9.9, 9.9, -0.10, -0.20, -0.30, -0.40, 0.90, 0.0, "AI"),
+                (
+                    "2026-05-07",
+                    "000001.SZ",
+                    12.0,
+                    1.4,
+                    1.8,
+                    0.16,
+                    0.32,
+                    0.08,
+                    0.18,
+                    0.24,
+                    0.025,
+                    "AI",
+                ),
+                (
+                    "2026-05-09",
+                    "000001.SZ",
+                    99.0,
+                    9.9,
+                    9.9,
+                    -0.10,
+                    -0.20,
+                    -0.30,
+                    -0.40,
+                    0.90,
+                    0.0,
+                    "AI",
+                ),
             ],
         )
     finally:
         conn.close()
 
-    snapshots, tables_used, _source_versions, _vendor_versions = _load_stock_candidate_snapshots(
-        duckdb_path=str(duckdb_path),
-        as_of_date="2026-05-08",
-        sector_rank_payload={"items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]},
+    snapshots, tables_used, _source_versions, _vendor_versions = (
+        _load_stock_candidate_snapshots(
+            duckdb_path=str(duckdb_path),
+            as_of_date="2026-05-08",
+            sector_rank_payload={
+                "items": [{"rank": 1, "sector_code": "801001", "sector_name": "AI"}]
+            },
+        )
     )
 
     assert "choice_stock_factor_snapshot" in tables_used
@@ -2316,7 +2675,9 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import livermore_signal_confluence_service as confluence_service
+    from backend.app.services import (
+        livermore_signal_confluence_service as confluence_service,
+    )
 
     calls: dict[str, object] = {}
     settings = _livermore_route_settings(tmp_path)
@@ -2458,7 +2819,10 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     }
 
     def fake_livermore_strategy_envelope_from_catalog(
-        *, duckdb_path: str, as_of_date: str | None = None, choice_stock_catalog_file: object = None
+        *,
+        duckdb_path: str,
+        as_of_date: str | None = None,
+        choice_stock_catalog_file: object = None,
     ) -> dict[str, object]:
         calls["livermore"] = {
             "duckdb_path": duckdb_path,
@@ -2525,7 +2889,9 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
         "livermore_strategy_envelope_from_catalog",
         fake_livermore_strategy_envelope_from_catalog,
     )
-    monkeypatch.setattr(confluence_service, "get_macro_environment_context", fake_get_macro_bond_linkage)
+    monkeypatch.setattr(
+        confluence_service, "get_macro_environment_context", fake_get_macro_bond_linkage
+    )
     monkeypatch.setattr(
         confluence_service,
         "load_macro_adversarial_signal_payload",
@@ -2536,11 +2902,16 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
         "build_livermore_signal_confluence",
         fake_build_livermore_signal_confluence,
     )
+
     def fake_replay_summary(**kwargs: object) -> dict[str, object]:
         calls["replay_summary_kwargs"] = kwargs
         return replay_summary
 
-    monkeypatch.setattr(confluence_service, "livermore_candidate_history_backtest_window_summary", fake_replay_summary)
+    monkeypatch.setattr(
+        confluence_service,
+        "livermore_candidate_history_backtest_window_summary",
+        fake_replay_summary,
+    )
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",
@@ -2550,11 +2921,20 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     assert response.status_code == 200
     payload = response.json()
     assert payload["result_meta"]["basis"] == "analytical"
-    assert payload["result_meta"]["result_kind"] == "market_data.livermore.signal_confluence"
+    assert (
+        payload["result_meta"]["result_kind"]
+        == "market_data.livermore.signal_confluence"
+    )
     assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result_meta"]["fallback_mode"] == "latest_snapshot"
-    assert payload["result_meta"]["source_version"] == "sv_livermore__sv_macro__sv_adversarial"
-    assert payload["result_meta"]["vendor_version"] == "vv_livermore__vv_macro__vv_adversarial"
+    assert (
+        payload["result_meta"]["source_version"]
+        == "sv_livermore__sv_macro__sv_adversarial"
+    )
+    assert (
+        payload["result_meta"]["vendor_version"]
+        == "vv_livermore__vv_macro__vv_adversarial"
+    )
     assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert payload["result_meta"]["filters_applied"] == {
         "requested_as_of_date": "2026-04-10",
@@ -2568,11 +2948,25 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     assert payload["result_meta"]["evidence_rows"] == 112
     assert payload["result"]["as_of_date"] == confluence_payload["as_of_date"]
     assert payload["result"]["macro_context"] == confluence_payload["macro_context"]
-    assert payload["result"]["adversarial_context"] == confluence_payload["adversarial_context"]
-    assert payload["result"]["strategy_context"] == confluence_payload["strategy_context"]
-    assert payload["result"]["position_size_hint"] == confluence_payload["position_size_hint"]
-    assert payload["result"]["entry_observations"] == confluence_payload["entry_observations"]
-    assert payload["result"]["exit_observations"] == confluence_payload["exit_observations"]
+    assert (
+        payload["result"]["adversarial_context"]
+        == confluence_payload["adversarial_context"]
+    )
+    assert (
+        payload["result"]["strategy_context"] == confluence_payload["strategy_context"]
+    )
+    assert (
+        payload["result"]["position_size_hint"]
+        == confluence_payload["position_size_hint"]
+    )
+    assert (
+        payload["result"]["entry_observations"]
+        == confluence_payload["entry_observations"]
+    )
+    assert (
+        payload["result"]["exit_observations"]
+        == confluence_payload["exit_observations"]
+    )
     assert payload["result"]["diagnostics"] == confluence_payload["diagnostics"]
     assert payload["result"]["disclaimer"] == confluence_payload["disclaimer"]
     assert payload["result"]["closed_loop_state"] == {
@@ -2634,7 +3028,9 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import livermore_signal_confluence_service as confluence_service
+    from backend.app.services import (
+        livermore_signal_confluence_service as confluence_service,
+    )
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -2695,8 +3091,16 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(
+        confluence_service,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: livermore_envelope,
+    )
+    monkeypatch.setattr(
+        confluence_service,
+        "get_macro_environment_context",
+        lambda _report_date: macro_envelope,
+    )
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2724,7 +3128,9 @@ def test_livermore_signal_confluence_api_smoke_loads_real_adversarial_overlay_an
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import livermore_signal_confluence_service as confluence_service
+    from backend.app.services import (
+        livermore_signal_confluence_service as confluence_service,
+    )
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -2798,8 +3204,16 @@ TL,2026-04-30,short,0.35,2,crowding block,false
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(
+        confluence_service,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: livermore_envelope,
+    )
+    monkeypatch.setattr(
+        confluence_service,
+        "get_macro_environment_context",
+        lambda _report_date: macro_envelope,
+    )
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2816,12 +3230,17 @@ TL,2026-04-30,short,0.35,2,crowding block,false
     assert result["adversarial_context"]["blocks_new_entry_observations"] is True
     assert result["entry_observations"][0]["action"] == "observe_only"
     closed_loop_state = result["closed_loop_state"]
-    assert {"entry_gate", "exit_gate", "replay_status", "lineage_status"} <= set(closed_loop_state)
+    assert {"entry_gate", "exit_gate", "replay_status", "lineage_status"} <= set(
+        closed_loop_state
+    )
     assert closed_loop_state["entry_gate"] == "blocked"
     assert closed_loop_state["exit_gate"] == "missing"
     assert closed_loop_state["replay_status"]["window_status"] == "valid"
     assert closed_loop_state["replay_status"]["maturity_status"] == "insufficient"
-    assert closed_loop_state["replay_status"]["has_decision_usable_completed_stats"] is False
+    assert (
+        closed_loop_state["replay_status"]["has_decision_usable_completed_stats"]
+        is False
+    )
     assert closed_loop_state["replay_status"]["completed_dates"] == 1
     assert closed_loop_state["replay_status"]["completed_candidate_rows"] == 1
     assert closed_loop_state["lineage_status"] == "complete"
@@ -2832,8 +3251,14 @@ TL,2026-04-30,short,0.35,2,crowding block,false
     assert replay_evidence["matched_entry_count"] == 1
     assert replay_evidence["sample_items"][0]["stock_code"] == "000001.SZ"
     result_meta = payload["result_meta"]
-    assert result_meta["source_version"] == "sv_livermore__sv_macro__macro_toolkit.final_signal.csv"
-    assert result_meta["vendor_version"] == "vv_livermore__vv_macro__macro_toolkit.local_csv"
+    assert (
+        result_meta["source_version"]
+        == "sv_livermore__sv_macro__macro_toolkit.final_signal.csv"
+    )
+    assert (
+        result_meta["vendor_version"]
+        == "vv_livermore__vv_macro__macro_toolkit.local_csv"
+    )
     assert result_meta["tables_used"] == [
         "fact_choice_macro_daily",
         "macro_bond_linkage",
@@ -2848,7 +3273,9 @@ def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampl
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import livermore_signal_confluence_service as confluence_service
+    from backend.app.services import (
+        livermore_signal_confluence_service as confluence_service,
+    )
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -2911,8 +3338,16 @@ def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampl
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(
+        confluence_service,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: livermore_envelope,
+    )
+    monkeypatch.setattr(
+        confluence_service,
+        "get_macro_environment_context",
+        lambda _report_date: macro_envelope,
+    )
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -2935,7 +3370,9 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import livermore_signal_confluence_service as confluence_service
+    from backend.app.services import (
+        livermore_signal_confluence_service as confluence_service,
+    )
     from backend.app.services import macro_adversarial_signal_service
 
     output_dir = tmp_path / "macro_output"
@@ -2984,8 +3421,16 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(
+        confluence_service,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: livermore_envelope,
+    )
+    monkeypatch.setattr(
+        confluence_service,
+        "get_macro_environment_context",
+        lambda _report_date: macro_envelope,
+    )
     monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
@@ -3000,11 +3445,16 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
     assert result["adversarial_context"]["risk_gate"] == "missing"
     assert result["entry_observations"][0]["action"] == "observe_entry_setup"
     closed_loop_state = result["closed_loop_state"]
-    assert {"entry_gate", "exit_gate", "replay_status", "lineage_status"} <= set(closed_loop_state)
+    assert {"entry_gate", "exit_gate", "replay_status", "lineage_status"} <= set(
+        closed_loop_state
+    )
     assert closed_loop_state["entry_gate"] == "open"
     assert closed_loop_state["exit_gate"] == "missing"
     assert closed_loop_state["replay_status"]["window_status"] == "unsupported"
-    assert closed_loop_state["replay_status"]["has_decision_usable_completed_stats"] is False
+    assert (
+        closed_loop_state["replay_status"]["has_decision_usable_completed_stats"]
+        is False
+    )
     assert closed_loop_state["lineage_status"] == "missing"
     assert result["replay_evidence"] == {
         "status": "missing",
@@ -3019,12 +3469,17 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
     assert result_meta["quality_flag"] == "ok"
     assert result_meta["vendor_status"] == "ok"
     assert result_meta["fallback_mode"] == "none"
-    assert result_meta["tables_used"] == ["fact_choice_macro_daily", "macro_bond_linkage"]
+    assert result_meta["tables_used"] == [
+        "fact_choice_macro_daily",
+        "macro_bond_linkage",
+    ]
     assert result_meta["evidence_rows"] == 5
     get_settings.cache_clear()
 
 
-def test_livermore_signal_confluence_api_rejects_invalid_as_of_date(tmp_path, monkeypatch) -> None:
+def test_livermore_signal_confluence_api_rejects_invalid_as_of_date(
+    tmp_path, monkeypatch
+) -> None:
     client = _build_client(tmp_path, monkeypatch)
 
     response = client.get(
@@ -3037,10 +3492,14 @@ def test_livermore_signal_confluence_api_rejects_invalid_as_of_date(tmp_path, mo
     get_settings.cache_clear()
 
 
-def test_livermore_signal_confluence_api_preserves_stale_lineage(tmp_path, monkeypatch) -> None:
+def test_livermore_signal_confluence_api_preserves_stale_lineage(
+    tmp_path, monkeypatch
+) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
-    from backend.app.services import livermore_signal_confluence_service as confluence_service
+    from backend.app.services import (
+        livermore_signal_confluence_service as confluence_service,
+    )
 
     settings = _livermore_route_settings(tmp_path)
     livermore_envelope = {
@@ -3076,8 +3535,16 @@ def test_livermore_signal_confluence_api_preserves_stale_lineage(tmp_path, monke
     }
 
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(confluence_service, "livermore_strategy_envelope_from_catalog", lambda **_kwargs: livermore_envelope)
-    monkeypatch.setattr(confluence_service, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(
+        confluence_service,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: livermore_envelope,
+    )
+    monkeypatch.setattr(
+        confluence_service,
+        "get_macro_environment_context",
+        lambda _report_date: macro_envelope,
+    )
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",
@@ -3092,7 +3559,9 @@ def test_livermore_signal_confluence_api_preserves_stale_lineage(tmp_path, monke
     get_settings.cache_clear()
 
 
-def test_livermore_api_reads_gate_supplement_table_for_breadth_and_limit_up(tmp_path, monkeypatch) -> None:
+def test_livermore_api_reads_gate_supplement_table_for_breadth_and_limit_up(
+    tmp_path, monkeypatch
+) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_macro_history(
         str(duckdb_path),
@@ -3136,7 +3605,9 @@ def test_livermore_api_reads_gate_supplement_table_for_breadth_and_limit_up(tmp_
     diag_codes = {row["code"] for row in result["diagnostics"]}
     assert "LIVERMORE_BREADTH_MISSING" not in diag_codes
     assert "LIVERMORE_LIMIT_UP_QUALITY_MISSING" not in diag_codes
-    assert "fact_livermore_gate_supplement_daily" in payload["result_meta"]["tables_used"]
+    assert (
+        "fact_livermore_gate_supplement_daily" in payload["result_meta"]["tables_used"]
+    )
     get_settings.cache_clear()
 
 
@@ -3144,8 +3615,12 @@ def test_livermore_gate_supplement_task_writes_rows(tmp_path, monkeypatch) -> No
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
-    from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
-    from backend.app.tasks.livermore_gate_supplement import materialize_livermore_gate_supplement_daily
+    from backend.app.repositories.duckdb_migrations import (
+        apply_pending_migrations_on_connection,
+    )
+    from backend.app.tasks.livermore_gate_supplement import (
+        materialize_livermore_gate_supplement_daily,
+    )
 
     db = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(db), read_only=False)
@@ -3155,7 +3630,11 @@ def test_livermore_gate_supplement_task_writes_rows(tmp_path, monkeypatch) -> No
     out = materialize_livermore_gate_supplement_daily.fn(
         duckdb_path=str(db),
         rows=[
-            {"trade_date": "2026-04-01", "breadth_5d": 0.5, "limit_up_quality_ok": False},
+            {
+                "trade_date": "2026-04-01",
+                "breadth_5d": 0.5,
+                "limit_up_quality_ok": False,
+            },
         ],
         run_id="run-test-1",
     )
@@ -3182,7 +3661,9 @@ def test_livermore_gate_supplement_refresh_returns_replay_metadata_without_resha
     from backend.app.api.routes import market_data_livermore as route_module
 
     settings = get_settings()
-    UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn).grant_scope(
+    UserScopeRepository(
+        settings.governance_sql_dsn or settings.postgres_dsn
+    ).grant_scope(
         user_id="*",
         role=None,
         resource="market_data.livermore_gate_supplement",
@@ -3221,7 +3702,9 @@ def test_livermore_gate_supplement_refresh_returns_replay_metadata_without_resha
     payload = response.json()
     assert payload["status"] == "completed"
     assert payload["computed_rows"] == 7
-    assert payload["materialize_result"]["run_id"] == "livermore-gate-supplement-shape-run"
+    assert (
+        payload["materialize_result"]["run_id"] == "livermore-gate-supplement-shape-run"
+    )
     assert payload["idempotency_key"] == "livermore-route-shape"
     assert payload["idempotency_replay"] is False
     assert "run_id" not in payload
@@ -3251,7 +3734,8 @@ def test_livermore_position_snapshot_endpoint_dispatches_async_materialization(
     queued_messages: list[dict[str, object]] = []
     invalidations: list[bool] = []
     monkeypatch.setattr(
-        "backend.app.api.routes.market_data_livermore._invalidate_livermore_response_cache", lambda: invalidations.append(True)
+        "backend.app.api.routes.market_data_livermore._invalidate_livermore_response_cache",
+        lambda: invalidations.append(True),
     )
     monkeypatch.setattr(
         task_mod.materialize_livermore_position_snapshot,
@@ -3315,7 +3799,8 @@ def test_livermore_position_snapshot_manual_endpoint_dispatches_async_materializ
     queued_messages: list[dict[str, object]] = []
     invalidations: list[bool] = []
     monkeypatch.setattr(
-        "backend.app.api.routes.market_data_livermore._invalidate_livermore_response_cache", lambda: invalidations.append(True)
+        "backend.app.api.routes.market_data_livermore._invalidate_livermore_response_cache",
+        lambda: invalidations.append(True),
     )
     monkeypatch.setattr(
         task_mod.materialize_livermore_position_snapshot_rows,
@@ -3352,7 +3837,9 @@ def test_livermore_position_snapshot_manual_endpoint_dispatches_async_materializ
     get_settings.cache_clear()
 
 
-def test_livermore_read_endpoint_caches_identical_requests(tmp_path, monkeypatch) -> None:
+def test_livermore_read_endpoint_caches_identical_requests(
+    tmp_path, monkeypatch
+) -> None:
     client = _build_client(tmp_path, monkeypatch)
     calls = {"count": 0}
 
@@ -3387,7 +3874,9 @@ def test_livermore_read_endpoint_caches_identical_requests(tmp_path, monkeypatch
     assert calls["count"] == 1
 
 
-def test_livermore_read_endpoint_does_not_share_cache_across_params(tmp_path, monkeypatch) -> None:
+def test_livermore_read_endpoint_does_not_share_cache_across_params(
+    tmp_path, monkeypatch
+) -> None:
     client = _build_client(tmp_path, monkeypatch)
     calls: list[str] = []
 
@@ -3423,7 +3912,9 @@ def test_livermore_read_endpoint_does_not_share_cache_across_params(tmp_path, mo
     assert calls == ["000001.SZ", "000002.SZ"]
 
 
-def test_livermore_materialize_endpoints_invalidate_read_cache(tmp_path, monkeypatch) -> None:
+def test_livermore_materialize_endpoints_invalidate_read_cache(
+    tmp_path, monkeypatch
+) -> None:
     from backend.app.api.response_cache import market_home_response_cache
     from backend.app.repositories.user_scope_repo import UserScopeRepository
 
@@ -3450,7 +3941,9 @@ def test_livermore_materialize_endpoints_invalidate_read_cache(tmp_path, monkeyp
         lambda **_kwargs: {"status": "completed", "computed_rows": 1},
     )
     settings = get_settings()
-    UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn).grant_scope(
+    UserScopeRepository(
+        settings.governance_sql_dsn or settings.postgres_dsn
+    ).grant_scope(
         user_id="*",
         role=None,
         resource="market_data.livermore_gate_supplement",
@@ -3475,3 +3968,75 @@ def test_livermore_materialize_endpoints_invalidate_read_cache(tmp_path, monkeyp
     assert third.status_code == 200
     assert calls["count"] == 2
     market_home_response_cache.invalidate()
+
+
+def test_theme_overlay_fingerprint_breaks_all_strategy_outer_cache_keys() -> None:
+    from backend.app.api.routes import market_data_livermore as route
+
+    common = {
+        "duckdb_path": "fixture.duckdb",
+        "catalog_file": "choice-stock.json",
+        "as_of_date": "2026-07-08",
+    }
+    for builder, extra in (
+        (route._livermore_strategy_cache_key, {}),
+        (
+            route._stock_analysis_workbench_cache_key,
+            {"include": None, "sector_window_days": 20, "top_k": 10},
+        ),
+        (route._livermore_signal_confluence_cache_key, {}),
+    ):
+        first = builder(**common, **extra, theme_overlay_fingerprint="overlay-a")
+        second = builder(**common, **extra, theme_overlay_fingerprint="overlay-b")
+        assert first != second
+
+
+def test_theme_overlay_reader_construction_does_not_create_missing_jsonl_paths(
+    tmp_path,
+) -> None:
+    from backend.app.api.routes import market_data_livermore as route
+
+    governance_path = tmp_path / "missing-governance"
+    archive_path = tmp_path / "missing-archive"
+    reader = route._theme_overlay_reader_from_settings(
+        SimpleNamespace(
+            governance_path=governance_path,
+            local_archive_path=archive_path,
+            governance_backend="jsonl",
+            governance_sql_dsn="",
+        )
+    )
+
+    assert reader is not None
+    reader.fingerprint()
+    assert not governance_path.exists()
+    assert not archive_path.exists()
+
+
+def test_theme_overlay_reader_sql_authority_does_not_create_governance_tables(
+    tmp_path,
+) -> None:
+    from backend.app.api.routes import market_data_livermore as route
+
+    sqlite_path = tmp_path / "governance-authority.db"
+    with sqlite3.connect(sqlite_path) as conn:
+        conn.execute("create table sentinel (value integer)")
+    reader = route._theme_overlay_reader_from_settings(
+        SimpleNamespace(
+            governance_path=tmp_path / "unused-jsonl",
+            local_archive_path=tmp_path / "missing-archive",
+            governance_backend="sql-authority",
+            governance_sql_dsn=f"sqlite:///{sqlite_path.as_posix()}",
+        )
+    )
+
+    assert reader is not None
+    reader.fingerprint()
+    with sqlite3.connect(sqlite_path) as conn:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "select name from sqlite_master where type = 'table'"
+            ).fetchall()
+        }
+    assert tables == {"sentinel"}

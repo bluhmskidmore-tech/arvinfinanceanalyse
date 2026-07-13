@@ -120,13 +120,15 @@ export function StockAnalysisRiskExitSection({
   unsupportedOutput?: LivermoreUnsupportedOutput | null;
   onOpenRiskDetail: (row: StockRiskExitRow) => void;
 }) {
+  const blockedSummary = unsupportedOutput ? riskExitBlockedSummary(unsupportedOutput.reason) : null;
+
   return (
     <section className={SA_FIRST_CARD} data-testid="stock-analysis-risk-section">
       <div className={SA_SECTION_HEAD}>
         <div className="stock-analysis-page__min-w-0">
           <h2 className={SA_CARD_TITLE}>风险退出观察</h2>
           <p className={SA_SECTION_DESC}>
-            {riskTriggeredCount} 触发 · {riskWatchCount} 观察
+            {blockedSummary ? `风险退出不可用 · ${blockedSummary}` : `${riskTriggeredCount} 触发 · ${riskWatchCount} 观察`}
           </p>
         </div>
       </div>
@@ -135,21 +137,31 @@ export function StockAnalysisRiskExitSection({
         aria-label="风险退出统计"
         data-testid="stock-analysis-risk-strip"
       >
-        <div data-tone={riskTriggeredCount > 0 ? "negative" : "positive"}>
-          <FireOutlined aria-hidden="true" />
-          <span>触发</span>
-          <strong>{riskTriggeredCount}</strong>
-        </div>
-        <div data-tone={riskWatchCount > 0 ? "warning" : "positive"}>
-          <LineChartOutlined aria-hidden="true" />
-          <span>观察</span>
-          <strong>{riskWatchCount}</strong>
-        </div>
-        <div data-tone={unsupportedOutput ? "warning" : "positive"}>
-          <DatabaseOutlined aria-hidden="true" />
-          <span>供数</span>
-          <strong>{unsupportedOutput ? "待补" : "接通"}</strong>
-        </div>
+        {blockedSummary ? (
+          <div data-tone="negative">
+            <DatabaseOutlined aria-hidden="true" />
+            <span>风险退出</span>
+            <strong>阻断 · {blockedSummary}</strong>
+          </div>
+        ) : (
+          <>
+            <div data-tone={riskTriggeredCount > 0 ? "negative" : "positive"}>
+              <FireOutlined aria-hidden="true" />
+              <span>触发</span>
+              <strong>{riskTriggeredCount}</strong>
+            </div>
+            <div data-tone={riskWatchCount > 0 ? "warning" : "positive"}>
+              <LineChartOutlined aria-hidden="true" />
+              <span>观察</span>
+              <strong>{riskWatchCount}</strong>
+            </div>
+            <div data-tone="positive">
+              <DatabaseOutlined aria-hidden="true" />
+              <span>供数</span>
+              <strong>接通</strong>
+            </div>
+          </>
+        )}
       </div>
       {confluenceError ? (
         <p className="stock-analysis-page__rail-error-copy">联动观察暂不可用。</p>
@@ -161,8 +173,8 @@ export function StockAnalysisRiskExitSection({
               <DatabaseOutlined />
             </span>
             <span>
-              <strong>风险退出待补</strong>
-              <p>{riskExitBlockedSummary(unsupportedOutput.reason)}</p>
+              <strong>风险退出不可用</strong>
+              <p>{blockedSummary}</p>
             </span>
           </div>
           {unsupportedOutput.reason ? (

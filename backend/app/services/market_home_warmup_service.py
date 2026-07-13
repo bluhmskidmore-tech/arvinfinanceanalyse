@@ -30,7 +30,7 @@ def warm_market_home_cache_if_configured(settings: object) -> bool:
     duckdb_path = str(getattr(settings, "duckdb_path", "") or "")
     thread = threading.Thread(
         target=_warm_market_home_cache_quietly,
-        kwargs={"duckdb_path": duckdb_path},
+        kwargs={"duckdb_path": duckdb_path, "settings": settings},
         daemon=True,
         name="moss-market-home-warmup",
     )
@@ -38,14 +38,14 @@ def warm_market_home_cache_if_configured(settings: object) -> bool:
     return True
 
 
-def _warm_market_home_cache_quietly(*, duckdb_path: str) -> None:
+def _warm_market_home_cache_quietly(*, duckdb_path: str, settings: object | None = None) -> None:
     try:
-        warm_market_home_read_caches(duckdb_path=duckdb_path)
+        warm_market_home_read_caches(duckdb_path=duckdb_path, settings=settings)
     except Exception:
         logger.exception("market_home_prewarm_failed")
 
 
-def warm_market_home_read_caches(*, duckdb_path: str) -> None:
+def warm_market_home_read_caches(*, duckdb_path: str, settings: object | None = None) -> None:
     """Populate the market-home TTL cache sequentially.
 
     Sequential DuckDB reads avoid Windows file-lock contention when several
@@ -56,6 +56,7 @@ def warm_market_home_read_caches(*, duckdb_path: str) -> None:
         _build_macro_toolkit_analysis,
         _build_macro_toolkit_strategy_summaries,
     )
+    from backend.app.api.routes.market_data_livermore import _cached_stock_analysis_workbench
 
     steps: list[tuple[str, str, Any]] = [
         (
@@ -86,7 +87,26 @@ def warm_market_home_read_caches(*, duckdb_path: str) -> None:
     ]
 
     total_started = time.perf_counter()
-    logger.info("market_home_prewarm_start duckdb=%s steps=%d", duckdb_path, len(steps))
+    step_count = len(steps) + (1 if settings is not None else 0)
+    logger.info("market_home_prewarm_start duckdb=%s steps=%d", duckdb_path, step_count)
+    if settings is not None:
+        stock_started = time.perf_counter()
+        try:
+            _cached_stock_analysis_workbench(
+                settings=settings,
+                as_of_date=None,
+                include=None,
+                sector_window_days=20,
+                top_k=3,
+            )
+        except Exception:
+            logger.exception("market_home_prewarm_step_failed step=stock_analysis_workbench")
+        else:
+            logger.info(
+                "market_home_prewarm_step ok step=stock_analysis_workbench ms=%d",
+                int((time.perf_counter() - stock_started) * 1000),
+            )
+
     for step_name, cache_key, builder in steps:
         step_started = time.perf_counter()
         try:

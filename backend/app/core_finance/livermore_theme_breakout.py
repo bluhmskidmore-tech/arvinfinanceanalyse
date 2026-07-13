@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import cast
 
 EPS = 1e-12
-FORMULA_VERSION = "rv_livermore_theme_breakout_real_concept_v3"
+FORMULA_VERSION = "rv_livermore_theme_breakout_real_concept_v4"
 STRONG_PCTCHANGE_THRESHOLD = 5.0
 MIN_STRONG_STOCK_COUNT = 3
 MIN_LIMIT_STOCK_COUNT = 2
@@ -37,6 +37,7 @@ class ThemeBreakoutSnapshot:
     movement_event_count: int = 0
     latest_event_title: str = ""
     latest_event_time: str = ""
+    concept_source_kind: str = "real_concept"
 
 
 @dataclass(frozen=True)
@@ -88,7 +89,7 @@ def compute_theme_breakout(
     snapshots: list[ThemeBreakoutSnapshot],
 ) -> ThemeBreakoutResult:
     evaluated_rows: list[_EvaluatedThemeRow] = []
-    real_groups: dict[tuple[str, str], list[dict[str, object]]] = {}
+    real_groups: dict[tuple[str, str, str], list[dict[str, object]]] = {}
     for snapshot in snapshots:
         concept_code = snapshot.concept_code.strip()
         concept_name = snapshot.concept_name.strip()
@@ -97,15 +98,19 @@ def compute_theme_breakout(
         stock_row = _stock_row(None, snapshot)
         if stock_row is None:
             continue
-        real_groups.setdefault((concept_code or concept_name, concept_name or concept_code), []).append(stock_row)
+        concept_source_kind = snapshot.concept_source_kind.strip() or "real_concept"
+        real_groups.setdefault(
+            (concept_source_kind, concept_code or concept_name, concept_name or concept_code),
+            [],
+        ).append(stock_row)
 
     if real_groups:
-        for (concept_code, concept_name), stock_rows in real_groups.items():
+        for (source_kind, concept_code, concept_name), stock_rows in real_groups.items():
             row = _evaluate_theme_row(
                 as_of_date=as_of_date,
                 theme_key=f"concept:{concept_code}",
                 theme_name=concept_name,
-                source_kind="real_concept",
+                source_kind=source_kind,
                 stock_rows=stock_rows,
             )
             if row is not None:
@@ -131,9 +136,9 @@ def compute_theme_breakout(
     ranked = [{"rank": index, **row} for index, row in enumerate(ordered, start=1)]
     review_items = [
         _review_row(row)
-        for row in sorted((item for item in evaluated_rows if not item.passed), key=lambda item: _theme_sort_key(item.row))[
-            :MAX_REVIEW_ITEMS
-        ]
+        for row in sorted(
+            (item for item in evaluated_rows if not item.passed), key=lambda item: _theme_sort_key(item.row)
+        )[:MAX_REVIEW_ITEMS]
     ]
     return ThemeBreakoutResult(
         payload={
@@ -198,6 +203,7 @@ def _stock_row(
         "strong": strong,
         "concept_code": snapshot.concept_code,
         "concept_name": snapshot.concept_name,
+        "concept_source_kind": "proxy" if definition is not None else snapshot.concept_source_kind,
         "movement_event_count": max(0, int(snapshot.movement_event_count)),
         "latest_event_title": snapshot.latest_event_title,
         "latest_event_time": snapshot.latest_event_time,
@@ -223,9 +229,7 @@ def _evaluate_theme_row(
     parent_sector_rank = min(_sector_rank_sort_value(row["sector_rank"]) for row in stock_rows)
     movement_event_count = sum(cast(int, row["movement_event_count"]) for row in stock_rows)
     movement_rows = [
-        row
-        for row in stock_rows
-        if cast(int, row["movement_event_count"]) > 0 and str(row["latest_event_time"])
+        row for row in stock_rows if cast(int, row["movement_event_count"]) > 0 and str(row["latest_event_time"])
     ]
     latest_event = max(movement_rows, key=lambda row: str(row["latest_event_time"])) if movement_rows else None
 
@@ -295,6 +299,12 @@ def _theme_reason(
             f"{limit_stock_count} limit-up rows, {movement_event_count} movement events, "
             f"parent sector rank {parent_sector_rank}, leaders {leader_codes}."
         )
+    if source_kind == "tushare_current_overlay":
+        return (
+            f"Observation-only current overlay cluster: {strong_stock_count} strong rows, "
+            f"{limit_stock_count} limit-up rows, {movement_event_count} movement events, "
+            f"parent sector rank {parent_sector_rank}, leaders {leader_codes}."
+        )
     return (
         f"Observation-only proxy cluster: {strong_stock_count} strong rows, "
         f"{limit_stock_count} limit-up rows, parent sector rank {parent_sector_rank}, "
@@ -309,8 +319,7 @@ def _review_row(evaluated: _EvaluatedThemeRow) -> dict[str, object]:
         "failed_gates": failed_gate_codes,
         "failed_gate_codes": failed_gate_codes,
         "reason": (
-            f"Observation-only near-miss: failed gates {', '.join(failed_gate_codes)}. "
-            f"{evaluated.row['reason']}"
+            f"Observation-only near-miss: failed gates {', '.join(failed_gate_codes)}. {evaluated.row['reason']}"
         ),
     }
 

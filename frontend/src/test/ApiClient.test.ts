@@ -2779,6 +2779,32 @@ describe("createApiClient", () => {
     );
   });
 
+  it("passes the historical evaluation cutoff to candidate-history", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({}),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getLivermoreCandidateHistory({
+      stockCode: "000001.SZ",
+      snapshotTo: "2026-04-29",
+      evaluationAsOfDate: "2026-04-29",
+      limit: 10,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/livermore/candidate-history?stock_code=000001.SZ&snapshot_to=2026-04-29&evaluation_as_of_date=2026-04-29&limit=10",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch macro foundation from the formal market-data catalog", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -4779,6 +4805,10 @@ describe("createApiClient", () => {
     expect(envelope.result.modules.main.status).toBe("ready");
     expect(envelope.result.modules.signal_confluence?.status).toBe("deferred");
     expect(envelope.result.links.stock_detail).toBe("/ui/market-data/livermore/stock-detail");
+    expect(envelope.result.first_screen.data_gaps).toEqual([
+      expect.objectContaining({ input_family: "breadth", blocks_review: true }),
+      expect.objectContaining({ input_family: "limit_up_quality", blocks_review: false }),
+    ]);
   });
 
   it("uses real mode to fetch the stock-analysis workbench with bounded include options", async () => {
@@ -4862,6 +4892,7 @@ describe("createApiClient", () => {
           issues: [],
           links: {
             stock_detail: "/ui/market-data/livermore/stock-detail",
+            kline_analysis: "/ui/market-data/stock-analysis/kline-analysis",
             candidate_history: "/ui/market-data/livermore/candidate-history",
             sector_rank_series: "/ui/market-data/livermore/sector-rank-series",
             strategy_score: "/ui/market-data/livermore/strategy-score",

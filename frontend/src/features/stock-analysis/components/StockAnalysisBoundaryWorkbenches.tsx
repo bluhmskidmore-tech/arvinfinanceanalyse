@@ -95,7 +95,15 @@ export function StockAnalysisLoadingWorkbench() {
   );
 }
 
-export function StockAnalysisErrorWorkbench({ message }: { message: string }) {
+export function StockAnalysisErrorWorkbench({
+  message,
+  onRetry,
+  isRetrying = false,
+}: {
+  message: string;
+  onRetry?: () => void;
+  isRetrying?: boolean;
+}) {
   return (
     <section
       className="flex flex-col gap-8 p-8 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-2xl"
@@ -115,6 +123,16 @@ export function StockAnalysisErrorWorkbench({ message }: { message: string }) {
             {"\u80a1\u7968\u5206\u6790\u6682\u4e0d\u53ef\u7528"}
           </h2>
           <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1">{message}</p>
+          {onRetry ? (
+            <button
+              type="button"
+              className="mt-3 w-fit rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 disabled:cursor-wait disabled:opacity-60 dark:border-red-800 dark:bg-zinc-950 dark:text-red-300"
+              onClick={onRetry}
+              disabled={isRetrying}
+            >
+              {isRetrying ? "读取中" : "重新读取"}
+            </button>
+          ) : null}
         </div>
       </div>
       <div

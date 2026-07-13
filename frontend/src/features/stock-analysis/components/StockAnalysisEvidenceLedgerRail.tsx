@@ -117,7 +117,7 @@ export function StockAnalysisEvidenceLedgerRail({
             补证清单
             <span className="stock-analysis-page__visually-hidden">证据账本</span>
             <small className="stock-analysis-page__evidence-ledger-subtitle">
-              data_gaps / endpoint evidence / release gate
+              数据缺口 / 接口证据 / 复核门禁
             </small>
           </span>
           <b className={SA_SHELL_NUM}>{asOfLabel}</b>
@@ -129,7 +129,7 @@ export function StockAnalysisEvidenceLedgerRail({
           </div>
           <div>
             <dt>关键证据</dt>
-            <dd>{`rows ${evidenceCount.toLocaleString("zh-CN")}，缺口 ${gapCountLabel ?? boundaryCount}`}</dd>
+            <dd>{`证据行 ${evidenceCount.toLocaleString("zh-CN")}，数据缺口项 ${gapCountLabel ?? boundaryCount}`}</dd>
           </div>
           <div>
             <dt>可用输出</dt>
@@ -150,9 +150,9 @@ export function StockAnalysisEvidenceLedgerRail({
         </dl>
         <div className="stock-analysis-page__home-rail-data-note" data-testid="stock-analysis-home-rail-data-note">
           <h3>接口口径</h3>
-          <p>route：{routeLabel}</p>
-          <p>result_kind：{resultKindLabel}</p>
-          <p>formal_use_allowed={String(formalUseAllowed)}</p>
+          <p>数据入口：{routeLabel}</p>
+          <p>结果口径：{resultKindLabel}</p>
+          <p>使用边界：{formalUseAllowed ? "正式口径可用" : "仅供观察"}</p>
           <p className="stock-analysis-page__home-rail-data-status">
             {sourceVersionSummary} · {basisLabel} · {qualityLabel} · {updatedAtLabel}
           </p>
@@ -233,6 +233,7 @@ export function StockAnalysisEvidenceLedgerRail({
             summary={closedLoopSummary}
             riskTone={railRiskTone}
             riskTriggeredCount={riskTriggeredCount}
+            riskUnsupportedOutput={riskExitUnsupported}
             boundaryIssueCount={boundaryIssueCount}
             reviewQueueCount={reviewQueueCount}
             nextActionLabel={nextActionLabel}

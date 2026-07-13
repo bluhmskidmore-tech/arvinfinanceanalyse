@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 from typing import Literal, cast
 
+from backend.app.repositories.stock_analysis_theme_overlay_reader import (
+    StockAnalysisThemeOverlayReader,
+)
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.market_data_livermore_service import livermore_strategy_envelope_from_catalog
 
@@ -21,6 +25,17 @@ OPTIONAL_MODULE_ENDPOINTS: dict[str, str] = {
     "portfolio_backtest": "/ui/market-data/livermore/candidate-history-portfolio-backtest",
 }
 ALL_INCLUDE_KEYS = DEFAULT_INCLUDE_KEYS | frozenset(OPTIONAL_MODULE_ENDPOINTS)
+REQUIRED_RULE_READINESS_KEYS = ("market_gate", "sector_rank", "stock_pivot", "risk_exit")
+REQUIRED_GAP_FAMILIES = frozenset(
+    {
+        "broad_index_history",
+        "breadth",
+        "limit_up_quality",
+        "sector_strength",
+        "stock_universe",
+        "position_risk",
+    }
+)
 
 
 def stock_analysis_workbench_envelope(
@@ -31,12 +46,16 @@ def stock_analysis_workbench_envelope(
     include: str | None = None,
     sector_window_days: int = 20,
     top_k: int = 10,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> dict[str, object]:
-    strategy_envelope = livermore_strategy_envelope_from_catalog(
-        duckdb_path=duckdb_path,
-        as_of_date=as_of_date,
-        choice_stock_catalog_file=choice_stock_catalog_file,
-    )
+    strategy_kwargs: dict[str, object] = {
+        "duckdb_path": duckdb_path,
+        "as_of_date": as_of_date,
+        "choice_stock_catalog_file": choice_stock_catalog_file,
+    }
+    if theme_overlay_reader is not None:
+        strategy_kwargs["theme_overlay_reader"] = theme_overlay_reader
+    strategy_envelope = livermore_strategy_envelope_from_catalog(**strategy_kwargs)
     return build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
         requested_as_of_date=as_of_date,
@@ -158,11 +177,7 @@ def build_stock_analysis_workbench_envelope(
 def _parse_include(include: str | None) -> tuple[set[str], set[str]]:
     if not _optional_text(include):
         return set(DEFAULT_INCLUDE_KEYS), set()
-    requested = {
-        text.strip()
-        for text in str(include or "").split(",")
-        if text.strip()
-    }
+    requested = {text.strip() for text in str(include or "").split(",") if text.strip()}
     known = {key for key in requested if key in ALL_INCLUDE_KEYS}
     unknown = requested - known
     return set(DEFAULT_INCLUDE_KEYS) | known, unknown
@@ -174,7 +189,7 @@ def _first_screen(result: dict[str, object], *, top_k: int) -> dict[str, object]
         "review_queue": _candidate_queue(result, top_k=top_k),
         "sector_snapshot": _ranked_items(result.get("sector_rank"), top_k=top_k),
         "risk_exit_snapshot": _risk_exit_snapshot(result.get("risk_exit"), top_k=top_k),
-        "data_gaps": _list_of_mappings(result.get("data_gaps")),
+        "data_gaps": _classified_data_gaps(result.get("data_gaps")),
         "diagnostics": _list_of_mappings(result.get("diagnostics")),
         "supported_outputs": _string_list(result.get("supported_outputs")),
         "unsupported_outputs": _list_of_mappings(result.get("unsupported_outputs")),
@@ -194,7 +209,12 @@ def _candidate_queue(result: dict[str, object], *, top_k: int) -> list[dict[str,
     rows: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
     for key in keys:
-        for item in _items_from_container(result.get(key)):
+        module_items = (
+            _theme_breakout_candidate_rows(result.get(key))
+            if key == "theme_breakout"
+            else _items_from_container(result.get(key))
+        )
+        for item in module_items:
             stock_code = str(item.get("stock_code") or "").strip()
             source_key = key
             dedupe_key = (source_key, stock_code)
@@ -208,6 +228,46 @@ def _candidate_queue(result: dict[str, object], *, top_k: int) -> list[dict[str,
             if len(rows) >= top_k:
                 return rows
     return rows
+
+
+def _theme_breakout_candidate_rows(value: object) -> list[dict[str, object]]:
+    by_stock: dict[str, dict[str, object]] = {}
+    for theme in _items_from_container(value):
+        theme_membership = {
+            "theme_key": theme.get("theme_key"),
+            "theme_name": theme.get("theme_name"),
+            "rank": theme.get("rank"),
+            "source_kind": theme.get("source_kind"),
+        }
+        for member_position, member in enumerate(
+            _list_of_mappings(theme.get("items")),
+            start=1,
+        ):
+            stock_code = str(member.get("stock_code") or "").strip()
+            if not stock_code:
+                continue
+            member_rank = member.get("rank") or member_position
+            membership = {
+                **theme_membership,
+                "member_rank": member_rank,
+            }
+            current = by_stock.get(stock_code)
+            if current is None:
+                current = {
+                    **member,
+                    "theme_key": theme_membership["theme_key"],
+                    "theme_name": theme_membership["theme_name"],
+                    "theme_rank": theme_membership["rank"],
+                    "source_kind": theme_membership["source_kind"],
+                    "member_rank": member_rank,
+                    "theme_memberships": [membership],
+                }
+                by_stock[stock_code] = current
+                continue
+            memberships = cast(list[dict[str, object]], current["theme_memberships"])
+            if membership not in memberships:
+                memberships.append(membership)
+    return list(by_stock.values())
 
 
 def _ranked_items(value: object, *, top_k: int) -> list[dict[str, object]]:
@@ -422,20 +482,149 @@ def _workbench_issues(
         )
     if _module_status(strategy_meta) != "ready":
         issues.extend(_module_issues(strategy_meta))
-    for item in _list_of_mappings(strategy_result.get("data_gaps")):
-        status = str(item.get("status") or "").strip().lower()
-        if status and status != "ready":
+    issues.extend(_rule_readiness_issues(strategy_result.get("rule_readiness")))
+    for item in _classified_data_gaps(strategy_result.get("data_gaps")):
+        status = _data_gap_issue_status(item)
+        if item["blocks_review"] or status != "ready":
             issues.append(
                 {
-                    "severity": "blocking" if status in {"missing", "blocked", "error"} else "warning",
+                    "severity": "blocking" if item["blocks_review"] else "warning",
                     "code": f"data_gap_{status}",
-                    "message": _optional_text(item.get("message"))
+                    "message": _optional_text(item.get("evidence"))
+                    or _optional_text(item.get("message"))
                     or _optional_text(item.get("reason"))
                     or f"Data gap status is {status}.",
                     "source_module": "main",
                 }
             )
     return issues
+
+
+def _rule_readiness_issues(value: object) -> list[dict[str, object]]:
+    by_key: dict[str, list[dict[str, object]]] = {}
+    issues: list[dict[str, object]] = []
+    if not isinstance(value, list):
+        issues.append(
+            {
+                "severity": "blocking",
+                "code": "rule_readiness_malformed_collection",
+                "message": "Rule readiness must be a list.",
+                "source_module": "main",
+            }
+        )
+    else:
+        for index, item in enumerate(value):
+            if not isinstance(item, Mapping):
+                issues.append(
+                    {
+                        "severity": "blocking",
+                        "code": "rule_readiness_malformed_row",
+                        "message": f"Rule readiness row {index} must be an object.",
+                        "source_module": "main",
+                    }
+                )
+                continue
+            row = dict(item)
+            key = str(row.get("key") or "").strip()
+            if not key:
+                issues.append(
+                    {
+                        "severity": "blocking",
+                        "code": "rule_readiness_missing_key",
+                        "message": f"Rule readiness row {index} is missing a non-empty key.",
+                        "source_module": "main",
+                    }
+                )
+                continue
+            by_key.setdefault(key, []).append(row)
+    for key in REQUIRED_RULE_READINESS_KEYS:
+        rows = by_key.get(key, [])
+        if len(rows) > 1:
+            message = f"Duplicate rule readiness rows: {key}."
+            issues.append(
+                {
+                    "severity": "blocking",
+                    "code": f"rule_readiness_duplicate_{key}",
+                    "message": message,
+                    "source_module": "main",
+                }
+            )
+        if not rows:
+            message = f"Required rule readiness is missing: {key}."
+            issues.append(
+                {
+                    "severity": "blocking",
+                    "code": f"rule_readiness_missing_{key}",
+                    "message": message,
+                    "source_module": "main",
+                }
+            )
+            continue
+        for item in rows:
+            status = str(item.get("status") or "").strip().lower()
+            if status != "ready":
+                message = (
+                    _optional_text(item.get("summary"))
+                    or _optional_text(item.get("evidence"))
+                    or f"Required rule readiness is {status or 'unavailable'}: {key}."
+                )
+                issues.append(
+                    {
+                        "severity": "blocking",
+                        "code": f"rule_readiness_{status or 'unavailable'}_{key}",
+                        "message": message,
+                        "source_module": "main",
+                    }
+                )
+    for key, rows in by_key.items():
+        if key in REQUIRED_RULE_READINESS_KEYS:
+            continue
+        for item in rows:
+            status = str(item.get("status") or "").strip().lower()
+            if status != "ready":
+                message = (
+                    _optional_text(item.get("summary"))
+                    or _optional_text(item.get("evidence"))
+                    or f"Returned rule readiness is {status or 'unavailable'}: {key}."
+                )
+                issues.append(
+                    {
+                        "severity": "blocking",
+                        "code": f"rule_readiness_{status or 'unavailable'}_{key}",
+                        "message": message,
+                        "source_module": "main",
+                    }
+                )
+    return issues
+
+
+def _data_gap_issue_status(item: dict[str, object]) -> str:
+    status = str(item.get("status") or "").strip().lower() or "unavailable"
+    age_days = item.get("age_days")
+    if isinstance(age_days, int) and age_days < 0:
+        return "look_ahead"
+    tier = str(item.get("tier") or "").strip().lower()
+    if status == "ready" and tier in {"stale", "expired"}:
+        return tier
+    return status
+
+
+def _classified_data_gaps(value: object) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for item in _list_of_mappings(value):
+        row = dict(item)
+        family = str(row.get("input_family") or "").strip().lower()
+        status = str(row.get("status") or "").strip().lower()
+        tier = str(row.get("tier") or "").strip().lower()
+        age_days = row.get("age_days")
+        row["blocks_review"] = bool(
+            (family in REQUIRED_GAP_FAMILIES and status != "ready")
+            or status in {"stale", "look_ahead", "blocked", "error", "unsupported"}
+            or tier in {"stale", "expired"}
+            or (isinstance(age_days, int) and age_days < 0)
+        )
+        rows.append(row)
+    return rows
 
 
 def _endpoint_evidence(
@@ -464,6 +653,7 @@ def _endpoint_evidence(
 def _workbench_links() -> dict[str, str]:
     return {
         "stock_detail": "/ui/market-data/livermore/stock-detail",
+        "kline_analysis": "/ui/market-data/stock-analysis/kline-analysis",
         "candidate_history": "/ui/market-data/livermore/candidate-history",
         "sector_rank_series": "/ui/market-data/livermore/sector-rank-series",
         "strategy_score": "/ui/market-data/livermore/strategy-score",

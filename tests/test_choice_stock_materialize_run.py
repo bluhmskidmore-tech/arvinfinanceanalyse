@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -58,6 +60,13 @@ def test_choice_stock_materialize_run_main_forwards_args_and_emits_json(monkeypa
         "status": "completed",
         "as_of_date": "2026-04-28",
         "row_count": 7,
+        "theme_overlay": {
+            "mode": "off",
+            "status": "off",
+            "observation_status": "not_checked",
+            "observation_manifest_written": False,
+            "overlay_status": "not_run",
+        },
     }
     assert captured.err == ""
 
@@ -88,7 +97,16 @@ def test_choice_stock_materialize_run_main_forwards_none_for_omitted_paths(monke
             "enable_tushare_concept_fallback": False,
         }
     ]
-    assert json.loads(captured.out) == {"status": "completed"}
+    assert json.loads(captured.out) == {
+        "status": "completed",
+        "theme_overlay": {
+            "mode": "off",
+            "status": "off",
+            "observation_status": "not_checked",
+            "observation_manifest_written": False,
+            "overlay_status": "not_run",
+        },
+    }
     assert captured.err == ""
 
 
@@ -169,8 +187,158 @@ def test_choice_stock_materialize_run_main_can_emit_post_run_coverage(monkeypatc
             "missing_request_items": [],
             "message": "Choice stock inputs are materialized for 2026-04-28.",
         },
+        "theme_overlay": {
+            "mode": "off",
+            "status": "off",
+            "observation_status": "not_checked",
+            "observation_manifest_written": False,
+            "overlay_status": "not_run",
+        },
     }
     assert captured.err == ""
+
+
+def test_choice_stock_materialize_run_main_archives_theme_overlay_with_deterministic_lineage(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    module = _load_runner_module()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    archive_root = tmp_path / "archive"
+    parent_run_id = "choice_stock_materialize:2026-04-28:fixture"
+    materialize_calls: list[dict[str, object]] = []
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        module,
+        "materialize_choice_stock_inputs",
+        lambda **kwargs: materialize_calls.append(dict(kwargs))
+        or {
+            "status": "completed",
+            "run_id": parent_run_id,
+            "as_of_date": "2026-04-28",
+            "row_count": 7,
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=duckdb_path,
+            governance_path=governance_path,
+            local_archive_path=archive_root,
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "refresh_choice_stock_theme_overlay",
+        lambda **kwargs: (
+            calls.append(dict(kwargs))
+            or {
+                "mode": "archive",
+                "status": "completed",
+                "overlay_status": "completed",
+                "member_count": 9,
+                "run_id": kwargs["run_id"],
+            }
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "choice_stock_materialize_run.py",
+            "--as-of-date",
+            "2026-04-28",
+            "--duckdb-path",
+            str(duckdb_path),
+            "--theme-overlay-mode",
+            "archive",
+        ],
+    )
+
+    module.main()
+
+    expected_digest = hashlib.sha256(f"{parent_run_id}|2026-04-28".encode()).hexdigest()[:16]
+    assert materialize_calls[0]["enable_tushare_concept_fallback"] is False
+    assert calls == [
+        {
+            "mode": "archive",
+            "duckdb_path": str(duckdb_path),
+            "governance_dir": str(governance_path),
+            "archive_root": str(archive_root),
+            "expected_report_date": "2026-04-28",
+            "run_id": f"{parent_run_id}:theme-overlay",
+            "source_version": f"sv_choice_stock_theme_overlay_{expected_digest}",
+            "vendor_version": "vv_tushare_ths_current_overlay_v1",
+        }
+    ]
+    output = json.loads(capsys.readouterr().out)
+    assert output["theme_overlay"] == {
+        "mode": "archive",
+        "status": "completed",
+        "overlay_status": "completed",
+        "member_count": 9,
+        "run_id": f"{parent_run_id}:theme-overlay",
+    }
+
+
+def test_choice_stock_materialize_run_main_emits_structured_theme_overlay_failure(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    module = _load_runner_module()
+    parent_run_id = "choice_stock_materialize:2026-04-28:failure-fixture"
+    monkeypatch.setattr(
+        module,
+        "materialize_choice_stock_inputs",
+        lambda **_kwargs: {
+            "status": "completed",
+            "run_id": parent_run_id,
+            "as_of_date": "2026-04-28",
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=tmp_path / "moss.duckdb",
+            governance_path=tmp_path / "governance",
+            local_archive_path=tmp_path / "archive",
+        ),
+    )
+    failure = {
+        "mode": "archive",
+        "status": "source_failed",
+        "overlay_status": "source_failed",
+        "member_count": 0,
+        "message": "Theme source unavailable.",
+        "run_id": f"{parent_run_id}:theme-overlay",
+    }
+    monkeypatch.setattr(
+        module,
+        "refresh_choice_stock_theme_overlay",
+        lambda **_kwargs: dict(failure),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "choice_stock_materialize_run.py",
+            "--as-of-date",
+            "2026-04-28",
+            "--theme-overlay-mode",
+            "archive",
+        ],
+    )
+
+    module.main()
+
+    assert json.loads(capsys.readouterr().out)["theme_overlay"] == failure
 
 
 def test_choice_stock_materialize_run_main_can_run_factor_snapshot(monkeypatch, capsys) -> None:
@@ -222,6 +390,13 @@ def test_choice_stock_materialize_run_main_can_run_factor_snapshot(monkeypatch, 
         "as_of_date": "2026-04-28",
         "table": "choice_stock_factor_snapshot",
         "row_count": 123,
+        "theme_overlay": {
+            "mode": "off",
+            "status": "off",
+            "observation_status": "not_checked",
+            "observation_manifest_written": False,
+            "overlay_status": "not_run",
+        },
     }
     assert captured.err == ""
 

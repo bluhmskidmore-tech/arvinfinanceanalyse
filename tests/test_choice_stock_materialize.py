@@ -10,17 +10,67 @@ from typing import Any, cast
 import duckdb
 import pandas as pd
 import pytest
+import requests
 
+from backend.app.tasks import choice_stock_materialize as choice_stock_materialize_module
 from backend.app.repositories.duckdb_migrations import register_all
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 from backend.app.tasks.choice_stock_materialize import (
     _DefaultChoiceStockClient,
+    _DefaultTushareStockClient,
     _load_tushare_financial_factors,
     ensure_choice_stock_schema,
     load_choice_stock_materialization_coverage,
     materialize_choice_stock_factor_snapshot,
     materialize_choice_stock_inputs,
 )
+
+
+def test_default_tushare_stock_client_uses_official_root_api_with_bounded_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    payload = {
+        "code": 0,
+        "msg": "",
+        "data": {
+            "fields": ["ts_code", "trade_date"],
+            "items": [["000001.SZ", "20260708"]],
+        },
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return payload
+
+    def fake_post(url: str, *, json: dict[str, object], timeout: object) -> FakeResponse:
+        captured.update({"url": url, "payload": json, "timeout": timeout})
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        choice_stock_materialize_module,
+        "resolve_tushare_token_with_settings_fallback",
+        lambda _settings: "test-token",
+    )
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    frame = _DefaultTushareStockClient().daily(
+        trade_date="20260708",
+        fields="ts_code,trade_date",
+    )
+
+    assert captured["url"] == "https://api.tushare.pro"
+    assert captured["timeout"] == (10.0, 30.0)
+    assert captured["payload"] == {
+        "api_name": "daily",
+        "token": "test-token",
+        "params": {"trade_date": "20260708"},
+        "fields": "ts_code,trade_date",
+    }
+    assert frame.to_dict(orient="records") == [{"ts_code": "000001.SZ", "trade_date": "20260708"}]
 
 
 def _write_confirmed_catalog(path: Path) -> None:
@@ -646,6 +696,10 @@ def test_v20_database_upgrades_to_v21_choice_stock_schema(tmp_path: Path) -> Non
         "v27: Choice stock factor snapshot for equity strategies",
         "v28: Livermore candidate history analytical replay",
         "v29: Commodity futures main-contract daily ingest",
+        "v30: Formal fact and snapshot read-path indexes",
+        "v31: Market breadth daily counts for Livermore gate",
+        "v32: Recover read indexes and constrain governed PnL/FX grains",
+        "v33: Materialize governed Risk Tensor read metrics and upstream lineage",
     ]
     conn = duckdb.connect(str(db_path), read_only=True)
     try:

@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import pandas as pd
 from backend.app.api.response_cache import (
@@ -277,6 +277,7 @@ class ChoiceStockRefreshRequest(BaseModel):
     refresh_history: bool = True
     refresh_factors: bool = True
     factor_max_stock_count: int | None = Field(default=None, ge=1)
+    theme_overlay_mode: Literal["off", "dry_run", "archive"] = "off"
 
 
 class SourceBackfillRefreshRequest(BaseModel):
@@ -583,10 +584,14 @@ def macro_toolkit_refresh_choice_stock(
     request: ChoiceStockRefreshRequest | None = None,
 ) -> dict[str, object]:
     refresh_request = request or ChoiceStockRefreshRequest()
-    if not refresh_request.refresh_history and not refresh_request.refresh_factors:
+    if (
+        not refresh_request.refresh_history
+        and not refresh_request.refresh_factors
+        and refresh_request.theme_overlay_mode == "off"
+    ):
         raise HTTPException(
             status_code=400,
-            detail="At least one of refresh_history or refresh_factors must be true.",
+            detail=("At least one of refresh_history, refresh_factors, or theme_overlay_mode must request work."),
         )
 
     settings = get_settings()
@@ -599,10 +604,12 @@ def macro_toolkit_refresh_choice_stock(
             duckdb_path=str(settings.duckdb_path),
             catalog_path=str(settings.choice_stock_catalog_file),
             governance_path=str(settings.governance_path),
+            archive_root=str(settings.local_archive_path),
             as_of_date=as_of_date,
             refresh_history=refresh_request.refresh_history,
             refresh_factors=refresh_request.refresh_factors,
             factor_max_stock_count=refresh_request.factor_max_stock_count,
+            theme_overlay_mode=refresh_request.theme_overlay_mode,
             permission=permission,
             idempotency_key=idempotency_key,
         )
@@ -675,24 +682,32 @@ def macro_toolkit_refresh_source_backfill(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    payload_status = str(payload.get("status") or "").strip()
+    refresh_status = payload_status or ("completed" if not payload.get("errors") else "partial")
+    total_added = int(payload.get("total_added") or 0)
     refresh = {
-        "status": "completed" if not payload.get("errors") else "partial",
+        "status": refresh_status,
         "alias": request.alias,
         "series_ids": [str(target["series_id"])],
         "series_names": [str(target["series_name"])],
         "start_date": start_date,
         "end_date": end_date,
-        "total_added": int(payload.get("total_added") or 0),
+        "total_added": total_added,
+        "total_fetched": int(payload.get("total_fetched") or 0),
         "processed_count": int(payload.get("processed_count") or 0),
         "results": payload.get("results") or {},
         "errors": payload.get("errors") or {},
+        "run_id": payload.get("run_id"),
+        "source_by_series": payload.get("source_by_series") or {},
+        "vendor_versions": payload.get("vendor_versions") or {},
     }
-    market_home_response_cache.invalidate()
-    clear_system_macro_source_cache()
+    if total_added > 0:
+        market_home_response_cache.invalidate()
+        clear_system_macro_source_cache()
     return _envelope(
         "macro_toolkit.source_backfill_refresh",
         {"refresh": refresh},
-        quality_flag="ok" if refresh["status"] == "completed" else "warning",
+        quality_flag="ok" if refresh_status == "completed" else "warning",
         fallback_mode="none",
         as_of_date=end_date,
     )
@@ -1143,6 +1158,11 @@ def _choice_stock_refresh_run_payload(
     refresh_history: bool = True,
     refresh_factors: bool = True,
     factor_max_stock_count: int | None = None,
+    theme_overlay_mode: Literal["off", "dry_run", "archive"] = "off",
+    theme_overlay_status: str | None = None,
+    theme_overlay_message: str | None = None,
+    theme_overlay_member_count: int | None = None,
+    theme_overlay_run_id: str | None = None,
     history_row_count: int | None = None,
     factor_row_count: int | None = None,
     source_version: object | None = None,
@@ -1163,6 +1183,11 @@ def _choice_stock_refresh_run_payload(
         refresh_history=refresh_history,
         refresh_factors=refresh_factors,
         factor_max_stock_count=factor_max_stock_count,
+        theme_overlay_mode=theme_overlay_mode,
+        theme_overlay_status=theme_overlay_status,
+        theme_overlay_message=theme_overlay_message,
+        theme_overlay_member_count=theme_overlay_member_count,
+        theme_overlay_run_id=theme_overlay_run_id,
         history_row_count=history_row_count,
         factor_row_count=factor_row_count,
         source_version=source_version,

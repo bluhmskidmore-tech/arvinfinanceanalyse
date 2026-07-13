@@ -37,7 +37,12 @@ def _strategy_envelope() -> dict[str, Any]:
             "market_gate": {"state": "WARM", "passed": 2, "required": 3},
             "sector_rank": {
                 "items": [
-                    {"sector_code": "801010", "sector_name": "银行", "rank": 1, "score": 0.82},
+                    {
+                        "sector_code": "801010",
+                        "sector_name": "银行",
+                        "rank": 1,
+                        "score": 0.82,
+                    },
                 ],
             },
             "stock_candidates": {
@@ -54,7 +59,9 @@ def _strategy_envelope() -> dict[str, Any]:
     }
 
 
-def test_build_stock_analysis_workbench_envelope_wraps_livermore_strategy_as_observational_contract() -> None:
+def test_build_stock_analysis_workbench_envelope_wraps_livermore_strategy_as_observational_contract() -> (
+    None
+):
     module = load_module(
         "backend.app.services.stock_analysis_workbench_service",
         "backend/app/services/stock_analysis_workbench_service.py",
@@ -91,6 +98,10 @@ def test_build_stock_analysis_workbench_envelope_wraps_livermore_strategy_as_obs
     assert result["modules"]["main"]["status"] == "ready"
     assert result["modules"]["signal_confluence"]["status"] == "deferred"
     assert result["links"]["stock_detail"] == "/ui/market-data/livermore/stock-detail"
+    assert (
+        result["links"]["kline_analysis"]
+        == "/ui/market-data/stock-analysis/kline-analysis"
+    )
     assert result["endpoint_evidence"][0]["endpoint"] == "/ui/market-data/livermore"
 
     serialized = json.dumps(result, ensure_ascii=False)
@@ -99,7 +110,491 @@ def test_build_stock_analysis_workbench_envelope_wraps_livermore_strategy_as_obs
     assert "下单" not in serialized
 
 
-def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_theme_breakout_nested_stocks_expand_and_merge_theme_memberships_without_cross_module_dedupe() -> (
+    None
+):
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    result = {
+        "stock_candidates": {
+            "items": [{"stock_code": "000001.SZ", "stock_name": "Alpha", "rank": 1}]
+        },
+        "theme_breakout": {
+            "items": [
+                {
+                    "rank": 1,
+                    "theme_key": "concept:C1",
+                    "theme_name": "Theme one",
+                    "source_kind": "tushare_current_overlay",
+                    "items": [
+                        {"rank": 2, "stock_code": "000001.SZ", "stock_name": "Alpha"},
+                        {"rank": 1, "stock_code": "000002.SZ", "stock_name": "Beta"},
+                    ],
+                },
+                {
+                    "rank": 2,
+                    "theme_key": "concept:C2",
+                    "theme_name": "Theme two",
+                    "source_kind": "tushare_current_overlay",
+                    "items": [
+                        {"rank": 1, "stock_code": "000001.SZ", "stock_name": "Alpha"},
+                    ],
+                },
+            ]
+        },
+    }
+
+    rows = module._candidate_queue(result, top_k=10)
+
+    assert [(row["source_module"], row["stock_code"]) for row in rows] == [
+        ("stock_candidates", "000001.SZ"),
+        ("theme_breakout", "000001.SZ"),
+        ("theme_breakout", "000002.SZ"),
+    ]
+    theme_alpha = rows[1]
+    assert theme_alpha["theme_key"] == "concept:C1"
+    assert theme_alpha["theme_name"] == "Theme one"
+    assert theme_alpha["theme_rank"] == 1
+    assert theme_alpha["source_kind"] == "tushare_current_overlay"
+    assert theme_alpha["member_rank"] == 2
+    assert theme_alpha["theme_memberships"] == [
+        {
+            "theme_key": "concept:C1",
+            "theme_name": "Theme one",
+            "rank": 1,
+            "source_kind": "tushare_current_overlay",
+            "member_rank": 2,
+        },
+        {
+            "theme_key": "concept:C2",
+            "theme_name": "Theme two",
+            "rank": 2,
+            "source_kind": "tushare_current_overlay",
+            "member_rank": 1,
+        },
+    ]
+
+
+def test_theme_breakout_member_rank_falls_back_to_nested_list_order() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    result = {
+        "theme_breakout": {
+            "items": [
+                {
+                    "rank": 1,
+                    "theme_key": "concept:C1",
+                    "theme_name": "Theme one",
+                    "source_kind": "tushare_current_overlay",
+                    "items": [
+                        {"stock_code": "000002.SZ", "stock_name": "Beta"},
+                        {"stock_code": "000001.SZ", "stock_name": "Alpha"},
+                    ],
+                }
+            ]
+        }
+    }
+
+    rows = module._candidate_queue(result, top_k=10)
+
+    assert [(row["stock_code"], row["member_rank"]) for row in rows] == [
+        ("000002.SZ", 1),
+        ("000001.SZ", 2),
+    ]
+
+
+def test_workbench_passes_overlay_reader_to_livermore_strategy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    reader = object()
+    calls: list[object] = []
+
+    def fake_strategy(**kwargs: object) -> dict[str, Any]:
+        calls.append(kwargs.get("theme_overlay_reader"))
+        return _strategy_envelope()
+
+    monkeypatch.setattr(
+        module, "livermore_strategy_envelope_from_catalog", fake_strategy
+    )
+
+    module.stock_analysis_workbench_envelope(
+        duckdb_path="missing.duckdb",
+        as_of_date="2026-06-26",
+        choice_stock_catalog_file="missing.json",
+        theme_overlay_reader=reader,
+    )
+
+    assert calls == [reader]
+
+
+def test_ready_rule_chain_keeps_optional_data_gaps_in_limited_review() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["rule_readiness"] = [
+        {"key": key, "status": "ready", "missing_inputs": []}
+        for key in ("market_gate", "sector_rank", "stock_pivot", "risk_exit")
+    ]
+    strategy_envelope["result"]["data_gaps"] = [
+        {
+            "input_family": "PMI",
+            "status": "missing",
+            "evidence": "Optional macro component is not landed.",
+        },
+        {
+            "input_family": "theme_taxonomy",
+            "status": "partial",
+            "evidence": "Theme evidence is partial.",
+        },
+    ]
+
+    envelope = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        top_k=2,
+    )
+    result = envelope["result"]
+
+    assert result["page_question"]["answer_state"] == "limited_review"
+    assert result["decision_summary"]["can_review_candidates"] is True
+    assert result["decision_summary"]["primary_blocker"] is None
+    assert [item["blocks_review"] for item in result["first_screen"]["data_gaps"]] == [
+        False,
+        False,
+    ]
+    assert all(
+        "blocks_review" not in item for item in strategy_envelope["result"]["data_gaps"]
+    )
+    assert [(item["code"], item["severity"]) for item in result["issues"]] == [
+        ("data_gap_missing", "warning"),
+        ("data_gap_partial", "warning"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("rule_readiness", "expected_code", "expected_blocker"),
+    [
+        (
+            [],
+            "rule_readiness_missing_market_gate",
+            "Required rule readiness is missing: market_gate.",
+        ),
+        (
+            [
+                {"key": key, "status": "ready", "missing_inputs": []}
+                for key in ("market_gate", "sector_rank", "stock_pivot")
+            ],
+            "rule_readiness_missing_risk_exit",
+            "Required rule readiness is missing: risk_exit.",
+        ),
+        (
+            [
+                {"key": key, "status": "ready", "missing_inputs": []}
+                for key in ("market_gate", "sector_rank", "stock_pivot")
+            ]
+            + [
+                {
+                    "key": "risk_exit",
+                    "status": "blocked",
+                    "summary": "Risk exit requires an ACTIVE position snapshot.",
+                    "missing_inputs": ["position_snapshot"],
+                }
+            ],
+            "rule_readiness_blocked_risk_exit",
+            "Risk exit requires an ACTIVE position snapshot.",
+        ),
+    ],
+)
+def test_rule_readiness_is_fail_closed_with_a_specific_blocker(
+    rule_readiness: list[dict[str, Any]],
+    expected_code: str,
+    expected_blocker: str,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["rule_readiness"] = rule_readiness
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        top_k=2,
+    )["result"]
+
+    assert result["page_question"]["answer_state"] == "blocked"
+    assert result["decision_summary"]["can_review_candidates"] is False
+    assert result["decision_summary"]["primary_blocker"] == expected_blocker
+    assert result["issues"][0] == {
+        "severity": "blocking",
+        "code": expected_code,
+        "message": expected_blocker,
+        "source_module": "main",
+    }
+
+
+@pytest.mark.parametrize(
+    "duplicate_statuses", [("blocked", "ready"), ("ready", "blocked")]
+)
+def test_duplicate_required_rule_readiness_is_fail_closed_regardless_of_order(
+    duplicate_statuses: tuple[str, str],
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["rule_readiness"] = [
+        {"key": key, "status": "ready", "missing_inputs": []}
+        for key in ("market_gate", "sector_rank", "stock_pivot")
+    ] + [
+        {
+            "key": "risk_exit",
+            "status": status,
+            "summary": f"Risk exit row is {status}.",
+            "missing_inputs": [] if status == "ready" else ["position_snapshot"],
+        }
+        for status in duplicate_statuses
+    ]
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        top_k=2,
+    )["result"]
+
+    assert result["page_question"]["answer_state"] == "blocked"
+    assert result["decision_summary"]["can_review_candidates"] is False
+    assert (
+        result["decision_summary"]["primary_blocker"]
+        == "Duplicate rule readiness rows: risk_exit."
+    )
+    assert result["issues"][0]["code"] == "rule_readiness_duplicate_risk_exit"
+
+
+@pytest.mark.parametrize(
+    ("malformed_row", "expected_code", "expected_message"),
+    [
+        (
+            {"status": "blocked"},
+            "rule_readiness_missing_key",
+            "Rule readiness row 4 is missing a non-empty key.",
+        ),
+        (
+            "not-a-readiness-row",
+            "rule_readiness_malformed_row",
+            "Rule readiness row 4 must be an object.",
+        ),
+    ],
+)
+def test_malformed_rule_readiness_rows_are_fail_closed(
+    malformed_row: object,
+    expected_code: str,
+    expected_message: str,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["rule_readiness"] = [
+        {"key": key, "status": "ready", "missing_inputs": []}
+        for key in ("market_gate", "sector_rank", "stock_pivot", "risk_exit")
+    ] + [malformed_row]
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        top_k=2,
+    )["result"]
+
+    assert result["page_question"]["answer_state"] == "blocked"
+    assert result["decision_summary"]["can_review_candidates"] is False
+    assert result["decision_summary"]["primary_blocker"] == expected_message
+    assert result["issues"][0] == {
+        "severity": "blocking",
+        "code": expected_code,
+        "message": expected_message,
+        "source_module": "main",
+    }
+
+
+def test_required_gap_without_status_is_unavailable_and_fail_closed() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["rule_readiness"] = [
+        {"key": key, "status": "ready", "missing_inputs": []}
+        for key in ("market_gate", "sector_rank", "stock_pivot", "risk_exit")
+    ]
+    strategy_envelope["result"]["data_gaps"] = [
+        {
+            "input_family": "position_risk",
+            "evidence": "No ACTIVE A-share rows exist for 2026-06-26.",
+        }
+    ]
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        top_k=2,
+    )["result"]
+
+    assert result["first_screen"]["data_gaps"][0]["blocks_review"] is True
+    assert result["page_question"]["answer_state"] == "blocked"
+    assert result["decision_summary"]["can_review_candidates"] is False
+    assert (
+        result["decision_summary"]["primary_blocker"]
+        == "No ACTIVE A-share rows exist for 2026-06-26."
+    )
+    assert result["issues"] == [
+        {
+            "severity": "blocking",
+            "code": "data_gap_unavailable",
+            "message": "No ACTIVE A-share rows exist for 2026-06-26.",
+            "source_module": "main",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("gap_overrides", "expected_code"),
+    [
+        ({"tier": "stale"}, "data_gap_stale"),
+        ({"age_days": -1}, "data_gap_look_ahead"),
+    ],
+)
+def test_ready_gap_with_invalid_freshness_is_fail_closed(
+    gap_overrides: dict[str, object],
+    expected_code: str,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["rule_readiness"] = [
+        {"key": key, "status": "ready", "missing_inputs": []}
+        for key in ("market_gate", "sector_rank", "stock_pivot", "risk_exit")
+    ]
+    strategy_envelope["result"]["data_gaps"] = [
+        {
+            "input_family": "turnover_persistence",
+            "status": "ready",
+            "evidence": "Freshness evidence violates the resolved trade date boundary.",
+            **gap_overrides,
+        }
+    ]
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        top_k=2,
+    )["result"]
+
+    assert result["first_screen"]["data_gaps"][0]["blocks_review"] is True
+    assert result["page_question"]["answer_state"] == "blocked"
+    assert result["decision_summary"]["can_review_candidates"] is False
+    assert result["decision_summary"]["primary_blocker"] == (
+        "Freshness evidence violates the resolved trade date boundary."
+    )
+    assert result["issues"] == [
+        {
+            "severity": "blocking",
+            "code": expected_code,
+            "message": "Freshness evidence violates the resolved trade date boundary.",
+            "source_module": "main",
+        }
+    ]
+
+
+def test_required_position_gap_blocks_after_optional_gaps_without_promoting_them() -> (
+    None
+):
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    strategy_envelope = _strategy_envelope()
+    strategy_envelope["result"]["rule_readiness"] = [
+        {"key": key, "status": "ready", "missing_inputs": []}
+        for key in ("market_gate", "sector_rank", "stock_pivot")
+    ] + [
+        {
+            "key": "risk_exit",
+            "status": "blocked",
+            "summary": "Risk exit requires an ACTIVE A-share position snapshot.",
+            "missing_inputs": ["position_snapshot"],
+        }
+    ]
+    strategy_envelope["result"]["data_gaps"] = [
+        {
+            "input_family": "PMI",
+            "status": "missing",
+            "evidence": "Optional PMI input is not landed.",
+        },
+        {
+            "input_family": "credit_impulse",
+            "status": "missing",
+            "evidence": "Optional credit input is not landed.",
+        },
+        {
+            "input_family": "position_risk",
+            "status": "missing",
+            "evidence": "No ACTIVE A-share rows exist for 2026-06-26.",
+        },
+    ]
+
+    result = module.build_stock_analysis_workbench_envelope(
+        strategy_envelope=strategy_envelope,
+        requested_as_of_date="2026-06-26",
+        top_k=2,
+    )["result"]
+
+    assert result["page_question"]["answer_state"] == "blocked"
+    assert result["decision_summary"]["can_review_candidates"] is False
+    assert result["decision_summary"]["primary_blocker"] == (
+        "Risk exit requires an ACTIVE A-share position snapshot."
+    )
+    assert [item["blocks_review"] for item in result["first_screen"]["data_gaps"]] == [
+        False,
+        False,
+        True,
+    ]
+    assert [
+        (item["code"], item["severity"], item["message"]) for item in result["issues"]
+    ] == [
+        (
+            "rule_readiness_blocked_risk_exit",
+            "blocking",
+            "Risk exit requires an ACTIVE A-share position snapshot.",
+        ),
+        ("data_gap_missing", "warning", "Optional PMI input is not landed."),
+        ("data_gap_missing", "warning", "Optional credit input is not landed."),
+        (
+            "data_gap_missing",
+            "blocking",
+            "No ACTIVE A-share rows exist for 2026-06-26.",
+        ),
+    ]
+
+
+def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     route_module = load_module(
         "backend.app.api.routes.market_data_livermore",
         "backend/app/api/routes/market_data_livermore.py",
@@ -129,15 +624,22 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
             "result": {"route": "/stock-analysis"},
         }
 
-    monkeypatch.setattr(route_module, "stock_analysis_workbench_envelope", fake_workbench, raising=False)
-    monkeypatch.setattr(route_module, "_ensure_livermore_read_allowed", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        route_module, "stock_analysis_workbench_envelope", fake_workbench, raising=False
+    )
+    monkeypatch.setattr(
+        route_module, "_ensure_livermore_read_allowed", lambda **_kwargs: None
+    )
+    route_module.market_home_response_cache.invalidate()
 
     app = FastAPI()
     app.include_router(route_module.router)
-    app.dependency_overrides[route_module.get_auth_context] = lambda: route_module.AuthContext(
-        user_id="route-test",
-        role="viewer",
-        identity_source="test",
+    app.dependency_overrides[route_module.get_auth_context] = lambda: (
+        route_module.AuthContext(
+            user_id="route-test",
+            role="viewer",
+            identity_source="test",
+        )
     )
     client = TestClient(app)
 
@@ -153,11 +655,27 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
 
     assert response.status_code == 200
     assert response.json()["result"]["route"] == "/stock-analysis"
+    assert "workbench;dur=" in response.headers["server-timing"]
+    assert 'cache;desc="miss"' in response.headers["server-timing"]
     assert calls
     assert calls[0]["as_of_date"] == "2026-06-26"
     assert calls[0]["include"] == "main,signal_confluence"
     assert calls[0]["sector_window_days"] == 30
     assert calls[0]["top_k"] == 3
+
+    cached = client.get(
+        "/ui/market-data/stock-analysis/workbench",
+        params={
+            "as_of_date": "2026-06-26",
+            "include": "main,signal_confluence",
+            "sector_window_days": 30,
+            "top_k": 3,
+        },
+    )
+
+    assert cached.status_code == 200
+    assert 'cache;desc="hit"' in cached.headers["server-timing"]
+    assert len(calls) == 1
 
     invalid = client.get(
         "/ui/market-data/stock-analysis/workbench",
@@ -166,3 +684,125 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
 
     assert invalid.status_code == 422
     assert len(calls) == 1
+    route_module.market_home_response_cache.invalidate()
+
+
+def test_stock_analysis_workbench_cache_key_tracks_choice_catalog_version(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    catalog = tmp_path / "choice-stock.json"
+    monkeypatch.setattr(route_module, "livermore_data_version", lambda _path: "db-v1")
+
+    catalog.write_text("{}", encoding="utf-8")
+    first = route_module._stock_analysis_workbench_cache_key(
+        duckdb_path="fixture.duckdb",
+        catalog_file=catalog,
+        as_of_date=None,
+        include=None,
+        sector_window_days=20,
+        top_k=3,
+    )
+
+    catalog.write_text('{"version": 2}', encoding="utf-8")
+    second = route_module._stock_analysis_workbench_cache_key(
+        duckdb_path="fixture.duckdb",
+        catalog_file=catalog,
+        as_of_date=None,
+        include=None,
+        sector_window_days=20,
+        top_k=3,
+    )
+
+    assert first != second
+    assert "::catalog_version=" in second
+
+
+def test_stock_kline_analysis_route_validates_and_delegates_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    calls: list[dict[str, Any]] = []
+
+    def fake_kline(**kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        return {
+            "result_meta": {
+                "trace_id": "tr_stock_kline_analysis_test",
+                "basis": "analytical",
+                "result_kind": "market_data.stock_analysis.kline",
+                "formal_use_allowed": False,
+                "scenario_flag": False,
+                "source_version": "sv_test",
+                "vendor_version": "vv_test",
+                "rule_version": "rv_stock_kline_analysis_observation_v1",
+                "cache_version": "cv_stock_kline_analysis_observation_v1",
+                "quality_flag": "ok",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+                "tables_used": [],
+                "evidence_rows": 0,
+                "source_surface": "market_data",
+            },
+            "result": {
+                "basis": "analytical",
+                "state": "ok",
+                "contract_status": "observational_only",
+                "formal_use_allowed": False,
+                "trading_instruction_allowed": False,
+                "stock_code": "300604.SZ",
+            },
+        }
+
+    monkeypatch.setattr(
+        route_module, "stock_kline_analysis_envelope", fake_kline, raising=False
+    )
+    monkeypatch.setattr(
+        route_module, "_ensure_livermore_read_allowed", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        route_module.market_home_response_cache,
+        "get_or_build",
+        lambda _key, builder: builder(),
+    )
+
+    app = FastAPI()
+    app.include_router(route_module.router)
+    app.dependency_overrides[route_module.get_auth_context] = lambda: (
+        route_module.AuthContext(
+            user_id="route-test",
+            role="viewer",
+            identity_source="test",
+        )
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/ui/market-data/stock-analysis/kline-analysis",
+        params={"stock_code": "300604.SZ", "as_of_date": "2026-06-26", "lookback": 61},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["contract_status"] == "observational_only"
+    assert calls
+    assert calls[0]["stock_code"] == "300604.SZ"
+    assert calls[0]["as_of_date"].isoformat() == "2026-06-26"
+    assert calls[0]["lookback"] == 61
+
+    invalid_stock = client.get(
+        "/ui/market-data/stock-analysis/kline-analysis",
+        params={"stock_code": "bad/code", "lookback": 61},
+    )
+    invalid_date = client.get(
+        "/ui/market-data/stock-analysis/kline-analysis",
+        params={"stock_code": "300604.SZ", "as_of_date": "bad-date", "lookback": 61},
+    )
+
+    assert invalid_stock.status_code == 422
+    assert invalid_date.status_code == 422

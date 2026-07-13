@@ -61,7 +61,14 @@ def _strategy_envelope() -> dict[str, Any]:
                 "items": [{"stock_code": "000777.SZ", "stock_name": "Exit One", "reason": "2d_below_ema10"}],
                 "watch_items": [{"stock_code": "000888.SZ", "stock_name": "Watch One", "triggered": False}],
             },
-            "data_gaps": [{"input_family": "news", "status": "partial", "evidence": "news link pending"}],
+            "data_gaps": [
+                {"input_family": "news", "status": "partial", "evidence": "news link pending"},
+                {
+                    "input_family": "position_risk",
+                    "status": "missing",
+                    "evidence": "position risk evidence pending",
+                },
+            ],
             "diagnostics": [{"severity": "warning", "code": "NEWS_LINK_PENDING", "message": "news link pending"}],
             "supported_outputs": ["market_gate", "sector_rank", "stock_candidates"],
             "unsupported_outputs": [{"key": "theme_breakout", "reason": "theme catalog pending"}],
@@ -143,7 +150,20 @@ def test_workbench_first_screen_contract_snapshot_preserves_current_shape() -> N
                 "risk_exit_bucket": "watch_items",
             },
         ],
-        "data_gaps": [{"input_family": "news", "status": "partial", "evidence": "news link pending"}],
+        "data_gaps": [
+            {
+                "input_family": "news",
+                "status": "partial",
+                "evidence": "news link pending",
+                "blocks_review": False,
+            },
+            {
+                "input_family": "position_risk",
+                "status": "missing",
+                "evidence": "position risk evidence pending",
+                "blocks_review": True,
+            },
+        ],
         "diagnostics": [{"severity": "warning", "code": "NEWS_LINK_PENDING", "message": "news link pending"}],
         "supported_outputs": ["market_gate", "sector_rank", "stock_candidates"],
         "unsupported_outputs": [{"key": "theme_breakout", "reason": "theme catalog pending"}],

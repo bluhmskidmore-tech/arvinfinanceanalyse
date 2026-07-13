@@ -1754,7 +1754,7 @@ describe("stockAnalysisPageModel", () => {
     expect(reviewItems).toHaveLength(1);
     expect(reviewItems[0]).toMatchObject({
       themeKey: "semiconductor_proxy",
-      sourceKindLabel: "代理观察",
+      sourceKindLabel: "代理主题",
     });
     expect(reviewItems[0].failedGateLabel).toContain("簇强度不足");
     expect(reviewItems[0].failedGateLabel).toContain("门槛待确认");
@@ -3495,6 +3495,33 @@ describe("stockAnalysisPageModel", () => {
     expect(events.map((event) => event.detail).join(" ")).not.toContain("Signal confluence diagnostic pending detail");
   });
 
+  it("keeps repeated diagnostic codes as distinct event monitor rows", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      diagnostics: [
+        {
+          severity: "warning",
+          code: "LIVERMORE_INPUT_FRESHNESS_DEGRADED",
+          message: "Stock daily observations are stale.",
+          input_family: "turnover_persistence",
+        },
+        {
+          severity: "warning",
+          code: "LIVERMORE_INPUT_FRESHNESS_DEGRADED",
+          message: "Factor snapshots are stale.",
+          input_family: "valuation_percentile_history",
+        },
+      ],
+    };
+
+    const diagnostics = buildStockAnalysisEventMonitorRows(payload, null).filter(
+      (event) => event.source === "diagnostic",
+    );
+
+    expect(diagnostics).toHaveLength(2);
+    expect(new Set(diagnostics.map((event) => event.key)).size).toBe(2);
+  });
+
   it("localizes real theme breakout overheat blocker in event details", () => {
     const reason = "Theme breakout execution is paused in OVERHEAT; historical replay showed this bucket is draggy.";
     const payload: LivermoreStrategyPayload = {
@@ -4166,6 +4193,21 @@ describe("stockAnalysisPageModel", () => {
 
     expect(copy).toBe("说明待确认");
     expect(copy).not.toContain("vendor_quality_signal_pending");
+  });
+
+  it("distinguishes ready PMI and credit impulse evidence from missing inputs", () => {
+    expect(
+      localizeStockBackendText(
+        "Market gate is available; PMI and credit impulse are not landed.",
+        "macro_score",
+      ),
+    ).toBe("市场门控已有可用证据，PMI 与信用脉冲待补。");
+    expect(
+      localizeStockBackendText(
+        "Market gate is available; PMI and credit impulse are ready and landed.",
+        "macro_score",
+      ),
+    ).toBe("市场门控、PMI 与信用脉冲已接入。");
   });
 
   it("localizes strategy sample and observation-only backend reasons", () => {

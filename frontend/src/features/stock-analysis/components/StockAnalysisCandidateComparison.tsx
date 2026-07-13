@@ -1,4 +1,5 @@
 import type { StockCandidateReviewQueueItem } from "../lib/stockAnalysisPageModel";
+import { selectStockCandidateThemeEvidence } from "../lib/stockAnalysisWorkbenchQueueModel";
 import "./StockAnalysisCandidateComparison.css";
 
 type StockAnalysisCandidateComparisonProps = {
@@ -64,6 +65,11 @@ function meaningfulBoundaryEvidence(card: StockCandidateReviewQueueItem): string
 
 function candidateEvidenceCount(card: StockCandidateReviewQueueItem): number {
   return card.primaryEvidence.length + card.supportingEvidence.length;
+}
+
+function candidateThemeEvidenceSummary(card: StockCandidateReviewQueueItem): string | null {
+  const evidence = selectStockCandidateThemeEvidence(card);
+  return evidence.length > 0 ? evidence.map((item) => item.value).join(" / ") : null;
 }
 
 function rawFieldValue(card: StockCandidateReviewQueueItem, key: string): string | null {
@@ -267,12 +273,14 @@ export function StockAnalysisCandidateComparison({
 
   const [leadCandidate, ...alternateCandidates] = visibleCandidates;
   const leadMeta = buildCandidateCardMeta(leadCandidate, usesHybridFusion, 0, asOfLabel);
+  const leadThemeEvidenceSummary = candidateThemeEvidenceSummary(leadCandidate);
   const visibleAlternateCandidates = alternateCandidates.slice(0, DEFAULT_ALTERNATE_PREVIEW_COUNT);
   const deferredAlternateCandidates = alternateCandidates.slice(DEFAULT_ALTERNATE_PREVIEW_COUNT);
 
   const renderAlternateCard = (card: StockCandidateReviewQueueItem, index: number) => {
     const meta = buildCandidateCardMeta(card, usesHybridFusion, index + 1, asOfLabel);
     const alternateCriteria = usesHybridFusion ? meta.criteria.slice(1) : [];
+    const themeEvidenceSummary = candidateThemeEvidenceSummary(card);
 
     return (
       <article
@@ -311,6 +319,15 @@ export function StockAnalysisCandidateComparison({
         >
           优先理由：{compactText(meta.priorityReason, 44)}
         </p>
+        {themeEvidenceSummary ? (
+          <p
+            className="stock-analysis-page__candidate-priority-reason"
+            data-testid={`stock-comparison-candidate-theme-${card.stockCode}`}
+            title={`题材归属：${themeEvidenceSummary}`}
+          >
+            题材归属：{themeEvidenceSummary}
+          </p>
+        ) : null}
         {alternateCriteria.length > 0 ? (
           <dl
             className="stock-analysis-page__candidate-criteria stock-analysis-page__candidate-criteria--compact"
@@ -384,6 +401,15 @@ export function StockAnalysisCandidateComparison({
             >
               优先理由：{compactText(leadMeta.priorityReason, 70)}
             </p>
+            {leadThemeEvidenceSummary ? (
+              <p
+                className="stock-analysis-page__candidate-priority-reason"
+                data-testid={`stock-comparison-candidate-theme-${leadCandidate.stockCode}`}
+                title={`题材归属：${leadThemeEvidenceSummary}`}
+              >
+                题材归属：{leadThemeEvidenceSummary}
+              </p>
+            ) : null}
             <dl className="stock-analysis-page__candidate-lead-metrics">
               <div>
                 <dt>观察位</dt>

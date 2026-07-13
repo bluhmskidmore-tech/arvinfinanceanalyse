@@ -7,6 +7,7 @@ import {
 } from "./stockAnalysisPageModel";
 import {
   compactStockText,
+  riskExitBlockedSummary,
   stockStatusLabel,
   stockSupplyBasisLabel,
   stockSupplyFallbackLabel,
@@ -242,7 +243,9 @@ export function cycleEvidenceLabel(text: string | null | undefined) {
   const lower = value.toLowerCase();
   if (lower.includes("external_vendor") || lower.includes("external vendor")) return "证据待确认";
   if (lower.includes("market gate") && lower.includes("pmi") && lower.includes("credit impulse")) {
-    return "市场门控已有可用证据；PMI 与信用脉冲待补。";
+    return /not landed|missing|unavailable|待补|缺失/.test(lower)
+      ? "市场门控已有可用证据；PMI 与信用脉冲待补。"
+      : "市场门控、PMI 与信用脉冲已接入。";
   }
   if (lower.includes("sector_rank")) return "板块强弱已有可用证据。";
   if (lower.includes("pricespread") || lower.includes("price_spread") || lower.includes("macroscore")) {
@@ -284,8 +287,14 @@ export function buildBackendSupplyOverview(
   const actionableUnsupportedOutputs = unsupportedOutputs.filter(isActionableLivermoreUnsupportedOutput);
   const supportedOutputs = payload.supported_outputs ?? [];
   const readyRuleCount = readinessRows.filter((row) => row.status === "ready").length;
-  const notReadyGaps = dataGaps.filter((row) => row.status !== "ready");
+  const notReadyGaps = dataGaps.filter(
+    (row) => row.status !== "ready" || row.tier === "stale" || row.tier === "expired",
+  );
+  const staleSourceRows = dataGaps.filter(
+    (row) => row.status === "stale" || row.tier === "stale" || row.tier === "expired",
+  );
   const risk = payload.risk_exit;
+  const riskUnsupported = unsupportedOutputs.find((output) => output.key === "risk_exit");
   const candidateCount =
     payload.stock_candidates?.candidate_count ??
     payload.hybrid_fusion_candidates?.candidate_count ??
@@ -312,9 +321,11 @@ export function buildBackendSupplyOverview(
     sectorSupplyValueLabel: `${sectorCount}`,
     candidateSupplyLabel: `候选 ${candidateCount}`,
     candidateSupplyValueLabel: `${candidateCount}`,
-    riskSupplyLabel: `风险 ${risk?.signal_count ?? 0}`,
-    riskSupplyValueLabel: `${risk?.signal_count ?? 0}`,
-    riskDetailLabel: `持仓 ${risk?.position_count ?? 0} / 触发 ${risk?.signal_count ?? 0} / 观察 ${watchCount}`,
+    riskSupplyLabel: riskUnsupported ? "风险 阻断" : `风险 ${risk?.signal_count ?? 0}`,
+    riskSupplyValueLabel: riskUnsupported ? "阻断" : `${risk?.signal_count ?? 0}`,
+    riskDetailLabel: riskUnsupported
+      ? riskExitBlockedSummary(riskUnsupported.reason)
+      : `持仓 ${risk?.position_count ?? 0} / 触发 ${risk?.signal_count ?? 0} / 观察 ${watchCount}`,
     qualityLabel: `质量 ${stockSupplyQualityLabel(meta.quality_flag)}`,
     vendorLabel: `通道 ${stockSupplyVendorLabel(meta.vendor_status)}`,
     fallbackLabel: stockSupplyFallbackLabel(meta.fallback_mode),
@@ -322,8 +333,16 @@ export function buildBackendSupplyOverview(
     strategyName: payload.strategy_name,
     readinessRows,
     dataGapRows: dataGaps,
+    staleSourceRows,
+    staleSourceDetailLabel: staleSourceRows
+      .map((row) => {
+        const sourceDate = row.business_date ? `源数据日 ${row.business_date}` : "源数据日待补";
+        const age = typeof row.age_days === "number" ? `（滞后 ${row.age_days} 天）` : "";
+        return `${cycleInputLabel(row.input_family)}：${sourceDate}${age}`;
+      })
+      .join("；"),
     supportedOutputs,
     unsupportedOutputs,
-    risk,
+    risk: riskUnsupported ? undefined : risk,
   };
 }

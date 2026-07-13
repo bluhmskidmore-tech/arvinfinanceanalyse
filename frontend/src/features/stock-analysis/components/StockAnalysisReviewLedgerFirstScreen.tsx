@@ -47,6 +47,19 @@ export type StockAnalysisSupplyStatusRow = {
   tone: string;
 };
 
+export type StockAnalysisWorkbenchContractSummary = {
+  question: string;
+  answerLabel: string;
+  reason: string;
+  canReviewCandidates: boolean;
+  topReviewStock?: string | null;
+  primaryBlocker?: string | null;
+  formalUseAllowed: boolean;
+  routeLabel: string;
+  resultKindLabel: string;
+  includeLabel?: string;
+};
+
 type StockAnalysisReviewLedgerFirstScreenProps = {
   asOfLabel: string;
   requestedAsOfLabel?: string | null;
@@ -62,6 +75,7 @@ type StockAnalysisReviewLedgerFirstScreenProps = {
   supplementItems?: StockAnalysisDecisionSupplementItem[];
   decisionMemoTiles?: StockAnalysisDecisionMemoTile[];
   supplyStatusRows?: StockAnalysisSupplyStatusRow[];
+  workbenchContract?: StockAnalysisWorkbenchContractSummary;
   sourceGateTone?: string;
   sourceGateLabel?: string;
   sourceGateDetail?: string;
@@ -304,6 +318,7 @@ export function StockAnalysisReviewLedgerFirstScreen({
   supplementItems = [],
   decisionMemoTiles = [],
   supplyStatusRows = [],
+  workbenchContract,
   sourceGateTone = "watch",
   sourceGateLabel = "来源核验",
   sourceGateDetail = "质量 需复核 回退快照",
@@ -399,6 +414,53 @@ export function StockAnalysisReviewLedgerFirstScreen({
                 >
                   {auditStripText}
                 </div>
+              ) : null}
+              {workbenchContract ? (
+                <section
+                  className="mt-2 flex flex-col gap-3 rounded-lg border border-default-200 bg-default-50/70 p-3"
+                  data-testid="stock-analysis-workbench-contract"
+                  aria-label="页面复核业务契约"
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-default-500">
+                      页面核心问题
+                    </span>
+                    <strong className="text-sm font-semibold text-foreground">{workbenchContract.question}</strong>
+                    <small className="text-xs text-default-500">{workbenchContract.reason}</small>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="flex flex-col">
+                      <dt className="text-xs text-default-500">结论状态</dt>
+                      <dd className="text-sm font-semibold text-foreground">
+                        {workbenchContract.answerLabel}
+                      </dd>
+                    </div>
+                    <div className="flex flex-col">
+                      <dt className="text-xs text-default-500">候选复核</dt>
+                      <dd className="text-sm font-semibold text-foreground">
+                        {workbenchContract.canReviewCandidates ? "可复核" : "只读观察"}
+                      </dd>
+                    </div>
+                    <div className="flex flex-col">
+                      <dt className="text-xs text-default-500">首要复核标的</dt>
+                      <dd className="text-sm font-semibold text-foreground">
+                        {workbenchContract.topReviewStock ?? "暂无"}
+                      </dd>
+                    </div>
+                    <div className="flex flex-col">
+                      <dt className="text-xs text-default-500">使用边界</dt>
+                      <dd className="text-sm font-semibold text-foreground">
+                        {workbenchContract.formalUseAllowed ? "正式口径可用" : "仅供观察"}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="flex flex-wrap gap-2 text-xs text-default-500">
+                    <span>数据入口 {workbenchContract.routeLabel}</span>
+                    <span>结果口径 {workbenchContract.resultKindLabel}</span>
+                    {workbenchContract.includeLabel ? <span>{workbenchContract.includeLabel}</span> : null}
+                    <span>首要阻断 {workbenchContract.primaryBlocker ?? "无"}</span>
+                  </div>
+                </section>
               ) : null}
             </div>
 

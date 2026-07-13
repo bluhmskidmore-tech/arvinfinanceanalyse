@@ -117,8 +117,9 @@ def backfill_stock_adjustment_factor(
     finally:
         conn.close()
 
-    return {
+    result: dict[str, object] = {
         "status": "partial_completed" if len(rows) < len(selected_codes) * len(selected_dates) else "completed",
+        "factor_write_status": "completed",
         "duckdb_path": str(resolved_path),
         "start_date": selected_dates[0],
         "end_date": selected_dates[-1],
@@ -132,6 +133,28 @@ def backfill_stock_adjustment_factor(
         "run_id": run_id,
         "write_safety": write_safety,
     }
+    if rows:
+        from backend.app.tasks.livermore_candidate_outcome_maturity import (
+            mature_livermore_candidate_outcomes,
+        )
+
+        maturity_evaluation_date = max(str(row["trade_date"]) for row in rows)
+        try:
+            maturity_payload = mature_livermore_candidate_outcomes(
+                resolved_path,
+                evaluation_as_of_date=maturity_evaluation_date,
+            )
+        except Exception as exc:
+            maturity_payload = {"status": "failed", "error": str(exc)}
+        if maturity_payload.get("status") != "completed":
+            maturity_payload = dict(maturity_payload)
+            maturity_payload.setdefault(
+                "error",
+                str(maturity_payload.get("reason") or "outcome maturity did not complete"),
+            )
+            result["status"] = "partial_completed"
+        result["outcome_maturity"] = maturity_payload
+    return result
 
 
 class _DefaultTushareAdjustmentClient:
@@ -344,7 +367,7 @@ def main() -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-    return 0
+    return 1 if result.get("status") == "partial_completed" else 0
 
 
 if __name__ == "__main__":

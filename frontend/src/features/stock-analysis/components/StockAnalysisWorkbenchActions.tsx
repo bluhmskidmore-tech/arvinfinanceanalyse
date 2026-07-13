@@ -104,24 +104,26 @@ export function StockAnalysisWorkbenchActions({
           data-tone={formalUseAllowed ? "positive" : "warning"}
           data-testid="stock-analysis-toolbar-formal-status"
         >
-          正式用途：{formalUseAllowed ? "是" : "否"}
+          使用边界：{formalUseAllowed ? "正式口径可用" : "仅供观察"}
         </span>
       </div>
       <span className="stock-analysis-page__toolbar-route-chip" data-testid="stock-analysis-toolbar-route">
-        route {routeLabel}
+        数据入口 {routeLabel}
       </span>
       <label
         className="stock-analysis-page__complete-evidence-toggle"
         data-testid="stock-analysis-complete-evidence-toggle"
+        title="完整证据的业务口径尚未确认，当前不执行该筛选。"
       >
         <input
           type="checkbox"
           checked={completeEvidenceOnly}
+          disabled
           onChange={(event) => {
             onCompleteEvidenceOnlyChange(event.target.checked);
           }}
         />
-        <span>仅完整证据</span>
+        <span>完整证据口径待确认</span>
       </label>
       <AntButton
         type="text"
@@ -140,9 +142,9 @@ export function StockAnalysisWorkbenchActions({
         loading={isRefreshing}
         disabled={isRefreshing}
         onClick={onRefresh}
-        aria-label="刷新门禁并重新读取观察队列"
+        aria-label="重算选股与门禁并重新读取观察队列"
       >
-        {isRefreshing ? "刷新中" : "刷新门禁"}
+        {isRefreshing ? "重算中" : "重算选股与门禁"}
       </AntButton>
       {refreshStatusMessage ? (
         <span

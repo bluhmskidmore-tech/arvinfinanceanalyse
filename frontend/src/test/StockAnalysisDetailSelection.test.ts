@@ -125,6 +125,51 @@ describe("stockAnalysisDetailSelection", () => {
     });
   });
 
+  it("keeps every explicit theme membership visible in review detail selection", () => {
+    const selection = buildReviewQueueDetailSelection({
+      card: {
+        stockCode: "600000.SH",
+        stockName: "Sample Bank",
+        rank: 1,
+        sectorCode: "BK001",
+        sectorName: "Banking",
+        distanceToBreakoutPct: "1.2%",
+        reviewFocus: "Sample Bank · Banking",
+        primaryEvidence: [
+          { label: "趋势", value: "站上 MA20" },
+          {
+            label: "题材归属",
+            value: "机器人 #1 · 当前概念覆盖 · 成分 #2",
+          },
+        ],
+        supportingEvidence: [
+          {
+            label: "题材归属",
+            value: "工业母机 #3 · 时点概念成分 · 成分 #1",
+          },
+        ],
+        boundaryEvidence: ["当前覆盖 · 非时点 · 不可历史使用 · 仅观察"],
+        invalidationFocus: "跌回 MA20 下方即降级观察。",
+        invalidationRules: ["跌回 MA20 下方即降级观察。"],
+      },
+      ranks: {
+        livermoreRank: 1,
+        meanReversionRank: null,
+        factorScreenRank: null,
+        hybridFusionRank: null,
+      },
+      reviewQueueUsesHybridFusion: false,
+    });
+
+    expect(selection.reviewThesis?.whySelected).toEqual(
+      expect.arrayContaining([
+        "题材归属：机器人 #1 · 当前概念覆盖 · 成分 #2",
+        "题材归属：工业母机 #3 · 时点概念成分 · 成分 #1",
+      ]),
+    );
+    expect(selection.reviewThesis?.boundaries).toContain("当前覆盖 · 非时点 · 不可历史使用 · 仅观察");
+  });
+
   it("maps risk exit rows into detail drawer selections", () => {
     expect(
       buildRiskExitDetailSelection({

@@ -29,6 +29,7 @@ def _snapshot(
     movement_event_count: int = 0,
     latest_event_title: str = "",
     latest_event_time: str = "",
+    concept_source_kind: str = "real_concept",
 ) -> ThemeBreakoutSnapshot:
     return ThemeBreakoutSnapshot(
         stock_code=stock_code,
@@ -49,6 +50,7 @@ def _snapshot(
         movement_event_count=movement_event_count,
         latest_event_title=latest_event_title,
         latest_event_time=latest_event_time,
+        concept_source_kind=concept_source_kind,
     )
 
 
@@ -105,8 +107,13 @@ def test_theme_breakout_surfaces_semiconductor_proxy_outside_top_three_sector() 
     assert "proxy" in str(semiconductor["reason"]).lower()
 
     stock_items = cast(list[dict[str, Any]], semiconductor["items"])
-    assert [item["stock_code"] for item in stock_items] == ["688001.SH", "688002.SH", "688003.SH"]
+    assert [item["stock_code"] for item in stock_items] == [
+        "688001.SH",
+        "688002.SH",
+        "688003.SH",
+    ]
     assert stock_items[0]["closed_up_limit"] is True
+    assert {item["concept_source_kind"] for item in stock_items} == {"proxy"}
 
     serialized = str(payload).lower()
     assert "buy" not in serialized
@@ -164,7 +171,38 @@ def test_theme_breakout_prefers_real_concept_and_movement_rows_over_proxy() -> N
     assert "proxy" not in str(concept["reason"]).lower()
 
 
-def test_theme_breakout_review_items_are_additive_capped_and_carry_failed_gate_codes() -> None:
+def test_current_overlay_source_is_visible_on_theme_and_nested_stock_rows() -> None:
+    result = compute_theme_breakout(
+        as_of_date="2026-05-08",
+        snapshots=[
+            _snapshot(
+                stock_code=f"68800{index}.SH",
+                stock_name=f"Overlay member {index}",
+                pctchange=8.0 - index,
+                closed_up_limit=index < 2,
+                concept_code="885002.TI",
+                concept_name="Financial technology",
+                concept_source_kind="tushare_current_overlay",
+            )
+            for index in range(1, 4)
+        ],
+    )
+
+    payload = cast(dict[str, Any], result.payload)
+    assert payload["formula_version"] == "rv_livermore_theme_breakout_real_concept_v4"
+    assert payload["is_proxy"] is False
+    theme = cast(list[dict[str, Any]], payload["items"])[0]
+    assert theme["source_kind"] == "tushare_current_overlay"
+    assert "current overlay" in str(theme["reason"]).lower()
+    assert {
+        stock["concept_source_kind"]
+        for stock in cast(list[dict[str, Any]], theme["items"])
+    } == {"tushare_current_overlay"}
+
+
+def test_theme_breakout_review_items_are_additive_capped_and_carry_failed_gate_codes() -> (
+    None
+):
     selected_group = [
         _snapshot(
             stock_code="688100.SH",
@@ -265,7 +303,12 @@ def test_theme_breakout_review_items_are_additive_capped_and_carry_failed_gate_c
 
     result = compute_theme_breakout(
         as_of_date="2026-05-08",
-        snapshots=[*selected_group, *cluster_strength_review, *breadth_review, *filler_groups],
+        snapshots=[
+            *selected_group,
+            *cluster_strength_review,
+            *breadth_review,
+            *filler_groups,
+        ],
     )
 
     payload = cast(dict[str, Any], result.payload)
@@ -275,9 +318,15 @@ def test_theme_breakout_review_items_are_additive_capped_and_carry_failed_gate_c
 
     assert [item["theme_key"] for item in selected_items] == ["concept:C100"]
     assert len(review_items) == MAX_REVIEW_ITEMS
-    assert review_by_key["concept:C200"]["failed_gate_codes"] == ["insufficient_cluster_strength"]
-    assert review_by_key["concept:C200"]["failed_gates"] == ["insufficient_cluster_strength"]
-    assert review_by_key["concept:C210"]["failed_gate_codes"] == ["insufficient_breadth"]
+    assert review_by_key["concept:C200"]["failed_gate_codes"] == [
+        "insufficient_cluster_strength"
+    ]
+    assert review_by_key["concept:C200"]["failed_gates"] == [
+        "insufficient_cluster_strength"
+    ]
+    assert review_by_key["concept:C210"]["failed_gate_codes"] == [
+        "insufficient_breadth"
+    ]
     assert review_by_key["concept:C210"]["failed_gates"] == ["insufficient_breadth"]
     assert f"concept:CF{MAX_REVIEW_ITEMS + 1:02d}" not in review_by_key
 

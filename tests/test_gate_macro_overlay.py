@@ -280,9 +280,9 @@ def _seed_deteriorating_macro_series(conn: duckdb.DuckDBPyConnection) -> None:
         [
             ("CA.CSI300_PE", "CSI300 PE", "2026-04-06", 40.0, "daily", "x", "sv_pe", "vv_pe", "rv", "ok", "run-pe"),
             ("EMM00166466", "China 10Y yield", "2026-04-06", 2.1, "daily", "%", "sv_y", "vv_y", "rv", "ok", "run-y"),
-            ("M0017126", "Manufacturing PMI", "2026-03-31", 44.0, "monthly", "index", "sv_pmi", "vv_pmi", "rv", "ok", "run-pmi"),
-            ("M5525763", "Social financing YoY", "2026-02-28", 8.4, "monthly", "%", "sv_sf", "vv_sf", "rv", "ok", "run-sf-1"),
-            ("M5525763", "Social financing YoY", "2026-03-31", 5.0, "monthly", "%", "sv_sf", "vv_sf", "rv", "ok", "run-sf-2"),
+            ("M0017126", "Manufacturing PMI", "2026-03-31", 44.0, "monthly", "index", "backfill_macro_v1", "vv_pmi", "rv", "ok", "backfill_macro_v1:20260401T120000Z"),
+            ("M5525763", "Social financing YoY", "2026-02-28", 8.4, "monthly", "%", "backfill_macro_v1", "vv_sf", "rv", "ok", "backfill_macro_v1:20260401T120000Z"),
+            ("M5525763", "Social financing YoY", "2026-03-31", 5.0, "monthly", "%", "backfill_macro_v1", "vv_sf", "rv", "ok", "backfill_macro_v1:20260401T120000Z"),
         ],
     )
 

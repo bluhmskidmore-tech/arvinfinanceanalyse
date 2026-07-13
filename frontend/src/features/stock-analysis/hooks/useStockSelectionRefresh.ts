@@ -84,8 +84,17 @@ export function useStockSelectionRefresh({
         throw new Error(refreshStatusLabel(refresh));
       }
 
+      const gateRefresh = await client.refreshGateSupplement({
+        ...(asOfDate ? { asOfDate } : {}),
+      });
+      if (gateRefresh.status !== "completed") {
+        throw new Error(gateRefresh.message ?? `门禁补充刷新失败：${gateRefresh.status}`);
+      }
+
       setRefreshTone("positive");
-      setRefreshResult(refreshStatusLabel(refresh));
+      setRefreshResult(
+        `${refreshStatusLabel(refresh)}；门禁补充已刷新 ${gateRefresh.computed_rows} 行`,
+      );
       await queryClient.invalidateQueries({ queryKey: ["stock-analysis"] });
     } catch (error) {
       setRefreshResult(null);

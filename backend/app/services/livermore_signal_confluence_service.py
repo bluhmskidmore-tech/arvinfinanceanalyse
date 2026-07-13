@@ -6,6 +6,9 @@ from datetime import date
 from pathlib import Path
 
 from backend.app.core_finance.strategy_policy import POLICY
+from backend.app.repositories.stock_analysis_theme_overlay_reader import (
+    StockAnalysisThemeOverlayReader,
+)
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_backtest_window_summary,
@@ -48,12 +51,16 @@ def livermore_signal_confluence_envelope(
     duckdb_path: str,
     as_of_date: str | None,
     choice_stock_catalog_file: object,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> dict[str, object]:
-    livermore_envelope = livermore_strategy_envelope_from_catalog(
-        duckdb_path=duckdb_path,
-        as_of_date=as_of_date,
-        choice_stock_catalog_file=choice_stock_catalog_file,
-    )
+    strategy_kwargs: dict[str, object] = {
+        "duckdb_path": duckdb_path,
+        "as_of_date": as_of_date,
+        "choice_stock_catalog_file": choice_stock_catalog_file,
+    }
+    if theme_overlay_reader is not None:
+        strategy_kwargs["theme_overlay_reader"] = theme_overlay_reader
+    livermore_envelope = livermore_strategy_envelope_from_catalog(**strategy_kwargs)
     livermore_meta = _dict_payload(livermore_envelope.get("result_meta"))
     livermore_payload = _dict_payload(livermore_envelope.get("result"))
     resolved_as_of_date = _optional_text(livermore_payload.get("as_of_date")) or _optional_text(as_of_date)

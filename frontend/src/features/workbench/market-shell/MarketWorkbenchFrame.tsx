@@ -132,9 +132,9 @@ export function MarketWorkbenchFrame({
         </p>
       </section>
 
-      <main className={styles.body} data-testid="market-workbench-body">
+      <div className={styles.body} data-testid="market-workbench-body">
         <MarketWorkbenchPanel className={styles.contentPanel}>{children}</MarketWorkbenchPanel>
-      </main>
+      </div>
 
       <details className={styles.auditFooter} data-testid="market-workbench-audit-footer">
         <summary>

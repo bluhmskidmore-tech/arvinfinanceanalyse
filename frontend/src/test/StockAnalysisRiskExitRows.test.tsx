@@ -100,14 +100,13 @@ describe("StockAnalysisRiskExitRows", () => {
     const strip = screen.getByTestId("stock-analysis-risk-strip");
 
     expect(section).toHaveTextContent("风险退出观察");
-    expect(section).toHaveTextContent("1 触发 · 2 观察");
-    expect(strip).toHaveTextContent("触发");
-    expect(strip).toHaveTextContent("观察");
-    expect(strip).toHaveTextContent("供数");
-    expect(strip).toHaveTextContent("待补");
-    expect(section).toHaveTextContent("联动观察暂不可用。");
-    expect(section).toHaveTextContent("风险退出待补");
+    expect(section).toHaveTextContent("风险退出不可用");
     expect(section).toHaveTextContent("持仓快照缺失");
+    expect(section).not.toHaveTextContent(/\d+\s*触发/);
+    expect(section).not.toHaveTextContent(/\d+\s*观察/);
+    expect(strip).toHaveTextContent("阻断");
+    expect(strip).toHaveTextContent("持仓快照缺失");
+    expect(section).toHaveTextContent("联动观察暂不可用。");
     expect(section).not.toHaveTextContent("livermore_position_snapshot has no ACTIVE A-share rows.");
 
     expect(screen.queryByTestId("stock-risk-row-000001.SZ")).not.toBeInTheDocument();

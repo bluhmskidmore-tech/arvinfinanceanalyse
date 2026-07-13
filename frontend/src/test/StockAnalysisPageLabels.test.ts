@@ -185,6 +185,9 @@ describe("stockAnalysisPageLabels", () => {
     expect(cycleGapLabel("pmi(missing)")).toBe("PMI 缺数据");
     expect(cycleConstraintLabel("single stock cap 20%")).toBe("个股上限 20%");
     expect(cycleEvidenceLabel(macroLayer.evidence)).toBe("市场门控已有可用证据；PMI 与信用脉冲待补。");
+    expect(
+      cycleEvidenceLabel("Market gate is available; PMI and credit impulse are ready and landed."),
+    ).toBe("市场门控、PMI 与信用脉冲已接入。");
     expect(cycleBoundaryLabel("proxy-reconstructed lifecourt layer")).toBe(
       "生命法庭层为量化重建口径，原始文本规则尚未完整接入。",
     );
@@ -245,5 +248,65 @@ describe("stockAnalysisPageLabels", () => {
     expect(overview.unsupportedLabel).toBe("阻断 0");
     expect(overview.unsupportedValueLabel).toBe("0");
     expect(overview.unsupportedOutputs).toHaveLength(4);
+  });
+
+  it("treats ready rows with stale source tiers as degraded inputs", () => {
+    const overview = buildBackendSupplyOverview(
+      {
+        ...strategyPayload,
+        as_of_date: "2026-07-08",
+        data_gaps: [
+          {
+            input_family: "turnover_persistence",
+            status: "ready",
+            evidence: "Turnover input is available from an older business date.",
+            business_date: "2026-06-26",
+            age_days: 12,
+            tier: "stale",
+          },
+        ],
+      },
+      { fallback_mode: "none" },
+    );
+
+    expect(overview.dataGapLabel).toBe("缺口 1");
+    expect(overview.staleSourceRows).toHaveLength(1);
+    expect(overview.staleSourceDetailLabel).toBe("换手持续：源数据日 2026-06-26（滞后 12 天）");
+    expect(overview.fallbackLabel).toBe("数据正常");
+  });
+
+  it("keeps unsupported risk exit distinct from a measured zero", () => {
+    const overview = buildBackendSupplyOverview({
+      ...strategyPayload,
+      supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+      unsupported_outputs: [
+        {
+          key: "risk_exit",
+          reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
+        },
+      ],
+      risk_exit: undefined,
+    });
+
+    expect(overview.riskSupplyLabel).toBe("风险 阻断");
+    expect(overview.riskSupplyValueLabel).toBe("阻断");
+    expect(overview.riskDetailLabel).toBe("持仓快照缺失");
+  });
+
+  it("keeps unsupported risk exit blocked when a contradictory payload is also present", () => {
+    const overview = buildBackendSupplyOverview({
+      ...strategyPayload,
+      unsupported_outputs: [
+        {
+          key: "risk_exit",
+          reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
+        },
+      ],
+    });
+
+    expect(overview.riskSupplyValueLabel).toBe("阻断");
+    expect(overview.riskDetailLabel).toBe("持仓快照缺失");
+    expect(overview.risk).toBeUndefined();
+    expect(overview.riskDetailLabel).not.toContain("触发");
   });
 });

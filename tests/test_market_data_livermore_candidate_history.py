@@ -2791,6 +2791,21 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
                 ),
             ],
         )
+        _minimal_observation_schema(conn)
+        stock_b_dates = [
+            "2026-05-02",
+            "2026-05-03",
+            "2026-05-04",
+            "2026-05-05",
+            "2026-05-08",
+            *[f"2026-05-{day:02d}" for day in range(9, 23)],
+            "2026-05-28",
+        ]
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?)",
+            [("2026-05-02", "688001.SH", 101.0)]
+            + [(trade_date, "000001.SZ", 10.0 + index) for index, trade_date in enumerate(stock_b_dates)],
+        )
     finally:
         conn.close()
 
@@ -2805,6 +2820,12 @@ def test_service_summary_counts_signal_kinds_and_excludes_missing_forward_return
     result = envelope["result"]
     assert isinstance(result, dict)
     summary = result["summary"]
+    forward_maturity = summary.pop("forward_maturity")
+    assert forward_maturity["evaluation_as_of_date"] == "2026-05-28"
+    assert all(
+        horizon["row_count"] == 2
+        for horizon in forward_maturity["horizons"].values()
+    )
     assert summary == {
         "row_count": 2,
         "complete_count": 1,
@@ -3066,6 +3087,20 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
                 ),
             ],
         )
+        conn.execute("alter table livermore_candidate_history add column forward_trade_date_10d varchar")
+        conn.execute("alter table livermore_candidate_history add column return_10d double")
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_10d = '2026-05-21',
+                return_10d = 0.05,
+                return_1d_adj = 0.01,
+                return_5d_adj = 0.03,
+                return_10d_adj = 0.05,
+                return_20d_adj = 0.08
+            where stock_code = '688001.SH'
+            """
+        )
         conn.execute(
             """
             create table choice_stock_request_audit (
@@ -3190,6 +3225,36 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
                     lowlimit,
                 ],
             )
+        proxy_dates = [
+            "2026-05-08",
+            "2026-05-11",
+            "2026-05-12",
+            "2026-05-13",
+            "2026-05-14",
+            "2026-05-15",
+            "2026-05-18",
+            "2026-05-19",
+            "2026-05-20",
+            "2026-05-21",
+            "2026-05-22",
+            "2026-05-25",
+            "2026-05-26",
+            "2026-05-27",
+            "2026-05-28",
+            "2026-05-29",
+            "2026-06-01",
+            "2026-06-02",
+            "2026-06-03",
+            "2026-06-05",
+        ]
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation
+            (trade_date, stock_code, close_value, tradestatus)
+            values (?, '688001.SH', ?, 'Trading')
+            """,
+            [(trade_date, 100.0 + index) for index, trade_date in enumerate(proxy_dates)],
+        )
     finally:
         conn.close()
 
@@ -3216,7 +3281,8 @@ def test_service_adds_backtest_window_summary_with_unsupported_pending_completed
         "pending_rows": 1,
         "unsupported_rows": 0,
         "proxy_only_rows": 1,
-        "forward_coverage_row_counts": {"complete": 1, "pending": 1, "missing_bar": 0, "partial_halt": 0},
+            "forward_coverage_row_counts": {"complete": 1, "pending": 1, "missing_bar": 0, "partial_halt": 0},
+            "outcome_evaluation_as_of_date": "2026-06-05",
         "included_completed_stats_dates": ["2026-05-06"],
         "excluded_from_completed_stats_dates": ["2026-04-30", "2026-05-07", "2026-05-08"],
         "date_reasons": [
@@ -3286,6 +3352,119 @@ def test_backtest_summary_reports_incomplete_coverage_when_audit_is_missing_but_
     assert reason["reason_code"] == "missing_required_source_table"
     assert "Required source coverage is incomplete for 2026-05-06" in reason["message"]
     assert "daily_limit_flags absent" not in reason["message"]
+
+
+def test_historical_evaluation_masks_later_complete_rows_from_backtest_replay(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from backend.app.services import livermore_candidate_history_service as service
+
+    def fail_legacy_calendar_read(*args, **kwargs) -> None:
+        pytest.fail("historical replay must not load the unbounded legacy observation calendar")
+
+    monkeypatch.setattr(service, "_load_observation_trade_dates", fail_legacy_calendar_read)
+    db_path = tmp_path / "historical-replay-cutoff.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        _ensure_livermore_candidate_history_test_schema(conn)
+        conn.execute(
+            """
+            insert into livermore_candidate_history (
+              snapshot_as_of_date,
+              stock_code,
+              stock_name,
+              candidate_rank,
+              selection_close,
+              forward_trade_date_1d,
+              forward_trade_date_5d,
+              forward_trade_date_10d,
+              forward_trade_date_20d,
+              return_1d,
+              return_5d,
+              return_10d,
+              return_20d,
+              return_1d_adj,
+              return_5d_adj,
+              return_10d_adj,
+              return_20d_adj,
+              data_status,
+              formula_version,
+              source_version,
+              vendor_version,
+              rule_version,
+              run_id,
+              signal_kind
+            ) values (
+              '2026-05-01',
+              '000001.SZ',
+              'Later Complete',
+              1,
+              10.0,
+              '2026-05-02',
+              '2026-05-06',
+              '2026-05-11',
+              '2026-05-21',
+              0.01,
+              0.05,
+              0.10,
+              0.20,
+              0.01,
+              0.05,
+              0.10,
+              0.20,
+              'complete',
+              'fv1',
+              'sv1',
+              'vv1',
+              'rv1',
+              'run-later-complete',
+              'stock_candidate'
+            )
+            """
+        )
+        _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-01")
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation values
+            (?, '000001.SZ', '[]', 0.01, 1.2, 0.8, 10.0, 10.5, 9.8, ?, 1000.0, 10000.0, 'trading', 11.0, 9.0)
+            """,
+            [
+                ((date(2026, 5, 2) + timedelta(days=offset)).isoformat(), 10.3 + offset * 0.1)
+                for offset in range(20)
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = livermore_candidate_history_envelope(
+        duckdb_path=str(db_path),
+        stock_code=None,
+        snapshot_from="2026-05-01",
+        snapshot_to="2026-05-31",
+        limit=10,
+        evaluation_as_of_date="2026-05-01",
+    )
+
+    result = cast(dict[str, object], envelope["result"])
+    summary = cast(dict[str, object], result["backtest_window_summary"])
+    assert result["effective_snapshot_to"] == "2026-05-01"
+    assert summary["snapshot_to"] == "2026-05-01"
+    assert summary["replay_dates_completed"] == 0
+    assert summary["replay_dates_pending"] == 1
+    assert summary["included_completed_stats_dates"] == []
+    assert summary["excluded_from_completed_stats_dates"] == ["2026-05-01"]
+    assert summary["date_reasons"] == [
+        {
+            "trade_date": "2026-05-01",
+            "status": "pending",
+            "reason_code": "forward_returns_pending",
+            "message": "Forward return bars are not available yet; exclude 2026-05-01 from completed forward-return statistics.",
+            "affects_completed_stats": False,
+            "signal_kinds": ["stock_candidate"],
+            "missing_bar_row_count": 0,
+        }
+    ]
 
 
 def test_service_reports_decision_usable_mature_return_stats_for_completed_dates_only(tmp_path) -> None:
@@ -3417,6 +3596,17 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "not-json",
                 ),
             ],
+        )
+        conn.execute("alter table livermore_candidate_history add column forward_trade_date_10d varchar")
+        conn.execute("alter table livermore_candidate_history add column return_10d double")
+        conn.execute(
+            """
+            update livermore_candidate_history
+            set forward_trade_date_10d = '2026-05-18',
+                return_10d = 0.15,
+                return_10d_adj = 0.15
+            where stock_code = '000001.SZ'
+            """
         )
         conn.execute(
             """
@@ -3552,6 +3742,30 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
         )
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-06")
         _seed_choice_stock_replay_coverage(conn, trade_date="2026-05-08")
+        winner_dates = [
+            "2026-05-07",
+            "2026-05-08",
+            "2026-05-11",
+            "2026-05-12",
+            "2026-05-13",
+            *[f"2026-05-{day:02d}" for day in range(14, 28)],
+            "2026-06-03",
+        ]
+        conn.executemany(
+            """
+            insert into choice_stock_daily_observation
+            (trade_date, stock_code, close_value, tradestatus)
+            values (?, '000001.SZ', ?, 'Trading')
+            """,
+            [(trade_date, 10.0 + index) for index, trade_date in enumerate(winner_dates)],
+        )
+        conn.execute(
+            """
+            insert into choice_stock_daily_observation
+            (trade_date, stock_code, close_value, tradestatus)
+            values ('2026-05-11', '000002.SZ', 19.8, 'Trading')
+            """
+        )
     finally:
         conn.close()
 
@@ -3581,11 +3795,11 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
         "missing_forward_return_count": 0,
         "avg_return_1d": 0.03,
         "avg_return_5d": 0.12,
-        "avg_return_10d": None,
+        "avg_return_10d": 0.15,
         "avg_return_20d": 0.22,
         "win_rate_1d": 1.0,
         "win_rate_5d": 1.0,
-        "win_rate_10d": None,
+        "win_rate_10d": 1.0,
         "win_rate_20d": 1.0,
         "by_signal_kind": {"stock_candidate": 1},
         "by_signal_kind_horizon_stats": {
@@ -3609,13 +3823,13 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "win_rate": 1.0,
                 },
                 "return_10d": {
-                    "available_count": 0,
-                    "missing_count": 1,
-                    "positive_count": 0,
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
                     "non_positive_count": 0,
-                    "avg_return": None,
-                    "median_return": None,
-                    "win_rate": None,
+                    "avg_return": 0.15,
+                    "median_return": 0.15,
+                    "win_rate": 1.0,
                 },
                 "return_20d": {
                     "available_count": 1,
@@ -3672,13 +3886,13 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
             "win_rate": 1.0,
         },
         "return_10d": {
-            "available_count": 0,
-            "missing_count": 2,
-            "positive_count": 0,
+            "available_count": 1,
+            "missing_count": 1,
+            "positive_count": 1,
             "non_positive_count": 0,
-            "avg_return": None,
-            "median_return": None,
-            "win_rate": None,
+            "avg_return": 0.15,
+            "median_return": 0.15,
+            "win_rate": 1.0,
         },
         "return_20d": {
             "available_count": 1,
@@ -3711,13 +3925,13 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                 "win_rate": 1.0,
             },
             "return_10d": {
-                "available_count": 0,
-                "missing_count": 2,
-                "positive_count": 0,
+                "available_count": 1,
+                "missing_count": 1,
+                "positive_count": 1,
                 "non_positive_count": 0,
-                "avg_return": None,
-                "median_return": None,
-                "win_rate": None,
+                "avg_return": 0.15,
+                "median_return": 0.15,
+                "win_rate": 1.0,
             },
             "return_20d": {
                 "available_count": 1,
@@ -3752,13 +3966,13 @@ def test_service_reports_decision_usable_mature_return_stats_for_completed_dates
                     "win_rate": 1.0,
                 },
                 "return_10d": {
-                    "available_count": 0,
-                    "missing_count": 1,
-                    "positive_count": 0,
+                    "available_count": 1,
+                    "missing_count": 0,
+                    "positive_count": 1,
                     "non_positive_count": 0,
-                    "avg_return": None,
-                    "median_return": None,
-                    "win_rate": None,
+                    "avg_return": 0.15,
+                    "median_return": 0.15,
+                    "win_rate": 1.0,
                 },
                 "return_20d": {
                     "available_count": 1,
@@ -3930,6 +4144,18 @@ def test_service_reports_horizon_success_stats_for_mature_forward_returns(tmp_pa
                     False,
                     "{}",
                 ),
+            ],
+        )
+        _minimal_observation_schema(conn)
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?)",
+            [
+                ("2026-05-07", "000001.SZ", 10.2),
+                ("2026-05-08", "000001.SZ", 10.3),
+                ("2026-05-11", "000001.SZ", 10.4),
+                ("2026-05-12", "000001.SZ", 10.5),
+                ("2026-05-13", "000001.SZ", 11.0),
+                ("2026-05-08", "000002.SZ", 19.8),
             ],
         )
     finally:
@@ -4219,6 +4445,30 @@ def test_api_happy_and_filters(monkeypatch, tmp_path) -> None:
     assert "livermore_candidate_history" in body["result_meta"]["tables_used"]
     assert len(body["result"]["items"]) == 1
 
+    cutoff_one = client.get(
+        "/ui/market-data/livermore/candidate-history",
+        params={
+            "stock_code": "000001.SZ",
+            "snapshot_from": "2026-04-01",
+            "snapshot_to": "2026-04-30",
+            "evaluation_as_of_date": "2026-04-01",
+            "limit": 9,
+        },
+    )
+    cutoff_two = client.get(
+        "/ui/market-data/livermore/candidate-history",
+        params={
+            "stock_code": "000001.SZ",
+            "snapshot_from": "2026-04-01",
+            "snapshot_to": "2026-04-30",
+            "evaluation_as_of_date": "2026-04-02",
+            "limit": 9,
+        },
+    )
+    assert cutoff_one.status_code == cutoff_two.status_code == 200
+    assert cutoff_one.json()["result"]["evaluation_as_of_date"] == "2026-04-01"
+    assert cutoff_two.json()["result"]["evaluation_as_of_date"] == "2026-04-02"
+
     r2 = client.get(
         "/ui/market-data/livermore/candidate-history",
         params={"stock_code": "000001.SZ"},
@@ -4302,6 +4552,13 @@ def test_api_limit_validation(monkeypatch, tmp_path) -> None:
     client = _build_client(tmp_path, monkeypatch)
     assert client.get("/ui/market-data/livermore/candidate-history", params={"limit": 0}).status_code == 422
     assert client.get("/ui/market-data/livermore/candidate-history", params={"limit": 501}).status_code == 422
+    assert (
+        client.get(
+            "/ui/market-data/livermore/candidate-history",
+            params={"evaluation_as_of_date": "2026-02-30"},
+        ).status_code
+        == 422
+    )
     get_settings.cache_clear()
 
 

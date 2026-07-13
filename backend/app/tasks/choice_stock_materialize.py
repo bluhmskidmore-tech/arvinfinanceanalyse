@@ -9,10 +9,13 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
 import duckdb
+import pandas as pd
+import requests
 from backend.app.config import choice_runtime
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
@@ -21,10 +24,7 @@ from backend.app.repositories.choice_stock_adapter import (
     choice_stock_history_start_date,
     load_choice_stock_request_plan,
 )
-from backend.app.repositories.tushare_adapter import (
-    import_tushare_pro,
-    resolve_tushare_token_with_settings_fallback,
-)
+from backend.app.repositories.tushare_adapter import resolve_tushare_token_with_settings_fallback
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.services.runtime_cache import get_runtime_cache
 
@@ -36,6 +36,8 @@ CHOICE_STOCK_MATERIALIZATION_COVERAGE_CACHE_TTL_SECONDS = 120.0
 
 TUSHARE_FALLBACK_RETRY_ATTEMPTS = 3
 TUSHARE_FALLBACK_RETRY_DELAY_SECONDS = 1.0
+TUSHARE_PRO_API_URL = "https://api.tushare.pro"
+TUSHARE_PRO_TIMEOUT_SECONDS = (10.0, 30.0)
 
 REQUIRED_CHOICE_STOCK_REQUEST_ITEMS: tuple[tuple[str, str], ...] = (
     ("stock_universe", "a_share_universe_sector_001004"),
@@ -110,6 +112,32 @@ class _DefaultChoiceStockClient:
         return cmod.sector(*args, merged)
 
 
+class _TushareRestApi:
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    def query(self, api_name: str, fields: str = "", **kwargs: object) -> pd.DataFrame:
+        response = requests.post(
+            TUSHARE_PRO_API_URL,
+            json={
+                "api_name": api_name,
+                "token": self._token,
+                "params": kwargs,
+                "fields": fields,
+            },
+            timeout=TUSHARE_PRO_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("code") != 0:
+            raise RuntimeError(str(payload.get("msg") or f"Tushare {api_name} request failed."))
+        data = payload.get("data") or {}
+        return pd.DataFrame(data.get("items") or [], columns=data.get("fields") or [])
+
+    def __getattr__(self, name: str) -> Any:
+        return partial(self.query, name)
+
+
 class _DefaultTushareStockClient:
     def __init__(self) -> None:
         self._pro: object | None = None
@@ -143,8 +171,7 @@ class _DefaultTushareStockClient:
             token = resolve_tushare_token_with_settings_fallback(get_settings())
             if not token:
                 raise RuntimeError("MOSS_TUSHARE_TOKEN or settings.tushare_token is required for Tushare stock fallback.")
-            ts = import_tushare_pro()
-            self._pro = ts.pro_api(token)
+            self._pro = _TushareRestApi(token)
         return self._pro
 
 
@@ -1460,6 +1487,42 @@ def _limit_flag(close_value: float | None, limit_value: float | None) -> str:
         return "0"
     tolerance = max(0.000001, abs(limit_value) * 0.000001)
     return "1" if abs(close_value - limit_value) <= tolerance else "0"
+
+
+def select_tushare_ths_current_overlay_probe_stock_codes(
+    daily_by_key: dict[tuple[str, str], dict[str, object]],
+    *,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> list[str]:
+    """Select current-overlay probes without enabling the PIT concept fallback."""
+    return _tushare_ths_concept_probe_stock_codes(
+        daily_by_key,
+        as_of_date=as_of_date,
+        stock_codes=stock_codes,
+    )
+
+
+def load_tushare_ths_current_overlay_members(
+    client: object | None = None,
+    *,
+    as_of_date: str,
+    stock_codes: list[str],
+) -> list[dict[str, object]]:
+    """Load current THS memberships in the non-PIT overlay field contract."""
+    rows = _load_tushare_ths_concept_membership_rows(
+        client or _DefaultTushareStockClient(),
+        as_of_date=as_of_date,
+        stock_codes=stock_codes,
+    )
+    return [
+        {
+            "stock_code": row["stock_code"],
+            "theme_key": row["concept_code"],
+            "theme_name": row["concept_name"],
+        }
+        for row in rows
+    ]
 
 
 def _load_tushare_ths_concept_membership_rows(

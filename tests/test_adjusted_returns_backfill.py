@@ -249,10 +249,28 @@ def test_stock_adjustment_factor_backfill_requires_backup_or_governance_lock(tmp
     assert client.call_count == 0
 
 
-def test_stock_adjustment_factor_backfill_partial_vendor_response_preserves_existing_rows(tmp_path) -> None:
+def test_stock_adjustment_factor_backfill_partial_vendor_response_preserves_existing_rows(
+    tmp_path,
+    monkeypatch,
+) -> None:
     db_path = tmp_path / "stock-adjustment-partial.duckdb"
     _create_adjustment_factor_backfill_fixture(db_path)
     module = load_module("scripts.backfill_stock_adjustment_factor_partial", "scripts/backfill_stock_adjustment_factor.py")
+    maturity_calls: list[dict[str, object]] = []
+    maturity_module = __import__(
+        "backend.app.tasks.livermore_candidate_outcome_maturity",
+        fromlist=["mature_livermore_candidate_outcomes"],
+    )
+
+    def fake_maturity(*args: object, **kwargs: object) -> dict[str, object]:
+        maturity_calls.append({"args": args, "kwargs": kwargs})
+        return {
+            "status": "completed",
+            "evaluation_as_of_date": kwargs["evaluation_as_of_date"],
+            "updated_row_count": 1,
+        }
+
+    monkeypatch.setattr(maturity_module, "mature_livermore_candidate_outcomes", fake_maturity)
 
     result = module.backfill_stock_adjustment_factor(
         duckdb_path=db_path,
@@ -286,3 +304,119 @@ def test_stock_adjustment_factor_backfill_partial_vendor_response_preserves_exis
     assert result["returned_cell_count"] == 1
     assert rows == [("000001.SZ", pytest.approx(1.1)), ("000002.SZ", pytest.approx(2.0))]
     assert result["write_safety"]["status"] == "governance_lock_acknowledged"
+    assert len(maturity_calls) == 1
+    assert maturity_calls[0]["kwargs"]["evaluation_as_of_date"] == "2026-01-06"
+    assert result["outcome_maturity"]["status"] == "completed"
+
+
+def test_stock_adjustment_factor_backfill_reports_partial_when_outcome_maturity_is_noncompleted(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "stock-adjustment-maturity-failed.duckdb"
+    _create_adjustment_factor_backfill_fixture(db_path)
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_maturity_failed",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+    maturity_module = __import__(
+        "backend.app.tasks.livermore_candidate_outcome_maturity",
+        fromlist=["mature_livermore_candidate_outcomes"],
+    )
+    monkeypatch.setattr(
+        maturity_module,
+        "mature_livermore_candidate_outcomes",
+        lambda *_args, **_kwargs: {"status": "not_ready", "reason": "missing_observation_table"},
+    )
+
+    result = module.backfill_stock_adjustment_factor(
+        duckdb_path=db_path,
+        start_date="2026-01-06",
+        end_date="2026-01-06",
+        client=_AdjFactorClient(
+            {
+                "20260106": [
+                    {"ts_code": "000001.SZ", "trade_date": "20260106", "adj_factor": 1.1},
+                ]
+            }
+        ),
+        governance_lock=True,
+    )
+
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        written_factor = conn.execute(
+            "select adj_factor from stock_adjustment_factor where trade_date = '2026-01-06' and stock_code = '000001.SZ'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert result["status"] == "partial_completed"
+    assert result["factor_write_status"] == "completed"
+    assert result["outcome_maturity"]["status"] == "not_ready"
+    assert result["outcome_maturity"]["error"] == "missing_observation_table"
+    assert written_factor == (pytest.approx(1.1),)
+
+
+def test_stock_adjustment_factor_backfill_reports_partial_when_outcome_maturity_raises(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "stock-adjustment-maturity-error.duckdb"
+    _create_adjustment_factor_backfill_fixture(db_path)
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_maturity_error",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+    maturity_module = __import__(
+        "backend.app.tasks.livermore_candidate_outcome_maturity",
+        fromlist=["mature_livermore_candidate_outcomes"],
+    )
+
+    def fail_maturity(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise RuntimeError("maturity unavailable")
+
+    monkeypatch.setattr(maturity_module, "mature_livermore_candidate_outcomes", fail_maturity)
+
+    result = module.backfill_stock_adjustment_factor(
+        duckdb_path=db_path,
+        start_date="2026-01-06",
+        end_date="2026-01-06",
+        client=_AdjFactorClient(
+            {
+                "20260106": [
+                    {"ts_code": "000001.SZ", "trade_date": "20260106", "adj_factor": 1.1},
+                ]
+            }
+        ),
+        governance_lock=True,
+    )
+
+    assert result["status"] == "partial_completed"
+    assert result["factor_write_status"] == "completed"
+    assert result["outcome_maturity"] == {
+        "status": "failed",
+        "error": "maturity unavailable",
+    }
+
+
+def test_stock_adjustment_factor_cli_returns_nonzero_for_partial_result(monkeypatch, capsys) -> None:
+    module = load_module(
+        "scripts.backfill_stock_adjustment_factor_partial_cli",
+        "scripts/backfill_stock_adjustment_factor.py",
+    )
+    monkeypatch.setattr(
+        module,
+        "backfill_stock_adjustment_factor",
+        lambda **_kwargs: {
+            "status": "partial_completed",
+            "factor_write_status": "completed",
+            "outcome_maturity": {"status": "failed", "error": "maturity unavailable"},
+        },
+    )
+    monkeypatch.setattr("sys.argv", ["backfill_stock_adjustment_factor.py", "--governance-lock"])
+
+    exit_code = module.main()
+
+    assert exit_code != 0
+    assert '"factor_write_status": "completed"' in capsys.readouterr().out

@@ -8,8 +8,10 @@ from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 from backend.app.services.market_data_livermore_service import (
     INPUT_FRESHNESS_DEGRADED_DIAGNOSTIC_CODE,
     INPUT_FRESHNESS_LOOK_AHEAD_STATUS,
+    _cycle_input_row_issue,
     _assess_input_freshness,
     _CycleInputEvidence,
+    _load_cycle_input_evidence,
     _merge_input_freshness_into_data_gaps,
     livermore_strategy_envelope,
 )
@@ -70,9 +72,45 @@ def _seed_macro_cycle_series(
         [
             ("CA.CSI300_PE", "CSI300 PE", pe_date, 14.5, "daily", "x", "sv_pe", "vv_pe", "rv", "ok", "run-pe"),
             ("EMM00166466", "China 10Y yield", cn10y_date, 2.1, "daily", "%", "sv_y", "vv_y", "rv", "ok", "run-y"),
-            ("M0017126", "Manufacturing PMI", pmi_date, 51.2, "monthly", "index", "sv_pmi", "vv_pmi", "rv", "ok", "run-pmi"),
-            ("M5525763", "Social financing YoY", sf_dates[0], 8.4, "monthly", "%", "sv_sf", "vv_sf", "rv", "ok", "run-sf-1"),
-            ("M5525763", "Social financing YoY", sf_dates[1], 9.1, "monthly", "%", "sv_sf", "vv_sf", "rv", "ok", "run-sf-2"),
+            (
+                "M0017126",
+                "Manufacturing PMI",
+                pmi_date,
+                51.2,
+                "monthly",
+                "index",
+                "backfill_macro_v1",
+                "vv_backfill_macro_nbs_pmi_release_20260710_204801316c86ecf8_e6c278bdb0d88252",
+                "rv",
+                "ok",
+                "backfill_macro_v1:20260401T120000Z",
+            ),
+            (
+                "M5525763",
+                "Social financing YoY",
+                sf_dates[0],
+                8.4,
+                "monthly",
+                "%",
+                "backfill_macro_v1",
+                "vv_sf",
+                "rv",
+                "ok",
+                "backfill_macro_v1:20260401T120000Z",
+            ),
+            (
+                "M5525763",
+                "Social financing YoY",
+                sf_dates[1],
+                9.1,
+                "monthly",
+                "%",
+                "backfill_macro_v1",
+                "vv_sf",
+                "rv",
+                "ok",
+                "backfill_macro_v1:20260401T120000Z",
+            ),
         ],
     )
 
@@ -142,6 +180,44 @@ def _ready_choice_stock_readiness() -> ChoiceStockReadiness:
     )
 
 
+def _load_production_shaped_monthly_freshness_case(
+    tmp_path,
+    *,
+    pmi_trade_date: str,
+) -> tuple[dict[str, object], _CycleInputEvidence]:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        # 65 daily closes ending 2026-07-13 establish the strategy evaluation date.
+        _seed_broad_index_history(conn, start=date(2026, 5, 10), days=65)
+        _seed_macro_cycle_series(
+            conn,
+            pe_date="2026-07-13",
+            cn10y_date="2026-07-13",
+            pmi_date=pmi_trade_date,
+            sf_dates=("2026-04-01", "2026-05-01"),
+        )
+        # Production backfill records one conservative materialization date for the batch.
+        conn.execute(
+            """
+            update fact_choice_macro_daily
+            set run_id = 'backfill_macro_v1:20260713T120000Z'
+            where series_id in ('M0017126', 'M5525763')
+            """
+        )
+        _seed_stock_daily_observation(conn, trade_dates=["2026-07-12", "2026-07-13"])
+        _seed_factor_snapshot(conn, as_of_dates=["2026-07-13"])
+    finally:
+        conn.close()
+
+    evidence = _load_cycle_input_evidence(
+        duckdb_path=str(duckdb_path),
+        as_of_date=date(2026, 7, 13),
+    )
+    envelope = livermore_strategy_envelope(duckdb_path=str(duckdb_path))
+    return envelope, evidence
+
+
 def test_fresh_inputs_keep_quality_flag_and_attach_freshness_fields(tmp_path) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(duckdb_path), read_only=False)
@@ -179,6 +255,61 @@ def test_fresh_inputs_keep_quality_flag_and_attach_freshness_fields(tmp_path) ->
     assert not [
         row for row in result["diagnostics"] if row["code"] == INPUT_FRESHNESS_DEGRADED_DIAGNOSTIC_CODE
     ]
+
+
+def test_monthly_macro_freshness_uses_statistical_period_end_and_preserves_raw_lineage(tmp_path) -> None:
+    envelope, evidence = _load_production_shaped_monthly_freshness_case(
+        tmp_path,
+        pmi_trade_date="2026-05-01",
+    )
+
+    assert evidence.macro_snapshot is not None
+    assert evidence.macro_snapshot.lineage["pmi"]["trade_date"] == "2026-05-01"
+    assert evidence.macro_snapshot.lineage["credit_impulse"]["current_reference_date"] == "2026-05-01"
+    assert evidence.vendor_versions == (
+        "vv_pe",
+        "vv_y",
+        "vv_backfill_macro_nbs_pmi_release_20260710_204801316c86ecf8_e6c278bdb0d88252",
+        "vv_sf",
+    )
+
+    result = envelope["result"]
+    gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
+    assert gap_by_family["PMI"]["business_date"] == "2026-05-31"
+    assert gap_by_family["PMI"]["age_days"] == 43
+    assert gap_by_family["PMI"]["tier"] == "fresh"
+    assert gap_by_family["credit_impulse"]["business_date"] == "2026-05-31"
+    assert gap_by_family["credit_impulse"]["age_days"] == 43
+    assert gap_by_family["credit_impulse"]["tier"] == "fresh"
+
+    macro_components = {
+        row["input_family"]: row for row in result["market_gate"]["macro_context"]["components"]
+    }
+    assert macro_components["PMI"]["business_date"] == "2026-05-31"
+    assert macro_components["PMI"]["age_days"] == 43
+    assert macro_components["PMI"]["tier"] == "fresh"
+    assert result["cycle_rotation_framework"]["macro_layer"]["vendor_versions"] == list(
+        evidence.vendor_versions
+    )
+    assert envelope["result_meta"]["quality_flag"] == "ok"
+    assert "vv_backfill_macro_nbs_pmi_release" in envelope["result_meta"]["vendor_version"]
+
+
+def test_old_monthly_macro_period_remains_expired_after_period_end_normalization(tmp_path) -> None:
+    envelope, evidence = _load_production_shaped_monthly_freshness_case(
+        tmp_path,
+        pmi_trade_date="2026-01-01",
+    )
+
+    assert evidence.macro_snapshot is not None
+    assert evidence.macro_snapshot.lineage["pmi"]["trade_date"] == "2026-01-01"
+
+    result = envelope["result"]
+    gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
+    assert gap_by_family["PMI"]["business_date"] == "2026-01-31"
+    assert gap_by_family["PMI"]["age_days"] == 163
+    assert gap_by_family["PMI"]["tier"] == "expired"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
 
 
 def test_lagging_macro_series_degrades_quality_flag_with_note_and_gap(tmp_path) -> None:
@@ -243,6 +374,21 @@ def test_negative_age_days_marks_look_ahead_in_data_gaps() -> None:
     assert look_ahead[0]["business_date"] == "2026-04-10"
     assert look_ahead[0]["age_days"] == -4
     assert "look-ahead" in str(look_ahead[0]["evidence"])
+
+
+def test_monthly_materialization_run_after_evaluation_date_is_rejected() -> None:
+    issue = _cycle_input_row_issue(
+        series_id="M0017126",
+        trade_date="2026-05-01",
+        frequency="monthly",
+        unit="index",
+        quality_flag="ok",
+        source_version="backfill_macro_v1",
+        run_id="backfill_macro_v1:20260713T120000Z",
+        as_of_date=date(2026, 7, 10),
+    )
+
+    assert issue == "M0017126 availability date 2026-07-13 is after evaluation date 2026-07-10."
 
 
 def test_historical_as_of_does_not_use_future_factor_snapshot(tmp_path) -> None:

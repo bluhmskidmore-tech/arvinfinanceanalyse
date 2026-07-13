@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 import uuid
 from datetime import date
 from pathlib import Path
@@ -9,6 +10,10 @@ from typing import Annotated
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.api.response_cache import market_home_response_cache
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.stock_analysis_theme_overlay_reader import (
+    StockAnalysisThemeOverlayReader,
+    ThemeOverlayManifestAccessor,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_cycle_proxy_backtest_envelope,
@@ -29,11 +34,15 @@ from backend.app.services.market_data_livermore_service import (
     livermore_strategy_envelope_from_catalog,
 )
 from backend.app.services.stock_analysis_workbench_service import stock_analysis_workbench_envelope
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from backend.app.services.stock_kline_analysis_service import stock_kline_analysis_envelope
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
+# The key fingerprints DuckDB, the Choice catalog, and the theme overlay, so this
+# TTL only reuses a deterministic response while all page inputs are unchanged.
+STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS = 1800.0
 
 
 class LivermorePositionSnapshotRequest(BaseModel):
@@ -120,8 +129,18 @@ def _invalidate_livermore_response_cache() -> None:
     market_home_response_cache.invalidate()
 
 
-def _livermore_strategy_cache_key(*, duckdb_path: str, catalog_file: object, as_of_date: str | None) -> str:
-    return f"livermore/strategy::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
+def _livermore_strategy_cache_key(
+    *,
+    duckdb_path: str,
+    catalog_file: object,
+    as_of_date: str | None,
+    theme_overlay_fingerprint: str = "theme-overlay-reader:not-configured",
+) -> str:
+    return (
+        f"livermore/strategy::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
+        f"::data_version={livermore_data_version(duckdb_path)}"
+        f"::theme_overlay={theme_overlay_fingerprint}"
+    )
 
 
 def _stock_analysis_workbench_cache_key(
@@ -132,18 +151,111 @@ def _stock_analysis_workbench_cache_key(
     include: str | None,
     sector_window_days: int,
     top_k: int,
+    theme_overlay_fingerprint: str = "theme-overlay-reader:not-configured",
 ) -> str:
     return (
         f"livermore/workbench::as_of={as_of_date or ''}::include={include or ''}"
         f"::sector_window_days={sector_window_days}::top_k={top_k}"
-        f"::catalog={catalog_file}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
+        f"::catalog={catalog_file}::catalog_version={_choice_stock_catalog_fingerprint(catalog_file)}"
+        f"::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
+        f"::theme_overlay={theme_overlay_fingerprint}"
     )
 
 
 def _livermore_signal_confluence_cache_key(
-    *, duckdb_path: str, catalog_file: object, as_of_date: str | None
+    *,
+    duckdb_path: str,
+    catalog_file: object,
+    as_of_date: str | None,
+    theme_overlay_fingerprint: str = "theme-overlay-reader:not-configured",
 ) -> str:
-    return f"livermore/signal-confluence::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
+    return (
+        f"livermore/signal-confluence::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
+        f"::data_version={livermore_data_version(duckdb_path)}"
+        f"::theme_overlay={theme_overlay_fingerprint}"
+    )
+
+
+def _theme_overlay_reader_from_settings(settings: object) -> StockAnalysisThemeOverlayReader | None:
+    governance_path = getattr(settings, "governance_path", None)
+    archive_root = getattr(settings, "local_archive_path", None)
+    if governance_path is None or archive_root is None:
+        return None
+    try:
+        governance_repo = ThemeOverlayManifestAccessor(
+            base_dir=governance_path,
+            sql_dsn=str(getattr(settings, "governance_sql_dsn", "") or ""),
+            backend_mode=str(getattr(settings, "governance_backend", "jsonl") or "jsonl"),
+        )
+    except Exception:
+        return None
+    return StockAnalysisThemeOverlayReader(
+        archive_root=archive_root,
+        governance_repo=governance_repo,
+    )
+
+
+def _theme_overlay_fingerprint(reader: StockAnalysisThemeOverlayReader | None) -> str:
+    return reader.fingerprint() if reader is not None else "theme-overlay-reader:not-configured"
+
+
+def _choice_stock_catalog_fingerprint(catalog_file: object) -> str:
+    try:
+        stat = Path(str(catalog_file)).stat()
+    except OSError:
+        return "missing"
+    return f"{stat.st_mtime_ns}:{stat.st_size}"
+
+
+def _cached_stock_analysis_workbench(
+    *,
+    settings: object,
+    as_of_date: str | None,
+    include: str | None,
+    sector_window_days: int,
+    top_k: int,
+) -> tuple[dict[str, object], str, float]:
+    duckdb_path = str(settings.duckdb_path)  # type: ignore[attr-defined]
+    catalog_file = settings.choice_stock_catalog_file  # type: ignore[attr-defined]
+    theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
+    theme_overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
+    cache_status = "hit"
+    compute_ms = 0.0
+
+    def build() -> dict[str, object]:
+        nonlocal cache_status, compute_ms
+        cache_status = "miss"
+        compute_started = time.perf_counter()
+        try:
+            return timed_api_call(
+                "/ui/market-data/stock-analysis/workbench",
+                lambda: stock_analysis_workbench_envelope(
+                    duckdb_path=duckdb_path,
+                    as_of_date=as_of_date,
+                    choice_stock_catalog_file=catalog_file,
+                    include=include,
+                    sector_window_days=sector_window_days,
+                    top_k=top_k,
+                    theme_overlay_reader=theme_overlay_reader,
+                ),
+            )
+        finally:
+            compute_ms = (time.perf_counter() - compute_started) * 1000
+
+    payload = market_home_response_cache.get_or_build(
+        _stock_analysis_workbench_cache_key(
+            duckdb_path=duckdb_path,
+            catalog_file=catalog_file,
+            as_of_date=as_of_date,
+            include=include,
+            sector_window_days=sector_window_days,
+            top_k=top_k,
+            theme_overlay_fingerprint=theme_overlay_fingerprint,
+        ),
+        build,
+        ttl_seconds=STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS,
+    )
+    return payload, cache_status, compute_ms
 
 
 def _livermore_stock_detail_cache_key(
@@ -151,9 +263,12 @@ def _livermore_stock_detail_cache_key(
 ) -> str:
     return (
         f"livermore/stock-detail::stock={stock_code}::as_of={as_of_date or ''}"
-        f"::lookback={lookback}::{duckdb_path}"
         f"::lookback={lookback}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
     )
+
+
+def _stock_kline_analysis_cache_key(*, duckdb_path: str, stock_code: str, as_of_date: str | None, lookback: int) -> str:
+    return f"stock-analysis/kline::stock={stock_code}::as_of={as_of_date or ''}::lookback={lookback}::{duckdb_path}"
 
 
 def _livermore_candidate_history_cache_key(
@@ -162,11 +277,14 @@ def _livermore_candidate_history_cache_key(
     stock_code: str | None,
     snapshot_from: str | None,
     snapshot_to: str | None,
+    evaluation_as_of_date: str | None,
     limit: int,
 ) -> str:
     return (
         f"livermore/candidate-history::stock={stock_code or ''}"
-        f"::from={snapshot_from or ''}::to={snapshot_to or ''}::limit={limit}::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
+        f"::from={snapshot_from or ''}::to={snapshot_to or ''}"
+        f"::evaluation={evaluation_as_of_date or ''}::limit={limit}::{duckdb_path}"
+        f"::data_version={livermore_data_version(duckdb_path)}"
     )
 
 
@@ -246,17 +364,21 @@ def livermore_strategy(
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     duckdb_path = str(settings.duckdb_path)
     catalog_file = settings.choice_stock_catalog_file
+    theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
+    theme_overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
     return market_home_response_cache.get_or_build(
         _livermore_strategy_cache_key(
             duckdb_path=duckdb_path,
             catalog_file=catalog_file,
             as_of_date=as_of_date,
+            theme_overlay_fingerprint=theme_overlay_fingerprint,
         ),
         lambda: _with_livermore_workbench_summary(
             livermore_strategy_envelope_from_catalog(
                 duckdb_path=duckdb_path,
                 as_of_date=as_of_date,
                 choice_stock_catalog_file=catalog_file,
+                theme_overlay_reader=theme_overlay_reader,
             ),
             summary_kind="strategy",
         ),
@@ -266,6 +388,7 @@ def livermore_strategy(
 @router.get("/stock-analysis/workbench")
 def stock_analysis_workbench(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    response: Response,
     as_of_date: str | None = Query(None),
     include: str | None = Query(None),
     sector_window_days: int = Query(default=20, ge=2, le=60),
@@ -279,29 +402,19 @@ def stock_analysis_workbench(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    duckdb_path = str(settings.duckdb_path)
-    catalog_file = settings.choice_stock_catalog_file
-    return market_home_response_cache.get_or_build(
-        _stock_analysis_workbench_cache_key(
-            duckdb_path=duckdb_path,
-            catalog_file=catalog_file,
-            as_of_date=as_of_date,
-            include=include,
-            sector_window_days=sector_window_days,
-            top_k=top_k,
-        ),
-        lambda: timed_api_call(
-            "/ui/market-data/stock-analysis/workbench",
-            lambda: stock_analysis_workbench_envelope(
-                duckdb_path=duckdb_path,
-                as_of_date=as_of_date,
-                choice_stock_catalog_file=catalog_file,
-                include=include,
-                sector_window_days=sector_window_days,
-                top_k=top_k,
-            ),
-        ),
+    started_at = time.perf_counter()
+    payload, cache_status, compute_ms = _cached_stock_analysis_workbench(
+        settings=settings,
+        as_of_date=as_of_date,
+        include=include,
+        sector_window_days=sector_window_days,
+        top_k=top_k,
     )
+    total_ms = (time.perf_counter() - started_at) * 1000
+    response.headers["Server-Timing"] = (
+        f'workbench;dur={total_ms:.3f}, compute;dur={compute_ms:.3f}, cache;desc="{cache_status}"'
+    )
+    return payload
 
 
 @router.get("/livermore/signal-confluence")
@@ -319,17 +432,21 @@ def livermore_signal_confluence(
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     duckdb_path = str(settings.duckdb_path)
     catalog_file = settings.choice_stock_catalog_file
+    theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
+    theme_overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
     return market_home_response_cache.get_or_build(
         _livermore_signal_confluence_cache_key(
             duckdb_path=duckdb_path,
             catalog_file=catalog_file,
             as_of_date=as_of_date,
+            theme_overlay_fingerprint=theme_overlay_fingerprint,
         ),
         lambda: _with_livermore_workbench_summary(
             livermore_signal_confluence_envelope(
                 duckdb_path=duckdb_path,
                 as_of_date=as_of_date,
                 choice_stock_catalog_file=catalog_file,
+                theme_overlay_reader=theme_overlay_reader,
             ),
             summary_kind="signal_confluence",
         ),
@@ -507,12 +624,59 @@ def livermore_stock_detail(
     )
 
 
+@router.get("/stock-analysis/kline-analysis")
+def stock_kline_analysis(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    stock_code: str = Query(..., min_length=1, max_length=16),
+    as_of_date: str | None = Query(None),
+    lookback: int = Query(60, ge=30, le=250),
+) -> dict[str, object]:
+    cleaned = stock_code.strip()
+    if not _STOCK_CODE_LIVERMORE_PATTERN.fullmatch(cleaned):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid stock_code. Allowed characters: letters, digits, '.', '-'.",
+        )
+    parsed_as_of: date | None = None
+    if as_of_date is not None:
+        text = as_of_date.strip()
+        if not text:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.")
+        try:
+            parsed_as_of = date.fromisoformat(text)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
+
+    settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
+    duckdb_path = str(settings.duckdb_path)
+    as_of_text = parsed_as_of.isoformat() if parsed_as_of is not None else None
+    return market_home_response_cache.get_or_build(
+        _stock_kline_analysis_cache_key(
+            duckdb_path=duckdb_path,
+            stock_code=cleaned,
+            as_of_date=as_of_text,
+            lookback=lookback,
+        ),
+        lambda: timed_api_call(
+            "/ui/market-data/stock-analysis/kline-analysis",
+            lambda: stock_kline_analysis_envelope(
+                duckdb_path=duckdb_path,
+                stock_code=cleaned,
+                as_of_date=parsed_as_of,
+                lookback=lookback,
+            ),
+        ),
+    )
+
+
 @router.get("/livermore/candidate-history")
 def livermore_candidate_history(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     stock_code: str | None = Query(default=None, max_length=16),
     snapshot_from: str | None = Query(default=None),
     snapshot_to: str | None = Query(default=None),
+    evaluation_as_of_date: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, object]:
     if stock_code is not None and stock_code.strip():
@@ -534,6 +698,22 @@ def livermore_candidate_history(
                 detail=f"Invalid {label}. Expected YYYY-MM-DD.",
             ) from exc
 
+    normalized_evaluation_date: str | None = None
+    if evaluation_as_of_date is not None:
+        text = evaluation_as_of_date.strip()
+        if not text:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid evaluation_as_of_date. Expected YYYY-MM-DD.",
+            )
+        try:
+            normalized_evaluation_date = date.fromisoformat(text).isoformat()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="Invalid evaluation_as_of_date. Expected YYYY-MM-DD.",
+            ) from exc
+
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     duckdb_path = str(settings.duckdb_path)
@@ -543,6 +723,7 @@ def livermore_candidate_history(
             stock_code=stock_code,
             snapshot_from=snapshot_from,
             snapshot_to=snapshot_to,
+            evaluation_as_of_date=normalized_evaluation_date,
             limit=limit,
         ),
         lambda: timed_api_call(
@@ -554,6 +735,7 @@ def livermore_candidate_history(
                     snapshot_from=snapshot_from,
                     snapshot_to=snapshot_to,
                     limit=limit,
+                    evaluation_as_of_date=normalized_evaluation_date,
                 ),
                 summary_kind="candidate_history",
             ),
@@ -807,13 +989,17 @@ def _active_data_gap_count(value: object) -> int | None:
 def _active_diagnostic_count(value: object) -> int | None:
     if not isinstance(value, list):
         return None
-    return sum(1 for item in value if not (isinstance(item, dict) and str(item.get("severity") or "").lower() == "info"))
+    return sum(
+        1 for item in value if not (isinstance(item, dict) and str(item.get("severity") or "").lower() == "info")
+    )
 
 
 def _actionable_unsupported_output_count(value: object) -> int | None:
     if not isinstance(value, list):
         return None
-    return sum(1 for item in value if not (isinstance(item, dict) and _is_known_livermore_policy_pause(item.get("reason"))))
+    return sum(
+        1 for item in value if not (isinstance(item, dict) and _is_known_livermore_policy_pause(item.get("reason")))
+    )
 
 
 def _is_known_livermore_policy_pause(reason: object) -> bool:

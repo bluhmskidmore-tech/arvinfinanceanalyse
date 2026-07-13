@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable, Literal
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import duckdb
+import duckdb  # noqa: E402
 
 
 DEFAULT_OUTPUT_DIR = "test_output/livermore_stock_selection"
@@ -31,7 +32,10 @@ def run_livermore_daily_pretrade_refresh(
     sample_stock_code: str = DEFAULT_SAMPLE_STOCK_CODE,
     dry_run: bool = False,
     skip_upstream_probe: bool = False,
+    theme_overlay_mode: Literal["off", "dry_run", "archive"] = "off",
 ) -> dict[str, object]:
+    if theme_overlay_mode not in {"off", "dry_run", "archive"}:
+        raise ValueError("theme_overlay_mode must be one of: off, dry_run, archive")
     resolved_path = _resolve_duckdb_path(duckdb_path)
     resolved_date = _normalize_date(target_date or date.today().isoformat())
     initial = inspect_livermore_daily_refresh_state(
@@ -40,12 +44,27 @@ def run_livermore_daily_pretrade_refresh(
     )
 
     if dry_run:
+        would_run_steps = _missing_step_names(initial)
+        if theme_overlay_mode != "off":
+            choice_step_count = sum(
+                step
+                in {
+                    "materialize_choice_stock_inputs",
+                    "materialize_choice_stock_factor_snapshot",
+                }
+                for step in would_run_steps
+            )
+            would_run_steps.insert(choice_step_count, "refresh_choice_stock_theme_overlay")
         return {
             "status": "dry_run",
             "duckdb_path": str(resolved_path),
             "target_date": resolved_date,
+            "theme_overlay_mode": theme_overlay_mode,
             "local_state": initial,
-            "would_run_steps": _missing_step_names(initial),
+            "would_run_steps": [
+                *would_run_steps,
+                "mature_livermore_candidate_outcomes",
+            ],
         }
 
     steps: list[dict[str, object]] = []
@@ -86,6 +105,57 @@ def run_livermore_daily_pretrade_refresh(
         steps.append({"name": "factor_snapshot", "result": payload})
         state = inspect_livermore_daily_refresh_state(duckdb_path=resolved_path, target_date=resolved_date)
 
+    theme_overlay_result: dict[str, object] | None = None
+    theme_overlay_failed = False
+    if theme_overlay_mode != "off":
+        try:
+            from backend.app.governance.settings import get_settings
+            from backend.app.tasks.choice_stock_observation_manifest import (
+                resolve_latest_committed_choice_stock_observation,
+            )
+            from backend.app.tasks.choice_stock_theme_overlay_refresh import (
+                refresh_choice_stock_theme_overlay,
+            )
+
+            observation = resolve_latest_committed_choice_stock_observation(
+                duckdb_path=resolved_path,
+                expected_report_date=resolved_date,
+            )
+            parent_run_id = observation.materialization_run_id
+            digest = hashlib.sha256(f"{parent_run_id}|{resolved_date}".encode()).hexdigest()[:16]
+            settings = get_settings()
+            theme_overlay_result = refresh_choice_stock_theme_overlay(
+                mode=theme_overlay_mode,
+                duckdb_path=str(resolved_path),
+                governance_dir=str(settings.governance_path),
+                archive_root=str(settings.local_archive_path),
+                expected_report_date=resolved_date,
+                run_id=f"{parent_run_id}:theme-overlay",
+                source_version=f"sv_choice_stock_theme_overlay_{digest}",
+                vendor_version="vv_tushare_ths_current_overlay_v1",
+            )
+        except Exception as exc:
+            theme_overlay_result = {
+                "mode": theme_overlay_mode,
+                "status": (
+                    "archive_failed"
+                    if theme_overlay_mode == "archive"
+                    else "dry_run_failed"
+                ),
+                "overlay_status": (
+                    "archive_failed"
+                    if theme_overlay_mode == "archive"
+                    else "dry_run_failed"
+                ),
+                "member_count": 0,
+                "message": _summarize_error(exc),
+            }
+        theme_overlay_failed = str(theme_overlay_result.get("status") or "") not in {
+            "completed",
+            "dry_run",
+        }
+        steps.append({"name": "theme_overlay", "result": theme_overlay_result})
+
     if not state["checks"]["csi300_macro"]["ready"]:
         from backend.app.tasks.choice_macro import refresh_public_cross_asset_headlines
 
@@ -116,6 +186,17 @@ def run_livermore_daily_pretrade_refresh(
         )
         steps.append({"name": "gate_supplement", "result": payload})
         state = inspect_livermore_daily_refresh_state(duckdb_path=resolved_path, target_date=resolved_date)
+        if str(payload.get("status") or "") != "completed" or not state["checks"][
+            "gate_supplement"
+        ]["ready"]:
+            return {
+                "status": "not_ready",
+                "duckdb_path": str(resolved_path),
+                "target_date": resolved_date,
+                "reason": "gate_supplement_not_landed_after_refresh",
+                "local_state": state,
+                "steps": steps,
+            }
 
     if not state["checks"]["position_snapshot"]["ready"]:
         from scripts.sync_livermore_position_snapshot import sync_livermore_position_snapshot
@@ -146,6 +227,59 @@ def run_livermore_daily_pretrade_refresh(
             "steps": steps,
         }
 
+    try:
+        from backend.app.tasks.livermore_candidate_outcome_maturity import (
+            mature_livermore_candidate_outcomes,
+        )
+
+        maturity_payload = mature_livermore_candidate_outcomes(
+            resolved_path,
+            evaluation_as_of_date=resolved_date,
+        )
+        steps.append({"name": "candidate_outcome_maturity", "result": maturity_payload})
+    except Exception as exc:
+        steps.append(
+            {
+                "name": "candidate_outcome_maturity",
+                "result": {
+                    "status": "failed",
+                    "evaluation_as_of_date": resolved_date,
+                    "error": _summarize_error(exc),
+                },
+            }
+        )
+        return {
+            "status": "partial",
+            "duckdb_path": str(resolved_path),
+            "target_date": resolved_date,
+            "reason": "candidate_outcome_maturity_failed",
+            "local_state": state,
+            "steps": steps,
+        }
+    if maturity_payload.get("status") != "completed":
+        return {
+            "status": "partial",
+            "duckdb_path": str(resolved_path),
+            "target_date": resolved_date,
+            "reason": "candidate_outcome_maturity_not_completed",
+            "local_state": state,
+            "steps": steps,
+        }
+
+    pre_export_state = inspect_livermore_daily_refresh_state(
+        duckdb_path=resolved_path,
+        target_date=resolved_date,
+    )
+    if not pre_export_state["ready"]:
+        return {
+            "status": "partial",
+            "duckdb_path": str(resolved_path),
+            "target_date": resolved_date,
+            "reason": "refresh_state_incomplete_before_export",
+            "local_state": pre_export_state,
+            "steps": steps,
+        }
+
     from scripts.export_livermore_pretrade_check import export_livermore_pretrade_check
 
     pretrade_payload = export_livermore_pretrade_check(
@@ -157,15 +291,21 @@ def run_livermore_daily_pretrade_refresh(
     )
     steps.append({"name": "pretrade_export", "result": _compact_pretrade_result(pretrade_payload)})
     final_state = inspect_livermore_daily_refresh_state(duckdb_path=resolved_path, target_date=resolved_date)
-    return {
-        "status": "completed",
+    result = {
+        "status": "partial" if theme_overlay_failed else "completed",
         "duckdb_path": str(resolved_path),
         "target_date": resolved_date,
+        "theme_overlay_mode": theme_overlay_mode,
         "local_state": final_state,
         "steps": steps,
         "pretrade_output_paths": pretrade_payload.get("output_paths"),
         "pretrade_decision": pretrade_payload.get("decision"),
     }
+    if theme_overlay_result is not None:
+        result["theme_overlay"] = theme_overlay_result
+    if theme_overlay_failed:
+        result["reason"] = "theme_overlay_failed"
+    return result
 
 
 def monitor_livermore_daily_pretrade_refresh(
@@ -179,6 +319,7 @@ def monitor_livermore_daily_pretrade_refresh(
     sample_stock_code: str = DEFAULT_SAMPLE_STOCK_CODE,
     dry_run: bool = False,
     skip_upstream_probe: bool = False,
+    theme_overlay_mode: Literal["off", "dry_run", "archive"] = "off",
     max_attempts: int = 12,
     poll_interval_seconds: float = 600,
     sleep_func: Callable[[float], None] = time.sleep,
@@ -198,6 +339,7 @@ def monitor_livermore_daily_pretrade_refresh(
             sample_stock_code=sample_stock_code,
             dry_run=dry_run,
             skip_upstream_probe=skip_upstream_probe,
+            theme_overlay_mode=theme_overlay_mode,
         )
         last_result = result
         attempts.append(_compact_monitor_attempt(attempt, result))
@@ -243,11 +385,9 @@ def inspect_livermore_daily_refresh_state(
             target_date=target_date,
         )
         checks["csi300_macro"] = _macro_series_check(conn, tables=tables, target_date=target_date)
-        checks["gate_supplement"] = _date_count_check(
+        checks["gate_supplement"] = _gate_supplement_check(
             conn,
             tables=tables,
-            table_name="fact_livermore_gate_supplement_daily",
-            date_column="trade_date",
             target_date=target_date,
         )
         checks["position_snapshot"] = _position_snapshot_check(conn, tables=tables, target_date=target_date)
@@ -351,6 +491,37 @@ def _date_count_check(
 ) -> dict[str, object]:
     count = _count_rows_on_date(conn, tables, table_name, date_column, target_date)
     return {"ready": count > 0, "row_count": count}
+
+
+def _gate_supplement_check(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    tables: set[str],
+    target_date: str,
+) -> dict[str, object]:
+    table_name = "fact_livermore_gate_supplement_daily"
+    row_count = _count_rows_on_date(conn, tables, table_name, "trade_date", target_date)
+    if row_count <= 0:
+        return {"ready": False, "row_count": 0, "usable_row_count": 0}
+    try:
+        row = conn.execute(
+            f"""
+            select count(*)::integer
+            from {table_name}
+            where trade_date = ?
+              and breadth_5d is not null
+              and limit_up_quality_ok is not null
+            """,
+            [target_date],
+        ).fetchone()
+    except duckdb.Error:
+        return {"ready": False, "row_count": row_count, "usable_row_count": 0}
+    usable_row_count = int(row[0] or 0) if row else 0
+    return {
+        "ready": usable_row_count > 0,
+        "row_count": row_count,
+        "usable_row_count": usable_row_count,
+    }
 
 
 def _position_snapshot_check(
@@ -514,6 +685,11 @@ def main() -> int:
     parser.add_argument("--sample-stock-code", default=DEFAULT_SAMPLE_STOCK_CODE)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-upstream-probe", action="store_true")
+    parser.add_argument(
+        "--theme-overlay-mode",
+        choices=("off", "dry_run", "archive"),
+        default="off",
+    )
     parser.add_argument("--monitor", action="store_true", help="Retry until data lands or max attempts is reached.")
     parser.add_argument("--max-attempts", type=int, default=12)
     parser.add_argument("--poll-interval-seconds", type=float, default=600)
@@ -529,6 +705,7 @@ def main() -> int:
             "sample_stock_code": args.sample_stock_code,
             "dry_run": args.dry_run,
             "skip_upstream_probe": args.skip_upstream_probe,
+            "theme_overlay_mode": args.theme_overlay_mode,
         }
         if args.monitor:
             result = monitor_livermore_daily_pretrade_refresh(

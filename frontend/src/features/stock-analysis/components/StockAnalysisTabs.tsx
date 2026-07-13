@@ -1,4 +1,13 @@
-import { Children, isValidElement, type Key, type ReactElement, type ReactNode } from "react";
+import {
+  Children,
+  isValidElement,
+  useId,
+  useRef,
+  type Key,
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 type StockAnalysisTabsProps = {
   children: ReactNode;
@@ -6,7 +15,7 @@ type StockAnalysisTabsProps = {
   selectedKey?: Key | null;
   onSelectionChange?: (key: Key) => void;
   size?: "sm" | "md" | "lg";
-  "aria-label"?: string;
+  "aria-label": string;
 };
 
 type StockAnalysisTabProps = {
@@ -28,30 +37,44 @@ export function StockAnalysisTabs({
   size = "md",
   "aria-label": ariaLabel,
 }: StockAnalysisTabsProps) {
-  const items = Children.toArray(children)
-    .filter(isValidElement)
-    .map((child, index) => {
-      const element = child as ReactElement<StockAnalysisTabProps>;
-      const key = String(element.key ?? index);
-      return {
-        key,
-        label: element.props.title ?? key,
-        children: element.props.children,
-      };
+  const instanceId = useId().replace(/:/g, "");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const items: Array<{ key: string; label: ReactNode; children: ReactNode; tabId: string; panelId: string }> = [];
+  Children.forEach(children, (child, index) => {
+    if (!isValidElement(child)) return;
+    const element = child as ReactElement<StockAnalysisTabProps>;
+    const key = String(element.key ?? index);
+    items.push({
+      key,
+      label: element.props.title ?? key,
+      children: element.props.children,
+      tabId: `stock-analysis-tabs-${instanceId}-tab-${index}`,
+      panelId: `stock-analysis-tabs-${instanceId}-panel-${index}`,
     });
+  });
   const activeKey = selectedKey == null ? items[0]?.key : String(selectedKey);
   const activeItem = items.find((item) => item.key === activeKey) ?? items[0];
   const rootClassName = ["ant-tabs", "ant-tabs-top", tabsSizeClassMap[size], className].filter(Boolean).join(" ");
 
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % items.length;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + items.length) % items.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = items.length - 1;
+    if (nextIndex == null || !items[nextIndex]) return;
+
+    event.preventDefault();
+    tabRefs.current[nextIndex]?.focus();
+    onSelectionChange?.(items[nextIndex].key);
+  };
+
   return (
-    <div
-      aria-label={ariaLabel}
-      className={rootClassName}
-    >
-      <div className="ant-tabs-nav" role="tablist">
+    <div className={rootClassName}>
+      <div aria-label={ariaLabel} className="ant-tabs-nav" role="tablist">
         <div className="ant-tabs-nav-wrap">
           <div className="ant-tabs-nav-list">
-            {items.map((item) => {
+            {items.map((item, index) => {
               const active = item.key === activeItem?.key;
               return (
                 <div
@@ -60,11 +83,15 @@ export function StockAnalysisTabs({
                   key={item.key}
                 >
                   <button
-                    aria-controls={`stock-analysis-tabpane-${item.key}`}
+                    aria-controls={item.panelId}
                     aria-selected={active}
                     className="ant-tabs-tab-btn"
-                    id={`stock-analysis-tab-${item.key}`}
+                    id={item.tabId}
                     onClick={() => onSelectionChange?.(item.key)}
+                    onKeyDown={(event) => handleTabKeyDown(event, index)}
+                    ref={(node) => {
+                      tabRefs.current[index] = node;
+                    }}
                     role="tab"
                     tabIndex={active ? 0 : -1}
                     type="button"
@@ -81,16 +108,21 @@ export function StockAnalysisTabs({
       </div>
       <div className="ant-tabs-content-holder">
         <div className="ant-tabs-content ant-tabs-content-top">
-          {activeItem ? (
-            <div
-              aria-labelledby={`stock-analysis-tab-${activeItem.key}`}
-              className="ant-tabs-tabpane ant-tabs-tabpane-active"
-              id={`stock-analysis-tabpane-${activeItem.key}`}
-              role="tabpanel"
-            >
-              {activeItem.children}
-            </div>
-          ) : null}
+          {items.map((item) => {
+            const active = item.key === activeItem?.key;
+            return (
+              <div
+                aria-labelledby={item.tabId}
+                className={`ant-tabs-tabpane${active ? " ant-tabs-tabpane-active" : ""}`}
+                hidden={!active}
+                id={item.panelId}
+                key={item.key}
+                role="tabpanel"
+              >
+                {active ? item.children : null}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

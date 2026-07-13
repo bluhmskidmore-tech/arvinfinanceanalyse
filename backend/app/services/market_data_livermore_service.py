@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import math
+import re
 import uuid
+from calendar import monthrange
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import cast
 
@@ -83,6 +87,10 @@ from backend.app.repositories.choice_stock_adapter import (
     load_choice_stock_readiness,
 )
 from backend.app.repositories.livermore_gate_supplement_repo import fetch_market_gate_supplement
+from backend.app.repositories.stock_analysis_theme_overlay_reader import (
+    StockAnalysisThemeOverlayReader,
+    ThemeOverlayReadResult,
+)
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
@@ -157,6 +165,7 @@ def livermore_strategy_envelope(
     as_of_date: str | None = None,
     stock_readiness: ChoiceStockReadiness | None = None,
     stock_candidate_policy: str | None = None,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> dict[str, object]:
     requested_date = _parse_optional_date(as_of_date)
     payload, meta = load_livermore_strategy_payload(
@@ -164,6 +173,7 @@ def livermore_strategy_envelope(
         as_of_date=requested_date,
         stock_readiness=stock_readiness,
         stock_candidate_policy=stock_candidate_policy,
+        theme_overlay_reader=theme_overlay_reader,
     )
     filters_applied = {
         "requested_as_of_date": None if requested_date is None else requested_date.isoformat(),
@@ -194,13 +204,17 @@ def livermore_strategy_envelope_from_catalog(
     choice_stock_catalog_file: str | Path,
     as_of_date: str | None = None,
     stock_candidate_policy: str | None = None,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> dict[str, object]:
-    return livermore_strategy_envelope(
-        duckdb_path=duckdb_path,
-        as_of_date=as_of_date,
-        stock_readiness=load_choice_stock_readiness(choice_stock_catalog_file),
-        stock_candidate_policy=stock_candidate_policy,
-    )
+    strategy_kwargs: dict[str, object] = {
+        "duckdb_path": duckdb_path,
+        "as_of_date": as_of_date,
+        "stock_readiness": load_choice_stock_readiness(choice_stock_catalog_file),
+        "stock_candidate_policy": stock_candidate_policy,
+    }
+    if theme_overlay_reader is not None:
+        strategy_kwargs["theme_overlay_reader"] = theme_overlay_reader
+    return livermore_strategy_envelope(**strategy_kwargs)
 
 
 def load_livermore_strategy_payload(
@@ -210,14 +224,21 @@ def load_livermore_strategy_payload(
     stock_readiness: ChoiceStockReadiness | None = None,
     backfill_mode: bool = False,
     stock_candidate_policy: str | None = None,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     resolved_stock_readiness = stock_readiness or choice_stock_readiness_missing("")
+    theme_overlay_fingerprint = (
+        theme_overlay_reader.fingerprint(backfill_mode=backfill_mode)
+        if theme_overlay_reader is not None
+        else "theme-overlay-reader:not-configured"
+    )
     cache_key = _livermore_strategy_payload_cache_key(
         duckdb_path=duckdb_path,
         as_of_date=as_of_date,
         stock_readiness=resolved_stock_readiness,
         backfill_mode=backfill_mode,
         stock_candidate_policy=stock_candidate_policy,
+        theme_overlay_fingerprint=theme_overlay_fingerprint,
     )
     if cache_key is not None:
         cache = get_runtime_cache(
@@ -232,6 +253,7 @@ def load_livermore_strategy_payload(
                 stock_readiness=resolved_stock_readiness,
                 backfill_mode=backfill_mode,
                 stock_candidate_policy=stock_candidate_policy,
+                theme_overlay_reader=theme_overlay_reader,
             ),
         )
 
@@ -241,6 +263,7 @@ def load_livermore_strategy_payload(
         stock_readiness=resolved_stock_readiness,
         backfill_mode=backfill_mode,
         stock_candidate_policy=stock_candidate_policy,
+        theme_overlay_reader=theme_overlay_reader,
     )
 
 
@@ -251,6 +274,7 @@ def _load_livermore_strategy_payload_uncached(
     stock_readiness: ChoiceStockReadiness,
     backfill_mode: bool,
     stock_candidate_policy: str | None,
+    theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     resolved_stock_readiness = stock_readiness
     # Reuse one read-only connection for the macro history + cycle-evidence
@@ -278,9 +302,7 @@ def _load_livermore_strategy_payload_uncached(
         macro=MacroCycleObservation(
             macro_score=cycle_input_evidence.macro_score,
             component_dates=tuple(
-                row
-                for row in cycle_input_evidence.input_business_dates
-                if row[0] in _MACRO_CONTEXT_INPUT_FAMILIES
+                row for row in cycle_input_evidence.input_business_dates if row[0] in _MACRO_CONTEXT_INPUT_FAMILIES
             ),
             evidence=cycle_input_evidence.macro_score_evidence,
         ),
@@ -288,6 +310,15 @@ def _load_livermore_strategy_payload_uncached(
     requested_text = None if as_of_date is None else as_of_date.isoformat()
     resolved_as_of_date = history_rows[-1].trade_date.isoformat() if history_rows else None
     effective_as_of_date = resolved_as_of_date or requested_text
+    theme_overlay_result = (
+        theme_overlay_reader.read(
+            requested_as_of_date=requested_text,
+            effective_as_of_date=resolved_as_of_date,
+            backfill_mode=backfill_mode,
+        )
+        if theme_overlay_reader is not None
+        else None
+    )
     stock_outputs = _load_choice_stock_outputs(
         duckdb_path=duckdb_path,
         as_of_date=effective_as_of_date,
@@ -296,6 +327,7 @@ def _load_livermore_strategy_payload_uncached(
         backfill_mode=backfill_mode,
         stock_candidate_policy=stock_candidate_policy,
         macro_score=cycle_input_evidence.macro_score,
+        theme_overlay_result=theme_overlay_result,
     )
     diagnostics = _build_diagnostics(
         requested_as_of_date=requested_text,
@@ -399,7 +431,10 @@ def _load_livermore_strategy_payload_uncached(
             source_versions + list(cycle_input_evidence.source_versions),
             empty_value=EMPTY_SOURCE_VERSION,
         ),
-        "vendor_version": _aggregate_lineage(vendor_versions, empty_value=EMPTY_VENDOR_VERSION),
+        "vendor_version": _aggregate_lineage(
+            vendor_versions + list(cycle_input_evidence.vendor_versions),
+            empty_value=EMPTY_VENDOR_VERSION,
+        ),
         "tables_used": _unique_preserving_order(tables_used),
         "evidence_rows": len(history_rows) + stock_outputs.evidence_rows + cycle_input_evidence.evidence_rows,
     }
@@ -413,6 +448,7 @@ def _livermore_strategy_payload_cache_key(
     stock_readiness: ChoiceStockReadiness,
     backfill_mode: bool,
     stock_candidate_policy: str | None,
+    theme_overlay_fingerprint: str = "theme-overlay-reader:not-configured",
 ) -> tuple[object, ...] | None:
     path = Path(duckdb_path)
     if not path.exists():
@@ -437,6 +473,7 @@ def _livermore_strategy_payload_cache_key(
         readiness_fingerprint,
         backfill_mode,
         stock_candidate_policy or "",
+        theme_overlay_fingerprint,
         RULE_VERSION,
     )
 
@@ -603,11 +640,399 @@ def _latest_common_trade_date_pair(
     return None
 
 
+_CYCLE_INPUT_ROW_CONTRACTS: dict[str, tuple[str, str, bool]] = {
+    PMI_SERIES_ID: ("monthly", "index", True),
+    SOCIAL_FINANCING_YOY_SERIES_ID: ("monthly", "%", True),
+    M2_YOY_SERIES_ID: ("monthly", "%", True),
+    CSI300_PE_SERIES_ID: ("daily", "x", False),
+    CN10Y_SERIES_ID: ("daily", "%", False),
+}
+_BACKFILL_RUN_ID_PATTERN = re.compile(r"^backfill_macro_v1:(\d{8})T\d{6}Z$")
+_OFFICIAL_AVAILABILITY_MANIFEST_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "config"
+    / "cycle_rotation_macro_official_availability.json"
+)
+_OFFICIAL_RELEASES_MANIFEST_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "config"
+    / "cycle_rotation_macro_official_releases.json"
+)
+_OFFICIAL_AVAILABILITY_MANIFEST_VERSION = "cycle_macro_official_availability.v1"
+_OFFICIAL_BACKFILL_RULE_VERSION = "rv_backfill_macro_v1"
+_OFFICIAL_MAPPING_VERSION_BY_SOURCE = {
+    "nbs_pmi_release": "rv_nbs_pmi_release_v1",
+    "pbc_financial_statistics_release": "rv_pbc_financial_statistics_release_v1",
+}
+_OFFICIAL_VENDOR_VERSION_PATTERN = re.compile(
+    r"^vv_backfill_macro_"
+    r"(nbs_pmi_release|pbc_financial_statistics_release)_"
+    r"\d{8}_([0-9a-f]{16})_[0-9a-f]{16}$"
+)
+_FULL_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _strict_manifest_date(value: object) -> date | None:
+    text = str(value or "").strip()
+    try:
+        parsed = date.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.isoformat() == text else None
+
+
+def _strict_manifest_timestamp_date(value: object) -> date | None:
+    text = str(value or "").strip()
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.date()
+
+
+def _pbc_release_evidence_latest_available_date(
+    *,
+    releases: list[object],
+    series_id: str,
+    covered_period_start: date,
+    covered_period_end: date,
+    artifact_manifest_sha256: str,
+    artifact_record: dict[str, object],
+) -> date | None:
+    if covered_period_start.day != 1 or covered_period_end.day != 1:
+        return None
+    canonical_artifacts: list[dict[str, str]] = []
+    observed_months: list[date] = []
+    available_dates: list[date] = []
+    for raw in releases:
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("source") != "pbc_financial_statistics_release":
+            continue
+        if raw.get("series_id") != series_id:
+            continue
+        report_month = str(raw.get("report_month") or "")
+        if re.fullmatch(r"\d{4}-\d{2}", report_month) is None:
+            return None
+        report_date = _strict_manifest_date(f"{report_month}-01")
+        if report_date is None:
+            return None
+        if not covered_period_start <= report_date <= covered_period_end:
+            continue
+        release_url = str(raw.get("release_url") or "")
+        published_at = str(raw.get("published_at") or "")
+        available_at = str(raw.get("available_at") or published_at)
+        artifact_sha256 = str(raw.get("artifact_sha256") or "")
+        published_date = _strict_manifest_timestamp_date(published_at)
+        available_date = _strict_manifest_timestamp_date(available_at)
+        if (
+            not release_url
+            or published_date is None
+            or available_date is None
+            or available_date < published_date
+            or _FULL_SHA256_PATTERN.fullmatch(artifact_sha256) is None
+        ):
+            return None
+        observed_months.append(report_date)
+        available_dates.append(available_date)
+        canonical_artifacts.append(
+            {
+                "report_month": report_month,
+                "release_url": release_url,
+                "published_at": published_at,
+                "available_at": available_at,
+                "artifact_sha256": artifact_sha256,
+            }
+        )
+    if not canonical_artifacts:
+        return None
+    canonical_artifacts.sort(key=lambda row: row["report_month"])
+    observed_months.sort()
+    expected_month_count = (
+        (covered_period_end.year - covered_period_start.year) * 12
+        + covered_period_end.month
+        - covered_period_start.month
+        + 1
+    )
+    if (
+        len(set(observed_months)) != len(observed_months)
+        or len(observed_months) != expected_month_count
+        or observed_months[0] != covered_period_start
+        or observed_months[-1] != covered_period_end
+    ):
+        return None
+    artifacts_json = json.dumps(
+        canonical_artifacts,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    expected_artifact_manifest_sha256 = hashlib.sha256(
+        artifacts_json.encode("utf-8")
+    ).hexdigest()
+    if artifact_manifest_sha256 != expected_artifact_manifest_sha256:
+        return None
+    if artifact_record.get("artifact_kind") != "artifact_set_manifest":
+        return None
+    component_hashes = artifact_record.get("component_artifact_sha256s")
+    expected_component_hashes = [row["artifact_sha256"] for row in canonical_artifacts]
+    if component_hashes != expected_component_hashes:
+        return None
+    return max(available_dates)
+
+
+def _nbs_release_evidence_latest_available_date(
+    *,
+    releases: list[object],
+    series_id: str,
+    covered_period_start: date,
+    covered_period_end: date,
+    artifact_manifest_sha256: str,
+    artifact_record: dict[str, object],
+) -> date | None:
+    matching_releases = [
+        row
+        for row in releases
+        if isinstance(row, dict)
+        and row.get("source") == "nbs_pmi_release"
+        and row.get("series_id") == series_id
+        and row.get("artifact_sha256") == artifact_manifest_sha256
+        and row.get("covered_period_start") == covered_period_start.isoformat()
+        and row.get("covered_period_end") == covered_period_end.isoformat()
+    ]
+    if len(matching_releases) != 1:
+        return None
+    if artifact_record.get("artifact_kind") != "official_release_artifact":
+        return None
+    release = matching_releases[0]
+    published_at = str(release.get("published_at") or "")
+    available_at = str(release.get("available_at") or published_at)
+    published_date = _strict_manifest_timestamp_date(published_at)
+    available_date = _strict_manifest_timestamp_date(available_at)
+    if (
+        published_date is None
+        or available_date is None
+        or available_date < published_date
+    ):
+        return None
+    return available_date
+
+
+def _official_release_evidence_latest_available_date(
+    *,
+    payload: object,
+    source: str,
+    series_id: str,
+    covered_period_start: date,
+    covered_period_end: date,
+    artifact_manifest_sha256: str,
+    artifact_record: dict[str, object],
+) -> date | None:
+    if not isinstance(payload, dict):
+        return None
+    releases = payload.get("releases")
+    if not isinstance(releases, list):
+        return None
+    if source == "pbc_financial_statistics_release":
+        return _pbc_release_evidence_latest_available_date(
+            releases=releases,
+            series_id=series_id,
+            covered_period_start=covered_period_start,
+            covered_period_end=covered_period_end,
+            artifact_manifest_sha256=artifact_manifest_sha256,
+            artifact_record=artifact_record,
+        )
+    if source == "nbs_pmi_release":
+        return _nbs_release_evidence_latest_available_date(
+            releases=releases,
+            series_id=series_id,
+            covered_period_start=covered_period_start,
+            covered_period_end=covered_period_end,
+            artifact_manifest_sha256=artifact_manifest_sha256,
+            artifact_record=artifact_record,
+        )
+    return None
+
+
+def _official_availability_binding_allows(
+    *,
+    series_id: str,
+    business_date: date,
+    vendor_version: object,
+    rule_version: object,
+    as_of_date: date,
+    availability_manifest_path: str | Path | None,
+    official_releases_manifest_path: str | Path | None,
+) -> bool:
+    manifest_path = Path(availability_manifest_path or _OFFICIAL_AVAILABILITY_MANIFEST_PATH)
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    releases_manifest_path = Path(
+        official_releases_manifest_path or _OFFICIAL_RELEASES_MANIFEST_PATH
+    )
+    try:
+        releases_payload = json.loads(
+            releases_manifest_path.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("manifest_version") != _OFFICIAL_AVAILABILITY_MANIFEST_VERSION:
+        return False
+
+    vendor_text = str(vendor_version or "").strip()
+    vendor_match = _OFFICIAL_VENDOR_VERSION_PATTERN.fullmatch(vendor_text)
+    if vendor_match is None:
+        return False
+    source = vendor_match.group(1)
+    artifact_prefix = vendor_match.group(2)
+
+    bindings = payload.get("bindings")
+    if not isinstance(bindings, list):
+        return False
+    matching_bindings = [
+        row
+        for row in bindings
+        if isinstance(row, dict)
+        and row.get("series_id") == series_id
+        and row.get("vendor_version") == vendor_text
+    ]
+    if len(matching_bindings) != 1:
+        return False
+    binding = matching_bindings[0]
+    if binding.get("source") != source:
+        return False
+    if binding.get("mapping_version") != _OFFICIAL_MAPPING_VERSION_BY_SOURCE[source]:
+        return False
+    row_rule_version = str(rule_version or "").strip()
+    if (
+        row_rule_version != _OFFICIAL_BACKFILL_RULE_VERSION
+        or binding.get("rule_version") != row_rule_version
+    ):
+        return False
+
+    artifact_manifest_sha256 = str(binding.get("artifact_manifest_sha256") or "").strip()
+    if (
+        _FULL_SHA256_PATTERN.fullmatch(artifact_manifest_sha256) is None
+        or not artifact_manifest_sha256.startswith(artifact_prefix)
+    ):
+        return False
+    artifacts = payload.get("artifacts")
+    if not isinstance(artifacts, list):
+        return False
+    matching_artifacts = [
+        row
+        for row in artifacts
+        if isinstance(row, dict)
+        and row.get("source") == source
+        and row.get("artifact_manifest_sha256") == artifact_manifest_sha256
+    ]
+    if len(matching_artifacts) != 1:
+        return False
+    artifact_record = matching_artifacts[0]
+
+    covered_period_start = _strict_manifest_date(binding.get("covered_period_start"))
+    covered_period_end = _strict_manifest_date(binding.get("covered_period_end"))
+    first_usable_trade_date = _strict_manifest_date(binding.get("first_usable_trade_date"))
+    if (
+        covered_period_start is None
+        or covered_period_end is None
+        or first_usable_trade_date is None
+        or covered_period_start > covered_period_end
+        or not covered_period_start <= business_date <= covered_period_end
+        or first_usable_trade_date < business_date
+        or first_usable_trade_date > as_of_date
+    ):
+        return False
+    latest_official_available_date = _official_release_evidence_latest_available_date(
+        payload=releases_payload,
+        source=source,
+        series_id=series_id,
+        covered_period_start=covered_period_start,
+        covered_period_end=covered_period_end,
+        artifact_manifest_sha256=artifact_manifest_sha256,
+        artifact_record=artifact_record,
+    )
+    if (
+        latest_official_available_date is None
+        or first_usable_trade_date <= latest_official_available_date
+    ):
+        return False
+    return True
+
+
+def _cycle_input_row_issue(
+    *,
+    series_id: str,
+    trade_date: object,
+    frequency: object,
+    unit: object,
+    quality_flag: object,
+    source_version: object,
+    run_id: object,
+    as_of_date: date,
+    vendor_version: object = "",
+    rule_version: object = "",
+    availability_manifest_path: str | Path | None = None,
+    official_releases_manifest_path: str | Path | None = None,
+) -> str | None:
+    contract = _CYCLE_INPUT_ROW_CONTRACTS.get(series_id)
+    if contract is None:
+        return f"{series_id} is not a recognized cycle-input series."
+    expected_frequency, expected_unit, requires_availability = contract
+    try:
+        business_date = date.fromisoformat(str(trade_date)[:10])
+    except ValueError:
+        return f"{series_id} has an invalid business date."
+    if business_date > as_of_date:
+        return f"{series_id} business date {business_date.isoformat()} is after evaluation date."
+    if str(frequency or "").strip().lower() != expected_frequency:
+        return f"{series_id} frequency must be {expected_frequency}."
+    if str(unit or "").strip() != expected_unit:
+        return f"{series_id} unit must be {expected_unit}."
+    if str(quality_flag or "").strip().lower() != "ok":
+        return f"{series_id} quality_flag is not ok."
+    if not requires_availability:
+        return None
+    if str(source_version or "").strip() != "backfill_macro_v1":
+        return f"{series_id} source_version is not the production macro backfill lineage marker."
+    match = _BACKFILL_RUN_ID_PATTERN.fullmatch(str(run_id or "").strip())
+    if match is None:
+        return f"{series_id} availability date is not proven by materialization run_id."
+    try:
+        available_date = date.fromisoformat(f"{match.group(1)[:4]}-{match.group(1)[4:6]}-{match.group(1)[6:8]}")
+    except ValueError:
+        return f"{series_id} availability date in materialization run_id is invalid."
+    if available_date > as_of_date:
+        if _official_availability_binding_allows(
+            series_id=series_id,
+            business_date=business_date,
+            vendor_version=vendor_version,
+            rule_version=rule_version,
+            as_of_date=as_of_date,
+            availability_manifest_path=availability_manifest_path,
+            official_releases_manifest_path=official_releases_manifest_path,
+        ):
+            return None
+        return (
+            f"{series_id} availability date {available_date.isoformat()} is after "
+            f"evaluation date {as_of_date.isoformat()}."
+        )
+    return None
+
+
 def _load_cycle_input_evidence(
     *,
     duckdb_path: str,
     as_of_date: date | None,
     conn: duckdb.DuckDBPyConnection | None = None,
+    availability_manifest_path: str | Path | None = None,
+    official_releases_manifest_path: str | Path | None = None,
 ) -> _CycleInputEvidence:
     path = Path(duckdb_path)
     if as_of_date is None or not path.exists():
@@ -620,8 +1045,11 @@ def _load_cycle_input_evidence(
             return _CycleInputEvidence()
     tables_used: list[str] = []
     source_versions: list[str] = []
+    vendor_versions: list[str] = []
     evidence_rows = 0
     input_business_dates: list[tuple[str, str, str, str]] = []
+    pmi_input_evidence = ""
+    credit_input_evidence = ""
     try:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
         price_spread_evidence = ""
@@ -636,19 +1064,25 @@ def _load_cycle_input_evidence(
                     trade_date,
                     value_numeric,
                     coalesce(source_version, '') as source_version,
+                    coalesce(vendor_version, '') as vendor_version,
+                    coalesce(rule_version, '') as rule_version,
+                    coalesce(frequency, '') as frequency,
+                    coalesce(unit, '') as unit,
+                    coalesce(quality_flag, '') as quality_flag,
+                    coalesce(run_id, '') as run_id,
                     row_number() over (
                       partition by series_id
-                      order by cast(trade_date as date) desc
+                      order by try_cast(trade_date as date) desc
                     ) as rn
                   from fact_choice_macro_daily
                   where series_id in (?, ?, ?, ?, ?)
-                    and cast(trade_date as date) <= cast(? as date)
+                    and try_cast(trade_date as date) <= cast(? as date)
                     and value_numeric is not null
                 )
-                select series_id, trade_date, value_numeric, source_version
+                select series_id, trade_date, value_numeric, source_version, vendor_version, rule_version, frequency, unit, quality_flag, run_id
                 from ranked
                 where rn <= 5
-                order by series_id, cast(trade_date as date)
+                order by series_id, try_cast(trade_date as date)
                 """,
                 [
                     CSI300_PE_SERIES_ID,
@@ -660,14 +1094,46 @@ def _load_cycle_input_evidence(
                 ],
             ).fetchall()
             points_by_series: dict[str, list[tuple[str, float]]] = {}
-            for series_id, trade_date, value_numeric, source_version in price_rows:
+            rejected_by_series: dict[str, list[str]] = {}
+            for (
+                series_id,
+                trade_date,
+                value_numeric,
+                source_version,
+                vendor_version,
+                rule_version,
+                frequency,
+                unit,
+                quality_flag,
+                run_id,
+            ) in price_rows:
                 series_key = str(series_id)
                 value = _safe_float(value_numeric)
-                if value is None:
+                if value is None or not math.isfinite(value):
+                    rejected_by_series.setdefault(series_key, []).append(f"{series_key} value_numeric is not finite.")
+                    continue
+                issue = _cycle_input_row_issue(
+                    series_id=series_key,
+                    trade_date=trade_date,
+                    frequency=frequency,
+                    unit=unit,
+                    quality_flag=quality_flag,
+                    source_version=source_version,
+                    run_id=run_id,
+                    as_of_date=as_of_date,
+                    vendor_version=vendor_version,
+                    rule_version=rule_version,
+                    availability_manifest_path=availability_manifest_path,
+                    official_releases_manifest_path=official_releases_manifest_path,
+                )
+                if issue is not None:
+                    rejected_by_series.setdefault(series_key, []).append(issue)
                     continue
                 points_by_series.setdefault(series_key, []).append((str(trade_date), value))
                 if source_version:
                     source_versions.append(str(source_version))
+                if vendor_version:
+                    vendor_versions.append(str(vendor_version))
                 evidence_rows += 1
             tables_used.append("fact_choice_macro_daily")
 
@@ -689,33 +1155,58 @@ def _load_cycle_input_evidence(
             # pairing a lagging point from one series with a fresher point from the other.
 
             pmi_points = points_by_series.get(PMI_SERIES_ID)
-            credit_series_id = SOCIAL_FINANCING_YOY_SERIES_ID
             sf_points = points_by_series.get(SOCIAL_FINANCING_YOY_SERIES_ID)
-            if not sf_points or len(sf_points) < 2:
-                credit_series_id = M2_YOY_SERIES_ID
-                sf_points = points_by_series.get(M2_YOY_SERIES_ID)
+            m2_points = points_by_series.get(M2_YOY_SERIES_ID)
+            credit_series_id = SOCIAL_FINANCING_YOY_SERIES_ID
+            credit_points = sf_points
+            macro_snapshot = build_cycle_macro_snapshot(
+                pmi_points=pmi_points,
+                social_financing_yoy_points=credit_points,
+                credit_impulse_series_id=credit_series_id,
+                pe=pe_value,
+                cn10y=cn10y_value,
+                as_of_date=as_of_date.isoformat(),
+            )
+            if not macro_snapshot.credit_impulse_ready and m2_points:
+                fallback_snapshot = build_cycle_macro_snapshot(
+                    pmi_points=pmi_points,
+                    social_financing_yoy_points=m2_points,
+                    credit_impulse_series_id=M2_YOY_SERIES_ID,
+                    pe=pe_value,
+                    cn10y=cn10y_value,
+                    as_of_date=as_of_date.isoformat(),
+                )
+                if fallback_snapshot.credit_impulse_ready:
+                    macro_snapshot = fallback_snapshot
+                    credit_series_id = M2_YOY_SERIES_ID
+                    credit_points = m2_points
+
             for freshness_family, freshness_series_id, freshness_cadence, freshness_points in (
                 ("PMI", PMI_SERIES_ID, "monthly", pmi_points),
-                ("credit_impulse", credit_series_id, "monthly", sf_points),
+                ("credit_impulse", credit_series_id, "monthly", credit_points),
                 ("price_spread", CSI300_PE_SERIES_ID, "daily", pe_points),
                 ("price_spread", CN10Y_SERIES_ID, "daily", cn10y_points),
             ):
                 if freshness_points:
+                    freshness_date = _cycle_input_freshness_date(
+                        str(freshness_points[-1][0])[:10],
+                        cadence=freshness_cadence,
+                    )
                     input_business_dates.append(
                         (
                             freshness_family,
                             freshness_series_id,
                             freshness_cadence,
-                            str(freshness_points[-1][0])[:10],
+                            freshness_date,
                         )
                     )
-            macro_snapshot = build_cycle_macro_snapshot(
-                pmi_points=pmi_points,
-                social_financing_yoy_points=sf_points,
-                pe=pe_value,
-                cn10y=cn10y_value,
-                as_of_date=as_of_date.isoformat(),
-            )
+            if not macro_snapshot.pmi_ready:
+                pmi_input_evidence = "; ".join(rejected_by_series.get(PMI_SERIES_ID, []))
+            if not macro_snapshot.credit_impulse_ready:
+                credit_input_evidence = "; ".join(
+                    rejected_by_series.get(SOCIAL_FINANCING_YOY_SERIES_ID, [])
+                    + rejected_by_series.get(M2_YOY_SERIES_ID, [])
+                )
         else:
             macro_snapshot = build_cycle_macro_snapshot(
                 pmi_points=None,
@@ -820,13 +1311,13 @@ def _load_cycle_input_evidence(
             pmi_evidence=(
                 f"PMI {macro_snapshot.pmi_value:.1f} ({PMI_SERIES_ID})"
                 if macro_snapshot.pmi_ready and macro_snapshot.pmi_value is not None
-                else ""
+                else pmi_input_evidence
             ),
             credit_impulse_ready=macro_snapshot.credit_impulse_ready,
             credit_impulse_evidence=(
-                f"credit_impulse {macro_snapshot.credit_impulse_value:+.2f}ppt"
+                f"credit_impulse {macro_snapshot.credit_impulse_value:+.2f}ppt ({credit_series_id})"
                 if macro_snapshot.credit_impulse_ready and macro_snapshot.credit_impulse_value is not None
-                else ""
+                else credit_input_evidence
             ),
             macro_score=macro_snapshot.macro_score,
             macro_score_ready=macro_snapshot.macro_score is not None,
@@ -839,6 +1330,7 @@ def _load_cycle_input_evidence(
             input_business_dates=tuple(input_business_dates),
             tables_used=tuple(_unique_preserving_order(tables_used)),
             source_versions=tuple(_unique_preserving_order(source_versions)),
+            vendor_versions=tuple(_unique_preserving_order(vendor_versions)),
             evidence_rows=evidence_rows,
         )
     except duckdb.Error:
@@ -926,6 +1418,7 @@ class _CycleInputEvidence:
     input_business_dates: tuple[tuple[str, str, str, str], ...] = ()
     tables_used: tuple[str, ...] = ()
     source_versions: tuple[str, ...] = ()
+    vendor_versions: tuple[str, ...] = ()
     evidence_rows: int = 0
 
 
@@ -936,6 +1429,14 @@ class _ThemeBreakoutEvidenceProvenance:
     concept_fallback_row_count: int = 0
     movement_date_row_count: int = 0
     movement_matched_row_count: int = 0
+    concept_source_kind: str = ""
+    overlay_status: str = "not_configured"
+    overlay_reason: str = "Current theme overlay reader is not configured."
+    overlay_run_id: str = ""
+    overlay_source_version: str = ""
+    overlay_vendor_version: str = ""
+    overlay_source_kind: str = ""
+    overlay_member_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -979,6 +1480,7 @@ def _load_choice_stock_outputs(
     backfill_mode: bool = False,
     stock_candidate_policy: str | None = None,
     macro_score: float | None = None,
+    theme_overlay_result: ThemeOverlayReadResult | None = None,
 ) -> _ChoiceStockOutputs:
     if not stock_readiness.ready or as_of_date is None:
         return _ChoiceStockOutputs(
@@ -1039,6 +1541,7 @@ def _load_choice_stock_outputs(
             backfill_mode=backfill_mode,
             stock_candidate_policy=stock_candidate_policy,
             macro_score=macro_score,
+            theme_overlay_result=theme_overlay_result,
             sector_coverage=sector_coverage,
             stock_coverage=stock_coverage,
         )
@@ -1056,6 +1559,7 @@ def _load_choice_stock_outputs_on_conn(
     macro_score: float | None,
     sector_coverage: ChoiceStockMaterializationCoverage,
     stock_coverage: ChoiceStockMaterializationCoverage,
+    theme_overlay_result: ThemeOverlayReadResult | None = None,
 ) -> _ChoiceStockOutputs:
     tables_used: list[str] = []
     source_versions: list[str] = []
@@ -1213,6 +1717,7 @@ def _load_choice_stock_outputs_on_conn(
             as_of_date=as_of_date,
             sector_rank_payload=sector_rank_payload,
             conn=stock_conn,
+            theme_overlay_result=theme_overlay_result,
         )
         evidence_rows += len(theme_snapshots)
         tables_used.extend(theme_tables)
@@ -1642,11 +2147,13 @@ def _load_stock_candidate_snapshots(
             and abs(low_value - close_value) < 1e-9
         )
         highlimit = _safe_float(row[9])
-        closed_up_limit = bool(_truthy(row[11]) and highlimit is not None and close_value is not None and close_value >= highlimit - 1e-9)
+        closed_up_limit = bool(
+            _truthy(row[11]) and highlimit is not None and close_value is not None and close_value >= highlimit - 1e-9
+        )
         snapshots.append(
-                StockCandidateSnapshot(
-                    stock_code=stock_code,
-                    stock_name=stock_name,
+            StockCandidateSnapshot(
+                stock_code=stock_code,
+                stock_name=stock_name,
                 sector_code=sector_code,
                 sector_name=sector_name,
                 sector_rank=sector_rank_by_key.get((sector_code, sector_name)),
@@ -2439,8 +2946,7 @@ def _load_factor_screen_rows(
                 snapshot_as_of_date=None,
                 tables_used=["choice_stock_factor_snapshot"],
                 unavailable_reason=(
-                    "choice_stock_factor_snapshot is missing required columns: "
-                    f"{', '.join(missing_factor_columns)}."
+                    f"choice_stock_factor_snapshot is missing required columns: {', '.join(missing_factor_columns)}."
                 ),
             )
         latest = conn.execute(
@@ -2656,6 +3162,7 @@ def _load_theme_breakout_snapshots(
     as_of_date: str,
     sector_rank_payload: dict[str, object],
     conn: duckdb.DuckDBPyConnection | None = None,
+    theme_overlay_result: ThemeOverlayReadResult | None = None,
 ) -> tuple[list[ThemeBreakoutSnapshot], list[str], list[str], list[str], _ThemeBreakoutEvidenceProvenance]:
     path = Path(duckdb_path)
     if not path.exists():
@@ -2808,11 +3315,47 @@ def _load_theme_breakout_snapshots(
     source_versions: list[str] = []
     vendor_versions: list[str] = []
     universe_codes = {str(row[0] or "") for row in rows if str(row[0] or "")}
-    concept_by_stock: dict[str, list[tuple[str, str]]] = {}
+    concept_by_stock: dict[str, list[tuple[str, str, str]]] = {}
     concept_date_row_count = 0
     concept_matched_row_count = 0
     concept_fallback_row_count = 0
-    for row in concept_rows:
+    point_in_time_choice_rows = [
+        row
+        for row in concept_rows
+        if str(row[3] or "").strip().lower() == "choice" and bool(str(row[1] or "") or str(row[2] or ""))
+    ]
+    usable_choice_rows = [row for row in point_in_time_choice_rows if str(row[0] or "") in universe_codes]
+    overlay_status = (
+        "choice_exact_precedence"
+        if usable_choice_rows
+        else (theme_overlay_result.status if theme_overlay_result is not None else "not_configured")
+    )
+    overlay_reason = (
+        "Exact request-date Choice concept membership takes precedence over current overlay."
+        if usable_choice_rows
+        else (
+            theme_overlay_result.reason
+            if theme_overlay_result is not None
+            else "Current theme overlay reader is not configured."
+        )
+    )
+    concept_input_rows = point_in_time_choice_rows if usable_choice_rows else []
+    concept_source_kind = "real_concept" if usable_choice_rows else ""
+    if not usable_choice_rows and theme_overlay_result is not None and theme_overlay_result.available:
+        concept_source_kind = theme_overlay_result.concept_source_kind
+        concept_input_rows = [
+            (
+                member.stock_code,
+                member.theme_key,
+                member.theme_name,
+                theme_overlay_result.concept_source_kind,
+                theme_overlay_result.source_version,
+                theme_overlay_result.vendor_version,
+            )
+            for member in theme_overlay_result.members
+        ]
+
+    for row in concept_input_rows:
         stock_code = str(row[0] or "")
         concept_code = str(row[1] or "")
         concept_name = str(row[2] or "")
@@ -2821,13 +3364,19 @@ def _load_theme_breakout_snapshots(
         concept_date_row_count += 1
         if stock_code in universe_codes:
             concept_matched_row_count += 1
-        if str(row[3] or "").lower() not in {"", "choice"}:
+        else:
+            continue
+        row_source_kind = (
+            "tushare_current_overlay" if str(row[3] or "").lower() == "tushare_current_overlay" else "real_concept"
+        )
+        if row_source_kind != "real_concept":
             concept_fallback_row_count += 1
-        concept_by_stock.setdefault(stock_code, []).append((concept_code, concept_name))
+        concept_by_stock.setdefault(stock_code, []).append((concept_code, concept_name, row_source_kind))
         source_versions.extend(str(value) for value in (row[4],) if value)
         vendor_versions.extend(str(value) for value in (row[5],) if value)
 
     movement_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
+    seen_movement_events: set[tuple[str, str, str, str, str]] = set()
     movement_date_row_count = 0
     movement_matched_row_count = 0
     for row in movement_rows:
@@ -2836,6 +3385,12 @@ def _load_theme_breakout_snapshots(
         concept_name = str(row[2] or "")
         if not stock_code:
             continue
+        event_time = str(row[3] or "")
+        event_title = str(row[4] or "")
+        identity = (stock_code, concept_code, concept_name, event_time, event_title)
+        if identity in seen_movement_events:
+            continue
+        seen_movement_events.add(identity)
         movement_date_row_count += 1
         if stock_code in universe_codes:
             movement_matched_row_count += 1
@@ -2849,10 +3404,9 @@ def _load_theme_breakout_snapshots(
             },
         )
         current["count"] = int(current["count"]) + 1
-        event_time = str(row[3] or "")
         if event_time >= str(current["latest_event_time"]):
             current["latest_event_time"] = event_time
-            current["latest_event_title"] = str(row[4] or "")
+            current["latest_event_title"] = event_title
         source_versions.extend(str(value) for value in (row[5],) if value)
         vendor_versions.extend(str(value) for value in (row[6],) if value)
 
@@ -2860,8 +3414,12 @@ def _load_theme_breakout_snapshots(
         stock_code = str(row[0] or "")
         sector_code = str(row[2] or "")
         sector_name = str(row[3] or "")
-        concepts = concept_by_stock.get(stock_code) or [("", "")]
-        for concept_code, concept_name in concepts:
+        concepts = concept_by_stock.get(stock_code) or [("", "", "proxy")]
+        if (stock_code, "", "") in movement_by_key and not any(
+            not concept_code and not concept_name for concept_code, concept_name, _source_kind in concepts
+        ):
+            concepts = [*concepts, ("", "", "proxy")]
+        for concept_code, concept_name, snapshot_source_kind in concepts:
             movement = _movement_for_concept(
                 movement_by_key=movement_by_key,
                 stock_code=stock_code,
@@ -2888,6 +3446,7 @@ def _load_theme_breakout_snapshots(
                     movement_event_count=int(movement["count"]),
                     latest_event_title=str(movement["latest_event_title"]),
                     latest_event_time=str(movement["latest_event_time"]),
+                    concept_source_kind=snapshot_source_kind,
                 )
             )
         source_versions.extend(str(value) for value in (row[12], row[14], row[16], row[18]) if value)
@@ -2915,6 +3474,14 @@ def _load_theme_breakout_snapshots(
             concept_fallback_row_count=concept_fallback_row_count,
             movement_date_row_count=movement_date_row_count,
             movement_matched_row_count=movement_matched_row_count,
+            concept_source_kind=concept_source_kind,
+            overlay_status=overlay_status,
+            overlay_reason=overlay_reason,
+            overlay_run_id=(theme_overlay_result.run_id if theme_overlay_result is not None else ""),
+            overlay_source_version=(theme_overlay_result.source_version if theme_overlay_result is not None else ""),
+            overlay_vendor_version=(theme_overlay_result.vendor_version if theme_overlay_result is not None else ""),
+            overlay_source_kind=(theme_overlay_result.source_kind if theme_overlay_result is not None else ""),
+            overlay_member_count=(len(theme_overlay_result.members) if theme_overlay_result is not None else 0),
         ),
     )
 
@@ -2925,16 +3492,42 @@ def _build_theme_breakout_evidence_state(
     tables_used: list[str],
     provenance: _ThemeBreakoutEvidenceProvenance,
 ) -> dict[str, dict[str, object]]:
+    concept_membership = _theme_breakout_evidence_entry(
+        input_family="concept_membership",
+        catalog_status=choice_stock_optional_input_status(stock_readiness, "concept_membership"),
+        table_name="choice_stock_concept_membership",
+        tables_used=tables_used,
+        date_row_count=provenance.concept_date_row_count,
+        matched_row_count=provenance.concept_matched_row_count,
+        fallback_row_count=provenance.concept_fallback_row_count,
+    )
+    concept_membership.update(
+        {
+            "concept_source_kind": provenance.concept_source_kind or None,
+            "overlay_status": provenance.overlay_status,
+            "overlay_reason": provenance.overlay_reason,
+        }
+    )
+    if provenance.concept_source_kind == "tushare_current_overlay":
+        concept_membership.update(
+            {
+                "status": "current_overlay",
+                "state": "current_overlay",
+                "source_kind": provenance.overlay_source_kind,
+                "source_version": provenance.overlay_source_version,
+                "vendor_version": provenance.overlay_vendor_version,
+                "run_id": provenance.overlay_run_id,
+                "member_count": provenance.overlay_member_count,
+                "point_in_time": False,
+                "historical_use_allowed": False,
+                "message": (
+                    "Current Tushare THS concept overlay is available for the latest observation date; "
+                    "it is non-point-in-time and remains partial evidence."
+                ),
+            }
+        )
     return {
-        "concept_membership": _theme_breakout_evidence_entry(
-            input_family="concept_membership",
-            catalog_status=choice_stock_optional_input_status(stock_readiness, "concept_membership"),
-            table_name="choice_stock_concept_membership",
-            tables_used=tables_used,
-            date_row_count=provenance.concept_date_row_count,
-            matched_row_count=provenance.concept_matched_row_count,
-            fallback_row_count=provenance.concept_fallback_row_count,
-        ),
+        "concept_membership": concept_membership,
         "intraday_movement": _theme_breakout_evidence_entry(
             input_family="intraday_movement",
             catalog_status=choice_stock_optional_input_status(stock_readiness, "intraday_movement"),
@@ -3019,13 +3612,7 @@ def _movement_for_concept(
     candidates = [
         value
         for (code, row_concept_code, row_concept_name), value in movement_by_key.items()
-        if code == stock_code
-        and (
-            (concept_code and row_concept_code == concept_code)
-            or (concept_name and row_concept_name == concept_name)
-            or (not row_concept_code and not row_concept_name)
-            or (not concept_code and not concept_name)
-        )
+        if code == stock_code and row_concept_code == concept_code and row_concept_name == concept_name
     ]
     if not candidates:
         return empty
@@ -3576,7 +4163,9 @@ def _module_coverage(
         coverage_count = _safe_int(source_payload.get("input_stock_count"))
     coverage_denominator = _safe_int(source_payload.get("coverage_denominator"))
     coverage_ratio_raw = _safe_float(source_payload.get("coverage_ratio"))
-    coverage_ratio = coverage_ratio_raw if coverage_ratio_raw is not None else _coverage_ratio(coverage_count, coverage_denominator)
+    coverage_ratio = (
+        coverage_ratio_raw if coverage_ratio_raw is not None else _coverage_ratio(coverage_count, coverage_denominator)
+    )
     return coverage_count, coverage_denominator, coverage_ratio
 
 
@@ -3669,10 +4258,15 @@ def _hybrid_fusion_degradation_reasons(
     if coverage_reason:
         reasons.append(coverage_reason)
     if _hybrid_fusion_is_factor_only(payload):
-        reasons.append("Hybrid fusion candidates are factor-only and lack independent trend, sector, or theme confirmation.")
+        reasons.append(
+            "Hybrid fusion candidates are factor-only and lack independent trend, sector, or theme confirmation."
+        )
     if any(str(item.get("confidence") or "").strip().lower() in {"low", "very_low"} for item in items):
         reasons.append("Hybrid fusion confidence is low for at least one candidate.")
-    if items and all(_safe_float(cast(dict[str, object], item.get("evidence") or {}).get("sector_score")) in (None, 0.0) for item in items):
+    if items and all(
+        _safe_float(cast(dict[str, object], item.get("evidence") or {}).get("sector_score")) in (None, 0.0)
+        for item in items
+    ):
         reasons.append("Hybrid fusion has no sector confirmation score.")
     if items and all((_safe_float(item.get("price_confirm_score")) or 0.0) <= 0.0 for item in items):
         reasons.append("Hybrid fusion has no positive price-confirm evidence.")
@@ -3748,13 +4342,10 @@ def _build_cycle_rotation_framework(
         "display_name": "A股景气周期选股与行业轮动",
         "observation_only": True,
         "implementation_stage": "verification_pending",
-        "score_formula": (
-            "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport"
-        ),
+        "score_formula": ("CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport"),
         "macro_formula": "MacroScore = 0.40 PMI + 0.35 CreditImpulse + 0.25 PriceSpread",
         "lifecourt_formula": (
-            "LifeCourtScore = 0.18*VCOV + 0.14*CONS + 0.14*BURST + 0.20*PCONF "
-            "- 0.16*CROWD + 0.10*HYGIENE + 0.08*REGIME"
+            "LifeCourtScore = 0.18*VCOV + 0.14*CONS + 0.14*BURST + 0.20*PCONF - 0.16*CROWD + 0.10*HYGIENE + 0.08*REGIME"
         ),
         "fusion_formula": "FusionScore = 0.65*CycleScore + 0.35*LifeCourtScore",
         "macro_layer": {
@@ -3763,10 +4354,10 @@ def _build_cycle_rotation_framework(
             "evidence": cycle_input_evidence.macro_score_evidence,
             "available_inputs": macro_available,
             "missing_inputs": macro_missing,
+            "source_versions": list(cycle_input_evidence.source_versions),
+            "vendor_versions": list(cycle_input_evidence.vendor_versions),
             "lineage": (
-                cycle_input_evidence.macro_snapshot.lineage
-                if cycle_input_evidence.macro_snapshot is not None
-                else {}
+                cycle_input_evidence.macro_snapshot.lineage if cycle_input_evidence.macro_snapshot is not None else {}
             ),
         },
         "rebalance_cadence": "Monthly core review with weekly satellite monitoring.",
@@ -4167,13 +4758,13 @@ def _build_data_gaps(
     if not limit_up_landed:
         gaps.append(
             {
-            "input_family": "limit_up_quality",
-            "status": "missing",
-            "evidence": _choice_stock_dependency_summary(
-                stock_readiness=stock_readiness,
-                families=["limit_up_quality"],
-                ready_summary="Choice limit-up quality catalog is confirmed, but DuckDB materialization is not landed.",
-            ),
+                "input_family": "limit_up_quality",
+                "status": "missing",
+                "evidence": _choice_stock_dependency_summary(
+                    stock_readiness=stock_readiness,
+                    families=["limit_up_quality"],
+                    ready_summary="Choice limit-up quality catalog is confirmed, but DuckDB materialization is not landed.",
+                ),
             }
         )
     elif supplement is not None and supplement.limit_up_quality_ok is not None:
@@ -4256,6 +4847,19 @@ def _build_data_gaps(
             },
         )
     return gaps
+
+
+def _cycle_input_freshness_date(business_date: str, *, cadence: str) -> str:
+    """Use month-end for provider rows keyed to the first day of their statistical month."""
+    if cadence != "monthly":
+        return business_date
+    try:
+        parsed = date.fromisoformat(business_date)
+    except ValueError:
+        return business_date
+    if parsed.day != 1:
+        return business_date
+    return parsed.replace(day=monthrange(parsed.year, parsed.month)[1]).isoformat()
 
 
 def _assess_input_freshness(
@@ -4357,9 +4961,7 @@ def _degrade_quality_flag_for_input_freshness(
     """Any stale/expired key input downgrades an otherwise-ok result to warning; never upgrades."""
     if quality_flag != "ok":
         return quality_flag
-    has_lagging_input = any(
-        str(entry.get("tier") or "") in INPUT_FRESHNESS_DEGRADED_TIERS for entry in input_freshness
-    )
+    has_lagging_input = any(str(entry.get("tier") or "") in INPUT_FRESHNESS_DEGRADED_TIERS for entry in input_freshness)
     return "warning" if has_lagging_input else quality_flag
 
 
@@ -4505,9 +5107,10 @@ def _build_diagnostics(
                     "input_family": _stock_unavailable_input_family(stock_outputs),
                 }
             )
-    elif _safe_int(stock_outputs.stock_candidates_payload.get("candidate_count")) == 0 and (
-        _safe_int(stock_outputs.stock_candidates_payload.get("insufficient_history_count")) or 0
-    ) > 0:
+    elif (
+        _safe_int(stock_outputs.stock_candidates_payload.get("candidate_count")) == 0
+        and (_safe_int(stock_outputs.stock_candidates_payload.get("insufficient_history_count")) or 0) > 0
+    ):
         diagnostics.append(
             {
                 "severity": "warning",
@@ -4519,7 +5122,13 @@ def _build_diagnostics(
     if stock_outputs.theme_breakout_payload is not None:
         theme_is_proxy = bool(stock_outputs.theme_breakout_payload.get("is_proxy", True))
         theme_evidence_ready = _theme_breakout_evidence_ready(stock_outputs.theme_breakout_payload)
-        if theme_is_proxy:
+        if _theme_breakout_uses_current_overlay(stock_outputs.theme_breakout_payload):
+            code = "LIVERMORE_THEME_BREAKOUT_CURRENT_OVERLAY"
+            message = (
+                "Theme breakout radar uses the governed current Tushare THS overlay; "
+                "it is non-point-in-time, unavailable for historical replay, and remains partial evidence."
+            )
+        elif theme_is_proxy:
             code = "LIVERMORE_THEME_BREAKOUT_PROXY_FORMULA"
             message = (
                 "Theme breakout radar is proxy-based over landed daily rows and level-1 sectors; "
@@ -4527,7 +5136,9 @@ def _build_diagnostics(
             )
         elif not theme_evidence_ready:
             code = "LIVERMORE_THEME_BREAKOUT_PARTIAL_REAL_EVIDENCE"
-            message = "Theme breakout radar uses landed concept rows, but real concept/movement evidence is still partial."
+            message = (
+                "Theme breakout radar uses landed concept rows, but real concept/movement evidence is still partial."
+            )
         else:
             code = "LIVERMORE_THEME_BREAKOUT_REAL_CONCEPT_FORMULA"
             message = "Theme breakout radar uses landed concept membership and intraday movement rows; output remains observation-only."
@@ -4626,6 +5237,12 @@ def _theme_breakout_evidence_summary(payload: dict[str, object]) -> str:
 
 
 def _theme_breakout_gap_evidence(payload: dict[str, object]) -> str:
+    if _theme_breakout_uses_current_overlay(payload):
+        return (
+            "Theme breakout radar uses a governed current overlay that is non-point-in-time and "
+            "not allowed for historical replay. "
+            f"{_theme_breakout_evidence_summary(payload)}"
+        )
     if _theme_breakout_evidence_entries(payload):
         return _theme_breakout_evidence_summary(payload)
     if bool(payload.get("is_proxy", True)):
@@ -4634,6 +5251,22 @@ def _theme_breakout_gap_evidence(payload: dict[str, object]) -> str:
             "real concept and intraday movement input state is unavailable."
         )
     return "Theme breakout radar is using landed concept membership and intraday movement evidence."
+
+
+def _theme_breakout_uses_current_overlay(payload: dict[str, object]) -> bool:
+    raw_themes = payload.get("items")
+    if isinstance(raw_themes, list) and any(
+        isinstance(theme, dict) and theme.get("source_kind") == "tushare_current_overlay" for theme in raw_themes
+    ):
+        return True
+    evidence_state = payload.get("evidence_state")
+    if not isinstance(evidence_state, dict):
+        return False
+    concept_evidence = evidence_state.get("concept_membership")
+    return isinstance(concept_evidence, dict) and (
+        concept_evidence.get("status") == "current_overlay"
+        or concept_evidence.get("concept_source_kind") == "tushare_current_overlay"
+    )
 
 
 def _theme_breakout_unavailable_reason(
@@ -4875,7 +5508,9 @@ def _rule_derived_limit_ratio(*, stock_code: str, stock_name: str, as_of_date: s
         return 0.20
     if code.endswith(".SZ") and code.startswith(("300", "301")):
         return 0.20
-    if _is_risk_warning_stock_name(stock_name) and _date_before(as_of_date, MAINBOARD_RISK_WARNING_LIMIT_RATIO_10_START):
+    if _is_risk_warning_stock_name(stock_name) and _date_before(
+        as_of_date, MAINBOARD_RISK_WARNING_LIMIT_RATIO_10_START
+    ):
         return 0.05
     if code.endswith((".SH", ".SZ")):
         return 0.10
