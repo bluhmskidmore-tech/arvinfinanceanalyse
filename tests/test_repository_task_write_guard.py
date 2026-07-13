@@ -177,6 +177,8 @@ def test_formal_repository_replace_writers_require_task_write_scope(tmp_path) ->
             tensor=tensor,
             source_version="sv_guard",
             upstream_source_version="sv_guard",
+            upstream_rule_version="rv_guard",
+            upstream_cache_version="cv_guard",
             liability_source_version="sv_guard",
             liability_rule_version="rv_guard",
             rule_version="rv_guard",
@@ -229,6 +231,8 @@ def test_formal_repository_replace_writers_require_task_write_scope(tmp_path) ->
             tensor=tensor,
             source_version="sv_guard",
             upstream_source_version="sv_guard",
+            upstream_rule_version="rv_guard",
+            upstream_cache_version="cv_guard",
             liability_source_version="sv_guard",
             liability_rule_version="rv_guard",
             rule_version="rv_guard",
@@ -236,3 +240,15 @@ def test_formal_repository_replace_writers_require_task_write_scope(tmp_path) ->
             trace_id="tr_guard",
         )
     conn.close()
+
+
+def test_ledger_classification_backfill_writer_requires_task_scope(tmp_path) -> None:
+    from backend.app.repositories.ledger_import_repo import LedgerImportRepository
+
+    with pytest.raises(PermissionError, match="task write scope"):
+        LedgerImportRepository(str(tmp_path / "ledger.duckdb")).attest_classification_rule_versions(
+            batch_ids=[1],
+            from_rule_versions={1: "position_key_contract_v1"},
+            target_rule_version="rv_ledger_classification_v2",
+            expected_immutable_evidence_digest="not-reached",
+        )

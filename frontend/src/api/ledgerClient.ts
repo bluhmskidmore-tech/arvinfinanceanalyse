@@ -1,4 +1,4 @@
-export type LedgerDirection = "ASSET" | "LIABILITY";
+export type LedgerDirection = "ASSET" | "LIABILITY" | "UNCLASSIFIED";
 
 export type LedgerResponseMetadata = {
   source_version: string | null;
@@ -32,10 +32,16 @@ export type LedgerCurrencyBreakdown = {
   asset_face_amount: number | null;
   liability_face_amount: number | null;
   net_face_exposure: number | null;
+  classification_total_row_count: number;
+  unclassified_row_count: number | null;
+  unclassified_face_amount: number | null;
+  classification_coverage_pct: number | null;
 };
 
 export type LedgerDashboardData = {
   as_of_date: string | null;
+  classification_status: "ready" | "legacy_unassessed" | "invalid_materialization";
+  classification_rule_version: string;
   currency_breakdown: LedgerCurrencyBreakdown[];
 };
 
@@ -155,7 +161,7 @@ type LedgerClientFactoryOptions = {
 
 const mockMetadata: LedgerResponseMetadata = {
   source_version: "sv_ledger_mock_20260317",
-  rule_version: "position_key_contract_v1",
+  rule_version: "rv_ledger_classification_v2",
   batch_id: 1,
   stale: false,
   fallback: false,
@@ -332,9 +338,11 @@ export function createMockLedgerClient(): LedgerClientMethods {
       return {
         data: {
           as_of_date: "2026-03-17",
+          classification_status: "ready",
+          classification_rule_version: "rv_ledger_classification_v2",
           currency_breakdown: [
-            { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31 },
-            { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2 },
+            { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+            { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2, classification_total_row_count: 1, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
           ],
         },
         metadata: {

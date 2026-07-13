@@ -464,7 +464,7 @@ def test_ledger_import_actor_imports_csv_lists_batch_and_preserves_unknown_raw_j
     assert payload["data"]["row_count"] == 1
     assert payload["data"]["error_count"] == 0
     assert payload["data"]["source_version"].startswith("sv_ledger_")
-    assert payload["data"]["rule_version"] == "position_key_contract_v1"
+    assert payload["data"]["rule_version"] == "rv_ledger_classification_v2"
     assert payload["metadata"]["no_data"] is False
     assert payload["trace"]["source_file_hash"] == payload["data"]["file_hash"]
     assert payload["data"]["run_id"] == "ledger_import:actor-success"
@@ -499,6 +499,83 @@ def test_ledger_import_actor_imports_csv_lists_batch_and_preserves_unknown_raw_j
     assert snapshot == ("ASSET", pytest.approx(100.25), "银行账户", "持有至到期类资产")
     get_settings.cache_clear()
 
+
+@pytest.mark.parametrize(
+    ("account_category", "asset_class", "expected"),
+    [
+        ("发行类债券", "发行类债券", "LIABILITY"),
+        ("银行账户", "持有至到期类资产", "ASSET"),
+        ("银行账户", "可供出售类资产", "ASSET"),
+        ("银行账户", "交易性资产", "ASSET"),
+        ("交易账户", "交易性资产", "ASSET"),
+        ("银行账户", "应收投资款项", "ASSET"),
+        ("发行类债券", "交易性资产", "UNCLASSIFIED"),
+        ("银行账户", "未知分类", "UNCLASSIFIED"),
+        ("__NULL__", "__NULL__", "UNCLASSIFIED"),
+    ],
+)
+def test_ledger_classification_v2_is_a_closed_pair_allowlist(
+    account_category,
+    asset_class,
+    expected,
+):
+    classification = load_module(
+        "backend.app.governance.ledger_classification",
+        "backend/app/governance/ledger_classification.py",
+    )
+
+    assert classification.LEDGER_CLASSIFICATION_RULE_VERSION == "rv_ledger_classification_v2"
+    assert classification.classify_ledger_direction(account_category, asset_class) == expected
+
+
+def test_ledger_import_materializes_unclassified_with_row_lineage(tmp_path, monkeypatch):
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.ledger_import_service",
+        "backend/app/services/ledger_import_service.py",
+    )
+    payload = _scoped_import(
+        service_mod,
+        duckdb_path,
+        file_name="ZQTZSHOW-20260317-unclassified.csv",
+        content=_ledger_csv_bytes(
+            service_mod,
+            [
+                _ledger_row_values(
+                    service_mod,
+                    bond_code="UNKNOWN-001",
+                    account_category="银行账户",
+                    asset_class="未知分类",
+                    face_amount="100.25",
+                    as_of_date="2026-03-17",
+                )
+            ],
+            unknown_value="unclassified-lineage-marker",
+        ),
+    )
+
+    assert payload["data"]["rule_version"] == "rv_ledger_classification_v2"
+    assert payload["data"]["error_count"] == 0
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select s.batch_id, s.row_no, s.position_key, s.direction,
+                   s.account_category_std, s.asset_class_std, r.raw_json,
+                   s.source_version, s.rule_version
+            from position_snapshot s
+            join ledger_raw_row r using (batch_id, row_no)
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row[:2] == (1, 1)
+    assert row[2]
+    assert row[3:6] == ("UNCLASSIFIED", "银行账户", "未知分类")
+    assert "unclassified-lineage-marker" in row[6]
+    assert row[7] == payload["data"]["source_version"]
+    assert row[8] == "rv_ledger_classification_v2"
 
 def test_ledger_import_actor_rejects_invalid_base64_before_service_call(tmp_path, monkeypatch):
     _configure_ledger_import_env(tmp_path, monkeypatch)
@@ -1445,6 +1522,14 @@ def test_ledger_import_actor_duplicate_preserves_run_id_and_does_not_duplicate_s
         content=csv_bytes,
         run_id="ledger_import:first",
     )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "update ledger_import_batch set rule_version = 'position_key_contract_v1'"
+        )
+    finally:
+        conn.close()
+
     duplicate_payload = _scoped_import(
         service_mod,
         duckdb_path,
@@ -1455,6 +1540,11 @@ def test_ledger_import_actor_duplicate_preserves_run_id_and_does_not_duplicate_s
 
     assert duplicate_payload["error"]["code"] == "LEDGER_IMPORT_DUPLICATE"
     assert duplicate_payload["data"]["status"] == "duplicate"
+    assert duplicate_payload["data"]["rule_version"] == "position_key_contract_v1"
+    assert duplicate_payload["metadata"]["rule_version"] == "position_key_contract_v1"
+    listed = service_mod.LedgerImportService(str(duckdb_path)).list_imports()
+    assert listed["data"]["items"][0]["rule_version"] == "position_key_contract_v1"
+    assert listed["metadata"]["rule_version"] == "position_key_contract_v1"
     assert duplicate_payload["data"]["run_id"] == "ledger_import:duplicate"
     assert duplicate_payload["trace"]["run_id"] == "ledger_import:duplicate"
     assert duplicate_payload["trace"]["duplicate_of_batch_id"] == first["data"]["batch_id"]

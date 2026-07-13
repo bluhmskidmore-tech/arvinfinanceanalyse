@@ -12,6 +12,10 @@ from pathlib import Path
 from uuid import uuid4
 
 import xlrd
+from backend.app.governance.ledger_classification import (
+    LEDGER_CLASSIFICATION_RULE_VERSION,
+    classify_ledger_direction,
+)
 from backend.app.repositories.ledger_import_repo import LedgerImportRepository
 from backend.app.schemas.ledger_import import (
     LedgerImportBatchSummary,
@@ -20,7 +24,7 @@ from backend.app.schemas.ledger_import import (
 from openpyxl import load_workbook
 from xlrd import xldate_as_datetime
 
-RULE_VERSION = "position_key_contract_v1"
+RULE_VERSION = LEDGER_CLASSIFICATION_RULE_VERSION
 NULL_TEXT = "__NULL__"
 SUPPORTED_SUFFIXES = {".xls", ".xlsx", ".csv"}
 MAX_LEDGER_IMPORT_BYTES = 16 * 1024 * 1024
@@ -142,6 +146,7 @@ class LedgerImportService:
             "metadata": _metadata(
                 batch_id=int(summary["batch_id"]),
                 source_version=str(summary["source_version"]),
+                rule_version=str(summary["rule_version"]),
                 no_data=False,
             ),
             "trace": _trace(
@@ -166,6 +171,7 @@ class LedgerImportService:
             "metadata": _metadata(
                 batch_id=int(latest["batch_id"]) if latest else None,
                 source_version=str(latest["source_version"]) if latest else None,
+                rule_version=str(latest["rule_version"]) if latest else RULE_VERSION,
                 no_data=not bool(items),
             ),
             "trace": _trace(
@@ -326,9 +332,10 @@ def _raw_row(headers: list[str], values: list[object]) -> dict[str, object]:
 
 
 def _direction(row: dict[str, object]) -> str:
-    if row.get("account_category_std") == "发行类债券" or row.get("asset_class_std") == "发行类债券":
-        return "LIABILITY"
-    return "ASSET"
+    return classify_ledger_direction(
+        row.get("account_category_std"),
+        row.get("asset_class_std"),
+    )
 
 
 def _position_key(row: dict[str, object]) -> str:
@@ -340,11 +347,12 @@ def _metadata(
     *,
     batch_id: int | None,
     source_version: str | None,
+    rule_version: str,
     no_data: bool,
 ) -> dict[str, object]:
     return {
         "source_version": source_version,
-        "rule_version": RULE_VERSION,
+        "rule_version": rule_version,
         "batch_id": batch_id,
         "stale": False,
         "fallback": False,

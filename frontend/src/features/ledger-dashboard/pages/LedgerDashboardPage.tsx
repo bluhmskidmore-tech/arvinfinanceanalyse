@@ -6,6 +6,7 @@ import { useApiClient } from "../../../api/client";
 import {
   buildLedgerKpiCards,
   directionLabel,
+  formatLedgerYiAmount,
   formatLedgerYuanAmount,
   ledgerDataState,
   ledgerImportPresentation,
@@ -18,7 +19,7 @@ import { useLedgerImportWorkflow } from "./useLedgerImportWorkflow";
 import "./LedgerDashboardPage.css";
 
 function queryDirection(value: string | null): LedgerDirectionFilter {
-  if (value === "ASSET" || value === "LIABILITY") {
+  if (value === "ASSET" || value === "LIABILITY" || value === "UNCLASSIFIED") {
     return value;
   }
   return "ALL";
@@ -36,10 +37,18 @@ export default function LedgerDashboardPage() {
   const client = useApiClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedDate, setSelectedDate] = useState(() => queryDate(searchParams.get("as_of_date")));
-  const [direction, setDirection] = useState<LedgerDirectionFilter>(() =>
-    queryDirection(searchParams.get("direction")),
-  );
+  const direction = queryDirection(searchParams.get("direction"));
   const ledgerImport = useLedgerImportWorkflow(client);
+
+  function updateDirection(nextDirection: LedgerDirectionFilter, replace = false) {
+    const next = new URLSearchParams(searchParams);
+    if (nextDirection === "ALL") {
+      next.delete("direction");
+    } else {
+      next.set("direction", nextDirection);
+    }
+    setSearchParams(next, { replace });
+  }
 
   const datesQuery = useQuery({
     queryKey: ["bank-ledger", "dates", client.mode],
@@ -61,12 +70,6 @@ export default function LedgerDashboardPage() {
     }
   }, [dates, searchParams, selectedDate]);
 
-  useEffect(() => {
-    setDirection((current) => {
-      const next = queryDirection(searchParams.get("direction"));
-      return current === next ? current : next;
-    });
-  }, [searchParams]);
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
@@ -75,16 +78,11 @@ export default function LedgerDashboardPage() {
     } else {
       next.delete("as_of_date");
     }
-    if (direction === "ALL") {
-      next.delete("direction");
-    } else {
-      next.set("direction", direction);
-    }
 
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
-  }, [direction, searchParams, selectedDate, setSearchParams]);
+  }, [searchParams, selectedDate, setSearchParams]);
 
   const dashboardQuery = useQuery({
     queryKey: ["bank-ledger", "dashboard", client.mode, selectedDate],
@@ -113,9 +111,22 @@ export default function LedgerDashboardPage() {
     setSearchParams(next, { replace: true });
   }, [currencies.length, requestedCurrency, searchParams, selectedCurrency, setSearchParams]);
 
+  const classificationStatus = dashboard?.data.classification_status;
+  const classificationReady = classificationStatus === "ready";
+  const unclassifiedDirectionBlocked = direction === "UNCLASSIFIED" && !classificationReady;
+  const normalizeUnclassifiedDirection =
+    direction === "UNCLASSIFIED" && classificationStatus != null && !classificationReady;
+
+  useEffect(() => {
+    if (!normalizeUnclassifiedDirection) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("direction");
+    setSearchParams(next, { replace: true });
+  }, [normalizeUnclassifiedDirection, searchParams, setSearchParams]);
+
   const positionsQuery = useQuery({
     queryKey: ["bank-ledger", "positions", client.mode, selectedDate, selectedCurrency, direction],
-    enabled: Boolean(selectedDate && selectedCurrency),
+    enabled: Boolean(selectedDate && selectedCurrency && !unclassifiedDirectionBlocked),
     queryFn: () =>
       client.getLedgerPositions({
         asOfDate: selectedDate,
@@ -127,8 +138,11 @@ export default function LedgerDashboardPage() {
     retry: false,
   });
 
-  const positions = positionsQuery.data;
+  const positions = unclassifiedDirectionBlocked ? undefined : positionsQuery.data;
   const cards = buildLedgerKpiCards(dashboard?.data, selectedCurrency);
+  const selectedBucket = dashboard?.data.currency_breakdown.find(
+    (item) => item.currency === selectedCurrency,
+  );
   const pageError = dashboardQuery.error ?? (!selectedDate ? datesQuery.error : null);
   const state = ledgerDataState(
     dashboard?.metadata ?? datesQuery.data?.metadata,
@@ -164,7 +178,7 @@ export default function LedgerDashboardPage() {
         aria-label="Ledger governance boundary"
       >
         <strong>{"candidate · imported position_snapshot · not for formal use"}</strong>
-        <span>{"Currency buckets are independent native amounts / 100m with no FX conversion. Fallback is past-only; UNKNOWN currency and default-to-asset classification remain review risks."}</span>
+        <span>{"Currency buckets are independent native amounts / 100m with no FX conversion. Classification v2 is import-time only; unmatched pairs are UNCLASSIFIED and legacy batches fail closed. Historical backfill completed for live batches 1-8; golden sample captured-awaiting-approval. UNKNOWN remediation, owner approval, and authorized real-page UAT remain pending."}</span>
       </section>
       <div className="ledger-dashboard__toolbar">
         <label className="ledger-dashboard__field">
@@ -204,12 +218,13 @@ export default function LedgerDashboardPage() {
           </select>
         </label>
         <div className="ledger-dashboard__segmented" role="group" aria-label="ledger-dashboard-direction">
-          {(["ALL", "ASSET", "LIABILITY"] as LedgerDirectionFilter[]).map((item) => (
+          {(["ALL", "ASSET", "LIABILITY", "UNCLASSIFIED"] as LedgerDirectionFilter[]).map((item) => (
             <button
               key={item}
               type="button"
               className={direction === item ? "is-active" : ""}
-              onClick={() => setDirection(item)}
+              onClick={() => updateDirection(item)}
+              disabled={!classificationReady && item === "UNCLASSIFIED"}
             >
               {directionLabel(item)}
             </button>
@@ -326,13 +341,38 @@ export default function LedgerDashboardPage() {
               <strong>{card.value}</strong>
               <small>{card.detail}</small>
             </div>
-            <button type="button" onClick={() => setDirection(card.direction)}>
+            <button type="button" onClick={() => updateDirection(card.direction)}>
               明细
             </button>
           </article>
         ))}
       </div>
 
+      <section className="ledger-dashboard__panel" data-testid="ledger-dashboard-classification-quality">
+        <div className="ledger-dashboard__panel-head">
+          <div>
+            <h2>分类质量</h2>
+            {!selectedBucket ? (
+              <p>暂无可评估分类质量。</p>
+            ) : classificationStatus === "legacy_unassessed" ? (
+              <p>旧规则批次不可评估；资产、负债和净敞口已 fail closed 显示为 --。</p>
+            ) : classificationStatus === "invalid_materialization" ? (
+              <p>物化方向非法；资产、负债、净敞口和分类质量已 fail closed。</p>
+            ) : (
+              <p>
+                覆盖率 {selectedBucket.classification_coverage_pct?.toFixed(2) ?? "--"}% ·
+                未分类 {selectedBucket.unclassified_row_count ?? "--"} 行 ·
+                {formatLedgerYiAmount(selectedBucket.unclassified_face_amount, selectedCurrency)}
+              </p>
+            )}
+          </div>
+          {classificationReady && selectedBucket ? (
+            <button type="button" onClick={() => updateDirection("UNCLASSIFIED")}>
+              查看未分类明细
+            </button>
+          ) : null}
+        </div>
+      </section>
       <section className="ledger-dashboard__panel" data-testid="ledger-dashboard-positions-panel">
         <div className="ledger-dashboard__panel-head">
           <div>
@@ -372,6 +412,8 @@ export default function LedgerDashboardPage() {
                 <th>债券代码</th>
                 <th>组合</th>
                 <th>币种</th>
+                <th>账户类别</th>
+                <th>资产分类</th>
                 <th>面值（原币）</th>
                 <th>batch_id</th>
                 <th>row_no</th>
@@ -385,6 +427,8 @@ export default function LedgerDashboardPage() {
                   <td>{item.bond_code}</td>
                   <td>{item.portfolio || "--"}</td>
                   <td>{item.currency || "--"}</td>
+                  <td>{item.account_category_std || "--"}</td>
+                  <td>{item.asset_class_std || "--"}</td>
                   <td className="ledger-dashboard__num">{formatLedgerYuanAmount(item.face_amount)}</td>
                   <td>{item.batch_id}</td>
                   <td>{item.row_no}</td>
@@ -392,7 +436,7 @@ export default function LedgerDashboardPage() {
               ))}
               {positions && positions.data.items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="ledger-dashboard__empty">
+                  <td colSpan={10} className="ledger-dashboard__empty">
                     暂无匹配明细
                   </td>
                 </tr>

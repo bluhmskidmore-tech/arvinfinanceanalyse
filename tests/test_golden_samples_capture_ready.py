@@ -1406,6 +1406,81 @@ def _setup_ledger_pnl_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     )
 
 
+def _setup_bank_ledger_classification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_ledger_import_flow import (
+        _configure_ledger_import_env,
+        _ledger_csv_bytes,
+        _ledger_row_values,
+        _scoped_import,
+    )
+
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.ledger_import_service",
+        "backend/app/services/ledger_import_service.py",
+    )
+    asset_pairs = (
+        ("\u4ea4\u6613\u8d26\u6237", "\u4ea4\u6613\u6027\u8d44\u4ea7"),
+        ("\u94f6\u884c\u8d26\u6237", "\u4ea4\u6613\u6027\u8d44\u4ea7"),
+        ("\u94f6\u884c\u8d26\u6237", "\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7"),
+        ("\u94f6\u884c\u8d26\u6237", "\u5e94\u6536\u6295\u8d44\u6b3e\u9879"),
+        ("\u94f6\u884c\u8d26\u6237", "\u6301\u6709\u81f3\u5230\u671f\u7c7b\u8d44\u4ea7"),
+    )
+    rows = [
+        _ledger_row_values(
+            service_mod,
+            bond_code=f"ASSET-{index}",
+            account_category=account_category,
+            asset_class=asset_class,
+            face_amount="100000000",
+            as_of_date="2026-03-17",
+        )
+        for index, (account_category, asset_class) in enumerate(asset_pairs, start=1)
+    ]
+    rows.extend(
+        [
+            _ledger_row_values(
+                service_mod,
+                bond_code="LIABILITY-1",
+                account_category="\u53d1\u884c\u7c7b\u503a\u5238",
+                asset_class="\u53d1\u884c\u7c7b\u503a\u5238",
+                face_amount="200000000",
+                as_of_date="2026-03-17",
+            ),
+            _ledger_row_values(
+                service_mod,
+                bond_code="UNCLASSIFIED-MISSING",
+                account_category="",
+                asset_class="",
+                face_amount="300000000",
+                as_of_date="2026-03-17",
+            ),
+            _ledger_row_values(
+                service_mod,
+                bond_code="UNCLASSIFIED-UNKNOWN",
+                account_category="\u672a\u77e5\u8d26\u6237",
+                asset_class="\u672a\u77e5\u8d44\u4ea7",
+                face_amount="300000000",
+                as_of_date="2026-03-17",
+            ),
+            _ledger_row_values(
+                service_mod,
+                bond_code="UNCLASSIFIED-CONFLICT",
+                account_category="\u53d1\u884c\u7c7b\u503a\u5238",
+                asset_class="\u6301\u6709\u81f3\u5230\u671f\u7c7b\u8d44\u4ea7",
+                face_amount="300000000",
+                as_of_date="2026-03-17",
+            ),
+        ]
+    )
+    _scoped_import(
+        service_mod,
+        duckdb_path,
+        file_name="GS-BANK-LEDGER-CLASSIFICATION-A.csv",
+        content=_ledger_csv_bytes(service_mod, rows),
+    )
+
+
 def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     service_mod = load_module(
         "backend.app.services.cashflow_projection_service",
@@ -2286,6 +2361,29 @@ def _validate_ledger_pnl_summary(actual: dict[str, Any], expected: dict[str, Any
     )
 
 
+def _validate_bank_ledger_classification(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["trace"]["request_id"] = expected["trace"]["request_id"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("data", "as_of_date"),
+            ("data", "classification_status"),
+            ("data", "classification_rule_version"),
+            ("data", "currency_breakdown"),
+            ("metadata", "source_version"),
+            ("metadata", "rule_version"),
+            ("metadata", "fallback"),
+            ("metadata", "stale"),
+            ("metadata", "no_data"),
+            ("metadata", "batch_id"),
+            ("trace", "requested_as_of_date"),
+            ("trace", "resolved_as_of_date"),
+            ("trace", "batch_id"),
+        ],
+    )
+
+
 def _validate_cashflow_projection(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     actual["result_meta"]["trace_id"] = expected["result_meta"]["trace_id"]
     actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
@@ -2535,6 +2633,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
         setup=_setup_ledger_pnl_summary,
         validator=_validate_ledger_pnl_summary,
     ),
+    "GS-BANK-LEDGER-CLASSIFICATION-A": CaptureReadyCase(
+        setup=_setup_bank_ledger_classification,
+        validator=_validate_bank_ledger_classification,
+    ),
     "GS-CASHFLOW-PROJECTION-A": CaptureReadyCase(
         setup=_setup_cashflow_projection,
         validator=_validate_cashflow_projection,
@@ -2591,6 +2693,34 @@ def test_capture_ready_golden_sample_metadata_is_in_expected_state() -> None:
 def test_product_category_capture_ready_companion_scenario_files_exist() -> None:
     for filename in ("scenario.request.json",):
         assert _sample_file("GS-PROD-CAT-PNL-A", filename).exists()
+
+
+def test_bank_ledger_classification_sample_freezes_allowlist_and_fail_closed_pairs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup_bank_ledger_classification(tmp_path, monkeypatch)
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=True)
+    try:
+        directions = dict(
+            conn.execute(
+                "select bond_code, direction from position_snapshot order by row_no"
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+
+    assert directions == {
+        "ASSET-1": "ASSET",
+        "ASSET-2": "ASSET",
+        "ASSET-3": "ASSET",
+        "ASSET-4": "ASSET",
+        "ASSET-5": "ASSET",
+        "LIABILITY-1": "LIABILITY",
+        "UNCLASSIFIED-MISSING": "UNCLASSIFIED",
+        "UNCLASSIFIED-UNKNOWN": "UNCLASSIFIED",
+        "UNCLASSIFIED-CONFLICT": "UNCLASSIFIED",
+    }
 
 
 def test_product_category_sample_documents_approved_metric_boundary() -> None:

@@ -5,6 +5,7 @@ import json
 from datetime import date
 from uuid import uuid4
 
+from backend.app.governance.ledger_classification import LEDGER_CLASSIFICATION_RULE_VERSION
 from backend.app.repositories.ledger_analytics_repo import (
     POSITION_EXPORT_COLUMNS,
     LedgerAnalyticsRepository,
@@ -34,6 +35,8 @@ class LedgerAnalyticsService:
             return {
                 "data": LedgerDashboardData(
                     as_of_date=None,
+                    classification_status="ready",
+                    classification_rule_version=LEDGER_CLASSIFICATION_RULE_VERSION,
                     currency_breakdown=[],
                 ).model_dump(mode="json"),
                 "metadata": _metadata(latest=None, no_data=True),
@@ -45,6 +48,8 @@ class LedgerAnalyticsService:
             }
         data = LedgerDashboardData(
             as_of_date=str(dashboard["as_of_date"]),
+            classification_status=str(dashboard["classification_status"]),
+            classification_rule_version=str(dashboard["classification_rule_version"]),
             currency_breakdown=dashboard["currency_breakdown"],
         ).model_dump(mode="json")
         return {
@@ -190,8 +195,8 @@ def normalize_filters(
 ) -> dict[str, str | None]:
     normalized_direction = direction.strip().upper() if direction and direction.strip() else None
     normalized_currency = currency.strip().upper() if currency and currency.strip() else None
-    if normalized_direction not in {None, "ASSET", "LIABILITY"}:
-        raise ValueError("direction must be ASSET or LIABILITY.")
+    if normalized_direction not in {None, "ASSET", "LIABILITY", "UNCLASSIFIED"}:
+        raise ValueError("direction must be ASSET, LIABILITY, or UNCLASSIFIED.")
     return {
         "direction": normalized_direction,
         "bond_code": bond_code,

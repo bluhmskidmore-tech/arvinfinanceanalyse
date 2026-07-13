@@ -85,13 +85,58 @@ def test_bank_ledger_page_contract_requires_imported_currency_buckets_and_past_o
     section = page_contracts.split("PAGE-BANK-LEDGER-001", maxsplit=1)[1].split("\n## ", maxsplit=1)[0]
     for required in (
         "formal_use_allowed=false", "position_snapshot", "currency_breakdown", "UNKNOWN",
-        "past-only", "defaulted to candidate asset", "requested_as_of_date", "resolved_as_of_date",
-        "alert_count is removed", "PAGE-BALANCE-001", "PAGE-PNL-001",
-        "no approved MTR-* binding", "no dedicated golden sample",
+        "past-only", "rv_ledger_classification_v2", "UNCLASSIFIED", "classification_coverage_pct",
+        "legacy_unassessed", "invalid_materialization", "ledger_classification_backfill",
+        "live history batches 1-8 were applied", "completed receipt", "byte-identical pre-existing backup",
+        "requested_as_of_date", "resolved_as_of_date", "alert_count is removed",
+        "PAGE-BALANCE-001", "PAGE-PNL-001", "no approved MTR-* binding",
+        "GS-BANK-LEDGER-CLASSIFICATION-A", "captured-awaiting-approval",
+        "historical backfill", "owner approval",
     ):
         assert required in section
     assert "zqtz_bond_daily_snapshot whenever" not in section
     assert "may resolve after the requested date" not in section
+
+
+def test_bank_ledger_owner_packet_keeps_capture_and_approval_boundaries_separate():
+    evidence = _read_doc("ledger/bank-ledger-classification-owner-evidence-packet.md")
+    approval = _read_doc("ledger/bank-ledger-classification-business-owner-approval-template.md")
+
+    for required in (
+        "GS-BANK-LEDGER-CLASSIFICATION-A",
+        "captured-awaiting-approval",
+        "formal_use_allowed=false",
+        "14,731 rows",
+        "13,679 `ASSET`",
+        "1,052 `LIABILITY`",
+        "zero direction changes",
+        "Completed receipt",
+        "five `ASSET` allowlist pairs",
+        "authorized real-page UAT",
+    ):
+        assert required in evidence
+
+    for required in (
+        "This template is not an approval",
+        "Business owner: `TBD`",
+        "Decision: `PENDING`",
+        "Business-owner signature: `TBD`",
+        "formal_use_allowed=false",
+    ):
+        assert required in approval
+
+    maturity = _read_doc("live_route_maturity.md")
+    bank_rows = "\n".join(
+        line for line in maturity.splitlines() if "/bank-ledger-dashboard" in line
+    )
+    for required in (
+        "historical backfill completed",
+        "GS-BANK-LEDGER-CLASSIFICATION-A",
+        "captured-awaiting-approval",
+        "authorized real-page UAT",
+        "formal_use_allowed=false",
+    ):
+        assert required in bank_rows
 
 def _sample_dirs() -> list[str]:
     return sorted(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -10,12 +12,17 @@ class LedgerCurrencyBreakdown(BaseModel):
     asset_face_amount: float | None
     liability_face_amount: float | None
     net_face_exposure: float | None
-
+    classification_total_row_count: int
+    unclassified_row_count: int | None
+    unclassified_face_amount: float | None
+    classification_coverage_pct: float | None
 
 class LedgerDashboardData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     as_of_date: str | None
+    classification_status: Literal["ready", "legacy_unassessed", "invalid_materialization"]
+    classification_rule_version: str
     currency_breakdown: list[LedgerCurrencyBreakdown]
 
 

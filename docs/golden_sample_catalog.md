@@ -38,7 +38,7 @@
 
 ## 3. 第一批范围
 
-本批覆盖 `tests/golden_samples/` 下 **23** 个目录所对应的主链与治理边界（其中 22 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
+本批覆盖 `tests/golden_samples/` 下 **25** 个目录所对应的主链与治理边界（其中 24 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
 
 - `/ui/balance-analysis/overview`
 - `/ui/balance-analysis/workbook`
@@ -98,7 +98,9 @@ tests/golden_samples/
   GS-EXEC-PNL-ATTR-A/
   GS-EXEC-SUMMARY-A/
   GS-LEDGER-PNL-SUMMARY-A/
+  GS-BANK-LEDGER-CLASSIFICATION-A/
   GS-CASHFLOW-PROJECTION-A/
+  GS-PNL-BUSINESS-INSIGHTS-A/
   GS-PORTFOLIO-HOME-A/
 ```
 
@@ -111,7 +113,7 @@ tests/golden_samples/
 
 ## 5. Batch A 样本总表
 
-与 `tests/test_golden_samples_capture_ready.py` 中注册的 22 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-CONCENTRATION-MONITOR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-MKT-RATES-FRAGMENT-A`、`GS-AVERAGE-BALANCE-A`、`GS-AVERAGE-BALANCE-MONTHLY-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
+与 `tests/test_golden_samples_capture_ready.py` 中注册的 24 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-CONCENTRATION-MONITOR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-MKT-RATES-FRAGMENT-A`、`GS-AVERAGE-BALANCE-A`、`GS-AVERAGE-BALANCE-MONTHLY-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-BANK-LEDGER-CLASSIFICATION-A`、`GS-CASHFLOW-PROJECTION-A`、`GS-PNL-BUSINESS-INSIGHTS-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
 
 | sample_id | surface | status | preferred_report_date | 证据来源 | 样本类型 |
 | --- | --- | --- | --- | --- | --- |
@@ -127,7 +129,9 @@ tests/golden_samples/
 | `GS-MKT-RATES-FRAGMENT-A` | `GET /ui/market-data/rates` | `capture-ready` | `2026-04-10` | `tests/test_golden_samples_capture_ready.py`、`frontend/src/features/market-data/lib/marketDataRatesFragmentGolden.test.ts` | PAGE-MKT-001 formal rates **fragment** only；不关闭 `GAP-MKT-DATA` |
 | `GS-AVERAGE-BALANCE-A` | `GET /api/analysis/adb` | `capture-ready` | `2025-12-31` | `tests/test_golden_samples_capture_ready.py` | average-balance daily ADB candidate DTO sample; not formal balance truth, monthly ADB/NIM truth, manual audit, or owner approval |
 | `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | `capture-ready` | `2026-04-30` | `tests/test_ledger_pnl_service.py`、`tests/test_golden_samples_capture_ready.py` | ledger-pnl 页面级 summary DTO 样本 |
+| `GS-BANK-LEDGER-CLASSIFICATION-A` | `GET /api/ledger/dashboard` | `capture-ready` | `2026-03-17` | `tests/test_golden_samples_capture_ready.py`、`tests/test_ledger_analytics_api.py` | Bank Ledger v2 分类、亿元单位、覆盖率和日期元数据样本；pending owner approval |
 | `GS-CASHFLOW-PROJECTION-A` | `GET /api/cashflow-projection` | `capture-ready` | `2026-04-30` | `tests/test_cashflow_projection.py`, `tests/test_golden_samples_capture_ready.py` | cashflow-projection candidate liquidity projection DTO sample; not formal liquidity/risk/balance/PnL truth |
+| `GS-PNL-BUSINESS-INSIGHTS-A` | `GET /api/pnl/by-business-candidate-insights` | `capture-ready` | `2026-02-28` | `tests/test_golden_samples_capture_ready.py` | candidate business-insights DTO sample; not formal PnL truth or owner approval |
 | `GS-PROD-CAT-PNL-A` | `GET /ui/pnl/product-category` | `capture-ready` | `2026-02-28` | `tests/test_product_category_pnl_flow.py`、`tests/test_golden_samples_capture_ready.py` | formal 明细/主表样本 |
 | `GS-BRIDGE-A` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 正常样本 |
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py`（warning profile） | `warning-profile` 样本 |

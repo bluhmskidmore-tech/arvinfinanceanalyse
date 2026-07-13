@@ -3386,7 +3386,7 @@ def test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_bound
         assert "/api/ledger/dates" in payload["supporting_apis"]
         assert "/api/ledger/positions" in payload["supporting_apis"]
         assert "/api/ledger/export/positions" in payload["supporting_apis"]
-        assert payload["golden_samples"] == []
+        assert payload["golden_samples"] == ["GS-BANK-LEDGER-CLASSIFICATION-A"]
         assert any("asset_face_amount" in item for item in payload["truth_chain"])
         assert any("liability_face_amount" in item for item in payload["truth_chain"])
         assert any("net_face_exposure" in item for item in payload["truth_chain"])
@@ -3394,11 +3394,19 @@ def test_bank_ledger_dashboard_trace_bundle_preserves_candidate_read_model_bound
         assert any("PAGE-BANK-LEDGER-001" in item for item in payload["truth_chain"])
         assert any("currency_breakdown" in item and "UNKNOWN" in item for item in payload["truth_chain"])
         assert any("alert_count" in item and "removed" in item for item in payload["truth_chain"])
-        assert any("defaulted to candidate asset" in item for item in payload["truth_chain"])
+        assert any("rv_ledger_classification_v2" in item and "UNCLASSIFIED" in item for item in payload["truth_chain"])
+        assert any("legacy_unassessed" in item and "fail closed" in item for item in payload["truth_chain"])
+        assert any("invalid_materialization" in item and "fail closed" in item for item in payload["truth_chain"])
+        assert any("ledger_classification_backfill" in item and "batches 1-8" in item and "completed receipt" in item for item in payload["guardrails"])
+        assert any("byte-identical existing backup" in item and "one all-or-none transaction" in item for item in payload["guardrails"])
         assert any("formal_use_allowed=false" in item for item in payload["guardrails"])
         assert any("not formal PnL" in item for item in payload["guardrails"])
         assert any("not formal balance truth" in item for item in payload["guardrails"])
-        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any(
+            "GS-BANK-LEDGER-CLASSIFICATION-A" in item
+            and "captured-awaiting-approval" in item
+            for item in payload["verification_focus"]
+        )
         assert not any("formal_use_allowed=true" in item for item in payload["truth_chain"])
     finally:
         server.close()

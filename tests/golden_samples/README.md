@@ -17,7 +17,7 @@ Reason:
 - avoid freezing guessed or partially inferred payloads as business truth
 - keep sample packs aligned with `docs/golden_sample_catalog.md`
 
-Current capture-ready sample packs (22 total):
+Current capture-ready sample packs (24 total):
 
 - `GS-BAL-OVERVIEW-A`
 - `GS-BAL-WORKBOOK-A`
@@ -37,7 +37,9 @@ Current capture-ready sample packs (22 total):
 - `GS-EXEC-PNL-ATTR-A`
 - `GS-EXEC-SUMMARY-A`
 - `GS-LEDGER-PNL-SUMMARY-A`
+- `GS-BANK-LEDGER-CLASSIFICATION-A`
 - `GS-CASHFLOW-PROJECTION-A`
+- `GS-PNL-BUSINESS-INSIGHTS-A`
 - `GS-PROD-CAT-PNL-A`
 - `GS-BRIDGE-WARN-B`
 - `GS-RISK-WARN-B`

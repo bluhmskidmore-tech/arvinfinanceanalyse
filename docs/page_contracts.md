@@ -1690,13 +1690,17 @@
 #### F.2 Candidate financial-indicator period comparison
 
 - The comparison endpoint is isolated from the single-month candidate and revalidation contracts. A historical parse or replay failure cannot change the current candidate idempotency key, promotion evidence pack, or dry-run receipt.
+- The response contract is `candidate-financial-indicator-period-comparison-v2`. In addition to the fixed seven rows it returns one backend-owned `net_interest_component_bridge`; clients that still require v1 must fail closed rather than silently dropping the bridge.
 - The endpoint fixes seven metrics in contract order: three cumulative income metrics (`income.interest.net`, `income.noninterest.total`, `income.operating.mother_bank`) followed by four month-end point metrics for corporate/retail deposits and loans. All amounts and rates are Decimal strings; amount unit is 亿元 and a rate of `1` means `100%`.
 - Point metrics compare the requested month-end with the exact preceding calendar month-end. Cumulative income metrics first recover natural-calendar-month values from three consecutive cumulative observations; January and February use year-reset rules. Missing periods, missing metrics, warning/manual/error status, and real zero remain distinct. A zero previous value permits a delta but returns `change_rate=null` with `rate_reason=zero_denominator`.
 - Complete-scope availability requires the exact previous calendar month to replay under the same rule version/hash with all 186 metrics evaluated and no error result. The service never skips to an older month. For 202606, the complete 202605 replay is unavailable because `日均202605.xlsx` lacks the required `微贷` sheet; this missing structure is not converted to zero.
 - The separately named `comparison_scope=ledger_only_key_metrics` parses the three main-ledger `综本` periods through the hardened XLSX boundary and evaluates them symmetrically under `qdb-finance-2026-v1.0.1`. Any duplicate ledger observation fails closed. An unlocked historical ledger may produce only `quality_status=degraded_candidate`; a locked mismatch cannot enter the response.
 - A row is comparable only when every required period has metric status `ok` and a non-null value. Warning, manual-default, missing-account, error, and missing-reference evidence makes the row `not_comparable` with null comparison values. The contract does not return materiality, anomaly, good/bad direction, ranking, or deterministic drivers; `driver_status=unclear` remains fixed.
-- The comparison idempotency key binds the contract version, exact three months, complete source/hash evidence, rule hash, full-scope replay evidence, and the complete seven-row response evidence. `metric_status=candidate`, `formal_use_allowed=false`, and `certification_effect=none` are invariant.
-- React consumes backend `current_value_yi`, `previous_value_yi`, `delta_yi`, and `change_rate` without recomputation. It may format Decimal strings only. The operating-analysis view leads with the comparable/not-comparable count, displays unlocked-source and complete-scope gaps, distinguishes natural-month from month-end comparison, shows unavailable values as `--`, and cancels the in-flight read when the view is unmounted. Loading, transport failure, wrong-month/malformed contract, no-month, partial, and fully unavailable states are explicit.
+- The net-interest bridge uses the frozen direct formula components in fixed order and weight: `+ income.interest.loan.total`, `- expense.interest.deposit.total`, `+ income.interest.investment`, and `+ income.interest.interbank_net`. These four values use only the three main-ledger periods; the missing 202605 `微贷` sheet continues to block complete 186-item replay but does not block this ledger-only bridge.
+- For each component, the backend recovers the current and previous natural-month values and returns both the component's own change and its signed contribution to net-interest change. The unrounded Decimal contribution total must equal the seven-row `income.interest.net.delta_yi` exactly before `foot_status=passed` and `status=available` may be emitted. Any missing/null/non-`ok` component makes the whole bridge `not_evaluable`; a non-zero reconciliation is surfaced as a failed foot and cannot be displayed as a valid explanation. Historical unlocked sources keep an otherwise available bridge at `degraded_candidate`.
+- The bridge is an accounting formula contribution schedule, not a causal attribution. It does not determine whether volume, rate, spread, tenor, product, or business action caused the movement; outer `driver_status=unclear`, candidate/formal boundaries, and certification effect remain unchanged.
+- The comparison idempotency key binds the contract version, exact three months, complete source/hash evidence, rule hash, full-scope replay evidence, the complete seven-row response, and the complete bridge evidence including weights, source values, contributions, and foot status. `metric_status=candidate`, `formal_use_allowed=false`, and `certification_effect=none` are invariant.
+- React consumes backend `current_value_yi`, `previous_value_yi`, `delta_yi`, `change_rate`, component changes, signed contributions, and foot evidence without recomputation. It may format Decimal strings and enforce response-shape/cross-field identity only. The operating-analysis view leads with the comparable/not-comparable count, then shows the compact bridge before the seven-row table, displays unlocked-source and complete-scope gaps, distinguishes natural-month from month-end comparison, shows unavailable values as `--`, and cancels the in-flight read when the view is unmounted. Loading, transport failure, wrong-month/malformed contract, no-month, bridge-unavailable/failed, partial, and fully unavailable states are explicit.
 
 ### G. Candidate metric bindings
 
@@ -1728,22 +1732,24 @@
 - Page ID: `PAGE-BANK-LEDGER-001`; route: `/bank-ledger-dashboard`.
 - Maturity remains `temporary-exception`; this is a candidate ledger read model with `formal_use_allowed=false`.
 - The page does not provide formal balance, formal PnL, approved net exposure, alert truth, or business-owner approval.
-- The three headline fields have no approved MTR-* binding and no dedicated golden sample.
+- The three headline fields have no approved MTR-* binding. `GS-BANK-LEDGER-CLASSIFICATION-A` is a dedicated capture-ready DTO/classification sample with status `captured-awaiting-approval`; it is not metric or owner approval.
 
 ### B. Imported snapshot read chain
 
 - `GET /api/ledger/dates`, `GET /api/ledger/dashboard`, `GET /api/ledger/positions`, and `GET /api/ledger/export/positions` read only imported `position_snapshot` batches.
 - Runtime reads no longer consume `zqtz_bond_daily_snapshot` and do not read `position_snapshot_agg`.
-- `POST /api/ledger/import` plus `GET /api/ledger/import-status` write and expose imported batch evidence; succeeded imports invalidate and refetch dates, dashboard, and positions.
-- Dashboard data is `{as_of_date, currency_breakdown}`. Each bucket contains `currency`, `asset_face_amount`, `liability_face_amount`, and `net_face_exposure`; `alert_count is removed` because no governed alert source or rule exists.
+- `POST /api/ledger/import` plus `GET /api/ledger/import-status` materialize direction and expose batch evidence; succeeded imports invalidate and refetch dates, dashboard, and positions.
+- Dashboard data is `{as_of_date, classification_status, classification_rule_version, currency_breakdown}`. `alert_count is removed` because no governed alert source or rule exists.
 
 ### C. Currency and classification boundaries
 
-- Currency is canonicalized as `upper(trim(currency))`; blank values are the independent `UNKNOWN` bucket. Buckets are stably sorted.
-- Every currency bucket is aggregated separately and scaled as native amount / `100,000,000`. There is no FX conversion and currencies are never added together.
-- Positions and export accept the same normalized `currency` filter. Selecting `UNKNOWN` filters blank-currency rows.
-- Imported rows matched to the issuance category become candidate liabilities; every unmatched or missing category is defaulted to candidate asset. This default-to-asset rule can overstate assets and remains pending owner review.
-- Within each currency bucket, `net_face_exposure = asset_face_amount - liability_face_amount`; a missing side remains null in its headline while net treats only that missing side as zero.
+- Currency is canonicalized as `upper(trim(currency))`; blank values are the independent `UNKNOWN` bucket. Buckets are stably sorted and never FX-converted or added across currencies.
+- `rv_ledger_classification_v2` is a closed pair allowlist applied at import. `LIABILITY` requires `(发行类债券, 发行类债券)`. `ASSET` requires one of `(银行账户, 持有至到期类资产)`, `(银行账户, 可供出售类资产)`, `(银行账户, 交易性资产)`, `(交易账户, 交易性资产)`, or `(银行账户, 应收投资款项)`. Every other pair is materialized as `UNCLASSIFIED`.
+- Runtime reads never recompute direction from category fields. The controlled `ledger_classification_backfill` task can attest only explicitly selected legacy batches after byte-identical source-hash replay proves every `(batch_id, row_no)` standard field, position key, and direction unchanged; live history batches 1-8 were applied on 2026-07-12 under plan digest `1c90458a94f56525d4ee360cd2e7cad6fe79f035508b89355f0fd795fa6f065c`, with a completed receipt and unchanged immutable evidence.
+- A current-rule bucket reports `classification_total_row_count`, `unclassified_row_count`, `unclassified_face_amount`, and row-based `classification_coverage_pct`. Asset, liability, and net use only materialized `ASSET`/`LIABILITY`; `UNCLASSIFIED` never contributes.
+- `classification_status` is `ready|legacy_unassessed|invalid_materialization`. A legacy-rule batch is `legacy_unassessed`; a current-rule batch containing any direction outside `ASSET|LIABILITY|UNCLASSIFIED` is `invalid_materialization`. Both non-ready states fail closed: all three financial amounts and all assessable quality fields are null (except total row count), with no read-time reclassification.
+- Positions and export accept normalized `currency` and `UNCLASSIFIED` direction filters. The row keeps batch ID, row number, position key, both classification fields, source/rule versions, and raw-row evidence through the imported lineage.
+- Within each current-rule currency bucket, `net_face_exposure = asset_face_amount - liability_face_amount`; a missing classified side remains null in its headline while net treats only that missing side as zero.
 
 ### D. Date, freshness, and fallback semantics
 
@@ -1753,23 +1759,26 @@
 
 ### E. Frontend and trace contract
 
-- The selected currency is URL state. Default is `CNY` when present, otherwise the first stable currency.
-- Exactly three KPI cards show only the selected currency and use `<CURRENCY>/1亿`; direction drill, positions query key/request, and export options retain the same currency.
+- The selected currency and direction are URL state. Default currency is `CNY` when present, otherwise the first stable currency; `UNCLASSIFIED` survives query keys, client options, forward/back navigation, positions, and export filters.
+- Exactly three KPI cards show only the selected currency and use `<CURRENCY>/1亿`; a separate classification-quality panel shows coverage and unclassified rows/amount and drills into `UNCLASSIFIED` positions.
+- Legacy and invalid-materialization batches explicitly explain the failure, render all financial KPI values as `--`, hide UNCLASSIFIED drill evidence, and suppress cached UNCLASSIFIED rows. Net copy states that unclassified rows are excluded for ready batches.
 - Metadata preserves `source_version`, `rule_version`, `batch_id`, `stale`, `fallback`, and `no_data`; trace preserves requested/resolved dates, normalized filters, batch ID, position key, and row number.
-- No frontend fallback may fabricate amounts, dates, alerts, positions, or trace evidence.
+- No frontend fallback may fabricate amounts, dates, alerts, positions, classifications, quality coverage, or trace evidence.
 
 ### F. Formal-truth exclusions and exit conditions
 
 - `PAGE-BALANCE-001` remains formal balance truth; `PAGE-PNL-001` and `PAGE-LEDGER-PNL-001` retain their separate PnL contracts.
 - Do not promote these fields to MTR-* rows without metric ownership, dedicated golden evidence, lineage audit, manual review, and owner approval.
-- The route remains `temporary-exception` despite source unblocking because the default-to-asset classification, `UNKNOWN` currency quality, no MTR/golden approval, and owner review remain unresolved.
+- The route remains `temporary-exception`: the historical backfill for live history batches 1-8 was applied with a completed receipt and dedicated golden evidence is now captured, but golden approval, owner approval, authorized real-page UAT, and UNKNOWN remediation remain incomplete; rule attestation and `captured-awaiting-approval` evidence do not release `formal_use_allowed=false`.
+- Backfill apply requires explicit repeated batch IDs and source directory, the exact dry-run plan digest, a byte-identical pre-existing backup that is neither the target nor its hard link, an exclusively created prepared/completed receipt, fixed global-writer then Ledger-import lock order, frozen source fingerprints rechecked before the transaction, one all-or-none transaction, and unchanged immutable evidence including `position_snapshot_agg` when present. It changes only the three rule-version columns and never auto-corrects direction.
 - The historical alias `GAP-BANK-LEDGER-DASHBOARD-PAGE` remains accepted for trace lookup only.
 
 ### G. Verification surfaces
 
-- Backend: `tests/test_ledger_analytics_api.py`, `tests/test_ledger_import_flow.py`.
+- Backend: `tests/test_ledger_analytics_api.py`, `tests/test_ledger_import_flow.py`, `tests/test_golden_samples_capture_ready.py` (`GS-BANK-LEDGER-CLASSIFICATION-A`).
 - Frontend: `frontend/src/test/LedgerDashboardPage.test.tsx`, `frontend/src/test/LedgerDashboardPageModel.test.ts`, `frontend/src/test/LedgerImportClient.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
 - Governance/MCP: `tests/test_governance_doc_contract.py`, `tests/test_project_mcp_servers.py`.
+- Owner review: `docs/ledger/bank-ledger-classification-owner-evidence-packet.md`, `docs/ledger/bank-ledger-classification-business-owner-approval-template.md`.
 ## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
 
 ### A. 页面身份

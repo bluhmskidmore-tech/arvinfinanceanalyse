@@ -91,7 +91,7 @@ export function buildLedgerKpiCards(
       key: "net",
       label: "净敞口",
       value: formatLedgerYiAmount(bucket?.net_face_exposure, currency),
-      detail: `资产 - 发行负债；仅限 ${currency} 币种桶`,
+      detail: `资产 - 发行负债；仅限 ${currency} 币种桶，未分类不计入`,
       direction: "ALL",
     },
   ];
@@ -118,6 +118,7 @@ export function ledgerDataState(
 export function directionLabel(direction: LedgerDirectionFilter): string {
   if (direction === "ASSET") return "资产";
   if (direction === "LIABILITY") return "发行负债";
+  if (direction === "UNCLASSIFIED") return "未分类";
   return "全部";
 }
 

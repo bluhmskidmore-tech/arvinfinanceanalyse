@@ -18,7 +18,7 @@
 ## 2.1 已经具备的样本基础
 
 - `tests/test_golden_samples_capture_ready.py` 已经存在，并且会校验每个样本目录下的 `request.json`、`response.json`、`assertions.md`、`approval.md`。
-- `tests/golden_samples/` 已经存在 **23** 个样本包（其中 22 个与 `tests/test_golden_samples_capture_ready.py` 矩阵一致，1 个为 supporting-only）：
+- `tests/golden_samples/` 已经存在 **25** 个样本包（其中 24 个与 `tests/test_golden_samples_capture_ready.py` 矩阵一致，1 个为 supporting-only）：
   - `GS-BAL-OVERVIEW-A`
   - `GS-BAL-WORKBOOK-A`
   - `GS-PNL-OVERVIEW-A`
@@ -40,7 +40,9 @@
   - `GS-EXEC-SUMMARY-A`
   - `GS-EXEC-PNL-ATTR-A`
   - `GS-LEDGER-PNL-SUMMARY-A`
+  - `GS-BANK-LEDGER-CLASSIFICATION-A`
   - `GS-CASHFLOW-PROJECTION-A`
+  - `GS-PNL-BUSINESS-INSIGHTS-A`
   - `GS-PORTFOLIO-HOME-A`（supporting-only，不进入 capture-ready 矩阵）
 - `scripts/backend_release_suite.py` 已经把 `tests/test_golden_samples_capture_ready.py` 纳入固定 release suite。
 
@@ -103,6 +105,8 @@
 | `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | 已有样本包 | `tests/test_executive_service_contract.py` + 样本目录 | 与 page contract 对齐 |
 | `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | 已有样本包 | `tests/test_executive_service_contract.py` + 样本目录 | 与 page contract 对齐 |
 | `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | 已有样本包 | `tests/test_ledger_pnl_service.py` + `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 Ledger PnL 页面级 summary DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
+| `GS-BANK-LEDGER-CLASSIFICATION-A` | `GET /api/ledger/dashboard` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 Bank Ledger v2 分类矩阵、亿元单位、覆盖率和日期元数据；保持 `formal_use_allowed=false` / pending owner approval |
+| `GS-PNL-BUSINESS-INSIGHTS-A` | `GET /api/pnl/by-business-candidate-insights` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 candidate business-insights DTO；保持 `formal_use_allowed=false` / pending owner approval |
 
 补充说明：
 
@@ -184,7 +188,7 @@ tests/golden_samples/
 ### 8.1 本周必须完成
 
 1. 把 `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md`、`tests/golden_samples/` 纳入版本控制。
-2. 复核 22 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持 capture-ready 与 supporting-only 口径分离。
+2. 复核 24 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持 capture-ready 与 supporting-only 口径分离。
 3. 在 catalog 中补充每个样本对应的 `page_id`、`metric_id`、`tests/...`。
 
 ### 8.2 下周必须完成

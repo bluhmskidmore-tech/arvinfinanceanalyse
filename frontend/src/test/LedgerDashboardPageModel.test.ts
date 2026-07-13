@@ -16,8 +16,10 @@ describe("ledgerDashboardPageModel", () => {
     expect(formatLedgerYiAmount(null, "CNY")).toBe("--");
     const cards = buildLedgerKpiCards({
       as_of_date: "2026-03-17",
+      classification_status: "ready",
+      classification_rule_version: "rv_ledger_classification_v2",
       currency_breakdown: [
-        { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31 },
+        { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
       ],
     }, "CNY");
     expect(cards.map((item) => item.value)).toEqual([
@@ -73,9 +75,11 @@ describe("ledgerDashboardPageModel", () => {
   it("selects CNY by default and builds only the selected currency cards", () => {
     const data = {
       as_of_date: "2026-03-17",
+      classification_status: "ready" as const,
+      classification_rule_version: "rv_ledger_classification_v2",
       currency_breakdown: [
-        { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2 },
-        { currency: "CNY", asset_face_amount: 1, liability_face_amount: 0.5, net_face_exposure: 0.5 },
+        { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2, classification_total_row_count: 1, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+        { currency: "CNY", asset_face_amount: 1, liability_face_amount: 0.5, net_face_exposure: 0.5, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
       ],
     };
     expect(selectLedgerCurrency(data.currency_breakdown, null)).toBe("CNY");
@@ -84,5 +88,25 @@ describe("ledgerDashboardPageModel", () => {
       ["liability", "--"],
       ["net", "2.00 USD/1亿"],
     ]);
+  });
+
+  it("keeps financial KPIs blank for legacy classification batches", () => {
+    const cards = buildLedgerKpiCards({
+      as_of_date: "2026-03-17",
+      classification_status: "legacy_unassessed",
+      classification_rule_version: "rv_ledger_classification_v2",
+      currency_breakdown: [{
+        currency: "CNY",
+        asset_face_amount: null,
+        liability_face_amount: null,
+        net_face_exposure: null,
+        classification_total_row_count: 2,
+        unclassified_row_count: null,
+        unclassified_face_amount: null,
+        classification_coverage_pct: null,
+      }],
+    }, "CNY");
+    expect(cards.map((card) => card.value)).toEqual(["--", "--", "--"]);
+    expect(cards[2].detail).toContain("未分类不计入");
   });
 });

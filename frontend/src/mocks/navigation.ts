@@ -401,7 +401,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
     readinessNote:
-      "Candidate imported position_snapshot read model; currency buckets are independent native amounts with no FX, and fallback is past-only. Route remains temporary-exception and not formal; default-to-asset and UNKNOWN risks remain pending.",
+      "Candidate imported position_snapshot read model; import-time rv_ledger_classification_v2 materializes UNCLASSIFIED; legacy batches fail closed and invalid_materialization also fails closed. Currency buckets remain independent with past-only fallback. Historical backfill completed for live batches 1-8 and golden sample captured-awaiting-approval; formal use, owner approval, authorized real-page UAT, and UNKNOWN remediation remain pending; same source hash cannot be replayed.",
   },
   {
     key: "risk-overview",
