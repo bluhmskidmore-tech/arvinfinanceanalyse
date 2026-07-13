@@ -140,6 +140,7 @@ def _resolve_report_dates(
     report_date: str | None,
     start_date: str | None,
     end_date: str | None,
+    backfill: bool,
 ) -> list[str]:
     settings = get_settings()
     requested_report_date = _normalize_iso_date(report_date, field_name="report_date")
@@ -164,10 +165,28 @@ def _resolve_report_dates(
             base_dir=Path(governance_dir or settings.governance_path)
         ),
     )
-    batch_rows = manifest_repo.select_for_snapshot_materialization(
-        source_families=source_families,
-        ingest_batch_id=ingest_batch_id,
-    )
+    if backfill:
+        candidate_dates = sorted(
+            {
+                str(row.get("report_date") or "").strip()
+                for row in manifest_repo.load_all()
+                if str(row.get("source_family") or "").strip() in source_families
+                and str(row.get("report_date") or "").strip()
+            }
+        )
+        batch_rows = [
+            row
+            for candidate_date in candidate_dates
+            for row in manifest_repo.select_for_snapshot_materialization(
+                source_families=source_families,
+                report_date=candidate_date,
+            )
+        ]
+    else:
+        batch_rows = manifest_repo.select_for_snapshot_materialization(
+            source_families=source_families,
+            ingest_batch_id=ingest_batch_id,
+        )
 
     resolved_dates: list[str] = []
     for raw_date in sorted(
@@ -201,6 +220,7 @@ def _run_formal_balance_pipeline(
     report_date: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    backfill: bool = False,
     data_root: str | None = None,
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
@@ -224,6 +244,7 @@ def _run_formal_balance_pipeline(
         report_date=report_date,
         start_date=start_date,
         end_date=end_date,
+        backfill=backfill,
     )
 
     per_report_date: list[dict[str, object]] = []
@@ -287,6 +308,7 @@ def run_formal_balance_pipeline_sync(
     report_date: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    backfill: bool = False,
     data_root: str | None = None,
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
@@ -297,6 +319,7 @@ def run_formal_balance_pipeline_sync(
         report_date=report_date,
         start_date=start_date,
         end_date=end_date,
+        backfill=backfill,
         data_root=data_root,
         duckdb_path=duckdb_path,
         governance_dir=governance_dir,
@@ -310,6 +333,7 @@ def main() -> None:
     parser.add_argument("--report-date")
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
+    parser.add_argument("--backfill", action="store_true")
     parser.add_argument("--data-root")
     parser.add_argument("--duckdb-path")
     parser.add_argument("--governance-dir")
@@ -321,6 +345,7 @@ def main() -> None:
         report_date=args.report_date,
         start_date=args.start_date,
         end_date=args.end_date,
+        backfill=args.backfill,
         data_root=args.data_root,
         duckdb_path=args.duckdb_path,
         governance_dir=args.governance_dir,

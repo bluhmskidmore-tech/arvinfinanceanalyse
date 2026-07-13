@@ -431,6 +431,65 @@ def test_formal_balance_pipeline_backfills_manifest_report_date_range_in_order(t
     )
 
 
+def test_formal_balance_pipeline_explicit_backfill_uses_all_eligible_manifest_dates(
+    tmp_path,
+    monkeypatch,
+):
+    pipeline_mod = _load_pipeline_module()
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    manifest_rows = [
+        {
+            "source_family": source_family,
+            "report_date": report_date,
+            "ingest_batch_id": "ib-archived",
+            "archived_path": str(tmp_path / "archive" / f"{source_family}-{report_date}.xls"),
+            "created_at": "2026-07-01T00:00:00+00:00",
+            "status": "completed",
+        }
+        for report_date in ("2026-06-01", "2026-06-02", "2026-06-03")
+        for source_family in ("zqtz", "tyw")
+    ]
+    (governance_dir / "source_manifest.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in manifest_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    calls: list[tuple[str, str, object]] = []
+
+    monkeypatch.setattr(
+        pipeline_mod.ingest_demo_manifest,
+        "fn",
+        lambda **_kwargs: {"status": "completed"},
+    )
+
+    def _fake_snapshot(**kwargs):
+        calls.append(("snapshot", kwargs["report_date"], kwargs.get("ingest_batch_id")))
+        return {"status": "completed"}
+
+    def _fake_balance(**kwargs):
+        calls.append(("balance", kwargs["report_date"], kwargs.get("ingest_batch_id")))
+        return {"status": "completed"}
+
+    monkeypatch.setattr(pipeline_mod.materialize_standard_snapshots, "fn", _fake_snapshot)
+    monkeypatch.setattr(pipeline_mod.materialize_balance_analysis_facts, "fn", _fake_balance)
+
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(
+        backfill=True,
+        start_date="2026-06-01",
+        end_date="2026-06-02",
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["report_dates"] == ["2026-06-01", "2026-06-02"]
+    assert calls == [
+        ("snapshot", "2026-06-01", None),
+        ("balance", "2026-06-01", None),
+        ("snapshot", "2026-06-02", None),
+        ("balance", "2026-06-02", None),
+    ]
+
+
 def test_formal_balance_pipeline_prefers_new_runtime_payload_shape(tmp_path, monkeypatch):
     pipeline_mod = _load_pipeline_module()
 
