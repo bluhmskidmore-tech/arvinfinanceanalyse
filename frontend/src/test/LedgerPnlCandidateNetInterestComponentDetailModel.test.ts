@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCandidateNetInterestComponentDetailViewModel } from "../features/ledger-pnl/models/candidateNetInterestComponentDetailModel";
+import {
+  buildCandidateNetInterestComponentDetailViewModel,
+  filterCandidateNetInterestComponentDetailRows,
+} from "../features/ledger-pnl/models/candidateNetInterestComponentDetailModel";
 import { buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail } from "../mocks/ledgerPnlMocks";
 
 describe("candidate net-interest component detail model", () => {
@@ -98,5 +101,90 @@ describe("candidate net-interest component detail model", () => {
     }
     expect(model.summary.componentDeltaDisplay).toBe("1.1235");
     expect(model.summary.contributionDisplay).toBe("1.1235");
+  });
+
+  it("keeps backend positions, raw Decimal strings, rules, and evidence on every row", () => {
+    const payload = buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail(
+      "202606",
+      "income.interest.investment",
+      "b".repeat(64),
+    );
+    const duplicateCodeRow = structuredClone(payload.rows[0]);
+    duplicateCodeRow.account_name = "同代码的第二条后端记录";
+    duplicateCodeRow.current_value_yi = "-999999999999999999.000000001";
+    duplicateCodeRow.source_evidence[0].ending_yuan = duplicateCodeRow.current_ending_yuan;
+    payload.rows.push(duplicateCodeRow);
+
+    const model = buildCandidateNetInterestComponentDetailViewModel(
+      payload,
+      "202606",
+      "income.interest.investment",
+      "b".repeat(64),
+    );
+
+    expect(model.state).toBe("available");
+    if (model.state !== "available") throw new Error(`expected available, received ${model.state}`);
+    expect(model.rows).toHaveLength(2);
+    expect(model.rows.map((row) => row.backendPosition)).toEqual([1, 2]);
+    expect(model.rows[1]).toMatchObject({
+      accountCode: "51402010003",
+      accountName: "同代码的第二条后端记录",
+      currentValueYi: "-999999999999999999.000000001",
+      effectiveComponentWeight: "-1",
+      effectiveNetWeight: "-1",
+    });
+    expect(model.rows[1].matchedTerms).toEqual(duplicateCodeRow.matched_terms);
+    expect(model.rows[1].sourceEvidence).toEqual(duplicateCodeRow.source_evidence);
+  });
+
+  it("filters by normalized text and row status without changing backend relative order", () => {
+    const payload = buildMockLedgerPnlCandidateFinancialIndicatorComponentDetail(
+      "202606",
+      "income.interest.investment",
+      "b".repeat(64),
+    );
+    const offsetRow = structuredClone(payload.rows[0]);
+    Object.assign(offsetRow, {
+      row_status: "excluded_offset" as const,
+      account_code: "51402010004",
+      account_name: "规则 Offset 科目",
+      effective_component_weight: "0",
+      effective_net_weight: "0",
+      current_value_yi: "0",
+      previous_value_yi: "0",
+      component_delta_yi: "0",
+      contribution_to_net_delta_yi: "0",
+      matched_terms: [{ source: "ledger" as const, level: "l1" as const, code: "514", weight: "-1" }],
+    });
+    const trailingRow = structuredClone(payload.rows[0]);
+    trailingRow.account_code = "51402010005";
+    trailingRow.account_name = "ALPHA 收益";
+    payload.rows = [payload.rows[0], offsetRow, trailingRow];
+
+    const model = buildCandidateNetInterestComponentDetailViewModel(
+      payload,
+      "202606",
+      "income.interest.investment",
+      "b".repeat(64),
+    );
+
+    expect(model.state).toBe("available");
+    if (model.state !== "available") throw new Error(`expected available, received ${model.state}`);
+    expect(filterCandidateNetInterestComponentDetailRows(model.rows, {
+      query: "  alpha  ",
+      status: "all",
+    }).map((row) => row.backendPosition)).toEqual([3]);
+    expect(filterCandidateNetInterestComponentDetailRows(model.rows, {
+      query: "5140201",
+      status: "contributing",
+    }).map((row) => row.backendPosition)).toEqual([1, 3]);
+    expect(filterCandidateNetInterestComponentDetailRows(model.rows, {
+      query: "",
+      status: "excluded_offset",
+    }).map((row) => row.backendPosition)).toEqual([2]);
+    expect(filterCandidateNetInterestComponentDetailRows(model.rows, {
+      query: "   ",
+      status: "all",
+    }).map((row) => row.backendPosition)).toEqual([1, 2, 3]);
   });
 });

@@ -118,13 +118,13 @@ function buildLedgerClient(): ApiClient {
         },
       },
     })),
-    getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+    getLedgerPnlMonthlyAnalysisDates: vi.fn(async () => ({
       result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates", "tr_qdb_dates"),
       result: {
         report_months: ["202512", "202511"],
       },
     })),
-    getQdbGlMonthlyAnalysisWorkbook: vi.fn(async ({ reportMonth }) => ({
+    getLedgerPnlMonthlyAnalysisWorkbook: vi.fn(async ({ reportMonth }) => ({
       result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook", "tr_qdb_workbook"),
       result: {
         report_month: reportMonth,

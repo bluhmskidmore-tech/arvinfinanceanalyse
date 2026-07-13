@@ -23,10 +23,27 @@ const COMPONENT_IDENTITIES = {
   readonly [string, -1 | 1]
 >;
 
-type ComponentDetailRowView = {
+export type CandidateNetInterestComponentDetailRowStatusFilter =
+  | "all"
+  | "contributing"
+  | "excluded_offset";
+
+export type CandidateNetInterestComponentDetailRowView = {
+  backendPosition: number;
   rowStatus: "contributing" | "excluded_offset";
   accountCode: string;
   accountName: string;
+  currency: "CNX";
+  effectiveComponentWeight: string;
+  effectiveNetWeight: string;
+  matchedTerms: LedgerPnlCandidateFinancialIndicatorComponentDetailRow["matched_terms"];
+  currentEndingYuan: string;
+  previousEndingYuan: string;
+  twoMonthPriorEndingYuan: string;
+  currentValueYi: string;
+  previousValueYi: string;
+  componentDeltaYi: string;
+  contributionToNetDeltaYi: string;
   currentDisplay: string;
   previousDisplay: string;
   componentDeltaDisplay: string;
@@ -47,7 +64,7 @@ type AvailableComponentDetailModel = {
     qualityLabel: "标准候选" | "降级候选";
     footLabel: "勾稽通过";
   };
-  rows: ComponentDetailRowView[];
+  rows: CandidateNetInterestComponentDetailRowView[];
 };
 
 type ClosedComponentDetailModel = {
@@ -59,6 +76,24 @@ type ClosedComponentDetailModel = {
 export type CandidateNetInterestComponentDetailViewModel =
   | AvailableComponentDetailModel
   | ClosedComponentDetailModel;
+
+export function filterCandidateNetInterestComponentDetailRows(
+  rows: readonly CandidateNetInterestComponentDetailRowView[],
+  filters: {
+    query: string;
+    status: CandidateNetInterestComponentDetailRowStatusFilter;
+  },
+): CandidateNetInterestComponentDetailRowView[] {
+  const query = filters.query.trim().toLowerCase();
+  return rows.filter((row) => (
+    (filters.status === "all" || row.rowStatus === filters.status)
+    && (
+      query.length === 0
+      || row.accountCode.toLowerCase().includes(query)
+      || row.accountName.toLowerCase().includes(query)
+    )
+  ));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -371,10 +406,22 @@ export function buildCandidateNetInterestComponentDetailViewModel(
       qualityLabel: payload.quality_status === "standard_candidate" ? "标准候选" : "降级候选",
       footLabel: "勾稽通过",
     },
-    rows: payload.rows.map((row) => ({
+    rows: payload.rows.map((row, index) => ({
+      backendPosition: index + 1,
       rowStatus: row.row_status,
       accountCode: row.account_code,
       accountName: row.account_name,
+      currency: row.currency,
+      effectiveComponentWeight: row.effective_component_weight,
+      effectiveNetWeight: row.effective_net_weight,
+      matchedTerms: row.matched_terms,
+      currentEndingYuan: row.current_ending_yuan,
+      previousEndingYuan: row.previous_ending_yuan,
+      twoMonthPriorEndingYuan: row.two_month_prior_ending_yuan,
+      currentValueYi: row.current_value_yi,
+      previousValueYi: row.previous_value_yi,
+      componentDeltaYi: row.component_delta_yi,
+      contributionToNetDeltaYi: row.contribution_to_net_delta_yi,
       currentDisplay: formatCandidateComparisonAmount(row.current_value_yi),
       previousDisplay: formatCandidateComparisonAmount(row.previous_value_yi),
       componentDeltaDisplay: formatCandidateComparisonAmount(row.component_delta_yi),

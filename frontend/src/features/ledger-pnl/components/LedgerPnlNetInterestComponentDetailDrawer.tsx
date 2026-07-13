@@ -1,9 +1,20 @@
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button as AntButton, Drawer as AntDrawer } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import type { LedgerPnlCandidateFinancialIndicatorComponentMetricId } from "../../../api/contracts";
-import { buildCandidateNetInterestComponentDetailViewModel } from "../models/candidateNetInterestComponentDetailModel";
+import {
+  buildCandidateNetInterestComponentDetailCsv,
+  buildCandidateNetInterestComponentSourceLocator,
+  downloadCandidateNetInterestComponentDetailCsv,
+} from "../models/candidateNetInterestComponentDetailExport";
+import {
+  buildCandidateNetInterestComponentDetailViewModel,
+  filterCandidateNetInterestComponentDetailRows,
+  type CandidateNetInterestComponentDetailRowStatusFilter,
+  type CandidateNetInterestComponentDetailViewModel,
+} from "../models/candidateNetInterestComponentDetailModel";
 import "./LedgerPnlNetInterestComponentDetailDrawer.css";
 
 export type LedgerPnlNetInterestComponentSelection = {
@@ -34,6 +45,283 @@ function closedStateMessage(state: "invalid_contract" | "stale_parent" | "not_ev
 
 function lockLabel(lockStatus: "locked_match" | "unlocked") {
   return lockStatus === "locked_match" ? "哈希已锁定" : "来源未锁定";
+}
+
+type AvailableComponentDetailModel = Extract<
+  CandidateNetInterestComponentDetailViewModel,
+  { state: "available" }
+>;
+
+const CLIPBOARD_FEEDBACK_TIMEOUT_MS = 1_500;
+
+type CopyFeedback = {
+  state: "success" | "failure";
+  backendPosition: number;
+  accountCode: string;
+  month: string;
+  locator: string;
+} | null;
+
+function AvailableComponentDetailContent({
+  model,
+}: {
+  model: AvailableComponentDetailModel;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<CandidateNetInterestComponentDetailRowStatusFilter>(
+    "all",
+  );
+  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>(null);
+  const copyRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+  const filteredRows = filterCandidateNetInterestComponentDetailRows(model.rows, {
+    query: searchQuery,
+    status: statusFilter,
+  });
+  const filtersActive = searchQuery.length > 0 || statusFilter !== "all";
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      copyRequestRef.current += 1;
+    };
+  }, []);
+
+  const resetFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("all");
+  };
+
+  const copySourceLocator = async (
+    row: AvailableComponentDetailModel["rows"][number],
+    evidence: AvailableComponentDetailModel["rows"][number]["sourceEvidence"][number],
+  ) => {
+    const requestId = copyRequestRef.current + 1;
+    copyRequestRef.current = requestId;
+    setCopyFeedback(null);
+    const locator = buildCandidateNetInterestComponentSourceLocator(model, row, evidence);
+    const failureFeedback: CopyFeedback = {
+      state: "failure",
+      backendPosition: row.backendPosition,
+      accountCode: row.accountCode,
+      month: evidence.month,
+      locator,
+    };
+    try {
+      const clipboard = globalThis.navigator?.clipboard;
+      if (!clipboard?.writeText) throw new Error("clipboard unavailable");
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error("clipboard request timed out")),
+          CLIPBOARD_FEEDBACK_TIMEOUT_MS,
+        );
+      });
+      try {
+        await Promise.race([clipboard.writeText(locator), timeout]);
+      } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      }
+      if (mountedRef.current && copyRequestRef.current === requestId) {
+        setCopyFeedback({
+          state: "success",
+          backendPosition: row.backendPosition,
+          accountCode: row.accountCode,
+          month: evidence.month,
+          locator,
+        });
+      }
+    } catch {
+      if (mountedRef.current && copyRequestRef.current === requestId) {
+        setCopyFeedback(failureFeedback);
+      }
+    }
+  };
+
+  const exportCurrentView = () => {
+    downloadCandidateNetInterestComponentDetailCsv(
+      buildCandidateNetInterestComponentDetailCsv(model, filteredRows),
+    );
+  };
+
+  return (
+    <>
+      <section className="ledger-net-interest-detail__summary" aria-label="贡献项后端摘要">
+        <header>
+          <div>
+            <strong>{model.summary.metricName}</strong>
+            <code>{model.payload.metric_id}</code>
+          </div>
+          <div className="ledger-net-interest-detail__badges">
+            <span>{model.summary.qualityLabel}</span>
+            <span>{model.summary.footLabel}</span>
+          </div>
+        </header>
+        <div className="ledger-net-interest-detail__metric-grid">
+          <article><span>本月</span><strong>{model.summary.currentDisplay}</strong></article>
+          <article><span>上月</span><strong>{model.summary.previousDisplay}</strong></article>
+          <article><span>构成项变动</span><strong>{model.summary.componentDeltaDisplay}</strong></article>
+          <article><span>对净息贡献</span><strong>{model.summary.contributionDisplay}</strong></article>
+        </div>
+      </section>
+
+      <section className="ledger-net-interest-detail__analysis" aria-labelledby="ledger-net-interest-business-question">
+        <div className="ledger-net-interest-detail__analysis-heading">
+          <div>
+            <h3 id="ledger-net-interest-business-question">
+              哪些科目按后端贡献影响顺序影响该净息构成项？
+            </h3>
+            <p>后端已完成贡献影响排序：计入勾稽优先，再按贡献绝对值降序和科目代码排列；前端仅保序筛选。</p>
+          </div>
+          <strong className="ledger-net-interest-detail__candidate-warning">
+            候选分析，不可用于正式使用
+          </strong>
+        </div>
+        <div className="ledger-net-interest-detail__toolbar">
+          <label>
+            <span>搜索科目代码或名称</span>
+            <input
+              type="search"
+              aria-label="搜索科目代码或名称"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.currentTarget.value)}
+              placeholder="输入代码或名称"
+            />
+          </label>
+          <label>
+            <span>科目状态</span>
+            <select
+              aria-label="科目状态"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(
+                event.currentTarget.value as CandidateNetInterestComponentDetailRowStatusFilter,
+              )}
+            >
+              <option value="all">全部</option>
+              <option value="contributing">计入勾稽</option>
+              <option value="excluded_offset">规则抵销</option>
+            </select>
+          </label>
+          <span className="ledger-net-interest-detail__count" aria-live="polite">
+            当前 {filteredRows.length} / 共 {model.rows.length} 条
+          </span>
+          <AntButton onClick={resetFilters} disabled={!filtersActive}>重置条件</AntButton>
+          <AntButton
+            type="primary"
+            onClick={exportCurrentView}
+            disabled={filteredRows.length === 0}
+          >
+            导出当前视图
+          </AntButton>
+        </div>
+        <small className="ledger-net-interest-detail__narrow-hint">
+          窄屏可横向滚动查看完整金额、状态和来源字段。
+        </small>
+      </section>
+
+      <section className="ledger-net-interest-detail__accounts" aria-label="贡献项科目明细">
+        {filteredRows.length === 0 ? (
+          <div className="ledger-net-interest-detail__empty" role="status">
+            <strong>当前筛选没有匹配科目</strong>
+            <span>当前视图未将缺失科目补成 0，也不会回退展示未筛选行。</span>
+            <AntButton onClick={resetFilters}>重置筛选</AntButton>
+          </div>
+        ) : (
+          <div className="ledger-net-interest-detail__table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">科目代码 / 名称</th>
+                  <th scope="col">本月</th>
+                  <th scope="col">上月</th>
+                  <th scope="col">变动</th>
+                  <th scope="col">贡献</th>
+                  <th scope="col">状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((row) => (
+                  <tr
+                    key={`${row.backendPosition}-${row.accountCode}`}
+                    data-row-status={row.rowStatus}
+                  >
+                    <th scope="row">
+                      <span className="ledger-net-interest-detail__position">
+                        {row.rowStatus === "contributing" ? "后端贡献序位" : "后端原始位置"} #{row.backendPosition}
+                      </span>
+                      <code>{row.accountCode}</code>
+                      <strong>{row.accountName}</strong>
+                      <small>
+                        规则项 {row.matchedTerms.map((term) => (
+                          `${term.level}:${term.code}(${term.weight})`
+                        )).join(" + ")}；构成权重 {row.effectiveComponentWeight}；净息权重 {row.effectiveNetWeight}
+                      </small>
+                      <details>
+                        <summary>查看三期来源定位</summary>
+                        <ul>
+                          {row.sourceEvidence.map((evidence) => (
+                            <li key={`${evidence.month}-${evidence.row}-${evidence.ending_cell}`}>
+                              <strong>{evidence.month} · {evidence.ledger_file_name}</strong>
+                              <span>{evidence.sheet}!{evidence.ending_cell} · 行 {evidence.row} · 科目格 {evidence.account_code_cell}</span>
+                              <span>期末余额 {evidence.ending_yuan} 元 · {lockLabel(evidence.lock_status)}</span>
+                              <code>{evidence.ledger_sha256}</code>
+                              <AntButton
+                                size="small"
+                                type="link"
+                                aria-label={`复制定位 后端位置 #${row.backendPosition} ${row.accountCode} ${evidence.month}`}
+                                onClick={() => void copySourceLocator(row, evidence)}
+                              >
+                                复制定位
+                              </AntButton>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </th>
+                    <td className="ledger-net-interest-detail__numeric">{row.currentDisplay}</td>
+                    <td className="ledger-net-interest-detail__numeric">{row.previousDisplay}</td>
+                    <td className="ledger-net-interest-detail__numeric">{row.componentDeltaDisplay}</td>
+                    <td className="ledger-net-interest-detail__numeric">{row.contributionDisplay}</td>
+                    <td>{row.rowStatus === "contributing" ? "计入勾稽" : "规则抵销，不计入勾稽"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <div
+        className="ledger-net-interest-detail__copy-feedback"
+        role="status"
+        aria-label="来源定位复制反馈"
+        aria-live="polite"
+      >
+        {copyFeedback?.state === "success"
+          ? `已复制 后端位置 #${copyFeedback.backendPosition} · ${copyFeedback.accountCode} · ${copyFeedback.month} 来源定位`
+          : copyFeedback?.state === "failure"
+            ? `复制失败，请手工复制 后端位置 #${copyFeedback.backendPosition} · ${copyFeedback.accountCode} · ${copyFeedback.month} 来源定位`
+            : null}
+      </div>
+      {copyFeedback?.state === "failure" ? (
+        <label className="ledger-net-interest-detail__manual-copy">
+          <span>后端位置 #{copyFeedback.backendPosition} · {copyFeedback.accountCode} · {copyFeedback.month} 来源定位文本</span>
+          <textarea
+            aria-label={`后端位置 ${copyFeedback.backendPosition} ${copyFeedback.accountCode} ${copyFeedback.month} 来源定位文本`}
+            readOnly
+            value={copyFeedback.locator}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+        </label>
+      ) : null}
+
+      <footer className="ledger-net-interest-detail__boundary">
+        <strong>期末余额恢复自然月、非贷方-借方。</strong>
+        <span>本表是后端固定公式的算术贡献非规模、利率或原因归因；前端不做减法、乘法、合计、排序或勾稽复算。</span>
+      </footer>
+    </>
+  );
 }
 
 export function LedgerPnlNetInterestComponentDetailDrawer({
@@ -123,84 +411,10 @@ export function LedgerPnlNetInterestComponentDetailDrawer({
               <small>后端原因：{model.reason}</small>
             </div>
           ) : model?.state === "available" ? (
-            <>
-              <section className="ledger-net-interest-detail__summary" aria-label="贡献项后端摘要">
-                <header>
-                  <div>
-                    <strong>{model.summary.metricName}</strong>
-                    <code>{model.payload.metric_id}</code>
-                  </div>
-                  <div className="ledger-net-interest-detail__badges">
-                    <span>{model.summary.qualityLabel}</span>
-                    <span>{model.summary.footLabel}</span>
-                  </div>
-                </header>
-                <div className="ledger-net-interest-detail__metric-grid">
-                  <article><span>本月</span><strong>{model.summary.currentDisplay}</strong></article>
-                  <article><span>上月</span><strong>{model.summary.previousDisplay}</strong></article>
-                  <article><span>构成项变动</span><strong>{model.summary.componentDeltaDisplay}</strong></article>
-                  <article><span>对净息贡献</span><strong>{model.summary.contributionDisplay}</strong></article>
-                </div>
-              </section>
-
-              <section className="ledger-net-interest-detail__accounts" aria-label="贡献项科目明细">
-                <div className="ledger-net-interest-detail__table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>科目代码 / 名称</th>
-                        <th>本月</th>
-                        <th>上月</th>
-                        <th>变动</th>
-                        <th>贡献</th>
-                        <th>状态</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {model.rows.map((row, index) => {
-                        const rawRow = model.payload.rows[index];
-                        return (
-                          <tr key={row.accountCode} data-row-status={row.rowStatus}>
-                            <th scope="row">
-                              <code>{row.accountCode}</code>
-                              <strong>{row.accountName}</strong>
-                              <small>
-                                规则项 {rawRow.matched_terms.map((term) => (
-                                  `${term.level}:${term.code}(${term.weight})`
-                                )).join(" + ")}；构成权重 {rawRow.effective_component_weight}；净息权重 {rawRow.effective_net_weight}
-                              </small>
-                              <details>
-                                <summary>查看三期来源定位</summary>
-                                <ul>
-                                  {rawRow.source_evidence.map((evidence) => (
-                                    <li key={evidence.month}>
-                                      <strong>{evidence.month} · {evidence.ledger_file_name}</strong>
-                                      <span>{evidence.sheet}!{evidence.ending_cell} · 行 {evidence.row} · 科目格 {evidence.account_code_cell}</span>
-                                      <span>期末余额 {evidence.ending_yuan} 元 · {lockLabel(evidence.lock_status)}</span>
-                                      <code>{evidence.ledger_sha256}</code>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </details>
-                            </th>
-                            <td>{row.currentDisplay}</td>
-                            <td>{row.previousDisplay}</td>
-                            <td>{row.componentDeltaDisplay}</td>
-                            <td>{row.contributionDisplay}</td>
-                            <td>{row.rowStatus === "contributing" ? "计入勾稽" : "规则抵销，不计入勾稽"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <footer className="ledger-net-interest-detail__boundary">
-                <strong>期末余额恢复自然月、非贷方-借方。</strong>
-                <span>本表是后端固定公式的算术贡献非规模、利率或原因归因；前端不做减法、乘法、合计、排序或勾稽复算。</span>
-              </footer>
-            </>
+            <AvailableComponentDetailContent
+              key={`${selection.reportMonth}-${selection.metricId}-${selection.parentIdempotencyKey}`}
+              model={model}
+            />
           ) : (
             <div className="ledger-net-interest-detail__state" role="status">
               未收到可展示的贡献项穿透响应。
