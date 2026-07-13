@@ -416,7 +416,10 @@ describe("ProductCategoryPnlPage", () => {
     expect(monitor).toHaveTextContent("负债改善质量");
     expect(monitor).toHaveTextContent("衍生品稳定性代理");
     expect(monitor).toHaveTextContent("经营节奏");
-    expect(within(monitor).getByText("恢复至 5 月净营收")).toBeInTheDocument();
+    expect(within(monitor).getByRole("heading", { name: "风险与节奏信号" })).toBeInTheDocument();
+    expect(within(monitor).getByText("达到 5 月净营收水平")).toBeInTheDocument();
+    expect(within(monitor).getByText("达到 H1 月均净营收水平")).toBeInTheDocument();
+    expect(within(monitor).getByText("达到 Q1 月均净营收水平")).toBeInTheDocument();
     expect(within(monitor).getByText("方法与证据边界").closest("details")).not.toHaveAttribute("open");
   });
 
@@ -687,6 +690,34 @@ describe("ProductCategoryPnlPage", () => {
     expect(governance).not.toHaveAttribute("open");
     expect(governance).toHaveTextContent("治理与证据");
     expect(governance).toHaveTextContent("3 项认证待完成");
+  });
+
+  it("groups the desktop decision flow into one editorial operating surface", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const page = await screen.findByTestId("product-category-page");
+    const masthead = within(page).getByTestId("product-category-report-masthead");
+    const decisionCanvas = await within(page).findByTestId("product-category-decision-canvas");
+    const commandRail = within(page).getByTestId("product-category-operating-command-rail");
+
+    expect(masthead).toContainElement(
+      within(page).getByTestId("product-category-branch-monthly-operating-analysis"),
+    );
+    expect(masthead).toContainElement(
+      within(page).getByTestId("product-category-contract-hero"),
+    );
+    expect(decisionCanvas).toContainElement(
+      within(page).getByTestId("product-category-formal-headline-totals"),
+    );
+    expect(decisionCanvas).toContainElement(
+      within(page).getByTestId("product-category-formal-driver-readout"),
+    );
+    expect(commandRail).toContainElement(
+      within(page).getByTestId("product-category-unified-controls"),
+    );
+    expect(commandRail).toContainElement(
+      within(page).getByTestId("product-category-data-status-strip"),
+    );
   });
 
   it("surfaces the monthly delta and closure gap from the attribution API in the headline band", async () => {

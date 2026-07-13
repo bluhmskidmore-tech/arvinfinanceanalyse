@@ -296,103 +296,114 @@ function ProductCategoryFormalReadinessBand(props: ProductCategoryFormalReadines
       </div>
 
       <div
-        data-testid="product-category-formal-headline-totals"
-        className="product-category-formal-readiness__totals product-category-formal-readiness__totals--attribution"
+        data-testid="product-category-decision-canvas"
+        className="product-category-formal-readiness__decision-canvas"
       >
         <div
-          data-testid="product-category-core-metric"
-          className="product-category-formal-readiness__metric product-category-formal-readiness__metric--primary"
+          data-testid="product-category-formal-headline-totals"
+          className="product-category-formal-readiness__totals product-category-formal-readiness__totals--attribution"
         >
-          <span>总损益（亿元）</span>
-          <strong>{formatProductCategoryValue(props.grandTotal?.business_net_income)}</strong>
-          <small>MTR-PCP-003</small>
-        </div>
-        <div
-          data-testid="product-category-core-metric"
-          className="product-category-formal-readiness__metric product-category-formal-readiness__metric--change"
-        >
-          <span>{attributionCompareLabel}（亿元）</span>
-          <strong className={deltaTone}>{formatProductCategoryValue(deltaValue)}</strong>
-          <small>
-            对比期 {formatProductCategoryValue(attributionHeadline?.prior?.business_net_income)}
-          </small>
-        </div>
-        <div data-testid="product-category-core-metric" className="product-category-formal-readiness__metric">
-          <span>资产端（亿元）</span>
-          <strong>{formatProductCategoryValue(props.assetTotal?.business_net_income)}</strong>
-          <small>MTR-PCP-001</small>
-        </div>
-        <div data-testid="product-category-core-metric" className="product-category-formal-readiness__metric">
-          <span>负债端（亿元）</span>
-          <strong>{formatProductCategoryValue(props.liabilityTotal?.business_net_income)}</strong>
-          <small>MTR-PCP-002</small>
-        </div>
-        <div
-          data-testid="product-category-core-metric"
-          className="product-category-formal-readiness__metric product-category-formal-readiness__metric--closure"
-        >
-          <span>闭合误差（亿元）</span>
-          <strong
-            className={
-              !closureAvailable
-                ? "is-neutral"
-                : closureSignal.hasMaterialGap
-                  ? "is-warning"
-                  : "is-ready"
-            }
+          <div
+            data-testid="product-category-core-metric"
+            className="product-category-formal-readiness__metric product-category-formal-readiness__metric--primary"
           >
-            {formatProductCategoryValue(closureValue)}
-          </strong>
-          <small>已解释 {formatProductCategoryValue(attributionEffects?.explained_effect)}</small>
+            <span>总损益（亿元）</span>
+            <strong>{formatProductCategoryValue(props.grandTotal?.business_net_income)}</strong>
+            <small>MTR-PCP-003</small>
+          </div>
+          <div
+            data-testid="product-category-core-metric"
+            className="product-category-formal-readiness__metric product-category-formal-readiness__metric--change"
+          >
+            <span>{attributionCompareLabel}（亿元）</span>
+            <strong className={deltaTone}>{formatProductCategoryValue(deltaValue)}</strong>
+            <small>
+              对比期 {formatProductCategoryValue(attributionHeadline?.prior?.business_net_income)}
+            </small>
+          </div>
+          <div
+            data-testid="product-category-core-metric"
+            className="product-category-formal-readiness__metric"
+          >
+            <span>资产端（亿元）</span>
+            <strong>{formatProductCategoryValue(props.assetTotal?.business_net_income)}</strong>
+            <small>MTR-PCP-001</small>
+          </div>
+          <div
+            data-testid="product-category-core-metric"
+            className="product-category-formal-readiness__metric"
+          >
+            <span>负债端（亿元）</span>
+            <strong>{formatProductCategoryValue(props.liabilityTotal?.business_net_income)}</strong>
+            <small>MTR-PCP-002</small>
+          </div>
+          <div
+            data-testid="product-category-core-metric"
+            className="product-category-formal-readiness__metric product-category-formal-readiness__metric--closure"
+          >
+            <span>闭合误差（亿元）</span>
+            <strong
+              className={
+                !closureAvailable
+                  ? "is-neutral"
+                  : closureSignal.hasMaterialGap
+                    ? "is-warning"
+                    : "is-ready"
+              }
+            >
+              {formatProductCategoryValue(closureValue)}
+            </strong>
+            <small>已解释 {formatProductCategoryValue(attributionEffects?.explained_effect)}</small>
+          </div>
         </div>
-      </div>
 
-      <section
-        data-testid="product-category-formal-driver-readout"
-        className="product-category-formal-readiness__driver-readout"
-        aria-label={`${attributionCompareLabel}关键驱动与风险`}
-      >
-        <div className="product-category-formal-readiness__driver-header">
-          <div>
-            <strong>关键驱动与风险</strong>
-            <span>仅展示绝对影响最大的 3 项</span>
+        <section
+          data-testid="product-category-formal-driver-readout"
+          className="product-category-formal-readiness__driver-readout"
+          aria-label={`${attributionCompareLabel}关键驱动与风险`}
+        >
+          <div className="product-category-formal-readiness__driver-header">
+            <div>
+              <strong>关键驱动与风险</strong>
+              <span>仅展示绝对影响最大的 3 项</span>
+            </div>
+            <small>单位：亿元</small>
           </div>
-          <small>单位：亿元</small>
-        </div>
-        {attributionDrivers.length > 0 ? (
-          <div className="product-category-formal-readiness__driver-list">
-            {attributionDrivers.map((driver) => (
-              <div
-                data-testid="product-category-driver-item"
-                className="product-category-formal-readiness__driver-row"
-                key={driver.key}
-              >
-                <span>{driver.label}</span>
-                <strong
-                  className={
-                    driver.value < 0
-                      ? "is-negative"
-                      : driver.value > 0
-                        ? "is-positive"
-                        : "is-neutral"
-                  }
+          {attributionDrivers.length > 0 ? (
+            <div className="product-category-formal-readiness__driver-list">
+              {attributionDrivers.map((driver) => (
+                <div
+                  data-testid="product-category-driver-item"
+                  className="product-category-formal-readiness__driver-row"
+                  key={driver.key}
                 >
-                  {formatProductCategoryValue(driver.rawValue)}
-                </strong>
-                <small>
-                  {driver.key === dominantDriver?.key ? "最大影响来源" : "次要影响来源"}
-                </small>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="product-category-formal-readiness__driver-empty">
-            {props.selectedView === "monthly"
-              ? "归因数据加载中，正式总损益仍按当前口径展示。"
-              : "关键驱动仅支持月度视图，汇总视图继续展示正式总损益。"}
-          </p>
-        )}
-      </section>
+                  <span>{driver.label}</span>
+                  <strong
+                    className={
+                      driver.value < 0
+                        ? "is-negative"
+                        : driver.value > 0
+                          ? "is-positive"
+                          : "is-neutral"
+                    }
+                  >
+                    {formatProductCategoryValue(driver.rawValue)}
+                  </strong>
+                  <small>
+                    {driver.key === dominantDriver?.key ? "最大影响来源" : "次要影响来源"}
+                  </small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="product-category-formal-readiness__driver-empty">
+              {props.selectedView === "monthly"
+                ? "归因数据加载中，正式总损益仍按当前口径展示。"
+                : "关键驱动仅支持月度视图，汇总视图继续展示正式总损益。"}
+            </p>
+          )}
+        </section>
+      </div>
     </section>
   );
 }
@@ -1792,7 +1803,14 @@ function ProductCategoryManagementMonitoring(props: {
               </div>
             </article>
 
-            <div className="product-category-management-monitor__signals" aria-label="经营修复风险信号">
+            <section
+              className="product-category-management-monitor__signals"
+              aria-labelledby="product-category-management-monitor-signals-title"
+            >
+              <div className="product-category-management-monitor__signals-title">
+                <h4 id="product-category-management-monitor-signals-title">风险与节奏信号</h4>
+                <span>负债、衍生品、经营节奏</span>
+              </div>
               <article>
                 <div className="product-category-management-monitor__signal-head">
                   <h4>负债改善质量</h4>
@@ -1826,7 +1844,7 @@ function ProductCategoryManagementMonitoring(props: {
                 </p>
                 <small>静态节奏不等同于预测，也不接入预算或计财目标。</small>
               </article>
-            </div>
+            </section>
           </div>
         </>
       )}
@@ -5056,107 +5074,115 @@ export default function ProductCategoryPnlPage() {
       data-testid="product-category-page"
       className="product-category-page-shell"
     >
-      <FilterBar className="product-category-branch-switcher">
-        <button
-          type="button"
-          data-testid="product-category-branch-product-category-pnl"
-          aria-pressed="true"
-          onClick={() => setSelectedBranch("product_category_pnl")}
-        >
-          产品分类损益
-        </button>
-        <button
-          type="button"
-          data-testid="product-category-branch-monthly-operating-analysis"
-          aria-pressed="false"
-          onClick={() => setSelectedBranch("monthly_operating_analysis")}
-        >
-          月度经营分析
-        </button>
-      </FilterBar>
-      <PageDecisionHero
-        testId="product-category-contract-hero"
-        className="product-category-contract-hero"
-        titleTestId="product-category-page-title"
-        questionTestId="product-category-page-subtitle"
-        eyebrow=""
-        title="产品分类损益"
-        businessQuestion={`报告月 ${
-          selectedDate ? formatProductCategoryReportMonthLabel(selectedDate) : "待选"
-        }`}
-        reportDateSlot={
-          <span data-testid="product-category-report-date-slot">
-            {selectedDate || "报告日待选"}
-            {` · ${
-              baselineQuery.data?.result_meta?.basis === "formal" ? "正式口径" : "口径待确认"
-            }`}
-            {` · ${selectedView === "monthly" ? "月度视图" : "汇总视图"}`}
-          </span>
-        }
-        actions={
-          <div className="product-category-contract-hero__actions">
-            <span
-              data-testid="product-category-role-badge"
-              className={`product-category-contract-hero__chip product-category-contract-hero__chip--${
-                client.mode === "real" ? "real" : "mock"
-              }`}
-            >
-              {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
-            </span>
-            <a data-testid="product-category-audit-link" href="/product-category-pnl/audit">
-              查看调整审计
-            </a>
-            <a data-testid="product-category-ledger-link" href={ledgerPnlHref}>
-              总账损益
-            </a>
-            <button
-              type="button"
-              data-testid="product-category-manual-button"
-              onClick={() => {
-                setShowManualForm((current) => !current);
-                setEditingAdjustmentId(null);
-                setAdjustmentError(null);
-                if (showManualForm) {
-                  setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
-                }
-              }}
-              className="product-category-contract-hero__button"
-            >
-              + 手工录入
-            </button>
-            <button
-              type="button"
-              data-testid="product-category-refresh-button"
-              onClick={() => void handleRefresh()}
-              disabled={isRefreshing}
-              className="product-category-contract-hero__button"
-            >
-              {isRefreshing ? "刷新中..." : "刷新损益数据"}
-            </button>
-          </div>
-        }
+      <header
+        data-testid="product-category-report-masthead"
+        className="product-category-report-masthead"
       >
-        <div className="product-category-contract-hero__status-stack">
-          {isRefreshing ? (
-            <p data-testid="product-category-refresh-status" className="product-category-contract-hero__status-line">
-              {formatProductCategoryRefreshStatusLine(refreshPollSnapshot)}
-            </p>
-          ) : null}
-          {lastRefreshRunId ? (
-            <p className="product-category-contract-hero__status-note">
-              最近刷新任务：{lastRefreshRunId}
-            </p>
-          ) : null}
-          {lastAdjustmentId ? (
-            <p className="product-category-contract-hero__status-note">
-              最近录入调整：{lastAdjustmentId}
-            </p>
-          ) : null}
-          {refreshError ? (
-            <p className="product-category-contract-hero__status-error">{refreshError}</p>
-          ) : null}
-        </div>
-      </PageDecisionHero>
+        <FilterBar className="product-category-branch-switcher">
+          <button
+            type="button"
+            data-testid="product-category-branch-product-category-pnl"
+            aria-pressed="true"
+            onClick={() => setSelectedBranch("product_category_pnl")}
+          >
+            产品分类损益
+          </button>
+          <button
+            type="button"
+            data-testid="product-category-branch-monthly-operating-analysis"
+            aria-pressed="false"
+            onClick={() => setSelectedBranch("monthly_operating_analysis")}
+          >
+            月度经营分析
+          </button>
+        </FilterBar>
+        <PageDecisionHero
+          testId="product-category-contract-hero"
+          className="product-category-contract-hero"
+          titleTestId="product-category-page-title"
+          questionTestId="product-category-page-subtitle"
+          eyebrow=""
+          title="产品分类损益"
+          businessQuestion={`报告月 ${
+            selectedDate ? formatProductCategoryReportMonthLabel(selectedDate) : "待选"
+          }`}
+          reportDateSlot={
+            <span data-testid="product-category-report-date-slot">
+              {selectedDate || "报告日待选"}
+              {` · ${
+                baselineQuery.data?.result_meta?.basis === "formal" ? "正式口径" : "口径待确认"
+              }`}
+              {` · ${selectedView === "monthly" ? "月度视图" : "汇总视图"}`}
+            </span>
+          }
+          actions={
+            <div className="product-category-contract-hero__actions">
+              <span
+                data-testid="product-category-role-badge"
+                className={`product-category-contract-hero__chip product-category-contract-hero__chip--${
+                  client.mode === "real" ? "real" : "mock"
+                }`}
+              >
+                {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
+              </span>
+              <a data-testid="product-category-audit-link" href="/product-category-pnl/audit">
+                查看调整审计
+              </a>
+              <a data-testid="product-category-ledger-link" href={ledgerPnlHref}>
+                总账损益
+              </a>
+              <button
+                type="button"
+                data-testid="product-category-manual-button"
+                onClick={() => {
+                  setShowManualForm((current) => !current);
+                  setEditingAdjustmentId(null);
+                  setAdjustmentError(null);
+                  if (showManualForm) {
+                    setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
+                  }
+                }}
+                className="product-category-contract-hero__button"
+              >
+                + 手工录入
+              </button>
+              <button
+                type="button"
+                data-testid="product-category-refresh-button"
+                onClick={() => void handleRefresh()}
+                disabled={isRefreshing}
+                className="product-category-contract-hero__button"
+              >
+                {isRefreshing ? "刷新中..." : "刷新损益数据"}
+              </button>
+            </div>
+          }
+        >
+          <div className="product-category-contract-hero__status-stack">
+            {isRefreshing ? (
+              <p
+                data-testid="product-category-refresh-status"
+                className="product-category-contract-hero__status-line"
+              >
+                {formatProductCategoryRefreshStatusLine(refreshPollSnapshot)}
+              </p>
+            ) : null}
+            {lastRefreshRunId ? (
+              <p className="product-category-contract-hero__status-note">
+                最近刷新任务：{lastRefreshRunId}
+              </p>
+            ) : null}
+            {lastAdjustmentId ? (
+              <p className="product-category-contract-hero__status-note">
+                最近录入调整：{lastAdjustmentId}
+              </p>
+            ) : null}
+            {refreshError ? (
+              <p className="product-category-contract-hero__status-error">{refreshError}</p>
+            ) : null}
+          </div>
+        </PageDecisionHero>
+      </header>
 
       {canRenderBaselineDerivedAnalysis ? (
         <ProductCategoryFormalReadinessBand
@@ -5171,137 +5197,143 @@ export default function ProductCategoryPnlPage() {
       ) : null}
 
       <section
-        data-testid="product-category-unified-controls"
-        className="product-category-command-surface"
-        aria-label="报告口径与场景"
+        data-testid="product-category-operating-command-rail"
+        className="product-category-operating-command-rail"
+        aria-label="报告控制与数据状态"
       >
-        <div className="product-category-scenario-controls">
-        <label className="product-category-scenario-controls__field">
-          选择报告月份
-          <select
-            aria-label="选择报告月份"
-            value={selectedDate}
-            onChange={(event) => handleReportDateChange(event.target.value)}
-            className="product-category-scenario-controls__select"
-          >
-            {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
-              <option key={reportDate} value={reportDate}>
-                {formatProductCategoryReportMonthLabel(reportDate)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <section
+          data-testid="product-category-unified-controls"
+          className="product-category-command-surface"
+          aria-label="报告口径与场景"
+        >
+          <div className="product-category-scenario-controls">
+            <label className="product-category-scenario-controls__field">
+              选择报告月份
+              <select
+                aria-label="选择报告月份"
+                value={selectedDate}
+                onChange={(event) => handleReportDateChange(event.target.value)}
+                className="product-category-scenario-controls__select"
+              >
+                {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
+                  <option key={reportDate} value={reportDate}>
+                    {formatProductCategoryReportMonthLabel(reportDate)}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <label className="product-category-scenario-controls__field">
-          视图模式
-          <div
-            role="group"
-            aria-label="视图模式"
-            className="product-category-scenario-controls__view-group"
-          >
+            <label className="product-category-scenario-controls__field">
+              视图模式
+              <div
+                role="group"
+                aria-label="视图模式"
+                className="product-category-scenario-controls__view-group"
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedView("monthly")}
+                  className={
+                    selectedView === "monthly"
+                      ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
+                      : "product-category-scenario-controls__view-button"
+                  }
+                >
+                  月度视图
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedView("ytd")}
+                  className={
+                    selectedView === "ytd"
+                      ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
+                      : "product-category-scenario-controls__view-button"
+                  }
+                >
+                  汇总视图
+                </button>
+              </div>
+            </label>
+
+            <label className="product-category-scenario-controls__field">
+              FTP 场景
+              <select
+                aria-label="FTP 场景"
+                value={scenarioRate}
+                onChange={(event) => {
+                  setScenarioRateTouched(true);
+                  setScenarioRate(event.target.value);
+                }}
+                className="product-category-scenario-controls__select"
+              >
+                {PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="product-category-scenario-controls__actions">
             <button
               type="button"
-              onClick={() => setSelectedView("monthly")}
-              className={
-                selectedView === "monthly"
-                  ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
-                  : "product-category-scenario-controls__view-button"
-              }
+              data-testid="product-category-apply-scenario-button"
+              onClick={() => setAppliedScenarioRate(scenarioRate.trim())}
+              className="product-category-scenario-controls__apply"
             >
-              月度视图
+              应用场景
             </button>
-            <button
-              type="button"
-              onClick={() => setSelectedView("ytd")}
-              className={
-                selectedView === "ytd"
-                  ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
-                  : "product-category-scenario-controls__view-button"
-              }
+          </div>
+
+          {scenarioQuery.isFetching ? (
+            <div
+              data-testid="product-category-scenario-loading"
+              className="product-category-scenario-controls__loading"
+              role="status"
             >
-              汇总视图
-            </button>
-          </div>
-        </label>
+              情景计算中，当前展示正式基线。
+            </div>
+          ) : null}
 
-        <label className="product-category-scenario-controls__field">
-          FTP 场景
-          <select
-            aria-label="FTP 场景"
-            value={scenarioRate}
-            onChange={(event) => {
-              setScenarioRateTouched(true);
-              setScenarioRate(event.target.value);
-            }}
-            className="product-category-scenario-controls__select"
-          >
-            {PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        </div>
+          {scenarioQuery.isError ? (
+            <div
+              data-testid="product-category-scenario-error"
+              className="product-category-scenario-controls__error"
+              role="alert"
+            >
+              <span>情景计算失败，当前展示为基线口径。</span>
+              <button type="button" onClick={() => void scenarioQuery.refetch()}>
+                重试情景计算
+              </button>
+            </div>
+          ) : null}
+        </section>
 
-        <div className="product-category-scenario-controls__actions">
-          <button
-            type="button"
-            data-testid="product-category-apply-scenario-button"
-            onClick={() => setAppliedScenarioRate(scenarioRate.trim())}
-            className="product-category-scenario-controls__apply"
-          >
-            应用场景
-          </button>
-        </div>
-
-        {scenarioQuery.isFetching ? (
-          <div
-            data-testid="product-category-scenario-loading"
-            className="product-category-scenario-controls__loading"
-            role="status"
-          >
-            情景计算中，当前展示正式基线。
-          </div>
-        ) : null}
-
-        {scenarioQuery.isError ? (
-          <div
-            data-testid="product-category-scenario-error"
-            className="product-category-scenario-controls__error"
-            role="alert"
-          >
-            <span>情景计算失败，当前展示为基线口径。</span>
-            <button type="button" onClick={() => void scenarioQuery.refetch()}>
-              重试情景计算
-            </button>
-          </div>
-        ) : null}
+        <DataStatusStrip testId="product-category-data-status-strip">
+          <ProductCategoryGovernanceStrip
+            dataHealth={dataHealth}
+            asOfDateGapText={PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY}
+            notices={governanceNotices}
+            formalScenarioDistinct={formalScenarioDistinct}
+            onRetry={
+              dataHealth.retryTarget === "dates"
+                ? () => void datesQuery.refetch()
+                : dataHealth.retryTarget === "baseline"
+                  ? () => void baselineQuery.refetch()
+                  : null
+            }
+            evidence={
+              <ProductCategoryGovernanceEvidence
+                reportDate={selectedDate}
+                selectedView={selectedView}
+                scenarioApplied={Boolean(scenario)}
+                resultMeta={baselineQuery.data?.result_meta}
+              />
+            }
+          />
+        </DataStatusStrip>
       </section>
-
-      <DataStatusStrip testId="product-category-data-status-strip">
-        <ProductCategoryGovernanceStrip
-          dataHealth={dataHealth}
-          asOfDateGapText={PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY}
-          notices={governanceNotices}
-          formalScenarioDistinct={formalScenarioDistinct}
-          onRetry={
-            dataHealth.retryTarget === "dates"
-              ? () => void datesQuery.refetch()
-              : dataHealth.retryTarget === "baseline"
-                ? () => void baselineQuery.refetch()
-                : null
-          }
-          evidence={
-            <ProductCategoryGovernanceEvidence
-              reportDate={selectedDate}
-              selectedView={selectedView}
-              scenarioApplied={Boolean(scenario)}
-              resultMeta={baselineQuery.data?.result_meta}
-            />
-          }
-        />
-      </DataStatusStrip>
 
       <ProductCategorySectionNav />
       <a

@@ -4238,9 +4238,9 @@ export function selectProductCategoryManagementMonitoringSurface(input: {
   const q1TplAverage = average(safeTplPnlValues.slice(0, 3));
   const h1TplAverage = average(safeTplPnlValues);
   const thresholdInputs = [
-    { key: "prior_month" as const, label: "恢复至 5 月净营收", targetPnl: safeTplPnlValues[4]! },
-    { key: "h1_average" as const, label: "恢复至 H1 月均", targetPnl: h1TplAverage },
-    { key: "q1_average" as const, label: "恢复至 Q1 月均", targetPnl: q1TplAverage },
+    { key: "prior_month" as const, label: "达到 5 月净营收水平", targetPnl: safeTplPnlValues[4]! },
+    { key: "h1_average" as const, label: "达到 H1 月均净营收水平", targetPnl: h1TplAverage },
+    { key: "q1_average" as const, label: "达到 Q1 月均净营收水平", targetPnl: q1TplAverage },
   ];
   const thresholds = thresholdInputs.map((threshold) => {
     const requiredYield = currentTplFtp + (threshold.targetPnl / currentTplScale) * (365 / currentTplDays) * 100;
