@@ -86,6 +86,8 @@ export type PnlByBusinessInsightConfidence =
   | "仅对账"
   | "预警/降级";
 
+export type PnlByBusinessAdbEvidenceStatus = "comparison" | "loading" | "ytd_fallback";
+
 export type PnlByBusinessDrilldownRecommendation = {
   targetBusinessLabel: string;
   priorityLabel: string;
@@ -107,6 +109,8 @@ export type PnlByBusinessInsightModel = {
   ftpAvailable: boolean;
   missingAdbCount: number;
   zeroAdbCount: number;
+  missingFtpFieldCount: number;
+  adbEvidenceStatus: PnlByBusinessAdbEvidenceStatus;
   manualAdjustmentCount: number;
   formalUntracedCount: number;
   formalUntracedValueDisplay: string;
@@ -140,6 +144,17 @@ export type PnlByBusinessSelectedDrilldownModel = {
   negativeFtpRows: PnlByBusinessAnalysisRow[];
 };
 
+export type PnlByBusinessMonthlyAdjustmentBridgeModel = {
+  monthKey: string;
+  row: PnlByBusinessMonthlyItem;
+  adjustedParentRowCount: number;
+  preAdjustmentPnl: number | null;
+  pnlReconciliationDelta: number | null;
+  ftpReconciliationDelta: number | null;
+  pnlReconciled: boolean;
+  ftpReconciled: boolean;
+};
+
 type BuildPnlByBusinessPageModelInput = {
   viewMode: PnlByBusinessViewMode;
   selectedReportDate: string;
@@ -157,6 +172,7 @@ type BuildPnlByBusinessPageModelInput = {
   formalResult?: PnlByBusinessPayload;
   formalMeta?: ResultMeta;
   adbAvgByBusinessType?: Map<string, number>;
+  adbEvidenceStatus?: PnlByBusinessAdbEvidenceStatus;
   manualAdjustmentCount?: number;
 };
 
@@ -304,6 +320,80 @@ export function isParentZqtzBusinessRow(row: ZqtzBusinessDisplayRow): boolean {
 
 export function isDetailZqtzBusinessRow(row: ZqtzBusinessDisplayRow): boolean {
   return !isParentZqtzBusinessRow(row);
+}
+
+/**
+ * Builds a display-only reconciliation bridge from governed monthly fields.
+ * `preAdjustmentPnl` is explicitly a tie-out value (interest + FV + capital),
+ * not a new formal metric; FTP cost and FTP net PnL are never recomputed here.
+ */
+export function buildPnlByBusinessMonthlyAdjustmentBridge(
+  month: PnlByBusinessMonthlyBucket | undefined,
+): PnlByBusinessMonthlyAdjustmentBridgeModel | undefined {
+  const adjustedParentRows = month?.items
+    .filter(isParentZqtzBusinessRow)
+    .filter((item) => (numeric(item.manual_adjustment) ?? 0) !== 0)
+    .sort(
+      (left, right) =>
+        Math.abs(numeric(right.manual_adjustment) ?? 0) - Math.abs(numeric(left.manual_adjustment) ?? 0) ||
+        left.sort_order - right.sort_order,
+    );
+  const row = adjustedParentRows?.[0];
+  if (!month || !row) {
+    return undefined;
+  }
+
+  const interestIncome = numeric(row.interest_income);
+  const fairValueChange = numeric(row.fair_value_change);
+  const capitalGain = numeric(row.capital_gain);
+  const manualAdjustment = numeric(row.manual_adjustment);
+  const totalPnl = numeric(row.total_pnl);
+  const ftpCost = numeric(row.ftp_cost);
+  const ftpNetPnl = numeric(row.ftp_net_pnl);
+  const preAdjustmentPnl =
+    interestIncome !== null && fairValueChange !== null && capitalGain !== null
+      ? interestIncome + fairValueChange + capitalGain
+      : null;
+  const pnlReconciliationDelta =
+    preAdjustmentPnl !== null && manualAdjustment !== null && totalPnl !== null
+      ? totalPnl - (preAdjustmentPnl + manualAdjustment)
+      : null;
+  const ftpReconciliationDelta =
+    totalPnl !== null && ftpCost !== null && ftpNetPnl !== null ? ftpNetPnl - (totalPnl - ftpCost) : null;
+  const toleranceYuan = 0.01;
+
+  return {
+    monthKey: month.month_key,
+    row,
+    adjustedParentRowCount: adjustedParentRows.length,
+    preAdjustmentPnl,
+    pnlReconciliationDelta,
+    ftpReconciliationDelta,
+    pnlReconciled:
+      pnlReconciliationDelta !== null && Math.abs(pnlReconciliationDelta) <= toleranceYuan,
+    ftpReconciled: ftpReconciliationDelta !== null && Math.abs(ftpReconciliationDelta) <= toleranceYuan,
+  };
+}
+
+export function resolvePnlByBusinessActiveMonthlyBucket(
+  months: PnlByBusinessMonthlyBucket[],
+  selectedReportDate: string,
+  resolvedReportDate?: string,
+): PnlByBusinessMonthlyBucket | undefined {
+  const preferredReportDate =
+    resolvedReportDate && (!selectedReportDate || resolvedReportDate <= selectedReportDate)
+      ? resolvedReportDate
+      : selectedReportDate;
+  const exactBucket = months.find((month) => month.period_end_date === preferredReportDate);
+  if (exactBucket) {
+    return exactBucket;
+  }
+  return months.reduce<PnlByBusinessMonthlyBucket | undefined>((latest, month) => {
+    if (!preferredReportDate || month.period_end_date > preferredReportDate) {
+      return latest;
+    }
+    return !latest || month.period_end_date > latest.period_end_date ? month : latest;
+  }, undefined);
 }
 
 export function pickDefaultBusinessRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdItem | undefined {
@@ -517,7 +607,7 @@ function buildHeroReportDateFields(input: {
   activeResultMeta?: ResultMeta;
 }): Pick<PnlHeroModel, "reportDateLabel" | "requestedReportDate" | "asOfDate" | "reportDateNote"> {
   const requestedReportDate = input.selectedReportDate || "待选择";
-  const asOfDate = input.activeResultMeta?.as_of_date ?? (input.selectedReportDate || "待返回");
+  const asOfDate = input.activeResultMeta?.as_of_date ?? input.activeResultMeta?.resolved_report_date ?? "待返回";
   const reportDateLabel = input.viewMode === "monthly" ? "请求报表日" : "分析截止日";
   const isFallback = input.activeResultMeta?.fallback_mode === "latest_snapshot";
   const datesAligned =
@@ -598,6 +688,15 @@ function buildHeroConclusion(input: {
 function buildStateSurfaces(input: {
   activeDataStatus: string;
   activeResultMeta?: ResultMeta;
+  activeDiagnostics?: {
+    coverage_days?: number;
+    expected_days?: number;
+    sample_filled?: boolean;
+    sample_fill_method?: string | null;
+    unallocated_pnl?: string;
+    unallocated_row_count?: number;
+    reconciliation_delta?: string;
+  };
   clientMode?: "real" | "mock";
 }): PnlStateSurfaceItem[] {
   const surfaces: PnlStateSurfaceItem[] = [];
@@ -612,6 +711,58 @@ function buildStateSurfaces(input: {
   }
 
   const meta = input.activeResultMeta;
+  if (meta?.formal_use_allowed === false) {
+    surfaces.push({
+      key: "definition-pending",
+      variant: "definition-pending",
+      title: "指标口径待正式确认",
+      description: "当前为分析候选口径，仅用于经营分析与对账，不作为正式报表口径。",
+    });
+  }
+
+  const diagnostics = input.activeDiagnostics;
+  const coverageDays = diagnostics?.coverage_days;
+  const expectedDays = diagnostics?.expected_days;
+  if (
+    typeof coverageDays === "number" &&
+    typeof expectedDays === "number" &&
+    expectedDays > 0 &&
+    coverageDays < expectedDays
+  ) {
+    surfaces.push({
+      key: "coverage-partial",
+      variant: "stale",
+      title: "日均余额样本覆盖不足",
+      description: `余额观测覆盖 ${coverageDays}/${expectedDays} 天；sample_filled=${String(
+        diagnostics?.sample_filled ?? false,
+      )}，method=${diagnostics?.sample_fill_method ?? "none"}。收益率与 FTP 结果需结合覆盖率使用。`,
+    });
+  }
+
+  const unallocatedPnl = numeric(diagnostics?.unallocated_pnl);
+  const unallocatedRowCount = diagnostics?.unallocated_row_count ?? 0;
+  if (unallocatedRowCount > 0 || (unallocatedPnl !== null && unallocatedPnl !== 0)) {
+    surfaces.push({
+      key: "unallocated",
+      variant: "definition-pending",
+      title: "存在未分类损益",
+      description: `${unallocatedRowCount} 条损益未命中父级业务分类，金额 ${formatYuanAsWanUnit(
+        diagnostics?.unallocated_pnl,
+      )}；未对 A/T 口径做推测映射。`,
+    });
+  }
+
+  const reconciliationDelta = numeric(diagnostics?.reconciliation_delta);
+  if (reconciliationDelta !== null && reconciliationDelta !== 0) {
+    surfaces.push({
+      key: "reconciliation-break",
+      variant: "error",
+      title: "分类损益未闭合",
+      description: `源损益、父级分类与未分类差额仍有 ${formatYuanAsWanUnit(
+        diagnostics?.reconciliation_delta,
+      )}，请先核对规则与手工调整。`,
+    });
+  }
   if (meta?.quality_flag === "error" || input.activeDataStatus === "错误") {
     surfaces.push({
       key: "quality-error",
@@ -688,7 +839,7 @@ function buildStatusStrip(input: {
   return {
     viewModeLabel: VIEW_MODE_STATUS_LABELS[input.viewMode],
     dataStatus: input.activeDataStatus,
-    asOfDate: meta?.as_of_date ?? input.selectedReportDate ?? "待返回",
+    asOfDate: meta?.as_of_date ?? meta?.resolved_report_date ?? "待返回",
     fallbackMode: formatPnlFallbackMode(meta?.fallback_mode),
     vendorStatus: formatPnlVendorStatus(meta?.vendor_status),
     evidenceRows: formatPnlEvidenceRows(meta?.evidence_rows),
@@ -742,7 +893,7 @@ function buildYtdSummaryCards(input: {
   const { ytdResult, topYtdRow } = input;
   return [
     {
-      label: "月报累计损益",
+      label: "年累计损益",
       value: formatYuanAsWanUnit(ytdResult?.total_pnl),
       detail: ytdResult?.period_label ?? `${input.selectedYear} 年累计`,
       tone: toneFromSigned(ytdResult?.total_pnl),
@@ -808,7 +959,9 @@ function buildYtdDrilldownRecommendation(input: {
   topShare?: PnlByBusinessYtdItem;
   missingAdbCount: number;
   zeroAdbCount: number;
+  missingFtpFieldCount: number;
   ftpAvailable: boolean;
+  adbEvidenceStatus: PnlByBusinessAdbEvidenceStatus;
 }): PnlByBusinessDrilldownRecommendation {
   const targetBusinessLabel =
     input.topContribution?.business_type ??
@@ -843,9 +996,51 @@ function buildYtdDrilldownRecommendation(input: {
       targetBusinessLabel,
       priorityLabel: "日均为0",
       dimensionLabel: "日均分母",
-      actionLabel: "先确认 ADB 为真实零，再查看损益贡献；收益率/FTP 暂不计算",
-      evidenceLabel: `日均为0 ${input.zeroAdbCount} 项`,
-      reasonLabel: "ADB 已返回但存在零分母；可展示真实日均为 0，但年化收益率和 FTP 后收益不作为决策结论。",
+      actionLabel:
+        input.adbEvidenceStatus === "ytd_fallback"
+          ? "ADB 对照不可用，先确认 YTD 零值；收益率/FTP 暂不计算"
+          : "先确认 ADB 为真实零，再查看损益贡献；收益率/FTP 暂不计算",
+      evidenceLabel:
+        input.adbEvidenceStatus === "ytd_fallback"
+          ? `YTD 日均为0 ${input.zeroAdbCount} 项（待复核）`
+          : `日均为0 ${input.zeroAdbCount} 项`,
+      reasonLabel:
+        input.adbEvidenceStatus === "ytd_fallback"
+          ? "YTD 主端点返回零分母，但 ADB comparison 不可用，当前无法独立区分真实零与未映射；年化收益率和 FTP 后收益不作为决策结论。"
+          : "ADB 已返回但存在零分母；可展示真实日均为 0，但年化收益率和 FTP 后收益不作为决策结论。",
+    };
+  }
+
+  if (input.missingFtpFieldCount > 0) {
+    return {
+      targetBusinessLabel,
+      priorityLabel: "FTP 字段待核对",
+      dimensionLabel: "FTP 返回字段",
+      actionLabel: "先核对 YTD FTP 成本与 FTP 后损益字段",
+      evidenceLabel: `FTP 字段缺失 ${input.missingFtpFieldCount} 项`,
+      reasonLabel: "日均已覆盖，但部分活跃父级未同时返回 FTP 成本和 FTP 后损益，暂不标记为 FTP 可分析。",
+    };
+  }
+
+  if (input.adbEvidenceStatus === "ytd_fallback") {
+    return {
+      targetBusinessLabel,
+      priorityLabel: "预警/降级",
+      dimensionLabel: "ADB 补充复核",
+      actionLabel: "保留 YTD 分析，暂缓跨源 ADB 覆盖结论",
+      evidenceLabel: "YTD 日均回退",
+      reasonLabel: "本页使用 YTD 主端点返回的同区间日均与 FTP 字段；ADB comparison 补充复核当前不可用。",
+    };
+  }
+
+  if (input.adbEvidenceStatus === "loading") {
+    return {
+      targetBusinessLabel,
+      priorityLabel: input.topDrag ? "先看拖累" : "FTP 后仍有效",
+      dimensionLabel: "证券级下钻",
+      actionLabel: "先看 YTD 贡献与 FTP，等待 ADB 补充复核",
+      evidenceLabel: "ADB 补充复核中",
+      reasonLabel: "YTD 主端点日均与 FTP 字段已返回；ADB comparison 尚在读取，不据此判定覆盖缺口。",
     };
   }
 
@@ -872,9 +1067,11 @@ function buildPnlByBusinessInsight(input: {
   topMonthlyRow?: PnlByBusinessMonthlyItem;
   topMonthlyDragRow?: PnlByBusinessMonthlyItem;
   adbAvgByBusinessType?: Map<string, number>;
+  adbEvidenceStatus?: PnlByBusinessAdbEvidenceStatus;
   manualAdjustmentCount?: number;
 }): PnlByBusinessInsightModel {
   const isWarning = hasAnalysisWarning(input.activeResultMeta);
+  const adbEvidenceStatus = input.adbEvidenceStatus ?? "comparison";
 
   if (input.viewMode === "formal") {
     const topFormalValue = input.topFormalRow?.total_pnl;
@@ -893,6 +1090,8 @@ function buildPnlByBusinessInsight(input: {
       ftpAvailable: false,
       missingAdbCount: 0,
       zeroAdbCount: 0,
+      missingFtpFieldCount: 0,
+      adbEvidenceStatus,
       manualAdjustmentCount: 0,
       formalUntracedCount,
       formalUntracedValueDisplay: `${formalUntracedCount} 条未追溯`,
@@ -927,7 +1126,9 @@ function buildPnlByBusinessInsight(input: {
       ftpAvailable: numeric(input.activeMonthlyBucket?.summary.ftp_net_pnl) !== null,
       missingAdbCount: 0,
       zeroAdbCount: 0,
-      manualAdjustmentCount: 0,
+      missingFtpFieldCount: 0,
+      adbEvidenceStatus,
+      manualAdjustmentCount: input.manualAdjustmentCount ?? 0,
       formalUntracedCount: 0,
       formalUntracedValueDisplay: "未读取",
       formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
@@ -947,26 +1148,33 @@ function buildPnlByBusinessInsight(input: {
   const topContribution = pickTopPositiveYtdRow(input.parentYtdRows);
   const topDrag = pickTopNegativeYtdRow(input.parentYtdRows);
   const topShare = pickTopShareYtdRow(input.parentYtdRows);
-  const resolvedAdbValues = input.parentYtdRows
-    .filter(hasYtdBusinessActivity)
-    .map((row) =>
+  const activeYtdRows = input.parentYtdRows.filter(hasYtdBusinessActivity);
+  const resolvedAdbValues = activeYtdRows.map((row) =>
       input.adbAvgByBusinessType
         ? resolveAdbAvgYuan(row.business_type, input.adbAvgByBusinessType)
         : undefined,
     );
   const missingAdbCount = resolvedAdbValues.filter((adb) => adb === undefined).length;
   const zeroAdbCount = resolvedAdbValues.filter((adb) => adb === 0).length;
+  const missingFtpFieldCount = activeYtdRows.filter(
+    (row) => numeric(row.ftp_cost) === null || numeric(row.ftp_net_pnl) === null,
+  ).length;
   const ftpAvailable =
     missingAdbCount === 0 &&
     zeroAdbCount === 0 &&
-    input.parentYtdRows.length > 0;
+    missingFtpFieldCount === 0 &&
+    activeYtdRows.length > 0;
   const confidenceLabel: PnlByBusinessInsightConfidence = isWarning
     ? "预警/降级"
-    : ftpAvailable
-      ? "可分析"
+    : missingAdbCount > 0
+      ? "缺日均"
       : zeroAdbCount > 0
         ? "日均为0"
-        : "缺日均";
+        : missingFtpFieldCount > 0 || adbEvidenceStatus === "ytd_fallback"
+          ? "预警/降级"
+          : ftpAvailable
+            ? "可分析"
+            : "缺日均";
 
   return {
     confidenceLabel,
@@ -980,14 +1188,27 @@ function buildPnlByBusinessInsight(input: {
     ftpAvailable,
     missingAdbCount,
     zeroAdbCount,
+    missingFtpFieldCount,
+    adbEvidenceStatus,
     manualAdjustmentCount: input.manualAdjustmentCount ?? 0,
     formalUntracedCount: 0,
     formalUntracedValueDisplay: "未读取",
     formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
     formalTriageDisplay: "",
-    nextStep: ftpAvailable
-      ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
-      : "先补齐日均/ADB 映射，再判断年化收益率和 FTP 后收益。",
+    nextStep:
+      missingAdbCount > 0
+        ? "先补齐日均映射，再判断年化收益率和 FTP 后收益。"
+        : zeroAdbCount > 0
+          ? adbEvidenceStatus === "ytd_fallback"
+            ? "ADB 补充复核不可用，先确认 YTD 日均零值是否为真实零，再判断收益率和 FTP。"
+            : "先确认日均为真实零，再判断该业务的收益率和 FTP 结论。"
+          : missingFtpFieldCount > 0
+            ? "先核对 YTD FTP 成本与 FTP 后损益返回字段，再进入收益归因。"
+            : adbEvidenceStatus === "ytd_fallback"
+              ? "YTD 日均与 FTP 字段可用于本页分析；ADB 补充复核不可用，跨源覆盖结论暂缓。"
+              : ftpAvailable
+                ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
+                : "先核对日均与 FTP 返回字段，再判断年化收益率和 FTP 后收益。",
     recommendedDrilldown: buildYtdDrilldownRecommendation({
       isWarning,
       topContribution,
@@ -995,7 +1216,9 @@ function buildPnlByBusinessInsight(input: {
       topShare,
       missingAdbCount,
       zeroAdbCount,
+      missingFtpFieldCount,
       ftpAvailable,
+      adbEvidenceStatus,
     }),
   };
 }
@@ -1008,9 +1231,11 @@ export function buildPnlByBusinessPageModel(
     selectedBusinessKey: input.selectedBusinessKey,
   });
   const monthlyBusinessMonths = input.monthlyResult?.months ?? [];
-  const activeMonthlyBucket =
-    monthlyBusinessMonths.find((month) => month.period_end_date === input.selectedReportDate) ??
-    monthlyBusinessMonths[0];
+  const activeMonthlyBucket = resolvePnlByBusinessActiveMonthlyBucket(
+    monthlyBusinessMonths,
+    input.selectedReportDate,
+    input.monthlyResult?.as_of_date,
+  );
   const parentMonthlyItems = activeMonthlyBucket?.items.filter(isParentZqtzBusinessRow) ?? [];
   const topMonthlyRow = pickTopMonthlyBusinessRow(parentMonthlyItems);
   const topMonthlyDragRow = pickTopNegativeMonthlyBusinessRow(parentMonthlyItems);
@@ -1041,6 +1266,8 @@ export function buildPnlByBusinessPageModel(
       : input.viewMode === "ytd"
         ? input.ytdMeta
         : input.formalMeta;
+  const activeDiagnostics =
+    input.viewMode === "monthly" ? activeMonthlyBucket : input.viewMode === "ytd" ? input.ytdResult : undefined;
   const activeDataStatus = formatPnlQualityStatus(activeResultMeta?.quality_flag, {
     isLoading: loading,
     isError: error,
@@ -1101,6 +1328,7 @@ export function buildPnlByBusinessPageModel(
       topMonthlyRow,
       topMonthlyDragRow,
       adbAvgByBusinessType: input.adbAvgByBusinessType,
+      adbEvidenceStatus: input.adbEvidenceStatus,
       manualAdjustmentCount: input.manualAdjustmentCount,
     }),
     hero: buildHeroConclusion({
@@ -1118,6 +1346,7 @@ export function buildPnlByBusinessPageModel(
     stateSurfaces: buildStateSurfaces({
       activeDataStatus,
       activeResultMeta,
+      activeDiagnostics,
       clientMode: input.clientMode,
     }),
   };

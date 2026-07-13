@@ -43,6 +43,7 @@ import {
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
+  selectProductCategoryManagementMonitoringSurface,
   selectProductCategoryOperatingAnalysisSurface,
   selectProductCategoryOperatingActionBacktestSurface,
   selectProductCategoryRootCauseSurface,
@@ -218,6 +219,226 @@ function expectCandidateMetricStatus(
 }
 
 describe("productCategoryPnlPageModel", () => {
+  it("builds H1 candidate management monitoring from six formal monthly payloads", () => {
+    const grandTotals = [4, 4, 4, 3, 3, 3];
+    const liabilityTotals = [0.03, 0.03, 0.03, 0.02, 0.04, 0.02];
+    const tplPnl = [1.2, 0.9, 0.9, 0.8, 0.6, 0.3];
+    const derivativePnl = [0.01, 0.02, -0.01, 0.03, 0.04, 0.01];
+    const monthEndDates = [
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-06-30",
+    ];
+    const snapshots = monthEndDates.map((reportDate, index) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "bond_tpl",
+            category_name: "TPL",
+            report_date: reportDate,
+            baseline_ftp_rate_pct: "1.60",
+            cnx_scale: yi(800),
+            business_net_income: yi(tplPnl[index]!),
+            weighted_yield: index === 5 ? "2.05625" : "2.50",
+          }),
+          row({
+            category_id: "derivatives",
+            category_name: "汇兑损益及衍生",
+            report_date: reportDate,
+            business_net_income: yi(derivativePnl[index]!),
+          }),
+          row({
+            category_id: "interbank_deposits",
+            category_name: "同业存放",
+            side: "liability",
+            report_date: reportDate,
+            business_net_income: yi(0.08),
+          }),
+          row({
+            category_id: "interbank_borrowings",
+            category_name: "同业拆入",
+            side: "liability",
+            report_date: reportDate,
+            business_net_income: yi(0.02),
+          }),
+          row({
+            category_id: "repo_liabilities",
+            category_name: "卖出回购",
+            side: "liability",
+            report_date: reportDate,
+            business_net_income: yi(0.01),
+          }),
+          row({
+            category_id: "interbank_cds",
+            category_name: "同业存单",
+            side: "liability",
+            report_date: reportDate,
+            business_net_income: yi(-0.05),
+          }),
+          row({
+            category_id: "credit_linked_notes",
+            category_name: "信用联结票据",
+            side: "liability",
+            report_date: reportDate,
+            business_net_income: yi(-0.03),
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          business_net_income: yi(liabilityTotals[index]!),
+          is_total: true,
+        }),
+        grand_total: row({
+          category_id: "grand_total",
+          side: "all",
+          report_date: reportDate,
+          business_net_income: yi(grandTotals[index]!),
+          is_total: true,
+        }),
+      }),
+    );
+    const currentAttribution = attributionPayload({
+      report_date: "2026-06-30",
+      current_report_date: "2026-06-30",
+      prior_report_date: "2026-05-31",
+      rows: [
+        attributionRow({
+          category_id: "bond_tpl",
+          category_name: "TPL",
+          current: {
+            report_date: "2026-06-30",
+            days: 30,
+            scale: yi(800),
+            yield_pct: "2.05625",
+            cash: "0",
+            ftp: "0",
+            business_net_income: yi(0.3),
+          },
+          prior: {
+            report_date: "2026-05-31",
+            days: 31,
+            scale: yi(800),
+            yield_pct: "2.50",
+            cash: "0",
+            ftp: "0",
+            business_net_income: yi(0.6),
+          },
+        }),
+        attributionRow({
+          category_id: "interbank_borrowings",
+          category_name: "同业拆入",
+          side: "liability",
+          effects: {
+            rate_effect: yi(-0.025),
+            delta_business_net_income: yi(-0.02),
+          },
+        }),
+      ],
+    });
+
+    const surface = selectProductCategoryManagementMonitoringSurface({
+      reportDate: "2026-06-30",
+      snapshots,
+      currentAttribution,
+    });
+
+    expectCandidateMetricStatus(surface.metricStatus);
+    expect(surface.state).toBe("ready");
+    expect(surface.tpl).toMatchObject({
+      currentPnlLabel: "0.30",
+      currentYieldLabel: "2.06%",
+      currentScaleLabel: "800.00",
+      thresholds: [
+        { key: "prior_month", targetPnlLabel: "0.60", requiredYieldLabel: "2.51%", liftBpLabel: "+45.6bp" },
+        { key: "h1_average", targetPnlLabel: "0.78", requiredYieldLabel: "2.79%", liftBpLabel: "+73.5bp" },
+        { key: "q1_average", targetPnlLabel: "1.00", requiredYieldLabel: "3.12%", liftBpLabel: "+106.5bp" },
+      ],
+    });
+    expect(surface.liability).toMatchObject({
+      h1NetLabel: "0.17",
+      positivePoolLabel: "0.66",
+      negativePoolLabel: "-0.48",
+      offsetRatioLabel: "72.7%",
+      currentMonthDeltaLabel: "-0.02",
+      leadingMovementLabel: "同业拆入 -0.02",
+      leadingDriverLabel: "利率 -0.03",
+    });
+    expect(surface.derivatives).toMatchObject({
+      h1TotalLabel: "0.10",
+      monthlyAverageLabel: "0.02",
+      volatilityLabel: "0.02",
+      topThreeConcentrationLabel: "90.0%",
+      negativeMonthCountLabel: "1 个月",
+    });
+    expect(surface.runRate).toEqual({
+      q1MonthlyAverageLabel: "4.00",
+      q2MonthlyAverageLabel: "3.00",
+      h1MonthlyAverageLabel: "3.50",
+      recoveryLiftLabel: "16.7%",
+      h2AtQ2PaceLabel: "18.00",
+      gapToH1Label: "-3.00",
+    });
+
+    const allImprovingAttribution = {
+      ...currentAttribution,
+      rows: currentAttribution.rows.map((attribution) =>
+        attribution.category_id === "interbank_borrowings"
+          ? {
+              ...attribution,
+              effects: {
+                ...attribution.effects,
+                rate_effect: yi(0.025),
+                delta_business_net_income: yi(0.02),
+              },
+            }
+          : attribution,
+      ),
+    };
+    expect(
+      selectProductCategoryManagementMonitoringSurface({
+        reportDate: "2026-06-30",
+        snapshots,
+        currentAttribution: allImprovingAttribution,
+      }).liability,
+    ).toMatchObject({
+      leadingMovementLabel: "6 月无负向回落",
+      leadingDriverLabel: "无可用驱动",
+    });
+  });
+
+  it("does not derive the H1 monitor from FTP scenarios or incomplete month coverage", () => {
+    expect(
+      selectProductCategoryManagementMonitoringSurface({
+        reportDate: "2026-06-30",
+        snapshots: [],
+        scenarioDistinct: true,
+      }),
+    ).toMatchObject({
+      state: "scenario_blocked",
+      coverageLabel: "正式基线停算",
+      emptyCopy: "经营修复监控只使用正式基准口径；请将 FTP 场景恢复为正式基准后查看。",
+    });
+    expect(
+      selectProductCategoryManagementMonitoringSurface({
+        reportDate: "2026-06-30",
+        snapshots: [],
+      }),
+    ).toMatchObject({
+      state: "insufficient",
+      coverageLabel: "已覆盖 0/6 月",
+    });
+  });
+
   it("marks frontend-derived analysis surfaces as candidate and not formal-use allowed", () => {
     expectCandidateMetricStatus(
       selectProductCategoryOperatingAnalysisSurface({ rows: [] }).metricStatus,

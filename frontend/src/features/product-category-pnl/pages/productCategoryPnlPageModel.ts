@@ -178,6 +178,51 @@ export type ProductCategoryTrendSnapshot = {
   interestEarningSpread?: ProductCategoryInterestSpreadPayload | null;
 };
 
+export type ProductCategoryManagementMonitoringSurface = {
+  metricStatus: ProductCategoryCandidateMetricStatus;
+  state: "ready" | "insufficient" | "scenario_blocked";
+  periodLabel: string;
+  coverageLabel: string;
+  emptyCopy: string | null;
+  tpl: {
+    currentPnlLabel: string;
+    currentYieldLabel: string;
+    currentScaleLabel: string;
+    thresholds: Array<{
+      key: "prior_month" | "h1_average" | "q1_average";
+      label: string;
+      targetPnlLabel: string;
+      requiredYieldLabel: string;
+      liftBpLabel: string;
+    }>;
+  } | null;
+  liability: {
+    h1NetLabel: string;
+    positivePoolLabel: string;
+    negativePoolLabel: string;
+    offsetRatioLabel: string;
+    currentMonthDeltaLabel: string;
+    leadingMovementLabel: string;
+    leadingDriverLabel: string;
+  } | null;
+  derivatives: {
+    h1TotalLabel: string;
+    monthlyAverageLabel: string;
+    volatilityLabel: string;
+    topThreeConcentrationLabel: string;
+    negativeMonthCountLabel: string;
+  } | null;
+  runRate: {
+    q1MonthlyAverageLabel: string;
+    q2MonthlyAverageLabel: string;
+    h1MonthlyAverageLabel: string;
+    recoveryLiftLabel: string;
+    h2AtQ2PaceLabel: string;
+    gapToH1Label: string;
+  } | null;
+  methodNotes: string[];
+};
+
 export type ProductCategoryTrendReportPoint = {
   reportDate: string;
   view: string;
@@ -4050,6 +4095,274 @@ export function buildProductCategoryTrendSnapshot(
     grandTotal: payload.grand_total,
     interestSpread: payload.interest_spread ?? null,
     interestEarningSpread: payload.interest_earning_spread ?? null,
+  };
+}
+
+const PRODUCT_CATEGORY_MANAGEMENT_LIABILITY_IDS = [
+  "interbank_deposits",
+  "interbank_borrowings",
+  "repo_liabilities",
+  "interbank_cds",
+  "credit_linked_notes",
+] as const;
+
+function emptyProductCategoryManagementMonitoringSurface(
+  state: "insufficient" | "scenario_blocked",
+  reportDate: string,
+  emptyCopy: string,
+  coverageLabel = "待补齐",
+): ProductCategoryManagementMonitoringSurface {
+  return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
+    state,
+    periodLabel: reportDate ? formatProductCategoryReportMonthLabel(reportDate) : "未选择报告月份",
+    coverageLabel,
+    emptyCopy,
+    tpl: null,
+    liability: null,
+    derivatives: null,
+    runRate: null,
+    methodNotes: [],
+  };
+}
+
+function formatProductCategoryManagementYi(value: number): string {
+  return value.toFixed(2);
+}
+
+function formatProductCategoryManagementPercent(value: number | null): string {
+  return value === null || !Number.isFinite(value) ? "-" : `${value.toFixed(1)}%`;
+}
+
+/**
+ * Candidate management view derived from six monthly formal payloads and the June MoM attribution.
+ * It does not replace governed totals, forecast results, or formal FTP scenario calculations.
+ */
+export function selectProductCategoryManagementMonitoringSurface(input: {
+  reportDate: string;
+  snapshots: ProductCategoryTrendSnapshot[];
+  currentAttribution?: ProductCategoryAttributionPayload | null;
+  scenarioDistinct?: boolean;
+}): ProductCategoryManagementMonitoringSurface {
+  if (input.scenarioDistinct) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "scenario_blocked",
+      input.reportDate,
+      "经营修复监控只使用正式基准口径；请将 FTP 场景恢复为正式基准后查看。",
+      "正式基线停算",
+    );
+  }
+
+  const selected = parseProductCategoryReportDate(input.reportDate);
+  if (!selected || selected.month !== 6) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "insufficient",
+      input.reportDate,
+      "本监控按 1—6 月连续 monthly 正式数据生成，仅在 6 月末报告展示。",
+      "需选择 6 月末",
+    );
+  }
+
+  const snapshotsByMonth = new Map<number, ProductCategoryTrendSnapshot>();
+  input.snapshots.forEach((snapshot) => {
+    const parsed = parseProductCategoryReportDate(snapshot.reportDate);
+    if (
+      parsed?.year === selected.year &&
+      parsed.month >= 1 &&
+      parsed.month <= 6 &&
+      (!snapshot.view || snapshot.view === "monthly")
+    ) {
+      snapshotsByMonth.set(parsed.month, snapshot);
+    }
+  });
+  const missingMonths = [1, 2, 3, 4, 5, 6].filter((month) => !snapshotsByMonth.has(month));
+  if (missingMonths.length > 0) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "insufficient",
+      input.reportDate,
+      `需要 1—6 月连续 monthly 正式 payload；当前缺少 ${missingMonths.map(formatProductCategoryShortMonthLabel).join("、")}。`,
+      `已覆盖 ${6 - missingMonths.length}/6 月`,
+    );
+  }
+  const h1Snapshots = [1, 2, 3, 4, 5, 6].map((month) => snapshotsByMonth.get(month)!);
+  const tplRows = h1Snapshots.map((snapshot) => findProductCategoryRow(snapshot.rows, "bond_tpl"));
+  const derivativeRows = h1Snapshots.map((snapshot) => findProductCategoryRow(snapshot.rows, "derivatives"));
+  const grandTotalValues = h1Snapshots.map((snapshot) => rawYiNumber(snapshot.grandTotal?.business_net_income));
+  const liabilityTotalValues = h1Snapshots.map((snapshot) => rawYiNumber(snapshot.liabilityTotal?.business_net_income));
+  const tplPnlValues = tplRows.map((row) => rawYiNumber(row?.business_net_income));
+  const derivativePnlValues = derivativeRows.map((row) => rawYiNumber(row?.business_net_income));
+  const currentAttribution =
+    input.currentAttribution?.compare === "mom" &&
+    input.currentAttribution.state === "complete" &&
+    input.currentAttribution.report_date === input.reportDate
+      ? input.currentAttribution
+      : null;
+  const tplAttributionRow = currentAttribution?.rows.find((row) => row.category_id === "bond_tpl");
+  const currentTplPoint = tplAttributionRow?.current;
+  const currentTplRow = tplRows[5];
+  const requiredValues = [
+    ...grandTotalValues,
+    ...liabilityTotalValues,
+    ...tplPnlValues,
+    ...derivativePnlValues,
+  ];
+  const currentTplScale = rawYiNumber(currentTplPoint?.scale);
+  const currentTplPnl = rawYiNumber(currentTplPoint?.business_net_income);
+  const currentTplYield = decimalNumber(currentTplPoint?.yield_pct);
+  const currentTplFtp = decimalNumber(currentTplRow?.baseline_ftp_rate_pct);
+  const currentTplDays = currentTplPoint?.days ?? null;
+  if (
+    requiredValues.some((value) => value === null) ||
+    currentTplScale === null ||
+    currentTplScale <= 0 ||
+    currentTplPnl === null ||
+    currentTplYield === null ||
+    currentTplFtp === null ||
+    currentTplDays === null ||
+    currentTplDays <= 0
+  ) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "insufficient",
+      input.reportDate,
+      "连续月份已覆盖，但 TPL、衍生品、合计行或本期正式归因字段不完整，候选监控未生成。",
+      "6/6 月 · 字段不完整",
+    );
+  }
+
+  const safeTplPnlValues = tplPnlValues as number[];
+  const safeGrandTotalValues = grandTotalValues as number[];
+  const safeLiabilityTotalValues = liabilityTotalValues as number[];
+  const safeDerivativePnlValues = derivativePnlValues as number[];
+  const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+  const average = (values: number[]) => sum(values) / values.length;
+  const q1TplAverage = average(safeTplPnlValues.slice(0, 3));
+  const h1TplAverage = average(safeTplPnlValues);
+  const thresholdInputs = [
+    { key: "prior_month" as const, label: "恢复至 5 月净营收", targetPnl: safeTplPnlValues[4]! },
+    { key: "h1_average" as const, label: "恢复至 H1 月均", targetPnl: h1TplAverage },
+    { key: "q1_average" as const, label: "恢复至 Q1 月均", targetPnl: q1TplAverage },
+  ];
+  const thresholds = thresholdInputs.map((threshold) => {
+    const requiredYield = currentTplFtp + (threshold.targetPnl / currentTplScale) * (365 / currentTplDays) * 100;
+    const liftBp = (requiredYield - currentTplYield) * 100;
+    return {
+      key: threshold.key,
+      label: threshold.label,
+      targetPnlLabel: formatProductCategoryManagementYi(threshold.targetPnl),
+      requiredYieldLabel: `${requiredYield.toFixed(2)}%`,
+      liftBpLabel: signedBpLabel(liftBp),
+    };
+  });
+
+  const liabilityCategoryTotals = PRODUCT_CATEGORY_MANAGEMENT_LIABILITY_IDS.map((categoryId) => {
+    const monthlyValues = h1Snapshots.map((snapshot) =>
+      rawYiNumber(findProductCategoryRow(snapshot.rows, categoryId)?.business_net_income),
+    );
+    return monthlyValues.some((value) => value === null) ? null : sum(monthlyValues as number[]);
+  });
+  if (liabilityCategoryTotals.some((value) => value === null)) {
+    return emptyProductCategoryManagementMonitoringSurface(
+      "insufficient",
+      input.reportDate,
+      "负债端 1—6 月产品明细不完整，候选监控未生成。",
+      "6/6 月 · 负债明细不完整",
+    );
+  }
+  const safeLiabilityCategoryTotals = liabilityCategoryTotals as number[];
+  const liabilityPositivePool = sum(safeLiabilityCategoryTotals.filter((value) => value > 0));
+  const liabilityNegativePool = sum(safeLiabilityCategoryTotals.filter((value) => value < 0));
+  const liabilityOffsetRatio =
+    liabilityPositivePool > 0 ? (Math.abs(liabilityNegativePool) / liabilityPositivePool) * 100 : null;
+  const liabilityCurrentMonthDelta = safeLiabilityTotalValues[5]! - safeLiabilityTotalValues[4]!;
+  const liabilityAttributionRows = (currentAttribution?.rows ?? [])
+    .filter((row) => PRODUCT_CATEGORY_MANAGEMENT_LIABILITY_IDS.includes(row.category_id as typeof PRODUCT_CATEGORY_MANAGEMENT_LIABILITY_IDS[number]))
+    .map((row) => ({ row, delta: rawYiNumber(row.effects.delta_business_net_income) }))
+    .filter(
+      (item): item is { row: ProductCategoryAttributionRow; delta: number } =>
+        item.delta !== null && item.delta < 0,
+    )
+    .sort((left, right) => left.delta - right.delta);
+  const leadingLiabilityMovement = liabilityAttributionRows[0] ?? null;
+  const liabilityDriverCandidates = leadingLiabilityMovement
+    ? [
+        ["天数", leadingLiabilityMovement.row.effects.day_effect],
+        ["规模", leadingLiabilityMovement.row.effects.scale_effect],
+        ["利率", leadingLiabilityMovement.row.effects.rate_effect],
+        ["FTP", leadingLiabilityMovement.row.effects.ftp_effect],
+        ["直接项", leadingLiabilityMovement.row.effects.direct_effect],
+        ["未解释", leadingLiabilityMovement.row.effects.unexplained_effect],
+      ].map(([label, value]) => ({ label: String(label), value: rawYiNumber(value as DecimalLike) ?? 0 }))
+    : [];
+  const leadingLiabilityDriver = liabilityDriverCandidates.sort(
+    (left, right) => Math.abs(right.value) - Math.abs(left.value),
+  )[0];
+
+  const derivativeH1Total = sum(safeDerivativePnlValues);
+  const derivativeMonthlyAverage = average(safeDerivativePnlValues);
+  const derivativeVolatility = Math.sqrt(
+    average(safeDerivativePnlValues.map((value) => (value - derivativeMonthlyAverage) ** 2)),
+  );
+  const derivativeTopThreeConcentration =
+    derivativeH1Total > 0
+      ? (sum(safeDerivativePnlValues.slice().sort((left, right) => right - left).slice(0, 3)) /
+          derivativeH1Total) *
+        100
+      : null;
+  const derivativeNegativeMonthCount = safeDerivativePnlValues.filter((value) => value < 0).length;
+
+  const q1MonthlyAverage = average(safeGrandTotalValues.slice(0, 3));
+  const q2MonthlyAverage = average(safeGrandTotalValues.slice(3, 6));
+  const h1MonthlyAverage = average(safeGrandTotalValues);
+  const recoveryLift = q2MonthlyAverage === 0 ? null : ((h1MonthlyAverage / q2MonthlyAverage) - 1) * 100;
+  const h1Total = sum(safeGrandTotalValues);
+  const h2AtQ2Pace = q2MonthlyAverage * 6;
+
+  return {
+    metricStatus: PRODUCT_CATEGORY_CANDIDATE_METRIC_STATUS,
+    state: "ready",
+    periodLabel: `${selected.year} 年 1—6 月`,
+    coverageLabel: "6/6 月正式数据",
+    emptyCopy: null,
+    tpl: {
+      currentPnlLabel: formatProductCategoryManagementYi(currentTplPnl),
+      currentYieldLabel: `${currentTplYield.toFixed(2)}%`,
+      currentScaleLabel: formatProductCategoryManagementYi(currentTplScale),
+      thresholds,
+    },
+    liability: {
+      h1NetLabel: formatProductCategoryManagementYi(sum(safeLiabilityTotalValues)),
+      positivePoolLabel: formatProductCategoryManagementYi(liabilityPositivePool),
+      negativePoolLabel: signedYiDeltaLabel(liabilityNegativePool),
+      offsetRatioLabel: formatProductCategoryManagementPercent(liabilityOffsetRatio),
+      currentMonthDeltaLabel: signedYiDeltaLabel(liabilityCurrentMonthDelta),
+      leadingMovementLabel: leadingLiabilityMovement
+        ? `${leadingLiabilityMovement.row.category_name || leadingLiabilityMovement.row.category_id} ${signedYiDeltaLabel(leadingLiabilityMovement.delta)}`
+        : "6 月无负向回落",
+      leadingDriverLabel: leadingLiabilityDriver
+        ? `${leadingLiabilityDriver.label} ${signedYiDeltaLabel(leadingLiabilityDriver.value)}`
+        : "无可用驱动",
+    },
+    derivatives: {
+      h1TotalLabel: formatProductCategoryManagementYi(derivativeH1Total),
+      monthlyAverageLabel: formatProductCategoryManagementYi(derivativeMonthlyAverage),
+      volatilityLabel: formatProductCategoryManagementYi(derivativeVolatility),
+      topThreeConcentrationLabel: formatProductCategoryManagementPercent(derivativeTopThreeConcentration),
+      negativeMonthCountLabel: `${derivativeNegativeMonthCount} 个月`,
+    },
+    runRate: {
+      q1MonthlyAverageLabel: formatProductCategoryManagementYi(q1MonthlyAverage),
+      q2MonthlyAverageLabel: formatProductCategoryManagementYi(q2MonthlyAverage),
+      h1MonthlyAverageLabel: formatProductCategoryManagementYi(h1MonthlyAverage),
+      recoveryLiftLabel: formatProductCategoryManagementPercent(recoveryLift),
+      h2AtQ2PaceLabel: formatProductCategoryManagementYi(h2AtQ2Pace),
+      gapToH1Label: signedYiDeltaLabel(h2AtQ2Pace - h1Total),
+    },
+    methodNotes: [
+      "TPL 阈值固定 6 月正式规模、正式 FTP 和归因天数，仅反推达到目标净营收所需收益率，不构成预测。",
+      "负债改善质量按五类负债产品 H1 正、负净营收池归组；6 月回落及驱动直接复用正式月环比归因。",
+      "衍生品稳定性仅以月度净营收波动、负值月份和 Top3 月份集中度作为代理，不识别一次性或可重复收益。",
+      "经营节奏用正式 grand_total 的 Q1、Q2 与 H1 月均做静态延展，不替代预算、计财目标或正式预测。",
+    ],
   };
 }
 

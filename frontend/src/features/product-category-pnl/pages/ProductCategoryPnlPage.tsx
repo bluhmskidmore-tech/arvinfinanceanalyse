@@ -68,6 +68,7 @@ import {
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
+  selectProductCategoryManagementMonitoringSurface,
   selectProductCategoryRootCauseSurface,
   selectProductCategoryClosureErrorSignal,
   type ProductCategoryScenarioSensitivitySurface,
@@ -1665,6 +1666,182 @@ function ProductCategoryAttributionBridge(props: {
           </article>
         </details>
       </div>
+    </section>
+  );
+}
+
+type ProductCategoryManagementMonitoringSurface = ReturnType<
+  typeof selectProductCategoryManagementMonitoringSurface
+>;
+
+function ProductCategoryManagementMonitoring(props: {
+  surface: ProductCategoryManagementMonitoringSurface;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  const { surface } = props;
+  const monitoring =
+    surface.state === "ready" && surface.tpl && surface.liability && surface.derivatives && surface.runRate
+      ? {
+          tpl: surface.tpl,
+          liability: surface.liability,
+          derivatives: surface.derivatives,
+          runRate: surface.runRate,
+        }
+      : null;
+  return (
+    <section
+      id="product-category-management-monitor"
+      className="product-category-management-monitor"
+      data-testid="product-category-management-monitor"
+      aria-labelledby="product-category-management-monitor-title"
+    >
+      <div className="product-category-management-monitor__header">
+        <div>
+          <span className="product-category-management-monitor__eyebrow">候选管理视图</span>
+          <h3 id="product-category-management-monitor-title">经营修复监控</h3>
+          <p>把 1—6 月正式数据压缩为恢复阈值、改善质量、稳定性和经营节奏；不新增正式指标。</p>
+        </div>
+        <span
+          className="product-category-management-monitor__status"
+          title={surface.metricStatus.disclaimer}
+        >
+          <strong>{surface.metricStatus.label}</strong>
+          <small>{surface.coverageLabel}</small>
+        </span>
+      </div>
+
+      {surface.state === "scenario_blocked" && !monitoring ? (
+        <div className="product-category-management-monitor__empty" role="status">
+          {surface.emptyCopy}
+        </div>
+      ) : props.isError && !monitoring ? (
+        <div
+          className="product-category-management-monitor__empty product-category-management-monitor__empty--error"
+          role="alert"
+        >
+          <span>经营修复监控加载失败，未将失败月份解释为数据缺失。</span>
+          <button type="button" onClick={props.onRetry}>
+            重试经营监控
+          </button>
+        </div>
+      ) : props.isLoading && !monitoring ? (
+        <div className="product-category-management-monitor__empty" role="status">
+          正在加载 1—6 月正式月度数据与归因证据。
+        </div>
+      ) : !monitoring ? (
+        <div className="product-category-management-monitor__empty" role="status">
+          {surface.emptyCopy}
+        </div>
+      ) : (
+        <>
+          <div className="product-category-management-monitor__summary" aria-label="经营修复监控摘要">
+            <div>
+              <span>TPL 本期净营收</span>
+              <strong>{monitoring.tpl.currentPnlLabel}</strong>
+              <small>收益率 {monitoring.tpl.currentYieldLabel}</small>
+            </div>
+            <div>
+              <span>负债 H1 净贡献</span>
+              <strong>{monitoring.liability.h1NetLabel}</strong>
+              <small>负拖累抵消 {monitoring.liability.offsetRatioLabel}</small>
+            </div>
+            <div>
+              <span>衍生品 H1 净营收</span>
+              <strong>{monitoring.derivatives.h1TotalLabel}</strong>
+              <small>Top3 月份 {monitoring.derivatives.topThreeConcentrationLabel}</small>
+            </div>
+            <div>
+              <span>Q2 月均净营收</span>
+              <strong>{monitoring.runRate.q2MonthlyAverageLabel}</strong>
+              <small>回到 H1 月均需 {monitoring.runRate.recoveryLiftLabel}</small>
+            </div>
+          </div>
+
+          <div className="product-category-management-monitor__body">
+            <article className="product-category-management-monitor__tpl">
+              <div className="product-category-management-monitor__subhead">
+                <div>
+                  <h4>TPL 恢复阈值</h4>
+                  <p>固定 6 月规模 {monitoring.tpl.currentScaleLabel} 亿元、FTP 与归因天数，静态反推收益率。</p>
+                </div>
+                <span>{surface.periodLabel}</span>
+              </div>
+              <div className="product-category-management-monitor__table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>管理情景</th>
+                      <th>目标净营收（亿元）</th>
+                      <th>所需收益率</th>
+                      <th>较本期提升</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monitoring.tpl.thresholds.map((threshold) => (
+                      <tr key={threshold.key}>
+                        <td>{threshold.label}</td>
+                        <td>{threshold.targetPnlLabel}</td>
+                        <td>{threshold.requiredYieldLabel}</td>
+                        <td>{threshold.liftBpLabel}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <div className="product-category-management-monitor__signals" aria-label="经营修复风险信号">
+              <article>
+                <div className="product-category-management-monitor__signal-head">
+                  <h4>负债改善质量</h4>
+                  <b className="is-negative">6 月 {monitoring.liability.currentMonthDeltaLabel}</b>
+                </div>
+                <p>
+                  H1 正贡献 {monitoring.liability.positivePoolLabel} 亿元，负拖累 {monitoring.liability.negativePoolLabel} 亿元，
+                  抵消比例 {monitoring.liability.offsetRatioLabel}。
+                </p>
+                <small>主要回落：{monitoring.liability.leadingMovementLabel}；主导 {monitoring.liability.leadingDriverLabel}</small>
+              </article>
+              <article>
+                <div className="product-category-management-monitor__signal-head">
+                  <h4>衍生品稳定性代理</h4>
+                  <b className="is-warning">Top3 {monitoring.derivatives.topThreeConcentrationLabel}</b>
+                </div>
+                <p>
+                  月均 {monitoring.derivatives.monthlyAverageLabel} 亿元，月度波动 {monitoring.derivatives.volatilityLabel} 亿元，
+                  负值月份 {monitoring.derivatives.negativeMonthCountLabel}。
+                </p>
+                <small>集中度仅反映月份分布，不识别一次性收益或交易级驱动。</small>
+              </article>
+              <article>
+                <div className="product-category-management-monitor__signal-head">
+                  <h4>经营节奏</h4>
+                  <b className="is-negative">差额 {monitoring.runRate.gapToH1Label}</b>
+                </div>
+                <p>
+                  Q1 月均 {monitoring.runRate.q1MonthlyAverageLabel} 亿元，H1 月均 {monitoring.runRate.h1MonthlyAverageLabel} 亿元；
+                  若按 Q2 月均静态延展，H2 为 {monitoring.runRate.h2AtQ2PaceLabel} 亿元。
+                </p>
+                <small>静态节奏不等同于预测，也不接入预算或计财目标。</small>
+              </article>
+            </div>
+          </div>
+        </>
+      )}
+
+      {monitoring ? (
+        <details className="product-category-management-monitor__methods">
+          <summary>
+            <span>方法与证据边界</span>
+            <small>查看 {surface.methodNotes.length} 条口径说明</small>
+          </summary>
+          <ul>
+            {surface.methodNotes.map((note) => <li key={note}>{note}</li>)}
+          </ul>
+        </details>
+      ) : null}
     </section>
   );
 }
@@ -3866,6 +4043,16 @@ export default function ProductCategoryPnlPage() {
     enabled: Boolean(selectedDate && selectedView === "monthly"),
     retry: false,
   });
+  const managementMomAttributionQuery = useQuery({
+    queryKey: ["product-category-pnl", "attribution", client.mode, selectedDate, "mom"],
+    queryFn: () =>
+      client.getProductCategoryAttribution({
+        reportDate: selectedDate,
+        compare: "mom",
+      }),
+    enabled: Boolean(selectedDate && selectedView === "monthly"),
+    retry: false,
+  });
 
   const baseline = baselineQuery.data?.result;
   const scenario = scenarioQuery.data?.result;
@@ -3875,6 +4062,7 @@ export default function ProductCategoryPnlPage() {
   );
   const baselineRate = baseline?.asset_total.baseline_ftp_rate_pct ?? "1.75";
   const currentSceneRate = scenario?.scenario_rate_pct ?? baselineRate;
+  const managementScenarioDistinct = Boolean(appliedScenarioRate);
   const displayedAssetTotal = scenario?.asset_total ?? baseline?.asset_total;
   const displayedLiabilityTotal = scenario?.liability_total ?? baseline?.liability_total;
   const currentSelectedPayload = scenario ?? baseline;
@@ -4254,6 +4442,16 @@ export default function ProductCategoryPnlPage() {
         attributionsByReportDate: operatingActionBacktestAttributions,
       }),
     [operatingActionBacktestAttributions, operatingActionBacktestPayloads],
+  );
+  const managementMonitoringSurface = useMemo(
+    () =>
+      selectProductCategoryManagementMonitoringSurface({
+        reportDate: selectedDate,
+        snapshots: trendSnapshots,
+        currentAttribution: managementMomAttributionQuery.data?.result,
+        scenarioDistinct: managementScenarioDistinct,
+      }),
+    [managementMomAttributionQuery.data?.result, managementScenarioDistinct, selectedDate, trendSnapshots],
   );
   const interestSpreadComparisonSnapshots = useMemo(
     () =>
@@ -5288,6 +5486,28 @@ export default function ProductCategoryPnlPage() {
           </>
         ) : null}
       </section>
+
+      {canRenderBaselineDerivedAnalysis && selectedView === "monthly" ? (
+        <ProductCategoryManagementMonitoring
+          surface={managementMonitoringSurface}
+          isLoading={
+            !managementScenarioDistinct &&
+            (managementMomAttributionQuery.isLoading ||
+              trendHistoryQueries.some((query) => query.isLoading))
+          }
+          isError={
+            !managementScenarioDistinct &&
+            (managementMomAttributionQuery.isError ||
+              trendHistoryQueries.some((query) => query.isError))
+          }
+          onRetry={() => {
+            void Promise.all([
+              managementMomAttributionQuery.refetch(),
+              ...trendHistoryQueries.map((query) => query.refetch()),
+            ]);
+          }}
+        />
+      ) : null}
 
       <details
         data-testid="product-category-adjustment-workspace"

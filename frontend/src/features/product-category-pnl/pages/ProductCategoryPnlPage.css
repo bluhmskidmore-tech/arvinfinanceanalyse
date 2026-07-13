@@ -6164,6 +6164,376 @@
   color: var(--moss-color-warning-700);
 }
 
+.product-category-management-monitor {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  margin-top: 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-top: 2px solid var(--moss-color-primary-700);
+  background: #ffffff;
+}
+
+.product-category-management-monitor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 0;
+  padding: 13px 14px 11px;
+}
+
+.product-category-management-monitor__header > div,
+.product-category-management-monitor__subhead > div,
+.product-category-management-monitor__signal-head h4 {
+  min-width: 0;
+}
+
+.product-category-management-monitor__eyebrow {
+  color: var(--ib-ink-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.product-category-management-monitor__header h3,
+.product-category-management-monitor__subhead h4,
+.product-category-management-monitor__signal-head h4 {
+  margin: 2px 0 0;
+  color: var(--ib-ink);
+  line-height: 1.35;
+}
+
+.product-category-management-monitor__header h3 {
+  font-size: 15px;
+}
+
+.product-category-management-monitor__subhead h4,
+.product-category-management-monitor__signal-head h4 {
+  font-size: 12px;
+}
+
+.product-category-management-monitor__header p,
+.product-category-management-monitor__subhead p,
+.product-category-management-monitor__signals p {
+  margin: 3px 0 0;
+  color: var(--ib-ink-secondary);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.product-category-management-monitor__status {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: end;
+  gap: 2px;
+  color: var(--moss-color-warning-700);
+  font-size: 10px;
+  text-align: right;
+}
+
+.product-category-management-monitor__status small {
+  color: var(--ib-ink-muted);
+  font-size: 9px;
+}
+
+.product-category-management-monitor__empty {
+  min-height: 58px;
+  padding: 18px 14px;
+  border-top: 1px solid var(--moss-color-neutral-200);
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+}
+
+.product-category-management-monitor__empty--error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--moss-color-danger-700);
+}
+
+.product-category-management-monitor__empty--error button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid var(--moss-color-danger-200);
+  background: #ffffff;
+  color: var(--moss-color-danger-700);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.product-category-management-monitor__empty--error button:hover {
+  border-color: var(--moss-color-danger-500);
+}
+
+.product-category-management-monitor__empty--error button:focus-visible {
+  outline: 2px solid var(--moss-color-danger-500);
+  outline-offset: 2px;
+}
+
+.product-category-management-monitor__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+  border-top: 1px solid var(--moss-color-neutral-200);
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-management-monitor__summary > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 12px;
+  border-right: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-management-monitor__summary > div:last-child {
+  border-right: 0;
+}
+
+.product-category-management-monitor__summary span,
+.product-category-management-monitor__summary small,
+.product-category-management-monitor__signals small,
+.product-category-management-monitor__subhead > span {
+  color: var(--ib-ink-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.product-category-management-monitor__summary strong {
+  overflow: hidden;
+  color: var(--ib-ink);
+  font-family: var(--moss-font-mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-category-management-monitor__body {
+  display: grid;
+  min-width: 0;
+}
+
+.product-category-management-monitor__tpl,
+.product-category-management-monitor__signals {
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.product-category-management-monitor__subhead,
+.product-category-management-monitor__signal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-category-management-monitor__subhead > span {
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+
+.product-category-management-monitor__table-wrap {
+  min-width: 0;
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.product-category-management-monitor table {
+  width: 100%;
+  min-width: 500px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.product-category-management-monitor th,
+.product-category-management-monitor td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  color: var(--ib-ink-secondary);
+  font-size: 10px;
+  text-align: right;
+}
+
+.product-category-management-monitor th {
+  color: var(--ib-ink-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.product-category-management-monitor th:first-child,
+.product-category-management-monitor td:first-child {
+  width: 34%;
+  text-align: left;
+}
+
+.product-category-management-monitor td:not(:first-child) {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.product-category-management-monitor tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.product-category-management-monitor__signals {
+  display: grid;
+  align-content: start;
+  padding-top: 5px;
+}
+
+.product-category-management-monitor__signals article {
+  min-width: 0;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+}
+
+.product-category-management-monitor__signals article:last-child {
+  border-bottom: 0;
+}
+
+.product-category-management-monitor__signal-head b {
+  flex: 0 0 auto;
+  font-family: var(--moss-font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.product-category-management-monitor .is-negative {
+  color: var(--moss-color-danger-600);
+}
+
+.product-category-management-monitor .is-warning {
+  color: var(--moss-color-warning-700);
+}
+
+.product-category-management-monitor__methods {
+  border-top: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-management-monitor__methods > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  padding: 0 14px;
+  color: var(--ib-ink-secondary);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.product-category-management-monitor__methods > summary::-webkit-details-marker {
+  display: none;
+}
+
+.product-category-management-monitor__methods > summary small {
+  color: var(--ib-ink-muted);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.product-category-management-monitor__methods > summary::after {
+  color: var(--ib-ink-muted);
+  content: "+";
+  font-family: var(--moss-font-mono);
+}
+
+.product-category-management-monitor__methods[open] > summary::after {
+  content: "−";
+}
+
+.product-category-management-monitor__methods ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0 30px 12px;
+  color: var(--ib-ink-secondary);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+@media (min-width: 1024px) {
+  .product-category-management-monitor__body {
+    grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.9fr);
+  }
+
+  .product-category-management-monitor__signals {
+    padding: 5px 14px 12px;
+    border-left: 1px solid var(--moss-color-neutral-200);
+  }
+}
+
+@media (max-width: 768px) {
+  .product-category-management-monitor__header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .product-category-management-monitor__status {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .product-category-management-monitor__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .product-category-management-monitor__summary > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .product-category-management-monitor__summary > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--moss-color-neutral-200);
+  }
+}
+
+@media (max-width: 480px) {
+  .product-category-management-monitor__summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .product-category-management-monitor__summary > div,
+  .product-category-management-monitor__summary > div:nth-child(2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--moss-color-neutral-200);
+  }
+
+  .product-category-management-monitor__summary > div:last-child {
+    border-bottom: 0;
+  }
+
+  .product-category-management-monitor__subhead {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .product-category-management-monitor table {
+    min-width: 0;
+  }
+
+  .product-category-management-monitor th,
+  .product-category-management-monitor td {
+    padding: 6px 3px;
+    font-size: 9px;
+    overflow-wrap: anywhere;
+  }
+
+  .product-category-management-monitor th:first-child,
+  .product-category-management-monitor td:first-child {
+    width: 36%;
+  }
+}
+
 @media (min-width: 769px) {
   .product-category-next-analysis-preview {
     display: none;

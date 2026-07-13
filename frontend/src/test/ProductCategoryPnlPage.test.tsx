@@ -337,7 +337,186 @@ function renderWorkbenchAppWithTwoMonthLiabilityTrend() {
   });
 }
 
+const H1_MANAGEMENT_REPORT_DATES = [
+  "2026-06-30",
+  "2026-05-31",
+  "2026-04-30",
+  "2026-03-31",
+  "2026-02-28",
+  "2026-01-31",
+];
+
+function buildManagementMonitorAttributionEnvelope(
+  reportDate: string,
+  compare: "mom" | "yoy" = "mom",
+) {
+  const envelope = buildMockAttributionEnvelope(reportDate, compare);
+  const sourceRow = envelope.result.rows[0]!;
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      rows: [
+        ...envelope.result.rows,
+        {
+          ...sourceRow,
+          category_id: "bond_tpl",
+          category_name: "TPL",
+        },
+      ],
+    },
+  };
+}
+
 describe("ProductCategoryPnlPage", () => {
+  it("renders the H1 management monitor as a compact candidate analysis section", async () => {
+    const monthEndDates = [
+      "2026-06-30",
+      "2026-05-31",
+      "2026-04-30",
+      "2026-03-31",
+      "2026-02-28",
+      "2026-01-31",
+    ];
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", { report_dates: monthEndDates }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) =>
+        buildMockProductCategoryPnlEnvelope(options),
+      ),
+      getProductCategoryAttribution: vi.fn(async ({ reportDate, compare = "mom" }) => {
+        const envelope = buildMockAttributionEnvelope(reportDate, compare);
+        const sourceRow = envelope.result.rows[0]!;
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: [
+              ...envelope.result.rows,
+              {
+                ...sourceRow,
+                category_id: "bond_tpl",
+                category_name: "TPL",
+              },
+            ],
+          },
+        };
+      }),
+    });
+
+    const monitor = await screen.findByTestId("product-category-management-monitor");
+    await waitFor(() => {
+      expect(within(monitor).getByText("TPL 恢复阈值")).toBeInTheDocument();
+    });
+    expect(monitor).toHaveTextContent("候选指标 · 非正式结论");
+    expect(monitor).toHaveTextContent("6/6 月正式数据");
+    expect(monitor).toHaveTextContent("负债改善质量");
+    expect(monitor).toHaveTextContent("衍生品稳定性代理");
+    expect(monitor).toHaveTextContent("经营节奏");
+    expect(within(monitor).getByText("恢复至 5 月净营收")).toBeInTheDocument();
+    expect(within(monitor).getByText("方法与证据边界").closest("details")).not.toHaveAttribute("open");
+  });
+
+  it("blocks the formal H1 monitor when the current scenario fails but scenario history succeeds", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const pnlSpy = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) => {
+      if (options.reportDate === "2026-06-30" && options.scenarioRatePct) {
+        throw new Error("current-scenario-failed");
+      }
+      return buildMockProductCategoryPnlEnvelope(options);
+    });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: H1_MANAGEMENT_REPORT_DATES,
+        }),
+      ),
+      getProductCategoryPnl: pnlSpy,
+      getProductCategoryAttribution: vi.fn(async ({ reportDate, compare = "mom" }) =>
+        buildManagementMonitorAttributionEnvelope(reportDate, compare),
+      ),
+    });
+
+    const monitor = await screen.findByTestId("product-category-management-monitor");
+    await waitFor(() => expect(monitor).toHaveTextContent("6/6 月正式数据"));
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+
+    await waitFor(() => expect(monitor).toHaveTextContent("正式基线停算"));
+    expect(monitor).not.toHaveTextContent("6/6 月正式数据");
+    expect(
+      pnlSpy.mock.calls.some(
+        ([options]) =>
+          options.reportDate === "2026-05-31" && Boolean(options.scenarioRatePct),
+      ),
+    ).toBe(true);
+  });
+
+  it("blocks the formal H1 monitor when an applied scenario rate equals the baseline rate", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: H1_MANAGEMENT_REPORT_DATES,
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) =>
+        buildMockProductCategoryPnlEnvelope(options),
+      ),
+      getProductCategoryAttribution: vi.fn(async ({ reportDate, compare = "mom" }) =>
+        buildManagementMonitorAttributionEnvelope(reportDate, compare),
+      ),
+    });
+
+    const monitor = await screen.findByTestId("product-category-management-monitor");
+    await waitFor(() => expect(monitor).toHaveTextContent("6/6 月正式数据"));
+    await user.selectOptions(screen.getByRole("combobox", { name: "FTP 场景" }), "1.75");
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+
+    await waitFor(() => expect(monitor).toHaveTextContent("正式基线停算"));
+    expect(monitor).not.toHaveTextContent("6/6 月正式数据");
+  });
+
+  it("shows an explicit retryable error when an H1 history request fails", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    let denyMayHistory = true;
+    const pnlSpy = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) => {
+      if (denyMayHistory && options.reportDate === "2026-05-31" && !options.scenarioRatePct) {
+        throw new Error("history-month-failed");
+      }
+      return buildMockProductCategoryPnlEnvelope(options);
+    });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: H1_MANAGEMENT_REPORT_DATES,
+        }),
+      ),
+      getProductCategoryPnl: pnlSpy,
+      getProductCategoryAttribution: vi.fn(async ({ reportDate, compare = "mom" }) =>
+        buildManagementMonitorAttributionEnvelope(reportDate, compare),
+      ),
+    });
+
+    const monitor = await screen.findByTestId("product-category-management-monitor");
+    const retry = await within(monitor).findByRole("button", { name: "重试经营监控" });
+    expect(monitor).toHaveTextContent("经营修复监控加载失败");
+    expect(monitor).not.toHaveTextContent("当前缺少 5 月");
+
+    denyMayHistory = false;
+    await user.click(retry);
+    await waitFor(() => expect(monitor).toHaveTextContent("6/6 月正式数据"));
+    expect(within(monitor).queryByRole("button", { name: "重试经营监控" })).not.toBeInTheDocument();
+  });
+
   it("formats chart display numbers with two decimals", () => {
     expect(formatProductCategoryChartNumberTwoDecimals(0.7)).toBe("0.70");
     expect(formatProductCategoryChartNumberTwoDecimals("1728.585")).toBe("1728.59");
