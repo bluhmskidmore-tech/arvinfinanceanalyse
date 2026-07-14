@@ -29,7 +29,7 @@ from backend.app.schemas.pnl import (
 
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
-PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION = "sv_pnl_by_business_precompute_v1"
+PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION = "sv_pnl_by_business_precompute_v2"
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
     "bond_bucket",
     "bond_bucket_monthly",
@@ -106,6 +106,7 @@ def precompute_pnl_by_business_payloads(
     period_end = repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=str(as_cap))
     if period_end is None:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
+    repo.require_current_formal_pnl_rule_version(year=year, as_of_date=period_end)
     ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), get_settings().ftp_rate_pct)
     loaded_dates = sorted(
         d

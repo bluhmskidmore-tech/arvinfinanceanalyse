@@ -10,10 +10,13 @@ from backend.app.config.product_category_mapping import resolve_product_category
 from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCOUNT_PREFIXES
 from backend.app.core_finance.field_normalization import is_approved_status
 from backend.app.core_finance.pnl import (
+    FI_514_VAT_DIVISOR,
     PnlByBusinessMonthlyMeasure,
     compute_nonstd_signed_ledger_amount,
     compute_pnl_by_business_monthly_change,
     compute_pnl_by_business_yield_and_ftp,
+    normalize_fi_interest_income_514,
+    normalize_nonstd_interest_income_514,
 )
 from backend.app.core_finance.reconciliation_checks import pnl_vs_ledger_diff
 from backend.app.core_finance.zqtz_asset_bond_category import (
@@ -163,20 +166,7 @@ IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 SAFE_SYNC_FALLBACK_MESSAGES = ("queue disabled", "broker unavailable")
 SAFE_SYNC_FALLBACK_EXCEPTIONS = (ConnectionError, OSError, TimeoutError)
-V1_VAT_DIVISOR = Decimal("1.06")
-V1_FI_TAXABLE_BOND_TYPES = (
-    "同业存单",
-    "存单",
-    "短期融资券",
-    "短融",
-    "中期票据",
-    "中票",
-    "企业债",
-    "资产支持证券",
-    "ABS",
-    "铁道债",
-    "铁道",
-)
+V1_VAT_DIVISOR = FI_514_VAT_DIVISOR
 V1_ZQTZ_PREFIX_MAP = {
     "SA": "公募基金",
     "J0": "人民币资管产品",
@@ -470,6 +460,10 @@ def pnl_v1_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: 
 def pnl_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
     _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
+    repo.require_current_formal_pnl_rule_version(
+        year=int(report_date[:4]),
+        as_of_date=report_date,
+    )
     if report_date not in repo.list_formal_fi_report_dates():
         raise ValueError(f"No formal pnl data found for report_date={report_date} in fact_formal_pnl_fi.")
 
@@ -1561,6 +1555,10 @@ def _pnl_by_business_ytd_envelope_uncached(
         and repo.formal_pnl_ytd_has_rows(year=year, as_of_date=str(as_cap))
     )
     if prefer_fact_path:
+        repo.require_current_formal_pnl_rule_version(
+            year=year,
+            as_of_date=str(as_cap),
+        )
         return _pnl_by_business_ytd_from_formal_facts(
             duckdb_path=duckdb_path,
             governance_dir=governance_dir,
@@ -1652,6 +1650,7 @@ def pnl_by_business_analysis_envelope(
     period_end = repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=str(as_cap))
     if period_end is None:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
+    repo.require_current_formal_pnl_rule_version(year=year, as_of_date=period_end)
     settings = get_settings()
     ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), settings.ftp_rate_pct)
     has_manual_adjustments = _has_pnl_by_business_manual_adjustments_in_period(
@@ -1785,6 +1784,7 @@ def pnl_by_business_monthly_envelope(
     period_end = repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=str(as_cap))
     if period_end is None:
         raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
+    repo.require_current_formal_pnl_rule_version(year=year, as_of_date=period_end)
     settings = get_settings()
     ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), settings.ftp_rate_pct)
     has_manual_adjustments = _has_pnl_by_business_manual_adjustments_in_period(
@@ -2881,9 +2881,11 @@ def _build_v1_detail_rows(
             continue
         asset_class = str(row.get("asset_class") or "").strip()
         fx_rate = _v1_fx_rate(row.get("fx_base_currency"), fx_rates)
-        interest_income = Decimal(str(row.get("interest_income_514") or "0"))
-        if any(taxable in asset_class for taxable in V1_FI_TAXABLE_BOND_TYPES):
-            interest_income = interest_income / V1_VAT_DIVISOR
+        interest_income = normalize_fi_interest_income_514(
+            raw_amount=row.get("interest_income_514") or "0",
+            asset_class=asset_class,
+            report_date=report_date,
+        )
         fair_value_change = Decimal(str(row.get("fair_value_change_516") or "0"))
         capital_gain = Decimal(str(row.get("capital_gain_517") or "0")) * Decimal("-1") / V1_VAT_DIVISOR
         interest_income *= fx_rate
@@ -2938,8 +2940,12 @@ def _build_v1_detail_rows(
                 journal_type=str(journal_type),
             )
             code_prefix = code[:2].upper()
-            if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE and code_prefix == "JM":
-                amount = amount / V1_VAT_DIVISOR
+            if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE:
+                amount = normalize_nonstd_interest_income_514(
+                    raw_amount=amount,
+                    asset_code=code,
+                    voucher_date=voucher_date,
+                )
             if code_prefix == "J1":
                 amount = amount * _v1_fx_rate("USD", fx_rates)
             if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE:
@@ -2992,9 +2998,11 @@ def _iter_v1_compatible_pnl_records(
             continue
         asset_class = str(row.get("asset_class") or "")
         fx_rate = _v1_fx_rate(row.get("fx_base_currency"), fx_rates)
-        interest_income = Decimal(str(row.get("interest_income_514") or "0"))
-        if any(taxable in asset_class for taxable in V1_FI_TAXABLE_BOND_TYPES):
-            interest_income = interest_income / V1_VAT_DIVISOR
+        interest_income = normalize_fi_interest_income_514(
+            raw_amount=row.get("interest_income_514") or "0",
+            asset_class=asset_class,
+            report_date=report_date,
+        )
         fair_value_change = Decimal(str(row.get("fair_value_change_516") or "0"))
         capital_gain = Decimal(str(row.get("capital_gain_517") or "0")) * Decimal("-1") / V1_VAT_DIVISOR
         sub_type = sub_type_map.get((report_date, code)) or ""
@@ -3040,8 +3048,12 @@ def _iter_v1_compatible_pnl_records(
                 journal_type=str(journal_type),
             )
             code_prefix = code[:2].upper()
-            if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE and code_prefix == "JM":
-                amount = amount / V1_VAT_DIVISOR
+            if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE:
+                amount = normalize_nonstd_interest_income_514(
+                    raw_amount=amount,
+                    asset_code=code,
+                    voucher_date=voucher_date,
+                )
             if code_prefix == "J1":
                 amount = amount * _v1_fx_rate("USD", fx_rates)
             if str(journal_type) == V1_INTEREST_INCOME_JOURNAL_TYPE:

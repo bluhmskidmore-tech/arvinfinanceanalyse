@@ -10,6 +10,7 @@ from backend.app.core_finance.source_preview_parsers import (
     build_source_version,
     parse_source_file,
 )
+from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     SOURCE_MANIFEST_STREAM,
@@ -23,7 +24,6 @@ from backend.app.schemas.source_preview import (
     SourcePreviewPayload,
     SourcePreviewSummary,
 )
-from backend.app.services.source_rules import describe_source_file
 
 MANIFEST_ELIGIBLE_STATUSES = {"completed", "rerun"}
 PREVIEW_TABLES = (

@@ -8,8 +8,8 @@ from decimal import Decimal
 from uuid import uuid4
 
 import xlrd
+from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.repositories.currency_codes import normalize_currency_code
-from backend.app.services.source_rules import describe_source_file
 
 logger = logging.getLogger(__name__)
 

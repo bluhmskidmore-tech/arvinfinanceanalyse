@@ -10,9 +10,9 @@ from pathlib import Path
 
 import xlrd
 from backend.app.core_finance.field_normalization import resolve_pnl_source_currency
+from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
-from backend.app.services.source_rules import describe_source_file
 from openpyxl import load_workbook
 
 SUPPORTED_PNL_SOURCE_FAMILIES = ("pnl", "pnl_514", "pnl_516", "pnl_517")

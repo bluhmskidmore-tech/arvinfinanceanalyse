@@ -40,6 +40,23 @@ ZERO = Decimal("0")
 TWOPLACES = Decimal("0.01")
 YIELD_PCT_PLACES = Decimal("0.000001")
 BP_PLACES = Decimal("0.0001")
+FI_514_VAT_DIVISOR = Decimal("1.06")
+PNL_514_VAT_EFFECTIVE_START_DATE = date(2026, 1, 1)
+PNL_514_VAT_EFFECTIVE_END_DATE = date(2026, 6, 30)
+PNL_FORMAL_FACT_RULE_VERSION = "rv_pnl_phase2_materialize_v2"
+FI_514_TAXABLE_ASSET_CLASS_TOKENS: tuple[str, ...] = (
+    "同业存单",
+    "存单",
+    "短期融资券",
+    "短融",
+    "中期票据",
+    "中票",
+    "企业债",
+    "资产支持证券",
+    "ABS",
+    "铁道债",
+    "铁道",
+)
 _FORMAL_517_EVENT_SEMANTICS: frozenset[str] = frozenset(
     {
         "realized_formal",
@@ -320,7 +337,7 @@ def build_nonstd_pnl_bridge_rows(
 
         for item in items:
             if item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[0]:
-                interest_income_514 += item.signed_amount
+                interest_income_514 += _normalize_nonstd_interest_income_514(item)
             elif item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[1]:
                 fair_value_change_516 += item.signed_amount
             elif item.journal_type == LEDGER_PNL_ACCOUNT_PREFIXES[2]:
@@ -406,7 +423,11 @@ def normalize_fi_pnl_records(
             fx_base_currency=fx_base_currency,
             fx_rates_by_currency=fx_rates_by_currency,
         )
-        interest_income_514 = _coerce_decimal(row.get("interest_income_514", ZERO)) * fx_rate
+        interest_income_514 = normalize_fi_interest_income_514(
+            raw_amount=row.get("interest_income_514", ZERO),
+            asset_class=row.get("asset_class"),
+            report_date=report_date,
+        ) * fx_rate
         fair_value_change_516 = _coerce_decimal(row.get("fair_value_change_516", ZERO)) * fx_rate
         capital_gain_517 = _coerce_decimal(row.get("capital_gain_517", ZERO)) * fx_rate
         manual_adjustment = _coerce_decimal(row.get("manual_adjustment", ZERO)) * fx_rate
@@ -461,6 +482,8 @@ __all__ = [
     "compute_nonstd_signed_ledger_amount",
     "compute_pnl_by_business_monthly_change",
     "compute_pnl_by_business_yield_and_ftp",
+    "normalize_fi_interest_income_514",
+    "normalize_nonstd_interest_income_514",
     "normalize_fi_pnl_records",
     "normalize_nonstd_journal_entries",
 ]
@@ -513,6 +536,55 @@ def _normalize_nonstd_signed_amount(
     if normalized_dc in {"\u501f", "debit", "dr"}:
         return raw_amount * Decimal("-1")
     raise ValueError(f"Unsupported dc_flag={dc_flag!r} for journal_type={journal_type}")
+
+
+def _normalize_nonstd_interest_income_514(entry: NonStdJournalEntry) -> Decimal:
+    return normalize_nonstd_interest_income_514(
+        raw_amount=entry.signed_amount,
+        asset_code=entry.asset_code,
+        voucher_date=entry.voucher_date,
+    )
+
+
+def _divide_vat_inclusive_514_amount(amount: Decimal) -> Decimal:
+    # DuckDB's Python Decimal binder drops a positive exponent (for example,
+    # Decimal("1.9500E+5") is persisted as 19,500).  Preserve the exact value
+    # while forcing fixed-point notation before the fact-table insert.
+    return Decimal(format(amount / FI_514_VAT_DIVISOR, "f"))
+
+
+def normalize_fi_interest_income_514(
+    *,
+    raw_amount: object,
+    asset_class: object,
+    report_date: object,
+) -> Decimal:
+    amount = _coerce_decimal(raw_amount)
+    normalized_asset_class = _coerce_optional_text(asset_class)
+    if _is_pnl_514_vat_effective(report_date) and any(
+        token in normalized_asset_class
+        for token in FI_514_TAXABLE_ASSET_CLASS_TOKENS
+    ):
+        return _divide_vat_inclusive_514_amount(amount)
+    return amount
+
+
+def normalize_nonstd_interest_income_514(
+    *,
+    raw_amount: object,
+    asset_code: object,
+    voucher_date: object,
+) -> Decimal:
+    amount = _coerce_decimal(raw_amount)
+    normalized_asset_code = _coerce_optional_text(asset_code).upper()
+    if _is_pnl_514_vat_effective(voucher_date) and normalized_asset_code.startswith("JM"):
+        return _divide_vat_inclusive_514_amount(amount)
+    return amount
+
+
+def _is_pnl_514_vat_effective(report_date: object) -> bool:
+    normalized_report_date = _coerce_date(report_date)
+    return PNL_514_VAT_EFFECTIVE_START_DATE <= normalized_report_date <= PNL_514_VAT_EFFECTIVE_END_DATE
 
 
 def compute_nonstd_signed_ledger_amount(

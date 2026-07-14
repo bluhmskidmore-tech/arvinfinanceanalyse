@@ -21,6 +21,12 @@ pnl_repo_module = load_module(
 )
 
 
+def test_precompute_rule_version_tracks_j4_business_label_contract() -> None:
+    assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION == (
+        "rv_pnl_by_business_precompute_v3"
+    )
+
+
 @pytest.mark.parametrize(
     ("report_year", "expected_rate_pct"),
     [
@@ -140,3 +146,97 @@ def test_fetch_precompute_returns_none_when_rule_version_mismatches(tmp_path):
 
     assert result is None
     assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION != "rv_pnl_by_business_precompute_v1"
+
+
+def test_formal_fact_rule_gate_rejects_stale_2026_h1_rows(tmp_path) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_pnl_fi (
+                report_date varchar,
+                interest_income_514 decimal(24, 8),
+                fair_value_change_516 decimal(24, 8),
+                capital_gain_517 decimal(24, 8),
+                manual_adjustment decimal(24, 8),
+                total_pnl decimal(24, 8),
+                rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+                '2026-04-30', 106, 0, 0, 0, 106, 'rv_pnl_phase2_materialize_v1'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    assert hasattr(repo, "require_formal_pnl_rule_version")
+    with pytest.raises(RuntimeError, match="rv_pnl_phase2_materialize_v1"):
+        repo.require_formal_pnl_rule_version(
+            start_date="2026-01-01",
+            end_date="2026-06-30",
+            expected_rule_version="rv_pnl_phase2_materialize_v2",
+        )
+
+
+def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_pnl_fi (
+                report_date varchar,
+                interest_income_514 decimal(24, 8),
+                fair_value_change_516 decimal(24, 8),
+                capital_gain_517 decimal(24, 8),
+                manual_adjustment decimal(24, 8),
+                total_pnl decimal(24, 8),
+                rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+                '2026-04-30', 100, 0, 0, 0, 100, 'rv_pnl_phase2_materialize_v1'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    stale_source_version = repo.pnl_by_business_precompute_source_version(
+        year=2026,
+        as_of_date="2026-06-30",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "update fact_formal_pnl_fi set rule_version = 'rv_pnl_phase2_materialize_v2'"
+        )
+    finally:
+        conn.close()
+
+    current_source_version = repo.pnl_by_business_precompute_source_version(
+        year=2026,
+        as_of_date="2026-06-30",
+    )
+
+    assert stale_source_version.startswith("sv_pnl_by_business_precompute_v2:")
+    assert current_source_version.startswith("sv_pnl_by_business_precompute_v2:")
+    assert stale_source_version != current_source_version
+    assert "rv_pnl_phase2_materialize_v1" in stale_source_version
+    assert "rv_pnl_phase2_materialize_v2" in current_source_version

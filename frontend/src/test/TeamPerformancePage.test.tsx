@@ -257,7 +257,7 @@ describe("TeamPerformancePage", () => {
         items: [
           byBusinessRow({
             row_key: "asset_zqtz_detail_structured_finance_broker",
-            business_type: "其中：结构化融资（券商）",
+            business_type: "其中：结构化产业基金（产业基金部分）",
             total_pnl: "3500000",
             current_balance: "800000000",
           }),
@@ -312,7 +312,7 @@ describe("TeamPerformancePage", () => {
       result: q1MonthlyPayload([
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "3000000",
           ftp_cost: "500000",
           ftp_net_pnl: "2500000",
@@ -549,7 +549,7 @@ describe("TeamPerformancePage", () => {
     expect(q1Caliber).toHaveTextContent("汇兑损益及衍生聚合行暂不强行归属");
     expect(q1Caliber).toHaveTextContent("汇兑损益及衍生");
     expect(q1Caliber).toHaveTextContent("产业基金");
-    expect(q1Caliber).toHaveTextContent("来源行：其中：结构化融资（券商）");
+    expect(q1Caliber).toHaveTextContent("来源行：其中：结构化产业基金（产业基金部分）");
     expect(q1Caliber).not.toHaveTextContent("2026计划");
     expect(q1Caliber).not.toHaveTextContent("完成率");
   });

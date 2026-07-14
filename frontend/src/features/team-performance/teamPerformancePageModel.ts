@@ -1470,7 +1470,7 @@ export const CENTER_PNL_MAPPINGS_2025: CenterPnlMapping2025[] = [
     endpoint: "by-business-ytd",
     rowId: "asset_zqtz_detail_structured_finance_broker",
     confidence: "high",
-    note: "结构化融资（券商）作为金融投资营业收入证据。",
+    note: "结构化产业基金（产业基金部分）作为金融投资营业收入证据。",
   },
   {
     centerId: "self-investment",

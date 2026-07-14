@@ -7,10 +7,13 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 _NONSTD_PNL_PATTERN = re.compile(
-    r"\u975e\u6807(?P<bucket>514|516|517)-(?P<start>\d{8})-(?P<end>\d{4})\.xlsx$",
+    r"\u975e\u6807(?P<bucket>514|516|517)-(?P<start>\d{8})-(?P<end>\d{4})(?:\(\d+\))?\.xlsx$",
     re.IGNORECASE,
 )
-_FI_MONTH_SUFFIX = re.compile(r"FI\u635f\u76ca(?P<ym>\d{6})\.xls$", re.IGNORECASE)
+_FI_MONTH_SUFFIX = re.compile(
+    r"FI\u635f\u76ca(?P<ym>\d{6})(?:\(\d+\))?\.xls$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -50,7 +53,7 @@ def extract_report_date_from_name(file_name: str) -> str | None:
 
 
 def _extract_loose_date_v1(file_name: str) -> str:
-    """Ported from V1 `extract_date_from_filename` — last resort is today (local)."""
+    """Ported from V1 `extract_date_from_filename` - last resort is today (local)."""
     match = re.search(r"(\d{8})", file_name)
     if match:
         try:
@@ -145,7 +148,7 @@ def classify_zqtz_preview(row: Mapping[str, object]) -> dict[str, object]:
             "J0": "资管计划",
             "J1": "美元委外",
             "J3": "结构化融资",
-            "J4": "结构化融资",
+            "J4": "结构化产业基金",
             "JM": "债权融资计划",
         }
         for prefix, mapped in prefix_rules.items():
@@ -156,7 +159,13 @@ def classify_zqtz_preview(row: Mapping[str, object]) -> dict[str, object]:
 
     if business_type_final == "公募基金":
         asset_group = "基金类"
-    elif business_type_final in {"资管计划", "债权融资计划", "美元委外", "结构化融资"}:
+    elif business_type_final in {
+        "资管计划",
+        "债权融资计划",
+        "美元委外",
+        "结构化融资",
+        "结构化产业基金",
+    }:
         asset_group = "特定目的载体及其他非标类"
     else:
         asset_group = "债券类"

@@ -9,6 +9,7 @@ import type {
 import {
   type AssessmentIndicator2025,
   type CenterPnlMapping2025,
+  CENTER_PNL_MAPPINGS_2025,
   Q1_CENTER_CALIBER_RULES,
   buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
@@ -209,7 +210,7 @@ describe("teamPerformancePageModel", () => {
       byBusinessItems: [
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "3500000",
           current_balance: "800000000",
         }),
@@ -485,7 +486,7 @@ describe("teamPerformancePageModel", () => {
         }),
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "250000000",
         }),
       ],
@@ -506,7 +507,7 @@ describe("teamPerformancePageModel", () => {
         }),
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "250000000",
           ftp_cost: "80000000",
           ftp_net_pnl: "170000000",
@@ -536,7 +537,7 @@ describe("teamPerformancePageModel", () => {
       byBusinessItems: [
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "30000000",
           source_note: "ZQTZSHOW 其中项：instrument_code prefix=J4",
         }),
@@ -544,7 +545,7 @@ describe("teamPerformancePageModel", () => {
       byBusinessMonthly: byBusinessMonthlyPayload([
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "30000000",
           ftp_cost: "5000000",
           ftp_net_pnl: "25000000",
@@ -560,7 +561,7 @@ describe("teamPerformancePageModel", () => {
     expect(productMarket?.rules[0]).toMatchObject({
       businessLabel: "产业基金",
       rowId: "asset_zqtz_detail_structured_finance_broker",
-      rowName: "其中：结构化融资（券商）",
+      rowName: "其中：结构化产业基金（产业基金部分）",
       allocation: "include",
       evidenceStatus: "direct",
       amountField: "ftp_net_pnl",
@@ -635,6 +636,9 @@ describe("teamPerformancePageModel", () => {
       amountYuan: 70000000,
       contributionYuan: 70000000,
     });
+    expect(CENTER_PNL_MAPPINGS_2025.find(
+      (mapping) => mapping.rowId === "asset_zqtz_detail_structured_finance_broker",
+    )?.note).toContain("结构化产业基金（产业基金部分）");
   });
 
   it("does not silently fall back to raw total_pnl when FTP-net monthly evidence is missing", () => {

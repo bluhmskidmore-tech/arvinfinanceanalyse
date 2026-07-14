@@ -326,6 +326,9 @@ def test_pnl_by_business_analysis_reuses_inputs_for_same_period(monkeypatch):
             assert as_of_cap in {None, "2026-04-30"}
             return "2026-04-30"
 
+        def require_current_formal_pnl_rule_version(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2026, "2026-04-30")
+
         def list_union_report_dates(self):
             return ["2026-01-31", "2026-04-30"]
 
@@ -515,6 +518,9 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
             assert as_of_cap in {None, "2025-12-31"}
             return "2025-12-31"
 
+        def require_current_formal_pnl_rule_version(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-12-31")
+
         def fetch_pnl_by_business_precompute(
             self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
         ):
@@ -595,6 +601,9 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
             assert year == 2025
             assert as_of_cap in {None, "2025-12-31"}
             return "2025-12-31"
+
+        def require_current_formal_pnl_rule_version(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-12-31")
 
         def fetch_pnl_by_business_precompute(
             self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
@@ -823,6 +832,9 @@ def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exis
             assert as_of_cap in {None, "2025-12-31"}
             return "2025-12-31"
 
+        def require_current_formal_pnl_rule_version(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-12-31")
+
         def fetch_pnl_by_business_precompute(
             self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
         ):
@@ -929,6 +941,9 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
             assert year == 2025
             assert as_of_cap in {None, "2025-12-31"}
             return "2025-12-31"
+
+        def require_current_formal_pnl_rule_version(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-12-31")
 
         def list_union_report_dates(self):
             return ["2025-12-31"]
@@ -1095,6 +1110,9 @@ def test_pnl_by_business_monthly_contract_returns_independent_month_buckets(monk
             assert year == 2025
             assert as_of_cap in {None, "2025-02-28"}
             return "2025-02-28"
+
+        def require_current_formal_pnl_rule_version(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-02-28")
 
         def list_union_report_dates(self):
             return ["2025-01-31", "2025-02-28"]
@@ -2208,6 +2226,9 @@ def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypa
             assert (year, as_of_date) == (2025, "2025-02-28")
             return True
 
+        def require_current_formal_pnl_rule_version(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-02-28")
+
         def list_union_report_dates(self):
             return ["2025-01-31", "2025-02-28"]
 
@@ -2679,6 +2700,43 @@ def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tm
     assert ytd_result["unallocated_pnl"] == "0.07"
     assert ytd_result["unallocated_row_count"] == 1
     get_settings.cache_clear()
+
+
+def test_pnl_by_business_ytd_rejects_stale_2026_h1_formal_facts(monkeypatch) -> None:
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2026
+            return "2026-06-30"
+
+        def formal_pnl_ytd_has_rows(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2026, "2026-06-30")
+            return True
+
+        def require_current_formal_pnl_rule_version(self, **_kwargs):
+            raise RuntimeError(
+                "Formal pnl facts contain stale rule versions: rv_pnl_phase2_materialize_v1"
+            )
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(pnl_service, "_ensure_formal_pnl_storage_available", lambda _path: None)
+    monkeypatch.setattr(
+        pnl_service,
+        "_pnl_by_business_ytd_from_formal_facts",
+        lambda **_kwargs: {"stale": True},
+    )
+
+    with pytest.raises(RuntimeError, match="stale rule versions"):
+        pnl_service._pnl_by_business_ytd_envelope_uncached(
+            duckdb_path="unused.duckdb",
+            governance_dir="unused-governance",
+            year=2026,
+            as_of_date="2026-06-30",
+        )
 
 
 def test_pnl_by_business_ytd_formal_path_classifies_nonstd_prefix_rows(tmp_path, monkeypatch):
@@ -3996,13 +4054,13 @@ def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path,
     assert [item["sort_order"] for item in result["items"]] == sorted(item["sort_order"] for item in result["items"])
 
     by_key = {item["row_key"]: item for item in result["items"]}
-    assert by_key["asset_zqtz_nonfinancial_enterprise_bond"]["interest_income"] == "100.00"
+    assert by_key["asset_zqtz_nonfinancial_enterprise_bond"]["interest_income"] == "106.00"
     assert by_key["asset_zqtz_nonfinancial_enterprise_bond"]["fair_value_change"] == "3.00"
     assert by_key["asset_zqtz_nonfinancial_enterprise_bond"]["capital_gain"] == "-9.43"
-    assert by_key["asset_zqtz_nonfinancial_enterprise_bond"]["total_pnl"] == "93.57"
+    assert by_key["asset_zqtz_nonfinancial_enterprise_bond"]["total_pnl"] == "99.57"
     assert by_key["asset_zqtz_commercial_financial_bond"]["total_pnl"] == "40.00"
     assert by_key["asset_zqtz_public_fund"]["total_pnl"] == "20.00"
-    assert by_key["asset_zqtz_other_debt_financing"]["total_pnl"] == "10.00"
+    assert by_key["asset_zqtz_other_debt_financing"]["total_pnl"] == "10.60"
 
     assert by_key["asset_zqtz_non_bottom_investment"]["total_pnl"] == "38.00"
     assert by_key["asset_zqtz_detail_securities_asset_management_plan"]["total_pnl"] == "38.00"
@@ -4019,7 +4077,7 @@ def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path,
     assert by_key["asset_zqtz_detail_local_currency_special_account_cost"]["current_balance"] == "4000.00"
     assert by_key["asset_zqtz_detail_structured_finance_broker"]["balance_yield_pct"] == "1.094527"
     assert by_key["asset_zqtz_central_bank_bill"]["balance_yield_pct"] is None
-    assert result["total_pnl"] == "206.57"
+    assert result["total_pnl"] == "213.17"
     assert result["unallocated_pnl"] == "5.00"
     assert result["unallocated_abs_pnl"] == "5.00"
     assert result["unallocated_row_count"] == 1
@@ -4334,13 +4392,13 @@ def test_pnl_v1_data_returns_v1_detail_formula_rows(tmp_path, monkeypatch):
     assert payload["result_meta"]["result_kind"] == "pnl.v1_data"
     rows = payload["result"]["rows"]
     by_code = {row["asset_code"]: row for row in rows}
-    assert Decimal(by_code["240001.IB"]["interest_income"]).quantize(Decimal("0.01")) == Decimal("100.00")
+    assert Decimal(by_code["240001.IB"]["interest_income"]).quantize(Decimal("0.01")) == Decimal("106.00")
     assert Decimal(by_code["240001.IB"]["fair_value_change"]).quantize(Decimal("0.01")) == Decimal("3.00")
     assert Decimal(by_code["240001.IB"]["capital_gain"]).quantize(Decimal("0.01")) == Decimal("-9.43")
-    assert Decimal(by_code["240001.IB"]["total_pnl"]).quantize(Decimal("0.01")) == Decimal("93.57")
-    assert Decimal(by_code["JM001"]["interest_income"]).quantize(Decimal("0.01")) == Decimal("100.00")
+    assert Decimal(by_code["240001.IB"]["total_pnl"]).quantize(Decimal("0.01")) == Decimal("99.57")
+    assert Decimal(by_code["JM001"]["interest_income"]).quantize(Decimal("0.01")) == Decimal("106.00")
     assert Decimal(by_code["JM001"]["capital_gain"]).quantize(Decimal("0.01")) == Decimal("20.00")
-    assert Decimal(by_code["JM001"]["total_pnl"]).quantize(Decimal("0.01")) == Decimal("120.00")
+    assert Decimal(by_code["JM001"]["total_pnl"]).quantize(Decimal("0.01")) == Decimal("126.00")
     get_settings.cache_clear()
 
 
@@ -4460,7 +4518,7 @@ def test_pnl_dates_returns_union_and_constituent_lists(tmp_path, monkeypatch):
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result_meta"]["result_kind"] == "pnl.dates"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
     assert payload["result"] == {
         "report_dates": ["2026-02-28", "2026-01-31", "2025-12-31"],
         "formal_fi_report_dates": ["2026-01-31", "2025-12-31"],
@@ -4483,8 +4541,8 @@ def test_pnl_data_returns_shared_date_with_two_explicit_lists_and_report_date_bu
     assert payload["result_meta"]["result_kind"] == "pnl.data"
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
-    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
     assert payload["result"]["report_date"] == "2025-12-31"
     assert len(payload["result"]["formal_fi_rows"]) == 1
     assert len(payload["result"]["nonstd_bridge_rows"]) == 1
@@ -4536,8 +4594,8 @@ def test_pnl_overview_returns_backend_owned_aggregation_and_report_date_build_li
     assert payload["result_meta"]["result_kind"] == "pnl.overview"
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
-    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
     assert payload["result"] == {
         "report_date": "2025-12-31",
         "formal_fi_row_count": 1,
@@ -4571,8 +4629,8 @@ def test_pnl_overview_keeps_fixed_cache_version_even_if_manifest_contains_cache_
     payload = response.json()
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
-    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
     get_settings.cache_clear()
 
 
@@ -4614,7 +4672,7 @@ def test_pnl_data_prefers_report_date_specific_build_lineage_over_latest_manifes
     assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
     assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
     assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
     get_settings.cache_clear()
 
 
@@ -4641,7 +4699,7 @@ def test_pnl_data_uses_report_date_specific_build_lineage_without_manifest(
     assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
     assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
     assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
     get_settings.cache_clear()
 
 
@@ -4683,7 +4741,7 @@ def test_pnl_overview_prefers_report_date_specific_build_lineage_over_latest_man
     assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
     assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
     assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
     get_settings.cache_clear()
 
 
@@ -4706,10 +4764,10 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert payload["result_meta"]["result_kind"] == "pnl.bridge"
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
-    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v2"
     assert "start_pack" not in payload["result_meta"]["cache_version"]
     assert payload["result_meta"]["cache_version"] == (
-        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
+        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v2__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
         "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
     )
@@ -4837,10 +4895,10 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert response.status_code == 200
     payload = response.json()
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1__sv-z-current__sv-z-prior"
-    assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v2"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
     assert payload["result_meta"]["cache_version"] == (
-        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
+        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v2__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
         "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
     )
@@ -4960,7 +5018,7 @@ def test_pnl_bridge_result_meta_merges_report_date_specific_balance_build_lineag
         "fi-shared-v1__nonstd-shared-v1__sv_balance_current__sv_balance_prior"
     )
     assert payload["result_meta"]["rule_version"] == (
-        "rv_balance_current__rv_balance_prior__rv_pnl_phase2_materialize_v1"
+        "rv_balance_current__rv_balance_prior__rv_pnl_phase2_materialize_v2"
     )
     assert payload["result_meta"]["vendor_version"] == "vv_balance__vv_none"
     assert payload["result"]["warnings"][0] == (
@@ -5020,7 +5078,7 @@ def test_pnl_bridge_prefers_latest_valid_balance_build_when_newer_completed_row_
         "fi-shared-v1__nonstd-shared-v1__sv_balance_current_valid__sv_balance_prior"
     )
     assert payload["result_meta"]["rule_version"] == (
-        "rv_balance_current_valid__rv_balance_prior__rv_pnl_phase2_materialize_v1"
+        "rv_balance_current_valid__rv_balance_prior__rv_pnl_phase2_materialize_v2"
     )
     assert not any(
         "Balance lineage fallback used for report_date=2025-12-31" in warning

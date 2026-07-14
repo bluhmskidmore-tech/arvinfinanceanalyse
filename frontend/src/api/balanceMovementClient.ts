@@ -319,7 +319,12 @@ export function createMockBalanceMovementClient(): BalanceMovementClientMethods 
           ["asset_zqtz_non_bottom_investment", "非底层投资资产", "700000000", 82],
           ["asset_zqtz_detail_trust_plan", "信托计划", "0", 83],
           ["asset_zqtz_detail_securities_asset_management_plan", "证券业资管计划", "400000000", 84],
-          ["asset_zqtz_detail_structured_finance_broker", "其中：结构化融资（券商）", "200000000", 85],
+          [
+            "asset_zqtz_detail_structured_finance_broker",
+            "其中：结构化产业基金（产业基金部分）",
+            "200000000",
+            85,
+          ],
           ["asset_zqtz_detail_foreign_currency_delegated", "其中：外币委外", "100000000", 86],
           ["asset_zqtz_detail_local_currency_delegated_market_value", "其中：本币委外（市值法）", "400000000", 87],
           ["asset_zqtz_detail_local_currency_special_account_cost", "其中：本币专户（成本法）", "200000000", 88],

@@ -12,6 +12,7 @@ from backend.app.core_finance.config.classification_rules import (
 )
 from backend.app.core_finance.fx_calendar import is_cfets_fx_non_business_day
 from backend.app.core_finance.pnl import (
+    PNL_FORMAL_FACT_RULE_VERSION,
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
     normalize_fi_pnl_records,
@@ -46,7 +47,7 @@ PNL_MATERIALIZE_LOCK = LockDefinition(
     key=f"lock:duckdb:{PNL_FORMAL_BASIS}:pnl:phase2:materialize",
     ttl_seconds=900,
 )
-RULE_VERSION = "rv_pnl_phase2_materialize_v1"
+RULE_VERSION = PNL_FORMAL_FACT_RULE_VERSION
 # API result_meta.cache_version: formal basis + materialize rule bundle (distinct from scenario/analytical).
 PNL_RESULT_CACHE_VERSION = f"cv_pnl_formal__{RULE_VERSION}"
 

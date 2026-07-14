@@ -7,6 +7,11 @@ from datetime import date
 from decimal import Decimal
 
 import duckdb
+from backend.app.core_finance.pnl import (
+    PNL_514_VAT_EFFECTIVE_END_DATE,
+    PNL_514_VAT_EFFECTIVE_START_DATE,
+    PNL_FORMAL_FACT_RULE_VERSION,
+)
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 # Shared by `backend.app.tasks.pnl_by_business_precompute` (writer) and
@@ -14,7 +19,7 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 # import the other. Bump this whenever the `/pnl-by-business` read-model
 # calculation rules change, so stale materialized rows are invalidated and
 # callers fall back to a live recompute instead of serving outdated values.
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v2"
+PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v3"
 
 
 def _position_book_key(portfolio_name: object, cost_center: object) -> str:
@@ -157,7 +162,7 @@ class PnlRepository:
                 report_dates.extend(str(row[0]) for row in rows)
             period_start = f"{min(report_dates)[:7]}-01" if report_dates else f"{y}-01-01"
             fingerprint = {
-                "version": "v1",
+                "version": "v2",
                 "year": year,
                 "as_of_date": as_of_date,
                 "period_start": period_start,
@@ -182,12 +187,12 @@ class PnlRepository:
             }
         except duckdb.Error as exc:
             if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
-                return "sv_pnl_by_business_precompute_v1:unavailable"
+                return "sv_pnl_by_business_precompute_v2:unavailable"
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
                 conn.close()
-        return "sv_pnl_by_business_precompute_v1:" + json.dumps(
+        return "sv_pnl_by_business_precompute_v2:" + json.dumps(
             fingerprint,
             ensure_ascii=False,
             sort_keys=True,
@@ -212,7 +217,10 @@ class PnlRepository:
               coalesce(sum(fair_value_change_516), 0) as fair_value_change,
               coalesce(sum(capital_gain_517), 0) as capital_gain,
               coalesce(sum(manual_adjustment), 0) as manual_adjustment,
-              coalesce(sum(total_pnl), 0) as total_pnl
+              coalesce(sum(total_pnl), 0) as total_pnl,
+              coalesce(min(nullif(trim(rule_version), '')), '') as min_rule_version,
+              coalesce(max(nullif(trim(rule_version), '')), '') as max_rule_version,
+              count(distinct coalesce(nullif(trim(rule_version), ''), '<blank>')) as rule_version_count
             from {table_name}
             where substr(cast(report_date as varchar), 1, 4) = ?
               and cast(report_date as varchar) <= ?
@@ -261,6 +269,9 @@ class PnlRepository:
             "capital_gain": "0",
             "manual_adjustment": "0",
             "total_pnl": "0",
+            "min_rule_version": "",
+            "max_rule_version": "",
+            "rule_version_count": "0",
         }
 
     def _pnl_precompute_stats_from_row(self, row: tuple[object, ...] | None) -> dict[str, str]:
@@ -273,7 +284,65 @@ class PnlRepository:
             "capital_gain": str(row[3] or 0),
             "manual_adjustment": str(row[4] or 0),
             "total_pnl": str(row[5] or 0),
+            "min_rule_version": str(row[6] or ""),
+            "max_rule_version": str(row[7] or ""),
+            "rule_version_count": str(row[8] or 0),
         }
+
+    def require_formal_pnl_rule_version(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        expected_rule_version: str,
+    ) -> None:
+        stale_versions: list[str] = []
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            for table_name in ("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"):
+                if not self._table_exists(conn, table_name):
+                    continue
+                rows = conn.execute(
+                    f"""
+                    select
+                      coalesce(nullif(trim(rule_version), ''), '<blank>') as rule_version,
+                      count(*) as row_count
+                    from {table_name}
+                    where cast(report_date as date) between ?::date and ?::date
+                    group by 1
+                    order by 1
+                    """,
+                    [start_date, end_date],
+                ).fetchall()
+                stale_versions.extend(
+                    f"{table_name}={row[0]}({row[1]})"
+                    for row in rows
+                    if str(row[0]) != expected_rule_version
+                )
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        if stale_versions:
+            details = ", ".join(stale_versions)
+            raise RuntimeError(
+                "Formal pnl facts contain stale rule versions for "
+                f"{start_date}..{end_date}; expected {expected_rule_version}: {details}"
+            )
+
+    def require_current_formal_pnl_rule_version(self, *, year: int, as_of_date: str) -> None:
+        requested_start = date(year, 1, 1)
+        requested_end = date.fromisoformat(as_of_date)
+        effective_start = max(requested_start, PNL_514_VAT_EFFECTIVE_START_DATE)
+        effective_end = min(requested_end, PNL_514_VAT_EFFECTIVE_END_DATE)
+        if effective_start > effective_end:
+            return
+        self.require_formal_pnl_rule_version(
+            start_date=effective_start.isoformat(),
+            end_date=effective_end.isoformat(),
+            expected_rule_version=PNL_FORMAL_FACT_RULE_VERSION,
+        )
 
     def replace_pnl_by_business_precompute(
         self,
