@@ -152,6 +152,7 @@ def _materialize_pnl_facts_under_writer_lock(
         duckdb_path=duckdb_file,
         report_date=report_date,
         fi_rows=fi_rows,
+        nonstd_rows_by_type=nonstd_rows_by_type,
     )
     normalized_fi = normalize_fi_pnl_records(
         fi_rows,
@@ -162,7 +163,11 @@ def _materialize_pnl_facts_under_writer_lock(
         if journal_type not in ALLOWED_NONSTD_JOURNAL_TYPES:
             raise ValueError(f"Unsupported journal_type={journal_type}")
         normalized_nonstd.extend(
-            normalize_nonstd_journal_entries(rows, journal_type=journal_type)
+            normalize_nonstd_journal_entries(
+                rows,
+                journal_type=journal_type,
+                fx_rates_by_currency=fx_rates_by_currency,
+            )
         )
 
     _assert_formal_pnl_emission_allowed(
@@ -212,6 +217,8 @@ def _materialize_pnl_facts_under_writer_lock(
             RULE_VERSION,
             row.ingest_batch_id,
             row.trace_id,
+            row.instrument_name,
+            row.asset_class,
         )
         for row in formal_fi_rows
     ]
@@ -248,8 +255,13 @@ def _materialize_pnl_facts_under_writer_lock(
         if formal_fi_values:
             conn.executemany(
                 """
-                insert or replace into fact_formal_pnl_fi
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                insert or replace into fact_formal_pnl_fi (
+                  report_date, instrument_code, portfolio_name, cost_center,
+                  invest_type_std, accounting_basis, currency_basis,
+                  interest_income_514, fair_value_change_516, capital_gain_517,
+                  manual_adjustment, total_pnl, source_version, rule_version,
+                  ingest_batch_id, trace_id, instrument_name, asset_class
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 formal_fi_values,
             )
@@ -387,11 +399,20 @@ def _load_pnl_fx_rates(
     duckdb_path: Path,
     report_date: str,
     fi_rows: list[dict[str, object]],
+    nonstd_rows_by_type: dict[str, list[dict[str, object]]],
 ) -> dict[str, tuple[Decimal, str]]:
+    source_rows = [
+        *fi_rows,
+        *(
+            row
+            for rows in nonstd_rows_by_type.values()
+            for row in rows
+        ),
+    ]
     required = sorted(
         {
             str(row.get("fx_base_currency") or "").strip().upper()
-            for row in fi_rows
+            for row in source_rows
             if str(row.get("fx_base_currency") or "").strip()
         }
     )

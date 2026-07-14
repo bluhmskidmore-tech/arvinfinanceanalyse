@@ -19,7 +19,7 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 # import the other. Bump this whenever the `/pnl-by-business` read-model
 # calculation rules change, so stale materialized rows are invalidated and
 # callers fall back to a live recompute instead of serving outdated values.
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v3"
+PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v4"
 
 
 def _position_book_key(portfolio_name: object, cost_center: object) -> str:
@@ -1240,6 +1240,8 @@ class PnlRepository:
             "source_kind",
             "report_date",
             "instrument_code",
+            "instrument_name",
+            "asset_class",
             "portfolio_name",
             "cost_center",
             "currency_basis",
@@ -1253,14 +1255,26 @@ class PnlRepository:
         ]
         try:
             conn = duckdb.connect(self.path, read_only=True)
+            instrument_name_expr = self._optional_column_expr(
+                conn,
+                "fact_formal_pnl_fi",
+                "instrument_name",
+            )
+            asset_class_expr = self._optional_column_expr(
+                conn,
+                "fact_formal_pnl_fi",
+                "asset_class",
+            )
             rows = conn.execute(
-                """
+                f"""
                 select *
                 from (
                   select
                     'formal_fi' as source_kind,
                     cast(report_date as varchar) as report_date,
                     instrument_code,
+                    {instrument_name_expr} as instrument_name,
+                    {asset_class_expr} as asset_class,
                     portfolio_name,
                     cost_center,
                     coalesce(nullif(trim(currency_basis), ''), 'CNY') as currency_basis,
@@ -1279,6 +1293,8 @@ class PnlRepository:
                     'nonstd_bridge' as source_kind,
                     cast(report_date as varchar) as report_date,
                     bond_code as instrument_code,
+                    cast('' as varchar) as instrument_name,
+                    cast('' as varchar) as asset_class,
                     portfolio_name,
                     cost_center,
                     'CNY' as currency_basis,

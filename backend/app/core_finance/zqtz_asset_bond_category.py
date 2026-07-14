@@ -137,11 +137,11 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
     },
     {
         "row_key": "asset_zqtz_detail_structured_finance_broker",
-        "row_label": "其中：结构化融资（券商）",
+        "row_label": "其中：结构化产业基金（产业基金部分）",
         "sort_order": 85,
         "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("J4",),
-        "source_note": "ZQTZSHOW 其中项：instrument_code prefix=J4",
+        "source_note": "ZQTZSHOW 其中项：instrument_code prefix=J4（结构化产业基金）",
     },
     {
         "row_key": "asset_zqtz_detail_foreign_currency_delegated",

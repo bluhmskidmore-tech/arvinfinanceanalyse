@@ -70,6 +70,26 @@ function formatPnlMovement(raw: string | number | null | undefined): string {
   return formatMovement(raw, 10_000, 2, "万元");
 }
 
+function balanceTimingInterpretation(
+  avgBalanceDelta: string | number | null | undefined,
+  currentBalanceDelta: string | number | null | undefined,
+): string {
+  const avgBalance = finiteNumber(avgBalanceDelta);
+  const currentBalance = finiteNumber(currentBalanceDelta);
+  const definition = "日均余额反映整月平均，期末余额反映月末时点";
+
+  if (avgBalance === null || currentBalance === null) {
+    return `${definition}；当前余额信息不足，暂不判断月末时点变化。`;
+  }
+  const directionsOppose =
+    (avgBalance < 0 && currentBalance > 0) ||
+    (avgBalance > 0 && currentBalance < 0);
+  if (directionsOppose) {
+    return "日均余额与期末余额环比方向相反；两者分别反映整月平均和月末时点，是否存在月末集中变化需结合日度余额确认。";
+  }
+  return `${definition}。`;
+}
+
 function deltaTone(raw: string | number | null | undefined): "positive" | "negative" | "neutral" {
   const value = finiteNumber(raw);
   if (value === null || value === 0) {
@@ -258,6 +278,7 @@ export function PnlByBusinessManagementChangePanel({
             ? `最大波动业务为${topDriver.business_type}（${formatPnlMovement(topDriver.total_pnl_delta)}）。`
             : "未发现非零业务损益波动。"}
         </span>
+        <span>{balanceTimingInterpretation(summary.avg_balance_delta, summary.current_balance_delta)}</span>
       </div>
 
       <div className="pnl-by-business-management-change__metrics">

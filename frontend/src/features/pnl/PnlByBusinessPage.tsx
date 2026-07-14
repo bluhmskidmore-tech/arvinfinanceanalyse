@@ -13,6 +13,7 @@ import type {
   PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
+  PnlByBusinessYtdSummary,
   PnlByBusinessYtdUnallocatedBreakdownRow,
   PnlByBusinessYtdUnallocatedItem,
 } from "../../api/contracts";
@@ -321,14 +322,14 @@ function buildYtdRangeFromResultDates(
 function BusinessRowsTable({
   rows,
   selectedRowKey,
-  classifiedParentTotalPnl,
+  summary,
   unallocatedPnl,
   unallocatedRowCount,
   onSelectRow,
 }: {
   rows: PnlByBusinessYtdItem[];
   selectedRowKey: string | null;
-  classifiedParentTotalPnl?: string;
+  summary?: PnlByBusinessYtdSummary;
   unallocatedPnl?: string;
   unallocatedRowCount?: number;
   onSelectRow: (row: PnlByBusinessYtdItem) => void;
@@ -415,17 +416,21 @@ function BusinessRowsTable({
             <tfoot>
               <tr data-testid="pnl-by-business-table-parent-footer">
                 <td className="pnl-by-business-table-footer-cell">父级损益（系统汇总）</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(classifiedParentTotalPnl)}</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
-                <td className="pnl-by-business-table-footer-cell">—</td>
+                <td className="pnl-by-business-table-footer-cell">{formatAvgBalanceYi(summary?.avg_balance)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.interest_income)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.fair_value_change)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.capital_gain)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.manual_adjustment)}</td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.total_pnl)}</td>
+                <td className="pnl-by-business-table-footer-cell">
+                  {formatAnnualizedYieldPctDisplay(summary?.annualized_yield_pct)}
+                </td>
+                <td className="pnl-by-business-table-footer-cell">{formatPnlWan(summary?.ftp_net_pnl)}</td>
+                <td className="pnl-by-business-table-footer-cell">
+                  {formatAnalysisYieldPct(summary?.ftp_net_annualized_yield_pct)}
+                </td>
+                <td className="pnl-by-business-table-footer-cell">{formatRatioPct(summary?.proportion)}</td>
+                <td className="pnl-by-business-table-footer-cell">{summary?.assets_count ?? "—"}</td>
               </tr>
             </tfoot>
           ) : null}
@@ -1156,11 +1161,22 @@ const ANALYSIS_DIMENSION_LABELS: Record<PnlByBusinessAnalysisDimension, string> 
   monthly: "月份",
   portfolio: "组合",
   accounting: "会计分类",
+  currency: "原币种",
   cost_center: "成本中心",
   instrument: "资产明细",
   bond_bucket: "债券四类",
   bond_bucket_monthly: "四类月度",
 };
+
+const MAIN_BREAKDOWN_DIMENSION_LABELS = {
+  currency: "原币种",
+  accounting: "会计分类",
+  portfolio: "投资组合",
+  cost_center: "成本中心",
+  instrument: "资产明细",
+} as const;
+
+type MainBreakdownDimension = keyof typeof MAIN_BREAKDOWN_DIMENSION_LABELS;
 
 function FormalBusinessRowsTable({ rows }: { rows: PnlByBusinessRow[] }) {
   const footer = useMemo(() => {
@@ -1832,6 +1848,7 @@ export default function PnlByBusinessPage() {
   const [viewMode, setViewMode] = useState<PnlByBusinessViewMode>("monthly");
   const [selectedBusinessKey, setSelectedBusinessKey] = useState<string | null>(null);
   const [analysisDimension, setAnalysisDimension] = useState<PnlByBusinessAnalysisDimension>("monthly");
+  const [mainBreakdownDimension, setMainBreakdownDimension] = useState<MainBreakdownDimension>("currency");
   const [analysisLoadStage, setAnalysisLoadStage] = useState(0);
   const [openMonthlyKeys, setOpenMonthlyKeys] = useState<Set<string>>(() => new Set());
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
@@ -2011,6 +2028,27 @@ export default function PnlByBusinessPage() {
     retry: false,
     staleTime: ANALYSIS_QUERY_STALE_MS,
   });
+
+  const mainBreakdownQuery = useQuery({
+    queryKey: apiQueryKeys.pnlByBusinessAnalysis(
+      client.mode,
+      selectedYear,
+      selectedReportDate,
+      mainBreakdownDimension,
+      selectedBusinessRow?.row_key,
+    ),
+    enabled: analysisBaseReady,
+    queryFn: () =>
+      client.getPnlByBusinessAnalysis({
+        year: selectedYear,
+        asOfDate: selectedReportDate,
+        businessKey: selectedBusinessRow!.row_key,
+        dimension: mainBreakdownDimension,
+      }),
+    retry: false,
+    staleTime: ANALYSIS_QUERY_STALE_MS,
+  });
+  const mainBreakdownRows = mainBreakdownQuery.data?.result.rows ?? [];
 
   const analysisQuery = useQuery({
     queryKey: apiQueryKeys.pnlByBusinessAnalysis(
@@ -2411,6 +2449,13 @@ export default function PnlByBusinessPage() {
           meta: monthlyBusinessQuery.data.result_meta,
         });
       }
+      if (mainBreakdownQuery.data) {
+        sections.push({
+          key: "by-business-main-breakdown",
+          title: "总表分项拆解",
+          meta: mainBreakdownQuery.data.result_meta,
+        });
+      }
       return sections;
     }
     if (viewMode === "formal" && formalBusinessQuery.data) {
@@ -2592,6 +2637,11 @@ export default function PnlByBusinessPage() {
                 key={surface.key}
                 testId={`pnl-by-business-state-${surface.key}`}
                 variant={surface.variant}
+                className={
+                  surface.key === "definition-pending"
+                    ? "pnl-by-business-state-surface--compact-governance"
+                    : undefined
+                }
                 title={surface.title}
                 description={surface.description}
               />
@@ -2677,16 +2727,64 @@ export default function PnlByBusinessPage() {
               <PageSectionLead
                 eyebrow="Business Type"
                 title={`${selectedYear} 年累计明细`}
-                description="金额列为万元，日均为亿元；年化收益率与 FTP 后结果直接使用后端 YTD 字段。点击父级行查看月度趋势；表末仅展示系统返回的父级损益汇总，其他指标不在前端相加。父级与「其中项」存在重叠，不可简单相加。"
+                description="金额列为万元，日均为亿元；年化收益率、FTP 后结果及表末父级汇总均直接使用后端 YTD 字段。点击父级行查看月度趋势；父级与「其中项」存在重叠，不可简单相加。"
               />
               <BusinessRowsTable
                 rows={ytdRows}
                 selectedRowKey={selectedBusinessRow?.row_key ?? null}
-                classifiedParentTotalPnl={ytdResult?.classified_parent_total_pnl}
+                summary={ytdResult?.summary}
                 unallocatedPnl={ytdResult?.unallocated_pnl}
                 unallocatedRowCount={ytdResult?.unallocated_row_count}
                 onSelectRow={(row) => setSelectedBusinessKey(row.row_key)}
               />
+              <section
+                className="pnl-by-business-analysis-block"
+                data-testid="pnl-by-business-main-breakdown"
+              >
+                <div className="pnl-by-business-analysis-heading">
+                  <div>
+                    <h2>总表分项拆解</h2>
+                    <p>
+                      {selectedBusinessRow?.business_type ?? "-"} · 子项仅拆分当前父级，不与其他父级重复
+                    </p>
+                  </div>
+                  <label className="pnl-by-business-filter-label">
+                    拆分维度
+                    <select
+                      aria-label="pnl-by-business-main-breakdown-dimension"
+                      value={mainBreakdownDimension}
+                      onChange={(event) =>
+                        setMainBreakdownDimension(event.target.value as MainBreakdownDimension)
+                      }
+                      className="pnl-by-business-control"
+                    >
+                      {(Object.keys(MAIN_BREAKDOWN_DIMENSION_LABELS) as MainBreakdownDimension[]).map((key) => (
+                        <option key={key} value={key}>
+                          {MAIN_BREAKDOWN_DIMENSION_LABELS[key]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                {mainBreakdownDimension === "currency" ? (
+                  <div className="pnl-by-business-detail-warning">
+                    原币种仅用于拆分，损益、日均、余额及 FTP 金额均为折人民币口径。
+                  </div>
+                ) : null}
+                {mainBreakdownQuery.isLoading || mainBreakdownQuery.isFetching ? (
+                  <div className="pnl-by-business-analysis-state">正在拆分当前父级</div>
+                ) : mainBreakdownQuery.isError ? (
+                  <div className="pnl-by-business-analysis-state">总表分项读取失败</div>
+                ) : mainBreakdownRows.length === 0 ? (
+                  <div className="pnl-by-business-analysis-state">当前维度暂无分项数据</div>
+                ) : (
+                  <AnalysisRowsTable
+                    rows={mainBreakdownRows}
+                    dimension={mainBreakdownDimension}
+                    testId="pnl-by-business-main-breakdown-table"
+                  />
+                )}
+              </section>
               <PnlByBusinessMonthlyTrendPanel
                 months={monthlyBusinessMonths}
                 selectedBusiness={selectedBusinessRow}

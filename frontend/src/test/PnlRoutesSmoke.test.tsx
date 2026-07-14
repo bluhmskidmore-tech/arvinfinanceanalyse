@@ -240,6 +240,22 @@ function buildPnlClient(): ApiClient {
     sample_filled: true,
     sample_fill_method: "observed_days_scaled_to_calendar",
     classified_parent_total_pnl: "123456.78",
+    summary: {
+      interest_income: "100000.00",
+      fair_value_change: "10000.00",
+      capital_gain: "20000.00",
+      manual_adjustment: "0.00",
+      total_pnl: "130000.00",
+      avg_balance: "170000000.00",
+      current_balance: "170000000.00",
+      annualized_yield_pct: "0.900380",
+      ftp_rate_pct: "1.600000",
+      ftp_cost: "231013.70",
+      ftp_net_pnl: "-101013.70",
+      ftp_net_annualized_yield_pct: "-0.699620",
+      proportion: "1.000000",
+      assets_count: 3,
+    },
     unallocated_pnl: "64295.80",
     unallocated_abs_pnl: "64299.08",
     unallocated_row_count: 400,
@@ -1191,6 +1207,14 @@ describe("pnl routed pages smoke", () => {
       expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
         year: 2025,
         asOfDate: "2025-12-31",
+        businessKey: "asset_zqtz_policy_financial_bond",
+        dimension: "currency",
+      });
+    });
+    await waitFor(() => {
+      expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
+        year: 2025,
+        asOfDate: "2025-12-31",
         dimension: "bond_bucket",
       });
     });
@@ -1211,8 +1235,12 @@ describe("pnl routed pages smoke", () => {
     });
     expect(await screen.findByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_ytd");
     expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("月度经营环比");
+    expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("总表分项拆解");
     expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_monthly");
     expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent("tr_route_business_ytd");
+    expect(screen.getByTestId("pnl-by-business-state-definition-pending")).toHaveClass(
+      "pnl-by-business-state-surface--compact-governance",
+    );
 
     await waitFor(() => {
       expect(screen.getByText("分析截止日")).toBeInTheDocument();
@@ -1245,18 +1273,31 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-table")).not.toHaveTextContent("其中：本币专户（成本法）");
       expect(screen.getByTestId("pnl-by-business-detail-table")).toHaveTextContent("其中：本币专户（成本法）");
       expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("父级损益（系统汇总）");
-      expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("12.35");
+      expect(screen.getByTestId("pnl-by-business-table-parent-footer")).toHaveTextContent("13");
+      expect(screen.getByTestId("pnl-by-business-main-breakdown")).toBeVisible();
+      expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent("总表分项拆解");
+      expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent("2025-12-31");
+      expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent(
+        "原币种仅用于拆分，损益、日均、余额及 FTP 金额均为折人民币口径",
+      );
+      expect(screen.getByLabelText("pnl-by-business-main-breakdown-dimension")).toHaveValue("currency");
       const parentFooterCells = screen
         .getByTestId("pnl-by-business-table-parent-footer")
         .querySelectorAll("td");
       expect(parentFooterCells).toHaveLength(12);
       expect(parentFooterCells[0]).toHaveTextContent("父级损益（系统汇总）");
-      expect(parentFooterCells[1]).toHaveTextContent("—");
-      expect(parentFooterCells[2]).toHaveTextContent("—");
-      expect(parentFooterCells[5]).toHaveTextContent("—");
-      expect(parentFooterCells[6]).toHaveTextContent("12.35");
-      expect(parentFooterCells[8]).toHaveTextContent("—");
-      expect(parentFooterCells[11]).toHaveTextContent("—");
+      expect(parentFooterCells[1]).toHaveTextContent("1.70");
+      expect(parentFooterCells[2]).toHaveTextContent("10");
+      expect(parentFooterCells[3]).toHaveTextContent("1");
+      expect(parentFooterCells[4]).toHaveTextContent("2");
+      expect(parentFooterCells[5]).toHaveTextContent("0");
+      expect(parentFooterCells[6]).toHaveTextContent("13");
+      expect(parentFooterCells[7]).toHaveTextContent("0.90%");
+      expect(parentFooterCells[8]).toHaveTextContent("-10.1");
+      expect(parentFooterCells[9]).toHaveTextContent("-0.70%");
+      expect(parentFooterCells[10]).toHaveTextContent("100.00%");
+      expect(parentFooterCells[11]).toHaveTextContent("3");
       const managementChange = screen.getByTestId("pnl-by-business-management-change");
       expect(managementChange).toHaveTextContent("2025-12 较 2025-11");
       expect(managementChange).toHaveTextContent("日均变化");
@@ -1759,9 +1800,15 @@ describe("pnl routed pages smoke", () => {
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("日均为0");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).not.toHaveTextContent("1 项缺日均");
-      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("政策性金融债");
-      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("0.00");
-      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("—");
+      const policyRow = within(screen.getByTestId("pnl-by-business-table"))
+        .getByText("政策性金融债")
+        .closest("tr");
+      expect(policyRow).toHaveTextContent("0.00");
+      const policyCells = policyRow?.querySelectorAll("td");
+      expect(policyCells).toHaveLength(12);
+      expect(policyCells?.[7]).toHaveTextContent("-");
+      expect(policyCells?.[8]).toHaveTextContent("-");
+      expect(policyCells?.[9]).toHaveTextContent("-");
       expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent(
         "日均为0，收益率/FTP 暂不计算",
       );

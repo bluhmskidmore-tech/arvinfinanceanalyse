@@ -70,6 +70,7 @@ const ANALYSIS_DIM_LABELS: Record<PnlByBusinessAnalysisDimension, string> = {
   monthly: "月份",
   portfolio: "组合",
   accounting: "会计分类",
+  currency: "原币种",
   cost_center: "成本中心",
   instrument: "资产明细",
   bond_bucket: "债券四类",

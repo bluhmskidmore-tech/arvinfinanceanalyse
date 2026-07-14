@@ -257,4 +257,60 @@ describe("PnlByBusinessManagementChangePanel", () => {
       "FTP后年化变化（bp）",
     ]);
   });
+
+  it("does not infer a timing cause from opposite monthly-average and month-end directions", () => {
+    render(
+      <PnlByBusinessManagementChangePanel
+        managementChange={{
+          ...availableChange(),
+          summary: {
+            ...availableChange().summary!,
+            avg_balance_delta: "-645528029.14",
+            current_balance_delta: "10289775840.83",
+          },
+        }}
+        expectedCurrentMonthKey="2025-12"
+        selectedRowKey={null}
+        isLoading={false}
+        isError={false}
+      />,
+    );
+
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "日均余额与期末余额环比方向相反；两者分别反映整月平均和月末时点，是否存在月末集中变化需结合日度余额确认。",
+    );
+    expect(screen.getByRole("note")).not.toHaveTextContent("月末余额集中增加");
+  });
+
+  it.each([
+    ["missing balance", null, "200000000.00", "当前余额信息不足，暂不判断月末时点变化。"],
+    ["zero monthly average", "0.00", "200000000.00", "日均余额反映整月平均，期末余额反映月末时点。"],
+    ["same direction", "100000000.00", "200000000.00", "日均余额反映整月平均，期末余额反映月末时点。"],
+    [
+      "opposite direction",
+      "100000000.00",
+      "-200000000.00",
+      "日均余额与期末余额环比方向相反；两者分别反映整月平均和月末时点，是否存在月末集中变化需结合日度余额确认。",
+    ],
+  ])("keeps the balance-timing explanation non-causal for %s", (_, avgBalanceDelta, currentBalanceDelta, expectedText) => {
+    render(
+      <PnlByBusinessManagementChangePanel
+        managementChange={{
+          ...availableChange(),
+          summary: {
+            ...availableChange().summary!,
+            avg_balance_delta: avgBalanceDelta,
+            current_balance_delta: currentBalanceDelta,
+          },
+        }}
+        expectedCurrentMonthKey="2025-12"
+        selectedRowKey={null}
+        isLoading={false}
+        isError={false}
+      />,
+    );
+
+    expect(screen.getByRole("note")).toHaveTextContent(expectedText);
+    expect(screen.getByRole("note")).not.toHaveTextContent("月末余额集中增加");
+  });
 });

@@ -19,12 +19,45 @@ pnl_repo_module = load_module(
     "backend.app.repositories.pnl_repo",
     "backend/app/repositories/pnl_repo.py",
 )
+pnl_service_module = load_module(
+    "backend.app.services.pnl_service",
+    "backend/app/services/pnl_service.py",
+)
 
 
-def test_precompute_rule_version_tracks_j4_business_label_contract() -> None:
+def test_precompute_rule_version_tracks_current_analysis_contract() -> None:
     assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION == (
-        "rv_pnl_by_business_precompute_v3"
+        "rv_pnl_by_business_precompute_v4"
     )
+
+
+def test_precompute_classification_matches_live_when_only_formal_metadata_is_available() -> None:
+    pnl_row = {
+        "source_kind": "formal_fi",
+        "report_date": "2026-06-30",
+        "instrument_code": "P001",
+        "instrument_name": "政策性金融债测试券",
+        "portfolio_name": "FI Desk",
+        "cost_center": "CC-POLICY",
+        "currency_basis": "CNY",
+        "invest_type_std": "T",
+        "accounting_basis": "FVTPL",
+        "asset_class": "政策性金融债",
+    }
+    kwargs = {
+        "pnl_row": pnl_row,
+        "balance_lookup": {},
+        "historical_balance_lookup": {},
+        "sub_type_by_date_code": {},
+        "fallback_date": "2026-06-30",
+    }
+
+    live = pnl_service_module._analysis_classification_for_pnl_row(**kwargs)
+    precomputed = precompute_module._analysis_classification_for_pnl_row(**kwargs)
+
+    assert precomputed == live
+    assert precomputed["asset_class"] == "政策性金融债"
+    assert precomputed["instrument_name"] == "政策性金融债测试券"
 
 
 @pytest.mark.parametrize(
@@ -126,7 +159,7 @@ def test_fetch_precompute_returns_none_when_rule_version_mismatches(tmp_path):
             """
             insert into fact_pnl_by_business_precompute values (
                 2025, '2025-12-31', 'monthly', '', '',
-                '{"stale": true}', 'sv-anything', 'rv_pnl_by_business_precompute_v1',
+                '{"stale": true}', 'sv-anything', 'rv_pnl_by_business_precompute_v3',
                 current_timestamp
             )
             """
@@ -145,7 +178,7 @@ def test_fetch_precompute_returns_none_when_rule_version_mismatches(tmp_path):
     )
 
     assert result is None
-    assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION != "rv_pnl_by_business_precompute_v1"
+    assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION != "rv_pnl_by_business_precompute_v3"
 
 
 def test_formal_fact_rule_gate_rejects_stale_2026_h1_rows(tmp_path) -> None:
@@ -183,7 +216,7 @@ def test_formal_fact_rule_gate_rejects_stale_2026_h1_rows(tmp_path) -> None:
         repo.require_formal_pnl_rule_version(
             start_date="2026-01-01",
             end_date="2026-06-30",
-            expected_rule_version="rv_pnl_phase2_materialize_v2",
+            expected_rule_version="rv_pnl_phase2_materialize_v3",
         )
 
 
@@ -225,7 +258,7 @@ def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> N
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
-            "update fact_formal_pnl_fi set rule_version = 'rv_pnl_phase2_materialize_v2'"
+            "update fact_formal_pnl_fi set rule_version = 'rv_pnl_phase2_materialize_v3'"
         )
     finally:
         conn.close()
@@ -239,4 +272,4 @@ def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> N
     assert current_source_version.startswith("sv_pnl_by_business_precompute_v2:")
     assert stale_source_version != current_source_version
     assert "rv_pnl_phase2_materialize_v1" in stale_source_version
-    assert "rv_pnl_phase2_materialize_v2" in current_source_version
+    assert "rv_pnl_phase2_materialize_v3" in current_source_version

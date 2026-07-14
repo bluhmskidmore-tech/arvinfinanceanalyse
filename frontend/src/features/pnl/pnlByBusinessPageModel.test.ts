@@ -48,6 +48,22 @@ function ytdPayload(partial: Partial<PnlByBusinessYtdPayload> = {}): PnlByBusine
     period_start_date: "2026-01-01",
     period_end_date: "2026-04-30",
     total_pnl: "5000000",
+    summary: {
+      interest_income: "4000000",
+      fair_value_change: "0",
+      capital_gain: "0",
+      manual_adjustment: "0",
+      total_pnl: "4000000",
+      avg_balance: "300000000",
+      current_balance: "300000000",
+      annualized_yield_pct: "4.055556",
+      ftp_rate_pct: "1.600000",
+      ftp_cost: "1578082.19",
+      ftp_net_pnl: "2421917.81",
+      ftp_net_annualized_yield_pct: "2.455556",
+      proportion: "0.800000",
+      assets_count: 5,
+    },
     source_tables: ["pnl_ytd"],
     items: [
       {
@@ -522,6 +538,33 @@ describe("pnlByBusinessPageModel", () => {
     const unallocated = model.stateSurfaces.find((surface) => surface.key === "unallocated");
     expect(unallocated?.description).toContain("400");
     expect(unallocated?.description).toContain("6.43 万元");
+  });
+
+  it("shows sub-wan unallocated amounts in yuan and avoids a duplicate generic warning", () => {
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "ytd",
+      selectedReportDate: "2026-06-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      ytdResult: ytdPayload({
+        coverage_days: 181,
+        expected_days: 181,
+        unallocated_pnl: "0.02",
+        unallocated_abs_pnl: "3.30",
+        unallocated_row_count: 399,
+        reconciliation_delta: "0.00",
+      }),
+      ytdMeta: meta({ quality_flag: "warning" }),
+    });
+
+    const unallocated = model.stateSurfaces.find((surface) => surface.key === "unallocated");
+    expect(unallocated?.description).toContain("净额 0.02 元");
+    expect(unallocated?.description).toContain("绝对额 3.30 元");
+    expect(model.stateSurfaces.map((surface) => surface.key)).not.toContain("warning");
   });
 
   it("builds monthly and formal KPI models and preserves loading/error/empty states", () => {

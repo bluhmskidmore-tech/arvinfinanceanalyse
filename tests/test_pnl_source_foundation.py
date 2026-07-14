@@ -174,6 +174,31 @@ def test_load_latest_pnl_refresh_input_marks_usd_rows_for_fx_conversion(tmp_path
     assert all(row["currency_basis"] == "CNY" for row in usd_rows)
 
 
+def test_load_latest_pnl_refresh_input_marks_fi_rows_as_cumulative_realized_517(tmp_path) -> None:
+    source_module = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+
+    data_root = tmp_path / "data_input" / "pnl"
+    data_root.mkdir(parents=True, exist_ok=True)
+    source_fi = Path(__file__).resolve().parents[1] / "data_input" / "pnl" / "FI损益202602.xls"
+    target_fi = data_root / source_fi.name
+    target_fi.write_bytes(source_fi.read_bytes())
+
+    refresh = source_module.load_latest_pnl_refresh_input(
+        governance_dir=tmp_path / "governance",
+        data_root=tmp_path / "data_input",
+        report_date="2026-02-28",
+    )
+
+    assert refresh.fi_rows
+    assert all(
+        row["event_type"] == "fi_cumulative_realized_517"
+        for row in refresh.fi_rows
+    )
+
+
 def test_pnl_refresh_selects_copy_suffixed_nonstd_range_for_june(tmp_path) -> None:
     source_module = load_module(
         "backend.app.services.pnl_source_service",
@@ -354,6 +379,55 @@ def test_nonstd_pnl_parser_skips_blank_pivot_sheet_before_detail_rows(tmp_path) 
     assert rows[0]["asset_code"] == "BOND-516"
     assert rows[0]["account_code"] == "51601010005"
     assert rows[0]["raw_amount"] == source_module.Decimal("123.45")
+
+
+def test_nonstd_pnl_parser_marks_only_j1_rows_for_usd_conversion(tmp_path) -> None:
+    source_module = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+
+    workbook = Workbook()
+    detail_sheet = workbook.active
+    detail_sheet.append(
+        [
+            "账务日期",
+            "会计事件",
+            "成本中心",
+            "投资组合",
+            "资产代码",
+            "借贷标识",
+            "科目号",
+            "金额",
+        ]
+    )
+    detail_sheet.append(
+        ["2026-06-30", "利息", "5010", "FIOA", "J12006190502", "贷", "51401000004", "106"]
+    )
+    detail_sheet.append(
+        ["2026-06-30", "利息", "5010", "FIOA", "JM0001", "贷", "51401000004", "106"]
+    )
+    detail_sheet.append(
+        ["2026-06-30", "利息", "5010", "FIOA", "J40001", "贷", "51401000004", "106"]
+    )
+    path = tmp_path / "非标514-20260101-0630.xlsx"
+    workbook.save(path)
+
+    snapshot = source_module.PnlSourceSnapshot(
+        source_family="pnl_514",
+        report_date="2026-06-30",
+        path=path,
+        source_version="sv-test-jm-fx",
+        ingest_batch_id="ib-test-jm-fx",
+        created_at="2026-07-14T00:00:00+00:00",
+    )
+
+    rows = source_module._parse_nonstd_rows(snapshot, bucket="514")
+    by_code = {row["asset_code"]: row for row in rows}
+
+    assert by_code["J12006190502"]["fx_base_currency"] == "USD"
+    assert "fx_base_currency" not in by_code["JM0001"]
+    assert "fx_base_currency" not in by_code["J40001"]
 
 
 def test_nonstd_pnl_parser_prefers_signed_amount_column_when_abs_amount_exists(tmp_path) -> None:

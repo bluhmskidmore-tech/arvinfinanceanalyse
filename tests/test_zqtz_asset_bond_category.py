@@ -115,6 +115,15 @@ from backend.app.core_finance.zqtz_asset_bond_category import (
             },
             "其他债权融资类产品",
         ),
+        (
+            {
+                "bond_type": "其他",
+                "instrument_code": "J40001",
+                "instrument_name": "",
+                "currency_code": "CNY",
+            },
+            "其中：结构化产业基金（产业基金部分）",
+        ),
         # 敞口/损益行常见「资管计划」标签，须与「其他」等价归入 J0/J1/J4 桶（否则业务种类漏数）
         (
             {

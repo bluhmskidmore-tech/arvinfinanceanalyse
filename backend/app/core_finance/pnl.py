@@ -43,7 +43,8 @@ BP_PLACES = Decimal("0.0001")
 FI_514_VAT_DIVISOR = Decimal("1.06")
 PNL_514_VAT_EFFECTIVE_START_DATE = date(2026, 1, 1)
 PNL_514_VAT_EFFECTIVE_END_DATE = date(2026, 6, 30)
-PNL_FORMAL_FACT_RULE_VERSION = "rv_pnl_phase2_materialize_v2"
+PNL_FORMAL_FACT_RULE_VERSION = "rv_pnl_phase2_materialize_v3"
+FI_CUMULATIVE_REALIZED_517_EVENT_TYPE = "fi_cumulative_realized_517"
 FI_514_TAXABLE_ASSET_CLASS_TOKENS: tuple[str, ...] = (
     "同业存单",
     "存单",
@@ -86,6 +87,8 @@ class FiPnlRecord:
     interest_income_514: Decimal
     fair_value_change_516: Decimal
     capital_gain_517: Decimal
+    instrument_name: str = ""
+    asset_class: str = ""
     manual_adjustment: Decimal = ZERO
     total_pnl: Decimal = ZERO
     currency_basis: CurrencyBasis = "CNY"
@@ -134,6 +137,8 @@ class FormalPnlFiFactRow:
     interest_income_514: Decimal
     fair_value_change_516: Decimal
     capital_gain_517: Decimal
+    instrument_name: str = ""
+    asset_class: str = ""
     manual_adjustment: Decimal = ZERO
     total_pnl: Decimal = ZERO
     source_version: str = ""
@@ -295,6 +300,8 @@ def build_formal_pnl_fi_fact_rows(
                 interest_income_514=recognized.interest_income_514,
                 fair_value_change_516=recognized.fair_value_change_516,
                 capital_gain_517=recognized.capital_gain_517,
+                instrument_name=row.instrument_name,
+                asset_class=row.asset_class,
                 manual_adjustment=recognized.manual_adjustment,
                 total_pnl=recognized.total_pnl,
                 source_version=row.source_version,
@@ -375,12 +382,19 @@ def normalize_nonstd_journal_entries(
     rows: Iterable[Mapping[str, object]],
     *,
     journal_type: JournalType,
+    fx_rates_by_currency: Mapping[str, tuple[Decimal, str]] | None = None,
 ) -> list[NonStdJournalEntry]:
     normalized: list[NonStdJournalEntry] = []
     for row in rows:
         voucher_date = _coerce_date(row["voucher_date"])
         raw_amount = _coerce_decimal(row.get("raw_amount", ZERO))
         dc_flag = str(row.get("dc_flag", ""))
+        fx_base_currency = _coerce_optional_text(row.get("fx_base_currency"))
+        fx_rate, fx_source_version = _resolve_fi_fx_conversion(
+            currency_basis="CNY",
+            fx_base_currency=fx_base_currency,
+            fx_rates_by_currency=fx_rates_by_currency,
+        )
         normalized.append(
             NonStdJournalEntry(
                 voucher_date=voucher_date,
@@ -393,11 +407,14 @@ def normalize_nonstd_journal_entries(
                     raw_amount=raw_amount,
                     journal_type=journal_type,
                     dc_flag=dc_flag,
-                ),
+                ) * fx_rate,
                 dc_flag=dc_flag,
                 event_type=str(row["event_type"]),
                 source_file=str(row["source_file"]),
-                source_version=str(row.get("source_version", "")),
+                source_version=_merge_lineage_versions(
+                    str(row.get("source_version", "")),
+                    fx_source_version,
+                ),
                 rule_version=str(row.get("rule_version", "")),
                 ingest_batch_id=str(row.get("ingest_batch_id", "")),
                 trace_id=str(row.get("trace_id", "")),
@@ -427,11 +444,34 @@ def normalize_fi_pnl_records(
             raw_amount=row.get("interest_income_514", ZERO),
             asset_class=row.get("asset_class"),
             report_date=report_date,
+            invest_type_std=invest_type_std,
         ) * fx_rate
         fair_value_change_516 = _coerce_decimal(row.get("fair_value_change_516", ZERO)) * fx_rate
-        capital_gain_517 = _coerce_decimal(row.get("capital_gain_517", ZERO)) * fx_rate
+        event_type = _coerce_optional_text(row.get("event_type"))
+        is_cumulative_realized_517 = (
+            event_type == FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
+            and _is_pnl_514_vat_effective(report_date)
+        )
+        raw_capital_gain_517 = _coerce_decimal(row.get("capital_gain_517", ZERO))
+        capital_gain_517 = (
+            _normalize_2026h1_cumulative_fi_517(raw_capital_gain_517)
+            if is_cumulative_realized_517
+            else raw_capital_gain_517
+        ) * fx_rate
         manual_adjustment = _coerce_decimal(row.get("manual_adjustment", ZERO)) * fx_rate
         total_pnl = interest_income_514 + fair_value_change_516 + capital_gain_517 + manual_adjustment
+        event_semantics = (
+            "realized_incremental"
+            if is_cumulative_realized_517 and accounting_basis == ACCOUNTING_BASIS_FVTPL
+            else "realized_formal"
+            if is_cumulative_realized_517
+            else _coerce_optional_text(row.get("event_semantics"))
+        )
+        realized_flag = (
+            True
+            if is_cumulative_realized_517
+            else _coerce_bool(row.get("realized_flag", False))
+        )
 
         normalized.append(
             FiPnlRecord(
@@ -445,6 +485,8 @@ def normalize_fi_pnl_records(
                 interest_income_514=interest_income_514,
                 fair_value_change_516=fair_value_change_516,
                 capital_gain_517=capital_gain_517,
+                instrument_name=_coerce_optional_text(row.get("instrument_name")),
+                asset_class=_coerce_optional_text(row.get("asset_class")),
                 manual_adjustment=manual_adjustment,
                 total_pnl=total_pnl,
                 currency_basis=currency_basis,
@@ -457,9 +499,9 @@ def normalize_fi_pnl_records(
                 trace_id=str(row.get("trace_id", "")),
                 approval_status=_coerce_optional_text(row.get("approval_status")),
                 governance_status=_coerce_optional_text(row.get("governance_status")),
-                event_type=_coerce_optional_text(row.get("event_type")),
-                event_semantics=_coerce_optional_text(row.get("event_semantics")),
-                realized_flag=_coerce_bool(row.get("realized_flag", False)),
+                event_type=event_type,
+                event_semantics=event_semantics,
+                realized_flag=realized_flag,
             )
         )
     return normalized
@@ -486,6 +528,7 @@ __all__ = [
     "normalize_nonstd_interest_income_514",
     "normalize_fi_pnl_records",
     "normalize_nonstd_journal_entries",
+    "FI_CUMULATIVE_REALIZED_517_EVENT_TYPE",
 ]
 
 
@@ -553,17 +596,21 @@ def _divide_vat_inclusive_514_amount(amount: Decimal) -> Decimal:
     return Decimal(format(amount / FI_514_VAT_DIVISOR, "f"))
 
 
+def _normalize_2026h1_cumulative_fi_517(amount: Decimal) -> Decimal:
+    return Decimal(format((amount * Decimal("-1")) / FI_514_VAT_DIVISOR, "f"))
+
+
 def normalize_fi_interest_income_514(
     *,
     raw_amount: object,
     asset_class: object,
     report_date: object,
+    invest_type_std: object = None,
 ) -> Decimal:
     amount = _coerce_decimal(raw_amount)
     normalized_asset_class = _coerce_optional_text(asset_class)
     if _is_pnl_514_vat_effective(report_date) and any(
-        token in normalized_asset_class
-        for token in FI_514_TAXABLE_ASSET_CLASS_TOKENS
+        token in normalized_asset_class for token in FI_514_TAXABLE_ASSET_CLASS_TOKENS
     ):
         return _divide_vat_inclusive_514_amount(amount)
     return amount

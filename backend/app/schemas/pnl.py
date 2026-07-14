@@ -243,6 +243,25 @@ class PnlByBusinessYtdUnallocatedItem(BaseModel):
     abs_pnl: Decimal
 
 
+class PnlByBusinessYtdSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interest_income: Decimal
+    fair_value_change: Decimal
+    capital_gain: Decimal
+    manual_adjustment: Decimal
+    total_pnl: Decimal
+    avg_balance: Decimal
+    current_balance: Decimal
+    annualized_yield_pct: Decimal | None
+    ftp_rate_pct: Decimal
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
+    proportion: Decimal | None
+    assets_count: int
+
+
 class PnlByBusinessYtdPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -257,6 +276,7 @@ class PnlByBusinessYtdPayload(BaseModel):
     sample_filled: bool = False
     sample_fill_method: str | None = None
     classified_parent_total_pnl: Decimal = Decimal("0")
+    summary: PnlByBusinessYtdSummary
     unallocated_pnl: Decimal = Decimal("0")
     unallocated_abs_pnl: Decimal = Decimal("0")
     unallocated_row_count: int = 0
@@ -458,6 +478,7 @@ PnlByBusinessAnalysisDimension = Literal[
     "monthly",
     "portfolio",
     "accounting",
+    "currency",
     "cost_center",
     "instrument",
     "bond_bucket",

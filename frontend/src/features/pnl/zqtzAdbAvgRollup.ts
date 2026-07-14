@@ -7,7 +7,7 @@
 export const ADB_AVG_ROLLUP_CHILDREN_BY_PARENT: Record<string, readonly string[]> = {
   非底层投资资产: ["信托计划", "证券业资管计划"],
   证券业资管计划: [
-    "其中：结构化融资（券商）",
+    "其中：结构化产业基金（产业基金部分）",
     "其中：外币委外",
     "其中：本币委外（市值法）",
     "其中：本币专户（成本法）",

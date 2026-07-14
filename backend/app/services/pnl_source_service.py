@@ -10,6 +10,7 @@ from pathlib import Path
 
 import xlrd
 from backend.app.core_finance.field_normalization import resolve_pnl_source_currency
+from backend.app.core_finance.pnl import FI_CUMULATIVE_REALIZED_517_EVENT_TYPE
 from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
@@ -17,7 +18,7 @@ from openpyxl import load_workbook
 
 SUPPORTED_PNL_SOURCE_FAMILIES = ("pnl", "pnl_514", "pnl_516", "pnl_517")
 MANIFEST_ELIGIBLE_STATUSES = {"completed", "rerun"}
-PNL_SOURCE_RULE_VERSION = "rv_pnl_source_parse_v1"
+PNL_SOURCE_RULE_VERSION = "rv_pnl_source_parse_v2"
 
 
 @dataclass(slots=True, frozen=True)
@@ -376,6 +377,7 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
             "fair_value_change_516": _to_decimal(raw_row.get("T损益516")) * Decimal("-1"),
             "capital_gain_517": _to_decimal(raw_row.get("投资收益517")),
             "manual_adjustment": Decimal("0"),
+            "event_type": FI_CUMULATIVE_REALIZED_517_EVENT_TYPE,
             "currency_basis": currency_basis,
             "source_version": snapshot.source_version,
             "rule_version": PNL_SOURCE_RULE_VERSION,
@@ -451,23 +453,24 @@ def _parse_nonstd_worksheet_rows(
         if not account_code and not asset_code:
             continue
 
-        rows.append(
-            {
-                "voucher_date": _cell_text(raw_row.get("账务日期")),
-                "account_code": account_code,
-                "asset_code": asset_code,
-                "portfolio_name": _cell_text(raw_row.get("投资组合")),
-                "cost_center": _cell_text(raw_row.get("成本中心")),
-                "dc_flag": _cell_text(raw_row.get("借贷标识") or raw_row.get("方向")),
-                "event_type": _cell_text(raw_row.get("会计事件")),
-                "raw_amount": _to_decimal(raw_row.get("金额") if raw_row.get("金额") not in (None, "") else raw_row.get("AMOUNT")),
-                "source_file": snapshot.path.name,
-                "source_version": snapshot.source_version,
-                "rule_version": PNL_SOURCE_RULE_VERSION,
-                "ingest_batch_id": snapshot.ingest_batch_id,
-                "trace_id": f"{snapshot.path.name}:{bucket}:{len(rows) + 1}",
-            }
-        )
+        parsed_row = {
+            "voucher_date": _cell_text(raw_row.get("账务日期")),
+            "account_code": account_code,
+            "asset_code": asset_code,
+            "portfolio_name": _cell_text(raw_row.get("投资组合")),
+            "cost_center": _cell_text(raw_row.get("成本中心")),
+            "dc_flag": _cell_text(raw_row.get("借贷标识") or raw_row.get("方向")),
+            "event_type": _cell_text(raw_row.get("会计事件")),
+            "raw_amount": _to_decimal(raw_row.get("金额") if raw_row.get("金额") not in (None, "") else raw_row.get("AMOUNT")),
+            "source_file": snapshot.path.name,
+            "source_version": snapshot.source_version,
+            "rule_version": PNL_SOURCE_RULE_VERSION,
+            "ingest_batch_id": snapshot.ingest_batch_id,
+            "trace_id": f"{snapshot.path.name}:{bucket}:{len(rows) + 1}",
+        }
+        if asset_code.upper().startswith("J1"):
+            parsed_row["fx_base_currency"] = "USD"
+        rows.append(parsed_row)
     return rows
 
 

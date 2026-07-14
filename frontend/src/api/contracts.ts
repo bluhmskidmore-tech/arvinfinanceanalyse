@@ -3402,6 +3402,23 @@ export type PnlByBusinessYtdUnallocatedItem = {
   abs_pnl: string;
 };
 
+export type PnlByBusinessYtdSummary = {
+  interest_income: string;
+  fair_value_change: string;
+  capital_gain: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  avg_balance: string;
+  current_balance: string;
+  annualized_yield_pct: string | null;
+  ftp_rate_pct: string;
+  ftp_cost: string | null;
+  ftp_net_pnl: string | null;
+  ftp_net_annualized_yield_pct: string | null;
+  proportion: string | null;
+  assets_count: number;
+};
+
 export type PnlByBusinessYtdPayload = {
   year: number;
   period_type: "yearly";
@@ -3414,6 +3431,7 @@ export type PnlByBusinessYtdPayload = {
   sample_filled?: boolean;
   sample_fill_method?: string | null;
   classified_parent_total_pnl?: string;
+  summary?: PnlByBusinessYtdSummary;
   unallocated_pnl?: string;
   unallocated_abs_pnl?: string;
   unallocated_row_count?: number;
@@ -3569,6 +3587,7 @@ export type PnlByBusinessAnalysisDimension =
   | "monthly"
   | "portfolio"
   | "accounting"
+  | "currency"
   | "cost_center"
   | "instrument"
   | "bond_bucket"

@@ -1017,6 +1017,7 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
     }
     assert ("monthly", "", "") in record_keys
     assert ("analysis", "bond_bucket", "") in record_keys
+    assert ("analysis", "currency", "asset_zqtz_policy_financial_bond") in record_keys
     assert ("analysis", "instrument", "asset_zqtz_policy_financial_bond") in record_keys
     assert summary["records"] == len(FakePnlRepository.written_records)
 
@@ -1024,6 +1025,19 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
     monthly_payload = json.loads(str(monthly_record["payload_json"]))
     assert monthly_payload["as_of_date"] == "2025-12-31"
     assert monthly_payload["months"][0]["month_key"] == "2025-12"
+
+    currency_record = next(
+        record
+        for record in FakePnlRepository.written_records
+        if record["result_kind"] == "analysis"
+        and record["dimension"] == "currency"
+        and record["business_key"] == "asset_zqtz_policy_financial_bond"
+    )
+    currency_payload = json.loads(str(currency_record["payload_json"]))
+    assert [
+        (row["dimension_key"], row["dimension_label"], row["total_pnl"])
+        for row in currency_payload["rows"]
+    ] == [("CNY", "人民币", "100.00")]
 
 
 def test_pnl_by_business_precompute_invalidates_after_source_change(tmp_path, monkeypatch):
@@ -1069,7 +1083,13 @@ def test_pnl_by_business_precompute_invalidates_after_source_change(tmp_path, mo
     try:
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', 'P002', 'FI Desk', 'CC100', 'T', 'FVTPL', 'CNY',
               5.00, 0.00, 0.00, 0.00, 5.00,
               'src-v2', 'rv_pnl_phase2_materialize_v1', 'batch-fi-2', 'trace-fi-2'
@@ -1878,7 +1898,13 @@ def test_pnl_by_business_allows_cost_center_relaxed_trace_after_strict_miss(tmp_
     try:
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', 'CCRELAX.IB', 'FI Desk', 'CC-PNL', 'A', 'FVOCI', 'CNY',
               15.00, 0.00, 0.00, 0.00, 15.00,
               'fi-relaxed-v1', 'rv_pnl_phase2_materialize_v1', 'ib-relaxed', 'trace-fi-relaxed'
@@ -1925,7 +1951,13 @@ def test_pnl_by_business_uses_relaxed_balance_amount_when_strict_business_type_i
     try:
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', 'CCBLANK.IB', 'FI Desk', 'CC-PNL', 'A', 'FVOCI', 'CNY',
               20.00, 0.00, 0.00, 0.00, 20.00,
               'fi-relaxed-blank-v1', 'rv_pnl_phase2_materialize_v1', 'ib-relaxed-blank', 'trace-fi-relaxed-blank'
@@ -2009,7 +2041,13 @@ def test_pnl_by_business_keeps_ambiguous_relaxed_trace_untraced(tmp_path, monkey
     try:
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', 'CCAMBIG.IB', 'FI Desk', 'CC-PNL', 'A', 'FVOCI', 'CNY',
               30.00, 0.00, 0.00, 0.00, 30.00,
               'fi-relaxed-ambiguous-v1', 'rv_pnl_phase2_materialize_v1', 'ib-relaxed-ambiguous',
@@ -2103,7 +2141,13 @@ def test_pnl_by_business_summarizes_untraced_balance_evidence(tmp_path, monkeypa
     try:
         conn.executemany(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', ?, 'FI Desk', ?, ?, 'FVOCI', 'CNY',
               ?, ?, 0.00, 0.00, ?,
               'fi-untraced-evidence-v1', 'rv_pnl_phase2_materialize_v1', 'ib-untraced-evidence', ?
@@ -2200,6 +2244,35 @@ def test_pnl_by_business_ytd_total_matches_formal_fact_rollups(tmp_path, monkeyp
     assert result["period_end_date"] == "2025-12-31"
     assert "fact_formal_pnl_fi" in result["source_tables"]
     get_settings.cache_clear()
+
+
+def test_analysis_classification_uses_formal_source_metadata_when_position_is_absent() -> None:
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+
+    classification = pnl_service._analysis_classification_for_pnl_row(
+        pnl_row={
+            "source_kind": "formal_fi",
+            "report_date": "2026-03-31",
+            "instrument_code": "2605287",
+            "instrument_name": "26山东债19",
+            "asset_class": "地方政府债券",
+            "portfolio_name": "FIOA",
+            "cost_center": "50101002",
+            "currency_basis": "CNY",
+            "invest_type_std": "A",
+            "accounting_basis": "FVOCI",
+        },
+        balance_lookup={},
+        historical_balance_lookup={},
+        sub_type_by_date_code={},
+        fallback_date="2026-03-31",
+    )
+    matched_keys = {
+        str(row["row_key"])
+        for row in pnl_service.match_zqtz_asset_bond_rows(classification)
+    }
+
+    assert "asset_zqtz_local_government_bond" in matched_keys
 
 
 def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypatch):
@@ -2354,6 +2427,22 @@ def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypa
     assert result["sample_filled"] is True
     assert result["sample_fill_method"] == "observed_days_scaled_to_calendar"
     assert result["classified_parent_total_pnl"] == "300.00"
+    assert result["summary"] == {
+        "interest_income": "300.00",
+        "fair_value_change": "0.00",
+        "capital_gain": "0.00",
+        "manual_adjustment": "0.00",
+        "total_pnl": "300.00",
+        "avg_balance": "1500.00",
+        "current_balance": "2200.00",
+        "annualized_yield_pct": "123.728814",
+        "ftp_rate_pct": "1.750000",
+        "ftp_cost": "4.24",
+        "ftp_net_pnl": "295.76",
+        "ftp_net_annualized_yield_pct": "121.978814",
+        "proportion": "0.983607",
+        "assets_count": 1,
+    }
     assert result["unallocated_pnl"] == "5.00"
     assert result["unallocated_abs_pnl"] == "9.00"
     assert result["unallocated_row_count"] == 2
@@ -2572,6 +2661,55 @@ def test_pnl_by_business_ytd_reconciles_precise_aggregates_before_rounding():
     assert payload.reconciliation_delta == Decimal("0.00")
 
 
+def test_pnl_by_business_ytd_summary_aggregates_parent_amounts_before_rounding():
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    category_module = load_module(
+        "backend.app.core_finance.zqtz_asset_bond_category",
+        "backend/app/core_finance/zqtz_asset_bond_category.py",
+    )
+    row_defs = [
+        row
+        for row in category_module.ZQTZ_ASSET_BOND_ROWS
+        if category_module.is_parent_zqtz_business_row(
+            str(row["row_key"]),
+            str(row["row_label"]),
+            row.get("source_note"),
+        )
+    ][:2]
+    groups = {}
+    for index, row_def in enumerate(row_defs):
+        group = pnl_service._new_balance_movement_pnl_group(row_def)
+        groups[str(row_def["row_key"])] = group
+        pnl_service._merge_balance_movement_business_record(
+            groups,
+            row_def,
+            {
+                "bond_code": f"PARENT-PRECISION-{index}",
+                "interest_income": Decimal("0.006"),
+                "fair_value_change": Decimal("0"),
+                "capital_gain": Decimal("0"),
+                "manual_adjustment": Decimal("0"),
+                "total_pnl": Decimal("0.006"),
+            },
+        )
+
+    payload = pnl_service._build_pnl_by_business_ytd_payload_from_groups(
+        year=2025,
+        loaded_dates=["2025-01-31"],
+        total_pnl=Decimal("0.012"),
+        groups=groups,
+        duckdb_path="unused.duckdb",
+        source_tables=["test_source"],
+        ftp_rate_pct=Decimal("0"),
+        balance_rows=[],
+        unallocated_items=[],
+    )
+
+    assert payload.classified_parent_total_pnl == Decimal("0.01")
+    assert payload.summary.interest_income == Decimal("0.01")
+    assert payload.summary.total_pnl == Decimal("0.01")
+
+
 def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
@@ -2589,7 +2727,13 @@ def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tm
         )
         conn.executemany(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               ?, 'SWITCH001', 'Financial Desk', 'CC-SWITCH', 'T', 'FVTPL', 'CNY',
               ?, 0.00, 0.00, 0.00, ?,
               'fi-switch-v1', 'rv_pnl_phase2_materialize_v1', 'ib-switch', ?
@@ -2602,7 +2746,13 @@ def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tm
         )
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-01-31', 'FUTURE001', 'Future Desk', 'CC-FUTURE', 'T', 'FVTPL', 'CNY',
               0.07, 0.00, 0.00, 0.00, 0.07,
               'fi-future-v1', 'rv_pnl_phase2_materialize_v1', 'ib-future', 'trace-future-jan'
@@ -2864,7 +3014,13 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
     try:
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', 'P001', 'Rate Desk', 'CC-RATE', 'T', 'FVTPL', 'CNY',
               100.00, 0.00, 25.50, 0.00, 125.50,
               'fi-policy-adjust-base', 'rv_pnl_phase2_materialize_v1', 'ib-policy-adjust-base', 'trace-policy-adjust-base'
@@ -2983,6 +3139,28 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
     analysis_row = analysis_response.json()["result"]["rows"][0]
     assert analysis_row["manual_adjustment"] == "25.00"
     assert analysis_row["total_pnl"] == "150.50"
+
+    accounting_response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={
+            "year": 2025,
+            "as_of_date": "2025-12-31",
+            "business_key": "asset_zqtz_policy_financial_bond",
+            "dimension": "accounting",
+        },
+    )
+    assert accounting_response.status_code == 200
+    accounting_rows = {
+        row["dimension_key"]: row for row in accounting_response.json()["result"]["rows"]
+    }
+    manual_row = accounting_rows["manual_adjustment"]
+    assert manual_row["dimension_label"] == "手工调整"
+    assert manual_row["manual_adjustment"] == "25.00"
+    assert manual_row["total_pnl"] == "25.00"
+    assert manual_row["avg_balance"] == "0.00"
+    assert manual_row["ftp_cost"] == "0.00"
+    assert manual_row["ftp_net_pnl"] == "25.00"
+    assert manual_row["ftp_net_annualized_yield_pct"] is None
     get_settings.cache_clear()
 
 
@@ -3007,7 +3185,13 @@ def test_pnl_by_business_manual_adjustment_request_approved_is_forced_pending(
     try:
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', 'P001', 'Rate Desk', 'CC-RATE', 'T', 'FVTPL', 'CNY',
               100.00, 0.00, 25.50, 0.00, 125.50,
               'fi-policy-pending-base', 'rv_pnl_phase2_materialize_v1', 'ib-policy-pending-base', 'trace-policy-pending-base'
@@ -3362,6 +3546,55 @@ def test_pnl_by_business_analysis_contract_reconciles_selected_business(tmp_path
     assert row["ftp_net_annualized_yield_pct"] == "4.215591"
     assert row["asset_count"] == 4
 
+    currency_response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={
+            "year": 2025,
+            "as_of_date": "2025-12-31",
+            "business_key": "asset_zqtz_detail_securities_asset_management_plan",
+            "dimension": "currency",
+        },
+    )
+    assert currency_response.status_code == 200
+    currency_result = currency_response.json()["result"]
+    assert currency_result["dimension"] == "currency"
+    currency_rows = {item["dimension_key"]: item for item in currency_result["rows"]}
+    assert set(currency_rows) == {"CNY", "USD"}
+    assert currency_rows["CNY"]["dimension_label"] == "人民币"
+    assert currency_rows["CNY"]["total_pnl"] == "24.00"
+    assert currency_rows["CNY"]["avg_balance"] == "6000.00"
+    assert currency_rows["CNY"]["current_balance"] == "8012.00"
+    assert currency_rows["CNY"]["ftp_cost"] == "8.92"
+    assert currency_rows["CNY"]["ftp_net_pnl"] == "15.08"
+    assert currency_rows["CNY"]["asset_count"] == 3
+    assert currency_rows["USD"]["dimension_label"] == "美元（折人民币）"
+    assert currency_rows["USD"]["total_pnl"] == "14.00"
+    assert currency_rows["USD"]["avg_balance"] == "1500.00"
+    assert currency_rows["USD"]["current_balance"] == "2000.00"
+    assert currency_rows["USD"]["ftp_cost"] == "2.23"
+    assert currency_rows["USD"]["ftp_net_pnl"] == "11.77"
+    assert currency_rows["USD"]["asset_count"] == 1
+    assert sum(Decimal(item["total_pnl"]) for item in currency_result["rows"]) == Decimal("38.00")
+    assert sum(Decimal(item["avg_balance"]) for item in currency_result["rows"]) == Decimal("7500.00")
+    assert sum(Decimal(item["current_balance"]) for item in currency_result["rows"]) == Decimal("10012.00")
+    assert sum(Decimal(item["ftp_cost"]) for item in currency_result["rows"]) == Decimal("11.15")
+    assert sum(Decimal(item["ftp_net_pnl"]) for item in currency_result["rows"]) == Decimal("26.85")
+
+    jm_currency_response = client.get(
+        "/api/pnl/by-business-analysis",
+        params={
+            "year": 2025,
+            "as_of_date": "2025-12-31",
+            "business_key": "asset_zqtz_other_debt_financing",
+            "dimension": "currency",
+        },
+    )
+    assert jm_currency_response.status_code == 200
+    assert [
+        (item["dimension_key"], item["dimension_label"], item["total_pnl"])
+        for item in jm_currency_response.json()["result"]["rows"]
+    ] == [("CNY", "人民币", "10.00")]
+
     empty_response = client.get(
         "/api/pnl/by-business-analysis",
         params={
@@ -3399,7 +3632,13 @@ def test_pnl_by_business_analysis_bond_bucket_and_ftp_contract(tmp_path, monkeyp
         )
         conn.executemany(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', ?, ?, ?, 'T', 'FVTPL', 'CNY',
               ?, 0.00, 0.00, 0.00, ?,
               'fi-bucket-v1', 'rv_pnl_phase2_materialize_v1', 'ib-bucket', 'trace-fi-bucket'
@@ -3512,7 +3751,13 @@ def test_pnl_by_business_keeps_same_instrument_positions_separate(tmp_path, monk
     try:
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', '240001.IB', 'Other Desk', 'CC300', 'T', 'FVTPL', 'CNY',
               20.00, 0.00, 0.00, 0.00, 20.00,
               'fi-same-instrument-v1', 'rv_pnl_phase2_materialize_v1', 'ib-same-instrument', 'trace-fi-same-instrument'
@@ -3662,7 +3907,13 @@ def test_pnl_by_business_balance_lookup_stays_on_requested_report_date(tmp_path)
         )
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values
             ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'A', 'FVOCI', 'CNY', 10, 0, 0, 0, 10, 'sv', 'rv', 'batch', 'tr')
             """
         )
@@ -3782,7 +4033,13 @@ def test_pnl_by_business_summary_rows_stay_on_requested_report_date(tmp_path):
         )
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values
             ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'A', 'FVOCI', 'CNY', 10, 0, 0, 0, 10, 'sv', 'rv', 'batch', 'tr')
             """
         )
@@ -3870,7 +4127,13 @@ def test_pnl_by_business_summary_rows_batch_groups_by_report_date(tmp_path):
         )
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values
             ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'A', 'FVOCI', 'CNY', 10, 0, 0, 0, 10, 'sv', 'rv', 'batch', 'tr'),
             ('2026-03-31', 'BOND-002', 'FIOA', 'CC', 'H', 'FVOCI', 'CNY', 20, 0, 0, 0, 20, 'sv', 'rv', 'batch', 'tr')
             """
@@ -3917,7 +4180,9 @@ def test_tpl_pnl_summary_batch_keeps_report_date_grain(tmp_path):
         )
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values
+            insert into fact_formal_pnl_fi (
+              report_date, accounting_basis, fair_value_change_516, total_pnl
+            ) values
             ('2026-04-30', 'FVTPL', 10, 12),
             ('2026-04-30', 'FVOCI', 99, 99),
             ('2026-03-31', 'TPL', 1, 2)
@@ -4518,7 +4783,7 @@ def test_pnl_dates_returns_union_and_constituent_lists(tmp_path, monkeypatch):
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result_meta"]["result_kind"] == "pnl.dates"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
     assert payload["result"] == {
         "report_dates": ["2026-02-28", "2026-01-31", "2025-12-31"],
         "formal_fi_report_dates": ["2026-01-31", "2025-12-31"],
@@ -4541,8 +4806,8 @@ def test_pnl_data_returns_shared_date_with_two_explicit_lists_and_report_date_bu
     assert payload["result_meta"]["result_kind"] == "pnl.data"
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
-    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v2"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v3"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
     assert payload["result"]["report_date"] == "2025-12-31"
     assert len(payload["result"]["formal_fi_rows"]) == 1
     assert len(payload["result"]["nonstd_bridge_rows"]) == 1
@@ -4594,8 +4859,8 @@ def test_pnl_overview_returns_backend_owned_aggregation_and_report_date_build_li
     assert payload["result_meta"]["result_kind"] == "pnl.overview"
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
-    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v2"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v3"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
     assert payload["result"] == {
         "report_date": "2025-12-31",
         "formal_fi_row_count": 1,
@@ -4629,8 +4894,8 @@ def test_pnl_overview_keeps_fixed_cache_version_even_if_manifest_contains_cache_
     payload = response.json()
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
-    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v2"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v3"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
     get_settings.cache_clear()
 
 
@@ -4672,7 +4937,7 @@ def test_pnl_data_prefers_report_date_specific_build_lineage_over_latest_manifes
     assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
     assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
     assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
     get_settings.cache_clear()
 
 
@@ -4699,7 +4964,7 @@ def test_pnl_data_uses_report_date_specific_build_lineage_without_manifest(
     assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
     assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
     assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
     get_settings.cache_clear()
 
 
@@ -4741,7 +5006,7 @@ def test_pnl_overview_prefers_report_date_specific_build_lineage_over_latest_man
     assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
     assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
     assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
     get_settings.cache_clear()
 
 
@@ -4764,10 +5029,10 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert payload["result_meta"]["result_kind"] == "pnl.bridge"
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
-    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v3"
     assert "start_pack" not in payload["result_meta"]["cache_version"]
     assert payload["result_meta"]["cache_version"] == (
-        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v2__"
+        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v3__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
         "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
     )
@@ -4895,10 +5160,10 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert response.status_code == 200
     payload = response.json()
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1__sv-z-current__sv-z-prior"
-    assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v2"
+    assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v3"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
     assert payload["result_meta"]["cache_version"] == (
-        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v2__"
+        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v3__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
         "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
     )
@@ -5018,7 +5283,7 @@ def test_pnl_bridge_result_meta_merges_report_date_specific_balance_build_lineag
         "fi-shared-v1__nonstd-shared-v1__sv_balance_current__sv_balance_prior"
     )
     assert payload["result_meta"]["rule_version"] == (
-        "rv_balance_current__rv_balance_prior__rv_pnl_phase2_materialize_v2"
+        "rv_balance_current__rv_balance_prior__rv_pnl_phase2_materialize_v3"
     )
     assert payload["result_meta"]["vendor_version"] == "vv_balance__vv_none"
     assert payload["result"]["warnings"][0] == (
@@ -5078,7 +5343,7 @@ def test_pnl_bridge_prefers_latest_valid_balance_build_when_newer_completed_row_
         "fi-shared-v1__nonstd-shared-v1__sv_balance_current_valid__sv_balance_prior"
     )
     assert payload["result_meta"]["rule_version"] == (
-        "rv_balance_current_valid__rv_balance_prior__rv_pnl_phase2_materialize_v2"
+        "rv_balance_current_valid__rv_balance_prior__rv_pnl_phase2_materialize_v3"
     )
     assert not any(
         "Balance lineage fallback used for report_date=2025-12-31" in warning
@@ -6036,7 +6301,13 @@ def test_pnl_dates_accepts_single_available_fact_table(tmp_path, monkeypatch):
         )
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', 'P001', 'Rate Desk', 'CC-RATE', 'T', 'FVTPL', 'CNY',
               100.00, 0.00, 25.50, 0.00, 125.50,
               'fi-only-v1', 'rv_pnl_phase2_materialize_v1', 'ib-fi-only', 'trace-fi-only'
@@ -6476,7 +6747,13 @@ def _seed_pnl_by_business_rows(duckdb_path: Path) -> None:
         )
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', '250002.IB', 'FI Desk', 'CC200', 'H', 'AC', 'CNY',
               8.00, 0.00, 2.00, 0.00, 10.00,
               'fi-extra-v1', 'rv_pnl_phase2_materialize_v1', 'ib-extra', 'trace-fi-extra'
@@ -6485,7 +6762,13 @@ def _seed_pnl_by_business_rows(duckdb_path: Path) -> None:
         )
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-12-31', 'NO-ZQTZ.IB', 'FI Desk', 'CC999', 'H', 'AC', 'CNY',
               4.00, 0.00, 0.00, 0.00, 4.00,
               'fi-unmatched-v1', 'rv_pnl_phase2_materialize_v1', 'ib-unmatched', 'trace-fi-unmatched'
@@ -6820,7 +7103,13 @@ def _seed_pnl_by_business_month(duckdb_path: Path) -> None:
     try:
         conn.execute(
             """
-            insert into fact_formal_pnl_fi values (
+            insert into fact_formal_pnl_fi (
+              report_date, instrument_code, portfolio_name, cost_center,
+              invest_type_std, accounting_basis, currency_basis,
+              interest_income_514, fair_value_change_516, capital_gain_517,
+              manual_adjustment, total_pnl, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
               '2025-11-30', '240001.IB', 'FI Desk', 'CC100', 'T', 'FVTPL', 'CNY',
               5.00, 1.00, 0.00, 0.00, 6.00,
               'fi-nov-v1', 'rv_pnl_phase2_materialize_v1', 'ib-nov', 'trace-fi-nov'

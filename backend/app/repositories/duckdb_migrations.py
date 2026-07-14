@@ -312,6 +312,12 @@ def _v33_risk_tensor_materialized_metrics(conn: duckdb.DuckDBPyConnection) -> No
     _run_sql_slice(conn, "35_risk_tensor_materialized_metrics.sql")
 
 
+def _v34_pnl_source_classification_metadata(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _main_table_exists(conn, "fact_formal_pnl_fi"):
+        _run_sql_slice(conn, "07_pnl_materialize.sql")
+    _run_sql_slice(conn, "36_pnl_source_classification_metadata.sql")
+
+
 def _v30_fact_snapshot_indexes(conn: duckdb.DuckDBPyConnection) -> None:
     text = (REGISTRY_DIR / "32_fact_snapshot_indexes.sql").read_text(encoding="utf-8")
     for statement in parse_registry_sql_text(text):
@@ -424,6 +430,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(31, "Market breadth daily counts for Livermore gate", _v31_market_breadth_daily)
     registry.register(32, "Recover read indexes and constrain governed PnL/FX grains", _v32_add_table_constraints)
     registry.register(33, "Materialize governed Risk Tensor read metrics and upstream lineage", _v33_risk_tensor_materialized_metrics)
+    registry.register(34, "Preserve formal FI source classification metadata", _v34_pnl_source_classification_metadata)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

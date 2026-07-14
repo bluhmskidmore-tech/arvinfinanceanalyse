@@ -286,6 +286,20 @@ export function formatYuanAsWanUnit(raw: string | number | null | undefined) {
   return `${formatPnlWan(value)} 万元`;
 }
 
+function formatYuanByMateriality(raw: string | number | null | undefined): string {
+  const value = numeric(raw);
+  if (value === null) {
+    return "-";
+  }
+  if (Math.abs(value) < YUAN_PER_WAN) {
+    return `${value.toLocaleString("zh-CN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} 元`;
+  }
+  return formatYuanAsWanUnit(value);
+}
+
 function formatYuanAsYiCell(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
@@ -725,6 +739,7 @@ function buildStateSurfaces(input: {
     sample_filled?: boolean;
     sample_fill_method?: string | null;
     unallocated_pnl?: string;
+    unallocated_abs_pnl?: string;
     unallocated_row_count?: number;
     reconciliation_delta?: string;
   };
@@ -777,9 +792,9 @@ function buildStateSurfaces(input: {
       key: "unallocated",
       variant: "definition-pending",
       title: "存在未分类损益",
-      description: `${unallocatedRowCount} 条损益未命中父级业务分类，金额 ${formatYuanAsWanUnit(
+      description: `${unallocatedRowCount} 条损益未命中父级业务分类；净额 ${formatYuanByMateriality(
         diagnostics?.unallocated_pnl,
-      )}；未对 A/T 口径做推测映射。`,
+      )}${diagnostics?.unallocated_abs_pnl ? `，绝对额 ${formatYuanByMateriality(diagnostics.unallocated_abs_pnl)}` : ""}；未对 A/T 口径做推测映射。`,
     });
   }
 
@@ -821,7 +836,13 @@ function buildStateSurfaces(input: {
     });
   }
 
-  if (meta?.quality_flag === "warning" || input.activeDataStatus === "预警") {
+  const hasSpecificQualityWarning = surfaces.some((surface) =>
+    ["coverage-partial", "unallocated", "reconciliation-break"].includes(surface.key),
+  );
+  if (
+    !hasSpecificQualityWarning &&
+    (meta?.quality_flag === "warning" || input.activeDataStatus === "预警")
+  ) {
     surfaces.push({
       key: "warning",
       variant: "stale",

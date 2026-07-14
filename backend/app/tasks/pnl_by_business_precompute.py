@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from backend.app.config.product_category_mapping import resolve_product_category_ftp_rate_pct
+from backend.app.core_finance.field_normalization import original_asset_currency_from_instrument_code
 from backend.app.core_finance.pnl import compute_pnl_by_business_yield_and_ftp
 from backend.app.core_finance.zqtz_asset_bond_category import (
     ZQTZ_ASSET_BOND_ROWS,
@@ -38,6 +39,7 @@ PNL_BY_BUSINESS_KEYED_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension,
     "monthly",
     "portfolio",
     "accounting",
+    "currency",
     "cost_center",
     "instrument",
 )
@@ -901,18 +903,20 @@ def _analysis_classification_for_pnl_row(
     if _norm_text(pnl_row.get("source_kind")) == "nonstd_bridge":
         return _v1_nonstd_classification_row(report_date=report_date or fallback_date, code=code, sub_type=sub_type)
     invest = _norm_text(pnl_row.get("invest_type_std")) or "unclassified"
+    source_asset_class = _norm_text(pnl_row.get("asset_class"))
+    source_instrument_name = _norm_text(pnl_row.get("instrument_name"))
     classification = _v1_fi_classification_row(
         report_date=report_date or fallback_date,
         row={
             "instrument_code": code,
             "currency_basis": currency_basis,
             "currency_code": currency_basis,
-            "instrument_name": code,
+            "instrument_name": source_instrument_name or code,
             "accounting_basis": _norm_text(pnl_row.get("accounting_basis")),
         },
         code=code,
-        asset_class=invest,
-        sub_type=sub_type or invest,
+        asset_class=source_asset_class or invest,
+        sub_type=sub_type or source_asset_class or invest,
     )
     classification["accounting_basis"] = _norm_text(pnl_row.get("accounting_basis"))
     return classification
@@ -933,6 +937,13 @@ def _analysis_classification_from_balance_row(row: dict[str, object]) -> dict[st
         "currency_code": _norm_text(row.get("currency_code")),
     }
 
+
+def _analysis_original_currency_dimension(instrument_code: object) -> tuple[str, str]:
+    if original_asset_currency_from_instrument_code(instrument_code) == "USD":
+        return "USD", "美元（折人民币）"
+    return "CNY", "人民币"
+
+
 def _analysis_dimension_for_pnl_row(
     row: dict[str, object],
     classification: dict[str, object],
@@ -945,6 +956,8 @@ def _analysis_dimension_for_pnl_row(
         return _dimension_key_label(row.get("portfolio_name"), "未填组合")
     if dimension == "accounting":
         return _dimension_key_label(row.get("accounting_basis") or classification.get("accounting_basis"), "未填会计分类")
+    if dimension == "currency":
+        return _analysis_original_currency_dimension(row.get("instrument_code"))
     if dimension == "cost_center":
         return _dimension_key_label(row.get("cost_center"), "未填成本中心")
     if dimension == "bond_bucket":
@@ -970,6 +983,8 @@ def _analysis_dimension_for_balance_row(
         return _dimension_key_label(row.get("portfolio_name"), "未填组合")
     if dimension == "accounting":
         return _dimension_key_label(row.get("accounting_basis"), "未填会计分类")
+    if dimension == "currency":
+        return _analysis_original_currency_dimension(row.get("instrument_code"))
     if dimension == "cost_center":
         return _dimension_key_label(row.get("cost_center"), "未填成本中心")
     if dimension == "bond_bucket":

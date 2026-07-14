@@ -72,6 +72,19 @@
   gap: 8px;
 }
 
+.pnl-by-business-state-surface--compact-governance {
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 12px;
+  padding-block: 7px;
+}
+
+@media (max-width: 720px) {
+  .pnl-by-business-state-surface--compact-governance {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .pnl-by-business-hero-report-date {
   display: flex;
   flex-wrap: wrap;

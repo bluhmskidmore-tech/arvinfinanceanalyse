@@ -13,6 +13,7 @@ from .accounting_basis_constants import (
 NormalizedInvestTypeStd = Literal["H", "A", "T"]
 NormalizedAccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
 NormalizedCurrencyBasis = Literal["CNY", "CNX"]
+OriginalAssetCurrency = Literal["CNY", "USD"]
 
 # Re-export: canonical tokens live in ``accounting_basis_constants`` (leaf module)
 # to avoid import cycles with ``config.classification_rules``.
@@ -23,9 +24,11 @@ __all__ = [
     "NormalizedAccountingBasis",
     "NormalizedCurrencyBasis",
     "NormalizedInvestTypeStd",
+    "OriginalAssetCurrency",
     "derive_accounting_basis_value",
     "is_approved_status",
     "normalize_currency_basis_value",
+    "original_asset_currency_from_instrument_code",
     "resolve_pnl_source_currency",
 ]
 
@@ -55,6 +58,11 @@ def normalize_currency_basis_value(value: str | None) -> NormalizedCurrencyBasis
     if normalized in CNY_CURRENCIES or upper in {"CNY", "RMB", "CNH"}:
         return "CNY"
     raise ValueError(f"Unsupported currency_basis={value}")
+
+
+def original_asset_currency_from_instrument_code(value: object) -> OriginalAssetCurrency:
+    instrument_code = str(value or "").strip().upper()
+    return "USD" if instrument_code.startswith("J1") else "CNY"
 
 
 def resolve_pnl_source_currency(value: str | None) -> tuple[NormalizedCurrencyBasis, str | None]:

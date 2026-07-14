@@ -8,7 +8,10 @@ from uuid import uuid4
 
 from backend.app.config.product_category_mapping import resolve_product_category_ftp_rate_pct
 from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCOUNT_PREFIXES
-from backend.app.core_finance.field_normalization import is_approved_status
+from backend.app.core_finance.field_normalization import (
+    is_approved_status,
+    original_asset_currency_from_instrument_code,
+)
 from backend.app.core_finance.pnl import (
     FI_514_VAT_DIVISOR,
     PnlByBusinessMonthlyMeasure,
@@ -57,6 +60,7 @@ from backend.app.schemas.pnl import (
     PnlByBusinessUntracedBreakdownRow,
     PnlByBusinessYtdItem,
     PnlByBusinessYtdPayload,
+    PnlByBusinessYtdSummary,
     PnlByBusinessYtdUnallocatedBreakdownRow,
     PnlByBusinessYtdUnallocatedItem,
     PnlDataPayload,
@@ -103,6 +107,7 @@ PNL_BY_BUSINESS_KEYED_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension,
     "monthly",
     "portfolio",
     "accounting",
+    "currency",
     "cost_center",
     "instrument",
 )
@@ -688,6 +693,13 @@ def _build_pnl_by_business_ytd_payload_from_groups(
     )
     source_total_pnl = _quantize_decimal(total_pnl)
     classified_parent_total_pnl = _quantize_decimal(precise_classified_parent_total_pnl)
+    summary = _pnl_by_business_ytd_summary_from_items(
+        items,
+        groups=groups,
+        source_total_pnl=total_pnl,
+        calendar_days=calendar_days,
+        ftp_rate_pct=ftp_rate_pct,
+    )
     precise_unallocated_items = [
         item
         if isinstance(item, PnlByBusinessYtdUnallocatedItem)
@@ -730,6 +742,7 @@ def _build_pnl_by_business_ytd_payload_from_groups(
         sample_filled=sample_filled,
         sample_fill_method=sample_fill_method,
         classified_parent_total_pnl=classified_parent_total_pnl,
+        summary=summary,
         unallocated_pnl=unallocated_pnl,
         unallocated_abs_pnl=unallocated_abs_pnl,
         unallocated_row_count=len(normalized_unallocated_items),
@@ -801,6 +814,78 @@ def _ytd_business_item_from_group(
             else None
         ),
         assets_count=len(group["asset_codes"]) if group["asset_codes"] else int(group["row_count"]),
+    )
+
+
+def _pnl_by_business_ytd_summary_from_items(
+    items: list[PnlByBusinessYtdItem],
+    *,
+    groups: dict[str, dict[str, object]],
+    source_total_pnl: Decimal,
+    calendar_days: int,
+    ftp_rate_pct: Decimal,
+) -> PnlByBusinessYtdSummary:
+    parent_items = [
+        item
+        for item in items
+        if is_parent_zqtz_business_row(item.row_key, item.business_type, item.source_note)
+    ]
+    parent_groups = [
+        group
+        for group in groups.values()
+        if is_parent_zqtz_business_row(
+            str(group["row_key"]),
+            str(group["business_type"]),
+            group.get("source_note"),
+        )
+    ]
+    interest_income = sum(
+        (Decimal(str(group.get("interest_income") or "0")) for group in parent_groups),
+        Decimal("0"),
+    )
+    fair_value_change = sum(
+        (Decimal(str(group.get("fair_value_change") or "0")) for group in parent_groups),
+        Decimal("0"),
+    )
+    capital_gain = sum(
+        (Decimal(str(group.get("capital_gain") or "0")) for group in parent_groups),
+        Decimal("0"),
+    )
+    manual_adjustment = sum(
+        (Decimal(str(group.get("manual_adjustment") or "0")) for group in parent_groups),
+        Decimal("0"),
+    )
+    total_pnl = sum(
+        (Decimal(str(group.get("total_pnl") or "0")) for group in parent_groups),
+        Decimal("0"),
+    )
+    avg_balance = sum((item.avg_balance for item in parent_items), Decimal("0"))
+    current_balance = sum((item.current_balance for item in parent_items), Decimal("0"))
+    yield_ftp = compute_pnl_by_business_yield_and_ftp(
+        total_pnl=total_pnl,
+        avg_balance=avg_balance,
+        calendar_days=calendar_days,
+        ftp_rate_pct=ftp_rate_pct,
+    )
+    return PnlByBusinessYtdSummary(
+        interest_income=_quantize_decimal(interest_income),
+        fair_value_change=_quantize_decimal(fair_value_change),
+        capital_gain=_quantize_decimal(capital_gain),
+        manual_adjustment=_quantize_decimal(manual_adjustment),
+        total_pnl=_quantize_decimal(total_pnl),
+        avg_balance=_quantize_decimal(avg_balance),
+        current_balance=_quantize_decimal(current_balance),
+        annualized_yield_pct=yield_ftp.annualized_yield_pct,
+        ftp_rate_pct=yield_ftp.ftp_rate_pct,
+        ftp_cost=yield_ftp.ftp_cost,
+        ftp_net_pnl=yield_ftp.ftp_net_pnl,
+        ftp_net_annualized_yield_pct=yield_ftp.ftp_net_annualized_yield_pct,
+        proportion=(
+            _quantize_ratio(total_pnl / source_total_pnl)
+            if source_total_pnl != Decimal("0")
+            else None
+        ),
+        assets_count=sum(item.assets_count for item in parent_items),
     )
 
 
@@ -1981,6 +2066,8 @@ def _build_pnl_by_business_analysis_rows(
             continue
         dimension_key, dimension_label = key_label
         bucket = buckets.setdefault(dimension_key, _new_analysis_dimension_bucket(dimension_key, dimension_label))
+        if _norm_text(pnl_row.get("source_kind")) != "manual_adjustment":
+            bucket["has_non_manual_pnl"] = True
         bucket["interest_income"] = Decimal(str(bucket["interest_income"])) + _decimal_value(pnl_row.get("interest_income_514"))
         bucket["fair_value_change"] = Decimal(str(bucket["fair_value_change"])) + _decimal_value(pnl_row.get("fair_value_change_516"))
         bucket["capital_gain"] = Decimal(str(bucket["capital_gain"])) + _decimal_value(pnl_row.get("capital_gain_517"))
@@ -2050,6 +2137,13 @@ def _build_pnl_by_business_analysis_rows(
             calendar_days=calendar_days,
             ftp_rate_pct=ftp_rate_pct,
         )
+        is_manual_adjustment_only = (
+            not bool(bucket.get("has_non_manual_pnl"))
+            and Decimal(str(bucket["manual_adjustment"])) == total_pnl
+        )
+        if is_manual_adjustment_only:
+            ftp_values["ftp_cost"] = _quantize_decimal(Decimal("0"))
+            ftp_values["ftp_net_pnl"] = _quantize_decimal(total_pnl)
         rows.append(
             PnlByBusinessAnalysisRow(
                 dimension_key=dimension_key,
@@ -2677,18 +2771,20 @@ def _analysis_classification_for_pnl_row(
     if _norm_text(pnl_row.get("source_kind")) == "nonstd_bridge":
         return _v1_nonstd_classification_row(report_date=report_date or fallback_date, code=code, sub_type=sub_type)
     invest = _norm_text(pnl_row.get("invest_type_std")) or "unclassified"
+    source_asset_class = _norm_text(pnl_row.get("asset_class"))
+    source_instrument_name = _norm_text(pnl_row.get("instrument_name"))
     classification = _v1_fi_classification_row(
         report_date=report_date or fallback_date,
         row={
             "instrument_code": code,
             "currency_basis": currency_basis,
             "currency_code": currency_basis,
-            "instrument_name": code,
+            "instrument_name": source_instrument_name or code,
             "accounting_basis": _norm_text(pnl_row.get("accounting_basis")),
         },
         code=code,
-        asset_class=invest,
-        sub_type=sub_type or invest,
+        asset_class=source_asset_class or invest,
+        sub_type=sub_type or source_asset_class or invest,
     )
     classification["accounting_basis"] = _norm_text(pnl_row.get("accounting_basis"))
     return classification
@@ -2720,6 +2816,12 @@ def _analysis_matches_business_key(classification: dict[str, object], business_k
     return any(str(row_def.get("row_key")) == business_key for row_def in match_zqtz_asset_bond_rows(classification))
 
 
+def _analysis_original_currency_dimension(instrument_code: object) -> tuple[str, str]:
+    if original_asset_currency_from_instrument_code(instrument_code) == "USD":
+        return "USD", "美元（折人民币）"
+    return "CNY", "人民币"
+
+
 def _analysis_dimension_for_pnl_row(
     row: dict[str, object],
     classification: dict[str, object],
@@ -2731,7 +2833,12 @@ def _analysis_dimension_for_pnl_row(
     if dimension == "portfolio":
         return _dimension_key_label(row.get("portfolio_name"), "未填组合")
     if dimension == "accounting":
-        return _dimension_key_label(row.get("accounting_basis") or classification.get("accounting_basis"), "未填会计分类")
+        accounting = row.get("accounting_basis") or classification.get("accounting_basis")
+        if _norm_text(accounting) == "manual_adjustment":
+            return "manual_adjustment", "手工调整"
+        return _dimension_key_label(accounting, "未填会计分类")
+    if dimension == "currency":
+        return _analysis_original_currency_dimension(row.get("instrument_code"))
     if dimension == "cost_center":
         return _dimension_key_label(row.get("cost_center"), "未填成本中心")
     if dimension == "bond_bucket":
@@ -2758,6 +2865,8 @@ def _analysis_dimension_for_balance_row(
         return _dimension_key_label(row.get("portfolio_name"), "未填组合")
     if dimension == "accounting":
         return _dimension_key_label(row.get("accounting_basis"), "未填会计分类")
+    if dimension == "currency":
+        return _analysis_original_currency_dimension(row.get("instrument_code"))
     if dimension == "cost_center":
         return _dimension_key_label(row.get("cost_center"), "未填成本中心")
     if dimension == "bond_bucket":
