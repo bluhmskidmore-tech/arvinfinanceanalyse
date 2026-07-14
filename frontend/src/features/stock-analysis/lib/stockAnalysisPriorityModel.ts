@@ -1,4 +1,5 @@
 import type {
+  BacktestWindowSummary,
   LivermoreCandidateHistoryHorizonKey,
   LivermoreCandidateHistoryPayload,
   LivermoreStrategyScorePayload,
@@ -6,6 +7,9 @@ import type {
 import type { StockStrategyPanelQueryState } from "./stockAnalysisPageModel";
 import { localizeStockBackendText } from "./stockAnalysisPageModel";
 import {
+  backtestPendingDateCount,
+  backtestSourceGapDateCount,
+  backtestUnsupportedDateCount,
   backtestStatsText,
   formatBacktestSignedPercent,
   strategyBacktestHorizonShortLabels,
@@ -210,6 +214,39 @@ export function strategyMaturityHorizonText(
   }
   const statusText = stats.status === "partial" ? "部分成熟" : "已成熟";
   return `${label} ${statusText} ${backtestStatsText(stats)}`;
+}
+
+export function strategyPriorityHorizonStatsText(
+  row: StrategyPriorityRow,
+  horizon: LivermoreCandidateHistoryHorizonKey,
+  window?: BacktestWindowSummary | null,
+): string {
+  const stats = row.stats[horizon];
+  if (stats && stats.available_count > 0) return backtestStatsText(stats);
+  if (row.sample_status === "insufficient" || row.priority_label === "样本不足") {
+    return "样本不足";
+  }
+
+  const trackedStatuses = (row.diagnostics?.maturity?.tracked_snapshots ?? [])
+    .map((snapshot) => snapshot.horizons[horizon]?.status)
+    .filter((status): status is string => Boolean(status));
+  const missingCount = stats?.missing_count ?? 0;
+  if (trackedStatuses.some((status) => status === "pending")) {
+    return missingCount > 0 ? `自然待成熟 · ${missingCount}条` : "自然待成熟";
+  }
+  if (trackedStatuses.some((status) => status === "partial")) {
+    return missingCount > 0 ? `部分成熟 · ${missingCount}条` : "部分成熟";
+  }
+
+  const sourceGapDateCount = backtestSourceGapDateCount(window, row.signal_kind);
+  if (sourceGapDateCount > 0) return `历史源不足 · ${sourceGapDateCount}日`;
+  const pendingDateCount = backtestPendingDateCount(window, row.signal_kind);
+  if (pendingDateCount > 0) {
+    return missingCount > 0 ? `自然待成熟 · ${missingCount}条` : `自然待成熟 · ${pendingDateCount}日`;
+  }
+  const unsupportedDateCount = backtestUnsupportedDateCount(window, row.signal_kind);
+  if (unsupportedDateCount > 0) return `窗口不支持 · ${unsupportedDateCount}日`;
+  return stats ? "成熟度未提供" : "接口未提供";
 }
 
 export function strategyCandidateReturnText(value: number | null | undefined): string {

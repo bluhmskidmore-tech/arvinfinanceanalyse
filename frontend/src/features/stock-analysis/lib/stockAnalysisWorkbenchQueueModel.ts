@@ -127,7 +127,7 @@ export function buildStockAnalysisWorkbenchReviewQueue(
     const rank = rankValue(row.rank, index + 1);
     const stockName = textValue(row.stock_name) ?? stockCode;
     const sectorCode = textValue(row.sector_code) ?? "";
-    const sectorName = textValue(row.sector_name) ?? textValue(row.industry) ?? "行业待补";
+    const sectorName = textValue(row.sector_name) ?? textValue(row.industry) ?? "接口未提供";
     const sourceModule = textValue(row.source_module) ?? "workbench_review_queue";
     const sourceLabel = sourceLabels[sourceModule] ?? "后端观察队列";
     const observedFields = evidenceFields(row);
@@ -172,8 +172,8 @@ export function buildStockAnalysisWorkbenchReviewQueue(
         sectorCode,
         sectorName,
         headline: `${sourceLabel} #${rank} · ${stockName}`,
-        pattern: "待补",
-        patternNote: "后端首屏候选未返回形态标签，页面不补算。",
+        pattern: "接口未提供",
+        patternNote: "首屏候选接口未提供形态标签，页面不补算。",
         distanceToBreakoutPct: "待复核",
         reviewFocus: [
           stockName,
@@ -214,7 +214,14 @@ export function enrichStockAnalysisWorkbenchReviewQueue(
       ...strategyCandidate.primaryEvidence,
       ...strategyCandidate.supportingEvidence,
     ]);
-    const workbenchHasSector = Boolean(workbenchCandidate.sectorCode.trim());
+    const workbenchHasSectorCode = Boolean(workbenchCandidate.sectorCode.trim());
+    const workbenchHasSectorName =
+      Boolean(workbenchCandidate.sectorName.trim()) &&
+      workbenchCandidate.sectorName !== "接口未提供";
+    const strategySectorMatchesWorkbench =
+      workbenchHasSectorCode &&
+      strategyCandidate.sectorCode.trim().toUpperCase() ===
+        workbenchCandidate.sectorCode.trim().toUpperCase();
 
     return {
       ...strategyCandidate,
@@ -224,8 +231,17 @@ export function enrichStockAnalysisWorkbenchReviewQueue(
         workbenchCandidate.stockName === workbenchCandidate.stockCode
           ? strategyCandidate.stockName
           : workbenchCandidate.stockName,
-      sectorCode: workbenchHasSector ? workbenchCandidate.sectorCode : strategyCandidate.sectorCode,
-      sectorName: workbenchHasSector ? workbenchCandidate.sectorName : strategyCandidate.sectorName,
+      sectorCode:
+        workbenchHasSectorCode
+          ? workbenchCandidate.sectorCode
+          : workbenchHasSectorName
+            ? ""
+            : strategyCandidate.sectorCode,
+      sectorName: workbenchHasSectorName
+        ? workbenchCandidate.sectorName
+        : strategySectorMatchesWorkbench || !workbenchHasSectorCode
+          ? strategyCandidate.sectorName
+          : "接口未提供",
       reviewFocus: uniqueText([strategyCandidate.reviewFocus, workbenchCandidate.reviewFocus]).join(" · "),
       primaryEvidence: visibleEvidence.slice(0, 3),
       supportingEvidence: visibleEvidence.slice(3),

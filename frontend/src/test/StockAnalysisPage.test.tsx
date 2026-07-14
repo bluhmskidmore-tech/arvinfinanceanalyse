@@ -1506,6 +1506,7 @@ function stockClient(options?: {
   strategyScore?: LivermoreStrategyScorePayload;
   strategyScoreError?: Error;
   strategyOptimization?: LivermoreStrategyOptimizationPayload;
+  strategyOptimizationResultNull?: boolean;
   strategyOptimizationError?: Error;
   metaOverrides?: Partial<ApiEnvelope<LivermoreStrategyPayload>["result_meta"]>;
 }): ApiClient {
@@ -1660,7 +1661,9 @@ function stockClient(options?: {
       }
       return buildMockApiEnvelope(
         "market_data.livermore.strategy_optimization",
-        options?.strategyOptimization ?? buildStrategyOptimizationPayload(),
+        options?.strategyOptimizationResultNull
+          ? (null as unknown as LivermoreStrategyOptimizationPayload)
+          : options?.strategyOptimization ?? buildStrategyOptimizationPayload(),
       );
     },
   };
@@ -2316,7 +2319,13 @@ describe("StockAnalysisPage", () => {
     );
     await user.click(within(candidateHistoryEndpoint).getByRole("button"));
     expect(candidateHistoryEndpoint).toHaveAttribute("data-active", "true");
-    expect(await screen.findByText("数据口径诊断")).toBeInTheDocument();
+    expect(screen.queryByText("数据口径诊断")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("stock-analysis-deep-research")).toHaveAttribute("open");
+    });
+    expect(
+      screen.getByTestId("stock-analysis-strategy-card-strategy-backtest-toggle"),
+    ).toHaveAttribute("aria-expanded", "true");
     expect(replayFact).toHaveAttribute("data-active", "false");
     expect(candidateHistoryEndpoint).not.toHaveAttribute("aria-current");
     expect(within(candidateHistoryEndpoint).getByRole("button")).toHaveAttribute("aria-current", "true");
@@ -2347,7 +2356,7 @@ describe("StockAnalysisPage", () => {
 
     const firstScreen = await screen.findByTestId("stock-analysis-first-screen-workbench");
     const diagnosticsEntry = within(firstScreen).getByTestId("stock-analysis-home-rail-diagnostic-entry");
-    expect(diagnosticsEntry).toHaveAttribute("aria-expanded", "true");
+    expect(diagnosticsEntry).toHaveAttribute("aria-expanded", "false");
 
     const openIssuesFact = screen.getByTestId("stock-analysis-workbench-fact-open-issues");
     await user.click(openIssuesFact);
@@ -2355,6 +2364,88 @@ describe("StockAnalysisPage", () => {
     expect(openIssuesFact).toHaveAttribute("data-active", "true");
     expect(screen.getByTestId("stock-analysis-endpoint-evidence-strategy")).toHaveAttribute("data-active", "true");
     expect(diagnosticsEntry).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("loads and reveals a deferred business panel from the full endpoint diagnostics", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const candidateHistorySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderWorkbenchApp(["/stock-analysis"], { client });
+
+      const endpointRail = await screen.findByTestId("stock-analysis-endpoint-evidence-rail");
+      expect(candidateHistorySpy).not.toHaveBeenCalled();
+      await user.click(
+        within(endpointRail).getByRole("button", { name: /打开完整证据诊断/ }),
+      );
+
+      const endpointList = await screen.findByTestId("stock-analysis-endpoint-diagnostics-list");
+      expect(within(endpointList).getAllByRole("button")).toHaveLength(8);
+      await user.click(
+        within(endpointList).getByRole("button", { name: "查看策略回溯窗口数据" }),
+      );
+
+      await waitFor(
+        () =>
+          expect(candidateHistorySpy).toHaveBeenCalledWith(
+            expect.objectContaining({ snapshotTo: "2026-04-29" }),
+          ),
+        { timeout: 500 },
+      );
+      const deepResearch = screen.getByTestId("stock-analysis-deep-research");
+      const strategyResearch = screen.getByTestId("stock-analysis-strategy-research-more");
+      const backtestPanel = screen.getByTestId("stock-analysis-strategy-backtest");
+      expect(deepResearch).toHaveAttribute("open");
+      expect(strategyResearch).toHaveAttribute("open");
+      expect(
+        within(backtestPanel).getByTestId("stock-analysis-strategy-card-strategy-backtest-toggle"),
+      ).toHaveAttribute("aria-expanded", "true");
+      expect(backtestPanel).toHaveAttribute("data-expanded", "true");
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+      expect(scrollIntoView.mock.instances.at(-1)).toBe(backtestPanel);
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
+  it("loads only strategy score evidence when its endpoint entry is selected", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategyScoreSpy = vi.spyOn(client, "getLivermoreStrategyScore");
+    const strategyOptimizationSpy = vi.spyOn(client, "getLivermoreStrategyOptimization");
+    const candidateHistorySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const endpoint = await screen.findByTestId("stock-analysis-endpoint-evidence-strategy-score");
+    expect(strategyScoreSpy).not.toHaveBeenCalled();
+    await user.click(within(endpoint).getByRole("button"));
+
+    await waitFor(() => {
+      expect(strategyScoreSpy).toHaveBeenCalledWith({
+        snapshotTo: "2026-04-29",
+        currentMarketState: "WARM",
+        minSample: 20,
+        primaryHorizon: "return_5d",
+      });
+    });
+    expect(screen.getByRole("tab", { name: "策略优先级" })).toHaveAttribute("aria-selected", "true");
+    expect(strategyOptimizationSpy).not.toHaveBeenCalled();
+    expect(candidateHistorySpy).not.toHaveBeenCalled();
   });
 
   it("keeps first-screen content limited to decision, KPI, review summary, and trust rail", async () => {
@@ -4415,6 +4506,58 @@ describe("StockAnalysisPage", () => {
     );
     expect(balanceCss).not.toContain("calc(100vh - 124px)");
     expect(balanceCss).not.toContain("clamp(780px");
+  });
+
+  it("eliminates empty wide-desktop rows by spanning the trust rail across populated content", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const densityStart = css.indexOf("Wide desktop density: span the trust rail across populated rows");
+    const densityCss = css.slice(densityStart);
+
+    expect(densityStart).toBeGreaterThan(-1);
+    expect(densityCss).toMatch(/@media \(min-width:\s*1500px\)/);
+    expect(densityCss).toMatch(
+      /\.stock-analysis-page__uses-home-shell\[data-design-target="product-design-option-1"\]\s*\{[\s\S]*?display:\s*grid\s*!important[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*minmax\(360px,\s*420px\)\s*!important/,
+    );
+    expect(densityCss).toMatch(
+      /"stale stale"[\s\S]*?"ledger rail"[\s\S]*?"strategy rail"[\s\S]*?"theme-side rail"[\s\S]*?"queue queue"\s*!important/,
+    );
+    expect(densityCss).toMatch(
+      />\s*\.stock-analysis-page__first-screen-main\s*\{[\s\S]*?display:\s*contents\s*!important/,
+    );
+    expect(densityCss).toMatch(
+      /\.stock-analysis-page__theme-heavyweights-sidebar\s*\{[\s\S]*?display:\s*grid\s*!important[\s\S]*?grid-area:\s*theme-side\s*!important/,
+    );
+    expect(densityCss).toMatch(
+      /\.stock-analysis-page__theme-heavyweights-sidebar-list\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)\s*!important/,
+    );
+  });
+
+  it("keeps endpoint evidence reachable on mid-width desktop layouts", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const endpointAccessStart = css.indexOf("Mid-width endpoint access");
+    const endpointAccessCss = css.slice(endpointAccessStart);
+
+    expect(endpointAccessStart).toBeGreaterThan(-1);
+    expect(endpointAccessCss).toMatch(
+      /@media \(min-width:\s*981px\) and \(max-width:\s*1499px\)/,
+    );
+    expect(endpointAccessCss).toMatch(
+      /\[data-testid="stock-analysis-endpoint-evidence-rail"\]\s*\{[\s\S]*?display:\s*grid\s*!important/,
+    );
+    expect(endpointAccessCss).toMatch(
+      /\[data-testid="stock-analysis-endpoint-evidence-rail"\][\s\S]*?li:not\(\[data-preview="true"\]\)\s*\{[\s\S]*?display:\s*none\s*!important/,
+    );
+    expect(endpointAccessCss).toMatch(
+      /\.stock-analysis-page__endpoint-evidence-more\s*\{[\s\S]*?display:\s*inline-flex\s*!important/,
+    );
+  });
+
+  it("lets an expanded strategy panel span the full research grid", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+
+    expect(css).toMatch(
+      /\.stock-analysis-strategy-card-grid\s*>\s*\.stock-analysis-strategy-module-card\[data-expanded="true"\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1/,
+    );
   });
 
   it("keeps the trust rail compact on desktop and full-width inside narrow single-column flow", () => {
@@ -8013,6 +8156,100 @@ describe("StockAnalysisPage", () => {
     expect(card).not.toHaveTextContent("下单");
   });
 
+  it("keeps a null optimization result distinct from a zero-sample payload", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({ strategyOptimizationResultNull: true }),
+    });
+
+    const card = await screen.findByTestId("stock-analysis-strategy-optimization");
+    await waitFor(() => expect(card).toHaveTextContent("接口未提供"), { timeout: 3_000 });
+    expect(card).not.toHaveTextContent("0 组");
+    expect(card).not.toHaveTextContent("阈值 30");
+    expect(card).not.toHaveTextContent("优化诊断样本不足");
+    expect(card).not.toHaveTextContent("切片样本不足");
+
+    await user.click(screen.getByRole("tab", { name: "优化诊断" }));
+    const firstScreen = await screen.findByTestId("stock-analysis-optimization-empty");
+    expect(firstScreen).toHaveTextContent("接口未提供");
+    expect(firstScreen).not.toHaveTextContent("0");
+  });
+
+  it("keeps optimization labels aligned with the configured primary horizon", async () => {
+    const basePayload = buildStrategyOptimizationPayload();
+    const return10Stats = {
+      available_count: 20,
+      missing_count: 0,
+      positive_count: 12,
+      non_positive_count: 8,
+      avg_return: 0.031,
+      win_rate: 0.6,
+    };
+    const return10DateWeighted = {
+      available_day_count: 4,
+      candidate_row_count: 20,
+      avg_return: 0.024,
+      positive_day_rate: 0.75,
+      worst_day_return: -0.01,
+      best_day_return: 0.05,
+    };
+    const payload: LivermoreStrategyOptimizationPayload = {
+      ...basePayload,
+      primary_horizon: "return_10d",
+      strategy_summaries: basePayload.strategy_summaries.map((row) => ({
+        ...row,
+        stats: { ...row.stats, return_10d: return10Stats },
+        date_weighted_stats: { ...row.date_weighted_stats, return_10d: return10DateWeighted },
+        recommendation: {
+          ...row.recommendation,
+          reason: "T+10 样本 20，均值 +3.10%，胜率 60.0%，只读复核排序。",
+          primary_horizon: "return_10d",
+          available_count: 20,
+          avg_return: 0.031,
+          win_rate: 0.6,
+        },
+      })),
+      slices: basePayload.slices.map((row) => ({
+        ...row,
+        stats: { ...row.stats, return_10d: return10Stats },
+        date_weighted_stats: { ...row.date_weighted_stats, return_10d: return10DateWeighted },
+        recommendation: {
+          ...row.recommendation,
+          reason: "T+10 样本 20，均值 +3.10%，胜率 60.0%，只读复核排序。",
+          primary_horizon: "return_10d",
+          available_count: 20,
+          avg_return: 0.031,
+          win_rate: 0.6,
+        },
+      })),
+      pending_summary: {
+        primary_horizon: "return_10d",
+        pending_rows: 0,
+        pending_dates: [],
+        latest_pending_date: null,
+        message: "T+10 主期限已有成熟样本。",
+      },
+      sample_maturity: {
+        status: "sufficient",
+        primary_horizon: "return_10d",
+        min_sample: 20,
+        sufficient_count: 2,
+        insufficient_count: 0,
+      },
+    };
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({ strategyOptimization: payload }),
+    });
+
+    const card = await screen.findByTestId("stock-analysis-strategy-optimization");
+    await waitFor(() => expect(card).toHaveTextContent("三策略 T+10 排名"), { timeout: 3_000 });
+    expect(card).toHaveTextContent("切片 T+10");
+    expect(card).toHaveTextContent("T+10 收益");
+    expect(card).not.toHaveTextContent("切片 T+5");
+    expect(card).not.toHaveTextContent("三策略 T+5 排名");
+  });
+
   it("localizes optimization request source-table failures without exposing backend tables", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
@@ -8344,7 +8581,7 @@ describe("StockAnalysisPage", () => {
     });
     const stockCandidateRow = screen.getByTestId("stock-analysis-strategy-backtest-stock_candidate");
     expect(stockCandidateRow).toHaveTextContent("50.0% / -1.11% / 4条");
-    expect(stockCandidateRow).toHaveTextContent("待补");
+    expect(stockCandidateRow).toHaveTextContent("成熟度未提供");
     const externalSignalRow = screen.getByTestId("stock-analysis-strategy-backtest-external_vendor_alpha_signal");
     expect(externalSignalRow).toHaveTextContent("策略待确认");
     expect(externalSignalRow).not.toHaveTextContent("external_vendor_alpha_signal");
@@ -8369,5 +8606,33 @@ describe("StockAnalysisPage", () => {
     expect(hotRow.getByText("多因子")).toBeInTheDocument();
     expect(hotRow.getByText("25.0% / -2.10% / 8条")).toBeInTheDocument();
     expect(hotRow.getByText("50.0% / +1.40% / 6条")).toBeInTheDocument();
+  });
+
+  it("does not present decision aggregates under an execution return basis", async () => {
+    const candidateHistory = buildCandidateHistoryPayload();
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        candidateHistory: {
+          ...candidateHistory,
+          summary: {
+            ...candidateHistory.summary!,
+            execution_usable_stats: {
+              metric_basis: "net_next_open_adj",
+              row_count: 3,
+            },
+            by_market_state_signal_kind_execution_stats: undefined,
+          },
+        },
+      }),
+    });
+
+    const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
+    await waitFor(() => expect(panel).toHaveTextContent("T+1开盘成交·含费·复权"), {
+      timeout: 5_000,
+    });
+    expect(panel).toHaveTextContent("市场状态归因未提供");
+    expect(panel).not.toHaveTextContent("T+5 有效样本");
+    expect(panel).not.toHaveTextContent("已就绪");
+    expect(panel).not.toHaveTextContent("25.0% / -1.23% / 4条");
   });
 });

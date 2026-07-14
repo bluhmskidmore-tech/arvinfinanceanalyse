@@ -1,6 +1,7 @@
 ﻿import { describe, expect, it } from "vitest";
 
 import type {
+  BacktestWindowSummary,
   ConfluenceReplayStatus,
   LivermoreCandidateHistoryPayload,
   LivermoreModuleState,
@@ -48,6 +49,7 @@ import {
   buildThemeBreakoutReviewItems,
   buildThemeEvidenceStateRows,
   buildConsensusReviewPanelSummary,
+  buildCycleRotationPanelSummary,
   buildEventsMonitoringPanelSummary,
   buildObservationPoolsPanelSummary,
   buildThemeBreakoutPanelSummary,
@@ -770,6 +772,18 @@ describe("stockAnalysisPageModel", () => {
         queryState: "idle",
       },
       {
+        key: "history",
+        label: "策略回溯窗口",
+        queryState: "loading",
+        asOfDate: "2026-04-29",
+        meta: {
+          trace_id: "trace-history",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      },
+      {
         key: "confluence",
         label: "信号闭环",
         queryState: "error",
@@ -794,19 +808,33 @@ describe("stockAnalysisPageModel", () => {
     expect(rows[0]).toMatchObject({
       statusLabel: "待触发",
       tone: "neutral",
-      dateLabel: "日期待补",
-      traceLabel: "链路待补",
+      dateLabel: "",
+      traceLabel: "",
+      issueLabel: "",
+      metaLabel: "",
     });
     expect(rows[1]).toMatchObject({
-      statusLabel: "读取失败",
-      tone: "negative",
+      statusLabel: "读取中",
+      tone: "neutral",
+      dateLabel: "",
+      traceLabel: "",
+      issueLabel: "",
+      metaLabel: "",
     });
     expect(rows[2]).toMatchObject({
+      statusLabel: "读取失败",
+      tone: "negative",
+      dateLabel: "",
+      traceLabel: "",
+      issueLabel: "",
+      metaLabel: "",
+    });
+    expect(rows[3]).toMatchObject({
       statusLabel: "证据待补",
       tone: "warning",
       metaLabel: "证据待补",
     });
-    expect(rows[2].detail).not.toContain("result_meta");
+    expect(rows[3].detail).not.toContain("result_meta");
   });
 
   it("builds an observation closure summary without implying formal completion", () => {
@@ -3604,6 +3632,13 @@ describe("stockAnalysisPageModel", () => {
       }),
     );
     expect(summary.headline).toContain("暂无 T+5 共振");
+    expect(summary.badgeLabel).toBe("待复核");
+    expect(summary.badgeLabel).not.toBe("待补");
+
+    const noCandidateSummary = buildConsensusReviewPanelSummary(buildConsensusSummary(null));
+    expect(noCandidateSummary.headline).toBe("暂无候选");
+    expect(noCandidateSummary.badgeLabel).toBe("无候选");
+    expect(noCandidateSummary.badgeLabel).not.toBe("待补");
   });
 
   it("builds deep-zone audit rows from panel summaries and visible counts", () => {
@@ -3664,6 +3699,19 @@ describe("stockAnalysisPageModel", () => {
       buildStockAnalysisEventMonitorRows(strategyPayload, confluencePayload),
     );
     expect(events.headline).toMatch(/条待复核/);
+
+    const errorEvents = buildEventsMonitoringPanelSummary([
+      {
+        key: "diagnostic:failed",
+        source: "diagnostic",
+        level: "error",
+        event: "诊断异常",
+        impact: "data_quality",
+        detail: "诊断返回错误，需要人工复核。",
+      },
+    ]);
+    expect(errorEvents.badgeLabel).toBe("异常待核");
+    expect(errorEvents.badgeLabel).not.toBe("待补");
   });
 
   it("localizes pending optimization summary copy when samples are insufficient", () => {
@@ -3695,6 +3743,7 @@ describe("stockAnalysisPageModel", () => {
     });
 
     expect(summary.headline).toBe("优化样本不足");
+    expect(summary.badgeLabel).toBe("待成熟");
     expect(summary.detail).toContain("最新待成熟日期 2026-05-13");
     expect(summary.detail).not.toContain("pending");
     expect(summary.stats).toContainEqual(
@@ -3913,6 +3962,7 @@ describe("stockAnalysisPageModel", () => {
     });
 
     expect(summary.headline).toBe("样本不足");
+    expect(summary.badgeLabel).toBe("样本不足");
     expect(summary.detail).toBe("阈值 20 · 只读排序");
     expect(summary.detail).not.toContain("交易动作");
     expect(summary.detail).not.toContain("不输出");
@@ -4067,9 +4117,354 @@ describe("stockAnalysisPageModel", () => {
     expect(priority.detail).toBe("请求失败：必需数据源缺失，稍后复核供数状态。");
     expect(backtest.detail).toBe("请求失败：必需数据源缺失，稍后复核供数状态。");
     expect(optimization.detail).toBe("请求失败：必需数据源缺失，稍后复核供数状态。");
+    expect([priority.badgeLabel, backtest.badgeLabel, optimization.badgeLabel]).toEqual([
+      "读取失败",
+      "读取失败",
+      "读取失败",
+    ]);
     expect(copy).not.toContain("Failed to fetch");
     expect(copy).not.toContain("source_table");
     expect(copy).not.toContain("livermore_signal_snapshots");
+  });
+
+  it("keeps deferred strategy panels in an explicit not-triggered state", () => {
+    const priority = buildMarketPriorityPanelSummary({
+      payload: null,
+      rows: [],
+      marketState: "WARM",
+      queryState: "idle",
+    });
+    const backtest = buildStrategyBacktestPanelSummary({
+      payload: null,
+      sampleCount: 0,
+      window: null,
+      dateRangeLabel: "",
+      rows: [],
+      queryState: "idle",
+    });
+    const optimization = buildStrategyOptimizationPanelSummary({
+      payload: null,
+      rows: [],
+      queryState: "idle",
+    });
+    const cycle = buildCycleRotationPanelSummary({
+      framework: {
+        strategy_name: "A-share cycle rotation research framework",
+        display_name: "A股景气周期选股与行业轮动",
+        observation_only: true,
+        implementation_stage: "verification_pending",
+        score_formula: "CycleScore = weighted evidence",
+        rebalance_cadence: "Monthly review",
+        layers: [],
+        constraints: [],
+        boundary: "observation-only",
+      },
+      macroLayer: null,
+      portfolioBacktest: null,
+      proxyBacktest: null,
+      portfolioQueryState: "idle",
+      proxyQueryState: "idle",
+    });
+
+    expect([priority, backtest, optimization].map((summary) => summary.headline)).toEqual([
+      "待触发",
+      "待触发",
+      "待触发",
+    ]);
+    expect([priority, backtest, optimization].map((summary) => summary.badgeLabel)).toEqual([
+      "待触发",
+      "待触发",
+      "待触发",
+    ]);
+    expect(cycle.stats).toContainEqual(
+      expect.objectContaining({ key: "backtest", label: "回测", value: "待触发" }),
+    );
+  });
+
+  it("keeps cycle backtest request failures distinct from business no-sample states", () => {
+    const cycle = buildCycleRotationPanelSummary({
+      framework: {
+        strategy_name: "A-share cycle rotation research framework",
+        display_name: "A股景气周期选股与行业轮动",
+        observation_only: true,
+        implementation_stage: "verification_pending",
+        score_formula: "CycleScore = weighted evidence",
+        rebalance_cadence: "Monthly review",
+        layers: [],
+        constraints: [],
+        boundary: "observation-only",
+      },
+      macroLayer: null,
+      portfolioBacktest: null,
+      proxyBacktest: null,
+      portfolioQueryState: "error",
+      proxyQueryState: "idle",
+    });
+
+    expect(cycle.stats).toContainEqual(
+      expect.objectContaining({ key: "backtest", label: "回测", value: "读取失败" }),
+    );
+    expect(cycle.detail).toContain("读取失败");
+    expect(cycle.detail).not.toContain("各层只读证据已接入");
+  });
+
+  it("keeps independently triggered cycle endpoints distinct from a completed no-sample result", () => {
+    const cycle = buildCycleRotationPanelSummary({
+      framework: {
+        strategy_name: "A-share cycle rotation research framework",
+        display_name: "A股景气周期选股与行业轮动",
+        observation_only: true,
+        implementation_stage: "verification_pending",
+        score_formula: "CycleScore = weighted evidence",
+        rebalance_cadence: "Monthly review",
+        layers: [],
+        constraints: [],
+        boundary: "observation-only",
+      },
+      macroLayer: null,
+      portfolioBacktest: null,
+      proxyBacktest: null,
+      portfolioQueryState: "ready",
+      proxyQueryState: "idle",
+    });
+
+    expect(cycle.stats).toContainEqual(
+      expect.objectContaining({ key: "backtest", label: "回测", value: "部分触发" }),
+    );
+    expect(cycle.detail).toContain("部分回测端点尚未触发");
+    expect(cycle.detail).not.toContain("各层只读证据已接入");
+    expect(cycle.detail).not.toContain("无样本");
+  });
+
+  it("does not mark the backtest panel ready when only short-horizon returns are mature", () => {
+    const matureT1 = {
+      available_count: 12,
+      missing_count: 0,
+      positive_count: 8,
+      non_positive_count: 4,
+      avg_return: 0.02,
+      win_rate: 0.667,
+    };
+    const pendingT5 = {
+      available_count: 0,
+      missing_count: 12,
+      positive_count: 0,
+      non_positive_count: 0,
+      avg_return: null,
+      win_rate: null,
+    };
+    const payload: LivermoreCandidateHistoryPayload = {
+      stock_code: null,
+      snapshot_from: "2026-07-01",
+      snapshot_to: "2026-07-10",
+      limit: 100,
+      items: [],
+      summary: {
+        row_count: 12,
+        horizon_usable_stats: {
+          return_1d: matureT1,
+          return_5d: pendingT5,
+          return_10d: pendingT5,
+          return_20d: pendingT5,
+        },
+        by_signal_kind: { stock_candidate: 12 },
+        by_signal_kind_horizon_usable_stats: {
+          stock_candidate: {
+            return_1d: matureT1,
+            return_5d: pendingT5,
+            return_10d: pendingT5,
+            return_20d: pendingT5,
+          },
+        },
+      },
+      backtest_window_summary: {
+        status: "partial",
+        snapshot_from: "2026-07-01",
+        snapshot_to: "2026-07-10",
+        replay_dates_total: 1,
+        replay_dates_completed: 0,
+        replay_dates_pending: 1,
+        replay_dates_unsupported: 0,
+        replay_dates_proxy_only: 0,
+        completed_rows: 0,
+        pending_rows: 12,
+        unsupported_rows: 0,
+        proxy_only_rows: 0,
+        included_completed_stats_dates: [],
+        excluded_from_completed_stats_dates: ["2026-07-10"],
+        date_reasons: [
+          {
+            trade_date: "2026-07-10",
+            status: "pending",
+            reason_code: "forward_returns_pending",
+            message: "pending",
+            affects_completed_stats: false,
+            signal_kinds: ["stock_candidate"],
+          },
+        ],
+      },
+    };
+
+    const summary = buildStrategyBacktestPanelSummary({
+      payload,
+      sampleCount: 12,
+      window: payload.backtest_window_summary ?? null,
+      dateRangeLabel: "2026-07-01 ~ 2026-07-10",
+      rows: [
+        {
+          kind: "stock_candidate",
+          label: "趋势突破",
+          count: 12,
+          stats: {
+            return_1d: "66.7% / +2.00% / 12条",
+            return_5d: "自然待成熟 · 1日",
+          },
+        },
+      ],
+      queryState: "ready",
+    });
+
+    expect(summary.headline).toBe("短窗可见，T+5 待成熟");
+    expect(summary.badgeLabel).toBe("部分成熟");
+    expect(summary.tone).toBe("warning");
+  });
+
+  it("surfaces historical source gaps separately from visible return samples and natural maturity", () => {
+    const sourceGapWindow: BacktestWindowSummary = {
+      status: "partial",
+      snapshot_from: "2026-06-30",
+      snapshot_to: "2026-07-10",
+      replay_dates_total: 9,
+      replay_dates_completed: 0,
+      replay_dates_pending: 2,
+      replay_dates_unsupported: 7,
+      replay_dates_proxy_only: 0,
+      completed_rows: 0,
+      pending_rows: 150,
+      unsupported_rows: 210,
+      proxy_only_rows: 0,
+      included_completed_stats_dates: [],
+      excluded_from_completed_stats_dates: ["2026-06-30", "2026-07-10"],
+      date_reasons: Array.from({ length: 7 }, (_, index) => ({
+        trade_date: `2026-07-0${index + 1}`,
+        status: "unsupported",
+        reason_code: "missing_required_source_table",
+        message: "Required source coverage is incomplete.",
+        affects_completed_stats: false,
+        signal_kinds: ["factor_screen"],
+      })),
+    };
+    const priorityPayload: LivermoreStrategyScorePayload = {
+      as_of_date: "2026-07-10",
+      snapshot_from: "2026-06-30",
+      snapshot_to: "2026-07-10",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      current_market_state: "WARM",
+      backtest_window_summary: sourceGapWindow,
+      rows: [],
+      current_market_state_rows: [],
+    };
+    const optimizationPayload: LivermoreStrategyOptimizationPayload = {
+      as_of_date: "2026-07-10",
+      snapshot_from: "2026-06-30",
+      snapshot_to: "2026-07-10",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      current_market_state: "WARM",
+      backtest_window_summary: sourceGapWindow,
+      strategy_summaries: [],
+      slices: [],
+      recommendations: [],
+      pending_summary: {
+        primary_horizon: "return_5d",
+        pending_rows: 150,
+        pending_dates: ["2026-07-08", "2026-07-10"],
+        latest_pending_date: "2026-07-10",
+        message: "T+5 仍有 150 条收益待成熟。",
+      },
+      sample_maturity: null,
+    };
+
+    const priority = buildMarketPriorityPanelSummary({
+      payload: priorityPayload,
+      rows: [],
+      marketState: "WARM",
+      queryState: "ready",
+    });
+    const backtest = buildStrategyBacktestPanelSummary({
+      payload: null,
+      sampleCount: 84,
+      window: sourceGapWindow,
+      dateRangeLabel: "2026-06-30 ~ 2026-07-10",
+      rows: [
+        {
+          kind: "factor_screen",
+          label: "多因子",
+          count: 60,
+          stats: {
+            return_1d: "51.2% / +2.42% / 84条",
+            return_5d: "自然待成熟 · 60条",
+            return_10d: "自然待成熟 · 60条",
+            return_20d: "自然待成熟 · 60条",
+          },
+        },
+      ],
+      queryState: "ready",
+    });
+    const optimization = buildStrategyOptimizationPanelSummary({
+      payload: optimizationPayload,
+      rows: [],
+      queryState: "ready",
+    });
+
+    expect(priority).toMatchObject({ headline: "历史样本源不足", badgeLabel: "历史源不足", tone: "warning" });
+    expect(backtest).toMatchObject({ headline: "可见收益样本 84 条", badgeLabel: "历史源不足", tone: "warning" });
+    expect(backtest.stats).toContainEqual(
+      expect.objectContaining({ key: "unsupported", label: "历史源不足", value: "7 日" }),
+    );
+    expect(optimization).toMatchObject({ headline: "历史样本源不足", badgeLabel: "历史源不足", tone: "warning" });
+    expect(optimization.stats).toContainEqual(
+      expect.objectContaining({ key: "unsupported", label: "历史源不足", value: "7 日" }),
+    );
+  });
+
+  it("keeps aggregate-only unsupported replay counts at panel scope", () => {
+    const window: BacktestWindowSummary = {
+      status: "unsupported",
+      snapshot_from: "2026-07-01",
+      snapshot_to: "2026-07-03",
+      replay_dates_total: 3,
+      replay_dates_completed: 0,
+      replay_dates_pending: 0,
+      replay_dates_unsupported: 3,
+      replay_dates_proxy_only: 0,
+      completed_rows: 0,
+      pending_rows: 0,
+      unsupported_rows: 30,
+      proxy_only_rows: 0,
+      included_completed_stats_dates: [],
+      excluded_from_completed_stats_dates: ["2026-07-01", "2026-07-02", "2026-07-03"],
+      date_reasons: [],
+    };
+
+    const summary = buildStrategyBacktestPanelSummary({
+      payload: null,
+      sampleCount: 0,
+      window,
+      dateRangeLabel: "2026-07-01 ~ 2026-07-03",
+      rows: [],
+      queryState: "ready",
+    });
+
+    expect(summary).toMatchObject({
+      headline: "回放窗口不支持",
+      badgeLabel: "窗口不支持",
+      tone: "warning",
+    });
+    expect(summary.stats).toContainEqual(
+      expect.objectContaining({ key: "window", label: "窗口不支持", value: "3 日" }),
+    );
   });
 
   it("labels strategy backtest panel summary with execution return basis", () => {
@@ -4176,6 +4571,72 @@ describe("stockAnalysisPageModel", () => {
 
     expect(summary.detail).toBe("2026-06-01 ~ 2026-06-12 · T+1开盘成交·含费·复权");
     expect(summary.stats[0].value).toBe("胜率 100.0% / 均收益 +4.0% / 2条");
+  });
+
+  it("does not mark legacy aggregates ready under an execution basis", () => {
+    const legacyStats = {
+      available_count: 6,
+      missing_count: 0,
+      positive_count: 4,
+      non_positive_count: 2,
+      avg_return: 0.03,
+      win_rate: 0.667,
+    };
+    const payload: LivermoreCandidateHistoryPayload = {
+      stock_code: null,
+      snapshot_from: "2026-06-01",
+      snapshot_to: "2026-06-12",
+      limit: 50,
+      items: [],
+      summary: {
+        row_count: 6,
+        horizon_stats: {
+          return_1d: legacyStats,
+          return_5d: legacyStats,
+          return_10d: legacyStats,
+          return_20d: legacyStats,
+        },
+        by_signal_kind: { stock_candidate: 6 },
+        by_signal_kind_horizon_stats: {
+          stock_candidate: {
+            return_1d: legacyStats,
+            return_5d: legacyStats,
+            return_10d: legacyStats,
+            return_20d: legacyStats,
+          },
+        },
+        execution_usable_stats: {
+          metric_basis: "net_next_open_adj",
+          row_count: 0,
+        },
+      },
+    };
+
+    const summary = buildStrategyBacktestPanelSummary({
+      payload,
+      sampleCount: 0,
+      window: null,
+      dateRangeLabel: "2026-06-01 ~ 2026-06-12",
+      rows: [
+        {
+          kind: "stock_candidate",
+          label: "趋势突破",
+          count: 0,
+          stats: {
+            return_1d: "接口未提供",
+            return_5d: "接口未提供",
+            return_10d: "接口未提供",
+            return_20d: "接口未提供",
+          },
+        },
+      ],
+      queryState: "ready",
+    });
+
+    expect(summary.headline).toBe("暂无回溯样本");
+    expect(summary.badgeLabel).toBe("暂无样本");
+    expect(summary.stats[0].value).toBe("接口未提供");
+    expect(summary.detail).toContain("T+1开盘成交·含费·复权");
   });
 
   it("keeps generic backend pending copy as confirmation status, not return maturity", () => {

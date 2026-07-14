@@ -10,6 +10,7 @@ import { Button as AntButton, Drawer as AntDrawer } from "antd";
 import type { LivermoreStrategyPayload } from "../../../api/contracts";
 import type {
   StockAnalysisEvidenceStatusItem,
+  StockEndpointEvidenceItem,
   StockDataBoundarySummary,
 } from "../lib/stockAnalysisPageModel";
 import { localizeStockBackendText } from "../lib/stockAnalysisPageModel";
@@ -24,6 +25,7 @@ import {
 } from "../lib/stockAnalysisPageLabels";
 import { stockStatusLabel } from "../lib/stockAnalysisPageCopy";
 
+const endpointMetadataHiddenStatuses = new Set(["待触发", "读取中", "读取失败"]);
 
 function boundaryRailIcon(key: StockAnalysisEvidenceStatusItem["key"]) {
   if (key === "as-of-date") return <ClockCircleOutlined />;
@@ -36,6 +38,9 @@ export function StockAnalysisBoundaryRail({
   boundaryItems,
   boundarySummary,
   strategyPayload,
+  endpointItems = [],
+  focusedEndpointKey,
+  onEndpointSelect,
   diagnosticsDrawerOpen,
   onOpenDiagnostics,
   onCloseDiagnostics,
@@ -44,6 +49,9 @@ export function StockAnalysisBoundaryRail({
   boundaryItems: StockAnalysisEvidenceStatusItem[];
   boundarySummary: StockDataBoundarySummary | null;
   strategyPayload: LivermoreStrategyPayload | null;
+  endpointItems?: StockEndpointEvidenceItem[];
+  focusedEndpointKey?: string | null;
+  onEndpointSelect?: (key: string) => void;
   diagnosticsDrawerOpen?: boolean;
   onOpenDiagnostics?: () => void;
   onCloseDiagnostics?: () => void;
@@ -116,9 +124,56 @@ export function StockAnalysisBoundaryRail({
         title="数据口径诊断"
         placement="right"
         width={560}
+        rootClassName="stock-analysis-page__diagnostics-drawer"
         open={isDrawerOpen}
         onClose={closeDiagnostics}
       >
+        {endpointItems.length > 0 ? (
+          <section
+            className="stock-analysis-page__endpoint-evidence stock-analysis-page__endpoint-evidence--diagnostics"
+            aria-label="端点证据诊断"
+          >
+            <div className="stock-analysis-page__endpoint-evidence-head">
+              <h3>端点证据</h3>
+              <span>{endpointItems.length} 项 · 点击按需读取并定位</span>
+            </div>
+            <ul data-testid="stock-analysis-endpoint-diagnostics-list">
+              {endpointItems.map((item) => (
+                <li
+                  key={item.key}
+                  data-tone={item.tone}
+                  data-active={focusedEndpointKey === item.key ? "true" : "false"}
+                  data-preview="true"
+                  data-testid={`stock-analysis-endpoint-diagnostic-${item.key}`}
+                >
+                  <button
+                    type="button"
+                    aria-label={`查看${item.label}数据`}
+                    aria-current={focusedEndpointKey === item.key ? "true" : undefined}
+                    onClick={() => {
+                      closeDiagnostics();
+                      onEndpointSelect?.(item.key);
+                    }}
+                  >
+                    <div>
+                      <span>{item.label}</span>
+                      <strong>{item.statusLabel}</strong>
+                    </div>
+                    <p>{item.detail}</p>
+                    {!endpointMetadataHiddenStatuses.has(item.statusLabel) ? (
+                      <>
+                        {item.dateLabel ? <small>{item.dateLabel}</small> : null}
+                        {item.metaLabel ? <small>{item.metaLabel}</small> : null}
+                        {item.traceLabel ? <small>{item.traceLabel}</small> : null}
+                        {item.issueLabel ? <small>{item.issueLabel}</small> : null}
+                      </>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {strategyPayload ? (
             <>
               <strong className="text-danger">

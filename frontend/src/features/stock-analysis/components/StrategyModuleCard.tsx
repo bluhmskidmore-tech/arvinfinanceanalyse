@@ -47,6 +47,7 @@ export function StrategyModuleCard({
     <article
       ref={sectionRef}
       className={`stock-analysis-strategy-module-card stock-analysis-page__dh-card${toneClass}${className ? ` ${className}` : ""}`}
+      data-expanded={expanded ? "true" : "false"}
       data-testid={sectionTestId ?? `stock-analysis-strategy-card-${id}`}
     >
       <header className="stock-analysis-strategy-module-card__header">

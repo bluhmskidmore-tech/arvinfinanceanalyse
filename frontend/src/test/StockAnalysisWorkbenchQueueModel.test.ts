@@ -73,6 +73,24 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
     });
   });
 
+  it("preserves an authoritative workbench sector name when its sector code is absent", () => {
+    const workbenchQueue = buildStockAnalysisWorkbenchReviewQueue([
+      {
+        stock_code: "000001.SZ",
+        stock_name: "样本股份",
+        sector_name: "医药生物",
+        source_module: "factor_screen_candidates",
+      },
+    ] as StockAnalysisWorkbenchPayload["first_screen"]["review_queue"]);
+
+    const [enriched] = enrichStockAnalysisWorkbenchReviewQueue(workbenchQueue, [
+      buildStrategyCandidate({ sectorCode: "801730", sectorName: "机械设备" }),
+    ]);
+
+    expect(enriched.sectorName).toBe("医药生物");
+    expect(enriched.sectorCode).toBe("");
+  });
+
   it("keeps every backend theme membership and its provenance visible", () => {
     const rows = [
       {
@@ -137,6 +155,9 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
 
     const [candidate] = buildStockAnalysisWorkbenchReviewQueue(rows);
 
+    expect(candidate.pattern).toBe("接口未提供");
+    expect(candidate.patternNote).toBe("首屏候选接口未提供形态标签，页面不补算。");
+    expect(candidate.sectorName).toBe("接口未提供");
     expect(candidate.rawFields.some((item) => item.label === "题材归属")).toBe(false);
     expect(candidate.reviewFocus).not.toContain("题材待补");
   });

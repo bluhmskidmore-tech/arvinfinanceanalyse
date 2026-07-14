@@ -24,7 +24,12 @@ import type {
 } from "../../../api/contracts";
 import type { ConsensusSummary } from "./buildConsensusSummary";
 import type { StockDetailSource } from "./stockAnalysisDetailSelection";
-import { resolveStrategyBacktestMetricBasisLabel } from "./stockAnalysisBacktestModel";
+import {
+  backtestPendingDateCount,
+  backtestSourceGapDateCount,
+  backtestUnsupportedDateCount,
+  resolveStrategyBacktestMetricBasisLabel,
+} from "./stockAnalysisBacktestModel";
 import {
   buildMarketGateMacroDisclosure,
   formatMarketGateMacroDisclosureDetail,
@@ -61,7 +66,7 @@ export type StockMarketStateCard = {
   macroDisclosureDetail: string | null;
 };
 
-export type StockCandidatePattern = "突破" | "回踩" | "缩量盘整" | "待补";
+export type StockCandidatePattern = "突破" | "回踩" | "缩量盘整" | "接口未提供" | "待补";
 
 export type StockCandidateEvidenceBullet = {
   key: string;
@@ -1458,7 +1463,7 @@ function strategyPrioritySummaryStatus(label: string | null | undefined): {
   if (value === "优先复核") return { label: "优先复核", badgeLabel: "已就绪", tone: "positive" };
   if (value === "降权观察") return { label: "降权观察", badgeLabel: "降权观察", tone: "warning" };
   if (value === "继续观察") return { label: "继续观察", badgeLabel: "观察", tone: "neutral" };
-  if (value === "样本不足") return { label: "样本不足", badgeLabel: "待补", tone: "warning" };
+  if (value === "样本不足") return { label: "样本不足", badgeLabel: "样本不足", tone: "warning" };
   return { label: "状态待确认", badgeLabel: "待确认", tone: "warning" };
 }
 
@@ -2997,6 +3002,10 @@ export function buildStockEndpointEvidenceItems(
     if (input.queryState === "loading") {
       return {
         ...base,
+        dateLabel: "",
+        traceLabel: "",
+        issueLabel: "",
+        metaLabel: "",
         statusLabel: "读取中",
         tone: "neutral",
         detail: "正在读取证据链，暂不纳入复核判断",
@@ -3006,6 +3015,10 @@ export function buildStockEndpointEvidenceItems(
     if (input.queryState === "error") {
       return {
         ...base,
+        dateLabel: "",
+        traceLabel: "",
+        issueLabel: "",
+        metaLabel: "",
         statusLabel: "读取失败",
         tone: "negative",
         detail: "证据读取失败，当前结论不使用该扩展证据",
@@ -3015,6 +3028,10 @@ export function buildStockEndpointEvidenceItems(
     if (input.queryState === "idle") {
       return {
         ...base,
+        dateLabel: "",
+        traceLabel: "",
+        issueLabel: "",
+        metaLabel: "",
         statusLabel: "待触发",
         tone: "neutral",
         detail: "证据链尚未触发，展开相关复核区后读取",
@@ -4996,6 +5013,13 @@ export function buildCycleRotationPanelSummary(input: {
       : null;
   const backtestLoading =
     input.portfolioQueryState === "loading" || input.proxyQueryState === "loading";
+  const backtestIdle =
+    input.portfolioQueryState === "idle" && input.proxyQueryState === "idle";
+  const backtestError =
+    input.portfolioQueryState === "error" || input.proxyQueryState === "error";
+  const backtestPartiallyTriggered =
+    !backtestIdle &&
+    (input.portfolioQueryState === "idle" || input.proxyQueryState === "idle");
 
   const stats: StockStrategyPanelMiniStat[] = [
     {
@@ -5019,7 +5043,15 @@ export function buildCycleRotationPanelSummary(input: {
       valueTone: input.macroLayer.tone === "positive" ? "emphasis" : "warning",
     });
   }
-  if (!backtestLoading && portfolioReturn != null) {
+  if (backtestError) {
+    stats.push({ key: "backtest", label: "回测", value: "读取失败", valueTone: "warning" });
+  } else if (backtestLoading) {
+    stats.push({ key: "backtest", label: "回测", value: "读取中", valueTone: "flat" });
+  } else if (backtestIdle) {
+    stats.push({ key: "backtest", label: "回测", value: "待触发", valueTone: "flat" });
+  } else if (backtestPartiallyTriggered) {
+    stats.push({ key: "backtest", label: "回测", value: "部分触发", valueTone: "warning" });
+  } else if (!backtestLoading && portfolioReturn != null) {
     stats.push({
       key: "portfolio",
       label: "组合",
@@ -5041,11 +5073,17 @@ export function buildCycleRotationPanelSummary(input: {
   const headline =
     macroStatus === "已落地" ? "宏观层已落地" : macroStatus === "部分就绪" ? "宏观层部分就绪" : "宏观层待补";
   const detail =
-    readyLayers < totalLayers
-      ? `就绪 ${readyLayers}/${totalLayers} 层；补齐缺失输入后可进入完整验证。`
+    backtestError
+      ? "回测证据读取失败；框架层只读证据保留，当前不作回测结论。"
       : backtestLoading
         ? "回测加载中，展开查看公式、层状态与回测明细。"
-        : "各层只读证据已接入，展开查看公式、层状态与回测明细。";
+        : backtestIdle
+        ? "回测证据尚未触发，展开相关复核区后读取。"
+        : backtestPartiallyTriggered
+          ? "部分回测端点尚未触发；当前已返回证据仅作只读参考。"
+          : readyLayers < totalLayers
+            ? `就绪 ${readyLayers}/${totalLayers} 层；补齐缺失输入后可进入完整验证。`
+            : "各层只读证据已接入，展开查看公式、层状态与回测明细。";
 
   return {
     headline,
@@ -5055,7 +5093,10 @@ export function buildCycleRotationPanelSummary(input: {
       : "策略口径已接入；仍需结合回测和风险边界复核。",
     badgeLabel: stageLabel,
     stats,
-    tone: input.macroLayer?.tone ?? "neutral",
+    tone:
+      backtestError || backtestPartiallyTriggered
+        ? "warning"
+        : input.macroLayer?.tone ?? "neutral",
   };
 }
 
@@ -5155,7 +5196,7 @@ export function buildConsensusReviewPanelSummary(consensus: ConsensusSummary): S
     return {
       headline: "暂无候选",
       detail: "今天没有共振候选；先核对门控，再下翻看多因子池或各策略观察池。",
-      badgeLabel: "待补",
+      badgeLabel: "无候选",
       stats: [{ key: "sample", label: "共振", value: "0", valueTone: "warning" }],
       tone: "warning",
     };
@@ -5225,6 +5266,15 @@ export function buildMarketPriorityPanelSummary(input: {
   queryState: StockStrategyPanelQueryState;
   errorMessage?: string;
 }): StockStrategyPanelResultSummary {
+  if (input.queryState === "idle") {
+    return {
+      headline: "待触发",
+      detail: "展开策略优先级复核区后读取证据。",
+      badgeLabel: "待触发",
+      stats: [],
+      tone: "neutral",
+    };
+  }
   if (input.queryState === "loading") {
     return {
       headline: "加载中…",
@@ -5238,19 +5288,50 @@ export function buildMarketPriorityPanelSummary(input: {
     return {
       headline: "优先级暂不可用",
       detail: localizeStrategyPanelErrorDetail(input.errorMessage),
-      badgeLabel: "待补",
+      badgeLabel: "读取失败",
       stats: [],
       tone: "warning",
     };
   }
   const top = pickTopPriorityRow(input.rows);
   const sufficientCount = input.rows.filter((row) => row.sample_status === "sufficient").length;
+  const window = input.payload?.backtest_window_summary;
+  const sourceGapDateCount = backtestSourceGapDateCount(window);
+  const unsupportedDateCount = Math.max(
+    0,
+    backtestUnsupportedDateCount(window) - sourceGapDateCount,
+  );
   if (!top || sufficientCount === 0) {
+    const headline =
+      sourceGapDateCount > 0
+        ? "历史样本源不足"
+        : unsupportedDateCount > 0
+          ? "回放窗口不支持"
+          : "样本不足";
     return {
-      headline: "样本不足",
-      detail: `阈值 ${input.payload?.min_sample ?? 30} · 只读排序`,
-      badgeLabel: "待补",
-      stats: [{ key: "rows", label: "策略", value: `${input.rows.length}`, tone: "neutral" }],
+      headline,
+      detail: [
+        sourceGapDateCount > 0 ? `历史缺源 ${sourceGapDateCount} 日` : null,
+        unsupportedDateCount > 0 ? `窗口不支持 ${unsupportedDateCount} 日` : null,
+        `阈值 ${input.payload?.min_sample ?? 30} · 只读排序`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      badgeLabel:
+        sourceGapDateCount > 0
+          ? "历史源不足"
+          : unsupportedDateCount > 0
+            ? "窗口不支持"
+            : "样本不足",
+      stats: [
+        { key: "rows", label: "策略", value: `${input.rows.length}`, tone: "neutral" },
+        ...(sourceGapDateCount > 0
+          ? [{ key: "unsupported", label: "历史源不足", value: `${sourceGapDateCount} 日`, tone: "warning" as const }]
+          : []),
+        ...(unsupportedDateCount > 0
+          ? [{ key: "window", label: "窗口不支持", value: `${unsupportedDateCount} 日`, tone: "warning" as const }]
+          : []),
+      ],
       tone: "warning",
     };
   }
@@ -5258,10 +5339,22 @@ export function buildMarketPriorityPanelSummary(input: {
   const horizon = input.payload?.primary_horizon ?? "return_5d";
   const horizonStats = top.stats[horizon];
   const status = strategyPrioritySummaryStatus(top.priority_label);
+  const coverageLimited = sourceGapDateCount > 0 || unsupportedDateCount > 0;
   return {
     headline: `${status.label} · ${localizeStockStrategyLabel(top.strategy_label, top.signal_kind)}`,
-    detail: localizeStockBackendText(top.reason, top.signal_kind),
-    badgeLabel: status.badgeLabel,
+    detail: [
+      localizeStockBackendText(top.reason, top.signal_kind),
+      sourceGapDateCount > 0 ? `历史缺源 ${sourceGapDateCount} 日` : null,
+      unsupportedDateCount > 0 ? `窗口不支持 ${unsupportedDateCount} 日` : null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    badgeLabel:
+      sourceGapDateCount > 0
+        ? "部分缺源"
+        : unsupportedDateCount > 0
+          ? "窗口受限"
+          : status.badgeLabel,
     stats: [
       {
         key: "score",
@@ -5273,10 +5366,10 @@ export function buildMarketPriorityPanelSummary(input: {
         key: horizon,
         label: strategyHorizonShortLabel(horizon),
         value: formatBacktestHorizonStatsText(horizonStats),
-        tone: (horizonStats?.win_rate ?? 0) >= 0.5 ? "positive" : "neutral",
+        tone: coverageLimited ? "warning" : (horizonStats?.win_rate ?? 0) >= 0.5 ? "positive" : "neutral",
       },
     ],
-    tone: status.tone,
+    tone: coverageLimited ? "warning" : status.tone,
   };
 }
 
@@ -5289,6 +5382,15 @@ export function buildStrategyBacktestPanelSummary(input: {
   queryState: StockStrategyPanelQueryState;
   errorMessage?: string;
 }): StockStrategyPanelResultSummary {
+  if (input.queryState === "idle") {
+    return {
+      headline: "待触发",
+      detail: "展开策略回溯复核区后读取证据。",
+      badgeLabel: "待触发",
+      stats: [],
+      tone: "neutral",
+    };
+  }
   if (input.queryState === "loading") {
     return {
       headline: "加载中…",
@@ -5302,49 +5404,128 @@ export function buildStrategyBacktestPanelSummary(input: {
     return {
       headline: "回溯暂不可用",
       detail: localizeStrategyPanelErrorDetail(input.errorMessage),
-      badgeLabel: "待补",
+      badgeLabel: "读取失败",
       stats: [],
       tone: "warning",
     };
   }
   const topRow = [...input.rows].sort((left, right) => right.count - left.count)[0];
-  const signalStats =
-    input.payload?.summary?.execution_usable_stats?.by_signal_kind_horizon_usable_stats?.stock_candidate
-      ?.return_5d ??
-    input.payload?.summary?.execution_usable_stats?.by_signal_kind_horizon_stats?.stock_candidate?.return_5d ??
-    input.payload?.summary?.by_signal_kind_horizon_usable_stats?.stock_candidate?.return_5d ??
-    input.payload?.summary?.by_signal_kind_horizon_stats?.stock_candidate?.return_5d;
+  const sourceGapDateCount = backtestSourceGapDateCount(input.window);
+  const unsupportedDateCount = Math.max(
+    0,
+    backtestUnsupportedDateCount(input.window) - sourceGapDateCount,
+  );
+  const pendingDateCount = backtestPendingDateCount(input.window);
+  const summary = input.payload?.summary ?? null;
+  const executionStats = summary?.execution_usable_stats ?? null;
+  const decisionStats = summary?.decision_usable_stats ?? null;
+  const signalStats = executionStats
+    ? executionStats.by_signal_kind_horizon_usable_stats?.stock_candidate?.return_5d ??
+      executionStats.by_signal_kind_horizon_stats?.stock_candidate?.return_5d
+    : decisionStats?.by_signal_kind_horizon_usable_stats?.stock_candidate?.return_5d ??
+      summary?.by_signal_kind_horizon_usable_stats?.stock_candidate?.return_5d ??
+      decisionStats?.by_signal_kind_horizon_stats?.stock_candidate?.return_5d ??
+      summary?.by_signal_kind_horizon_stats?.stock_candidate?.return_5d;
+  const primaryStats = executionStats
+    ? executionStats.horizon_usable_stats?.return_5d ?? signalStats
+    : decisionStats?.horizon_usable_stats?.return_5d ??
+      summary?.horizon_usable_stats?.return_5d ??
+      summary?.horizon_stats?.return_5d ??
+      signalStats;
+  const primaryAvailableCount = primaryStats?.available_count ?? 0;
   const trendT5 =
-    signalStats != null
+    signalStats != null && signalStats.available_count > 0
       ? formatBacktestHorizonStatsText(signalStats)
-      : topRow?.stats.return_5d ?? "样本待补";
+      : sourceGapDateCount > 0
+        ? `历史源不足 · ${sourceGapDateCount}日`
+        : pendingDateCount > 0
+          ? `自然待成熟 · ${pendingDateCount}日`
+          : unsupportedDateCount > 0
+            ? `窗口不支持 · ${unsupportedDateCount}日`
+            : topRow?.stats.return_5d ?? "接口未提供";
   const metricBasisLabel = resolveStrategyBacktestMetricBasisLabel(input.payload);
 
+  const hasVisibleSamples = input.sampleCount > 0;
+  const hasPrimarySamples = primaryAvailableCount > 0;
+  const isSourceLimited = sourceGapDateCount > 0;
+  const isWindowLimited = unsupportedDateCount > 0;
+  const hasPendingMaturity = pendingDateCount > 0;
+  const fullyReady = hasPrimarySamples && !isSourceLimited && !isWindowLimited && !hasPendingMaturity;
   return {
-    headline: input.sampleCount > 0 ? `有效样本 ${input.sampleCount} 条` : "暂无回溯样本",
+    headline: isSourceLimited
+      ? hasVisibleSamples
+        ? `可见收益样本 ${input.sampleCount} 条`
+        : "历史样本源不足"
+      : isWindowLimited
+        ? hasVisibleSamples
+          ? `可见短窗样本 ${input.sampleCount} 条`
+          : "回放窗口不支持"
+        : hasPrimarySamples
+          ? `T+5 有效样本 ${primaryAvailableCount} 条`
+          : hasVisibleSamples
+            ? hasPendingMaturity
+              ? "短窗可见，T+5 待成熟"
+              : "短窗可见，T+5 无成熟样本"
+            : hasPendingMaturity
+              ? "T+5 收益待成熟"
+              : "暂无回溯样本",
     detail: [input.dateRangeLabel, metricBasisLabel].filter(Boolean).join(" · "),
-    badgeLabel: input.sampleCount > 0 ? "已就绪" : "待补",
+    badgeLabel: isSourceLimited
+      ? "历史源不足"
+      : isWindowLimited
+        ? "窗口不支持"
+        : fullyReady
+          ? "已就绪"
+          : hasVisibleSamples || hasPrimarySamples
+            ? "部分成熟"
+            : hasPendingMaturity
+              ? "待成熟"
+              : "暂无样本",
     stats: [
       {
         key: "trend",
         label: topRow?.label ?? "趋势",
         value: trendT5,
-        tone: input.sampleCount > 0 ? "positive" : "warning",
+        tone: fullyReady ? "positive" : "warning",
       },
-      {
-        key: "pending",
-        label: "待成熟",
-        value: `${input.window?.replay_dates_pending ?? 0} 日`,
-        tone: (input.window?.replay_dates_pending ?? 0) > 0 ? "warning" : "neutral",
-      },
+      ...(pendingDateCount > 0
+        ? [
+            {
+              key: "pending",
+              label: "待成熟",
+              value: `${pendingDateCount} 日`,
+              tone: "warning" as const,
+            },
+          ]
+        : []),
+      ...(sourceGapDateCount > 0
+        ? [
+            {
+              key: "unsupported",
+              label: "历史源不足",
+              value: `${sourceGapDateCount} 日`,
+              tone: "warning" as const,
+            },
+          ]
+        : []),
+      ...(unsupportedDateCount > 0
+        ? [
+            {
+              key: "window",
+              label: "窗口不支持",
+              value: `${unsupportedDateCount} 日`,
+              tone: "warning" as const,
+            },
+          ]
+        : []),
       {
         key: "range",
         label: "区间",
-        value: input.dateRangeLabel || "待补",
+        value: input.dateRangeLabel || "区间未提供",
         tone: "neutral",
       },
     ],
-    tone: input.sampleCount > 0 ? "positive" : "warning",
+    tone: fullyReady ? "positive" : "warning",
   };
 }
 
@@ -5354,6 +5535,15 @@ export function buildStrategyOptimizationPanelSummary(input: {
   queryState: StockStrategyPanelQueryState;
   errorMessage?: string;
 }): StockStrategyPanelResultSummary {
+  if (input.queryState === "idle") {
+    return {
+      headline: "待触发",
+      detail: "展开优化诊断复核区后读取证据。",
+      badgeLabel: "待触发",
+      stats: [],
+      tone: "neutral",
+    };
+  }
   if (input.queryState === "loading") {
     return {
       headline: "加载中…",
@@ -5367,46 +5557,119 @@ export function buildStrategyOptimizationPanelSummary(input: {
     return {
       headline: "优化诊断暂不可用",
       detail: localizeStrategyPanelErrorDetail(input.errorMessage),
-      badgeLabel: "待补",
+      badgeLabel: "读取失败",
+      stats: [],
+      tone: "warning",
+    };
+  }
+  if (!input.payload) {
+    return {
+      headline: "优化接口未提供数据",
+      detail: "接口未返回优化诊断载荷，当前不形成优化判断。",
+      badgeLabel: "接口未提供",
       stats: [],
       tone: "warning",
     };
   }
 
-  const promoteCount = (input.payload?.recommendations ?? []).filter(
+  const promoteCount = input.payload.recommendations.filter(
     (item) => item.action === "promote" || item.priority_label === "优先复核",
   ).length;
-  const downgradeCount = (input.payload?.recommendations ?? []).filter(
+  const downgradeCount = input.payload.recommendations.filter(
     (item) => item.action === "downgrade" || item.priority_label === "降权观察",
   ).length;
   const top = input.rows[0];
-  const horizon = input.payload?.primary_horizon ?? "return_5d";
+  const horizon = input.payload.primary_horizon;
   const primaryStats = top?.stats[horizon];
+  const window = input.payload.backtest_window_summary;
+  const sourceGapDateCount = backtestSourceGapDateCount(window);
+  const unsupportedDateCount = Math.max(
+    0,
+    backtestUnsupportedDateCount(window) - sourceGapDateCount,
+  );
+  const pendingRows = input.payload.pending_summary.pending_rows;
 
   if (!top) {
+    const headline =
+      sourceGapDateCount > 0
+        ? "历史样本源不足"
+        : unsupportedDateCount > 0
+          ? "回放窗口不支持"
+          : "优化样本不足";
     return {
-      headline: "优化样本不足",
-      detail: input.payload?.pending_summary.message
+      headline,
+      detail: input.payload.pending_summary.message
         ? localizeStockBackendText(input.payload.pending_summary.message)
         : undefined,
-      badgeLabel: "待补",
+      badgeLabel:
+        sourceGapDateCount > 0
+          ? "历史源不足"
+          : unsupportedDateCount > 0
+            ? "窗口不支持"
+            : pendingRows > 0
+              ? "待成熟"
+              : "样本不足",
       stats: [
-        {
-          key: "pending",
-          label: "待成熟",
-          value: `${input.payload?.pending_summary.pending_rows ?? 0} 行`,
-          tone: "warning",
-        },
+        ...(sourceGapDateCount > 0
+          ? [{ key: "unsupported", label: "历史源不足", value: `${sourceGapDateCount} 日`, tone: "warning" as const }]
+          : []),
+        ...(unsupportedDateCount > 0
+          ? [{ key: "window", label: "窗口不支持", value: `${unsupportedDateCount} 日`, tone: "warning" as const }]
+          : []),
+        ...(pendingRows > 0
+          ? [
+              {
+                key: "pending",
+                label: "待成熟",
+                value: `${pendingRows} 行`,
+                tone: "warning" as const,
+              },
+            ]
+          : []),
       ],
       tone: "warning",
     };
   }
 
   const status = strategyPrioritySummaryStatus(top.recommendation.priority_label);
+  const coverageLimited = sourceGapDateCount > 0 || unsupportedDateCount > 0;
+  const topSourceGapDateCount = backtestSourceGapDateCount(window, top.signal_kind);
+  const topUnsupportedDateCount = Math.max(
+    0,
+    backtestUnsupportedDateCount(window, top.signal_kind) - topSourceGapDateCount,
+  );
+  const topPendingDateCount = backtestPendingDateCount(window, top.signal_kind);
+  const primaryValue =
+    primaryStats && primaryStats.available_count > 0
+      ? formatBacktestHorizonStatsText(primaryStats)
+      : top.sample_status === "insufficient" || top.recommendation.action === "pending_more_history"
+        ? "样本不足"
+        : topSourceGapDateCount > 0
+          ? `历史源不足 · ${topSourceGapDateCount}日`
+          : topPendingDateCount > 0
+            ? `自然待成熟 · ${primaryStats?.missing_count || topPendingDateCount}条`
+            : topUnsupportedDateCount > 0
+              ? `窗口不支持 · ${topUnsupportedDateCount}日`
+              : pendingRows > 0
+                ? `全局待成熟 · ${pendingRows}条`
+                : primaryStats
+                  ? "成熟度未提供"
+                  : "接口未提供";
   return {
     headline: `${status.label} · ${localizeStockStrategyLabel(top.strategy_label, top.signal_kind)}`,
-    detail: localizeStockBackendText(top.recommendation.reason, top.signal_kind),
-    badgeLabel: status.badgeLabel,
+    detail: [
+      localizeStockBackendText(top.recommendation.reason, top.signal_kind),
+      sourceGapDateCount > 0 ? `历史缺源 ${sourceGapDateCount} 日` : null,
+      unsupportedDateCount > 0 ? `窗口不支持 ${unsupportedDateCount} 日` : null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    badgeLabel:
+      sourceGapDateCount > 0
+        ? "部分缺源"
+        : unsupportedDateCount > 0
+          ? "窗口受限"
+          : status.badgeLabel,
     stats: [
       {
         key: "promote",
@@ -5421,13 +5684,13 @@ export function buildStrategyOptimizationPanelSummary(input: {
         tone: downgradeCount > 0 ? "warning" : "neutral",
       },
       {
-        key: "t5",
-        label: "T+5",
-        value: formatBacktestHorizonStatsText(primaryStats),
-        tone: "neutral",
+        key: horizon,
+        label: strategyHorizonShortLabel(horizon),
+        value: primaryValue,
+        tone: coverageLimited || !primaryStats || primaryStats.available_count <= 0 ? "warning" : "neutral",
       },
     ],
-    tone: status.tone,
+    tone: coverageLimited ? "warning" : status.tone,
   };
 }
 
@@ -5500,7 +5763,7 @@ export function buildEventsMonitoringPanelSummary(
   return {
     headline: `${rows.length} 条待复核`,
     detail: `最高优先：${eventMonitorSourceLabel(top.source)} / ${localizeStockDataFamily(top.impact)}`,
-    badgeLabel: errorCount > 0 ? "待补" : warningCount > 0 ? "待复核" : "已就绪",
+    badgeLabel: errorCount > 0 ? "异常待核" : warningCount > 0 ? "待复核" : "已就绪",
     stats: [
       { key: "error", label: "错误", value: `${errorCount}`, tone: errorCount > 0 ? "negative" : "positive" },
       { key: "warn", label: "预警", value: `${warningCount}`, tone: warningCount > 0 ? "warning" : "neutral" },

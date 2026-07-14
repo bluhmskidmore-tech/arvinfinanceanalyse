@@ -122,7 +122,6 @@ import {
   readinessTone,
 } from "../lib/stockAnalysisPageLabels";
 import {
-  backtestStatsText,
   buildStrategyBacktestRows,
   formatBacktestSignedPercent,
   resolveStrategyBacktestSampleCount,
@@ -133,13 +132,15 @@ import {
 import {
   formatPriorityScore,
   resolvePanelQueryState,
+  strategyPriorityHorizonStatsText,
   strategyPriorityReasonLabel,
   strategyPriorityStatusLabel,
 } from "../lib/stockAnalysisPriorityModel";
 import {
   buildStrategyOptimizationRows,
   strategyOptimizationDateWeightedText,
-  strategyOptimizationPrimaryStats,
+  strategyOptimizationHorizonLabel,
+  strategyOptimizationPrimaryStatsText,
   strategyOptimizationReasonLabel,
 } from "../lib/stockAnalysisOptimizationModel";
 import {
@@ -581,6 +582,7 @@ export default function StockAnalysisPage() {
   const [boundaryDiagnosticsOpen, setBoundaryDiagnosticsOpen] = useState(false);
   const [activeWorkbenchFactId, setActiveWorkbenchFactId] = useState<string | null>(null);
   const [focusedEndpointKey, setFocusedEndpointKey] = useState<string | null>(null);
+  const [requestedEndpointKeys, setRequestedEndpointKeys] = useState<string[]>([]);
   const [sectorDetailOpen, setSectorDetailOpen] = useState(false);
   const {
     sectorFilterSectorCode,
@@ -602,6 +604,9 @@ export default function StockAnalysisPage() {
     firstScreenOptimizationRequested,
     handleFirstScreenAnalyticsTabChange,
   } = useFirstScreenAnalyticsTabs();
+  const candidateHistoryEndpointRequested = requestedEndpointKeys.includes("candidate-history");
+  const cycleProxyEndpointRequested = requestedEndpointKeys.includes("cycle-proxy");
+  const portfolioProxyEndpointRequested = requestedEndpointKeys.includes("portfolio-proxy");
 
   const strategyQueryKey = ["stock-analysis", "workbench", asOfOverride ?? "__default"] as const;
 
@@ -809,16 +814,20 @@ export default function StockAnalysisPage() {
   }
 
   function scrollToStockSection(targetId: string) {
-    const target = document.getElementById(targetId);
-    if (!target) return;
+    window.setTimeout(() => {
+      const target =
+        document.getElementById(targetId) ??
+        document.querySelector<HTMLElement>(`[data-testid="${targetId}"]`);
+      if (!target) return;
 
-    let disclosure = target.closest("details");
-    while (disclosure) {
-      disclosure.open = true;
-      disclosure = disclosure.parentElement?.closest("details") ?? null;
-    }
+      let disclosure = target.closest("details");
+      while (disclosure) {
+        disclosure.open = true;
+        disclosure = disclosure.parentElement?.closest("details") ?? null;
+      }
 
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   const themeBreakoutCards = useMemo(
@@ -1160,6 +1169,9 @@ export default function StockAnalysisPage() {
     ...stockAnalysisReadQueryOptions,
   });
   const strategyOptimizationPayload = strategyOptimizationQuery.data?.result ?? null;
+  const strategyOptimizationPrimaryHorizonLabel = strategyOptimizationHorizonLabel(
+    strategyOptimizationPayload,
+  );
   const strategyOptimizationRows = useMemo(
     () => buildStrategyOptimizationRows(strategyOptimizationPayload),
     [strategyOptimizationPayload],
@@ -1180,7 +1192,9 @@ export default function StockAnalysisPage() {
         snapshotTo: analyticsAsOf ?? undefined,
         limit: 500,
       }),
-    enabled: Boolean(analyticsAsOf && strategyBacktestSection.seen),
+    enabled: Boolean(
+      analyticsAsOf && (strategyBacktestSection.seen || candidateHistoryEndpointRequested),
+    ),
     ...stockAnalysisReadQueryOptions,
   });
 
@@ -1201,7 +1215,11 @@ export default function StockAnalysisPage() {
       client.getLivermoreCycleProxyBacktest({
         snapshotTo: analyticsAsOf ?? undefined,
       }),
-    enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+    enabled: Boolean(
+      analyticsAsOf &&
+        cycleRotationFramework &&
+        (cycleFrameworkSection.seen || cycleProxyEndpointRequested),
+    ),
     ...stockAnalysisReadQueryOptions,
   });
   const cycleProxyBacktestPayload: LivermoreCycleProxyBacktestPayload | null =
@@ -1216,7 +1234,11 @@ export default function StockAnalysisPage() {
       client.getLivermoreCandidateHistoryPortfolioBacktest({
         snapshotTo: analyticsAsOf ?? undefined,
       }),
-    enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+    enabled: Boolean(
+      analyticsAsOf &&
+        cycleRotationFramework &&
+        (cycleFrameworkSection.seen || portfolioProxyEndpointRequested),
+    ),
     ...stockAnalysisReadQueryOptions,
   });
   const candidateHistoryPortfolioBacktestPayload: LivermoreCandidateHistoryPortfolioBacktestPayload | null =
@@ -1330,7 +1352,9 @@ export default function StockAnalysisPage() {
         key: "candidate-history",
         label: "策略回溯窗口",
         queryState: endpointQueryState({
-          enabled: Boolean(analyticsAsOf && strategyBacktestSection.seen),
+          enabled: Boolean(
+            analyticsAsOf && (strategyBacktestSection.seen || candidateHistoryEndpointRequested),
+          ),
           isLoading: strategyBacktestQuery.isLoading,
           isFetching: strategyBacktestQuery.isFetching,
           isError: strategyBacktestQuery.isError,
@@ -1365,7 +1389,11 @@ export default function StockAnalysisPage() {
         key: "cycle-proxy",
         label: "周期代理回溯",
         queryState: endpointQueryState({
-          enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+          enabled: Boolean(
+            analyticsAsOf &&
+              cycleRotationFramework &&
+              (cycleFrameworkSection.seen || cycleProxyEndpointRequested),
+          ),
           isLoading: cycleProxyBacktestQuery.isLoading,
           isFetching: cycleProxyBacktestQuery.isFetching,
           isError: cycleProxyBacktestQuery.isError,
@@ -1382,7 +1410,11 @@ export default function StockAnalysisPage() {
         key: "portfolio-proxy",
         label: "组合代理回溯",
         queryState: endpointQueryState({
-          enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+          enabled: Boolean(
+            analyticsAsOf &&
+              cycleRotationFramework &&
+              (cycleFrameworkSection.seen || portfolioProxyEndpointRequested),
+          ),
           isLoading: candidateHistoryPortfolioBacktestQuery.isLoading,
           isFetching: candidateHistoryPortfolioBacktestQuery.isFetching,
           isError: candidateHistoryPortfolioBacktestQuery.isError,
@@ -1403,6 +1435,7 @@ export default function StockAnalysisPage() {
     candidateHistoryPortfolioBacktestQuery.isError,
     candidateHistoryPortfolioBacktestQuery.isFetching,
     candidateHistoryPortfolioBacktestQuery.isLoading,
+    candidateHistoryEndpointRequested,
     confluencePayload,
     confluenceQuery.data,
     confluenceQuery.isError,
@@ -1414,9 +1447,11 @@ export default function StockAnalysisPage() {
     cycleProxyBacktestQuery.isError,
     cycleProxyBacktestQuery.isFetching,
     cycleProxyBacktestQuery.isLoading,
+    cycleProxyEndpointRequested,
     cycleRotationFramework,
     firstScreenPriorityRequested,
     firstScreenOptimizationRequested,
+    portfolioProxyEndpointRequested,
     sectorRankSeriesQuery.data,
     sectorRankSeriesQuery.isError,
     sectorRankSeriesQuery.isFetching,
@@ -1467,7 +1502,57 @@ export default function StockAnalysisPage() {
   const handleEndpointSelect = (key: string) => {
     setFocusedEndpointKey(key);
     setActiveWorkbenchFactId(null);
-    setBoundaryDiagnosticsOpen(true);
+    setBoundaryDiagnosticsOpen(false);
+    setRequestedEndpointKeys((current) =>
+      current.includes(key) ? current : [...current, key],
+    );
+
+    switch (key) {
+      case "strategy":
+        scrollToStockSection("stock-analysis-review-queue");
+        break;
+      case "signal-confluence":
+        scrollToStockSection("stock-analysis-risk-section");
+        break;
+      case "sector-series":
+        handleSectorSeriesCollapseChange("sector-rank-series-multi");
+        scrollToStockSection("stock-analysis-sector-series-panel");
+        break;
+      case "strategy-score":
+        handleFirstScreenAnalyticsTabChange("priority");
+        if (!isStrategyCardExpanded("market-priority")) {
+          toggleStrategyCard("market-priority");
+        }
+        scrollToStockSection("stock-analysis-market-priority-summary");
+        break;
+      case "candidate-history":
+        if (!isStrategyCardExpanded("strategy-backtest")) {
+          toggleStrategyCard("strategy-backtest");
+        }
+        scrollToStockSection("stock-analysis-strategy-backtest");
+        break;
+      case "strategy-optimization":
+        handleFirstScreenAnalyticsTabChange("optimization");
+        if (!isStrategyCardExpanded("strategy-optimization")) {
+          toggleStrategyCard("strategy-optimization");
+        }
+        scrollToStockSection("stock-analysis-strategy-optimization");
+        break;
+      case "cycle-proxy":
+        if (!isStrategyCardExpanded("cycle-rotation")) {
+          toggleStrategyCard("cycle-rotation");
+        }
+        scrollToStockSection("stock-analysis-cycle-proxy-backtest");
+        break;
+      case "portfolio-proxy":
+        if (!isStrategyCardExpanded("cycle-rotation")) {
+          toggleStrategyCard("cycle-rotation");
+        }
+        scrollToStockSection("stock-analysis-candidate-history-portfolio-backtest");
+        break;
+      default:
+        break;
+    }
   };
 
   const observationClosureReasonInputs = useMemo(() => {
@@ -1691,12 +1776,20 @@ export default function StockAnalysisPage() {
             portfolioBacktest: candidateHistoryPortfolioBacktestPayload,
             proxyBacktest: cycleProxyBacktestPayload,
             portfolioQueryState: resolvePanelQueryState({
-              enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+              enabled: Boolean(
+                analyticsAsOf &&
+                  cycleRotationFramework &&
+                  (cycleFrameworkSection.seen || portfolioProxyEndpointRequested),
+              ),
               isLoading: candidateHistoryPortfolioBacktestQuery.isLoading,
               isError: candidateHistoryPortfolioBacktestQuery.isError,
             }),
             proxyQueryState: resolvePanelQueryState({
-              enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+              enabled: Boolean(
+                analyticsAsOf &&
+                  cycleRotationFramework &&
+                  (cycleFrameworkSection.seen || cycleProxyEndpointRequested),
+              ),
               isLoading: cycleProxyBacktestQuery.isLoading,
               isError: cycleProxyBacktestQuery.isError,
             }),
@@ -1709,6 +1802,8 @@ export default function StockAnalysisPage() {
       cycleProxyBacktestPayload,
       analyticsAsOf,
       cycleFrameworkSection.seen,
+      cycleProxyEndpointRequested,
+      portfolioProxyEndpointRequested,
       candidateHistoryPortfolioBacktestQuery.isLoading,
       candidateHistoryPortfolioBacktestQuery.isError,
       cycleProxyBacktestQuery.isLoading,
@@ -1741,7 +1836,9 @@ export default function StockAnalysisPage() {
         payload: strategyScorePayload,
         marketState: currentMarketState,
         queryState: resolvePanelQueryState({
-          enabled: Boolean(analyticsAsOf && strategyPrioritySection.seen),
+          enabled: Boolean(
+            analyticsAsOf && (strategyPrioritySection.seen || firstScreenPriorityRequested),
+          ),
           isLoading: strategyScoreQuery.isLoading,
           isError: strategyScoreQuery.isError,
         }),
@@ -1752,6 +1849,7 @@ export default function StockAnalysisPage() {
       strategyScorePayload,
       currentMarketState,
       analyticsAsOf,
+      firstScreenPriorityRequested,
       strategyPrioritySection.seen,
       strategyScoreQuery.isLoading,
       strategyScoreQuery.isError,
@@ -1768,7 +1866,9 @@ export default function StockAnalysisPage() {
         dateRangeLabel: strategyBacktestDateRangeLabel,
         rows: strategyBacktestRows,
         queryState: resolvePanelQueryState({
-          enabled: Boolean(analyticsAsOf && strategyBacktestSection.seen),
+          enabled: Boolean(
+            analyticsAsOf && (strategyBacktestSection.seen || candidateHistoryEndpointRequested),
+          ),
           isLoading: strategyBacktestQuery.isLoading,
           isError: strategyBacktestQuery.isError,
         }),
@@ -1781,6 +1881,7 @@ export default function StockAnalysisPage() {
       strategyBacktestDateRangeLabel,
       strategyBacktestRows,
       analyticsAsOf,
+      candidateHistoryEndpointRequested,
       strategyBacktestSection.seen,
       strategyBacktestQuery.isLoading,
       strategyBacktestQuery.isError,
@@ -1794,7 +1895,10 @@ export default function StockAnalysisPage() {
         payload: strategyOptimizationPayload,
         rows: strategyOptimizationRows,
         queryState: resolvePanelQueryState({
-          enabled: Boolean(analyticsAsOf && strategyOptimizationSection.seen),
+          enabled: Boolean(
+            analyticsAsOf &&
+              (strategyOptimizationSection.seen || firstScreenOptimizationRequested),
+          ),
           isLoading: strategyOptimizationQuery.isLoading,
           isError: strategyOptimizationQuery.isError,
         }),
@@ -1806,6 +1910,7 @@ export default function StockAnalysisPage() {
       strategyOptimizationPayload,
       strategyOptimizationRows,
       analyticsAsOf,
+      firstScreenOptimizationRequested,
       strategyOptimizationSection.seen,
       strategyOptimizationQuery.isLoading,
       strategyOptimizationQuery.isError,
@@ -4118,7 +4223,11 @@ export default function StockAnalysisPage() {
                                       </td>
                                       {strategyBacktestHorizons.map((horizon) => (
                                         <td className="stock-analysis-page__table-number" key={horizon}>
-                                          {backtestStatsText(row.stats[horizon])}
+                                          {strategyPriorityHorizonStatsText(
+                                            row,
+                                            horizon,
+                                            strategyScorePayload?.backtest_window_summary,
+                                          )}
                                         </td>
                                       ))}
                                       <td>{strategyPriorityReasonLabel(row)}</td>
@@ -4150,6 +4259,13 @@ export default function StockAnalysisPage() {
                             <p className="stock-analysis-page__notice">
                               优化诊断暂不可用：{strategyPanelErrorMessage(strategyOptimizationQuery.error)}
                             </p>
+                          ) : !strategyOptimizationPayload ? (
+                            <CompactStatusTile
+                              icon={<SafetyCertificateOutlined />}
+                              label="优化诊断"
+                              value="接口未提供"
+                              testId="stock-analysis-optimization-empty"
+                            />
                           ) : strategyOptimizationRows.length > 0 ? (
                             <div className="stock-analysis-page__table-wrap">
                               <table className="stock-analysis-page__table stock-analysis-page__table--dense">
@@ -4157,7 +4273,7 @@ export default function StockAnalysisPage() {
                                   <tr>
                                     <th scope="col">策略</th>
                                     <th scope="col">复核状态</th>
-                                    <th scope="col">T+5 收益</th>
+                                    <th scope="col">{strategyOptimizationPrimaryHorizonLabel} 收益</th>
                                     <th scope="col">按日等权</th>
                                     <th scope="col">原因</th>
                                   </tr>
@@ -4171,9 +4287,7 @@ export default function StockAnalysisPage() {
                                       <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
                                       <td>{strategyPriorityStatusLabel(row.recommendation.priority_label)}</td>
                                       <td className="stock-analysis-page__table-number">
-                                        {backtestStatsText(
-                                          strategyOptimizationPrimaryStats(row, strategyOptimizationPayload),
-                                        )}
+                                        {strategyOptimizationPrimaryStatsText(row, strategyOptimizationPayload)}
                                       </td>
                                       <td className="stock-analysis-page__table-number">
                                         {strategyOptimizationDateWeightedText(row, strategyOptimizationPayload)}
@@ -4188,7 +4302,7 @@ export default function StockAnalysisPage() {
                             <CompactStatusTile
                               icon={<SafetyCertificateOutlined />}
                               label="优化诊断"
-                              value="0"
+                              value="样本不足"
                               testId="stock-analysis-optimization-empty"
                             />
                           )}

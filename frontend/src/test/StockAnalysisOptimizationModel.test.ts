@@ -13,6 +13,7 @@ import {
   strategyOptimizationSliceLabel,
   strategyOptimizationSlicePair,
 } from "../features/stock-analysis/lib/stockAnalysisOptimizationModel";
+import * as optimizationModel from "../features/stock-analysis/lib/stockAnalysisOptimizationModel";
 
 const positiveStats: LivermoreCandidateHistoryHorizonStats = {
   available_count: 24,
@@ -276,12 +277,125 @@ describe("stockAnalysisOptimizationModel", () => {
     const [stockRow, factorRow] = buildStrategyOptimizationRows(buildPayload());
 
     expect(strategyOptimizationPrimaryStats(stockRow, buildPayload())).toBe(positiveStats);
-    expect(strategyOptimizationPrimaryStats(factorRow, buildPayload())).toBe(fallbackStats);
+    expect(strategyOptimizationPrimaryStats(factorRow, buildPayload())).toBeUndefined();
     expect(strategyOptimizationDateWeightedText(stockRow, buildPayload())).toBe(
       "6日等权 +1.75% / 正收益日 66.7%",
     );
-    expect(strategyOptimizationDateWeightedText(factorRow, buildPayload())).toBe("待补");
+    expect(strategyOptimizationDateWeightedText(factorRow, buildPayload())).toBe("接口未提供");
     expect(strategyOptimizationReasonLabel(stockRow)).toContain("优先复核");
+  });
+
+  it("formats unavailable primary stats from pending and historical-source evidence", () => {
+    const formatter = (
+      optimizationModel as typeof optimizationModel & {
+        strategyOptimizationPrimaryStatsText?: (
+          row: ReturnType<typeof buildStrategyOptimizationRows>[number],
+          payload: LivermoreStrategyOptimizationPayload | null,
+        ) => string;
+      }
+    ).strategyOptimizationPrimaryStatsText;
+    expect(formatter).toBeTypeOf("function");
+    if (!formatter) return;
+
+    const payload = buildPayload();
+    const [stockRow] = buildStrategyOptimizationRows(payload);
+    expect(formatter(stockRow, payload)).toBe("62.5% / +2.65% / 24条");
+
+    const pendingPayload: LivermoreStrategyOptimizationPayload = {
+      ...payload,
+      pending_summary: {
+        primary_horizon: "return_10d",
+        pending_rows: 24,
+        pending_dates: ["2026-04-29"],
+        latest_pending_date: "2026-04-29",
+        message: "pending",
+      },
+    };
+    const pendingRow = {
+      ...stockRow,
+      stats: {
+        ...stockRow.stats,
+        return_10d: {
+          available_count: 0,
+          missing_count: 24,
+          positive_count: 0,
+          non_positive_count: 0,
+          avg_return: null,
+          win_rate: null,
+        },
+      },
+    };
+    expect(formatter(pendingRow, pendingPayload)).toBe("全局待成熟 · 24条");
+
+    const sourceGapPayload: LivermoreStrategyOptimizationPayload = {
+      ...payload,
+      backtest_window_summary: {
+        status: "unsupported",
+        snapshot_from: "2026-04-28",
+        snapshot_to: "2026-04-29",
+        replay_dates_total: 1,
+        replay_dates_completed: 0,
+        replay_dates_pending: 0,
+        replay_dates_unsupported: 1,
+        replay_dates_proxy_only: 0,
+        completed_rows: 0,
+        pending_rows: 0,
+        unsupported_rows: 10,
+        proxy_only_rows: 0,
+        included_completed_stats_dates: [],
+        excluded_from_completed_stats_dates: ["2026-04-28"],
+        date_reasons: [
+          {
+            trade_date: "2026-04-28",
+            status: "unsupported",
+            reason_code: "missing_required_source_table",
+            message: "missing",
+            affects_completed_stats: false,
+            signal_kinds: ["stock_candidate"],
+          },
+        ],
+      },
+    };
+    const [, factorRow] = buildStrategyOptimizationRows(sourceGapPayload);
+    expect(formatter(pendingRow, sourceGapPayload)).toBe("历史源不足 · 1日");
+    expect(formatter(factorRow, sourceGapPayload)).toBe("接口未提供");
+
+    const insufficientRow = {
+      ...factorRow,
+      sample_status: "insufficient" as const,
+      stats: {
+        return_10d: {
+          available_count: 0,
+          missing_count: 0,
+          positive_count: 0,
+          non_positive_count: 0,
+          avg_return: null,
+          win_rate: null,
+        },
+      },
+    };
+    expect(formatter(insufficientRow, payload)).toBe("样本不足");
+
+    const horizonLabel = (
+      optimizationModel as typeof optimizationModel & {
+        strategyOptimizationHorizonLabel?: (payload: LivermoreStrategyOptimizationPayload | null) => string;
+      }
+    ).strategyOptimizationHorizonLabel;
+    expect(horizonLabel).toBeTypeOf("function");
+    expect(horizonLabel?.(payload)).toBe("T+10");
+
+    const maturityStatus = (
+      optimizationModel as typeof optimizationModel & {
+        strategyOptimizationMaturityStatusText?: (
+          payload: LivermoreStrategyOptimizationPayload | null,
+        ) => string;
+      }
+    ).strategyOptimizationMaturityStatusText;
+    expect(maturityStatus).toBeTypeOf("function");
+    expect(maturityStatus?.(null)).toBe("接口未提供");
+    expect(maturityStatus?.(sourceGapPayload)).toBe("历史源不足");
+    expect(maturityStatus?.(pendingPayload)).toBe("待成熟");
+    expect(maturityStatus?.(payload)).toBe("已有成熟样本");
   });
 
   it("localizes slice labels and excludes immature slices from strongest or weakest selection", () => {

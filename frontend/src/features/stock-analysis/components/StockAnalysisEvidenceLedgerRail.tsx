@@ -252,6 +252,9 @@ export function StockAnalysisEvidenceLedgerRail({
           boundaryItems={boundaryItems}
           boundarySummary={boundarySummary}
           strategyPayload={strategyPayload}
+          endpointItems={endpointItems}
+          focusedEndpointKey={focusedEndpointKey}
+          onEndpointSelect={onEndpointSelect}
           diagnosticsDrawerOpen={diagnosticsOpen}
           onOpenDiagnostics={onOpenDiagnostics}
           onCloseDiagnostics={onCloseDiagnostics}

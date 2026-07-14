@@ -9,6 +9,7 @@ const EXEMPT_OVERFLOW_CONTAINERS = [
   '[data-testid="workbench-market-ticker"]',
   '[data-testid="workbench-section-subnav"]',
   '[data-testid^="market-workbench-nav-"]',
+  '[data-testid="stock-analysis-theme-leaders-first-screen"] .stock-analysis-page__table-wrap',
 ];
 
 const viewports = [
@@ -678,7 +679,18 @@ async function openStockAnalysis(page, viewport) {
   await page.goto("/stock-analysis", { waitUntil: "domcontentloaded" });
   await expect(page.locator(STOCK_ANALYSIS_READY_SELECTOR)).toBeVisible({ timeout: 60_000 });
   await expect(page.locator(REVIEW_QUEUE_SELECTOR)).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator(REVIEW_QUEUE_ROW_SELECTOR).first()).toBeVisible({ timeout: 60_000 });
+  const gateLedgerDisclosure = page.locator(
+    '[data-testid="stock-analysis-gate-ledger-disclosure"]',
+  );
+  const gateLedgerSummary = page.locator('[data-testid="stock-analysis-gate-ledger-summary"]');
+  const firstGateLedgerRow = page.locator(REVIEW_QUEUE_ROW_SELECTOR).first();
+  await expect(gateLedgerSummary).toBeVisible({ timeout: 60_000 });
+  await expect(firstGateLedgerRow).toBeAttached({ timeout: 60_000 });
+  await expect(gateLedgerDisclosure).not.toHaveAttribute("open", "");
+  await expect(firstGateLedgerRow).toBeHidden();
+  await gateLedgerSummary.click();
+  await expect(gateLedgerDisclosure).toHaveAttribute("open", "");
+  await expect(firstGateLedgerRow).toBeVisible({ timeout: 60_000 });
 
   let settledMetrics = null;
   let stablePassCount = 0;
@@ -735,4 +747,154 @@ test.describe("stock analysis layout density guard", () => {
       }
     });
   }
+
+  test("closes the wide-desktop grid without removing theme drill-downs", async ({ page }) => {
+    const viewport = {
+      name: "2048",
+      width: 2048,
+      height: 1152,
+      expectVisibleRows: 3,
+      expectFirstViewportRowsMin: null,
+    };
+    await installLivermoreRoutes(page);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto("/stock-analysis", { waitUntil: "domcontentloaded" });
+    await expect(page.locator(STOCK_ANALYSIS_READY_SELECTOR)).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('[data-testid="stock-analysis-tailwind-cockpit"]')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.locator('[data-testid="stock-analysis-first-screen-rail"]')).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(
+      page.locator('[data-testid="stock-analysis-theme-heavyweights-sidebar"]'),
+    ).toBeAttached({ timeout: 60_000 });
+    await expect
+      .poll(
+        () => page.locator('[data-testid^="theme-heavyweight-sidebar-stock-"]').count(),
+        { timeout: 60_000 },
+      )
+      .toBeGreaterThan(0);
+
+    const geometry = await page.evaluate(() => {
+      const rect = (selector) => {
+        const element = document.querySelector(selector);
+        if (!(element instanceof HTMLElement)) return null;
+        const box = element.getBoundingClientRect();
+        return {
+          top: Math.round(box.top),
+          right: Math.round(box.right),
+          bottom: Math.round(box.bottom),
+          left: Math.round(box.left),
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+          display: window.getComputedStyle(element).display,
+        };
+      };
+
+      const themeButtons = Array.from(
+        document.querySelectorAll('[data-testid^="theme-heavyweight-sidebar-stock-"]'),
+      );
+      const theme = document.querySelector(
+        '[data-testid="stock-analysis-theme-heavyweights-sidebar"]',
+      );
+      const queue = document.querySelector('[data-testid="stock-analysis-review-summary"]');
+
+      return {
+        shell: rect(
+          '.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"]',
+        ),
+        hero: rect('[data-testid="stock-analysis-tailwind-cockpit"]'),
+        strategy: rect('[data-testid="stock-analysis-strategy-lens"]'),
+        queue: rect('[data-testid="stock-analysis-review-summary"]'),
+        rail: rect('[data-testid="stock-analysis-first-screen-rail"]'),
+        theme: rect('[data-testid="stock-analysis-theme-heavyweights-sidebar"]'),
+        themeButtonCount: themeButtons.length,
+        renderedThemeButtonCount: themeButtons.filter(
+          (element) => {
+            const box = element.getBoundingClientRect();
+            return (
+              window.getComputedStyle(element).display !== "none" &&
+              box.width > 0 &&
+              box.height > 0
+            );
+          },
+        ).length,
+        themeBeforeQueueInDom: Boolean(
+          theme &&
+            queue &&
+            theme.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+      };
+    });
+
+    expect(geometry.shell).not.toBeNull();
+    expect(geometry.hero).not.toBeNull();
+    expect(geometry.strategy).not.toBeNull();
+    expect(geometry.queue).not.toBeNull();
+    expect(geometry.rail).not.toBeNull();
+    expect(geometry.theme).not.toBeNull();
+    expect(geometry.strategy.top - geometry.hero.bottom).toBeGreaterThanOrEqual(0);
+    expect(geometry.strategy.top - geometry.hero.bottom).toBeLessThanOrEqual(64);
+    expect(geometry.theme.display).toBe("grid");
+    expect(geometry.theme.height).toBeGreaterThan(0);
+    expect(geometry.theme.top - geometry.strategy.bottom).toBeGreaterThanOrEqual(0);
+    expect(geometry.theme.top - geometry.strategy.bottom).toBeLessThanOrEqual(40);
+    expect(geometry.queue.top - Math.max(geometry.theme.bottom, geometry.rail.bottom)).toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(geometry.queue.top - Math.max(geometry.theme.bottom, geometry.rail.bottom)).toBeLessThanOrEqual(40);
+    expect(Math.abs(geometry.theme.left - geometry.shell.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.theme.right - geometry.hero.right)).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.queue.left - geometry.shell.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(geometry.queue.right - geometry.shell.right)).toBeLessThanOrEqual(2);
+    expect(geometry.themeBeforeQueueInDom).toBe(true);
+    expect(geometry.themeButtonCount).toBeGreaterThan(0);
+    expect(geometry.renderedThemeButtonCount).toBe(geometry.themeButtonCount);
+  });
+
+  test("keeps complete theme drill-downs reachable on mid-width desktop", async ({ page }) => {
+    await installLivermoreRoutes(page);
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.goto("/stock-analysis", { waitUntil: "domcontentloaded" });
+    await expect(page.locator(STOCK_ANALYSIS_READY_SELECTOR)).toBeVisible({ timeout: 60_000 });
+
+    const shell = page.locator(
+      '.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"]',
+    );
+    const main = page.locator(".stock-analysis-page__first-screen-main");
+    const theme = page.locator('[data-testid="stock-analysis-theme-heavyweights-sidebar"]');
+    const themeList = theme.locator(".stock-analysis-page__theme-heavyweights-sidebar-list");
+    const themeButtons = theme.locator('[data-testid^="theme-heavyweight-sidebar-stock-"]');
+
+    await expect(theme).toBeVisible({ timeout: 60_000 });
+    await expect.poll(() => themeButtons.count(), { timeout: 60_000 }).toBeGreaterThan(0);
+
+    const [shellBox, mainBox, themeListState, renderedThemeButtonCount] = await Promise.all([
+      shell.boundingBox(),
+      main.boundingBox(),
+      themeList.evaluate((element) => ({
+        display: window.getComputedStyle(element).display,
+        overflowY: window.getComputedStyle(element).overflowY,
+      })),
+      themeButtons.evaluateAll(
+        (elements) =>
+          elements.filter((element) => {
+            const box = element.getBoundingClientRect();
+            const style = window.getComputedStyle(element);
+            return style.display !== "none" && box.width > 0 && box.height > 0;
+          }).length,
+      ),
+    ]);
+
+    expect(shellBox).not.toBeNull();
+    expect(mainBox).not.toBeNull();
+    expect(Math.abs(shellBox.width - mainBox.width)).toBeLessThanOrEqual(2);
+    expect(themeListState.display).toBe("grid");
+    expect(themeListState.overflowY).toBe("auto");
+    expect(renderedThemeButtonCount).toBe(await themeButtons.count());
+
+    await themeButtons.first().click();
+    await expect(page.locator('[data-testid="stock-detail-drawer"]')).toBeVisible({ timeout: 60_000 });
+  });
 });

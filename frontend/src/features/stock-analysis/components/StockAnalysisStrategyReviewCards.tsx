@@ -10,7 +10,6 @@ import type {
 } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import {
-  backtestStatsText,
   buildStrategyBacktestMarketStateRows,
   buildStrategyBacktestRows,
   strategyBacktestHorizonLabels,
@@ -29,6 +28,7 @@ import {
   strategyMaturityHorizonText,
   strategyMaturityRemainingText,
   strategyPriorityDiagnosticLabels,
+  strategyPriorityHorizonStatsText,
   strategyPriorityReasonLabel,
   strategyPriorityScopeLabel,
   strategyPriorityStatusLabel,
@@ -37,7 +37,9 @@ import {
 } from "../lib/stockAnalysisPriorityModel";
 import {
   strategyOptimizationDateWeightedText,
-  strategyOptimizationPrimaryStats,
+  strategyOptimizationHorizonLabel,
+  strategyOptimizationMaturityStatusText,
+  strategyOptimizationPrimaryStatsText,
   strategyOptimizationReasonLabel,
   strategyOptimizationSliceLabel,
   strategyOptimizationSlicePair,
@@ -196,15 +198,11 @@ export function StockAnalysisStrategyReviewCards({
   const strategyScoreHorizonLabel = strategyScorePayload?.primary_horizon
     ? strategyBacktestHorizonShortLabels[strategyScorePayload.primary_horizon]
     : "T+5";
+  const strategyOptimizationPrimaryHorizonLabel = strategyOptimizationHorizonLabel(
+    strategyOptimizationPayload,
+  );
   const strategyOptimizationBadgeLabel =
-    strategyOptimizationPanelSummary?.badgeLabel ??
-    (strategyOptimizationPayload?.primary_horizon === "return_1d"
-      ? "T+1"
-      : strategyOptimizationPayload?.primary_horizon === "return_10d"
-        ? "T+10"
-        : strategyOptimizationPayload?.primary_horizon === "return_20d"
-          ? "T+20"
-          : "T+5");
+    strategyOptimizationPanelSummary?.badgeLabel ?? strategyOptimizationPrimaryHorizonLabel;
 
   return (
     <>
@@ -275,7 +273,11 @@ export function StockAnalysisStrategyReviewCards({
                           </td>
                           {strategyBacktestHorizons.map((horizon) => (
                             <td className="px-3 py-2 text-right border-b border-default-100" key={horizon}>
-                              {backtestStatsText(row.stats[horizon])}
+                              {strategyPriorityHorizonStatsText(
+                                row,
+                                horizon,
+                                strategyScorePayload?.backtest_window_summary,
+                              )}
                             </td>
                           ))}
                           <td>
@@ -508,7 +510,14 @@ export function StockAnalysisStrategyReviewCards({
                   </table>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <p
+                className="text-sm text-default-500 italic p-4 text-center"
+                data-testid="stock-analysis-strategy-backtest-market-state-empty"
+              >
+                {strategyBacktestPayload ? "市场状态归因未提供。" : "市场状态归因接口未提供。"}
+              </p>
+            )}
           </>
         ) : null}
       </StrategyModuleCard>
@@ -516,7 +525,7 @@ export function StockAnalysisStrategyReviewCards({
       <StrategyModuleCard
         id="strategy-optimization"
         title="优化诊断"
-        subtitle="切片 T+5"
+        subtitle={`切片 ${strategyOptimizationPrimaryHorizonLabel}`}
         badgeLabel={strategyOptimizationBadgeLabel}
         summary={strategyOptimizationPanelSummary}
         summaryTestId="stock-analysis-strategy-optimization-panel-summary"
@@ -534,22 +543,25 @@ export function StockAnalysisStrategyReviewCards({
             优化诊断暂不可用：{stockStrategyPanelErrorMessage(strategyOptimizationErrorValue)}
           </p>
         ) : null}
-        {!strategyOptimizationLoading && !strategyOptimizationError ? (
+        {!strategyOptimizationLoading && !strategyOptimizationError && !strategyOptimizationPayload ? (
+          <p className="text-sm text-default-500 italic p-4 text-center">
+            优化诊断接口未提供数据，当前不形成样本或成熟度判断。
+          </p>
+        ) : null}
+        {!strategyOptimizationLoading && !strategyOptimizationError && strategyOptimizationPayload ? (
           <>
             <div className="flex gap-2 items-center text-sm mb-2">
               <span>当前最新日期收益</span>
-              <strong>
-                {(strategyOptimizationPayload?.pending_summary.pending_rows ?? 0) > 0 ? "待成熟" : "已成熟"}
-              </strong>
+              <strong>{strategyOptimizationMaturityStatusText(strategyOptimizationPayload)}</strong>
               <small>
-                {localizeStockBackendText(
-                  strategyOptimizationPayload?.pending_summary.message ?? "T+5 收益成熟状态待补。",
-                )}
+                {strategyOptimizationPayload
+                  ? localizeStockBackendText(strategyOptimizationPayload.pending_summary.message)
+                  : `${strategyOptimizationPrimaryHorizonLabel} 收益成熟度接口未提供。`}
               </small>
             </div>
             <p className="text-xs text-default-500 mt-2">复核排序 · 不改规则</p>
             <div className="flex gap-2 items-center text-sm mb-2">
-              <span>三策略 T+5 排名</span>
+              <span>三策略 {strategyOptimizationPrimaryHorizonLabel} 排名</span>
               <strong>{strategyOptimizationRows.length} 组</strong>
               <small>阈值 {strategyOptimizationPayload?.min_sample ?? 30} · 收益/胜率/成熟度</small>
             </div>
@@ -560,7 +572,7 @@ export function StockAnalysisStrategyReviewCards({
                     <tr>
                       <th scope="col">策略</th>
                       <th scope="col">复核状态</th>
-                      <th scope="col">T+5 收益</th>
+                      <th scope="col">{strategyOptimizationPrimaryHorizonLabel} 收益</th>
                       <th scope="col">按日等权</th>
                       <th scope="col">原因</th>
                     </tr>
@@ -571,7 +583,7 @@ export function StockAnalysisStrategyReviewCards({
                         <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
                         <td>{strategyPriorityStatusLabel(row.recommendation.priority_label)}</td>
                         <td className="px-3 py-2 text-right border-b border-default-100">
-                          {backtestStatsText(strategyOptimizationPrimaryStats(row, strategyOptimizationPayload))}
+                          {strategyOptimizationPrimaryStatsText(row, strategyOptimizationPayload)}
                         </td>
                         <td className="px-3 py-2 text-right border-b border-default-100">
                           {strategyOptimizationDateWeightedText(row, strategyOptimizationPayload)}
@@ -590,11 +602,11 @@ export function StockAnalysisStrategyReviewCards({
               <strong>
                 {strategyOptimizationSlices.strongest
                   ? strategyOptimizationSliceLabel(strategyOptimizationSlices.strongest)
-                  : "最强待补"}{" "}
+                  : "最强无可比切片"}{" "}
                 /{" "}
                 {strategyOptimizationSlices.weakest
                   ? strategyOptimizationSliceLabel(strategyOptimizationSlices.weakest)
-                  : "最弱待补"}
+                  : "最弱无可比切片"}
               </strong>
               <small>
                 {strategyOptimizationSlices.weakest
@@ -617,7 +629,7 @@ export function StockAnalysisStrategyReviewCards({
                       <th scope="col">切片</th>
                       <th scope="col">策略</th>
                       <th scope="col">复核状态</th>
-                      <th scope="col">T+5 收益</th>
+                      <th scope="col">{strategyOptimizationPrimaryHorizonLabel} 收益</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -633,7 +645,7 @@ export function StockAnalysisStrategyReviewCards({
                           <td>{strategyDisplayLabel(slice.strategy_label, slice.signal_kind)}</td>
                           <td>{strategyPriorityStatusLabel(slice.recommendation.priority_label)}</td>
                           <td className="px-3 py-2 text-right border-b border-default-100">
-                            {backtestStatsText(strategyOptimizationPrimaryStats(slice, strategyOptimizationPayload))}
+                            {strategyOptimizationPrimaryStatsText(slice, strategyOptimizationPayload)}
                           </td>
                         </tr>
                       ) : null,
