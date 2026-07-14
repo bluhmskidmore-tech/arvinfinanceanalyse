@@ -9,6 +9,7 @@ export type StockAnalysisLedgerMetric = {
   label: string;
   value: string;
   detail?: string;
+  tone?: "positive" | "neutral" | "warning" | "negative";
 };
 
 export type StockAnalysisLedgerCell = {
@@ -76,6 +77,7 @@ type StockAnalysisReviewLedgerFirstScreenProps = {
   decisionMemoTiles?: StockAnalysisDecisionMemoTile[];
   supplyStatusRows?: StockAnalysisSupplyStatusRow[];
   workbenchContract?: StockAnalysisWorkbenchContractSummary;
+  onOpenTopReviewStock?: () => void;
   sourceGateTone?: string;
   sourceGateLabel?: string;
   sourceGateDetail?: string;
@@ -319,6 +321,7 @@ export function StockAnalysisReviewLedgerFirstScreen({
   decisionMemoTiles = [],
   supplyStatusRows = [],
   workbenchContract,
+  onOpenTopReviewStock,
   sourceGateTone = "watch",
   sourceGateLabel = "来源核验",
   sourceGateDetail = "质量 需复核 回退快照",
@@ -444,7 +447,18 @@ export function StockAnalysisReviewLedgerFirstScreen({
                     <div className="flex flex-col">
                       <dt className="text-xs text-default-500">首要复核标的</dt>
                       <dd className="text-sm font-semibold text-foreground">
-                        {workbenchContract.topReviewStock ?? "暂无"}
+                        {workbenchContract.topReviewStock && onOpenTopReviewStock ? (
+                          <button
+                            type="button"
+                            className="stock-analysis-page__top-review-action"
+                            aria-label={`打开 ${workbenchContract.topReviewStock} 复核详情`}
+                            onClick={onOpenTopReviewStock}
+                          >
+                            {workbenchContract.topReviewStock}
+                          </button>
+                        ) : (
+                          workbenchContract.topReviewStock ?? "暂无"
+                        )}
                       </dd>
                     </div>
                     <div className="flex flex-col">
@@ -466,10 +480,12 @@ export function StockAnalysisReviewLedgerFirstScreen({
 
             <dl aria-label="首屏复核摘要" className="flex shrink-0 flex-wrap gap-3 rounded-sm bg-default-100/50 p-3">
               {metrics.map((item) => (
-                <div key={item.label} className="flex flex-col">
+                <div key={item.label} className="flex flex-col" data-tone={item.tone ?? "neutral"}>
                   <dt className="text-xs font-medium text-default-500">{item.label}</dt>
-                  <dd className="text-lg font-bold text-foreground">{item.value}</dd>
-                  {item.detail ? <small className="text-xs text-default-400 mt-1">{item.detail}</small> : null}
+                  <dd className="text-lg font-bold text-foreground">
+                    <span>{item.value}</span>
+                    {item.detail ? <small className="text-xs text-default-400 mt-1">{item.detail}</small> : null}
+                  </dd>
                 </div>
               ))}
             </dl>

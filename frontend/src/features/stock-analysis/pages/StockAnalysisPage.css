@@ -19343,17 +19343,40 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   line-height: 16px !important;
 }
 
-.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] > dl[aria-label="首屏复核摘要"] > div:nth-child(1) dd,
-.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] > dl[aria-label="首屏复核摘要"] > div:nth-child(4) dd {
-  color: #f59e0b !important;
+.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] > dl[aria-label="首屏复核摘要"] > div[data-tone="positive"] dd > span {
+  color: #54d69b !important;
 }
 
-.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] > dl[aria-label="首屏复核摘要"] > div:nth-child(3) dd {
-  color: #6ea8fe !important;
+.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] > dl[aria-label="首屏复核摘要"] > div[data-tone="neutral"] dd > span {
+  color: #d6e3f5 !important;
 }
 
-.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] > dl[aria-label="首屏复核摘要"] > div:nth-child(6) dd {
-  color: #ef4444 !important;
+.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] > dl[aria-label="首屏复核摘要"] > div[data-tone="warning"] dd > span {
+  color: #fbbf24 !important;
+}
+
+.stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] [data-testid="stock-analysis-tailwind-cockpit"] [data-testid="stock-analysis-queue-report-head"] > dl[aria-label="首屏复核摘要"] > div[data-tone="negative"] dd > span {
+  color: #f87171 !important;
+}
+
+.stock-analysis-page__top-review-action {
+  appearance: none;
+  border: 0;
+  border-bottom: 1px solid rgba(110, 168, 254, 0.7);
+  background: transparent;
+  padding: 0;
+  color: #9dc4ff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stock-analysis-page__top-review-action:hover,
+.stock-analysis-page__top-review-action:focus-visible {
+  color: #d9e8ff;
+  border-bottom-color: currentColor;
+  outline: 2px solid rgba(110, 168, 254, 0.55);
+  outline-offset: 3px;
 }
 
 .stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] .stock-analysis-page__review-summary-stack {

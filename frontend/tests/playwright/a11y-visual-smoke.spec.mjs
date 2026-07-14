@@ -285,10 +285,6 @@ const gateHControlContextPages = [
         label: "refresh action",
         selector: '[data-testid="stock-analysis-refresh"]',
       },
-      {
-        label: "complete evidence filter",
-        selector: '[data-testid="stock-analysis-complete-evidence-toggle"]',
-      },
     ],
     stateCueSelector: '[data-testid="stock-analysis-page"]',
   },

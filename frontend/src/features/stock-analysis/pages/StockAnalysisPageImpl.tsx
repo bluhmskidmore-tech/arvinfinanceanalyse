@@ -204,6 +204,7 @@ import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvid
 import {
   StockAnalysisReviewLedgerFirstScreen,
   type StockAnalysisLedgerCell,
+  type StockAnalysisLedgerMetric,
 } from "../components/StockAnalysisReviewLedgerFirstScreen";
 import { StockAnalysisStrategyLensSection } from "../components/StockAnalysisStrategyLensSection";
 import { StockAnalysisStrategyReviewCards } from "../components/StockAnalysisStrategyReviewCards";
@@ -578,7 +579,6 @@ export default function StockAnalysisPage() {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
   const [queueSearchText, setQueueSearchText] = useState("");
   const [queueLedgerOpen, setQueueLedgerOpen] = useState(false);
-  const [completeEvidenceOnly, setCompleteEvidenceOnly] = useState(false);
   const [boundaryDiagnosticsOpen, setBoundaryDiagnosticsOpen] = useState(false);
   const [activeWorkbenchFactId, setActiveWorkbenchFactId] = useState<string | null>(null);
   const [focusedEndpointKey, setFocusedEndpointKey] = useState<string | null>(null);
@@ -912,22 +912,18 @@ export default function StockAnalysisPage() {
           .join(" ")
           .toLocaleLowerCase();
         const matchesSearch = normalizedQueueSearch.length === 0 || haystack.includes(normalizedQueueSearch);
-        const hasCompleteEvidence = card.boundaryEvidence.length === 0;
-        return matchesSearch && (!completeEvidenceOnly || hasCompleteEvidence);
+        return matchesSearch;
       }),
-    [completeEvidenceOnly, filteredCandidates, normalizedQueueSearch],
+    [filteredCandidates, normalizedQueueSearch],
   );
   const queueVisibleCount = queueVisibleCandidates.length;
   const queueTotalCount = reviewQueue.length;
-  const queueFiltersActive =
-    normalizedQueueSearch.length > 0 || completeEvidenceOnly || sectorFilterSectorCode !== null;
+  const queueFiltersActive = normalizedQueueSearch.length > 0 || sectorFilterSectorCode !== null;
   const queueFilterEmptyLabel = normalizedQueueSearch
     ? `搜索“${queueSearchText.trim()}”无匹配候选`
     : sectorFilterSectorCode
       ? `${selectedSectorLabel ?? sectorFilterSectorCode}暂无候选`
-      : completeEvidenceOnly
-        ? "完整证据口径待确认"
-        : "当前筛选无匹配候选";
+      : "当前筛选无匹配候选";
   const queueSectorLinkSummary = sectorFilterSectorCode
     ? queueVisibleCount > 0
       ? `${selectedSectorLabel ?? sectorFilterSectorCode} · ${queueVisibleCount} 个候选`
@@ -2217,6 +2213,9 @@ export default function StockAnalysisPage() {
   const backendTopReviewStockName = workbenchPayload?.decision_summary.top_review_stock_name?.trim() ?? "";
   const backendTopReviewStockCode = workbenchPayload?.decision_summary.top_review_stock_code?.trim() ?? "";
   const workbenchTopReviewStock = [backendTopReviewStockName, backendTopReviewStockCode].filter(Boolean).join(" ") || null;
+  const workbenchTopReviewCandidate = backendTopReviewStockCode
+    ? reviewQueue.find((candidate) => candidate.stockCode === backendTopReviewStockCode) ?? null
+    : queueLeadCandidate;
   const workbenchContractSummary = workbenchPayload
     ? {
         question: "今天是否具备继续复核候选的条件？",
@@ -2266,11 +2265,19 @@ export default function StockAnalysisPage() {
   const observationClosureTone = observationClosureIssueCount > 0 ? "warning" : "positive";
   const queueLoopStatusLabel = workbenchReviewBlocked ? "复核阻断" : `闭环${observationClosureLabel}`;
   const mainModuleStatus = workbenchPayload?.modules?.main?.status ?? (strategyPayload ? "ready" : "missing");
+  const mainModuleUnavailable = strategyQuery.isSuccess && strategyPayload == null;
   const queueDataStatusLabel = strategyQuery.isError
     ? "数据异常"
     : strategyQuery.isLoading
       ? "数据读取中"
       : `主包 ${statusLabel(mainModuleStatus)}`;
+  const queueDataStatusTone = strategyQuery.isError
+    ? "negative"
+    : strategyQuery.isLoading
+      ? "neutral"
+      : mainModuleUnavailable
+        ? "negative"
+        : "positive";
   const reviewQueueLedgerCount =
     workbenchPayload?.decision_summary.review_queue_count ?? Math.min(queueVisibleCount || queueTotalCount, 3);
   const gateDecisionTone = stockGateDecisionTone(currentMarketState, boundaryRailIssueCount > 0);
@@ -2306,46 +2313,73 @@ export default function StockAnalysisPage() {
   const gateAvailabilityDetail = marketGate
     ? `通过 ${marketGate.passed_conditions}/${marketGate.required_conditions}`
     : "门控条件待返回";
-  const apiLedgerMetrics = [
+  const entryGateSummary = closedLoopSummary?.items.find((item) => item.key === "entry_gate") ?? null;
+  const adversarialGateSummary = closedLoopSummary?.items.find((item) => item.key === "adversarial_gate") ?? null;
+  const replaySummary = closedLoopSummary?.items.find((item) => item.key === "replay") ?? null;
+  const entryGateStatusLabel = confluenceQuery.isLoading
+    ? "读取中"
+    : entryGateSummary?.statusLabel ?? "待补";
+  const replayMaturityLabel =
+    replaySummary?.badges?.find((badge) => badge.startsWith("待成熟 ")) ?? replaySummary?.statusLabel ?? "待补";
+  const replayMaturityDetail = replaySummary?.badges?.join(" / ") ?? replaySummary?.detail ?? "远期收益证据待返回";
+  const apiLedgerMetrics: StockAnalysisLedgerMetric[] = [
     {
       label: "门控",
       value: queueGateLabel.replace(/^门控\s*/, "") || "WARM",
       detail: workbenchCanReviewCandidates ? "可复核" : "非放行",
+      tone: workbenchCanReviewCandidates ? "warning" : "negative",
     },
     {
       label: "门控条件",
       value: gateAvailabilityLabel,
       detail: gateAvailabilityDetail,
+      tone:
+        marketGate && marketGate.passed_conditions >= marketGate.required_conditions
+          ? "positive"
+          : "warning",
     },
     {
-      label: "闭环待复核项",
+      label: "复核候选数",
       value: `${reviewQueueLedgerCount}`,
-      detail: "后端复核队列条数",
+      detail: "后端返回候选条数",
+      tone: "neutral",
     },
     {
-      label: "证据行",
-      value: evidenceRowsLabel,
-      detail: "接口元信息",
+      label: "新入场观察",
+      value: entryGateStatusLabel,
+      detail: adversarialGateSummary
+        ? `${adversarialGateSummary.label}：${adversarialGateSummary.statusLabel}`
+        : "反拥挤证据待补",
+      tone: entryGateSummary?.tone ?? "warning",
     },
     {
       label: "数据缺口项",
       value: dataGapDisplay,
       detail: `缺失 ${missingGapCount} 项 / 退化 ${partialGapCount} 项 · ${primaryGapLedgerLabel}`,
+      tone: missingGapCount > 0 ? "negative" : partialGapCount > 0 ? "warning" : "positive",
     },
     {
-      label: "支持输出项",
-      value: `${supportedOutputCount}`,
-      detail: supportedOutputsLabel,
+      label: "远期收益成熟度",
+      value: replayMaturityLabel,
+      detail: replayMaturityDetail,
+      tone: replaySummary?.tone ?? "warning",
     },
     {
       label: "使用边界",
       value: formalUseBoundaryLabel,
       detail: "只读复核，不生成交易指令",
+      tone: formalUseAllowed ? "positive" : "warning",
     },
     {
       label: "涨停质量",
       value: limitUpQualityStatusLabel,
       detail: limitUpQualityStatusDetail,
+      tone:
+        limitUpQualityCondition?.status === "pass"
+          ? "positive"
+          : limitUpQualityCondition?.status === "fail"
+            ? "negative"
+            : "warning",
     },
   ];
   const apiLedgerConditionCells: StockAnalysisLedgerCell[] = [
@@ -2577,11 +2611,11 @@ export default function StockAnalysisPage() {
         ? "筛选后暂无候选 · 复核条件待调整"
         : "暂无候选 · 等待证据闭环";
   const queueReportLead = workbenchReviewBlocked
-    ? `结论状态：${workbenchAnswerLabel}；首要阻断：${localizedWorkbenchPrimaryBlocker ?? primaryGapLedgerLabel}。闭环待复核项 ${reviewQueueLedgerCount} 条，候选复核：${workbenchCandidateReviewLabel}；页面不输出买卖建议或正式结论。`
+    ? `结论状态：${workbenchAnswerLabel}；候选复核阻断：${localizedWorkbenchPrimaryBlocker ?? primaryGapLedgerLabel}。复核候选 ${reviewQueueLedgerCount} 条，候选研究复核：${workbenchCandidateReviewLabel}；页面不输出买卖建议或正式结论。`
     : queueFiltersActive
       ? `当前显示 ${queueVisibleCount}/${queueTotalCount} 个候选；主要缺口：${primaryGapLabel}。`
       : `主要缺口：${primaryGapLabel}；${queueNextActionLabel}。`;
-  const gateAuditStripText = `候选复核：${workbenchCandidateReviewLabel} · 结论状态：${workbenchAnswerLabel} · 首要阻断：${
+  const gateAuditStripText = `候选研究复核：${workbenchCandidateReviewLabel} · 新入场观察：${entryGateStatusLabel} · 结论状态：${workbenchAnswerLabel} · 候选复核阻断：${
     localizedWorkbenchPrimaryBlocker ?? "无"
   }`;
   const decisionMemoTiles = [
@@ -2707,19 +2741,17 @@ export default function StockAnalysisPage() {
       pickerDisplay={pickerDisplay}
       queueSearchText={queueSearchText}
       dataStatusLabel={queueDataStatusLabel}
-      dataStatusTone={strategyQuery.isError ? "negative" : strategyQuery.isLoading ? "neutral" : "positive"}
+      dataStatusTone={queueDataStatusTone}
       gateStatusLabel={queueGateStatusLabel}
       gateStatusTone={boundaryRailIssueCount > 0 ? "warning" : "positive"}
       loopStatusLabel={queueLoopStatusLabel}
       loopStatusTone={workbenchReviewBlocked ? "negative" : observationClosureTone}
       formalUseAllowed={formalUseAllowed}
       routeLabel={workbenchRouteLabel}
-      completeEvidenceOnly={completeEvidenceOnly}
       agentDrawerOpen={agentDrawerOpen}
       generatedAt={strategyQuery.data?.result_meta?.generated_at}
       onAsOfOverrideChange={setAsOfOverride}
       onQueueSearchTextChange={setQueueSearchText}
-      onCompleteEvidenceOnlyChange={setCompleteEvidenceOnly}
       onOpenAgentDrawer={() => setAgentDrawerOpen(true)}
       onRefresh={refreshStockSelection}
       isRefreshing={isRefreshingChoiceStock}
@@ -2779,6 +2811,16 @@ export default function StockAnalysisPage() {
           />
         ) : null}
 
+        {mainModuleUnavailable ? (
+          <StockAnalysisErrorWorkbench
+            message={`主策略模块状态为${statusLabel(mainModuleStatus)}。接口已返回，但没有可展示的策略主包；请重新读取或核对 workbench 主模块契约。`}
+            onRetry={() => {
+              void strategyQuery.refetch();
+            }}
+            isRetrying={strategyQuery.isFetching}
+          />
+        ) : null}
+
         {marketState ? (
           <>
             {decisionSummary && dailyJudgmentStrip ? (
@@ -2820,6 +2862,23 @@ export default function StockAnalysisPage() {
                   decisionMemoTiles={decisionMemoTiles}
                   supplyStatusRows={apiSupplyStatusRows}
                   workbenchContract={workbenchContractSummary}
+                  onOpenTopReviewStock={
+                    workbenchTopReviewCandidate
+                      ? () => {
+                          const ranks = lookupStockStrategyRanks(
+                            strategyPayload ?? null,
+                            workbenchTopReviewCandidate.stockCode,
+                          );
+                          setDetailSelection(
+                            buildReviewQueueDetailSelection({
+                              card: workbenchTopReviewCandidate,
+                              ranks,
+                              reviewQueueUsesHybridFusion,
+                            }),
+                          );
+                        }
+                      : undefined
+                  }
                   sourceGateTone={sourceGateTone}
                   sourceGateLabel={sourceGateStatusLabel}
                   sourceGateDetail={sourceGateDetailLabel}
@@ -3388,7 +3447,6 @@ export default function StockAnalysisPage() {
                       type="text"
                       onClick={() => {
                         setQueueSearchText("");
-                        setCompleteEvidenceOnly(false);
                         toggleSectorFilter(null);
                       }}
                     >
@@ -3451,9 +3509,9 @@ export default function StockAnalysisPage() {
                       aria-controls="stock-analysis-review-queue-table-panel"
                       onClick={() => setQueueLedgerOpen((current) => !current)}
                     >
-                      <span>完整候选队列</span>
+                      <span>候选队列预览</span>
                       <small>
-                        前 {Math.min(queueVisibleCandidates.length, 10)} 只 · 展开看排序明细
+                        已返回 {queueTotalCount} 条 · 前 {Math.min(queueVisibleCandidates.length, 10)} 只 · 展开看排序明细
                       </small>
                     </button>
                     {queueLedgerOpen ? (

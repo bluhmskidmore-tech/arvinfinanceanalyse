@@ -231,7 +231,7 @@ function expectElementBefore(first: HTMLElement, second: HTMLElement) {
 
 async function openReviewQueueTable() {
   const queue = await screen.findByTestId("stock-analysis-review-queue");
-  const toggle = within(queue).queryByRole("button", { name: /\u5b8c\u6574\u5019\u9009\u961f\u5217/ });
+  const toggle = within(queue).queryByRole("button", { name: /\u5019\u9009\u961f\u5217\u9884\u89c8/ });
   if (toggle && toggle.getAttribute("aria-expanded") !== "true") {
     fireEvent.click(toggle);
   }
@@ -1841,7 +1841,48 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByText("股票分析加载中")).toBeInTheDocument();
   });
 
+  it("shows an explicit recovery state when a successful workbench response has no usable main module", async () => {
+    const user = userEvent.setup();
+    const workbench = buildStockAnalysisWorkbenchPayload(buildStrategyPayload());
+    workbench.modules.main = {
+      ...workbench.modules.main,
+      status: "missing",
+      result: null,
+      issues: [
+        {
+          severity: "blocking",
+          code: "main_module_missing",
+          message: "main module missing",
+          source_module: "main",
+        },
+      ],
+    };
+    const workbenchSpy = vi.fn(async () =>
+      buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench, {
+        basis: "analytical",
+        formal_use_allowed: false,
+        source_version: "sv_livermore_test",
+        rule_version: "rv_stock_analysis_workbench_v1",
+      }),
+    );
+    const client: ApiClient = {
+      ...stockClient(),
+      getStockAnalysisWorkbench: workbenchSpy,
+    };
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const boundary = await screen.findByTestId("stock-analysis-error-workbench");
+    expect(boundary).toHaveTextContent("主策略模块状态为缺数据");
+    expect(boundary).toHaveTextContent("接口已返回，但没有可展示的策略主包");
+    expect(screen.queryByTestId("stock-analysis-first-screen-workbench")).not.toBeInTheDocument();
+
+    await user.click(within(boundary).getByRole("button", { name: "重新读取" }));
+    await waitFor(() => expect(workbenchSpy).toHaveBeenCalledTimes(2));
+  });
+
   it("loads the first screen through the stock-analysis workbench contract", async () => {
+    const user = userEvent.setup();
     const client = stockClient();
     const workbenchSpy = vi.spyOn(client, "getStockAnalysisWorkbench");
     const strategySpy = vi.spyOn(client, "getLivermoreStrategy");
@@ -1861,6 +1902,9 @@ describe("StockAnalysisPage", () => {
     expect(contract).toHaveTextContent("候选复核");
     expect(contract).toHaveTextContent("首要复核标的");
     expect(contract).toHaveTextContent("Alpha 000001.SZ");
+    const topReviewAction = within(contract).getByRole("button", {
+      name: "打开 Alpha 000001.SZ 复核详情",
+    });
     expect(contract).toHaveTextContent("使用边界");
     expect(contract).toHaveTextContent("仅供观察");
     expect(contract).toHaveTextContent("数据入口 /ui/market-data/stock-analysis/workbench");
@@ -1868,9 +1912,10 @@ describe("StockAnalysisPage", () => {
     expect(contract).toHaveTextContent("请求模块 证据摘要 / 主策略");
 
     const audit = screen.getByTestId("stock-analysis-gate-audit-strip");
-    expect(audit).toHaveTextContent("候选复核：可复核");
+    expect(audit).toHaveTextContent("候选研究复核：可复核");
+    expect(audit).toHaveTextContent("新入场观察：待补");
     expect(audit).toHaveTextContent("结论状态：可复核");
-    expect(audit).toHaveTextContent("首要阻断：无");
+    expect(audit).toHaveTextContent("候选复核阻断：无");
 
     const queueHead = screen.getByTestId("stock-analysis-queue-report-head");
     const topbar = screen.getByTestId("market-workbench-topbar");
@@ -1880,8 +1925,11 @@ describe("StockAnalysisPage", () => {
     );
     expect(document.querySelectorAll("main")).toHaveLength(1);
 
-    expect(screen.getByTestId("stock-analysis-tailwind-cockpit")).toHaveTextContent("闭环待复核项");
+    expect(screen.getByTestId("stock-analysis-tailwind-cockpit")).toHaveTextContent("复核候选数");
     expect(screen.getByTestId("stock-analysis-tailwind-cockpit")).toHaveTextContent("数据缺口项");
+
+    await user.click(topReviewAction);
+    expect(await screen.findByTestId("stock-detail-drawer")).toBeInTheDocument();
   });
 
   it("shows gate availability and a non-missing limit-up failure on the visible first screen", async () => {
@@ -2641,16 +2689,17 @@ describe("StockAnalysisPage", () => {
     expect(sourceGate).not.toHaveTextContent("latest_snapshot");
   });
 
-  it("keeps the full review queue folded behind the decision board", async () => {
+  it("keeps the returned review queue preview folded behind the decision board", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     const queue = await screen.findByTestId("stock-analysis-review-queue");
     const comparison = within(queue).getByTestId("stock-analysis-candidate-comparison");
     const details = within(queue).getByTestId("stock-analysis-review-queue-details");
-    const detailsToggle = within(details).getByRole("button", { name: /完整候选队列/ });
+    const detailsToggle = within(details).getByRole("button", { name: /候选队列预览/ });
     expectElementBefore(comparison, details);
     expect(details).toHaveAttribute("data-open", "false");
     expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(details).toHaveTextContent("已返回 2 条");
     expect(details).toHaveTextContent("展开看排序明细");
     expect(within(queue).queryByTestId("stock-analysis-review-queue-table")).not.toBeInTheDocument();
 
@@ -3150,8 +3199,9 @@ describe("StockAnalysisPage", () => {
     const topbar = await screen.findByTestId("market-workbench-topbar");
     const search = within(topbar).getByTestId("stock-analysis-queue-search");
     const evidenceToggle = within(topbar).getByTestId("stock-analysis-complete-evidence-toggle");
-    expect(within(evidenceToggle).getByRole("checkbox")).toBeDisabled();
-    expect(evidenceToggle).toHaveTextContent("完整证据口径待确认");
+    expect(within(evidenceToggle).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(evidenceToggle).toHaveAttribute("role", "status");
+    expect(evidenceToggle).toHaveTextContent("完整证据：口径待确认");
     expect(within(topbar).getByTestId("stock-analysis-toolbar-data-status")).toHaveTextContent("主包 就绪");
     expect(within(topbar).getByTestId("stock-analysis-toolbar-gate-status")).toHaveTextContent("门控");
     expect(within(topbar).getByTestId("stock-analysis-toolbar-loop-status")).toHaveTextContent("闭环");
@@ -4936,7 +4986,7 @@ describe("StockAnalysisPage", () => {
     expect(decisionPanel).toHaveTextContent("数据日");
     expect(decisionPanel).toHaveTextContent("门控 温和");
     expect(decisionPanel).toHaveTextContent("条件 2/4");
-    expect(decisionPanel).toHaveTextContent("闭环待复核项");
+    expect(decisionPanel).toHaveTextContent("复核候选数");
     expect(decisionPanel).toHaveTextContent("风险 触发 1");
     expect(decisionPanel).toHaveTextContent("部分缺失");
     expect(decisionPanel).not.toHaveTextContent("后台供数");
@@ -6299,6 +6349,7 @@ describe("StockAnalysisPage", () => {
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    const audit = await screen.findByTestId("stock-analysis-gate-audit-strip");
     const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
     await waitFor(() => expect(verdict).toHaveTextContent("闭环阻断，先复核约束项"), {
       timeout: 3_000,
@@ -6309,6 +6360,9 @@ describe("StockAnalysisPage", () => {
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 WARM");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("闭环阻断，先复核约束项");
+    expect(audit).toHaveTextContent("候选研究复核：可复核");
+    expect(audit).toHaveTextContent("新入场观察：阻断");
+    expect(audit).toHaveTextContent("候选复核阻断：无");
     expect(summary).toHaveTextContent("拦截");
     expect(summary).toHaveTextContent("阻断");
     expect(summary).toHaveTextContent("已触发");
@@ -6446,6 +6500,12 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+
+    const firstScreenSummary = await screen.findByLabelText("首屏复核摘要");
+    expect(firstScreenSummary).toHaveTextContent("远期收益成熟度");
+    expect(firstScreenSummary).toHaveTextContent("待成熟 1日");
+    expect(firstScreenSummary).toHaveTextContent("新入场观察");
+    expect(firstScreenSummary.querySelector(":scope > div > small")).not.toBeInTheDocument();
 
     const replayStatus = await screen.findByTestId("stock-analysis-replay-status");
     await waitFor(() => expect(replayStatus).toHaveTextContent("明细"), {

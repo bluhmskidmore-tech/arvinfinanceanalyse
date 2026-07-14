@@ -18,12 +18,10 @@ type StockAnalysisWorkbenchActionsProps = {
   loopStatusTone: ToolbarTone;
   formalUseAllowed: boolean;
   routeLabel: string;
-  completeEvidenceOnly: boolean;
   agentDrawerOpen: boolean;
   generatedAt?: string | null;
   onAsOfOverrideChange: (value: string | null) => void;
   onQueueSearchTextChange: (value: string) => void;
-  onCompleteEvidenceOnlyChange: (value: boolean) => void;
   onOpenAgentDrawer: () => void;
   onRefresh: () => void;
   isRefreshing?: boolean;
@@ -42,12 +40,10 @@ export function StockAnalysisWorkbenchActions({
   loopStatusTone,
   formalUseAllowed,
   routeLabel,
-  completeEvidenceOnly,
   agentDrawerOpen,
   generatedAt,
   onAsOfOverrideChange,
   onQueueSearchTextChange,
-  onCompleteEvidenceOnlyChange,
   onOpenAgentDrawer,
   onRefresh,
   isRefreshing = false,
@@ -110,21 +106,14 @@ export function StockAnalysisWorkbenchActions({
       <span className="stock-analysis-page__toolbar-route-chip" data-testid="stock-analysis-toolbar-route">
         数据入口 {routeLabel}
       </span>
-      <label
+      <span
         className="stock-analysis-page__complete-evidence-toggle"
         data-testid="stock-analysis-complete-evidence-toggle"
+        role="status"
         title="完整证据的业务口径尚未确认，当前不执行该筛选。"
       >
-        <input
-          type="checkbox"
-          checked={completeEvidenceOnly}
-          disabled
-          onChange={(event) => {
-            onCompleteEvidenceOnlyChange(event.target.checked);
-          }}
-        />
-        <span>完整证据口径待确认</span>
-      </label>
+        <span>完整证据：口径待确认</span>
+      </span>
       <AntButton
         type="text"
         className="stock-analysis-page__agent-entry stock-analysis-page__dh-topbar-btn stock-analysis-page__agent-entry--quiet"
