@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -322,6 +322,7 @@ function buildYtdRangeFromResultDates(
 function BusinessRowsTable({
   rows,
   selectedRowKey,
+  inlineCurrencyRows,
   summary,
   unallocatedPnl,
   unallocatedRowCount,
@@ -329,6 +330,7 @@ function BusinessRowsTable({
 }: {
   rows: PnlByBusinessYtdItem[];
   selectedRowKey: string | null;
+  inlineCurrencyRows: PnlByBusinessAnalysisRow[];
   summary?: PnlByBusinessYtdSummary;
   unallocatedPnl?: string;
   unallocatedRowCount?: number;
@@ -386,6 +388,41 @@ function BusinessRowsTable({
     );
   };
 
+  const renderCurrencyRow = (row: PnlByBusinessAnalysisRow) => {
+    const totalPnlTone = toneFromSigned(row.total_pnl);
+    const ftpNetPnlTone = toneFromSigned(row.ftp_net_pnl);
+    return (
+      <tr
+        key={`currency-${row.dimension_key}`}
+        className="pnl-by-business-table-row-currency-child"
+        data-testid={`pnl-by-business-inline-currency-row-${row.dimension_key}`}
+      >
+        <td className="pnl-by-business-table__business-cell pnl-by-business-table__currency-cell">
+          <span className="pnl-by-business-table__currency-label">
+            <span aria-hidden="true">↳</span>
+            {row.dimension_label}
+          </span>
+          <small>父级拆分 · 金额折人民币</small>
+        </td>
+        <td>{formatAvgBalanceYi(row.avg_balance)}</td>
+        <td>{formatPnlWan(row.interest_income)}</td>
+        <td>{formatPnlWan(row.fair_value_change)}</td>
+        <td>{formatPnlWan(row.capital_gain)}</td>
+        <td>{formatPnlWan(row.manual_adjustment)}</td>
+        <td className="pnl-by-business-table__decision-cell" data-pnl-tone={totalPnlTone}>
+          {formatPnlWan(row.total_pnl)}
+        </td>
+        <td>{formatAnnualizedYieldPctDisplay(row.annualized_yield_pct)}</td>
+        <td className="pnl-by-business-table__decision-cell" data-pnl-tone={ftpNetPnlTone}>
+          {formatPnlWan(row.ftp_net_pnl)}
+        </td>
+        <td>{formatAnalysisYieldPct(row.ftp_net_annualized_yield_pct)}</td>
+        <td title="币种拆分占比未由接口返回">—</td>
+        <td>{row.asset_count}</td>
+      </tr>
+    );
+  };
+
   return (
     <>
       <div
@@ -411,7 +448,14 @@ function BusinessRowsTable({
               <th>资产数</th>
             </tr>
           </thead>
-          <tbody>{parentRows.map((row) => renderRow(row, true))}</tbody>
+          <tbody>
+            {parentRows.map((row) => (
+              <Fragment key={row.row_key}>
+                {renderRow(row, true)}
+                {row.row_key === selectedRowKey ? inlineCurrencyRows.map(renderCurrencyRow) : null}
+              </Fragment>
+            ))}
+          </tbody>
           {parentRows.length > 0 ? (
             <tfoot>
               <tr data-testid="pnl-by-business-table-parent-footer">
@@ -2732,6 +2776,12 @@ export default function PnlByBusinessPage() {
               <BusinessRowsTable
                 rows={ytdRows}
                 selectedRowKey={selectedBusinessRow?.row_key ?? null}
+                inlineCurrencyRows={
+                  mainBreakdownDimension === "currency" &&
+                  mainBreakdownQuery.data?.result.business_key === selectedBusinessRow?.row_key
+                    ? mainBreakdownRows
+                    : []
+                }
                 summary={ytdResult?.summary}
                 unallocatedPnl={ytdResult?.unallocated_pnl}
                 unallocatedRowCount={ytdResult?.unallocated_row_count}

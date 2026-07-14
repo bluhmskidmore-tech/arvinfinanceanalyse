@@ -60,7 +60,16 @@ def normalize_currency_basis_value(value: str | None) -> NormalizedCurrencyBasis
     raise ValueError(f"Unsupported currency_basis={value}")
 
 
-def original_asset_currency_from_instrument_code(value: object) -> OriginalAssetCurrency:
+def original_asset_currency_from_instrument_code(
+    value: object,
+    currency_code: object = None,
+) -> OriginalAssetCurrency:
+    normalized_currency = str(currency_code or "").strip()
+    upper_currency = normalized_currency.upper()
+    if normalized_currency in USD_CURRENCIES or upper_currency == "USD":
+        return "USD"
+    if normalized_currency in CNY_CURRENCIES or upper_currency in {"CNY", "RMB", "CNH"}:
+        return "CNY"
     instrument_code = str(value or "").strip().upper()
     return "USD" if instrument_code.startswith("J1") else "CNY"
 

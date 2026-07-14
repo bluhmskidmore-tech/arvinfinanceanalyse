@@ -781,6 +781,45 @@
   vertical-align: middle;
 }
 
+.pnl-by-business-table-row-currency-child td {
+  border-top: 1px dashed var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+}
+
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"]
+  .pnl-by-business-table-row-currency-child
+  td:first-child,
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"]
+  .pnl-by-business-table-row-currency-child
+  td:nth-child(9),
+.pnl-by-business-table-shell[data-testid="pnl-by-business-table"]
+  .pnl-by-business-table-row-currency-child
+  td:nth-child(10) {
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-table__currency-cell {
+  padding-left: 24px;
+}
+
+.pnl-by-business-table__currency-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--moss-color-neutral-900);
+}
+
+.pnl-by-business-table__currency-cell > small {
+  display: block;
+  margin-top: 3px;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 .pnl-by-business-table__signal {
   display: inline-flex;
   align-items: center;

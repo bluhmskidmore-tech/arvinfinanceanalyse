@@ -2787,6 +2787,9 @@ def _analysis_classification_for_pnl_row(
         sub_type=sub_type or source_asset_class or invest,
     )
     classification["accounting_basis"] = _norm_text(pnl_row.get("accounting_basis"))
+    classification["currency_code"] = _norm_text(
+        pnl_row.get("fx_base_currency") or pnl_row.get("currency_code")
+    )
     return classification
 
 
@@ -2816,8 +2819,11 @@ def _analysis_matches_business_key(classification: dict[str, object], business_k
     return any(str(row_def.get("row_key")) == business_key for row_def in match_zqtz_asset_bond_rows(classification))
 
 
-def _analysis_original_currency_dimension(instrument_code: object) -> tuple[str, str]:
-    if original_asset_currency_from_instrument_code(instrument_code) == "USD":
+def _analysis_original_currency_dimension(
+    instrument_code: object,
+    currency_code: object = None,
+) -> tuple[str, str]:
+    if original_asset_currency_from_instrument_code(instrument_code, currency_code) == "USD":
         return "USD", "美元（折人民币）"
     return "CNY", "人民币"
 
@@ -2838,7 +2844,12 @@ def _analysis_dimension_for_pnl_row(
             return "manual_adjustment", "手工调整"
         return _dimension_key_label(accounting, "未填会计分类")
     if dimension == "currency":
-        return _analysis_original_currency_dimension(row.get("instrument_code"))
+        currency_code = (
+            classification.get("currency_code")
+            or row.get("fx_base_currency")
+            or row.get("currency_code")
+        )
+        return _analysis_original_currency_dimension(row.get("instrument_code"), currency_code)
     if dimension == "cost_center":
         return _dimension_key_label(row.get("cost_center"), "未填成本中心")
     if dimension == "bond_bucket":
@@ -2866,7 +2877,8 @@ def _analysis_dimension_for_balance_row(
     if dimension == "accounting":
         return _dimension_key_label(row.get("accounting_basis"), "未填会计分类")
     if dimension == "currency":
-        return _analysis_original_currency_dimension(row.get("instrument_code"))
+        currency_code = row.get("currency_code") or row.get("fx_base_currency")
+        return _analysis_original_currency_dimension(row.get("instrument_code"), currency_code)
     if dimension == "cost_center":
         return _dimension_key_label(row.get("cost_center"), "未填成本中心")
     if dimension == "bond_bucket":

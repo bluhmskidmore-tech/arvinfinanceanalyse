@@ -19,7 +19,7 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 # import the other. Bump this whenever the `/pnl-by-business` read-model
 # calculation rules change, so stale materialized rows are invalidated and
 # callers fall back to a live recompute instead of serving outdated values.
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v4"
+PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v5"
 
 
 def _position_book_key(portfolio_name: object, cost_center: object) -> str:
@@ -162,7 +162,7 @@ class PnlRepository:
                 report_dates.extend(str(row[0]) for row in rows)
             period_start = f"{min(report_dates)[:7]}-01" if report_dates else f"{y}-01-01"
             fingerprint = {
-                "version": "v2",
+                "version": "v3",
                 "year": year,
                 "as_of_date": as_of_date,
                 "period_start": period_start,
@@ -187,12 +187,12 @@ class PnlRepository:
             }
         except duckdb.Error as exc:
             if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
-                return "sv_pnl_by_business_precompute_v2:unavailable"
+                return "sv_pnl_by_business_precompute_v3:unavailable"
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
                 conn.close()
-        return "sv_pnl_by_business_precompute_v2:" + json.dumps(
+        return "sv_pnl_by_business_precompute_v3:" + json.dumps(
             fingerprint,
             ensure_ascii=False,
             sort_keys=True,
@@ -209,6 +209,54 @@ class PnlRepository:
     ) -> dict[str, str]:
         if not self._table_exists(conn, table_name):
             return self._empty_pnl_precompute_stats()
+        signature_columns = (
+            "report_date",
+            "instrument_code",
+            "bond_code",
+            "instrument_name",
+            "portfolio_name",
+            "cost_center",
+            "currency_basis",
+            "fx_base_currency",
+            "currency_code",
+            "invest_type_std",
+            "accounting_basis",
+            "asset_class",
+            "sub_type",
+            "business_type_primary",
+            "business_type_final",
+            "source_version",
+            "rule_version",
+            "ingest_batch_id",
+            "trace_id",
+            "interest_income_514",
+            "fair_value_change_516",
+            "capital_gain_517",
+            "manual_adjustment",
+            "total_pnl",
+        )
+        available_columns = {
+            str(row[0]).lower()
+            for row in conn.execute(
+                """
+                select column_name
+                from information_schema.columns
+                where lower(table_name) = lower(?)
+                """,
+                [table_name],
+            ).fetchall()
+        }
+        signature_exprs = {
+            column: (
+                f"coalesce(cast({column} as varchar), '')"
+                if column.lower() in available_columns
+                else "cast('' as varchar)"
+            )
+            for column in signature_columns
+        }
+        row_hash = "hash(" + ", ".join(
+            signature_exprs[column] for column in signature_columns
+        ) + ")"
         row = conn.execute(
             f"""
             select
@@ -220,7 +268,9 @@ class PnlRepository:
               coalesce(sum(total_pnl), 0) as total_pnl,
               coalesce(min(nullif(trim(rule_version), '')), '') as min_rule_version,
               coalesce(max(nullif(trim(rule_version), '')), '') as max_rule_version,
-              count(distinct coalesce(nullif(trim(rule_version), ''), '<blank>')) as rule_version_count
+              count(distinct coalesce(nullif(trim(rule_version), ''), '<blank>')) as rule_version_count,
+              coalesce(bit_xor({row_hash}), 0) as row_hash_xor,
+              coalesce(sum(cast({row_hash} as hugeint)), 0) as row_hash_sum
             from {table_name}
             where substr(cast(report_date as varchar), 1, 4) = ?
               and cast(report_date as varchar) <= ?
@@ -238,14 +288,67 @@ class PnlRepository:
     ) -> dict[str, str]:
         table_name = "fact_formal_zqtz_balance_daily"
         if not self._table_exists(conn, table_name):
-            return {"row_count": "0", "avg_amount": "0", "current_amount": "0"}
+            return {
+                "row_count": "0",
+                "avg_amount": "0",
+                "current_amount": "0",
+                "metadata_signature": "0:0",
+            }
         current_amount_expr = self._zqtz_current_amount_expression(conn)
+        metadata_columns = (
+            "report_date",
+            "instrument_code",
+            "instrument_name",
+            "portfolio_name",
+            "cost_center",
+            "currency_basis",
+            "currency_code",
+            "position_scope",
+            "accounting_basis",
+            "invest_type_std",
+            "account_category",
+            "asset_class",
+            "bond_type",
+            "sub_type",
+            "business_type_primary",
+            "business_type_final",
+            "source_version",
+            "rule_version",
+        )
+        available_columns = {
+            str(row[0]).lower()
+            for row in conn.execute(
+                """
+                select column_name
+                from information_schema.columns
+                where lower(table_name) = lower(?)
+                """,
+                [table_name],
+            ).fetchall()
+        }
+        metadata_exprs = {
+            column: (
+                f"coalesce(cast({column} as varchar), '')"
+                if column.lower() in available_columns
+                else "cast('' as varchar)"
+            )
+            for column in metadata_columns
+        }
+        metadata_row_hash = "hash(" + ", ".join(
+            [metadata_exprs[column] for column in metadata_columns]
+            + [
+                "coalesce(cast(market_value_amount as varchar), '')",
+                f"coalesce(cast({current_amount_expr} as varchar), '')",
+            ]
+        ) + ")"
         row = conn.execute(
             f"""
             select
               count(*) as row_count,
               coalesce(sum(market_value_amount), 0) as avg_amount,
-              coalesce(sum({current_amount_expr}), 0) as current_amount
+              coalesce(sum({current_amount_expr}), 0) as current_amount,
+              coalesce(bit_xor({metadata_row_hash}), 0) as metadata_hash_xor,
+              coalesce(sum(cast({metadata_row_hash} as hugeint)), 0) as metadata_hash_sum
             from fact_formal_zqtz_balance_daily
             where cast(report_date as date) between ?::date and ?::date
               and coalesce(currency_basis, '') = 'CNY'
@@ -254,11 +357,17 @@ class PnlRepository:
             [period_start, as_of_date],
         ).fetchone()
         if row is None:
-            return {"row_count": "0", "avg_amount": "0", "current_amount": "0"}
+            return {
+                "row_count": "0",
+                "avg_amount": "0",
+                "current_amount": "0",
+                "metadata_signature": "0:0",
+            }
         return {
             "row_count": str(row[0] or 0),
             "avg_amount": str(row[1] or 0),
             "current_amount": str(row[2] or 0),
+            "metadata_signature": f"{row[3] or 0}:{row[4] or 0}",
         }
 
     def _empty_pnl_precompute_stats(self) -> dict[str, str]:
@@ -272,6 +381,7 @@ class PnlRepository:
             "min_rule_version": "",
             "max_rule_version": "",
             "rule_version_count": "0",
+            "metadata_signature": "0:0",
         }
 
     def _pnl_precompute_stats_from_row(self, row: tuple[object, ...] | None) -> dict[str, str]:
@@ -287,6 +397,7 @@ class PnlRepository:
             "min_rule_version": str(row[6] or ""),
             "max_rule_version": str(row[7] or ""),
             "rule_version_count": str(row[8] or 0),
+            "metadata_signature": f"{row[9] or 0}:{row[10] or 0}",
         }
 
     def require_formal_pnl_rule_version(

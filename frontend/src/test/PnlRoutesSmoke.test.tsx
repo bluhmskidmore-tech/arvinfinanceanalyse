@@ -254,7 +254,7 @@ function buildPnlClient(): ApiClient {
       ftp_net_pnl: "-101013.70",
       ftp_net_annualized_yield_pct: "-0.699620",
       proportion: "1.000000",
-      assets_count: 3,
+      assets_count: 4,
     },
     unallocated_pnl: "64295.80",
     unallocated_abs_pnl: "64299.08",
@@ -378,7 +378,7 @@ function buildPnlClient(): ApiClient {
         source_kind: "zqtz",
         source_note: "ZQTZ_ASSET_BOND_ROWS",
         proportion: "1.000000",
-        assets_count: 1,
+        assets_count: 2,
       },
       {
         row_key: "asset_zqtz_credit_bond",
@@ -685,6 +685,44 @@ function buildPnlClient(): ApiClient {
         ftp_cost: "135890.41",
         ftp_net_pnl: "-5890.41",
         ftp_net_annualized_yield_pct: "-0.069355",
+        asset_count: 2,
+      },
+    ],
+  };
+  const byBusinessCurrencyAnalysis: PnlByBusinessAnalysisPayload = {
+    ...byBusinessAnalysis,
+    dimension: "currency",
+    rows: [
+      {
+        ...byBusinessAnalysis.rows[0],
+        dimension_key: "CNY",
+        dimension_label: "人民币",
+        interest_income: "80000.00",
+        fair_value_change: "5000.00",
+        capital_gain: "15000.00",
+        total_pnl: "100000.00",
+        avg_balance: "80000000.00",
+        current_balance: "80000000.00",
+        annualized_yield_pct: "1.471774",
+        ftp_cost: "108712.33",
+        ftp_net_pnl: "-8712.33",
+        ftp_net_annualized_yield_pct: "-0.128228",
+        asset_count: 1,
+      },
+      {
+        ...byBusinessAnalysis.rows[0],
+        dimension_key: "USD",
+        dimension_label: "美元",
+        interest_income: "20000.00",
+        fair_value_change: "5000.00",
+        capital_gain: "5000.00",
+        total_pnl: "30000.00",
+        avg_balance: "20000000.00",
+        current_balance: "20000000.00",
+        annualized_yield_pct: "1.766129",
+        ftp_cost: "27178.08",
+        ftp_net_pnl: "2821.92",
+        ftp_net_annualized_yield_pct: "0.166146",
         asset_count: 1,
       },
     ],
@@ -857,6 +895,8 @@ function buildPnlClient(): ApiClient {
           ? byBusinessBondBucketAnalysis
             : options.dimension === "bond_bucket_monthly"
               ? byBusinessBondBucketMonthlyAnalysis
+            : options.dimension === "currency"
+              ? byBusinessCurrencyAnalysis
             : options.dimension === "instrument"
               ? options.businessKey === "asset_zqtz_credit_bond"
                 ? byBusinessCreditInstrumentAnalysis
@@ -1277,7 +1317,8 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-main-breakdown")).toBeVisible();
       expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent("总表分项拆解");
       expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent("政策性金融债");
-      expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent("2025-12-31");
+      expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent("人民币");
+      expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent("美元");
       expect(screen.getByTestId("pnl-by-business-main-breakdown")).toHaveTextContent(
         "原币种仅用于拆分，损益、日均、余额及 FTP 金额均为折人民币口径",
       );
@@ -1297,7 +1338,7 @@ describe("pnl routed pages smoke", () => {
       expect(parentFooterCells[8]).toHaveTextContent("-10.1");
       expect(parentFooterCells[9]).toHaveTextContent("-0.70%");
       expect(parentFooterCells[10]).toHaveTextContent("100.00%");
-      expect(parentFooterCells[11]).toHaveTextContent("3");
+      expect(parentFooterCells[11]).toHaveTextContent("4");
       const managementChange = screen.getByTestId("pnl-by-business-management-change");
       expect(managementChange).toHaveTextContent("2025-12 较 2025-11");
       expect(managementChange).toHaveTextContent("日均变化");
@@ -1321,6 +1362,14 @@ describe("pnl routed pages smoke", () => {
       expect(ytdParentRow!.querySelectorAll("td")).toHaveLength(12);
       expect(ytdParentRow!.querySelector('[data-pnl-tone="positive"]')).toHaveTextContent("13");
       expect(ytdParentRow!.querySelector('[data-pnl-tone="negative"]')).toHaveTextContent("-0.59");
+      const cnyCurrencyRow = within(ytdTable).getByTestId("pnl-by-business-inline-currency-row-CNY");
+      const usdCurrencyRow = within(ytdTable).getByTestId("pnl-by-business-inline-currency-row-USD");
+      expect(cnyCurrencyRow).toHaveTextContent("人民币");
+      expect(cnyCurrencyRow).toHaveTextContent("父级拆分 · 金额折人民币");
+      expect(cnyCurrencyRow.querySelectorAll("td")).toHaveLength(12);
+      expect(usdCurrencyRow).toHaveTextContent("美元");
+      expect(usdCurrencyRow).toHaveTextContent("父级拆分 · 金额折人民币");
+      expect(usdCurrencyRow.querySelectorAll("td")).toHaveLength(12);
       const ytdZeroRow = within(ytdTable).getByText("信用债").closest("tr");
       expect(ytdZeroRow).not.toBeNull();
       const ytdZeroDecisionCells = ytdZeroRow!.querySelectorAll("[data-pnl-tone]");
