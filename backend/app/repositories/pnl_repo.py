@@ -19,7 +19,7 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 # import the other. Bump this whenever the `/pnl-by-business` read-model
 # calculation rules change, so stale materialized rows are invalidated and
 # callers fall back to a live recompute instead of serving outdated values.
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v6"
+PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v7"
 
 
 def _position_book_key(portfolio_name: object, cost_center: object) -> str:
@@ -581,8 +581,6 @@ class PnlRepository:
         except duckdb.Error as exc:
             if "conn" in locals() and in_transaction:
                 conn.execute("rollback")
-            if "cannot open database" in str(exc).lower():
-                return
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():

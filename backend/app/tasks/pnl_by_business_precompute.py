@@ -26,6 +26,7 @@ from backend.app.schemas.pnl import (
     PnlByBusinessMonthlyItem,
     PnlByBusinessMonthlyPayload,
     PnlByBusinessMonthlySummary,
+    PnlByBusinessYtdPayload,
     PnlByBusinessYtdUnallocatedItem,
 )
 from backend.app.services.pnl_by_business_adjustments import (
@@ -174,6 +175,25 @@ def precompute_pnl_by_business_payloads(
     generated_at = datetime.now(UTC).isoformat()
     records: list[dict[str, object]] = []
 
+    ytd_payload = _build_pnl_by_business_ytd_payload_for_precompute(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        year=year,
+        as_of_date=period_end,
+    )
+    records.append(
+        _pnl_by_business_precompute_record(
+            year=year,
+            as_of_date=period_end,
+            result_kind="ytd",
+            dimension="",
+            business_key="",
+            payload=ytd_payload,
+            generated_at=generated_at,
+            source_version=precompute_source_version,
+        )
+    )
+
     monthly_payload = PnlByBusinessMonthlyPayload(
         year=year,
         as_of_date=period_end,
@@ -234,10 +254,31 @@ def precompute_pnl_by_business_payloads(
         "as_of_date": period_end,
         "records": len(records),
         "monthly_records": 1,
-        "analysis_records": len(records) - 1,
+        "ytd_records": 1,
+        "analysis_records": len(analysis_payloads),
         "source_version": precompute_source_version,
         "generated_at": generated_at,
     }
+
+
+def _build_pnl_by_business_ytd_payload_for_precompute(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    year: int,
+    as_of_date: str,
+) -> PnlByBusinessYtdPayload:
+    # Local import avoids a module-import cycle while keeping one authoritative YTD calculation path.
+    from backend.app.services.pnl_service import _pnl_by_business_ytd_payload_from_formal_facts
+
+    payload, _resolved_report_date = _pnl_by_business_ytd_payload_from_formal_facts(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        year=year,
+        as_of_date=as_of_date,
+    )
+    return payload
+
 
 def persist_pnl_by_business_precompute(
     *,
@@ -290,7 +331,7 @@ def _pnl_by_business_precompute_record(
     result_kind: str,
     dimension: str,
     business_key: str,
-    payload: PnlByBusinessMonthlyPayload | PnlByBusinessAnalysisPayload,
+    payload: PnlByBusinessMonthlyPayload | PnlByBusinessAnalysisPayload | PnlByBusinessYtdPayload,
     generated_at: str,
     source_version: str,
 ) -> dict[str, object]:

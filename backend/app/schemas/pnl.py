@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import Literal
 
@@ -307,7 +308,11 @@ class PnlByBusinessManualAdjustmentRequest(BaseModel):
         year, month, day = parts
         if len(year) != 4 or len(month) != 2 or len(day) != 2:
             raise ValueError("report_date must be YYYY-MM-DD")
-        return value
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("report_date must be a real calendar date in YYYY-MM-DD format") from exc
+        return parsed.isoformat()
 
     @model_validator(mode="after")
     def validate_manual_adjustment_nonzero(self) -> "PnlByBusinessManualAdjustmentRequest":

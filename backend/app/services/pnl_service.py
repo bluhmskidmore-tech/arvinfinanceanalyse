@@ -1059,14 +1059,14 @@ def _parse_created_at(value: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def _pnl_by_business_ytd_from_formal_facts(
+def _pnl_by_business_ytd_payload_from_formal_facts(
     *,
     duckdb_path: str,
     governance_dir: str,
     year: int,
     as_of_date: str,
-) -> dict[str, object]:
-    """年度累计：逐报表月按当月 ZQTZ 口径分类后累计，避免用期末分类重写历史月份。"""
+) -> tuple[PnlByBusinessYtdPayload, str]:
+    """计算正式事实 YTD 载荷；不依赖稍后才落盘的正式血缘清单。"""
     if not as_of_date.startswith(f"{year:04d}-"):
         raise ValueError(f"as_of_date={as_of_date} is outside requested year={year}.")
     _ensure_formal_pnl_storage_available(duckdb_path)
@@ -1144,7 +1144,9 @@ def _pnl_by_business_ytd_from_formal_facts(
         for row_def in matched_rows:
             _merge_balance_movement_business_record(groups, row_def, record)
 
-    settings = get_settings()
+    settings = get_settings().model_copy(
+        update={"governance_path": Path(governance_dir)}
+    )
     ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), settings.ftp_rate_pct)
     total_pnl = _apply_pnl_by_business_manual_adjustments_to_ytd_groups(
         settings=settings,
@@ -1173,6 +1175,23 @@ def _pnl_by_business_ytd_from_formal_facts(
         ftp_rate_pct=ftp_rate_pct,
         balance_rows=list(balance_rows),
         unallocated_items=unallocated_items,
+    )
+    return payload, resolved_report_date
+
+
+def _pnl_by_business_ytd_from_formal_facts(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    year: int,
+    as_of_date: str,
+) -> dict[str, object]:
+    """年度累计：复用权威载荷计算，并附加正式血缘与质量元数据。"""
+    payload, resolved_report_date = _pnl_by_business_ytd_payload_from_formal_facts(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        year=year,
+        as_of_date=as_of_date,
     )
     quality_flag = _pnl_by_business_ytd_quality_flag(payload)
     return _build_pnl_by_business_analytical_result_envelope(
@@ -1335,31 +1354,16 @@ def pnl_by_business_ytd_envelope(
     year: int,
     as_of_date: str | None = None,
 ) -> dict[str, object]:
-    return _cached_pnl_by_business_ytd_envelope(
-        str(duckdb_path),
-        str(governance_dir),
-        int(year),
-        str(as_of_date or ""),
-    )
-
-
-@lru_cache(maxsize=32)
-def _cached_pnl_by_business_ytd_envelope(
-    duckdb_path: str,
-    governance_dir: str,
-    year: int,
-    as_of_date_cache_key: str,
-) -> dict[str, object]:
     return _pnl_by_business_ytd_envelope_uncached(
-        duckdb_path=duckdb_path,
-        governance_dir=governance_dir,
-        year=year,
-        as_of_date=as_of_date_cache_key or None,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        year=int(year),
+        as_of_date=as_of_date,
     )
 
 
 def clear_pnl_by_business_ytd_cache() -> None:
-    _cached_pnl_by_business_ytd_envelope.cache_clear()
+    """Compatibility hook; YTD freshness is now verified against durable precompute on every read."""
 
 
 def create_pnl_by_business_manual_adjustment(
@@ -1421,6 +1425,25 @@ def update_pnl_by_business_manual_adjustment(
     return updated.model_dump(mode="json")
 
 
+def _require_available_pnl_by_business_adjustment_cutoff(
+    settings: Settings,
+    *,
+    report_date: str,
+) -> None:
+    try:
+        parsed = date.fromisoformat(str(report_date))
+    except ValueError as exc:
+        raise ValueError("report_date must be a real calendar date in YYYY-MM-DD format") from exc
+    available_cutoffs = _available_pnl_by_business_precompute_cutoffs(
+        PnlRepository(str(settings.duckdb_path)),
+        year=parsed.year,
+    )
+    if parsed.isoformat() not in available_cutoffs:
+        raise ValueError(
+            f"report_date={parsed.isoformat()} is not an available month-end cutoff."
+        )
+
+
 def approve_pnl_by_business_manual_adjustment(
     settings: Settings,
     *,
@@ -1440,6 +1463,10 @@ def approve_pnl_by_business_manual_adjustment(
         raise PermissionError("PnL by-business adjustment creator cannot approve the same adjustment.")
     if str(current.get("approval_status") or "") == "approved":
         return PnlByBusinessManualAdjustmentPayload.model_validate(current).model_dump(mode="json")
+    _require_available_pnl_by_business_adjustment_cutoff(
+        settings,
+        report_date=str(current.get("report_date") or ""),
+    )
     approved = PnlByBusinessManualAdjustmentPayload.model_validate(
         {
             **current,
@@ -1556,10 +1583,40 @@ def _pnl_by_business_ytd_envelope_uncached(
         and repo.formal_pnl_ytd_has_rows(year=year, as_of_date=str(as_cap))
     )
     if prefer_fact_path:
+        period_end = repo.max_formal_or_nonstd_report_date_in_year(
+            year=year,
+            as_of_cap=str(as_cap),
+        )
+        if period_end is None:
+            raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
         repo.require_current_formal_pnl_rule_version(
             year=year,
-            as_of_date=str(as_cap),
+            as_of_date=period_end,
         )
+        precomputed = _fetch_pnl_by_business_precompute(
+            repo,
+            governance_dir=governance_dir,
+            year=year,
+            as_of_date=period_end,
+            result_kind="ytd",
+            dimension="",
+            business_key="",
+        )
+        if (
+            precomputed is not None
+            and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="ytd")
+        ):
+            payload = PnlByBusinessYtdPayload.model_validate(precomputed)
+            return _build_pnl_by_business_analytical_result_envelope(
+                governance_dir=governance_dir,
+                requested_report_date=as_of_date,
+                resolved_report_date=period_end,
+                trace_id=f"tr_pnl_by_business_ytd_{year}_{period_end}_precomputed",
+                result_kind="pnl.by_business_ytd",
+                result_payload=payload.model_dump(mode="json"),
+                quality_flag=_pnl_by_business_ytd_quality_flag(payload),
+                filters_applied={"year": year, "as_of_date": as_of_date},
+            )
         return _pnl_by_business_ytd_from_formal_facts(
             duckdb_path=duckdb_path,
             governance_dir=governance_dir,
@@ -1635,6 +1692,20 @@ def _pnl_by_business_precompute_has_required_diagnostics(
             and month.get("unallocated_evidence_complete") is True
             for month in months
         )
+    if result_kind == "ytd":
+        ytd_fields = coverage_fields | {
+            "total_pnl",
+            "classified_parent_total_pnl",
+            "unallocated_pnl",
+            "unallocated_abs_pnl",
+            "unallocated_row_count",
+            "reconciliation_delta",
+            "unallocated_breakdown",
+            "unallocated_items",
+            "summary",
+            "items",
+        }
+        return ytd_fields.issubset(payload)
     return False
 
 

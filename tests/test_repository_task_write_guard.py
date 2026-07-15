@@ -13,6 +13,27 @@ from backend.app.repositories.news_warehouse_repo import (
 )
 
 
+def test_pnl_precompute_writer_does_not_swallow_duckdb_open_error(tmp_path, monkeypatch) -> None:
+    from backend.app.repositories import pnl_repo as pnl_repo_module
+    from backend.app.repositories.pnl_repo import PnlRepository
+    from backend.app.repositories.task_write_guard import repository_task_write_scope
+
+    duckdb_error = duckdb.IOException
+
+    def fail_connect(*_args, **_kwargs):
+        raise duckdb_error("Cannot open database file")
+
+    monkeypatch.setattr(pnl_repo_module.duckdb, "connect", fail_connect)
+
+    with repository_task_write_scope("backend.app.tasks.pnl_precompute_test"):
+        with pytest.raises(RuntimeError, match="Formal pnl storage is unavailable"):
+            PnlRepository(str(tmp_path / "blocked.duckdb")).replace_pnl_by_business_precompute(
+                year=2026,
+                as_of_date="2026-06-30",
+                records=[],
+            )
+
+
 def test_high_risk_repository_writers_require_task_write_scope(tmp_path) -> None:
     from backend.app.repositories.task_write_guard import repository_task_write_scope
 
