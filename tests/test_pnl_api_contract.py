@@ -792,7 +792,10 @@ def test_pnl_by_business_monthly_reconciles_precise_aggregates_before_rounding()
     assert month.reconciliation_delta == Decimal("0.00")
 
 
-def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exists(tmp_path, monkeypatch):
+def test_pnl_by_business_monthly_and_analysis_skip_precompute_when_manual_adjustment_exists(
+    tmp_path,
+    monkeypatch,
+):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
         pnl_service._clear_pnl_by_business_analysis_cache()
@@ -816,13 +819,6 @@ def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exis
         },
     )
 
-    cached_payload = {
-        "year": 2025,
-        "as_of_date": "2025-12-31",
-        "source_tables": ["fact_pnl_by_business_precompute"],
-        "months": [],
-    }
-
     class FakePnlRepository:
         def __init__(self, _path):
             pass
@@ -838,15 +834,7 @@ def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exis
         def fetch_pnl_by_business_precompute(
             self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
         ):
-            assert (year, as_of_date, result_kind, dimension, business_key) == (
-                2025,
-                "2025-12-31",
-                "monthly",
-                "",
-                "",
-            )
-            assert expected_rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
-            return cached_payload
+            raise AssertionError("approved manual adjustments must skip precompute lookup")
 
         def list_union_report_dates(self):
             return ["2025-12-31"]
@@ -913,6 +901,20 @@ def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exis
     by_key = {item["row_key"]: item for item in payload["result"]["months"][0]["items"]}
     assert by_key["asset_zqtz_policy_financial_bond"]["manual_adjustment"] == "25.00"
     assert by_key["asset_zqtz_policy_financial_bond"]["total_pnl"] == "150.50"
+
+    analysis_payload = pnl_service.pnl_by_business_analysis_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir=str(governance_dir),
+        year=2025,
+        as_of_date="2025-12-31",
+        business_key="asset_zqtz_policy_financial_bond",
+        dimension="currency",
+    )
+
+    assert analysis_payload["result_meta"]["result_kind"] == "pnl.by_business_analysis"
+    assert analysis_payload["result"]["source_tables"][-1] == "pnl_by_business_adjustments"
+    assert analysis_payload["result"]["rows"][0]["manual_adjustment"] == "25.00"
+    assert analysis_payload["result"]["rows"][0]["total_pnl"] == "150.50"
     get_settings.cache_clear()
 
 

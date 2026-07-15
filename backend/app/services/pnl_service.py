@@ -1743,17 +1743,18 @@ def pnl_by_business_analysis_envelope(
         year=year,
         period_end=period_end,
     )
-    precomputed = _fetch_pnl_by_business_precompute(
-        repo,
-        year=year,
-        as_of_date=period_end,
-        result_kind="analysis",
-        dimension=dimension,
-        business_key=str(business_key or "").strip(),
-    )
+    precomputed = None
+    if not has_manual_adjustments:
+        precomputed = _fetch_pnl_by_business_precompute(
+            repo,
+            year=year,
+            as_of_date=period_end,
+            result_kind="analysis",
+            dimension=dimension,
+            business_key=str(business_key or "").strip(),
+        )
     if (
         precomputed is not None
-        and not has_manual_adjustments
         and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="analysis")
     ):
         payload = PnlByBusinessAnalysisPayload.model_validate(precomputed)
@@ -1877,17 +1878,18 @@ def pnl_by_business_monthly_envelope(
         year=year,
         period_end=period_end,
     )
-    precomputed = _fetch_pnl_by_business_precompute(
-        repo,
-        year=year,
-        as_of_date=period_end,
-        result_kind="monthly",
-        dimension="",
-        business_key="",
-    )
+    precomputed = None
+    if not has_manual_adjustments:
+        precomputed = _fetch_pnl_by_business_precompute(
+            repo,
+            year=year,
+            as_of_date=period_end,
+            result_kind="monthly",
+            dimension="",
+            business_key="",
+        )
     if (
         precomputed is not None
-        and not has_manual_adjustments
         and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="monthly")
     ):
         payload = _pnl_by_business_monthly_with_management_change(
