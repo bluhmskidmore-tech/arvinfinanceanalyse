@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,6 +26,7 @@ from backend.app.repositories.governance_repo import (
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.pnl_repo import PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
@@ -50,6 +51,12 @@ PNL_MATERIALIZE_LOCK = LockDefinition(
 RULE_VERSION = PNL_FORMAL_FACT_RULE_VERSION
 # API result_meta.cache_version: formal basis + materialize rule bundle (distinct from scenario/analytical).
 PNL_RESULT_CACHE_VERSION = f"cv_pnl_formal__{RULE_VERSION}"
+PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME = "pnl_by_business_precompute"
+PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY = "pnl:by-business:precompute"
+PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION = (
+    f"cv_pnl_by_business_precompute__{PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION}"
+)
+PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION = "sv_pnl_by_business_precompute_pending"
 
 
 def _materialize_pnl_facts(
@@ -135,25 +142,82 @@ def _materialize_pnl_facts(
 def _rebuild_pnl_by_business_precompute(
     *,
     year: int,
+    as_of_date: str | None = None,
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
+    run_id: str | None = None,
+    queued_at: str | None = None,
+    trigger_reason: str = "automatic_refresh",
 ) -> dict[str, object]:
     """Rebuild the page-local read model through the latest available cutoff in ``year``."""
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
     governance_path = Path(governance_dir or settings.governance_path)
+    governance_repo = GovernanceRepository(base_dir=governance_path)
+    active_run_id = run_id or f"{PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME}:{datetime.now(UTC).isoformat()}"
     writer_lock = resolve_duckdb_writer_lock(
         duckdb_file,
         ttl_seconds=PNL_MATERIALIZE_LOCK.ttl_seconds,
     )
+    started_at = datetime.now(UTC).isoformat()
+    governance_repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        _pnl_by_business_precompute_run_record(
+            run_id=active_run_id,
+            status="running",
+            lock_key=writer_lock.key,
+            source_version=PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
+            year=year,
+            trigger_reason=trigger_reason,
+            report_date=as_of_date,
+            queued_at=queued_at,
+            started_at=started_at,
+        ),
+    )
     logger.info("starting pnl_by_business precompute rebuild for year=%s", year)
-    with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
-        summary = precompute_pnl_by_business_payloads(
-            duckdb_path=str(duckdb_file),
-            governance_dir=str(governance_path),
-            year=int(year),
+    try:
+        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+            summary = precompute_pnl_by_business_payloads(
+                duckdb_path=str(duckdb_file),
+                governance_dir=str(governance_path),
+                year=int(year),
+                as_of_date=as_of_date,
+            )
+    except Exception as exc:
+        governance_repo.append(
+            CACHE_BUILD_RUN_STREAM,
+            _pnl_by_business_precompute_run_record(
+                run_id=active_run_id,
+                status="failed",
+                lock_key=writer_lock.key,
+                source_version=PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
+                year=year,
+                trigger_reason=trigger_reason,
+                report_date=as_of_date,
+                queued_at=queued_at,
+                started_at=started_at,
+                finished_at=datetime.now(UTC).isoformat(),
+                error_message=str(exc),
+                failure_category="lock_timeout" if isinstance(exc, TimeoutError) else "materialize_failure",
+            ),
         )
+        raise
     _clear_pnl_page_runtime_caches()
+    completed_record = _pnl_by_business_precompute_run_record(
+        run_id=active_run_id,
+        status="completed",
+        lock_key=writer_lock.key,
+        source_version=str(summary.get("source_version") or PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION),
+        year=year,
+        trigger_reason=trigger_reason,
+        report_date=str(summary.get("as_of_date") or "") or None,
+        queued_at=queued_at,
+        started_at=started_at,
+        finished_at=datetime.now(UTC).isoformat(),
+    )
+    completed_record["record_count"] = int(summary.get("records") or 0)
+    completed_record["generated_at"] = str(summary.get("generated_at") or "") or None
+    governance_repo.append(CACHE_BUILD_RUN_STREAM, completed_record)
     logger.info(
         "completed pnl_by_business precompute rebuild for year=%s as_of_date=%s records=%s",
         year,
@@ -161,6 +225,44 @@ def _rebuild_pnl_by_business_precompute(
         summary.get("records"),
     )
     return summary
+
+
+def _pnl_by_business_precompute_run_record(
+    *,
+    run_id: str,
+    status: str,
+    lock_key: str,
+    source_version: str,
+    year: int,
+    trigger_reason: str,
+    report_date: str | None = None,
+    queued_at: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    error_message: str | None = None,
+    failure_category: str | None = None,
+) -> dict[str, object]:
+    record = CacheBuildRunRecord(
+        run_id=run_id,
+        job_name=PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+        status=status,
+        cache_key=PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
+        cache_version=PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
+        lock=lock_key,
+        source_version=source_version,
+        vendor_version="vv_none",
+        rule_version=PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        report_date=report_date,
+        queued_at=queued_at,
+        started_at=started_at,
+        finished_at=finished_at,
+        error_message=error_message,
+        failure_category=failure_category,
+        failure_reason=error_message,
+    ).model_dump()
+    record["target_year"] = int(year)
+    record["trigger_reason"] = trigger_reason
+    return record
 
 
 def _materialize_pnl_facts_under_writer_lock(

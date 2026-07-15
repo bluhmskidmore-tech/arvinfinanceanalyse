@@ -1554,6 +1554,70 @@ describe("pnl routed pages smoke", () => {
     expect(screen.getByTestId("pnl-by-business-formal-table-footer")).toHaveTextContent("全表合计");
   });
 
+  it("surfaces failed precompute fallback and allows a controlled rebuild", async () => {
+    const client = buildPnlClient();
+    const getPrecomputeStatus = vi.fn(async () => ({
+      year: 2025,
+      status: "failed",
+      serving_mode: "live_fallback",
+      is_current: false,
+      run_id: "pnl_by_business_precompute:test-failed",
+      report_date: "2025-12-31",
+      source_version: "sv_pnl_by_business_failed",
+      rule_version: "rv_pnl_by_business_precompute_v6",
+      queued_at: "2026-07-15T12:00:00Z",
+      started_at: "2026-07-15T12:00:01Z",
+      finished_at: "2026-07-15T12:00:02Z",
+      generated_at: null,
+      record_count: null,
+      error_message: "precompute fixture failed",
+      failure_category: "materialize_failure",
+      trigger_reason: "manual_retry",
+      retry_attempt: 4,
+      retry_policy: { max_retries: 3, min_backoff_seconds: 15 },
+    }));
+    const rebuildPrecompute = vi.fn(async () => ({
+      year: 2025,
+      status: "queued",
+      serving_mode: "live_fallback",
+      is_current: false,
+      run_id: "pnl_by_business_precompute:test-retry",
+      report_date: "2025-12-31",
+      source_version: "sv_pnl_by_business_precompute_pending",
+      rule_version: "rv_pnl_by_business_precompute_v6",
+      queued_at: "2026-07-15T12:01:00Z",
+      started_at: null,
+      finished_at: null,
+      generated_at: null,
+      record_count: null,
+      error_message: null,
+      failure_category: null,
+      trigger_reason: "manual_retry",
+      retry_attempt: 0,
+      retry_policy: { max_retries: 3, min_backoff_seconds: 15 },
+    }));
+    Object.assign(client, {
+      getPnlByBusinessPrecomputeStatus: getPrecomputeStatus,
+      rebuildPnlByBusinessPrecompute: rebuildPrecompute,
+    });
+
+    renderWorkbenchApp(["/pnl-by-business"], { client });
+
+    const statusPanel = await screen.findByTestId("pnl-by-business-precompute-status");
+    await waitFor(() => {
+      expect(statusPanel).toHaveTextContent("预计算失败，当前使用实时计算");
+      expect(statusPanel).toHaveTextContent("2025-12-31");
+      expect(statusPanel).toHaveTextContent("precompute fixture failed");
+      expect(getPrecomputeStatus).toHaveBeenCalledWith(2025, "2025-12-31");
+    });
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "重新生成预计算" }));
+    expect(rebuildPrecompute).toHaveBeenCalledWith(2025, "2025-12-31");
+    await waitFor(() => {
+      expect(getPrecomputeStatus).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("falls back to YTD daily averages when supplemental ADB comparison is forbidden", async () => {
     const client = buildPnlClient();
     vi.mocked(client.getAdbComparison).mockRejectedValue(

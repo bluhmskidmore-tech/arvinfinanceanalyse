@@ -29,7 +29,7 @@ from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
     resolve_formal_manifest_lineage,
 )
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.repositories.accounting_asset_movement_repo import AccountingAssetMovementRepository
 from backend.app.repositories.governance_repo import (
@@ -96,6 +96,10 @@ from backend.app.services.pnl_source_service import (
 )
 from backend.app.tasks.pnl_materialize import (
     CACHE_KEY,
+    PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
+    PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
+    PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+    PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
     PNL_MATERIALIZE_LOCK,
     PNL_RESULT_CACHE_VERSION,
     materialize_pnl_facts,
@@ -109,6 +113,12 @@ PNL_CACHE_KEY = CACHE_KEY
 PNL_CACHE_VERSION = PNL_RESULT_CACHE_VERSION
 PNL_JOB_NAME = "pnl_materialize"
 PENDING_SOURCE_VERSION = "sv_pnl_pending"
+PNL_BY_BUSINESS_PRECOMPUTE_INFLIGHT_STATUSES = frozenset({"queued", "running"})
+PNL_BY_BUSINESS_PRECOMPUTE_STALE_AFTER = timedelta(hours=2)
+PNL_BY_BUSINESS_PRECOMPUTE_DISPATCH_LOCK = LockDefinition(
+    key="lock:pnl:by-business:precompute-dispatch",
+    ttl_seconds=30,
+)
 _REAL_PNL_REPOSITORY = PnlRepository
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
@@ -125,6 +135,14 @@ PNL_BY_BUSINESS_KEYED_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension,
     "cost_center",
     "instrument",
 )
+
+
+class PnlByBusinessPrecomputeConflictError(RuntimeError):
+    pass
+
+
+class PnlByBusinessPrecomputeDispatchError(RuntimeError):
+    pass
 
 
 def _ensure_formal_pnl_storage_available(duckdb_path: str) -> None:
@@ -1914,6 +1932,85 @@ def _clear_pnl_by_business_manual_adjustment_caches() -> None:
     _clear_pnl_by_business_analysis_cache()
 
 
+def request_pnl_by_business_precompute_rebuild(
+    settings: Settings,
+    *,
+    year: int,
+    as_of_date: str | None = None,
+) -> dict[str, object]:
+    """Queue an operator-requested rebuild, rejecting duplicate in-flight work."""
+    normalized_year = int(year)
+    normalized_as_of_date = _normalize_pnl_by_business_precompute_as_of_date(
+        year=normalized_year,
+        as_of_date=as_of_date,
+    )
+    queued = _queue_pnl_by_business_precompute_refresh(
+        settings,
+        year=normalized_year,
+        as_of_date=normalized_as_of_date,
+        trigger_reason="manual_retry",
+        raise_on_dispatch_failure=True,
+        raise_on_duplicate=True,
+    )
+    assert queued is not None
+    return queued
+
+
+def pnl_by_business_precompute_status(
+    settings: Settings,
+    *,
+    year: int,
+    as_of_date: str | None = None,
+) -> dict[str, object]:
+    """Return task lifecycle evidence plus the read path currently serving the page."""
+    normalized_year = int(year)
+    normalized_as_of_date = _normalize_pnl_by_business_precompute_as_of_date(
+        year=normalized_year,
+        as_of_date=as_of_date,
+    )
+    run_records = _pnl_by_business_precompute_run_records(settings, year=normalized_year)
+    pnl_repo = PnlRepository(str(settings.duckdb_path))
+    latest_available_as_of_date = pnl_repo.max_formal_or_nonstd_report_date_in_year(
+        year=normalized_year,
+        as_of_cap=None,
+    )
+    period_end = pnl_repo.max_formal_or_nonstd_report_date_in_year(
+        year=normalized_year,
+        as_of_cap=normalized_as_of_date,
+    )
+    latest = _pnl_by_business_precompute_status_record(
+        run_records,
+        period_end=period_end,
+        latest_available_as_of_date=latest_available_as_of_date,
+    )
+    status = str(latest.get("status") or "") if latest else "idle"
+    inflight = status in PNL_BY_BUSINESS_PRECOMPUTE_INFLIGHT_STATUSES
+    metadata: dict[str, object] | None = None
+    if period_end:
+        active_adjustments = active_pnl_by_business_manual_adjustments_for_period(
+            settings.governance_path,
+            year=normalized_year,
+            period_end=period_end,
+        )
+        metadata = pnl_repo.fetch_pnl_by_business_precompute_metadata(
+            year=normalized_year,
+            as_of_date=period_end,
+            supplemental_source_version=pnl_by_business_manual_adjustment_source_version(active_adjustments),
+            verify_current=not inflight,
+        )
+    is_current = bool(metadata and metadata.get("is_current"))
+    if latest is None and is_current:
+        status = "completed"
+    return _pnl_by_business_precompute_status_payload(
+        year=normalized_year,
+        status=status,
+        record=latest,
+        metadata=metadata,
+        latest_available_as_of_date=latest_available_as_of_date,
+        is_current=is_current,
+    )
+
+
 def _enqueue_pnl_by_business_precompute_refresh(settings: Settings, *, report_date: str) -> bool:
     """Queue a page read-model rebuild without making the committed adjustment fail."""
     try:
@@ -1924,20 +2021,314 @@ def _enqueue_pnl_by_business_precompute_refresh(settings: Settings, *, report_da
             report_date,
         )
         return False
-    try:
-        rebuild_pnl_by_business_precompute.send(
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
+    return (
+        _queue_pnl_by_business_precompute_refresh(
+            settings,
             year=year,
+            as_of_date=None,
+            trigger_reason="manual_adjustment_state_change",
+            raise_on_dispatch_failure=False,
+            raise_on_duplicate=False,
         )
-    except Exception as exc:  # live fingerprinted fallback remains correct
-        logger.warning(
-            "failed to enqueue pnl_by_business precompute refresh for year=%s: %s",
-            year,
-            exc,
+        is not None
+    )
+
+
+def _queue_pnl_by_business_precompute_refresh(
+    settings: Settings,
+    *,
+    year: int,
+    as_of_date: str | None,
+    trigger_reason: str,
+    raise_on_dispatch_failure: bool,
+    raise_on_duplicate: bool,
+) -> dict[str, object] | None:
+    run_id = f"{PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME}:{uuid4()}"
+    queued_at = datetime.now(UTC).isoformat()
+    writer_lock = resolve_duckdb_writer_lock(
+        settings.duckdb_path,
+        ttl_seconds=PNL_MATERIALIZE_LOCK.ttl_seconds,
+    )
+    record = CacheBuildRunRecord(
+        run_id=run_id,
+        job_name=PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+        status="queued",
+        cache_key=PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
+        cache_version=PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
+        lock=writer_lock.key,
+        source_version=PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
+        vendor_version="vv_none",
+        rule_version=PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        report_date=as_of_date,
+        queued_at=queued_at,
+    ).model_dump()
+    record["target_year"] = int(year)
+    record["trigger_reason"] = trigger_reason
+    governance_repo = GovernanceRepository(base_dir=settings.governance_path)
+    try:
+        with acquire_lock(
+            PNL_BY_BUSINESS_PRECOMPUTE_DISPATCH_LOCK,
+            base_dir=settings.governance_path,
+            timeout_seconds=2.0,
+        ):
+            inflight_records = _inflight_pnl_by_business_precompute_runs(settings, year=int(year))
+            if inflight_records and raise_on_duplicate:
+                raise PnlByBusinessPrecomputeConflictError(
+                    f"PnL by-business precompute already in progress for year={int(year)}."
+                )
+            if any(str(item.get("status") or "") == "queued" for item in inflight_records):
+                return None
+            governance_repo.append(CACHE_BUILD_RUN_STREAM, record)
+            try:
+                rebuild_pnl_by_business_precompute.send(
+                    duckdb_path=str(settings.duckdb_path),
+                    governance_dir=str(settings.governance_path),
+                    year=int(year),
+                    as_of_date=as_of_date,
+                    run_id=run_id,
+                    queued_at=queued_at,
+                    trigger_reason=trigger_reason,
+                )
+            except Exception as exc:  # page keeps its fingerprinted real-time fallback
+                failed_record = {
+                    **record,
+                    "status": "failed",
+                    "finished_at": datetime.now(UTC).isoformat(),
+                    "error_message": str(exc),
+                    "failure_category": "queue_dispatch_failure",
+                    "failure_reason": str(exc),
+                }
+                governance_repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
+                logger.warning(
+                    "failed to enqueue pnl_by_business precompute refresh for year=%s: %s",
+                    year,
+                    exc,
+                )
+                if raise_on_dispatch_failure:
+                    raise PnlByBusinessPrecomputeDispatchError(
+                        "PnL by-business precompute queue dispatch failed."
+                    ) from exc
+                return None
+    except TimeoutError as exc:
+        if raise_on_duplicate:
+            raise PnlByBusinessPrecomputeConflictError(
+                f"PnL by-business precompute dispatch is busy for year={int(year)}."
+            ) from exc
+        logger.info("skipped duplicate pnl_by_business precompute dispatch for year=%s", year)
+        return None
+    return _pnl_by_business_precompute_status_payload(
+        year=int(year),
+        status="queued",
+        record=record,
+        metadata=None,
+        latest_available_as_of_date=None,
+        is_current=False,
+    )
+
+
+def _pnl_by_business_precompute_run_records(settings: Settings, *, year: int) -> list[dict[str, object]]:
+    return [
+        record
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("cache_key") or "") == PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY
+        and str(record.get("job_name") or "") == PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME
+        and (
+            _safe_int(record.get("target_year")) == year
+            or str(record.get("report_date") or "").startswith(f"{year:04d}-")
         )
-        return False
-    return True
+    ]
+
+
+def _latest_inflight_pnl_by_business_precompute(
+    settings: Settings,
+    *,
+    year: int,
+) -> dict[str, object] | None:
+    inflight_records = _inflight_pnl_by_business_precompute_runs(settings, year=year)
+    return inflight_records[-1] if inflight_records else None
+
+
+def _inflight_pnl_by_business_precompute_runs(
+    settings: Settings,
+    *,
+    year: int,
+) -> list[dict[str, object]]:
+    effective_records = _effective_pnl_by_business_precompute_run_records(
+        _pnl_by_business_precompute_run_records(settings, year=year)
+    )
+    return [
+        record
+        for record in effective_records
+        if str(record.get("status") or "") in PNL_BY_BUSINESS_PRECOMPUTE_INFLIGHT_STATUSES
+    ]
+
+
+def _normalize_pnl_by_business_precompute_as_of_date(*, year: int, as_of_date: str | None) -> str | None:
+    if as_of_date is None:
+        return None
+    try:
+        parsed = date.fromisoformat(str(as_of_date))
+    except ValueError as exc:
+        raise ValueError("as_of_date must use YYYY-MM-DD format.") from exc
+    if parsed.year != int(year):
+        raise ValueError(f"as_of_date={parsed.isoformat()} is outside requested year={int(year)}.")
+    return parsed.isoformat()
+
+
+def _safe_int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _effective_pnl_by_business_precompute_run_records(
+    records: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    records_by_run_id: dict[str, list[dict[str, object]]] = {}
+    latest_event_index: dict[str, int] = {}
+    for index, record in enumerate(records):
+        run_id = str(record.get("run_id") or f"missing-run-id:{index}")
+        marked_record = dict(record)
+        marked_record["_effective_run_id"] = run_id
+        records_by_run_id.setdefault(run_id, []).append(marked_record)
+        latest_event_index[run_id] = index
+    effective = [
+        _effective_pnl_by_business_precompute_run_record(run_records)
+        for run_records in records_by_run_id.values()
+    ]
+    return sorted(effective, key=lambda record: latest_event_index[str(record["_effective_run_id"])])
+
+
+def _effective_pnl_by_business_precompute_run_record(
+    run_records: list[dict[str, object]],
+) -> dict[str, object]:
+    latest = dict(run_records[-1])
+    status = str(latest.get("status") or "")
+    failure_category = str(latest.get("failure_category") or "")
+    failure_count = sum(1 for record in run_records if str(record.get("status") or "") == "failed")
+    max_retries = int(getattr(rebuild_pnl_by_business_precompute, "options", {}).get("max_retries", 3))
+    if status == "failed" and failure_category != "queue_dispatch_failure" and failure_count <= max_retries:
+        latest["status"] = "queued"
+        latest["failure_category"] = "automatic_retry_pending"
+    if str(latest.get("status") or "") in PNL_BY_BUSINESS_PRECOMPUTE_INFLIGHT_STATUSES:
+        timestamp = str(
+            latest.get("finished_at")
+            or latest.get("started_at")
+            or latest.get("queued_at")
+            or ""
+        ).strip()
+        if not timestamp or datetime.now(UTC) - _parse_created_at(timestamp) > PNL_BY_BUSINESS_PRECOMPUTE_STALE_AFTER:
+            latest["status"] = "failed"
+            latest["failure_category"] = "stale_inflight"
+            latest["error_message"] = "Precompute worker progress timed out."
+    latest["retry_attempt"] = failure_count
+    return latest
+
+
+def _pnl_by_business_precompute_status_record(
+    records: list[dict[str, object]],
+    *,
+    period_end: str | None,
+    latest_available_as_of_date: str | None,
+) -> dict[str, object] | None:
+    relevant = [
+        record
+        for record in _effective_pnl_by_business_precompute_run_records(records)
+        if (
+            (
+                period_end is not None
+                and str(record.get("report_date") or "") == period_end
+            )
+            or (
+                not str(record.get("report_date") or "")
+                and period_end == latest_available_as_of_date
+            )
+        )
+    ]
+    if not relevant:
+        return None
+    inflight = [
+        record
+        for record in relevant
+        if str(record.get("status") or "") in PNL_BY_BUSINESS_PRECOMPUTE_INFLIGHT_STATUSES
+    ]
+    return (inflight or relevant)[-1]
+
+
+def _pnl_by_business_precompute_status_payload(
+    *,
+    year: int,
+    status: str,
+    record: dict[str, object] | None,
+    metadata: dict[str, object] | None,
+    latest_available_as_of_date: str | None,
+    is_current: bool,
+) -> dict[str, object]:
+    actor_options = getattr(rebuild_pnl_by_business_precompute, "options", {})
+    failure_category = str(record.get("failure_category") or "") if record else ""
+    safe_error_message = _safe_pnl_by_business_precompute_error_message(
+        status=status,
+        failure_category=failure_category,
+    )
+    return {
+        "year": year,
+        "status": status,
+        "serving_mode": "precomputed" if is_current else "live_fallback",
+        "is_current": is_current,
+        "run_id": (str(record.get("run_id") or "") or None) if record else None,
+        "report_date": (
+            str(metadata.get("as_of_date") or "") or None
+            if metadata
+            else (str(record.get("report_date") or "") or None if record else None)
+        ),
+        "latest_available_as_of_date": latest_available_as_of_date,
+        "source_version": (
+            str(metadata.get("source_version") or "") or None
+            if metadata
+            else (str(record.get("source_version") or "") or None if record else None)
+        ),
+        "rule_version": (
+            str(metadata.get("rule_version") or "") or None
+            if metadata
+            else PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
+        ),
+        "queued_at": (str(record.get("queued_at") or "") or None) if record else None,
+        "started_at": (str(record.get("started_at") or "") or None) if record else None,
+        "finished_at": (str(record.get("finished_at") or "") or None) if record else None,
+        "generated_at": (
+            str(metadata.get("generated_at") or "") or None
+            if metadata
+            else (str(record.get("generated_at") or "") or None if record else None)
+        ),
+        "record_count": (
+            int(metadata.get("record_count") or 0)
+            if metadata
+            else (int(record.get("record_count") or 0) if record and record.get("record_count") is not None else None)
+        ),
+        "error_message": safe_error_message,
+        "failure_category": failure_category or None,
+        "trigger_reason": (str(record.get("trigger_reason") or "") or None) if record else None,
+        "retry_attempt": int(record.get("retry_attempt") or 0) if record else 0,
+        "retry_policy": {
+            "max_retries": int(actor_options.get("max_retries", 3)),
+            "min_backoff_seconds": int(actor_options.get("min_backoff", 15_000)) // 1000,
+        },
+    }
+
+
+def _safe_pnl_by_business_precompute_error_message(*, status: str, failure_category: str) -> str | None:
+    if failure_category == "automatic_retry_pending":
+        return "上一次预计算未完成，后台正在按策略自动重试。"
+    if status != "failed":
+        return None
+    if failure_category == "queue_dispatch_failure":
+        return "预计算任务分发失败，请检查后台队列后重试。"
+    if failure_category == "stale_inflight":
+        return "预计算任务长时间未更新，已解除占用，可重新生成。"
+    if failure_category == "lock_timeout":
+        return "预计算暂未取得数据写入锁，自动重试已结束。"
+    return "预计算执行失败，自动重试已结束，请查看后台运行日志。"
 
 
 def _build_pnl_by_business_analysis_rows(

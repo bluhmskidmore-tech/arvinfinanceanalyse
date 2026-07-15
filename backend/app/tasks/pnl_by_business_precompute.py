@@ -235,6 +235,8 @@ def precompute_pnl_by_business_payloads(
         "records": len(records),
         "monthly_records": 1,
         "analysis_records": len(records) - 1,
+        "source_version": precompute_source_version,
+        "generated_at": generated_at,
     }
 
 def persist_pnl_by_business_precompute(

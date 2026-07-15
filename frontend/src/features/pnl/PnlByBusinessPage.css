@@ -186,6 +186,97 @@
   color: var(--moss-color-neutral-700);
 }
 
+.pnl-by-business-precompute-status {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.9fr) minmax(460px, 1.7fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 16px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left-width: 4px;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+}
+
+.pnl-by-business-precompute-status--ready {
+  border-left-color: var(--moss-color-success-600);
+}
+
+.pnl-by-business-precompute-status--warning {
+  border-left-color: var(--moss-color-warning-600);
+  background: var(--moss-color-warning-50);
+}
+
+.pnl-by-business-precompute-status--error {
+  border-left-color: var(--moss-color-danger-600);
+  background: var(--moss-color-danger-50);
+}
+
+.pnl-by-business-precompute-status__summary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pnl-by-business-precompute-status__eyebrow {
+  color: var(--moss-color-neutral-500);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pnl-by-business-precompute-status__summary > strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+}
+
+.pnl-by-business-precompute-status__summary > small {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.pnl-by-business-precompute-status__error {
+  color: var(--moss-color-danger-800);
+  font-size: 11px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.pnl-by-business-precompute-status__facts {
+  display: grid;
+  grid-template-columns: 0.75fr 1.25fr 1.4fr 0.45fr;
+  min-width: 0;
+}
+
+.pnl-by-business-precompute-status__facts > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 0 8px;
+  border-left: 1px solid var(--moss-color-neutral-200);
+}
+
+.pnl-by-business-precompute-status__facts small {
+  color: var(--moss-color-neutral-500);
+  font-size: 10px;
+}
+
+.pnl-by-business-precompute-status__facts strong {
+  overflow: hidden;
+  color: var(--moss-color-neutral-800);
+  font-family: var(--moss-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-by-business-precompute-status__action {
+  white-space: nowrap;
+}
+
 .pnl-by-business-filter-label {
   display: grid;
   gap: 6px;
@@ -1636,6 +1727,15 @@
 }
 
 @media (max-width: 1080px) {
+  .pnl-by-business-precompute-status {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .pnl-by-business-precompute-status__facts {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
   .pnl-by-business-hero-conclusion,
   .pnl-by-business-insight-strip {
     grid-template-columns: minmax(0, 1fr);
@@ -1702,6 +1802,19 @@
 }
 
 @media (max-width: 720px) {
+  .pnl-by-business-precompute-status {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pnl-by-business-precompute-status__facts {
+    grid-column: 1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pnl-by-business-precompute-status__action {
+    justify-self: start;
+  }
+
   .pnl-by-business-hero-actions,
   .pnl-by-business-selected-trend__toolbar,
   .pnl-by-business-detail-disclosure__summary,

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -11,6 +11,7 @@ import type {
   PnlByBusinessManualAdjustmentRequest,
   PnlByBusinessMonthlyBucket,
   PnlByBusinessMonthlyItem,
+  PnlByBusinessPrecomputeStatus,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
   PnlByBusinessYtdSummary,
@@ -71,6 +72,103 @@ function pnlKpiToneClassName(
     return "pnl-by-business-kpi-metric--negative";
   }
   return "";
+}
+
+function formatPrecomputeTimestamp(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  return value.replace("T", " ").replace(/(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/, "");
+}
+
+function compactPrecomputeSourceVersion(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+  return value.length > 34 ? `${value.slice(0, 34)}…` : value;
+}
+
+function PnlByBusinessPrecomputeStatusPanel({
+  status,
+  isLoading,
+  isError,
+  isRebuilding,
+  rebuildError,
+  onRebuild,
+}: {
+  status?: PnlByBusinessPrecomputeStatus;
+  isLoading: boolean;
+  isError: boolean;
+  isRebuilding: boolean;
+  rebuildError: string | null;
+  onRebuild: () => void;
+}) {
+  const inflight = status?.status === "queued" || status?.status === "running";
+  const retryPending = status?.failure_category === "automatic_retry_pending";
+  const failed = status?.status === "failed";
+  const servingLive = status?.serving_mode === "live_fallback";
+  const title = isError
+    ? "预计算状态不可用，主结果继续按当前读路径展示"
+    : isLoading && !status
+      ? "正在读取预计算状态"
+      : inflight
+        ? retryPending
+          ? "上次未完成，后台自动重试中"
+          : servingLive
+          ? "预计算重建中，当前使用实时计算"
+          : "预计算重建中，当前继续使用已验证缓存"
+        : failed
+          ? servingLive
+            ? "预计算失败，当前使用实时计算"
+            : "最近一次预计算失败，当前仍使用已验证缓存"
+          : status?.is_current
+            ? "预计算已就绪"
+            : "预计算未就绪，当前使用实时计算";
+  const tone = failed || isError ? "error" : inflight || servingLive ? "warning" : "ready";
+  const cutoff = status?.report_date ?? status?.latest_available_as_of_date ?? "-";
+
+  return (
+    <section
+      className={`pnl-by-business-precompute-status pnl-by-business-precompute-status--${tone}`}
+      data-testid="pnl-by-business-precompute-status"
+      aria-live="polite"
+    >
+      <div className="pnl-by-business-precompute-status__summary">
+        <span className="pnl-by-business-precompute-status__eyebrow">读模型状态</span>
+        <strong>{title}</strong>
+        <small>
+          后台失败按任务策略自动重试最多 {status?.retry_policy.max_retries ?? 3} 次；实时计算与预计算使用同一后端口径。
+        </small>
+        {status?.error_message ? (
+          <span className="pnl-by-business-precompute-status__error" role="alert">
+            {status.error_message}
+          </span>
+        ) : null}
+        {rebuildError ? (
+          <span className="pnl-by-business-precompute-status__error" role="alert">
+            {rebuildError}
+          </span>
+        ) : null}
+      </div>
+      <div className="pnl-by-business-precompute-status__facts">
+        <span><small>截至</small><strong>{cutoff}</strong></span>
+        <span><small>生成</small><strong>{formatPrecomputeTimestamp(status?.generated_at ?? status?.finished_at)}</strong></span>
+        <span title={status?.source_version ?? undefined}>
+          <small>源版本</small><strong>{compactPrecomputeSourceVersion(status?.source_version)}</strong>
+        </span>
+        <span><small>记录</small><strong>{status?.record_count ?? "-"}</strong></span>
+      </div>
+      <button
+        type="button"
+        className="pnl-by-business-action-button pnl-by-business-precompute-status__action"
+        onClick={onRebuild}
+        disabled={isLoading || inflight || isRebuilding}
+        aria-label="重新生成预计算"
+      >
+        {isRebuilding || inflight ? "生成中..." : "重新生成预计算"}
+      </button>
+    </section>
+  );
 }
 
 function PnlByBusinessInsightStrip({
@@ -1902,6 +2000,7 @@ export default function PnlByBusinessPage() {
   const [adjustmentError, setAdjustmentError] = useState("");
   const [exportError, setExportError] = useState("");
   const [exportingExcel, setExportingExcel] = useState(false);
+  const precomputeTrackedRunIdRef = useRef<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["pnl-by-business", "dates", client.mode],
@@ -1925,6 +2024,49 @@ export default function PnlByBusinessPage() {
   }, [reportDates, selectedReportDate]);
 
   const selectedYear = selectedReportDate ? Number(selectedReportDate.slice(0, 4)) : new Date().getFullYear();
+  const precomputeStatusQueryKey = [
+    "pnl-by-business",
+    "precompute-status",
+    client.mode,
+    selectedYear,
+    selectedReportDate,
+  ] as const;
+  const precomputeStatusQuery = useQuery({
+    queryKey: precomputeStatusQueryKey,
+    enabled: Boolean(selectedReportDate && selectedYear && viewMode !== "formal"),
+    queryFn: () => client.getPnlByBusinessPrecomputeStatus(selectedYear, selectedReportDate),
+    retry: false,
+    refetchInterval: (query) => {
+      const taskStatus = query.state.data?.status;
+      return taskStatus === "queued" || taskStatus === "running" ? 5_000 : false;
+    },
+  });
+  const rebuildPrecomputeMutation = useMutation({
+    mutationFn: () => client.rebuildPnlByBusinessPrecompute(selectedYear, selectedReportDate),
+    onSuccess: async (queuedStatus) => {
+      queryClient.setQueryData(precomputeStatusQueryKey, queuedStatus);
+      await precomputeStatusQuery.refetch();
+    },
+  });
+
+  useEffect(() => {
+    const taskStatus = precomputeStatusQuery.data?.status;
+    const runId = precomputeStatusQuery.data?.run_id ?? null;
+    if ((taskStatus === "queued" || taskStatus === "running") && runId) {
+      precomputeTrackedRunIdRef.current = runId;
+      return;
+    }
+    if (
+      taskStatus === "completed" &&
+      precomputeStatusQuery.data?.is_current &&
+      runId &&
+      precomputeTrackedRunIdRef.current === runId
+    ) {
+      precomputeTrackedRunIdRef.current = null;
+      void queryClient.invalidateQueries({ queryKey: ["pnl-by-business"] });
+    }
+  }, [precomputeStatusQuery.data, queryClient]);
+
   const businessQuery = useQuery({
     queryKey: ["pnl-by-business", "ytd", client.mode, selectedYear, selectedReportDate],
     enabled: Boolean(selectedReportDate && selectedYear && viewMode === "ytd"),
@@ -2624,6 +2766,23 @@ export default function PnlByBusinessPage() {
           <span><strong>生成</strong>{statusStrip.generatedAt}</span>
           <span><strong>Trace</strong>{statusStrip.traceId}</span>
         </DataStatusStrip>
+
+        {viewMode !== "formal" ? (
+          <PnlByBusinessPrecomputeStatusPanel
+            status={precomputeStatusQuery.data}
+            isLoading={precomputeStatusQuery.isLoading || precomputeStatusQuery.isFetching}
+            isError={precomputeStatusQuery.isError}
+            isRebuilding={rebuildPrecomputeMutation.isPending}
+            rebuildError={
+              rebuildPrecomputeMutation.isError
+                ? rebuildPrecomputeMutation.error instanceof Error
+                  ? rebuildPrecomputeMutation.error.message
+                  : "预计算重建请求失败"
+                : null
+            }
+            onRebuild={() => rebuildPrecomputeMutation.mutate()}
+          />
+        ) : null}
 
         <PageFilterTray testId="pnl-by-business-filter-tray">
           <FilterBar className="pnl-by-business-filter">

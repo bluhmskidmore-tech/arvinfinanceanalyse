@@ -63,6 +63,7 @@ MUTATION_ROUTES = [
     ("POST", "/api/pnl/by-business/manual-adjustments/test-id/revoke", None),
     ("POST", "/api/pnl/by-business/manual-adjustments/test-id/restore", None),
     ("POST", "/api/pnl/by-business/manual-adjustments/test-id/approve", None),
+    ("POST", "/api/pnl/by-business/precompute-rebuild?year=2026", None),
     ("POST", "/ui/pnl/product-category/manual-adjustments", {"report_date": "2026-01-01", "account_code": "X", "currency": "CNY", "operator": "DELTA", "monthly_pnl": "100"}),
     ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/revoke", None),
     ("POST", "/ui/pnl/product-category/manual-adjustments/test-id/edit", {"report_date": "2026-01-01", "account_code": "X", "currency": "CNY", "operator": "DELTA", "monthly_pnl": "50"}),

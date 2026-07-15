@@ -93,6 +93,8 @@ def test_fastapi_application_registers_pnl_routes():
     assert "/api/pnl/by-business-ytd" in paths
     assert "/api/pnl/by-business-monthly" in paths
     assert "/api/pnl/by-business-analysis" in paths
+    assert "/api/pnl/by-business/precompute-status" in paths
+    assert "/api/pnl/by-business/precompute-rebuild" in paths
     assert "/api/pnl/by-business/manual-adjustments" in paths
     assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/edit" in paths
     assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/approve" in paths
@@ -3163,13 +3165,13 @@ def test_pnl_by_business_manual_adjustment_active_state_changes_enqueue_precompu
         adjustment_id=adjustment_id,
         approved_by="checker",
     )
-    assert dispatched == [
-        {
-            "duckdb_path": str(settings.duckdb_path),
-            "governance_dir": str(settings.governance_path),
-            "year": 2025,
-        }
-    ]
+    assert len(dispatched) == 1
+    assert dispatched[0]["duckdb_path"] == str(settings.duckdb_path)
+    assert dispatched[0]["governance_dir"] == str(settings.governance_path)
+    assert dispatched[0]["year"] == 2025
+    assert dispatched[0]["trigger_reason"] == "manual_adjustment_state_change"
+    assert str(dispatched[0]["run_id"]).startswith("pnl_by_business_precompute:")
+    assert dispatched[0]["queued_at"]
 
     pnl_service.approve_pnl_by_business_manual_adjustment(
         settings,
@@ -3183,21 +3185,54 @@ def test_pnl_by_business_manual_adjustment_active_state_changes_enqueue_precompu
         adjustment_id=adjustment_id,
         payload=payload.model_copy(update={"manual_adjustment": Decimal("30.00")}),
     )
-    assert len(dispatched) == 2
+    assert len(dispatched) == 1
 
     pnl_service.approve_pnl_by_business_manual_adjustment(
         settings,
         adjustment_id=adjustment_id,
         approved_by="checker",
     )
-    assert len(dispatched) == 3
+    assert len(dispatched) == 1
+
+    governance_repo = GovernanceRepository(base_dir=settings.governance_path)
+    first_run_id = str(dispatched[0]["run_id"])
+    first_record = next(
+        record
+        for record in governance_repo.read_all(CACHE_BUILD_RUN_STREAM)
+        if record["run_id"] == first_run_id
+    )
+    governance_repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **first_record,
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
     pnl_service.revoke_pnl_by_business_manual_adjustment(settings, adjustment_id=adjustment_id)
-    assert len(dispatched) == 4
+    assert len(dispatched) == 2
 
     pnl_service.revoke_pnl_by_business_manual_adjustment(settings, adjustment_id=adjustment_id)
     pnl_service.restore_pnl_by_business_manual_adjustment(settings, adjustment_id=adjustment_id)
-    assert len(dispatched) == 4
+    assert len(dispatched) == 2
+
+    for message in dispatched:
+        run_id = str(message["run_id"])
+        latest_record = next(
+            record
+            for record in reversed(governance_repo.read_all(CACHE_BUILD_RUN_STREAM))
+            if record["run_id"] == run_id
+        )
+        governance_repo.append(
+            CACHE_BUILD_RUN_STREAM,
+            {
+                **latest_record,
+                "status": "completed",
+                "report_date": "2025-12-31",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
     def fail_dispatch(**_kwargs):
         raise ConnectionError("broker unavailable")
@@ -3228,7 +3263,13 @@ def test_rebuild_pnl_by_business_precompute_task_uses_latest_year_cutoff(
 
     def fake_precompute(**kwargs):
         calls.append(kwargs)
-        return {"year": 2025, "as_of_date": "2025-12-31", "records": 117}
+        return {
+            "year": 2025,
+            "as_of_date": "2025-12-31",
+            "records": 117,
+            "source_version": "sv-pnl-by-business-ready",
+            "generated_at": "2026-07-15T12:00:00+00:00",
+        }
 
     monkeypatch.setattr(pnl_materialize, "precompute_pnl_by_business_payloads", fake_precompute)
     monkeypatch.setattr(
@@ -3241,17 +3282,371 @@ def test_rebuild_pnl_by_business_precompute_task_uses_latest_year_cutoff(
         duckdb_path=str(tmp_path / "moss.duckdb"),
         governance_dir=str(tmp_path / "governance"),
         year=2025,
+        run_id="pnl-by-business-precompute:test-ready",
+        trigger_reason="manual_retry",
     )
 
     assert calls == [
         {
-            "duckdb_path": str(tmp_path / "moss.duckdb"),
-            "governance_dir": str(tmp_path / "governance"),
-            "year": 2025,
-        }
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_dir": str(tmp_path / "governance"),
+                "year": 2025,
+                "as_of_date": None,
+            }
     ]
     assert cache_clears == [True]
-    assert result == {"year": 2025, "as_of_date": "2025-12-31", "records": 117}
+    assert result == {
+        "year": 2025,
+        "as_of_date": "2025-12-31",
+        "records": 117,
+        "source_version": "sv-pnl-by-business-ready",
+        "generated_at": "2026-07-15T12:00:00+00:00",
+    }
+    run_records = [
+        record
+        for record in GovernanceRepository(base_dir=tmp_path / "governance").read_all(CACHE_BUILD_RUN_STREAM)
+        if record["run_id"] == "pnl-by-business-precompute:test-ready"
+    ]
+    assert [record["status"] for record in run_records] == ["running", "completed"]
+    assert run_records[-1]["report_date"] == "2025-12-31"
+    assert run_records[-1]["record_count"] == 117
+    assert run_records[-1]["trigger_reason"] == "manual_retry"
+    assert run_records[-1]["source_version"] == "sv-pnl-by-business-ready"
+
+
+def test_rebuild_pnl_by_business_precompute_task_records_failure(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.tasks import pnl_materialize
+
+    def fail_precompute(**_kwargs):
+        raise RuntimeError("precompute fixture failed")
+
+    monkeypatch.setattr(pnl_materialize, "precompute_pnl_by_business_payloads", fail_precompute)
+
+    with pytest.raises(RuntimeError, match="precompute fixture failed"):
+        pnl_materialize.run_pnl_by_business_precompute_sync(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+            year=2025,
+            run_id="pnl-by-business-precompute:test-failed",
+            trigger_reason="manual_retry",
+        )
+
+    run_records = [
+        record
+        for record in GovernanceRepository(base_dir=tmp_path / "governance").read_all(CACHE_BUILD_RUN_STREAM)
+        if record["run_id"] == "pnl-by-business-precompute:test-failed"
+    ]
+    assert [record["status"] for record in run_records] == ["running", "failed"]
+    assert run_records[-1]["error_message"] == "precompute fixture failed"
+    assert run_records[-1]["failure_category"] == "materialize_failure"
+
+
+def test_request_pnl_by_business_precompute_rebuild_is_observable_and_deduplicated(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.services import pnl_service
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    settings = get_settings()
+    dispatched: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        pnl_service.rebuild_pnl_by_business_precompute,
+        "send",
+        lambda **kwargs: dispatched.append(kwargs),
+    )
+
+    queued = pnl_service.request_pnl_by_business_precompute_rebuild(settings, year=2025)
+
+    assert queued["status"] == "queued"
+    assert queued["serving_mode"] == "live_fallback"
+    assert queued["trigger_reason"] == "manual_retry"
+    assert queued["retry_policy"] == {"max_retries": 3, "min_backoff_seconds": 15}
+    assert len(dispatched) == 1
+    assert dispatched[0]["run_id"] == queued["run_id"]
+    run_records = GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+    assert run_records[-1]["status"] == "queued"
+    assert run_records[-1]["target_year"] == 2025
+
+    with pytest.raises(pnl_service.PnlByBusinessPrecomputeConflictError):
+        pnl_service.request_pnl_by_business_precompute_rebuild(settings, year=2025)
+    assert len(dispatched) == 1
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_precompute_status_distinguishes_current_cache_and_live_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.services import pnl_service
+
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    settings = get_settings()
+
+    class FakeCurrentPnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2025
+            assert as_of_cap is None
+            return "2025-12-31"
+
+        def fetch_pnl_by_business_precompute_metadata(self, **_kwargs):
+            return {
+                "year": 2025,
+                "as_of_date": "2025-12-31",
+                "source_version": "sv-current",
+                "rule_version": PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+                "generated_at": "2026-07-15T12:00:00+00:00",
+                "record_count": 117,
+                "is_current": True,
+            }
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakeCurrentPnlRepository)
+    current = pnl_service.pnl_by_business_precompute_status(settings, year=2025)
+    assert current["status"] == "completed"
+    assert current["serving_mode"] == "precomputed"
+    assert current["is_current"] is True
+    assert current["report_date"] == "2025-12-31"
+    assert current["record_count"] == 117
+
+    failed_record = CacheBuildRunRecord(
+        run_id="pnl_by_business_precompute:failed-status",
+        job_name=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+        status="failed",
+        cache_key=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
+        cache_version=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
+        lock="lock:duckdb:materialize:test",
+        source_version="sv-failed",
+        vendor_version="vv_none",
+        rule_version=PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        finished_at=datetime.now(timezone.utc).isoformat(),
+        error_message="worker failed",
+        failure_category="materialize_failure",
+    ).model_dump()
+    failed_record["target_year"] = 2025
+    failed_record["trigger_reason"] = "manual_retry"
+    GovernanceRepository(base_dir=settings.governance_path).append(CACHE_BUILD_RUN_STREAM, failed_record)
+
+    class FakeStalePnlRepository(FakeCurrentPnlRepository):
+        def fetch_pnl_by_business_precompute_metadata(self, **_kwargs):
+            return None
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakeStalePnlRepository)
+    retrying = pnl_service.pnl_by_business_precompute_status(settings, year=2025)
+    assert retrying["status"] == "queued"
+    assert retrying["failure_category"] == "automatic_retry_pending"
+    assert retrying["error_message"] == "上一次预计算未完成，后台正在按策略自动重试。"
+
+    for _attempt in range(3):
+        GovernanceRepository(base_dir=settings.governance_path).append(
+            CACHE_BUILD_RUN_STREAM,
+            {**failed_record, "finished_at": datetime.now(timezone.utc).isoformat()},
+        )
+    failed = pnl_service.pnl_by_business_precompute_status(settings, year=2025)
+    assert failed["status"] == "failed"
+    assert failed["serving_mode"] == "live_fallback"
+    assert failed["is_current"] is False
+    assert failed["error_message"] == "预计算执行失败，自动重试已结束，请查看后台运行日志。"
+    assert failed["retry_attempt"] == 4
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_precompute_status_uses_selected_cutoff(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.services import pnl_service
+
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    settings = get_settings()
+    metadata_calls: list[dict[str, object]] = []
+
+    class FakeHistoricalPnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2025
+            return "2025-06-30" if as_of_cap == "2025-06-30" else "2025-12-31"
+
+        def fetch_pnl_by_business_precompute_metadata(self, **kwargs):
+            metadata_calls.append(kwargs)
+            return {
+                "year": 2025,
+                "as_of_date": "2025-06-30",
+                "source_version": "sv-historical-current",
+                "rule_version": PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+                "generated_at": "2026-07-15T12:00:00+00:00",
+                "record_count": 117,
+                "is_current": True,
+            }
+
+    latest_record = CacheBuildRunRecord(
+        run_id="pnl_by_business_precompute:latest-cutoff",
+        job_name=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+        status="completed",
+        cache_key=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
+        cache_version=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
+        lock="lock:duckdb:materialize:test",
+        source_version="sv-latest",
+        vendor_version="vv_none",
+        rule_version=PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        report_date="2025-12-31",
+        finished_at=datetime.now(timezone.utc).isoformat(),
+    ).model_dump()
+    latest_record["target_year"] = 2025
+    GovernanceRepository(base_dir=settings.governance_path).append(CACHE_BUILD_RUN_STREAM, latest_record)
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakeHistoricalPnlRepository)
+
+    status = pnl_service.pnl_by_business_precompute_status(
+        settings,
+        year=2025,
+        as_of_date="2025-06-30",
+    )
+
+    assert status["status"] == "completed"
+    assert status["report_date"] == "2025-06-30"
+    assert status["run_id"] is None
+    assert status["serving_mode"] == "precomputed"
+    assert len(metadata_calls) == 1
+    assert metadata_calls[0]["year"] == 2025
+    assert metadata_calls[0]["as_of_date"] == "2025-06-30"
+    assert str(metadata_calls[0]["supplemental_source_version"]).startswith(
+        "sv_pnl_by_business_adjustments_v1:"
+    )
+    assert metadata_calls[0]["verify_current"] is True
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_precompute_status_marks_stale_inflight_and_allows_rebuild(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.services import pnl_service
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    settings = get_settings()
+    stale_record = CacheBuildRunRecord(
+        run_id="pnl_by_business_precompute:stale",
+        job_name=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+        status="queued",
+        cache_key=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
+        cache_version=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
+        lock="lock:duckdb:materialize:test",
+        source_version="sv-pending",
+        vendor_version="vv_none",
+        rule_version=PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        report_date="2025-12-31",
+        queued_at=(datetime.now(timezone.utc) - timedelta(hours=3)).isoformat(),
+    ).model_dump()
+    stale_record["target_year"] = 2025
+    GovernanceRepository(base_dir=settings.governance_path).append(CACHE_BUILD_RUN_STREAM, stale_record)
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            return "2025-12-31"
+
+        def fetch_pnl_by_business_precompute_metadata(self, **_kwargs):
+            return None
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    dispatched: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        pnl_service.rebuild_pnl_by_business_precompute,
+        "send",
+        lambda **kwargs: dispatched.append(kwargs),
+    )
+
+    stale = pnl_service.pnl_by_business_precompute_status(
+        settings,
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+    assert stale["status"] == "failed"
+    assert stale["failure_category"] == "stale_inflight"
+    assert stale["error_message"] == "预计算任务长时间未更新，已解除占用，可重新生成。"
+
+    queued = pnl_service.request_pnl_by_business_precompute_rebuild(
+        settings,
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+    assert queued["status"] == "queued"
+    assert len(dispatched) == 1
+    assert dispatched[0]["as_of_date"] == "2025-12-31"
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_precompute_status_prioritizes_inflight_run_over_later_terminal_event(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.services import pnl_service
+
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    settings = get_settings()
+    governance_repo = GovernanceRepository(base_dir=settings.governance_path)
+    now = datetime.now(timezone.utc).isoformat()
+
+    def append_run(run_id: str, status: str) -> None:
+        record = CacheBuildRunRecord(
+            run_id=run_id,
+            job_name=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+            status=status,
+            cache_key=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
+            cache_version=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
+            lock="lock:duckdb:materialize:test",
+            source_version="sv-pending",
+            vendor_version="vv_none",
+            rule_version=PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+            report_date="2025-12-31",
+            queued_at=now,
+            started_at=now if status in {"running", "completed"} else None,
+            finished_at=now if status == "completed" else None,
+        ).model_dump()
+        record["target_year"] = 2025
+        governance_repo.append(CACHE_BUILD_RUN_STREAM, record)
+
+    append_run("pnl_by_business_precompute:run-a", "running")
+    append_run("pnl_by_business_precompute:run-b", "queued")
+    append_run("pnl_by_business_precompute:run-a", "completed")
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            return "2025-12-31"
+
+        def fetch_pnl_by_business_precompute_metadata(self, **kwargs):
+            assert kwargs["verify_current"] is False
+            return None
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+
+    status = pnl_service.pnl_by_business_precompute_status(
+        settings,
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+    assert status["status"] == "queued"
+    assert status["run_id"] == "pnl_by_business_precompute:run-b"
+    get_settings.cache_clear()
 
 
 def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(

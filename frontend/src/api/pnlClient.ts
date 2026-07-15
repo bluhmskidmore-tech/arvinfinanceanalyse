@@ -16,6 +16,7 @@ import type {
   PnlByBusinessManualAdjustmentRequest,
   PnlByBusinessMonthlyPayload,
   PnlByBusinessPayload,
+  PnlByBusinessPrecomputeStatus,
   PnlByBusinessYtdPayload,
   PnlV1DataPayload,
   PnlYearlyBusinessSummaryPayload,
@@ -81,6 +82,8 @@ type PnlBusinessClientMethods = {
   getPnlByBusinessManualAdjustments: (
     reportDate: string,
   ) => Promise<PnlByBusinessManualAdjustmentListPayload>;
+  getPnlByBusinessPrecomputeStatus: (year: number, asOfDate?: string) => Promise<PnlByBusinessPrecomputeStatus>;
+  rebuildPnlByBusinessPrecompute: (year: number, asOfDate?: string) => Promise<PnlByBusinessPrecomputeStatus>;
   getPnlYearlyBusinessSummary: (year: number) => Promise<ApiEnvelope<PnlYearlyBusinessSummaryPayload>>;
   getPnlCampisiDecisionGrade: (options?: {
     startDate?: string;
@@ -147,6 +150,54 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
         },
         { basis: "analytical", formal_use_allowed: false },
       );
+    },
+    async getPnlByBusinessPrecomputeStatus(year: number, asOfDate?: string) {
+      await delay();
+      return {
+        year,
+        status: "completed",
+        serving_mode: "precomputed",
+        is_current: true,
+        run_id: null,
+        report_date: asOfDate ?? `${year}-12-31`,
+        latest_available_as_of_date: `${year}-12-31`,
+        source_version: "sv_mock_pnl_by_business_precompute",
+        rule_version: "rv_pnl_by_business_precompute_v6",
+        queued_at: null,
+        started_at: null,
+        finished_at: null,
+        generated_at: new Date().toISOString(),
+        record_count: 1,
+        error_message: null,
+        failure_category: null,
+        trigger_reason: null,
+        retry_attempt: 0,
+        retry_policy: { max_retries: 3, min_backoff_seconds: 15 },
+      };
+    },
+    async rebuildPnlByBusinessPrecompute(year: number, asOfDate?: string) {
+      await delay();
+      return {
+        year,
+        status: "queued",
+        serving_mode: "live_fallback",
+        is_current: false,
+        run_id: `pnl_by_business_precompute:mock-${year}`,
+        report_date: asOfDate ?? null,
+        latest_available_as_of_date: `${year}-12-31`,
+        source_version: "sv_pnl_by_business_precompute_pending",
+        rule_version: "rv_pnl_by_business_precompute_v6",
+        queued_at: new Date().toISOString(),
+        started_at: null,
+        finished_at: null,
+        generated_at: null,
+        record_count: null,
+        error_message: null,
+        failure_category: null,
+        trigger_reason: "manual_retry",
+        retry_attempt: 0,
+        retry_policy: { max_retries: 3, min_backoff_seconds: 15 },
+      };
     },
     async createPnlByBusinessManualAdjustment(payload) {
       await delay();
@@ -350,6 +401,29 @@ export function createRealPnlBusinessClient({
         fetchImpl,
         baseUrl,
         `/api/pnl/by-business-ytd?${query.toString()}`,
+      );
+    },
+    getPnlByBusinessPrecomputeStatus: (year: number, asOfDate?: string) => {
+      const query = new URLSearchParams({ year: String(year) });
+      if (asOfDate) {
+        query.set("as_of_date", asOfDate);
+      }
+      return requestActionJson<PnlByBusinessPrecomputeStatus>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business/precompute-status?${query.toString()}`,
+      );
+    },
+    rebuildPnlByBusinessPrecompute: (year: number, asOfDate?: string) => {
+      const query = new URLSearchParams({ year: String(year) });
+      if (asOfDate) {
+        query.set("as_of_date", asOfDate);
+      }
+      return requestActionJson<PnlByBusinessPrecomputeStatus>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business/precompute-rebuild?${query.toString()}`,
+        { method: "POST" },
       );
     },
     createPnlByBusinessManualAdjustment: (payload) =>

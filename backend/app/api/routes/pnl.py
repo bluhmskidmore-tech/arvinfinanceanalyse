@@ -226,6 +226,43 @@ def by_business_analysis(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/pnl/by-business/precompute-status")
+def by_business_precompute_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    year: int = Query(..., ge=2000, le=2100, description="Calendar year for the PnL by-business page read model."),
+    as_of_date: str | None = Query(None, description="Selected page cutoff date in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
+    try:
+        return _pnl_service().pnl_by_business_precompute_status(settings, year=year, as_of_date=as_of_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/pnl/by-business/precompute-rebuild")
+def rebuild_by_business_precompute(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    year: int = Query(..., ge=2000, le=2100, description="Calendar year to rebuild for the PnL by-business page."),
+    as_of_date: str | None = Query(None, description="Selected page cutoff date in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_by_business_adjustment_write_allowed(auth, settings)
+    service = _pnl_service()
+    try:
+        return service.request_pnl_by_business_precompute_rebuild(settings, year=year, as_of_date=as_of_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except service.PnlByBusinessPrecomputeConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.PnlByBusinessPrecomputeDispatchError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/pnl/by-business-candidate-insights", response_model=ResultEnvelope)
 def by_business_candidate_insights(
     auth: Annotated[AuthContext, Depends(get_auth_context)],

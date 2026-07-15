@@ -3474,6 +3474,31 @@ export type PnlByBusinessManualAdjustmentListPayload = {
   events: PnlByBusinessManualAdjustmentPayload[];
 };
 
+export type PnlByBusinessPrecomputeStatus = {
+  year: number;
+  status: "idle" | "queued" | "running" | "completed" | "failed";
+  serving_mode: "precomputed" | "live_fallback";
+  is_current: boolean;
+  run_id: string | null;
+  report_date: string | null;
+  latest_available_as_of_date?: string | null;
+  source_version: string | null;
+  rule_version: string | null;
+  queued_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  generated_at: string | null;
+  record_count: number | null;
+  error_message: string | null;
+  failure_category: string | null;
+  trigger_reason: string | null;
+  retry_attempt: number;
+  retry_policy: {
+    max_retries: number;
+    min_backoff_seconds: number;
+  };
+};
+
 export type PnlByBusinessMonthlyItem = {
   row_key: string;
   sort_order: number;

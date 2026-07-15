@@ -147,6 +147,63 @@ class PnlRepository:
             return None
         return json.loads(str(row[0]))
 
+    def fetch_pnl_by_business_precompute_metadata(
+        self,
+        *,
+        year: int,
+        as_of_date: str,
+        supplemental_source_version: str = "",
+        verify_current: bool = True,
+    ) -> dict[str, object] | None:
+        """Return page-read-model provenance without deserializing its large payloads."""
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            if not self._table_exists(conn, "fact_pnl_by_business_precompute"):
+                return None
+            row = conn.execute(
+                """
+                select source_version, rule_version, generated_at, count(*) over () as record_count
+                from fact_pnl_by_business_precompute
+                where year = ? and as_of_date = ?
+                order by case when result_kind = 'monthly' then 0 else 1 end, generated_at desc
+                limit 1
+                """,
+                [year, as_of_date],
+            ).fetchone()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
+                return None
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        if row is None:
+            return None
+        source_version = str(row[0] or "")
+        rule_version = str(row[1] or "")
+        expected_source_version = (
+            self.pnl_by_business_precompute_source_version(
+                year=year,
+                as_of_date=as_of_date,
+                supplemental_source_version=supplemental_source_version,
+            )
+            if verify_current
+            else None
+        )
+        return {
+            "year": year,
+            "as_of_date": as_of_date,
+            "source_version": source_version,
+            "rule_version": rule_version,
+            "generated_at": str(row[2] or "") or None,
+            "record_count": int(row[3] or 0),
+            "is_current": (
+                verify_current
+                and source_version == expected_source_version
+                and rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
+            ),
+        }
+
     def pnl_by_business_precompute_source_version(
         self,
         *,
