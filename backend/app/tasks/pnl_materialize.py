@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from calendar import monthrange
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -143,6 +144,7 @@ def _rebuild_pnl_by_business_precompute(
     *,
     year: int,
     as_of_date: str | None = None,
+    as_of_dates: list[str] | None = None,
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     run_id: str | None = None,
@@ -159,12 +161,65 @@ def _rebuild_pnl_by_business_precompute(
         duckdb_file,
         ttl_seconds=PNL_MATERIALIZE_LOCK.ttl_seconds,
     )
+    if as_of_date is not None and as_of_dates is not None:
+        raise ValueError("as_of_date and as_of_dates cannot be combined.")
+    target_as_of_dates = (
+        _normalize_pnl_by_business_precompute_target_dates(
+            year=year,
+            as_of_dates=as_of_dates,
+        )
+        if as_of_dates is not None
+        else None
+    )
     started_at = datetime.now(UTC).isoformat()
-    governance_repo.append(
-        CACHE_BUILD_RUN_STREAM,
-        _pnl_by_business_precompute_run_record(
+    running_record = _pnl_by_business_precompute_run_record(
+        run_id=active_run_id,
+        status="running",
+        lock_key=writer_lock.key,
+        source_version=PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
+        year=year,
+        trigger_reason=trigger_reason,
+        report_date=as_of_date,
+        queued_at=queued_at,
+        started_at=started_at,
+    )
+    if target_as_of_dates is not None:
+        running_record["target_as_of_dates"] = target_as_of_dates
+        running_record["cutoff_count"] = len(target_as_of_dates)
+    governance_repo.append(CACHE_BUILD_RUN_STREAM, running_record)
+    logger.info("starting pnl_by_business precompute rebuild for year=%s", year)
+    try:
+        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+            if target_as_of_dates is None:
+                summary = precompute_pnl_by_business_payloads(
+                    duckdb_path=str(duckdb_file),
+                    governance_dir=str(governance_path),
+                    year=int(year),
+                    as_of_date=as_of_date,
+                )
+            else:
+                results = [
+                    precompute_pnl_by_business_payloads(
+                        duckdb_path=str(duckdb_file),
+                        governance_dir=str(governance_path),
+                        year=int(year),
+                        as_of_date=cutoff,
+                    )
+                    for cutoff in target_as_of_dates
+                ]
+                summary = {
+                    "year": int(year),
+                    "as_of_dates": target_as_of_dates,
+                    "cutoff_count": len(target_as_of_dates),
+                    "records": sum(int(item.get("records") or 0) for item in results),
+                    "results": results,
+                    "source_version": str(results[-1].get("source_version") or ""),
+                    "generated_at": str(results[-1].get("generated_at") or ""),
+                }
+    except Exception as exc:
+        failed_record = _pnl_by_business_precompute_run_record(
             run_id=active_run_id,
-            status="running",
+            status="failed",
             lock_key=writer_lock.key,
             source_version=PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
             year=year,
@@ -172,35 +227,14 @@ def _rebuild_pnl_by_business_precompute(
             report_date=as_of_date,
             queued_at=queued_at,
             started_at=started_at,
-        ),
-    )
-    logger.info("starting pnl_by_business precompute rebuild for year=%s", year)
-    try:
-        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
-            summary = precompute_pnl_by_business_payloads(
-                duckdb_path=str(duckdb_file),
-                governance_dir=str(governance_path),
-                year=int(year),
-                as_of_date=as_of_date,
-            )
-    except Exception as exc:
-        governance_repo.append(
-            CACHE_BUILD_RUN_STREAM,
-            _pnl_by_business_precompute_run_record(
-                run_id=active_run_id,
-                status="failed",
-                lock_key=writer_lock.key,
-                source_version=PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
-                year=year,
-                trigger_reason=trigger_reason,
-                report_date=as_of_date,
-                queued_at=queued_at,
-                started_at=started_at,
-                finished_at=datetime.now(UTC).isoformat(),
-                error_message=str(exc),
-                failure_category="lock_timeout" if isinstance(exc, TimeoutError) else "materialize_failure",
-            ),
+            finished_at=datetime.now(UTC).isoformat(),
+            error_message=str(exc),
+            failure_category="lock_timeout" if isinstance(exc, TimeoutError) else "materialize_failure",
         )
+        if target_as_of_dates is not None:
+            failed_record["target_as_of_dates"] = target_as_of_dates
+            failed_record["cutoff_count"] = len(target_as_of_dates)
+        governance_repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
         raise
     _clear_pnl_page_runtime_caches()
     completed_record = _pnl_by_business_precompute_run_record(
@@ -210,13 +244,21 @@ def _rebuild_pnl_by_business_precompute(
         source_version=str(summary.get("source_version") or PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION),
         year=year,
         trigger_reason=trigger_reason,
-        report_date=str(summary.get("as_of_date") or "") or None,
+        report_date=(
+            None
+            if target_as_of_dates is not None
+            else str(summary.get("as_of_date") or "") or None
+        ),
         queued_at=queued_at,
         started_at=started_at,
         finished_at=datetime.now(UTC).isoformat(),
     )
     completed_record["record_count"] = int(summary.get("records") or 0)
     completed_record["generated_at"] = str(summary.get("generated_at") or "") or None
+    if target_as_of_dates is not None:
+        completed_record["target_as_of_dates"] = target_as_of_dates
+        completed_record["cutoff_count"] = len(target_as_of_dates)
+        completed_record["cutoff_results"] = list(summary.get("results") or [])
     governance_repo.append(CACHE_BUILD_RUN_STREAM, completed_record)
     logger.info(
         "completed pnl_by_business precompute rebuild for year=%s as_of_date=%s records=%s",
@@ -225,6 +267,31 @@ def _rebuild_pnl_by_business_precompute(
         summary.get("records"),
     )
     return summary
+
+
+def _normalize_pnl_by_business_precompute_target_dates(
+    *,
+    year: int,
+    as_of_dates: list[str],
+) -> list[str]:
+    normalized: set[str] = set()
+    for raw_date in as_of_dates:
+        try:
+            parsed = date.fromisoformat(str(raw_date))
+        except ValueError as exc:
+            raise ValueError("as_of_dates must use YYYY-MM-DD format.") from exc
+        if parsed.year != int(year):
+            raise ValueError(
+                f"as_of_date={parsed.isoformat()} is outside requested year={int(year)}."
+            )
+        if parsed.day != monthrange(parsed.year, parsed.month)[1]:
+            raise ValueError(
+                f"as_of_date={parsed.isoformat()} is not a month-end cutoff."
+            )
+        normalized.add(parsed.isoformat())
+    if not normalized:
+        raise ValueError(f"No available month-end cutoffs found for year={int(year)}.")
+    return sorted(normalized)
 
 
 def _pnl_by_business_precompute_run_record(

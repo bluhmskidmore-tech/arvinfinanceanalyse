@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from calendar import monthrange
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
@@ -1937,20 +1938,38 @@ def request_pnl_by_business_precompute_rebuild(
     *,
     year: int,
     as_of_date: str | None = None,
+    scope: str = "selected",
 ) -> dict[str, object]:
     """Queue an operator-requested rebuild, rejecting duplicate in-flight work."""
     normalized_year = int(year)
+    normalized_scope = str(scope or "selected").strip().lower()
+    if normalized_scope not in {"selected", "all_available"}:
+        raise ValueError("scope must be selected or all_available.")
     normalized_as_of_date = _normalize_pnl_by_business_precompute_as_of_date(
         year=normalized_year,
         as_of_date=as_of_date,
     )
+    target_as_of_dates: list[str] | None = None
+    if normalized_scope == "all_available":
+        if normalized_as_of_date is not None:
+            raise ValueError("as_of_date cannot be combined with scope=all_available.")
+        target_as_of_dates = _available_pnl_by_business_precompute_cutoffs(
+            PnlRepository(str(settings.duckdb_path)),
+            year=normalized_year,
+        )
     queued = _queue_pnl_by_business_precompute_refresh(
         settings,
         year=normalized_year,
         as_of_date=normalized_as_of_date,
-        trigger_reason="manual_retry",
+        trigger_reason=(
+            "manual_retry_all_available"
+            if normalized_scope == "all_available"
+            else "manual_retry"
+        ),
         raise_on_dispatch_failure=True,
         raise_on_duplicate=True,
+        as_of_dates=target_as_of_dates,
+        scope=normalized_scope,
     )
     assert queued is not None
     return queued
@@ -1983,6 +2002,23 @@ def pnl_by_business_precompute_status(
         period_end=period_end,
         latest_available_as_of_date=latest_available_as_of_date,
     )
+    if (
+        latest is not None
+        and period_end is not None
+        and not str(latest.get("report_date") or "")
+        and period_end in _pnl_by_business_precompute_record_target_dates(latest)
+    ):
+        latest = {**latest, "report_date": period_end}
+        cutoff_result = _pnl_by_business_precompute_cutoff_result(
+            latest,
+            period_end=period_end,
+        )
+        if cutoff_result is not None:
+            latest.update(
+                source_version=str(cutoff_result.get("source_version") or ""),
+                generated_at=str(cutoff_result.get("generated_at") or "") or None,
+                record_count=int(cutoff_result.get("records") or 0),
+            )
     status = str(latest.get("status") or "") if latest else "idle"
     inflight = status in PNL_BY_BUSINESS_PRECOMPUTE_INFLIGHT_STATUSES
     metadata: dict[str, object] | None = None
@@ -2042,6 +2078,8 @@ def _queue_pnl_by_business_precompute_refresh(
     trigger_reason: str,
     raise_on_dispatch_failure: bool,
     raise_on_duplicate: bool,
+    as_of_dates: list[str] | None = None,
+    scope: str = "selected",
 ) -> dict[str, object] | None:
     run_id = f"{PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME}:{uuid4()}"
     queued_at = datetime.now(UTC).isoformat()
@@ -2064,6 +2102,10 @@ def _queue_pnl_by_business_precompute_refresh(
     ).model_dump()
     record["target_year"] = int(year)
     record["trigger_reason"] = trigger_reason
+    record["scope"] = scope
+    if as_of_dates is not None:
+        record["target_as_of_dates"] = list(as_of_dates)
+        record["target_count"] = len(as_of_dates)
     governance_repo = GovernanceRepository(base_dir=settings.governance_path)
     try:
         with acquire_lock(
@@ -2080,15 +2122,18 @@ def _queue_pnl_by_business_precompute_refresh(
                 return None
             governance_repo.append(CACHE_BUILD_RUN_STREAM, record)
             try:
-                rebuild_pnl_by_business_precompute.send(
-                    duckdb_path=str(settings.duckdb_path),
-                    governance_dir=str(settings.governance_path),
-                    year=int(year),
-                    as_of_date=as_of_date,
-                    run_id=run_id,
-                    queued_at=queued_at,
-                    trigger_reason=trigger_reason,
-                )
+                task_kwargs: dict[str, object] = {
+                    "duckdb_path": str(settings.duckdb_path),
+                    "governance_dir": str(settings.governance_path),
+                    "year": int(year),
+                    "as_of_date": as_of_date,
+                    "run_id": run_id,
+                    "queued_at": queued_at,
+                    "trigger_reason": trigger_reason,
+                }
+                if as_of_dates is not None:
+                    task_kwargs["as_of_dates"] = list(as_of_dates)
+                rebuild_pnl_by_business_precompute.send(**task_kwargs)
             except Exception as exc:  # page keeps its fingerprinted real-time fallback
                 failed_record = {
                     **record,
@@ -2116,7 +2161,7 @@ def _queue_pnl_by_business_precompute_refresh(
             ) from exc
         logger.info("skipped duplicate pnl_by_business precompute dispatch for year=%s", year)
         return None
-    return _pnl_by_business_precompute_status_payload(
+    payload = _pnl_by_business_precompute_status_payload(
         year=int(year),
         status="queued",
         record=record,
@@ -2124,6 +2169,11 @@ def _queue_pnl_by_business_precompute_refresh(
         latest_available_as_of_date=None,
         is_current=False,
     )
+    payload["scope"] = scope
+    if as_of_dates is not None:
+        payload["target_as_of_dates"] = list(as_of_dates)
+        payload["target_count"] = len(as_of_dates)
+    return payload
 
 
 def _pnl_by_business_precompute_run_records(settings: Settings, *, year: int) -> list[dict[str, object]]:
@@ -2173,6 +2223,25 @@ def _normalize_pnl_by_business_precompute_as_of_date(*, year: int, as_of_date: s
     if parsed.year != int(year):
         raise ValueError(f"as_of_date={parsed.isoformat()} is outside requested year={int(year)}.")
     return parsed.isoformat()
+
+
+def _available_pnl_by_business_precompute_cutoffs(
+    repo: PnlRepository,
+    *,
+    year: int,
+) -> list[str]:
+    cutoffs: set[str] = set()
+    for raw_date in repo.list_union_report_dates():
+        try:
+            parsed = date.fromisoformat(str(raw_date))
+        except ValueError:
+            continue
+        if parsed.year != int(year) or parsed.day != monthrange(parsed.year, parsed.month)[1]:
+            continue
+        cutoffs.add(parsed.isoformat())
+    if not cutoffs:
+        raise ValueError(f"No available month-end cutoffs found for year={int(year)}.")
+    return sorted(cutoffs)
 
 
 def _safe_int(value: object) -> int:
@@ -2241,6 +2310,10 @@ def _pnl_by_business_precompute_status_record(
                 and str(record.get("report_date") or "") == period_end
             )
             or (
+                period_end is not None
+                and period_end in _pnl_by_business_precompute_record_target_dates(record)
+            )
+            or (
                 not str(record.get("report_date") or "")
                 and period_end == latest_available_as_of_date
             )
@@ -2254,6 +2327,27 @@ def _pnl_by_business_precompute_status_record(
         if str(record.get("status") or "") in PNL_BY_BUSINESS_PRECOMPUTE_INFLIGHT_STATUSES
     ]
     return (inflight or relevant)[-1]
+
+
+def _pnl_by_business_precompute_record_target_dates(record: dict[str, object]) -> set[str]:
+    raw_dates = record.get("target_as_of_dates")
+    if not isinstance(raw_dates, (list, tuple, set)):
+        return set()
+    return {str(item) for item in raw_dates if str(item)}
+
+
+def _pnl_by_business_precompute_cutoff_result(
+    record: dict[str, object],
+    *,
+    period_end: str,
+) -> dict[str, object] | None:
+    raw_results = record.get("cutoff_results")
+    if not isinstance(raw_results, list):
+        return None
+    for item in raw_results:
+        if isinstance(item, dict) and str(item.get("as_of_date") or "") == period_end:
+            return item
+    return None
 
 
 def _pnl_by_business_precompute_status_payload(

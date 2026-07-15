@@ -1,6 +1,6 @@
 from datetime import date
 from importlib import import_module
-from typing import Annotated
+from typing import Annotated, Literal
 
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
@@ -247,12 +247,21 @@ def rebuild_by_business_precompute(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., ge=2000, le=2100, description="Calendar year to rebuild for the PnL by-business page."),
     as_of_date: str | None = Query(None, description="Selected page cutoff date in YYYY-MM-DD format."),
+    scope: Literal["selected", "all_available"] = Query(
+        "selected",
+        description="Rebuild the selected cutoff or every available month-end cutoff in the year.",
+    ),
 ) -> dict[str, object]:
     settings = get_settings()
     _ensure_by_business_adjustment_write_allowed(auth, settings)
     service = _pnl_service()
     try:
-        return service.request_pnl_by_business_precompute_rebuild(settings, year=year, as_of_date=as_of_date)
+        return service.request_pnl_by_business_precompute_rebuild(
+            settings,
+            year=year,
+            as_of_date=as_of_date,
+            scope=scope,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except service.PnlByBusinessPrecomputeConflictError as exc:

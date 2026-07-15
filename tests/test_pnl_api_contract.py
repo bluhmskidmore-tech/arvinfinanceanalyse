@@ -3379,6 +3379,225 @@ def test_request_pnl_by_business_precompute_rebuild_is_observable_and_deduplicat
     get_settings.cache_clear()
 
 
+def test_request_pnl_by_business_precompute_rebuild_all_available_dispatches_exact_month_end_cutoffs(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.services import pnl_service
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    settings = get_settings()
+    dispatched: list[dict[str, object]] = []
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def list_union_report_dates(self):
+            return [
+                "2026-06-30",
+                "2026-02-28",
+                "2026-01-31",
+                "2026-06-15",
+                "2026-04-30",
+                "2025-12-31",
+                "2026-03-31",
+                "2026-05-31",
+                "2026-02-28",
+            ]
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service.rebuild_pnl_by_business_precompute,
+        "send",
+        lambda **kwargs: dispatched.append(kwargs),
+    )
+
+    queued = pnl_service.request_pnl_by_business_precompute_rebuild(
+        settings,
+        year=2026,
+        scope="all_available",
+    )
+
+    expected_cutoffs = [
+        "2026-01-31",
+        "2026-02-28",
+        "2026-03-31",
+        "2026-04-30",
+        "2026-05-31",
+        "2026-06-30",
+    ]
+    assert queued["scope"] == "all_available"
+    assert queued["target_as_of_dates"] == expected_cutoffs
+    assert queued["target_count"] == 6
+    assert len(dispatched) == 1
+    assert dispatched[0]["as_of_date"] is None
+    assert dispatched[0]["as_of_dates"] == expected_cutoffs
+    run_records = GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+    assert run_records[-1]["target_as_of_dates"] == expected_cutoffs
+    get_settings.cache_clear()
+
+
+def test_rebuild_pnl_by_business_precompute_exact_cutoff_batch_uses_one_writer_lock(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.tasks import pnl_materialize
+
+    calls: list[dict[str, object]] = []
+    lock_entries: list[bool] = []
+
+    class FakeLockContext:
+        def __enter__(self):
+            lock_entries.append(True)
+            return self
+
+        def __exit__(self, _exc_type, _exc, _traceback):
+            return False
+
+    def fake_precompute(**kwargs):
+        calls.append(kwargs)
+        as_of_date = str(kwargs["as_of_date"])
+        record_count = 100 + len(calls)
+        return {
+            "year": 2026,
+            "as_of_date": as_of_date,
+            "records": record_count,
+            "source_version": f"source::{as_of_date}",
+            "generated_at": f"2026-07-15T12:00:0{len(calls)}+00:00",
+        }
+
+    monkeypatch.setattr(pnl_materialize, "precompute_pnl_by_business_payloads", fake_precompute)
+    monkeypatch.setattr(pnl_materialize, "acquire_lock", lambda *_args, **_kwargs: FakeLockContext())
+    monkeypatch.setattr(pnl_materialize, "_clear_pnl_page_runtime_caches", lambda: None)
+
+    result = pnl_materialize.run_pnl_by_business_precompute_sync(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+        year=2026,
+        as_of_dates=["2026-06-30", "2026-01-31", "2026-06-30"],
+        run_id="pnl-by-business-precompute:test-exact-cutoff-batch",
+        trigger_reason="manual_retry_all_available",
+    )
+
+    assert lock_entries == [True]
+    assert [call["as_of_date"] for call in calls] == ["2026-01-31", "2026-06-30"]
+    assert result["as_of_dates"] == ["2026-01-31", "2026-06-30"]
+    assert result["cutoff_count"] == 2
+    assert result["records"] == 203
+    assert [item["as_of_date"] for item in result["results"]] == ["2026-01-31", "2026-06-30"]
+    run_records = [
+        record
+        for record in GovernanceRepository(base_dir=tmp_path / "governance").read_all(CACHE_BUILD_RUN_STREAM)
+        if record["run_id"] == "pnl-by-business-precompute:test-exact-cutoff-batch"
+    ]
+    assert [record["status"] for record in run_records] == ["running", "completed"]
+    assert run_records[-1]["target_as_of_dates"] == ["2026-01-31", "2026-06-30"]
+    assert run_records[-1]["cutoff_count"] == 2
+    assert run_records[-1]["record_count"] == 203
+
+
+def test_pnl_by_business_precompute_batch_status_uses_selected_cutoff(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.services import pnl_service
+
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    settings = get_settings()
+    target_cutoffs = ["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30"]
+    queued_record = CacheBuildRunRecord(
+        run_id="pnl_by_business_precompute:all-available",
+        job_name=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
+        status="queued",
+        cache_key=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_KEY,
+        cache_version=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_CACHE_VERSION,
+        lock="lock:duckdb:materialize:test",
+        source_version=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_PENDING_SOURCE_VERSION,
+        vendor_version="vv_none",
+        rule_version=PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        queued_at=datetime.now(timezone.utc).isoformat(),
+    ).model_dump()
+    queued_record["target_year"] = 2026
+    queued_record["trigger_reason"] = "manual_retry_all_available"
+    queued_record["target_as_of_dates"] = target_cutoffs
+    GovernanceRepository(base_dir=settings.governance_path).append(CACHE_BUILD_RUN_STREAM, queued_record)
+
+    class FakePnlRepository:
+        verify_current_calls: list[bool] = []
+
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2026
+            return "2026-06-30" if as_of_cap is None else str(as_of_cap)
+
+        def fetch_pnl_by_business_precompute_metadata(self, **kwargs):
+            assert kwargs["as_of_date"] == "2026-03-31"
+            type(self).verify_current_calls.append(bool(kwargs["verify_current"]))
+            return None
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+
+    status = pnl_service.pnl_by_business_precompute_status(
+        settings,
+        year=2026,
+        as_of_date="2026-03-31",
+    )
+
+    assert status["status"] == "queued"
+    assert status["run_id"] == "pnl_by_business_precompute:all-available"
+    assert status["report_date"] == "2026-03-31"
+    assert status["serving_mode"] == "live_fallback"
+
+    completed_record = {
+        **queued_record,
+        "status": "completed",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "source_version": "source::2026-06-30",
+        "record_count": 702,
+        "cutoff_results": [
+            {
+                "as_of_date": cutoff,
+                "records": 117,
+                "source_version": f"source::{cutoff}",
+                "generated_at": f"generated::{cutoff}",
+            }
+            for cutoff in target_cutoffs
+        ],
+    }
+    GovernanceRepository(base_dir=settings.governance_path).append(CACHE_BUILD_RUN_STREAM, completed_record)
+
+    completed = pnl_service.pnl_by_business_precompute_status(
+        settings,
+        year=2026,
+        as_of_date="2026-03-31",
+    )
+
+    assert FakePnlRepository.verify_current_calls == [False, True]
+    assert completed["status"] == "completed"
+    assert completed["report_date"] == "2026-03-31"
+    assert completed["source_version"] == "source::2026-03-31"
+    assert completed["generated_at"] == "generated::2026-03-31"
+    assert completed["record_count"] == 117
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_precompute_rebuild_openapi_exposes_all_available_scope():
+    from backend.app.main import app
+
+    operation = app.openapi()["paths"]["/api/pnl/by-business/precompute-rebuild"]["post"]
+    scope_parameter = next(parameter for parameter in operation["parameters"] if parameter["name"] == "scope")
+
+    assert scope_parameter["schema"]["default"] == "selected"
+    assert scope_parameter["schema"]["enum"] == ["selected", "all_available"]
+
+
 def test_pnl_by_business_precompute_status_distinguishes_current_cache_and_live_fallback(
     tmp_path,
     monkeypatch,
