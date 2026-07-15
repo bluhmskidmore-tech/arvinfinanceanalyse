@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
@@ -8,10 +9,7 @@ from uuid import uuid4
 
 from backend.app.config.product_category_mapping import resolve_product_category_ftp_rate_pct
 from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCOUNT_PREFIXES
-from backend.app.core_finance.field_normalization import (
-    is_approved_status,
-    original_asset_currency_from_instrument_code,
-)
+from backend.app.core_finance.field_normalization import original_asset_currency_from_instrument_code
 from backend.app.core_finance.pnl import (
     FI_514_VAT_DIVISOR,
     PnlByBusinessMonthlyMeasure,
@@ -77,6 +75,20 @@ from backend.app.schemas.pnl import (
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage as build_formal_result_envelope_from_lineage_runtime,
 )
+from backend.app.services.pnl_by_business_adjustments import (
+    PNL_BY_BUSINESS_ADJUSTMENT_STREAM,
+    active_pnl_by_business_manual_adjustments_for_period,
+    load_pnl_by_business_manual_adjustment_events,
+    pnl_by_business_manual_adjustment_row,
+    pnl_by_business_manual_adjustment_source_version,
+    reduce_latest_pnl_by_business_manual_adjustments,
+)
+from backend.app.services.pnl_by_business_unallocated import (
+    normalize_pnl_by_business_unallocated_item,
+    pnl_by_business_unallocated_breakdown,
+    pnl_by_business_unallocated_item,
+    pnl_by_business_unallocated_reason,
+)
 from backend.app.services.pnl_source_service import (
     list_pnl_refresh_report_dates,
     load_latest_pnl_refresh_input,
@@ -87,8 +99,11 @@ from backend.app.tasks.pnl_materialize import (
     PNL_MATERIALIZE_LOCK,
     PNL_RESULT_CACHE_VERSION,
     materialize_pnl_facts,
+    rebuild_pnl_by_business_precompute,
     run_pnl_materialize_sync,
 )
+
+logger = logging.getLogger(__name__)
 
 PNL_CACHE_KEY = CACHE_KEY
 PNL_CACHE_VERSION = PNL_RESULT_CACHE_VERSION
@@ -97,7 +112,6 @@ PENDING_SOURCE_VERSION = "sv_pnl_pending"
 _REAL_PNL_REPOSITORY = PnlRepository
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
-PNL_BY_BUSINESS_ADJUSTMENT_STREAM = "pnl_by_business_adjustments"
 V1_INTEREST_INCOME_JOURNAL_TYPE = LEDGER_PNL_ACCOUNT_PREFIXES[0]
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
     "bond_bucket",
@@ -514,7 +528,7 @@ def pnl_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_da
 def _pnl_by_business_ytd_unallocated_reason(
     matched_rows: list[dict[str, object]],
 ) -> str:
-    return "detail_only_business_rule_match" if matched_rows else "no_business_rule_match"
+    return pnl_by_business_unallocated_reason(matched_rows)
 
 
 def _pnl_by_business_ytd_unallocated_item(
@@ -524,108 +538,24 @@ def _pnl_by_business_ytd_unallocated_item(
     reason_code: str,
     default_source_kind: str,
 ) -> PnlByBusinessYtdUnallocatedItem:
-    total_pnl = _decimal_value(record.get("total_pnl"))
-    return PnlByBusinessYtdUnallocatedItem(
-        report_date=_norm_text(record.get("report_date") or classification.get("report_date")),
+    return pnl_by_business_unallocated_item(
+        record=record,
+        classification=classification,
         reason_code=reason_code,
-        source_kind=_norm_text(record.get("source_kind")) or default_source_kind,
-        instrument_code=_norm_text(
-            record.get("instrument_code")
-            or record.get("bond_code")
-            or classification.get("instrument_code")
-        ),
-        portfolio_name=_norm_text(record.get("portfolio_name") or classification.get("portfolio_name")),
-        cost_center=_norm_text(record.get("cost_center") or classification.get("cost_center")),
-        invest_type_std=_norm_text(record.get("invest_type_std") or classification.get("invest_type_std")),
-        accounting_basis=_norm_text(record.get("accounting_basis") or classification.get("accounting_basis")),
-        currency_basis=(
-            _norm_text(
-                record.get("currency_basis")
-                or classification.get("currency_basis")
-                or classification.get("currency_code")
-            )
-            or "CNY"
-        ),
-        interest_income_514=_decimal_value(record.get("interest_income_514") or record.get("interest_income")),
-        fair_value_change_516=_decimal_value(record.get("fair_value_change_516") or record.get("fair_value_change")),
-        capital_gain_517=_decimal_value(record.get("capital_gain_517") or record.get("capital_gain")),
-        manual_adjustment=_decimal_value(record.get("manual_adjustment")),
-        total_pnl=total_pnl,
-        abs_pnl=abs(total_pnl),
+        default_source_kind=default_source_kind,
     )
 
 
 def _normalize_pnl_by_business_unallocated_item(
     item: PnlByBusinessYtdUnallocatedItem,
 ) -> PnlByBusinessYtdUnallocatedItem:
-    total_pnl = _quantize_decimal(item.total_pnl)
-    return item.model_copy(
-        update={
-            "interest_income_514": _quantize_decimal(item.interest_income_514),
-            "fair_value_change_516": _quantize_decimal(item.fair_value_change_516),
-            "capital_gain_517": _quantize_decimal(item.capital_gain_517),
-            "manual_adjustment": _quantize_decimal(item.manual_adjustment),
-            "total_pnl": total_pnl,
-            "abs_pnl": abs(total_pnl),
-        }
-    )
+    return normalize_pnl_by_business_unallocated_item(item)
 
 
 def _pnl_by_business_ytd_unallocated_breakdown(
     items: list[PnlByBusinessYtdUnallocatedItem],
 ) -> list[PnlByBusinessYtdUnallocatedBreakdownRow]:
-    grouped: dict[tuple[str, str, str, str, str, str], dict[str, object]] = {}
-    for item in items:
-        key = (
-            item.reason_code,
-            item.source_kind,
-            item.invest_type_std,
-            item.accounting_basis,
-            item.portfolio_name,
-            item.cost_center,
-        )
-        bucket = grouped.setdefault(
-            key,
-            {
-                "pnl_row_count": 0,
-                "total_pnl": Decimal("0"),
-                "abs_pnl": Decimal("0"),
-                "instrument_codes": set(),
-            },
-        )
-        bucket["pnl_row_count"] = int(bucket["pnl_row_count"]) + 1
-        bucket["total_pnl"] = Decimal(str(bucket["total_pnl"])) + item.total_pnl
-        bucket["abs_pnl"] = Decimal(str(bucket["abs_pnl"])) + item.abs_pnl
-        if item.instrument_code:
-            bucket["instrument_codes"].add(item.instrument_code)
-
-    rows = [
-        PnlByBusinessYtdUnallocatedBreakdownRow(
-            reason_code=key[0],
-            source_kind=key[1],
-            invest_type_std=key[2],
-            accounting_basis=key[3],
-            portfolio_name=key[4],
-            cost_center=key[5],
-            pnl_row_count=int(bucket["pnl_row_count"]),
-            total_pnl=_quantize_decimal(Decimal(str(bucket["total_pnl"]))),
-            abs_pnl=_quantize_decimal(Decimal(str(bucket["abs_pnl"]))),
-            sample_instrument_codes=sorted(str(code) for code in bucket["instrument_codes"])[:5],
-        )
-        for key, bucket in grouped.items()
-    ]
-    return sorted(
-        rows,
-        key=lambda row: (
-            -row.abs_pnl,
-            row.reason_code,
-            row.source_kind,
-            row.invest_type_std,
-            row.accounting_basis,
-            row.portfolio_name,
-            row.cost_center,
-        ),
-    )
+    return pnl_by_business_unallocated_breakdown(items)
 
 
 def _build_pnl_by_business_ytd_payload_from_groups(
@@ -942,48 +872,22 @@ def _ytd_business_balance_amounts(
 
 
 def _load_pnl_by_business_manual_adjustment_events(settings: Settings) -> list[dict[str, object]]:
-    rows = GovernanceRepository(base_dir=settings.governance_path).read_all(PNL_BY_BUSINESS_ADJUSTMENT_STREAM)
-    events: list[dict[str, object]] = []
-    for index, row in enumerate(rows):
-        adjustment_id = str(row.get("adjustment_id") or "").strip() or f"legacy-{index}"
-        events.append(
-            {
-                "adjustment_id": adjustment_id,
-                "event_type": str(row.get("event_type") or "legacy"),
-                "created_at": str(row.get("created_at") or ""),
-                "stream": PNL_BY_BUSINESS_ADJUSTMENT_STREAM,
-                "report_date": str(row.get("report_date") or ""),
-                "row_key": str(row.get("row_key") or ""),
-                "business_type": str(row.get("business_type") or ""),
-                "operator": str(row.get("operator") or "DELTA"),
-                "approval_status": str(row.get("approval_status") or ""),
-                "manual_adjustment": row.get("manual_adjustment") or "0",
-                "reason": str(row.get("reason") or ""),
-                "created_by": str(row.get("created_by") or ""),
-                "approved_by": str(row.get("approved_by") or ""),
-            }
-        )
-    return events
+    return load_pnl_by_business_manual_adjustment_events(settings.governance_path)
 
 
 def _reduce_latest_pnl_by_business_manual_adjustments(events: list[dict[str, object]]) -> list[dict[str, object]]:
-    latest_by_id: dict[str, dict[str, object]] = {}
-    for event in events:
-        adjustment_id = str(event.get("adjustment_id") or "")
-        existing = latest_by_id.get(adjustment_id)
-        if existing is None or str(event.get("created_at") or "") >= str(existing.get("created_at") or ""):
-            latest_by_id[adjustment_id] = event
-    return list(latest_by_id.values())
+    return reduce_latest_pnl_by_business_manual_adjustments(events)
 
 
 def _active_pnl_by_business_manual_adjustments(settings: Settings, *, report_date: str) -> list[dict[str, object]]:
     return [
         record
-        for record in _reduce_latest_pnl_by_business_manual_adjustments(
-            _load_pnl_by_business_manual_adjustment_events(settings)
+        for record in active_pnl_by_business_manual_adjustments_for_period(
+            settings.governance_path,
+            year=int(report_date[:4]),
+            period_end=report_date,
         )
         if str(record.get("report_date") or "") == report_date
-        and is_approved_status(str(record.get("approval_status") or ""))
     ]
 
 
@@ -1005,25 +909,16 @@ def _pnl_by_business_adjustment_record(
     manual_adjustment: object,
     source_note: str,
 ) -> dict[str, object]:
-    adjustment = _decimal_value(manual_adjustment)
-    return {
-        "source_kind": "manual_adjustment",
-        "report_date": report_date,
-        "instrument_code": f"manual::{row_key}",
-        "portfolio_name": "manual_adjustment",
-        "cost_center": "manual_adjustment",
-        "currency_basis": "CNY",
-        "invest_type_std": "",
-        "accounting_basis": "manual_adjustment",
-        "interest_income_514": Decimal("0"),
-        "fair_value_change_516": Decimal("0"),
-        "capital_gain_517": Decimal("0"),
-        "manual_adjustment": adjustment,
-        "total_pnl": adjustment,
-        "manual_business_row_key": row_key,
-        "manual_business_type": business_type,
-        "source_note": source_note,
-    }
+    row = pnl_by_business_manual_adjustment_row(
+        {
+            "report_date": report_date,
+            "row_key": row_key,
+            "business_type": business_type,
+            "manual_adjustment": manual_adjustment,
+        }
+    )
+    row["source_note"] = source_note
+    return row
 
 
 def _manual_adjustment_row_def(record: dict[str, object]) -> dict[str, object]:
@@ -1132,22 +1027,6 @@ def _source_tables_with_manual_adjustments(source_tables: list[str], *, settings
                 return [*source_tables, PNL_BY_BUSINESS_ADJUSTMENT_STREAM]
             return source_tables
     return source_tables
-
-
-def _has_pnl_by_business_manual_adjustments_in_period(
-    settings: Settings,
-    *,
-    year: int,
-    period_end: str,
-) -> bool:
-    return any(
-        str(record.get("report_date") or "").startswith(f"{year:04d}-")
-        and str(record.get("report_date") or "") <= period_end
-        and is_approved_status(str(record.get("approval_status") or ""))
-        for record in _reduce_latest_pnl_by_business_manual_adjustments(
-            _load_pnl_by_business_manual_adjustment_events(settings)
-        )
-    )
 
 
 def _parse_created_at(value: str) -> datetime:
@@ -1497,6 +1376,11 @@ def update_pnl_by_business_manual_adjustment(
     payload: PnlByBusinessManualAdjustmentRequest,
 ) -> dict[str, object]:
     current = _require_pnl_by_business_manual_adjustment(settings, adjustment_id)
+    approved_report_date = (
+        str(current.get("report_date") or "")
+        if str(current.get("approval_status") or "") == "approved"
+        else ""
+    )
     payload_data = payload.model_dump()
     updated = PnlByBusinessManualAdjustmentPayload.model_validate(
         {
@@ -1513,6 +1397,8 @@ def update_pnl_by_business_manual_adjustment(
         updated.model_dump(mode="json"),
     )
     _clear_pnl_by_business_manual_adjustment_caches()
+    if approved_report_date:
+        _enqueue_pnl_by_business_precompute_refresh(settings, report_date=approved_report_date)
     return updated.model_dump(mode="json")
 
 
@@ -1549,6 +1435,10 @@ def approve_pnl_by_business_manual_adjustment(
         approved.model_dump(mode="json"),
     )
     _clear_pnl_by_business_manual_adjustment_caches()
+    _enqueue_pnl_by_business_precompute_refresh(
+        settings,
+        report_date=str(approved.report_date),
+    )
     return approved.model_dump(mode="json")
 
 
@@ -1556,6 +1446,11 @@ def revoke_pnl_by_business_manual_adjustment(settings: Settings, *, adjustment_i
     current = _require_pnl_by_business_manual_adjustment(settings, adjustment_id)
     if str(current.get("approval_status") or "") == "rejected":
         return PnlByBusinessManualAdjustmentPayload.model_validate(current).model_dump(mode="json")
+    approved_report_date = (
+        str(current.get("report_date") or "")
+        if str(current.get("approval_status") or "") == "approved"
+        else ""
+    )
     revoked = PnlByBusinessManualAdjustmentPayload.model_validate(
         {
             **current,
@@ -1570,6 +1465,8 @@ def revoke_pnl_by_business_manual_adjustment(settings: Settings, *, adjustment_i
         revoked.model_dump(mode="json"),
     )
     _clear_pnl_by_business_manual_adjustment_caches()
+    if approved_report_date:
+        _enqueue_pnl_by_business_precompute_refresh(settings, report_date=approved_report_date)
     return revoked.model_dump(mode="json")
 
 
@@ -1661,6 +1558,7 @@ def _pnl_by_business_ytd_envelope_uncached(
 def _fetch_pnl_by_business_precompute(
     repo: PnlRepository,
     *,
+    governance_dir: str,
     year: int,
     as_of_date: str,
     result_kind: str,
@@ -1670,6 +1568,11 @@ def _fetch_pnl_by_business_precompute(
     fetcher = getattr(repo, "fetch_pnl_by_business_precompute", None)
     if not callable(fetcher):
         return None
+    active_adjustments = active_pnl_by_business_manual_adjustments_for_period(
+        governance_dir,
+        year=year,
+        period_end=as_of_date,
+    )
     return fetcher(
         year=year,
         as_of_date=as_of_date,
@@ -1677,6 +1580,7 @@ def _fetch_pnl_by_business_precompute(
         dimension=dimension,
         business_key=business_key,
         expected_rule_version=PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        supplemental_source_version=pnl_by_business_manual_adjustment_source_version(active_adjustments),
     )
 
 
@@ -1738,21 +1642,15 @@ def pnl_by_business_analysis_envelope(
     repo.require_current_formal_pnl_rule_version(year=year, as_of_date=period_end)
     settings = get_settings()
     ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), settings.ftp_rate_pct)
-    has_manual_adjustments = _has_pnl_by_business_manual_adjustments_in_period(
-        settings,
+    precomputed = _fetch_pnl_by_business_precompute(
+        repo,
+        governance_dir=governance_dir,
         year=year,
-        period_end=period_end,
+        as_of_date=period_end,
+        result_kind="analysis",
+        dimension=dimension,
+        business_key=str(business_key or "").strip(),
     )
-    precomputed = None
-    if not has_manual_adjustments:
-        precomputed = _fetch_pnl_by_business_precompute(
-            repo,
-            year=year,
-            as_of_date=period_end,
-            result_kind="analysis",
-            dimension=dimension,
-            business_key=str(business_key or "").strip(),
-        )
     if (
         precomputed is not None
         and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="analysis")
@@ -1873,21 +1771,15 @@ def pnl_by_business_monthly_envelope(
     repo.require_current_formal_pnl_rule_version(year=year, as_of_date=period_end)
     settings = get_settings()
     ftp_rate_pct = resolve_product_category_ftp_rate_pct(date(year, 12, 31), settings.ftp_rate_pct)
-    has_manual_adjustments = _has_pnl_by_business_manual_adjustments_in_period(
-        settings,
+    precomputed = _fetch_pnl_by_business_precompute(
+        repo,
+        governance_dir=governance_dir,
         year=year,
-        period_end=period_end,
+        as_of_date=period_end,
+        result_kind="monthly",
+        dimension="",
+        business_key="",
     )
-    precomputed = None
-    if not has_manual_adjustments:
-        precomputed = _fetch_pnl_by_business_precompute(
-            repo,
-            year=year,
-            as_of_date=period_end,
-            result_kind="monthly",
-            dimension="",
-            business_key="",
-        )
     if (
         precomputed is not None
         and _pnl_by_business_precompute_has_required_diagnostics(precomputed, result_kind="monthly")
@@ -2020,6 +1912,32 @@ def _clear_pnl_by_business_analysis_cache() -> None:
 def _clear_pnl_by_business_manual_adjustment_caches() -> None:
     clear_pnl_by_business_ytd_cache()
     _clear_pnl_by_business_analysis_cache()
+
+
+def _enqueue_pnl_by_business_precompute_refresh(settings: Settings, *, report_date: str) -> bool:
+    """Queue a page read-model rebuild without making the committed adjustment fail."""
+    try:
+        year = date.fromisoformat(str(report_date)).year
+    except ValueError:
+        logger.warning(
+            "skipped pnl_by_business precompute refresh for invalid report_date=%s",
+            report_date,
+        )
+        return False
+    try:
+        rebuild_pnl_by_business_precompute.send(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            year=year,
+        )
+    except Exception as exc:  # live fingerprinted fallback remains correct
+        logger.warning(
+            "failed to enqueue pnl_by_business precompute refresh for year=%s: %s",
+            year,
+            exc,
+        )
+        return False
+    return True
 
 
 def _build_pnl_by_business_analysis_rows(

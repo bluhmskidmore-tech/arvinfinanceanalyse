@@ -522,7 +522,15 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
             assert (year, as_of_date) == (2025, "2025-12-31")
 
         def fetch_pnl_by_business_precompute(
-            self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
+            self,
+            *,
+            year,
+            as_of_date,
+            result_kind,
+            dimension,
+            business_key,
+            expected_rule_version,
+            supplemental_source_version,
         ):
             assert (year, as_of_date, result_kind, dimension, business_key) == (
                 2025,
@@ -532,6 +540,7 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
                 "",
             )
             assert expected_rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
+            assert supplemental_source_version
             return cached_payload
 
         def list_union_report_dates(self):  # pragma: no cover - proves cache avoids live build
@@ -606,7 +615,15 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
             assert (year, as_of_date) == (2025, "2025-12-31")
 
         def fetch_pnl_by_business_precompute(
-            self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
+            self,
+            *,
+            year,
+            as_of_date,
+            result_kind,
+            dimension,
+            business_key,
+            expected_rule_version,
+            supplemental_source_version,
         ):
             assert (year, as_of_date, result_kind, dimension, business_key) == (
                 2025,
@@ -616,6 +633,7 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
                 "asset_zqtz_policy_financial_bond",
             )
             assert expected_rule_version == PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
+            assert supplemental_source_version
             return cached_payload
 
         def list_union_report_dates(self):  # pragma: no cover - proves cache avoids live build
@@ -792,7 +810,7 @@ def test_pnl_by_business_monthly_reconciles_precise_aggregates_before_rounding()
     assert month.reconciliation_delta == Decimal("0.00")
 
 
-def test_pnl_by_business_monthly_and_analysis_skip_precompute_when_manual_adjustment_exists(
+def test_pnl_by_business_monthly_and_analysis_fall_back_when_adjustment_precompute_is_missing(
     tmp_path,
     monkeypatch,
 ):
@@ -832,9 +850,18 @@ def test_pnl_by_business_monthly_and_analysis_skip_precompute_when_manual_adjust
             assert (year, as_of_date) == (2025, "2025-12-31")
 
         def fetch_pnl_by_business_precompute(
-            self, *, year, as_of_date, result_kind, dimension, business_key, expected_rule_version
+            self,
+            *,
+            year,
+            as_of_date,
+            result_kind,
+            dimension,
+            business_key,
+            expected_rule_version,
+            supplemental_source_version,
         ):
-            raise AssertionError("approved manual adjustments must skip precompute lookup")
+            assert supplemental_source_version
+            return None
 
         def list_union_report_dates(self):
             return ["2025-12-31"]
@@ -918,7 +945,7 @@ def test_pnl_by_business_monthly_and_analysis_skip_precompute_when_manual_adjust
     get_settings.cache_clear()
 
 
-def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
+def test_pnl_by_business_precompute_writes_page_payloads(tmp_path, monkeypatch):
     precompute_module = load_module(
         "backend.app.tasks.pnl_by_business_precompute",
         "backend/app/tasks/pnl_by_business_precompute.py",
@@ -932,9 +959,29 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
             "source_note": "test",
         },
     )
+    governance_dir = tmp_path / "governance"
+    GovernanceRepository(base_dir=governance_dir).append(
+        "pnl_by_business_adjustments",
+        {
+            "adjustment_id": "adj-precompute-approved",
+            "event_type": "approved",
+            "created_at": "2026-04-12T08:00:00+00:00",
+            "stream": "pnl_by_business_adjustments",
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": "Policy Financial Bond",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "manual_adjustment": "25.00",
+            "reason": "approved adjustment must be materialized",
+        },
+    )
 
     class FakePnlRepository:
         written_records: list[dict[str, object]] = []
+        supplemental_source_version = ""
+        pnl_fetch_count = 0
+        precompute_fetch_count = 0
 
         def __init__(self, _path):
             pass
@@ -953,6 +1000,7 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
         def fetch_by_business_analysis_pnl_rows(self, *, year, as_of_date):
             assert year == 2025
             assert as_of_date == "2025-12-31"
+            type(self).pnl_fetch_count += 1
             return [
                 {
                     "source_kind": "formal_fi",
@@ -997,6 +1045,43 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
                 }
             ]
 
+        def pnl_by_business_precompute_source_version(
+            self, *, year, as_of_date, supplemental_source_version=""
+        ):
+            assert (year, as_of_date) == (2025, "2025-12-31")
+            type(self).supplemental_source_version = supplemental_source_version
+            return f"source::{supplemental_source_version}"
+
+        def fetch_pnl_by_business_precompute(
+            self,
+            *,
+            year,
+            as_of_date,
+            result_kind,
+            dimension,
+            business_key,
+            expected_rule_version,
+            supplemental_source_version,
+        ):
+            type(self).precompute_fetch_count += 1
+            expected_source_version = self.pnl_by_business_precompute_source_version(
+                year=year,
+                as_of_date=as_of_date,
+                supplemental_source_version=supplemental_source_version,
+            )
+            for record in type(self).written_records:
+                if (
+                    record["year"] == year
+                    and record["as_of_date"] == as_of_date
+                    and record["result_kind"] == result_kind
+                    and record["dimension"] == dimension
+                    and record["business_key"] == business_key
+                    and record["rule_version"] == expected_rule_version
+                    and record["source_version"] == expected_source_version
+                ):
+                    return json.loads(str(record["payload_json"]))
+            return None
+
         def replace_pnl_by_business_precompute(self, *, year, as_of_date, records):
             assert year == 2025
             assert as_of_date == "2025-12-31"
@@ -1008,7 +1093,7 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
 
     summary = precompute_module.precompute_pnl_by_business_payloads(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(governance_dir),
         year=2025,
         as_of_date="2025-12-31",
     )
@@ -1027,6 +1112,14 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
     monthly_payload = json.loads(str(monthly_record["payload_json"]))
     assert monthly_payload["as_of_date"] == "2025-12-31"
     assert monthly_payload["months"][0]["month_key"] == "2025-12"
+    assert monthly_payload["source_tables"][-1] == "pnl_by_business_adjustments"
+    monthly_by_key = {
+        item["row_key"]: item for item in monthly_payload["months"][0]["items"]
+    }
+    assert monthly_by_key["asset_zqtz_policy_financial_bond"]["manual_adjustment"] == "25.00"
+    assert monthly_by_key["asset_zqtz_policy_financial_bond"]["total_pnl"] == "125.00"
+    assert FakePnlRepository.supplemental_source_version
+    assert monthly_record["source_version"] == f"source::{FakePnlRepository.supplemental_source_version}"
 
     currency_record = next(
         record
@@ -1036,10 +1129,41 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
         and record["business_key"] == "asset_zqtz_policy_financial_bond"
     )
     currency_payload = json.loads(str(currency_record["payload_json"]))
+    assert currency_payload["coverage_days"] == 1
+    assert currency_payload["expected_days"] == 31
+    assert currency_payload["sample_filled"] is True
+    assert currency_payload["sample_fill_method"] == "observed_days_scaled_to_calendar"
     assert [
         (row["dimension_key"], row["dimension_label"], row["total_pnl"])
         for row in currency_payload["rows"]
-    ] == [("CNY", "人民币", "100.00")]
+    ] == [("CNY", "人民币", "125.00")]
+
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {"result_meta": {"trace_id": kwargs["trace_id"]}, "result": kwargs["result_payload"]},
+    )
+    monthly_envelope = pnl_service.pnl_by_business_monthly_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir=str(governance_dir),
+        year=2025,
+        as_of_date="2025-12-31",
+    )
+    analysis_envelope = pnl_service.pnl_by_business_analysis_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir=str(governance_dir),
+        year=2025,
+        as_of_date="2025-12-31",
+        business_key="asset_zqtz_policy_financial_bond",
+        dimension="currency",
+    )
+
+    assert monthly_envelope["result_meta"]["trace_id"].endswith("_precomputed")
+    assert analysis_envelope["result_meta"]["trace_id"].endswith("_precomputed")
+    assert FakePnlRepository.pnl_fetch_count == 1
+    assert FakePnlRepository.precompute_fetch_count == 2
 
 
 def test_pnl_by_business_precompute_invalidates_after_source_change(tmp_path, monkeypatch):
@@ -2997,6 +3121,137 @@ def test_pnl_by_business_manual_adjustment_audit_tracks_current_and_events(
     assert payload["adjustments"][0]["manual_adjustment"] == "150.00"
     assert [event["event_type"] for event in payload["events"]] == ["edited", "created"]
     get_settings.cache_clear()
+
+
+def test_pnl_by_business_manual_adjustment_active_state_changes_enqueue_precompute_refresh(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.schemas.pnl import PnlByBusinessManualAdjustmentRequest
+    from backend.app.services import pnl_service
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    settings = get_settings()
+    dispatched: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        pnl_service.rebuild_pnl_by_business_precompute,
+        "send",
+        lambda **kwargs: dispatched.append(kwargs),
+    )
+    payload = PnlByBusinessManualAdjustmentRequest(
+        report_date="2025-12-31",
+        row_key="asset_zqtz_policy_financial_bond",
+        business_type="Policy Financial Bond",
+        operator="DELTA",
+        approval_status="approved",
+        manual_adjustment="25.00",
+        reason="rebuild precompute after approval state changes",
+    )
+
+    created = pnl_service.create_pnl_by_business_manual_adjustment(
+        settings,
+        payload,
+        created_by="maker",
+    )
+    adjustment_id = str(created["adjustment_id"])
+    assert dispatched == []
+
+    pnl_service.approve_pnl_by_business_manual_adjustment(
+        settings,
+        adjustment_id=adjustment_id,
+        approved_by="checker",
+    )
+    assert dispatched == [
+        {
+            "duckdb_path": str(settings.duckdb_path),
+            "governance_dir": str(settings.governance_path),
+            "year": 2025,
+        }
+    ]
+
+    pnl_service.approve_pnl_by_business_manual_adjustment(
+        settings,
+        adjustment_id=adjustment_id,
+        approved_by="checker",
+    )
+    assert len(dispatched) == 1
+
+    pnl_service.update_pnl_by_business_manual_adjustment(
+        settings,
+        adjustment_id=adjustment_id,
+        payload=payload.model_copy(update={"manual_adjustment": Decimal("30.00")}),
+    )
+    assert len(dispatched) == 2
+
+    pnl_service.approve_pnl_by_business_manual_adjustment(
+        settings,
+        adjustment_id=adjustment_id,
+        approved_by="checker",
+    )
+    assert len(dispatched) == 3
+
+    pnl_service.revoke_pnl_by_business_manual_adjustment(settings, adjustment_id=adjustment_id)
+    assert len(dispatched) == 4
+
+    pnl_service.revoke_pnl_by_business_manual_adjustment(settings, adjustment_id=adjustment_id)
+    pnl_service.restore_pnl_by_business_manual_adjustment(settings, adjustment_id=adjustment_id)
+    assert len(dispatched) == 4
+
+    def fail_dispatch(**_kwargs):
+        raise ConnectionError("broker unavailable")
+
+    monkeypatch.setattr(pnl_service.rebuild_pnl_by_business_precompute, "send", fail_dispatch)
+    approved_after_dispatch_failure = pnl_service.approve_pnl_by_business_manual_adjustment(
+        settings,
+        adjustment_id=adjustment_id,
+        approved_by="checker",
+    )
+    assert approved_after_dispatch_failure["approval_status"] == "approved"
+    current = pnl_service.list_pnl_by_business_manual_adjustments(
+        settings,
+        report_date="2025-12-31",
+    )["adjustments"][0]
+    assert current["approval_status"] == "approved"
+    get_settings.cache_clear()
+
+
+def test_rebuild_pnl_by_business_precompute_task_uses_latest_year_cutoff(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.tasks import pnl_materialize
+
+    calls: list[dict[str, object]] = []
+    cache_clears: list[bool] = []
+
+    def fake_precompute(**kwargs):
+        calls.append(kwargs)
+        return {"year": 2025, "as_of_date": "2025-12-31", "records": 117}
+
+    monkeypatch.setattr(pnl_materialize, "precompute_pnl_by_business_payloads", fake_precompute)
+    monkeypatch.setattr(
+        pnl_materialize,
+        "_clear_pnl_page_runtime_caches",
+        lambda: cache_clears.append(True),
+    )
+
+    result = pnl_materialize.run_pnl_by_business_precompute_sync(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+        year=2025,
+    )
+
+    assert calls == [
+        {
+            "duckdb_path": str(tmp_path / "moss.duckdb"),
+            "governance_dir": str(tmp_path / "governance"),
+            "year": 2025,
+        }
+    ]
+    assert cache_clears == [True]
+    assert result == {"year": 2025, "as_of_date": "2025-12-31", "records": 117}
 
 
 def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(

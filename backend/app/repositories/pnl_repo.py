@@ -19,7 +19,7 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 # import the other. Bump this whenever the `/pnl-by-business` read-model
 # calculation rules change, so stale materialized rows are invalidated and
 # callers fall back to a live recompute instead of serving outdated values.
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v5"
+PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v6"
 
 
 def _position_book_key(portfolio_name: object, cost_center: object) -> str:
@@ -107,6 +107,7 @@ class PnlRepository:
         dimension: str,
         business_key: str,
         expected_rule_version: str = PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+        supplemental_source_version: str = "",
     ) -> dict[str, object] | None:
         try:
             conn = duckdb.connect(self.path, read_only=True)
@@ -137,12 +138,22 @@ class PnlRepository:
             return None
         if str(row[2] or "") != expected_rule_version:
             return None
-        source_version = self.pnl_by_business_precompute_source_version(year=year, as_of_date=as_of_date)
+        source_version = self.pnl_by_business_precompute_source_version(
+            year=year,
+            as_of_date=as_of_date,
+            supplemental_source_version=supplemental_source_version,
+        )
         if str(row[1] or "") != source_version:
             return None
         return json.loads(str(row[0]))
 
-    def pnl_by_business_precompute_source_version(self, *, year: int, as_of_date: str) -> str:
+    def pnl_by_business_precompute_source_version(
+        self,
+        *,
+        year: int,
+        as_of_date: str,
+        supplemental_source_version: str = "",
+    ) -> str:
         y = f"{year:04d}"
         try:
             conn = duckdb.connect(self.path, read_only=True)
@@ -162,7 +173,7 @@ class PnlRepository:
                 report_dates.extend(str(row[0]) for row in rows)
             period_start = f"{min(report_dates)[:7]}-01" if report_dates else f"{y}-01-01"
             fingerprint = {
-                "version": "v3",
+                "version": "v4",
                 "year": year,
                 "as_of_date": as_of_date,
                 "period_start": period_start,
@@ -184,15 +195,16 @@ class PnlRepository:
                     period_start=period_start,
                     as_of_date=as_of_date,
                 ),
+                "supplemental_source_version": supplemental_source_version,
             }
         except duckdb.Error as exc:
             if "cannot open database" in str(exc).lower() or "does not exist" in str(exc).lower():
-                return "sv_pnl_by_business_precompute_v3:unavailable"
+                return "sv_pnl_by_business_precompute_v4:unavailable"
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
                 conn.close()
-        return "sv_pnl_by_business_precompute_v3:" + json.dumps(
+        return "sv_pnl_by_business_precompute_v4:" + json.dumps(
             fingerprint,
             ensure_ascii=False,
             sort_keys=True,

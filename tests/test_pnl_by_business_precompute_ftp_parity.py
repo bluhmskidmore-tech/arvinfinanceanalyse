@@ -27,7 +27,7 @@ pnl_service_module = load_module(
 
 def test_precompute_rule_version_tracks_current_analysis_contract() -> None:
     assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION == (
-        "rv_pnl_by_business_precompute_v5"
+        "rv_pnl_by_business_precompute_v6"
     )
 
 
@@ -344,10 +344,17 @@ def test_precompute_source_fingerprint_includes_fact_rule_version(tmp_path) -> N
         year=2026,
         as_of_date="2026-06-30",
     )
+    adjusted_source_version = repo.pnl_by_business_precompute_source_version(
+        year=2026,
+        as_of_date="2026-06-30",
+        supplemental_source_version="sv_pnl_by_business_adjustments_v1:test-change",
+    )
 
-    assert stale_source_version.startswith("sv_pnl_by_business_precompute_v3:")
-    assert current_source_version.startswith("sv_pnl_by_business_precompute_v3:")
+    assert stale_source_version.startswith("sv_pnl_by_business_precompute_v4:")
+    assert current_source_version.startswith("sv_pnl_by_business_precompute_v4:")
     assert stale_source_version != current_source_version
+    assert current_source_version != adjusted_source_version
+    assert "sv_pnl_by_business_adjustments_v1:test-change" in adjusted_source_version
     assert "rv_pnl_phase2_materialize_v1" in stale_source_version
     assert "rv_pnl_phase2_materialize_v3" in current_source_version
 

@@ -132,6 +132,37 @@ def _materialize_pnl_facts(
         raise
 
 
+def _rebuild_pnl_by_business_precompute(
+    *,
+    year: int,
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
+) -> dict[str, object]:
+    """Rebuild the page-local read model through the latest available cutoff in ``year``."""
+    settings = get_settings()
+    duckdb_file = Path(duckdb_path or settings.duckdb_path)
+    governance_path = Path(governance_dir or settings.governance_path)
+    writer_lock = resolve_duckdb_writer_lock(
+        duckdb_file,
+        ttl_seconds=PNL_MATERIALIZE_LOCK.ttl_seconds,
+    )
+    logger.info("starting pnl_by_business precompute rebuild for year=%s", year)
+    with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+        summary = precompute_pnl_by_business_payloads(
+            duckdb_path=str(duckdb_file),
+            governance_dir=str(governance_path),
+            year=int(year),
+        )
+    _clear_pnl_page_runtime_caches()
+    logger.info(
+        "completed pnl_by_business precompute rebuild for year=%s as_of_date=%s records=%s",
+        year,
+        summary.get("as_of_date"),
+        summary.get("records"),
+    )
+    return summary
+
+
 def _materialize_pnl_facts_under_writer_lock(
     *,
     report_date: str,
@@ -376,7 +407,12 @@ def _materialize_pnl_facts_under_writer_lock(
     }
 
 materialize_pnl_facts = register_actor_once("materialize_pnl_facts", _materialize_pnl_facts)
+rebuild_pnl_by_business_precompute = register_actor_once(
+    "rebuild_pnl_by_business_precompute",
+    _rebuild_pnl_by_business_precompute,
+)
 run_pnl_materialize_sync = _materialize_pnl_facts
+run_pnl_by_business_precompute_sync = _rebuild_pnl_by_business_precompute
 
 
 def _clear_pnl_page_runtime_caches() -> None:
