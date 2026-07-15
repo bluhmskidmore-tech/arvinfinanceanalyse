@@ -8,6 +8,16 @@ MOSS V3 is a business analysis system for finance workflows. It turns governed d
 
 Business metrics and governed pages can be released with traceable evidence, green gates, and explicit development security boundaries.
 
+## Current Milestone: v1.1 PnL Historical Cutoff Precompute Coverage
+
+**Goal:** Make every available 2026 month-end cutoff on `/pnl-by-business` fast and auditable without changing any governed PnL formula.
+
+**Target features:**
+- Materialize an independent precompute partition for every available 2026 month-end cutoff.
+- Rebuild only the affected cutoff and subsequent cumulative cutoffs after a governed source or manual-adjustment change.
+- Prove exact live-versus-precomputed parity for PnL, ADB, yield, FTP, currency grouping, and parent summaries.
+- Keep per-cutoff failure isolation and the existing governed live fallback.
+
 ## Current State
 
 - v1.0 Audit Remediation passed its milestone audit with 1 phase, 1 plan, and 6 of 6 requirements verified.
@@ -27,7 +37,11 @@ Business metrics and governed pages can be released with traceable evidence, gre
 
 ### Active
 
-No requirements are active at the milestone boundary. The next milestone must define a fresh, page-scoped requirement set before implementation.
+- [ ] Users can select any available 2026 month-end cutoff and see whether that exact cutoff is precomputed or using the governed live fallback.
+- [ ] Operators can materialize all available month-end cutoffs without duplicate partitions or overlapping active jobs.
+- [ ] A governed source or approved manual-adjustment change rebuilds the affected cutoff and all later cumulative cutoffs only.
+- [ ] Live and precomputed payloads reconcile exactly for the page's governed business metrics and diagnostics.
+- [ ] One cutoff's build failure remains visible and recoverable without invalidating other current cutoffs.
 
 ### Out of Scope
 
@@ -38,14 +52,15 @@ No requirements are active at the milestone boundary. The next milestone must de
 
 ## Next Milestone Goals
 
-- Define the next business-page milestone through `/gsd-new-milestone` before adding implementation scope.
-- Start from one primary business question and close its loading, empty, partial, stale/fallback, and failure states end to end.
-- The current candidate is the `/reports` workbench home, subject to requirement confirmation in the next milestone workflow.
+- Close historical month-end precompute coverage for `/pnl-by-business` before expanding leadership-analysis features.
+- Preserve the page contract, governed formulas, and exact selected-cutoff semantics established in `d45ec9fb4`.
+- Produce a cutoff coverage matrix, exact-parity evidence, and a measured latency baseline.
 
 ## Context
 
 - This is a brownfield Python and TypeScript system with formal metric, page-contract, lineage, data-catalog, and release-gate conventions.
 - Business metric correctness, page-level closure, traceability, and minimal reviewable changes are the current priorities.
+- Runtime evidence at milestone start shows `2026-06-30` current/precomputed while `2026-05-31` is correctly served through live fallback; historical coverage is incomplete but numerically safe.
 - Accepted non-blocking v1.0 debt includes existing frontend test warnings, an existing Vite chunking warning, production JWT/SSO remaining out of scope, and intentionally unreconstructed historical GSD artifacts.
 
 ## Constraints
@@ -65,5 +80,22 @@ No requirements are active at the milestone boundary. The next milestone must de
 | Resolve GitNexus MCP commands through the project launcher and constrain repository roots. | Prevent request-controlled command and path expansion. | Good — verified in v1.0. |
 | Keep future work page-scoped and evidence-led. | Business closure is more valuable than broad platform refactoring. | Pending — apply to the next milestone. |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition:**
+1. Move invalidated requirements to Out of Scope with a reason.
+2. Move verified requirements to Validated with phase evidence.
+3. Add newly discovered requirements to Active.
+4. Record decisions that constrain later phases.
+5. Recheck that the project description and core value remain accurate.
+
+**After each milestone:**
+1. Review all requirement sections.
+2. Reconfirm the core value.
+3. Audit Out of Scope decisions.
+4. Update context with current runtime and validation evidence.
+
 ---
-*Last updated: 2026-07-15 after v1.0 milestone review*
+*Last updated: 2026-07-15 after starting v1.1 historical cutoff precompute coverage*
