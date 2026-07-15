@@ -45,20 +45,20 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COV-01 | Pending roadmap | Pending |
-| COV-02 | Pending roadmap | Pending |
-| COV-03 | Pending roadmap | Pending |
-| INC-01 | Pending roadmap | Pending |
-| INC-02 | Pending roadmap | Pending |
-| PAR-01 | Pending roadmap | Pending |
-| PAR-02 | Pending roadmap | Pending |
-| REC-01 | Pending roadmap | Pending |
+| COV-01 | Phase 02 | Pending |
+| COV-02 | Phase 02 | Pending |
+| COV-03 | Phase 02 | Pending |
+| INC-01 | Phase 03 | Pending |
+| INC-02 | Phase 03 | Pending |
+| PAR-01 | Phase 04 | Pending |
+| PAR-02 | Phase 04 | Pending |
+| REC-01 | Phase 03 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 8 total
-- Mapped to phases: 0
-- Unmapped: 8
+- Mapped to phases: 8
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-07-15*
-*Last updated: 2026-07-15 after milestone scope confirmation*
+*Last updated: 2026-07-15 after roadmap creation*

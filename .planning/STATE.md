@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: PnL Historical Cutoff Precompute Coverage
 status: active
-stopped_at: defining requirements and roadmap
+stopped_at: roadmap created; ready to plan Phase 02
 last_updated: "2026-07-15T08:00:00.000Z"
 last_activity: 2026-07-15
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 **Core value:** Business metrics and governed pages can be released with traceable evidence, green gates, and explicit development security boundaries.
-**Current focus:** Defining historical month-end precompute coverage for `/pnl-by-business`.
+**Current focus:** Planning Phase 02 exact-cutoff historical coverage for `/pnl-by-business`.
 
 ## Current Position
 
 **Milestone:** v1.1 PnL Historical Cutoff Precompute Coverage
-**Phase:** Not started - defining requirements
+**Phase:** 02 - Exact-Cutoff Historical Coverage
 **Plan:** Not started
-**Status:** Defining requirements and roadmap
+**Status:** Roadmap complete - ready for phase planning
 **Last Activity:** 2026-07-15
-**Last Activity Description:** v1.1 milestone started from runtime evidence of incomplete historical cutoff coverage
+**Last Activity Description:** Created the three-phase v1.1 roadmap with all eight requirements mapped exactly once
 
 **Progress:** 0%
 
@@ -52,8 +52,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 ### Pending Todos
 
-- Define exact month-end coverage, incremental invalidation, parity, and failure-isolation requirements.
-- Create the phase roadmap before changing production code.
+- Discuss and plan Phase 02 exact-cutoff historical coverage.
+- Preserve the governed live fallback and exact selected-cutoff semantics during implementation.
 
 ### Blockers/Concerns
 
@@ -64,5 +64,5 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 ## Session Continuity
 
 **Last session:** 2026-07-15
-**Stopped at:** v1.1 requirements and roadmap definition
+**Stopped at:** v1.1 roadmap complete; Phase 02 ready for planning
 **Resume file:** None
