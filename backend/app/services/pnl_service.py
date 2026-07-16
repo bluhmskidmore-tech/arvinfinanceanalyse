@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from calendar import monthrange
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -2012,7 +2013,7 @@ def request_pnl_by_business_precompute_rebuild(
     scope: str = "selected",
 ) -> dict[str, object]:
     """Queue an operator-requested rebuild, rejecting duplicate in-flight work."""
-    normalized_year = int(year)
+    normalized_year = _normalize_pnl_by_business_precompute_year(year)
     normalized_scope = str(scope or "selected").strip().lower()
     if normalized_scope not in {"selected", "all_available"}:
         raise ValueError("scope must be selected or all_available.")
@@ -2053,7 +2054,7 @@ def pnl_by_business_precompute_status(
     as_of_date: str | None = None,
 ) -> dict[str, object]:
     """Return task lifecycle evidence plus the read path currently serving the page."""
-    normalized_year = int(year)
+    normalized_year = _normalize_pnl_by_business_precompute_year(year)
     normalized_as_of_date = _normalize_pnl_by_business_precompute_as_of_date(
         year=normalized_year,
         as_of_date=as_of_date,
@@ -2284,11 +2285,21 @@ def _inflight_pnl_by_business_precompute_runs(
     ]
 
 
+def _normalize_pnl_by_business_precompute_year(year: int) -> int:
+    normalized_year = int(year)
+    if not 2000 <= normalized_year <= 2100:
+        raise ValueError("year must be between 2000 and 2100.")
+    return normalized_year
+
+
 def _normalize_pnl_by_business_precompute_as_of_date(*, year: int, as_of_date: str | None) -> str | None:
     if as_of_date is None:
         return None
+    raw_value = str(as_of_date)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_value) is None:
+        raise ValueError("as_of_date must use YYYY-MM-DD format.")
     try:
-        parsed = date.fromisoformat(str(as_of_date))
+        parsed = date.fromisoformat(raw_value)
     except ValueError as exc:
         raise ValueError("as_of_date must use YYYY-MM-DD format.") from exc
     if parsed.year != int(year):
@@ -2303,8 +2314,11 @@ def _available_pnl_by_business_precompute_cutoffs(
 ) -> list[str]:
     cutoffs: set[str] = set()
     for raw_date in repo.list_union_report_dates():
+        raw_value = str(raw_date)
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_value) is None:
+            continue
         try:
-            parsed = date.fromisoformat(str(raw_date))
+            parsed = date.fromisoformat(raw_value)
         except ValueError:
             continue
         if parsed.year != int(year) or parsed.day != monthrange(parsed.year, parsed.month)[1]:
@@ -2386,6 +2400,7 @@ def _pnl_by_business_precompute_status_record(
             )
             or (
                 not str(record.get("report_date") or "")
+                and not _pnl_by_business_precompute_record_target_dates(record)
                 and period_end == latest_available_as_of_date
             )
         )
