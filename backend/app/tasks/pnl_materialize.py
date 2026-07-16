@@ -29,7 +29,10 @@ from backend.app.repositories.governance_repo import (
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
-from backend.app.repositories.pnl_repo import PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION
+from backend.app.repositories.pnl_repo import (
+    PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+    PnlRepository,
+)
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
@@ -203,7 +206,21 @@ def _rebuild_pnl_by_business_precompute(
                 )
             else:
                 results: list[dict[str, object]] = []
+                pnl_repo = PnlRepository(str(duckdb_file))
                 for cutoff in target_as_of_dates:
+                    resolved_source_cutoff = str(
+                        pnl_repo.max_formal_or_nonstd_report_date_in_year(
+                            year=int(year),
+                            as_of_cap=cutoff,
+                        )
+                        or ""
+                    )
+                    if resolved_source_cutoff != cutoff:
+                        raise RuntimeError(
+                            "PnL by-business precompute resolved "
+                            f"source cutoff={resolved_source_cutoff or '<missing>'} "
+                            f"for requested cutoff={cutoff}."
+                        )
                     result = precompute_pnl_by_business_payloads(
                         duckdb_path=str(duckdb_file),
                         governance_dir=str(governance_path),

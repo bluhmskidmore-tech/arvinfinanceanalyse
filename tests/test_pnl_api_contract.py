@@ -62,6 +62,12 @@ def _grant_pnl_read_scope(repo: UserScopeRepository, *, user_id: str = "*") -> N
     )
 
 
+def _exact_cutoff_pnl_repository(_path):
+    return SimpleNamespace(
+        max_formal_or_nonstd_report_date_in_year=lambda **kwargs: kwargs["as_of_cap"]
+    )
+
+
 def _grant_liability_analytics_read_scope(repo: UserScopeRepository, *, user_id: str = "*") -> None:
     repo.grant_scope(
         user_id=user_id,
@@ -3583,6 +3589,7 @@ def test_rebuild_pnl_by_business_precompute_task_records_failure(
             raise RuntimeError("precompute fixture failed")
         return {"as_of_date": cutoff, "records": 1}
 
+    monkeypatch.setattr(pnl_materialize, "PnlRepository", _exact_cutoff_pnl_repository)
     monkeypatch.setattr(pnl_materialize, "precompute_pnl_by_business_payloads", fail_precompute)
     monkeypatch.setattr(pnl_materialize, "acquire_lock", lambda *_args, **_kwargs: FakeLockContext())
     monkeypatch.setattr(
@@ -3854,6 +3861,7 @@ def test_rebuild_pnl_by_business_precompute_exact_cutoff_batch_uses_one_writer_l
             "generated_at": f"2026-07-15T12:00:0{len(calls)}+00:00",
         }
 
+    monkeypatch.setattr(pnl_materialize, "PnlRepository", _exact_cutoff_pnl_repository)
     monkeypatch.setattr(pnl_materialize, "precompute_pnl_by_business_payloads", fake_precompute)
     monkeypatch.setattr(pnl_materialize, "acquire_lock", lambda *_args, **_kwargs: FakeLockContext())
     monkeypatch.setattr(pnl_materialize, "_clear_pnl_page_runtime_caches", lambda: None)
