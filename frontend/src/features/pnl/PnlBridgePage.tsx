@@ -86,12 +86,12 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     if (value >= 0) {
       helperRaw.push(running);
       valueRaw.push(value);
-      barColors.push(designTokens.color.semantic.loss);
+      barColors.push(designTokens.color.semantic.profit);
       running += value;
     } else {
       helperRaw.push(running + value);
       valueRaw.push(-value);
-      barColors.push(designTokens.color.semantic.profit);
+      barColors.push(designTokens.color.semantic.loss);
       running += value;
     }
   }
@@ -179,32 +179,26 @@ function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
     };
   }
 
-  const explained = Math.abs(summary.total_explained_pnl.raw ?? 0);
-  const actual = Math.abs(summary.total_actual_pnl.raw ?? 0);
-  const residual = Math.abs(summary.total_residual.raw ?? 0);
-  const base = Math.max(explained, actual, 1);
-  const residualRatio = residual / base;
-
-  if (summary.quality_flag === "error" || residualRatio > 0.1) {
+  if (summary.quality_flag === "error") {
     return {
       title: "闭合校验结果",
       body: "校验未通过：解释损益与实际损益存在明显偏离。",
-      detail: `当前残差 ${summary.total_residual.display}，已高于首屏可接受阈值。`,
+      detail: `当前残差 ${summary.total_residual.display}，后端正式质量标记为错误，请结合预警与明细表继续核对。`,
     };
   }
 
-  if (summary.quality_flag === "warning" || residualRatio > 0.02) {
+  if (summary.quality_flag === "warning") {
     return {
       title: "闭合校验结果",
       body: "校验预警：解释损益基本贴近实际损益，但仍有残差需要跟踪。",
-      detail: `当前残差 ${summary.total_residual.display}，建议结合预警与明细表继续核对。`,
+      detail: `当前残差 ${summary.total_residual.display}，后端正式质量标记为预警，建议结合明细表继续核对。`,
     };
   }
 
   return {
     title: "闭合校验结果",
     body: "校验通过：解释损益与实际损益基本一致，残差可控。",
-    detail: `当前残差 ${summary.total_residual.display}，正式桥接结果可以作为首屏结论阅读。`,
+    detail: `当前残差 ${summary.total_residual.display}，后端正式质量标记为正常。`,
   };
 }
 

@@ -7,11 +7,10 @@ import json
 from pathlib import Path
 import re
 import sys
-from typing import Any
+from typing import Any, Literal
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DUCKDB_PATH = ROOT / "data" / "moss.duckdb"
-DEFAULT_TARGET_LATEST_DATE = "2026-05-31"
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DATE_ISSUE_SAMPLE_LIMIT = 10
 
@@ -32,6 +31,7 @@ class TableSpec:
     scope: str = "formal"
     required_meta_columns: tuple[str, ...] = ("source_version", "rule_version")
     target_latest_date: str | None = None
+    freshness_policy: Literal["previous_business_day", "previous_month_end"] | None = None
     target_max_lag_days: int | None = None
     latest_min_rows: int | None = None
     allow_empty: bool = False
@@ -45,19 +45,19 @@ DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
         label="formal balance zqtz",
         table="fact_formal_zqtz_balance_daily",
         date_column="report_date",
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_business_day",
     ),
     TableSpec(
         label="formal balance tyw",
         table="fact_formal_tyw_balance_daily",
         date_column="report_date",
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_business_day",
     ),
     TableSpec(
         label="formal bond analytics",
         table="fact_formal_bond_analytics_daily",
         date_column="report_date",
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_business_day",
         unique_key_columns=("report_date", "instrument_code", "portfolio_name", "accounting_class", "trace_id"),
         required_data_columns=("instrument_code", "accounting_class", "currency_code"),
         numeric_range_checks=(
@@ -74,31 +74,31 @@ DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
         table="fact_formal_risk_tensor_daily",
         date_column="report_date",
         required_meta_columns=("source_version", "rule_version", "cache_version", "quality_flag"),
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_business_day",
     ),
     TableSpec(
         label="formal PnL FI",
         table="fact_formal_pnl_fi",
         date_column="report_date",
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_month_end",
     ),
     TableSpec(
         label="PnL bridge non-standard",
         table="fact_nonstd_pnl_bridge",
         date_column="report_date",
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_month_end",
     ),
     TableSpec(
         label="product category canonical",
         table="product_category_pnl_canonical_fact",
         date_column="report_date",
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_month_end",
     ),
     TableSpec(
         label="product category formal read",
         table="product_category_pnl_formal_read_model",
         date_column="report_date",
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_month_end",
     ),
     TableSpec(
         label="product category scenario read",
@@ -112,7 +112,7 @@ DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
         table="fact_formal_yield_curve_daily",
         date_column="trade_date",
         required_meta_columns=("source_version", "rule_version", "vendor_version"),
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_business_day",
         target_max_lag_days=3,
         unique_key_columns=("trade_date", "curve_type", "tenor"),
         required_data_columns=("curve_type", "tenor", "rate_pct"),
@@ -126,13 +126,13 @@ DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
         date_column="trade_date",
         scope="formal",
         required_meta_columns=("source_version", "vendor_version"),
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_business_day",
     ),
     TableSpec(
         label="accounting asset movement",
         table="fact_accounting_asset_movement_monthly",
         date_column="report_date",
-        target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        freshness_policy="previous_month_end",
     ),
     TableSpec(
         label="ledger position snapshot",
@@ -356,7 +356,7 @@ def _inspect_table(conn: Any, spec: TableSpec, as_of_date: str) -> dict[str, Any
         date_coverage = _date_coverage(conn, spec.table, spec.date_column)
         latest_value = date_coverage.get("max")
         latest_row_count = _latest_row_count(conn, spec.table, spec.date_column, latest_value)
-        target_latest = spec.target_latest_date
+        target_latest = _resolve_target_latest_date(spec, as_of_date)
         if target_latest and latest_value and _compare_date_strings(latest_value, target_latest) < 0:
             lag_days = _date_lag_days(latest_value, target_latest)
             if spec.target_max_lag_days is not None and lag_days is not None and lag_days <= spec.target_max_lag_days:
@@ -900,6 +900,22 @@ def _parse_date(value: Any) -> date | None:
         return date.fromisoformat(candidate)
     except ValueError:
         return None
+
+
+def _resolve_target_latest_date(spec: TableSpec, as_of_date: str) -> str | None:
+    if spec.target_latest_date:
+        return spec.target_latest_date
+
+    report_date = _parse_date(as_of_date)
+    if report_date is None or spec.freshness_policy is None:
+        return None
+    if spec.freshness_policy == "previous_month_end":
+        return (report_date.replace(day=1) - timedelta(days=1)).isoformat()
+
+    target = report_date - timedelta(days=1)
+    while _is_weekend(target):
+        target -= timedelta(days=1)
+    return target.isoformat()
 
 
 def _compare_date_strings(left: str, right: str) -> int:

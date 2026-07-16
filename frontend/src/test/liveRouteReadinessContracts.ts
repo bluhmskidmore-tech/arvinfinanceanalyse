@@ -211,8 +211,11 @@ export const liveRouteReadinessContracts = {
     verificationFiles: ["src/test/ProductCategoryPnlPage.test.tsx"],
   },
   "/pnl": {
-    sourceFiles: ["src/features/pnl/YieldAnalysisPage.tsx"],
-    sourceAnchors: ["yield-analysis-page", "yield-analysis-pnl-readout"],
+    sourceFiles: [
+      "src/features/pnl/PnlPage.tsx",
+      "src/features/pnl/FormalPnlV1Page.tsx",
+    ],
+    sourceAnchors: ["formal-pnl-v1-page", "pnl-overview-cards", "pnl-result-meta-panel"],
     verificationFiles: ["src/test/PnlPage.test.tsx", "src/test/PnlRoutesSmoke.test.tsx"],
   },
   "/pnl-bridge": {

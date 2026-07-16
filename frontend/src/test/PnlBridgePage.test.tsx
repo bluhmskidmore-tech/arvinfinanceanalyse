@@ -4,14 +4,20 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
+const echartsOptionMock = vi.hoisted(() => vi.fn());
+
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="pnl-bridge-echarts-stub" />,
+  default: ({ option }: { option: unknown }) => {
+    echartsOptionMock(option);
+    return <div data-testid="pnl-bridge-echarts-stub" />;
+  },
 }));
 
 import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { Numeric, PnlBridgePayload, PnlDatesPayload, ResultMeta } from "../api/contracts";
 import PnlBridgePage from "../features/pnl/PnlBridgePage";
+import { designTokens } from "../theme/designSystem";
 
 function renderPnlBridgePage(client: ApiClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -183,6 +189,73 @@ describe("PnlBridgePage", () => {
     });
   });
 
+  it("uses the backend summary quality as the only first-screen conclusion authority", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2025-12-31", "IC-AUTH", "100.00");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_authority"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_quality_authority"),
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            total_explained_pnl: bridgeYuan(100, "100.00"),
+            total_actual_pnl: bridgeYuan(100, "100.00"),
+            total_residual: bridgeYuan(20, "20.00"),
+            quality_flag: "ok" as const,
+          },
+        },
+      })),
+    });
+
+    const conclusion = await screen.findByTestId("pnl-bridge-conclusion");
+    expect(conclusion).toHaveTextContent("校验通过");
+    expect(conclusion).not.toHaveTextContent("校验未通过");
+    expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("正常");
+  });
+
+  it("uses profit color for positive waterfall steps and loss color for negative steps", async () => {
+    echartsOptionMock.mockClear();
+    const base = createApiClient({ mode: "real" });
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_colors"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_colors"),
+        result: buildBridgePayload("2025-12-31", "IC-COLOR", "15.40"),
+      })),
+    });
+
+    await screen.findByTestId("pnl-bridge-waterfall-card");
+    const option = echartsOptionMock.mock.calls[echartsOptionMock.mock.calls.length - 1]?.[0] as {
+      series?: Array<{
+        name?: string;
+        data?: Array<{ itemStyle?: { color?: string } }>;
+      }>;
+    };
+    const effectSeries = option.series?.find((series) => series.name === "效应");
+
+    expect(effectSeries?.data?.[0]?.itemStyle?.color).toBe(designTokens.color.semantic.profit);
+    expect(effectSeries?.data?.[3]?.itemStyle?.color).toBe(designTokens.color.semantic.loss);
+  });
   it("switches report date, refetches bridge payload, and updates debug meta", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "real" });

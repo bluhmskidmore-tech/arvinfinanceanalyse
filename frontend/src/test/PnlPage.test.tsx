@@ -14,7 +14,7 @@ import type {
   PnlV1DetailRow,
   ResultMeta,
 } from "../api/contracts";
-import FormalPnlV1Page from "../features/pnl/FormalPnlV1Page";
+import PnlPage from "../features/pnl/PnlPage";
 
 function renderPnlPage(client: ApiClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -36,7 +36,7 @@ function renderPnlPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <FormalPnlV1Page />
+      <PnlPage />
     </Wrapper>,
   );
 }

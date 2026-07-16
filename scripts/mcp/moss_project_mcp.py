@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.data_readiness_report import build_data_readiness_report  # noqa: E402
+from scripts.mcp.golden_approval import golden_sample_readiness  # noqa: E402
 
 DEFAULT_DUCKDB_PATH = REPO_ROOT / "data" / "moss.duckdb"
 DEFAULT_GOVERNANCE_DIR = REPO_ROOT / "data" / "governance"
@@ -8754,12 +8755,15 @@ def choose_date_column(column_names: list[str]) -> str | None:
 
 
 def page_evidence_readiness_row(bundle: dict[str, Any]) -> dict[str, Any]:
-    combined = bundle_text(bundle)
-    approval_readiness = page_approval_readiness(bundle, combined)
+    approval_readiness = page_approval_readiness(bundle, bundle_text(bundle))
     approval_status = approval_readiness["status"]
     formal_use_allowed = approval_status == "formal_or_governed"
-    golden_samples = list(bundle.get("golden_samples") or [])
-    golden_status = golden_sample_status(bundle, approval_status)
+    golden_readiness = golden_sample_readiness(
+        bundle,
+        approval_status,
+        repo_root=REPO_ROOT,
+        bundle_text=bundle_text(bundle),
+    )
     lineage_status = lineage_readiness(bundle)
     lineage_anchors = lineage_status["anchors"]
     catalog_anchors = catalog_date_readiness_anchors(bundle, lineage_anchors)
@@ -8772,6 +8776,9 @@ def page_evidence_readiness_row(bundle: dict[str, Any]) -> dict[str, Any]:
         "approval_status": approval_status,
         "approval_status_source": approval_readiness["source"],
         "formal_use_allowed": formal_use_allowed,
+        "contract_status": approval_status, "formal_envelope_allowed": formal_use_allowed,
+        "golden_approval_status": golden_readiness["approval_status"],
+        "business_owner_closure_status": "direct_review_required",
         "checks": {
             "trace_bundle": {
                 "status": "present",
@@ -8785,15 +8792,11 @@ def page_evidence_readiness_row(bundle: dict[str, Any]) -> dict[str, Any]:
                 "status": "direct_review_required",
                 "anchors": catalog_anchors,
             },
-            "golden_sample": {
-                "status": golden_status,
-                "anchors": golden_samples,
-            },
+            "golden_sample": golden_readiness,
         },
-        "residual_gaps": residual_evidence_gaps(bundle, approval_status, golden_status),
+        "residual_gaps": residual_evidence_gaps(bundle, approval_status, golden_readiness),
         "guardrails": list(bundle.get("guardrails") or []),
     }
-
 
 def bundle_text(bundle: dict[str, Any]) -> str:
     values: list[str] = []
@@ -12083,18 +12086,6 @@ def page_lineage_recommended_next_actions(page_id: str, lineage_status: str) -> 
     ]
 
 
-def golden_sample_status(bundle: dict[str, Any], approval_status: str) -> str:
-    golden_samples = list(bundle.get("golden_samples") or [])
-    if not golden_samples:
-        return "missing"
-    text = bundle_text(bundle).casefold()
-    if approval_status != "formal_or_governed":
-        if "dto" in text or "page headline" in text or "page-level dto" in text:
-            return "page_dto_only"
-        return "supporting_or_fragment_only"
-    return "approved"
-
-
 def lineage_readiness(bundle: dict[str, Any]) -> dict[str, Any]:
     page_id = str(bundle.get("page_id") or "")
     anchors = lineage_query_terms(page_id, LineageEvidenceProvider._QUERY_EXPANSIONS)
@@ -12183,8 +12174,12 @@ def filter_readiness_anchors(anchors: list[str], *, limit: int = 40) -> list[str
     return filtered
 
 
-def residual_evidence_gaps(bundle: dict[str, Any], approval_status: str, golden_status: str) -> list[str]:
+def residual_evidence_gaps(
+    bundle: dict[str, Any], approval_status: str, golden_readiness: dict[str, Any]
+) -> list[str]:
     page_id = str(bundle.get("page_id") or "")
+    golden_scope_status = str(golden_readiness["status"])
+    golden_approval_status = str(golden_readiness["approval_status"])
     gaps = [
         "full data-catalog/date review required before page-level closure.",
         "direct page-keyed governance records are still required before treating this as proof of a specific page/API execution.",
@@ -12195,9 +12190,11 @@ def residual_evidence_gaps(bundle: dict[str, Any], approval_status: str, golden_
         gaps.append("Mixed-source page cannot be collapsed into full-page formal truth.")
     if approval_status == "gap_or_observational":
         gaps.append("GAP/observational route lacks standalone formal page contract closure.")
-    if golden_status == "missing":
+    if golden_scope_status == "missing":
         gaps.append("dedicated golden sample is missing for the page-level metric surface.")
-    elif golden_status != "approved":
+    elif golden_approval_status != "approved":
+        gaps.append(f"Golden sample approval is {golden_approval_status}; it must not be treated as approved evidence.")
+    if golden_scope_status in {"supporting_or_fragment_only", "page_dto_only"}:
         gaps.append("Existing golden sample is supporting or page DTO evidence only, not dictionary-level approval.")
     if page_id == "PAGE-BOND-001":
         gaps.append("MTR-BOND-* dictionary-level approval remains pending.")
@@ -12212,7 +12209,6 @@ def residual_evidence_gaps(bundle: dict[str, Any], approval_status: str, golden_
         gaps.append("Trading instructions, PAGE-STOCK contracts, MTR-* creation, and formal approval remain out of scope.")
         gaps.append("Dedicated sample GS-STOCK-ANALYSIS-OBS-A is page DTO evidence only, not formal stock-analysis truth.")
     return gaps
-
 
 def list_golden_samples(*, limit: int) -> list[dict[str, Any]]:
     root = REPO_ROOT / "tests" / "golden_samples"

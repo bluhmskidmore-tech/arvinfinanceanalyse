@@ -59,7 +59,8 @@ const smokePages = [
   {
     slug: "pnl",
     path: "/pnl",
-    readySelector: '[data-testid="yield-analysis-page"]',
+    readySelector: '[data-testid="formal-pnl-v1-page"]',
+    excludeSelectors: [".ag-theme-alpine", ".ag-root"],
   },
   {
     slug: "pnl-bridge",

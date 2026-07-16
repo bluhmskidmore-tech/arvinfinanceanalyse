@@ -3334,10 +3334,11 @@ def test_business_pnl_trace_bundle_preserves_page_level_analysis_boundaries() ->
         readiness = json.loads(readiness_result["content"][0]["text"])["pages"][0]
         assert readiness["approval_status"] == "formal_or_governed"
         assert readiness["formal_use_allowed"] is True
-        assert readiness["checks"]["golden_sample"] == {
-            "status": "approved",
-            "anchors": ["tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A"],
-        }
+        golden_sample = readiness["checks"]["golden_sample"]
+        assert golden_sample["status"] == "formal_sample"
+        assert golden_sample["approval_status"] == "approved"
+        assert golden_sample["anchors"] == ["tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A"]
+        assert golden_sample["approval_evidence"][0]["status"] == "approved"
     finally:
         server.close()
 

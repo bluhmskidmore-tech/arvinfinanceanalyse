@@ -491,13 +491,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "pnl",
-    label: "收益分析",
+    label: "正式损益",
     path: "/pnl",
     icon: "analysis",
-    description: "收益总览、损益归因与期间收益（与 V1 /pnl 对齐）",
+    description: "正式损益汇总、固收明细与非标桥接明细",
     readiness: "live",
     readinessLabel: "已开放",
-    readinessNote: "收益指标与归因读链路已接；期间收益表为占位接口，正式明细表见 /pnl-formal-v1。",
+    readinessNote: "已接正式损益日期、overview 与明细读链路；页面展示后端结果和 result_meta，不在前端重算。",
   },
   {
     key: "pnl-bridge",
