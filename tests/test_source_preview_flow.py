@@ -36,6 +36,40 @@ def _grant_source_preview_read_scope(*, settings, user_id: str = "*") -> None:
     _grant_source_preview_scope(settings=settings, user_id=user_id, action="read")
 
 
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/ui/preview/source-foundation",
+        "/ui/preview/source-foundation/history",
+        "/ui/preview/source-foundation/zqtz/rows",
+        "/ui/preview/source-foundation/zqtz/traces",
+    ),
+)
+def test_source_preview_reads_return_503_when_duckdb_is_busy(path, tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    repo_module = importlib.import_module("backend.app.repositories.source_preview_repo")
+
+    def busy_connect(*_args, **_kwargs):
+        raise duckdb.IOException("IO Error: file is already open in another process")
+
+    monkeypatch.setattr(repo_module.duckdb, "connect", busy_connect)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        headers=SOURCE_PREVIEW_READ_HEADERS,
+        raise_server_exceptions=False,
+    )
+
+    response = client.get(path)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Source preview storage is temporarily unavailable."}
+
+
 def test_source_preview_service_summarizes_real_zqtz_and_tyw_files():
     preview_module = load_module(
         "backend.app.services.source_preview_service",

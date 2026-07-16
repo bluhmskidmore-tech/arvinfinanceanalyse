@@ -98,3 +98,11 @@ python scripts/backend_release_suite.py
 1. 必要的本地或 CI 验证
 2. `python scripts/backend_release_suite.py`
 3. 对当前边界文档的核对，而不是只看服务是否能启动
+
+## Docker Compose 的 DuckDB 进程契约
+
+- API 是启动期存储迁移的唯一 owner；worker 设置
+  `MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS=1`，并等待 API healthcheck 通过后再启动，避免与 API 并发执行迁移或在迁移完成前消费积压任务。
+- Dramatiq 固定为一个 worker 进程；同一进程内可保留线程并发，受治理的物化入口继续使用现有按数据库路径生成的 writer lock。
+- API 与 worker 仍是两个操作系统进程。短暂的读写重叠仍可能使 DuckDB 暂时不可用；本轮覆盖的 source preview 读接口和 PnL 读路径会返回 HTTP 503，不会返回未处理的 500，也不会把 source preview 失败伪装成空数据和 `quality_flag=ok`。
+- 这是开发栈的安全约束，不代表仓库内所有直接 DuckDB 连接已经全局协调。若要彻底消除运行期重叠，需要后续选择单一数据库 owner 进程、发布只读快照，或实现全仓跨进程连接门闩。

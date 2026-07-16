@@ -18,11 +18,17 @@ services:
       - postgres
       - redis
       - minio
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
 
   worker:
     image: python:3.14-slim
     working_dir: /workspace
-    command: sh -c "pip install -e ./backend[dev] && python -m dramatiq backend.app.tasks.worker_bootstrap"
+    command: sh -c "pip install -e ./backend[dev] && python -m dramatiq --processes 1 --threads 8 backend.app.tasks.worker_bootstrap"
     volumes:
       - ./:/workspace
     environment:
@@ -30,14 +36,20 @@ services:
       MOSS_POSTGRES_DSN: postgresql://${MOSS_POSTGRES_USER:-moss}:${MOSS_POSTGRES_PASSWORD:?Set MOSS_POSTGRES_PASSWORD for docker compose}@postgres:5432/${MOSS_POSTGRES_DB:-moss}
       MOSS_REDIS_DSN: redis://redis:6379/0
       MOSS_DUCKDB_PATH: data/moss.duckdb
+      MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS: "1"
       MOSS_MINIO_ENDPOINT: minio:9000
       MOSS_MINIO_ACCESS_KEY: ${MOSS_MINIO_ROOT_USER:?Set MOSS_MINIO_ROOT_USER for docker compose}
       MOSS_MINIO_SECRET_KEY: ${MOSS_MINIO_ROOT_PASSWORD:?Set MOSS_MINIO_ROOT_PASSWORD for docker compose}
       MOSS_MINIO_BUCKET: moss-artifacts
     depends_on:
-      - postgres
-      - redis
-      - minio
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
 
   postgres:
     image: postgres:17-alpine
