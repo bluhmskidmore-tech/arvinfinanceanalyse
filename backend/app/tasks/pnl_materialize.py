@@ -9,7 +9,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-
 from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )

@@ -65,11 +65,11 @@ completed: 2026-07-16
 
 Each test or implementation boundary was committed atomically:
 
-1. **Task 1: Expose exact-cutoff coverage gaps** - `a1a38429e` (test)
-2. **Task 2: Fail closed on returned cutoff drift** - `ee4a32564` (fix)
-3. **Task 2: Bound status and date contracts** - `4d302d990` (fix)
-4. **Task 2 hardening: Require a pre-write cutoff guard** - `db90aa7e8` (test)
-5. **Task 2 hardening: Preflight exact batch cutoffs** - `8695b2ff6` (fix)
+1. **Task 1: Expose exact-cutoff coverage gaps** - `3be46d21f` (test)
+2. **Task 2: Fail closed on returned cutoff drift** - `5423fcc06` (fix)
+3. **Task 2: Bound status and date contracts** - `a7e0dca03` (fix)
+4. **Task 2 hardening: Require a pre-write cutoff guard** - `e7f4ee1f8` (test)
+5. **Task 2 hardening: Preflight exact batch cutoffs** - `339363b4a` (fix)
 
 **Plan metadata:** this summary is committed separately as the final documentation artifact.
 
@@ -97,7 +97,7 @@ Each test or implementation boundary was committed atomically:
 - **Fix:** Preserved the mismatch as evidence and shifted to a focused correctness audit instead of manufacturing a failing baseline.
 - **Files modified:** `tests/test_pnl_api_contract.py`
 - **Verification:** Strengthened RED set produced 11 expected behavior failures and 10 passing characterization gates before production edits.
-- **Committed in:** `a1a38429e`
+- **Committed in:** `3be46d21f`
 
 **2. [Missing critical correctness] Blocked wrong-partition persistence before it can start**
 
@@ -106,7 +106,7 @@ Each test or implementation boundary was committed atomically:
 - **Fix:** Added an in-lock `PnlRepository.max_formal_or_nonstd_report_date_in_year(year, as_of_cap=cutoff)` preflight before each call, while retaining the returned-value check.
 - **Files modified:** `backend/app/tasks/pnl_materialize.py`, `tests/test_pnl_api_contract.py`
 - **Verification:** Natural RED proved the old path invoked precompute; GREEN proves zero precompute calls and an unchanged real DuckDB sentinel when June resolves to May.
-- **Committed in:** `db90aa7e8`, `8695b2ff6`
+- **Committed in:** `e7f4ee1f8`, `339363b4a`
 
 **3. [Data-contract hardening] Rejected liberal ISO parsing and out-of-range direct calls**
 
@@ -115,7 +115,7 @@ Each test or implementation boundary was committed atomically:
 - **Fix:** Added full canonical-date matching and direct year validation without changing governed metrics or the selected-scope return shape.
 - **Files modified:** `backend/app/tasks/pnl_materialize.py`, `backend/app/services/pnl_service.py`, `tests/test_pnl_api_contract.py`
 - **Verification:** Compact/week dates and years 1999/2101 fail before queue or precompute; leap-year month-end remains accepted.
-- **Committed in:** `a1a38429e`, `ee4a32564`, `4d302d990`
+- **Committed in:** `3be46d21f`, `5423fcc06`, `a7e0dca03`
 
 ---
 
