@@ -24,6 +24,14 @@ tmp-governance/
 .tmp-servers/
 .tmp-macro-backfill-dryrun.json
 
+## AI assistant working artifacts (not project code)
+.codex/
+.codex_tmp/
+codex_tmp/
+.workbuddy/
+outputs/
+.tmp_analysis_api.json
+
 ## Data and generated artifacts
 data/
 backend/data/
