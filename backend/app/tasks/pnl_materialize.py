@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from calendar import monthrange
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+
 from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
 )
@@ -152,6 +154,8 @@ def _rebuild_pnl_by_business_precompute(
     trigger_reason: str = "automatic_refresh",
 ) -> dict[str, object]:
     """Rebuild the page-local read model through the latest available cutoff in ``year``."""
+    if not 2000 <= int(year) <= 2100:
+        raise ValueError("year must be between 2000 and 2100.")
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
     governance_path = Path(governance_dir or settings.governance_path)
@@ -198,15 +202,25 @@ def _rebuild_pnl_by_business_precompute(
                     as_of_date=as_of_date,
                 )
             else:
-                results = [
-                    precompute_pnl_by_business_payloads(
+                results: list[dict[str, object]] = []
+                for cutoff in target_as_of_dates:
+                    result = precompute_pnl_by_business_payloads(
                         duckdb_path=str(duckdb_file),
                         governance_dir=str(governance_path),
                         year=int(year),
                         as_of_date=cutoff,
                     )
-                    for cutoff in target_as_of_dates
-                ]
+                    resolved_as_of_date = str(result.get("as_of_date") or "")
+                    if (
+                        re.fullmatch(r"\d{4}-\d{2}-\d{2}", resolved_as_of_date) is None
+                        or resolved_as_of_date != cutoff
+                    ):
+                        raise RuntimeError(
+                            "PnL by-business precompute returned "
+                            f"as_of_date={resolved_as_of_date or '<missing>'} "
+                            f"for requested cutoff={cutoff}."
+                        )
+                    results.append(result)
                 summary = {
                     "year": int(year),
                     "as_of_dates": target_as_of_dates,
@@ -276,8 +290,11 @@ def _normalize_pnl_by_business_precompute_target_dates(
 ) -> list[str]:
     normalized: set[str] = set()
     for raw_date in as_of_dates:
+        raw_value = str(raw_date)
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_value) is None:
+            raise ValueError("as_of_dates must use YYYY-MM-DD format.")
         try:
-            parsed = date.fromisoformat(str(raw_date))
+            parsed = date.fromisoformat(raw_value)
         except ValueError as exc:
             raise ValueError("as_of_dates must use YYYY-MM-DD format.") from exc
         if parsed.year != int(year):
