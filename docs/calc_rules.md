@@ -320,3 +320,99 @@ for `PAGE-BOND-ANALYSIS-001`. They do not replace business-owner sign-off.
 - `dv01_unit=CNY_per_1bp`.
 - `dv01_base=CNY_face_value`.
 - `market_value/dirty_value DV01 is not the current formal DV01 convention`.
+
+## 15. Business Type Insights（批准口径，2026-07-15）
+
+本节定义 `MTR-PNLBIZ-001`~`MTR-PNLBIZ-007` 的正式口径。Owner 为`组合管理/固收业务分析`，Approver 为`财务管理/资产负债管理`。定义自 `2026-07-15` 起生效，并由 `GET /api/pnl/by-business-insights` 的后端正式计算、DTO 与 `result_meta` 实现；`PAGE-PNL-BY-BUSINESS-001` 消费该结果。绑定 golden sample 证明公式和 DTO 一致性，不证明底层源 PnL、余额或汇率事实已经独立审计无误。
+
+### 15.1 共同输入与父级行范围
+
+- 报告范围：所选 `year` 年初至 `as_of_date` 的 YTD 区间；份额漂移的比较期见 15.4。
+- 金额基础：人民币等值（CNY-equivalent）日均余额；外币资产必须先按治理汇率链路折算为人民币等值，再参与分子、分母及排序。
+- 粒度：ZQTZ 父级业务种类，以稳定 `row_key` 对齐。
+- 排除：`row_key` 含 `_detail_`、`business_type` 以“其中”开头、或 `source_note` 含“其中项”的明细/子项行。
+- 仅 `avg_balance_cny_equiv > 0` 的父级行进入日均余额份额分母。
+- 百分比统一以百分数值返回，例如 `12.34` 表示 `12.34%`；`pp` 表示百分点，不得再次乘以 100。
+- 正式实现必须返回真实 requested/resolved cutoff、上游 source/rule/trace、quality/fallback 和 section availability；`result_version=v2` 还必须逐项披露 current YTD、baseline YTD 与各跨年月度组件证据。不得把请求日直接冒充为实际数据截止日，也不得把组件 fallback/vendor 异常包装成外层 `ok/none`。
+
+### 15.2 集中度（MTR-PNLBIZ-001 / 002）
+
+对合格父级业务 `i`：
+
+```text
+balance_share_i = avg_balance_cny_equiv_i / sum(avg_balance_cny_equiv)
+MTR-PNLBIZ-001 HHI_pct = sum(balance_share_i ^ 2) * 100
+MTR-PNLBIZ-002 top3_share_pct = sum(top 3 balance_share_i) * 100
+```
+
+- 排序按未舍入的 `balance_share_i` 降序；最终输出保留 2 位小数。
+- 合格行不足 3 行时，Top 3 为全部合格行之和。
+- 本指标是业务结构分析，不是监管或内部集中度限额；本次批准不设置 HHI 红黄线。
+- 分母为 0 或无合格父级行时返回 `null`，不得返回 0。
+
+### 15.3 负 FTP 持续性（MTR-PNLBIZ-003 / 004）
+
+- 窗口：以 `as_of_date` 所在月为终点、向前包含 12 个自然月。
+- 负 FTP 月：该月父级业务 `ftp_net_pnl < 0`；0、正数与 `null` 均不是负月。
+- `months_observed` 只统计 `ftp_net_pnl` 非空的月份；缺失月不进分母，并中断连续月份。
+
+```text
+MTR-PNLBIZ-003 negative_ftp_month_share_pct
+  = negative_month_count / months_observed * 100
+
+MTR-PNLBIZ-004 negative_ftp_longest_streak_months
+  = rolling_12m_window 内连续 ftp_net_pnl < 0 的最长自然月数
+```
+
+- 正式判断至少需要 `months_observed >= 6`。少于 6 个有效月时返回 `eligible=false`、`status=insufficient_observations`，比例和最长连续月数均为 `null`，正式指标显示为 `--`，不得触发提示。
+- 当 `months_observed >= 6` 且 `negative_ftp_month_share_pct >= 50%` 时显示“负 FTP 持续性提示”。该提示只说明历史频率，不构成考核、退出、压降或限额结论。
+- 跨年按 `month_key` 对齐；任何缺年或缺月必须进入 availability/quality 说明，不能静默补 0 或 forward-fill。
+
+### 15.4 份额漂移（MTR-PNLBIZ-005）
+
+- 当前期：所选 `year` 年初至 `as_of_date` 的 YTD 人民币等值日均余额份额。
+- 比较期：上一自然年年初至同期间截止日的 YTD 人民币等值日均余额份额，不再使用上一年 `12-31` 全年口径。
+- 对齐集合：当前期与上年同期间父级 `row_key` 的并集。
+- 新进入业务：上年同期间侧份额按 0 处理；退出业务：当前期侧份额按 0 处理。两类业务都必须保留在输出中。
+
+```text
+MTR-PNLBIZ-005 drift_pp_i
+  = current_ytd_balance_share_pct_i
+  - prior_year_same_period_ytd_balance_share_pct_i
+```
+
+- 正值表示份额上升，负值表示份额下降；最终输出保留 2 位小数。
+- 漂移必须由两期未舍入的原始余额/有效总分母相减，只在最终输出时舍入；不得先舍入两期份额再相减。
+- 若任一期间没有可用总日均余额分母，该指标整体不可用并显式返回比较期缺失状态，不得把整个期间补 0。
+- 上年同期间的 requested/resolved 截止日必须单独披露；若日历日不存在或数据未发布，不得静默改用上一年末。
+
+### 15.5 规模—FTP后收益相对象限（MTR-PNLBIZ-007）
+
+- X 轴：本节 15.2 同口径的 YTD 人民币等值日均余额份额（`balance_share_pct`）。
+- Y 轴：同一 YTD 区间、同一父级业务的 `ftp_net_annualized_yield_pct`。
+- 只有 X/Y 两轴均非空的父级行进入分割线与分类；合格行至少 6 行，否则不生成正式象限。
+- X/Y 分割线分别为当期合格父级行的中位数；偶数行时取中间两值的算术平均。
+
+```text
+x >= median_x and y >= median_y -> large_high
+x >= median_x and y <  median_y -> large_low
+x <  median_x and y >= median_y -> small_high
+x <  median_x and y <  median_y -> small_low
+```
+
+- 该象限仅描述当期业务相对位置。正式文案不得输出或暗示增配、压降、退出、考核或限额建议。
+- 中位数会随当期业务集合变化，不得将不同期间的象限标签直接解释为绝对门槛变化。
+- 正式分类必须由后端正式计算链路返回；前端只负责格式化和展示，不得自行重算中位数或象限。
+
+### 15.6 未追溯趋势（MTR-PNLBIZ-006，diagnostic-only）
+
+`MTR-PNLBIZ-006` 保持独立的 formal 对账健康度诊断：
+
+```text
+untraced_share_pct = untraced_formal_fi_row_count / total_formal_fi_row_count * 100
+```
+
+- `total_formal_fi_row_count = 0` 时返回 `null`。
+- 诊断摘要必须返回 `available` 与 `availability_reason`：底层存储或查询失败为 `source_unavailable`；查询成功但滚动窗口没有 formal FI 观测为 `no_observations`。两者都返回空 `rows`，但不得解释为未追溯占比为 0；外层质量至少标记为 `warning`。
+- 该指标必须使用 `metric_kind=diagnostic_only`，与业务分析指标分区展示。
+- 它不得进入集中度、负 FTP、份额漂移或相对象限计算，也不得形成业务贡献、拖累、增配或压降结论。

@@ -577,6 +577,8 @@ class PnlByBusinessConcentrationSummary(BaseModel):
 
     year: int
     as_of_date: str | None
+    currency_basis: Literal["CNY_EQUIVALENT"]
+    population_basis: Literal["YTD_AVG_BALANCE_PARENT_ROWS"]
     total_avg_balance: Decimal | None
     hhi_pct: Decimal | None
     top_n: int
@@ -590,8 +592,11 @@ class PnlByBusinessNegativeFtpPersistenceRow(BaseModel):
     row_key: str
     business_type: str
     months_observed: int
+    eligible: bool
+    status: Literal["eligible", "insufficient_observations"]
     negative_ftp_month_share_pct: Decimal | None
-    negative_ftp_longest_streak_months: int
+    negative_ftp_longest_streak_months: int | None
+    warning_triggered: bool
 
 
 class PnlByBusinessNegativeFtpPersistenceSummary(BaseModel):
@@ -602,8 +607,13 @@ class PnlByBusinessNegativeFtpPersistenceSummary(BaseModel):
     window_start_month: str | None
     window_end_month: str | None
     months_observed: int
+    eligible: bool
+    status: Literal["eligible", "insufficient_observations"]
     negative_ftp_month_share_pct: Decimal | None
-    negative_ftp_longest_streak_months: int
+    negative_ftp_longest_streak_months: int | None
+    warning_threshold_pct: Decimal
+    minimum_observed_months: int
+    warning_row_count: int
     rows: list[PnlByBusinessNegativeFtpPersistenceRow]
 
 
@@ -612,9 +622,10 @@ class PnlByBusinessShareDriftRow(BaseModel):
 
     row_key: str
     business_type: str
-    current_share_pct: Decimal
+    current_share_pct: Decimal | None
     baseline_share_pct: Decimal | None
     drift_pp: Decimal | None
+    lifecycle_status: Literal["continued", "new", "exited", "unavailable"]
 
 
 class PnlByBusinessShareDriftSummary(BaseModel):
@@ -625,7 +636,45 @@ class PnlByBusinessShareDriftSummary(BaseModel):
     baseline_year: int
     baseline_as_of_date: str | None
     baseline_available: bool
+    available: bool
+    availability_reason: (
+        Literal[
+            "baseline_missing",
+            "current_total_non_positive",
+            "baseline_total_non_positive",
+        ]
+        | None
+    )
+    comparison_basis: Literal["PRIOR_YEAR_SAME_PERIOD_YTD_AVG_BALANCE_SHARE"]
     rows: list[PnlByBusinessShareDriftRow]
+
+
+class PnlByBusinessScaleYieldQuadrantRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_key: str
+    business_type: str
+    avg_balance: Decimal
+    scale_share_pct: Decimal
+    ftp_net_annualized_yield_pct: Decimal
+    quadrant_key: Literal["LARGE_HIGH", "LARGE_LOW", "SMALL_HIGH", "SMALL_LOW"]
+
+
+class PnlByBusinessScaleYieldQuadrantSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    as_of_date: str
+    currency_basis: Literal["CNY_EQUIVALENT"]
+    scale_basis: Literal["YTD_AVG_BALANCE_SHARE"]
+    yield_basis: Literal["FTP_NET_ANNUALIZED_YIELD_PCT"]
+    minimum_eligible_rows: int
+    eligible_row_count: int
+    total_avg_balance: Decimal | None
+    available: bool
+    scale_share_median_pct: Decimal | None
+    ftp_net_annualized_yield_median_pct: Decimal | None
+    rows: list[PnlByBusinessScaleYieldQuadrantRow]
 
 
 class PnlByBusinessUntracedTrendRow(BaseModel):
@@ -646,15 +695,70 @@ class PnlByBusinessUntracedTrendSummary(BaseModel):
 
     as_of_date: str
     lookback_months: int
+    available: bool
+    availability_reason: Literal["source_unavailable", "no_observations"] | None
     rows: list[PnlByBusinessUntracedTrendRow]
+
+
+PnlByBusinessInsightsAdmissionReason = Literal[
+    "component_unavailable",
+    "unexpected_basis",
+    "unexpected_formal_use_allowed",
+    "unexpected_result_kind",
+    "missing_trace_id",
+    "unexpected_source_surface",
+    "missing_source_version",
+    "missing_rule_version",
+    "missing_cache_version",
+    "date_mismatch",
+    "fallback_used",
+    "unusable_quality",
+    "unusable_vendor",
+    "nonformal_source_tables",
+    "missing_required_source_tables",
+]
+
+
+class PnlByBusinessInsightsComponentEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    component: str
+    requested_report_date: str | None
+    resolved_report_date: str | None
+    fallback_mode: Literal["none", "latest_snapshot"]
+    quality_flag: Literal["ok", "warning", "error", "stale"]
+    vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"]
+    basis: Literal["formal", "scenario", "analytical", "ledger"] | None
+    formal_use_allowed: bool | None
+    result_kind: str | None
+    trace_id: str | None
+    source_surface: str | None
+    source_version: str | None
+    rule_version: str | None
+    cache_version: str | None
+    tables_used: list[str]
+    formal_source_admitted: bool
+    admission_reason: PnlByBusinessInsightsAdmissionReason | None
 
 
 class PnlByBusinessCandidateInsightsPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    result_version: Literal["v2"]
     year: int
     as_of_date: str
+    baseline_requested_report_date: str
+    baseline_resolved_report_date: str | None
+    baseline_fallback_mode: Literal["none", "latest_snapshot", "unavailable"]
+    component_evidence: list[PnlByBusinessInsightsComponentEvidence]
     concentration: PnlByBusinessConcentrationSummary
     negative_ftp_persistence: PnlByBusinessNegativeFtpPersistenceSummary
     share_drift: PnlByBusinessShareDriftSummary
+    scale_yield_quadrant: PnlByBusinessScaleYieldQuadrantSummary
     reconciliation_diagnostics: PnlByBusinessUntracedTrendSummary
+
+
+class PnlByBusinessInsightsPayload(PnlByBusinessCandidateInsightsPayload):
+    """Approved leadership-analysis payload; reconciliation remains diagnostic-only."""
+
+    model_config = ConfigDict(extra="forbid")

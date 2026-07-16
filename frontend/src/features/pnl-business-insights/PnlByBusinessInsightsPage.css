@@ -69,6 +69,21 @@
 
 /* 对账健康度诊断区块：与上方业务分析区块刻意用中性灰调隔离，禁止使用 warning/danger/info 等强调色，
    以免被误读为业务结论或业务预警。 */
+.pnl-by-business-insights-quadrant-card {
+  min-height: 148px;
+  padding: 14px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-insights-quadrant-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
 .pnl-by-business-insights-reconciliation-divider {
   margin: 40px 0 0;
   border: none;

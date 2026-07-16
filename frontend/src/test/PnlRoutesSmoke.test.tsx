@@ -64,6 +64,7 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
 
 function buildPnlClient(): ApiClient {
   const base = createApiClient({ mode: "real" });
+  const mockInsightsClient = createApiClient({ mode: "mock" });
   const dates: PnlDatesPayload = {
     report_dates: ["2025-12-31", "2025-11-30"],
     formal_fi_report_dates: ["2025-12-31", "2025-11-30"],
@@ -867,6 +868,9 @@ function buildPnlClient(): ApiClient {
         period_end_date: asOfDate ?? byBusinessYtd.period_end_date,
       },
     })),
+    getPnlByBusinessInsights: vi.fn((year: number, asOfDate: string) =>
+      mockInsightsClient.getPnlByBusinessInsights(year, asOfDate),
+    ),
     getPnlByBusinessMonthly: vi.fn(async (year: number, asOfDate?: string) => ({
       result_meta: buildMeta("pnl.by_business_monthly", "tr_route_business_monthly"),
       result: {
@@ -1060,6 +1064,24 @@ describe("pnl routed pages smoke", () => {
     expect(source).toContain("var(--moss-color-info-50)");
   });
 
+  it("keeps pnl mobile controls touch-sized", () => {
+    const css = readFileSync(YIELD_ANALYSIS_SOURCE_PATHS[1], "utf8");
+    const mobileBreakpoint = css.slice(css.indexOf("@media (max-width: 640px)"));
+    const mainTabBlock =
+      mobileBreakpoint.match(/\.yield-analysis-main-tab\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    const reportPeriodControlBlock =
+      mobileBreakpoint.match(/\.yield-analysis-control\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    const filterButtonBlock =
+      mobileBreakpoint.match(/\.pnl-filter-button\s*\{[\s\S]*?\}/)?.[0] ?? "";
+    const detailToggleBlock =
+      mobileBreakpoint.match(/\.yield-pnl-detail-card__toggle\s*\{[\s\S]*?\}/)?.[0] ?? "";
+
+    expect(mainTabBlock).toContain("min-height: 44px;");
+    expect(reportPeriodControlBlock).toContain("height: 44px;");
+    expect(filterButtonBlock).toContain("min-height: 44px;");
+    expect(detailToggleBlock).toContain("min-height: 44px;");
+  });
+
   it("renders the real /pnl route surface through workbench routes", async () => {
     const user = userEvent.setup();
 
@@ -1097,6 +1119,203 @@ describe("pnl routed pages smoke", () => {
     expect(screen.getByText("静态 NIM")).toBeInTheDocument();
     expect(screen.getAllByText(/剔除无到期日投资/).length).toBeGreaterThan(0);
     expect(screen.getByText(/日均分析页使用区间日均分母/)).toBeInTheDocument();
+  });
+
+  it("shows report-period loading before any pnl amount readout", async () => {
+    const client = buildPnlClient();
+    client.getFormalPnlDates = vi.fn(() => new Promise<never>(() => undefined));
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("报告期加载中")).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
+  });
+
+  it("shows report-period failure before any pnl amount readout", async () => {
+    const client = buildPnlClient();
+    client.getFormalPnlDates = vi.fn(async () => {
+      throw new Error("dates unavailable");
+    });
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("报告期加载失败")).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
+  });
+
+  it("shows no available report period when the dates response is empty", async () => {
+    const client = buildPnlClient();
+    client.getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.dates", "tr_route_dates_empty"),
+      result: {
+        report_dates: [],
+        formal_fi_report_dates: [],
+        nonstd_bridge_report_dates: [],
+      },
+    }));
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("暂无可用报告期")).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
+  });
+
+  it("shows pnl-detail loading before any pnl amount readout", async () => {
+    const client = buildPnlClient();
+    client.getPnlV1Data = vi.fn(() => new Promise<never>(() => undefined));
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("收益明细加载中")).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
+  });
+
+  it("shows pnl-detail failure before any pnl amount readout", async () => {
+    const client = buildPnlClient();
+    client.getPnlV1Data = vi.fn(async () => {
+      throw new Error("detail unavailable");
+    });
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("收益明细加载失败")).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
+  });
+
+  it("shows a summary-query error while pnl detail remains non-ready", async () => {
+    const user = userEvent.setup();
+    const client = buildPnlClient();
+    client.getPnlV1Data = vi.fn(async () => {
+      throw new Error("detail unavailable");
+    });
+    client.getFormalPnlOverview = vi.fn(async () => {
+      throw new Error("overview unavailable");
+    });
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("收益明细加载失败")).toBeInTheDocument();
+    const summaryButton = screen.getByRole("button", { name: "查询汇总数据" });
+    expect(summaryButton).toBeEnabled();
+    await user.click(summaryButton);
+
+    expect(await screen.findByText("overview unavailable", { selector: '[role="alert"]' })).toBeVisible();
+  });
+
+  it("shows an empty pnl-detail state instead of a zero amount", async () => {
+    const client = buildPnlClient();
+    const getPnlV1Data = client.getPnlV1Data;
+    client.getPnlV1Data = vi.fn(async (date: string) => {
+      const response = await getPnlV1Data(date);
+      return {
+        ...response,
+        result: { ...response.result, rows: [] },
+      };
+    });
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("当前报告期暂无收益明细")).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
+  });
+
+  it("hides pnl amounts when the active filters match no detail rows", async () => {
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/pnl"], { client: buildPnlClient() });
+
+    expect(await screen.findByTestId("yield-analysis-pnl-readout")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("收益名称或代码搜索"), "missing-bond");
+
+    expect(await screen.findByText(/筛选条件下.*无.*明细/)).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
+  });
+
+  it("keeps an explicit zero pnl amount when all numeric fields are complete", async () => {
+    const client = buildPnlClient();
+    const getPnlV1Data = client.getPnlV1Data;
+    client.getPnlV1Data = vi.fn(async (date: string) => {
+      const response = await getPnlV1Data(date);
+      return {
+        ...response,
+        result: {
+          ...response.result,
+          rows: response.result.rows.map((row) => ({
+            ...row,
+            interest_income: "0.00",
+            fair_value_change: "0.00",
+            capital_gain: "0.00",
+            total_pnl: "0.00",
+          })),
+        },
+      };
+    });
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    const pnlReadout = await screen.findByTestId("yield-analysis-pnl-readout");
+    expect(within(pnlReadout).getAllByText("0.00 万")).toHaveLength(4);
+    expect(screen.queryByText("收益数据不完整")).not.toBeInTheDocument();
+  });
+
+  it("shows incomplete pnl data instead of converting a missing number to zero", async () => {
+    const client = buildPnlClient();
+    const getPnlV1Data = client.getPnlV1Data;
+    client.getPnlV1Data = vi.fn(async (date: string) => {
+      const response = await getPnlV1Data(date);
+      return {
+        ...response,
+        result: {
+          ...response.result,
+          rows: response.result.rows.map((row) => ({ ...row, total_pnl: "" })),
+        },
+      };
+    });
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("收益数据不完整")).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["interest_income", null],
+    ["fair_value_change", undefined],
+    ["capital_gain", "NaN"],
+    ["total_pnl", "Infinity"],
+  ] as const)("treats an invalid %s value as incomplete pnl data", async (field, invalidValue) => {
+    const client = buildPnlClient();
+    const getPnlV1Data = client.getPnlV1Data;
+    client.getPnlV1Data = vi.fn(async (date: string) => {
+      const response = await getPnlV1Data(date);
+      return {
+        ...response,
+        result: {
+          ...response.result,
+          rows: response.result.rows.map(
+            (row) =>
+              ({
+                ...row,
+                [field]: invalidValue,
+              }) as unknown as typeof row,
+          ),
+        },
+      };
+    });
+
+    renderWorkbenchApp(["/pnl"], { client });
+
+    expect(await screen.findByText("收益数据不完整")).toBeInTheDocument();
+    expect(screen.queryByTestId("yield-analysis-pnl-readout")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 万")).not.toBeInTheDocument();
   });
 
   it("renders the real /pnl-bridge route surface through workbench routes", async () => {
@@ -1226,6 +1445,9 @@ describe("pnl routed pages smoke", () => {
       expect(client.getPnlByBusinessYtd).toHaveBeenCalledWith(2025, "2025-12-31");
     });
     await waitFor(() => {
+      expect(client.getPnlByBusinessInsights).toHaveBeenCalledWith(2025, "2025-12-31");
+    });
+    await waitFor(() => {
       expect(client.getAdbComparison).toHaveBeenCalledWith(
         "2025-12-01",
         "2025-12-31",
@@ -1278,6 +1500,16 @@ describe("pnl routed pages smoke", () => {
     expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("总表分项拆解");
     expect(screen.getByTestId("pnl-by-business-result-meta-panel")).toHaveTextContent("tr_route_business_monthly");
     expect(screen.getByTestId("pnl-by-business-data-status-strip")).toHaveTextContent("tr_route_business_ytd");
+    expect(await screen.findByTestId("pnl-by-business-insights-leadership-panel")).toHaveTextContent("正式结构分析");
+    expect(screen.getByTestId("pnl-by-business-insights-leadership-panel")).toHaveTextContent("结构分析待复核");
+    expect(screen.getByTestId("pnl-by-business-insights-leadership-detail-link")).toHaveAttribute(
+      "href",
+      "/pnl-by-business-insights?year=2025&as_of_date=2025-12-31",
+    );
+    expect(screen.getByRole("link", { name: "业务结构与FTP后收益分析 →" })).toHaveAttribute(
+      "href",
+      "/pnl-by-business-insights?year=2025&as_of_date=2025-12-31",
+    );
     expect(screen.getByTestId("pnl-by-business-state-definition-pending")).toHaveClass(
       "pnl-by-business-state-surface--compact-governance",
     );

@@ -36,7 +36,10 @@ CASHFLOW_PROJECTION_SAMPLE_PATHS = {"/api/cashflow-projection"}
 CASHFLOW_PROJECTION_READ_HEADERS = {"X-User-Id": "cashflow-projection-read-user", "X-User-Role": "viewer"}
 PNL_SAMPLE_PATHS = {"/api/pnl/bridge", "/api/pnl/data", "/api/pnl/overview"}
 PNL_READ_HEADERS = {"X-User-Id": "pnl-read-user", "X-User-Role": "viewer"}
-PNL_BUSINESS_INSIGHTS_SAMPLE_PATHS = {"/api/pnl/by-business-candidate-insights"}
+PNL_BUSINESS_INSIGHTS_SAMPLE_PATHS = {
+    "/api/pnl/by-business-candidate-insights",
+    "/api/pnl/by-business-insights",
+}
 PNL_BUSINESS_INSIGHTS_READ_HEADERS = {"X-User-Id": "pnl-business-insights-read-user", "X-User-Role": "viewer"}
 PRODUCT_CATEGORY_PNL_SAMPLE_PATHS = {"/ui/pnl/product-category"}
 PRODUCT_CATEGORY_PNL_READ_HEADERS = {
@@ -190,10 +193,10 @@ def _pnl_business_insights_balance_row(
 
 
 def _setup_pnl_business_insights(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two ZQTZ business types (国债/政策性金融债) across 2025-12-31, 2026-01-31, 2026-02-28.
+    """Two ZQTZ business types across the exact baseline/monthly/current cutoffs.
 
-    2025-12-31 doubles as the prior-year baseline for the share-drift metric; 2026-01/02 are the
-    current-year YTD/monthly window used by concentration and negative-FTP-persistence.
+    2025-02-28 is the prior-year same-period baseline, 2025-12-31 closes the prior-year
+    monthly component, and 2026-01/02 supply the current YTD/monthly window.
     """
     task_module = load_module(
         "backend.app.tasks.pnl_materialize",
@@ -208,6 +211,10 @@ def _setup_pnl_business_insights(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     get_settings.cache_clear()
 
     fi_rows_by_date = {
+        "2025-02-28": [
+            _pnl_business_insights_fi_row(report_date="2025-02-28", instrument_code="TB001", interest_income="5.00"),
+            _pnl_business_insights_fi_row(report_date="2025-02-28", instrument_code="PF001", interest_income="2.00"),
+        ],
         "2025-12-31": [
             _pnl_business_insights_fi_row(report_date="2025-12-31", instrument_code="TB001", interest_income="5.00"),
             _pnl_business_insights_fi_row(report_date="2025-12-31", instrument_code="PF001", interest_income="2.00"),
@@ -236,7 +243,8 @@ def _setup_pnl_business_insights(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         "backend/app/repositories/balance_analysis_repo.py",
     )
     balances = {
-        "2025-12-31": {"TB001": "700.00000000", "PF001": "300.00000000"},
+        "2025-02-28": {"TB001": "700.00000000", "PF001": "300.00000000"},
+        "2025-12-31": {"TB001": "680.00000000", "PF001": "320.00000000"},
         "2026-01-31": {"TB001": "650.00000000", "PF001": "350.00000000"},
         "2026-02-28": {"TB001": "600.00000000", "PF001": "400.00000000"},
     }
@@ -2582,11 +2590,17 @@ def _validate_pnl_business_insights(actual: dict[str, Any], expected: dict[str, 
             ("result_meta", "as_of_date"),
             ("result_meta", "filters_applied"),
             ("result_meta", "tables_used"),
+            ("result", "result_version"),
             ("result", "year"),
             ("result", "as_of_date"),
+            ("result", "baseline_requested_report_date"),
+            ("result", "baseline_resolved_report_date"),
+            ("result", "baseline_fallback_mode"),
+            ("result", "component_evidence"),
             ("result", "concentration"),
             ("result", "negative_ftp_persistence"),
             ("result", "share_drift"),
+            ("result", "scale_yield_quadrant"),
             ("result", "reconciliation_diagnostics"),
         ],
     )
@@ -2719,7 +2733,10 @@ def test_supporting_only_golden_sample_files_exist_without_capture_ready_claim()
 def test_capture_ready_golden_sample_metadata_is_in_expected_state() -> None:
     for sample_id in CAPTURE_READY_CASES:
         approval = _read_text(sample_id, "approval.md")
-        assert "captured-awaiting-approval" in approval
+        if sample_id == "GS-PNL-BUSINESS-INSIGHTS-A":
+            assert "- Status: `approved`" in approval
+        else:
+            assert "captured-awaiting-approval" in approval
 
 
 def test_product_category_capture_ready_companion_scenario_files_exist() -> None:

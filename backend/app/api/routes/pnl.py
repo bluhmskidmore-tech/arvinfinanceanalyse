@@ -295,6 +295,29 @@ def by_business_candidate_insights(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/pnl/by-business-insights", response_model=ResultEnvelope)
+def by_business_insights(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    year: int = Query(..., ge=2000, le=2100, description="Calendar year for approved business insights."),
+    as_of_date: str = Query(..., description="Selected report-date cutoff in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
+    try:
+        return import_module(
+            "backend.app.services.pnl_by_business_candidate_insights"
+        ).pnl_by_business_insights_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            year=year,
+            as_of_date=as_of_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/pnl/by-business/manual-adjustments")
 def create_by_business_manual_adjustment(
     payload: PnlByBusinessManualAdjustmentRequest,

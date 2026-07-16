@@ -39,6 +39,8 @@ import { buildAdbAvgByBusinessTypeMap, buildYtdAvgByBusinessTypeMap } from "./pn
 import { downloadPnlByBusinessExcel } from "./pnlByBusinessExport";
 import { PnlByBusinessManagementChangePanel } from "./PnlByBusinessManagementChangePanel";
 import { PnlByBusinessMonthlyTrendPanel } from "./PnlByBusinessMonthlyTrendPanel";
+import { PnlByBusinessInsightsLeadershipPanel } from "./PnlByBusinessInsightsLeadershipPanel";
+import { buildPnlByBusinessInsightsLeadershipModel } from "./pnlByBusinessInsightsModel";
 import {
   VIEW_MODE_SUBTITLES,
   buildPnlByBusinessMonthlyAdjustmentBridge,
@@ -2075,6 +2077,29 @@ export default function PnlByBusinessPage() {
   });
   const ytdResult = businessQuery.data?.result;
 
+  const businessInsightsQuery = useQuery({
+    queryKey: ["pnl-by-business", "insights", client.mode, selectedYear, selectedReportDate],
+    enabled: Boolean(selectedReportDate && selectedYear && viewMode === "ytd"),
+    queryFn: () => client.getPnlByBusinessInsights(selectedYear, selectedReportDate),
+    retry: false,
+  });
+  const businessInsightsLeadershipModel = useMemo(
+    () =>
+      buildPnlByBusinessInsightsLeadershipModel({
+        requestedDate: selectedReportDate,
+        envelope: businessInsightsQuery.data,
+        isLoading: businessInsightsQuery.isLoading,
+        isError: businessInsightsQuery.isError,
+      }),
+    [
+      businessInsightsQuery.data,
+      businessInsightsQuery.isError,
+      businessInsightsQuery.isLoading,
+      selectedReportDate,
+    ],
+  );
+  const businessInsightsHref = `/pnl-by-business-insights?year=${encodeURIComponent(String(selectedYear))}&as_of_date=${encodeURIComponent(selectedReportDate)}`;
+
   const formalBusinessQuery = useQuery({
     queryKey: ["pnl-by-business", "formal", client.mode, selectedReportDate],
     enabled: Boolean(selectedReportDate && viewMode === "formal"),
@@ -2642,6 +2667,13 @@ export default function PnlByBusinessPage() {
           meta: mainBreakdownQuery.data.result_meta,
         });
       }
+      if (businessInsightsQuery.data) {
+        sections.push({
+          key: "by-business-insights",
+          title: "正式结构分析",
+          meta: businessInsightsQuery.data.result_meta,
+        });
+      }
       return sections;
     }
     if (viewMode === "formal" && formalBusinessQuery.data) {
@@ -2689,8 +2721,8 @@ export default function PnlByBusinessPage() {
               >
                 {client.mode === "real" ? "正式读路径" : "Mock 回放"}
               </span>
-              <Link to="/pnl-by-business-insights" className="pnl-by-business-candidate-insights-link">
-                候选分析（试点）→
+              <Link to={businessInsightsHref} className="pnl-by-business-candidate-insights-link">
+                业务结构与FTP后收益分析 →
               </Link>
               <Link to="/product-category-pnl" className="pnl-by-business-candidate-insights-link">
                 全行生息资产利差 →
@@ -2740,6 +2772,14 @@ export default function PnlByBusinessPage() {
                 viewMode !== "formal" && (manualAdjustmentQuery.isError || manualAdjustmentDateMismatch)
               }
             />
+            {viewMode === "ytd" ? (
+              <PnlByBusinessInsightsLeadershipPanel
+                model={businessInsightsLeadershipModel}
+                year={selectedYear}
+                asOfDate={selectedReportDate}
+                onSelectRow={setSelectedBusinessKey}
+              />
+            ) : null}
             {viewMode !== "formal" ? (
               <PnlByBusinessManagementChangePanel
                 managementChange={monthlyBusinessQuery.data?.result.management_change}

@@ -3668,6 +3668,8 @@ export type PnlByBusinessConcentrationRow = {
 export type PnlByBusinessConcentrationSummary = {
   year: number;
   as_of_date: string | null;
+  currency_basis: "CNY_EQUIVALENT";
+  population_basis: "YTD_AVG_BALANCE_PARENT_ROWS";
   total_avg_balance: string | null;
   hhi_pct: string | null;
   top_n: number;
@@ -3680,7 +3682,10 @@ export type PnlByBusinessNegativeFtpPersistenceRow = {
   business_type: string;
   months_observed: number;
   negative_ftp_month_share_pct: string | null;
-  negative_ftp_longest_streak_months: number;
+  negative_ftp_longest_streak_months: number | null;
+  warning_triggered: boolean;
+  eligible: boolean;
+  status: "eligible" | "insufficient_observations";
 };
 
 export type PnlByBusinessNegativeFtpPersistenceSummary = {
@@ -3690,16 +3695,22 @@ export type PnlByBusinessNegativeFtpPersistenceSummary = {
   window_end_month: string | null;
   months_observed: number;
   negative_ftp_month_share_pct: string | null;
-  negative_ftp_longest_streak_months: number;
+  negative_ftp_longest_streak_months: number | null;
+  warning_threshold_pct: string;
+  minimum_observed_months: number;
+  warning_row_count: number;
+  eligible: boolean;
+  status: "eligible" | "insufficient_observations";
   rows: PnlByBusinessNegativeFtpPersistenceRow[];
 };
 
 export type PnlByBusinessShareDriftRow = {
   row_key: string;
   business_type: string;
-  current_share_pct: string;
+  current_share_pct: string | null;
   baseline_share_pct: string | null;
   drift_pp: string | null;
+  lifecycle_status: "continued" | "new" | "exited" | "unavailable";
 };
 
 export type PnlByBusinessShareDriftSummary = {
@@ -3708,7 +3719,80 @@ export type PnlByBusinessShareDriftSummary = {
   baseline_year: number;
   baseline_as_of_date: string | null;
   baseline_available: boolean;
+  available: boolean;
+  availability_reason:
+    | "baseline_missing"
+    | "current_total_non_positive"
+    | "baseline_total_non_positive"
+    | null;
+  comparison_basis: "PRIOR_YEAR_SAME_PERIOD_YTD_AVG_BALANCE_SHARE";
   rows: PnlByBusinessShareDriftRow[];
+};
+
+export type PnlByBusinessInsightsComponentEvidence = {
+  component: string;
+  requested_report_date: string | null;
+  resolved_report_date: string | null;
+  fallback_mode: "none" | "latest_snapshot";
+  quality_flag: Exclude<ApiQuality, "missing">;
+  vendor_status: "ok" | "vendor_stale" | "vendor_unavailable";
+  basis: "formal" | "scenario" | "analytical" | "ledger" | null;
+  formal_use_allowed: boolean | null;
+  result_kind: string | null;
+  trace_id: string | null;
+  source_surface: string | null;
+  source_version: string | null;
+  rule_version: string | null;
+  cache_version: string | null;
+  tables_used: string[];
+  formal_source_admitted: boolean;
+  admission_reason:
+    | "component_unavailable"
+    | "unexpected_basis"
+    | "unexpected_formal_use_allowed"
+    | "unexpected_result_kind"
+    | "missing_trace_id"
+    | "unexpected_source_surface"
+    | "missing_source_version"
+    | "missing_rule_version"
+    | "missing_cache_version"
+    | "date_mismatch"
+    | "fallback_used"
+    | "unusable_quality"
+    | "unusable_vendor"
+    | "nonformal_source_tables"
+    | "missing_required_source_tables"
+    | null;
+};
+
+export type PnlByBusinessScaleYieldQuadrantKey =
+  | "LARGE_HIGH"
+  | "LARGE_LOW"
+  | "SMALL_HIGH"
+  | "SMALL_LOW";
+
+export type PnlByBusinessScaleYieldQuadrantRow = {
+  row_key: string;
+  business_type: string;
+  avg_balance: string;
+  scale_share_pct: string;
+  ftp_net_annualized_yield_pct: string;
+  quadrant_key: PnlByBusinessScaleYieldQuadrantKey;
+};
+
+export type PnlByBusinessScaleYieldQuadrantSummary = {
+  year: number;
+  as_of_date: string;
+  currency_basis: "CNY_EQUIVALENT";
+  scale_basis: "YTD_AVG_BALANCE_SHARE";
+  yield_basis: "FTP_NET_ANNUALIZED_YIELD_PCT";
+  minimum_eligible_rows: number;
+  eligible_row_count: number;
+  total_avg_balance: string | null;
+  available: boolean;
+  scale_share_median_pct: string | null;
+  ftp_net_annualized_yield_median_pct: string | null;
+  rows: PnlByBusinessScaleYieldQuadrantRow[];
 };
 
 /**
@@ -3729,17 +3813,27 @@ export type PnlByBusinessUntracedTrendRow = {
 export type PnlByBusinessUntracedTrendSummary = {
   as_of_date: string;
   lookback_months: number;
+  available: boolean;
+  availability_reason: "source_unavailable" | "no_observations" | null;
   rows: PnlByBusinessUntracedTrendRow[];
 };
 
 export type PnlByBusinessCandidateInsightsPayload = {
+  result_version: "v2";
   year: number;
   as_of_date: string;
+  baseline_requested_report_date: string;
+  baseline_resolved_report_date: string | null;
+  baseline_fallback_mode: "none" | "latest_snapshot" | "unavailable";
+  component_evidence: PnlByBusinessInsightsComponentEvidence[];
   concentration: PnlByBusinessConcentrationSummary;
   negative_ftp_persistence: PnlByBusinessNegativeFtpPersistenceSummary;
   share_drift: PnlByBusinessShareDriftSummary;
+  scale_yield_quadrant: PnlByBusinessScaleYieldQuadrantSummary;
   reconciliation_diagnostics: PnlByBusinessUntracedTrendSummary;
 };
+
+export type PnlByBusinessInsightsPayload = PnlByBusinessCandidateInsightsPayload;
 
 export type PnlYearlyBusinessSummaryRow = {
   year: number;
@@ -6098,6 +6192,51 @@ export type LedgerPnlCandidateFinancialIndicatorNetInterestComponentBridge = {
   components: LedgerPnlCandidateFinancialIndicatorNetInterestComponent[];
 };
 
+export type LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverRow = {
+  rank: number;
+  component_metric_id: LedgerPnlCandidateFinancialIndicatorComponentMetricId;
+  component_metric_name: string;
+  account_code: string;
+  account_name: string;
+  formula_weight: -1 | 1;
+  effective_component_weight: string;
+  effective_net_weight: string;
+  current_value_yi: string;
+  previous_value_yi: string;
+  component_delta_yi: string;
+  contribution_to_net_delta_yi: string;
+};
+
+export type LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverSummary = {
+  analysis_kind: "accounting_account_driver_summary";
+  contribution_grain: "component_account";
+  status: "available" | "not_evaluable";
+  metric_id: "income.interest.net";
+  currency: "CNX";
+  basis: "calendar_month_from_cumulative";
+  method: "finance_metric_account_contribution_ranking";
+  unit: "亿元";
+  quality_status: "standard_candidate" | "degraded_candidate" | "not_evaluable";
+  foot_status: "passed" | "failed" | "not_evaluable";
+  driver_status: "unclear";
+  formal_use_allowed: false;
+  certification_effect: "none";
+  net_delta_yi: string | null;
+  lift_contribution_total_yi: string | null;
+  drag_contribution_total_yi: string | null;
+  account_contribution_total_yi: string | null;
+  reconciliation_delta_yi: string | null;
+  contributing_row_count: number | null;
+  lift_row_count: number | null;
+  drag_row_count: number | null;
+  neutral_row_count: number | null;
+  excluded_offset_row_count: number | null;
+  ranking_limit: 3;
+  top_lifts: LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverRow[];
+  top_drags: LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverRow[];
+  reasons: string[];
+};
+
 export type LedgerPnlCandidateFinancialIndicatorFullScopeGap = {
   reason_code:
     | "missing_source_file"
@@ -6111,7 +6250,7 @@ export type LedgerPnlCandidateFinancialIndicatorFullScopeGap = {
 };
 
 export type LedgerPnlCandidateFinancialIndicatorPeriodComparison = {
-  contract_version: "candidate-financial-indicator-period-comparison-v2";
+  contract_version: "candidate-financial-indicator-period-comparison-v3";
   report_month: string;
   report_date: string;
   comparison_month: string;
@@ -6137,6 +6276,7 @@ export type LedgerPnlCandidateFinancialIndicatorPeriodComparison = {
   idempotency_key: string;
   source_periods: LedgerPnlCandidateFinancialIndicatorComparisonSourcePeriod[];
   net_interest_component_bridge: LedgerPnlCandidateFinancialIndicatorNetInterestComponentBridge;
+  net_interest_account_driver_summary: LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverSummary;
   metrics: LedgerPnlCandidateFinancialIndicatorPeriodComparisonMetric[];
 };
 

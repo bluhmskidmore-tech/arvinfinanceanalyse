@@ -11,6 +11,7 @@ import type {
   PnlByBusinessAnalysisDimension,
   PnlByBusinessAnalysisPayload,
   PnlByBusinessCandidateInsightsPayload,
+  PnlByBusinessInsightsPayload,
   PnlByBusinessManualAdjustmentListPayload,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessManualAdjustmentRequest,
@@ -66,6 +67,10 @@ type PnlBusinessClientMethods = {
     year: number,
     asOfDate: string,
   ) => Promise<ApiEnvelope<PnlByBusinessCandidateInsightsPayload>>;
+  getPnlByBusinessInsights: (
+    year: number,
+    asOfDate: string,
+  ) => Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>;
   createPnlByBusinessManualAdjustment: (
     payload: PnlByBusinessManualAdjustmentRequest,
   ) => Promise<PnlByBusinessManualAdjustmentPayload>;
@@ -99,6 +104,91 @@ export type PnlClientMethods =
   & QdbGlMonthlyAnalysisClientMethods;
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
+
+function priorYearSamePeriodDate(year: number, asOfDate: string): string {
+  const match = /^\d{4}-(\d{2})-(\d{2})$/.exec(asOfDate);
+  if (!match) {
+    return `${year - 1}${asOfDate.slice(4)}`;
+  }
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const lastDay = new Date(Date.UTC(year - 1, month, 0)).getUTCDate();
+  const validDay = Math.min(day, lastDay);
+  return `${year - 1}-${match[1]}-${String(validDay).padStart(2, "0")}`;
+}
+
+function buildEmptyPnlByBusinessInsightsPayload(
+  year: number,
+  asOfDate: string,
+): PnlByBusinessInsightsPayload {
+  return {
+    result_version: "v2",
+    year,
+    as_of_date: asOfDate,
+    baseline_requested_report_date: priorYearSamePeriodDate(year, asOfDate),
+    baseline_resolved_report_date: null,
+    baseline_fallback_mode: "unavailable",
+    component_evidence: [],
+    concentration: {
+      year,
+      as_of_date: asOfDate,
+      currency_basis: "CNY_EQUIVALENT",
+      population_basis: "YTD_AVG_BALANCE_PARENT_ROWS",
+      total_avg_balance: null,
+      hhi_pct: null,
+      top_n: 3,
+      top_n_share_pct: null,
+      rows: [],
+    },
+    negative_ftp_persistence: {
+      as_of_date: asOfDate,
+      lookback_months: 12,
+      window_start_month: null,
+      window_end_month: null,
+      months_observed: 0,
+      negative_ftp_month_share_pct: null,
+      negative_ftp_longest_streak_months: null,
+      warning_threshold_pct: "50.00",
+      minimum_observed_months: 6,
+      warning_row_count: 0,
+      eligible: false,
+      status: "insufficient_observations",
+      rows: [],
+    },
+    share_drift: {
+      year,
+      as_of_date: asOfDate,
+      baseline_year: year - 1,
+      baseline_as_of_date: null,
+      baseline_available: false,
+      available: false,
+      availability_reason: "baseline_missing",
+      comparison_basis: "PRIOR_YEAR_SAME_PERIOD_YTD_AVG_BALANCE_SHARE",
+      rows: [],
+    },
+    scale_yield_quadrant: {
+      year,
+      as_of_date: asOfDate,
+      currency_basis: "CNY_EQUIVALENT",
+      scale_basis: "YTD_AVG_BALANCE_SHARE",
+      yield_basis: "FTP_NET_ANNUALIZED_YIELD_PCT",
+      minimum_eligible_rows: 6,
+      eligible_row_count: 0,
+      total_avg_balance: null,
+      available: false,
+      scale_share_median_pct: null,
+      ftp_net_annualized_yield_median_pct: null,
+      rows: [],
+    },
+    reconciliation_diagnostics: {
+      as_of_date: asOfDate,
+      lookback_months: 12,
+      available: false,
+      availability_reason: "no_observations",
+      rows: [],
+    },
+  };
+}
 
 export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
   return {
@@ -310,43 +400,25 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
       await delay();
       return buildMockApiEnvelope(
         "pnl.by_business_candidate_insights",
-        {
-          year,
-          as_of_date: asOfDate,
-          concentration: {
-            year,
-            as_of_date: asOfDate,
-            total_avg_balance: "0.00",
-            hhi_pct: "0.00",
-            top_n: 3,
-            top_n_share_pct: "0.00",
-            rows: [],
-          },
-          negative_ftp_persistence: {
-            as_of_date: asOfDate,
-            lookback_months: 12,
-            window_start_month: null,
-            window_end_month: null,
-            months_observed: 0,
-            negative_ftp_month_share_pct: null,
-            negative_ftp_longest_streak_months: 0,
-            rows: [],
-          },
-          share_drift: {
-            year,
-            as_of_date: asOfDate,
-            baseline_year: year - 1,
-            baseline_as_of_date: null,
-            baseline_available: false,
-            rows: [],
-          },
-          reconciliation_diagnostics: {
-            as_of_date: asOfDate,
-            lookback_months: 12,
-            rows: [],
-          },
-        },
+        buildEmptyPnlByBusinessInsightsPayload(year, asOfDate),
         { basis: "analytical", formal_use_allowed: false, tables_used: ["pnl.by_business_ytd", "pnl.by_business_monthly"] },
+      );
+    },
+    async getPnlByBusinessInsights(year: number, asOfDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.by_business_insights",
+        buildEmptyPnlByBusinessInsightsPayload(year, asOfDate),
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          requested_report_date: asOfDate,
+          resolved_report_date: asOfDate,
+          as_of_date: asOfDate,
+          fallback_mode: "none",
+          fallback_date: null,
+          tables_used: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+        },
       );
     },
     async getPnlCampisiDecisionGrade(_options?: {
@@ -494,6 +566,14 @@ export function createRealPnlBusinessClient({
         fetchImpl,
         baseUrl,
         `/api/pnl/by-business-candidate-insights?${query.toString()}`,
+      );
+    },
+    getPnlByBusinessInsights: (year: number, asOfDate: string) => {
+      const query = new URLSearchParams({ year: String(year), as_of_date: asOfDate });
+      return requestJson<PnlByBusinessInsightsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business-insights?${query.toString()}`,
       );
     },
     getPnlCampisiDecisionGrade: (options) =>

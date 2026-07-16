@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/echarts", () => ({
   default: ({ option }: { option?: unknown }) => (
@@ -10,383 +10,494 @@ vi.mock("../../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../../api/client";
-import type {
-  ApiEnvelope,
-  PnlByBusinessCandidateInsightsPayload,
-  PnlByBusinessYtdPayload,
-  ResultMeta,
-} from "../../api/contracts";
-import { routerFuture } from "../../router/routerFuture";
+import type { ApiEnvelope, PnlByBusinessInsightsPayload, ResultMeta } from "../../api/contracts";
 import PnlByBusinessInsightsPage from "./PnlByBusinessInsightsPage";
 
-const resultMeta: ResultMeta = {
+const meta: ResultMeta = {
   trace_id: "tr_pnl_business_insights_test",
-  basis: "analytical",
-  result_kind: "pnl.by_business_candidate_insights",
-  formal_use_allowed: false,
+  basis: "formal",
+  result_kind: "pnl.by_business_insights",
+  formal_use_allowed: true,
   source_version: "sv_test",
   vendor_version: "vv_none",
-  rule_version: "rv_test",
-  cache_version: "cv_test",
-  quality_flag: "ok",
+  rule_version: "rv_pnl_by_business_insights_v1",
+  cache_version: "cv_pnl_by_business_insights_v1",
+  quality_flag: "warning",
   vendor_status: "ok",
   fallback_mode: "none",
   scenario_flag: false,
-  requested_report_date: "2026-02-28",
-  resolved_report_date: "2026-02-28",
-  as_of_date: "2026-02-28",
-  tables_used: ["pnl.by_business_ytd", "pnl.by_business_monthly"],
-  generated_at: "2026-06-30T00:00:00Z",
+  requested_report_date: "2026-06-30",
+  resolved_report_date: "2026-06-30",
+  as_of_date: "2026-06-30",
+  fallback_date: null,
+  date_basis: "formal_report_date_cutoff",
+  tables_used: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+  generated_at: "2026-07-15T00:00:00Z",
 };
 
 function buildPayload(
-  overrides?: Partial<PnlByBusinessCandidateInsightsPayload>,
-): ApiEnvelope<PnlByBusinessCandidateInsightsPayload> {
+  metaOverrides: Partial<ResultMeta> = {},
+  resultOverrides: Partial<PnlByBusinessInsightsPayload> = {},
+): ApiEnvelope<PnlByBusinessInsightsPayload> {
+  const quadrantRows: PnlByBusinessInsightsPayload["scale_yield_quadrant"]["rows"] = Array.from(
+    { length: 6 },
+    (_, index) => ({
+      row_key: `row_${index + 1}`,
+      business_type: `业务${index + 1}`,
+      avg_balance: String((index + 1) * 100),
+      scale_share_pct: String((index + 1) * 5),
+      ftp_net_annualized_yield_pct: String(index + 1),
+      quadrant_key: index < 3 ? "SMALL_LOW" : "LARGE_HIGH",
+    }),
+  );
   return {
-    result_meta: resultMeta,
+    result_meta: { ...meta, ...metaOverrides },
     result: {
+      result_version: "v2",
       year: 2026,
-      as_of_date: "2026-02-28",
+      as_of_date: "2026-06-30",
+      baseline_requested_report_date: "2025-06-30",
+      baseline_resolved_report_date: "2025-06-30",
+      baseline_fallback_mode: "none",
+      component_evidence: [
+        {
+          component: "current_ytd",
+          requested_report_date: "2026-06-30",
+          resolved_report_date: "2026-06-30",
+          fallback_mode: "none",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          basis: "analytical",
+          formal_use_allowed: false,
+          result_kind: "pnl.by_business_ytd",
+          trace_id: "tr_current",
+          source_surface: "formal_pnl",
+          source_version: "sv_current",
+          rule_version: "rv_ytd",
+          cache_version: "cv_ytd",
+          tables_used: ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
+          formal_source_admitted: true,
+          admission_reason: null,
+        },
+        {
+          component: "baseline_ytd",
+          requested_report_date: "2025-06-30",
+          resolved_report_date: "2025-06-30",
+          fallback_mode: "none",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          basis: "analytical",
+          formal_use_allowed: false,
+          result_kind: "pnl.by_business_ytd",
+          trace_id: "tr_baseline",
+          source_surface: "formal_pnl",
+          source_version: "sv_baseline",
+          rule_version: "rv_ytd",
+          cache_version: "cv_ytd",
+          tables_used: ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
+          formal_source_admitted: true,
+          admission_reason: null,
+        },
+        {
+          component: "monthly_2025",
+          requested_report_date: "2025-12-31",
+          resolved_report_date: "2025-12-31",
+          fallback_mode: "none",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          basis: "analytical",
+          formal_use_allowed: false,
+          result_kind: "pnl.by_business_monthly",
+          trace_id: "tr_monthly_2025",
+          source_surface: "formal_pnl",
+          source_version: "sv_monthly_2025",
+          rule_version: "rv_monthly",
+          cache_version: "cv_monthly",
+          tables_used: ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
+          formal_source_admitted: true,
+          admission_reason: null,
+        },
+        {
+          component: "monthly_2026",
+          requested_report_date: "2026-06-30",
+          resolved_report_date: "2026-06-30",
+          fallback_mode: "none",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          basis: "analytical",
+          formal_use_allowed: false,
+          result_kind: "pnl.by_business_monthly",
+          trace_id: "tr_monthly_2026",
+          source_surface: "formal_pnl",
+          source_version: "sv_monthly_2026",
+          rule_version: "rv_monthly",
+          cache_version: "cv_monthly",
+          tables_used: ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
+          formal_source_admitted: true,
+          admission_reason: null,
+        },
+      ],
       concentration: {
         year: 2026,
-        as_of_date: "2026-02-28",
-        total_avg_balance: "1000.00",
-        hhi_pct: "53.12",
+        as_of_date: "2026-06-30",
+        currency_basis: "CNY_EQUIVALENT",
+        population_basis: "YTD_AVG_BALANCE_PARENT_ROWS",
+        total_avg_balance: "3367.49",
+        hhi_pct: "13.42",
         top_n: 3,
-        top_n_share_pct: "100.00",
+        top_n_share_pct: "50.50",
         rows: [
-          {
-            row_key: "asset_zqtz_treasury_bond",
-            business_type: "国债",
-            avg_balance: "625.00",
-            share_pct: "62.50",
-          },
-          {
-            row_key: "asset_zqtz_policy_financial_bond",
-            business_type: "政策性金融债",
-            avg_balance: "375.00",
-            share_pct: "37.50",
-          },
+          { row_key: "row_6", business_type: "业务6", avg_balance: "600", share_pct: "30.00" },
+          { row_key: "row_5", business_type: "业务5", avg_balance: "500", share_pct: "25.00" },
         ],
       },
       negative_ftp_persistence: {
-        as_of_date: "2026-02-28",
+        as_of_date: "2026-06-30",
         lookback_months: 12,
-        window_start_month: "2025-03",
-        window_end_month: "2026-02",
-        months_observed: 3,
+        window_start_month: "2025-07",
+        window_end_month: "2026-06",
+        months_observed: 12,
         negative_ftp_month_share_pct: "0.00",
         negative_ftp_longest_streak_months: 0,
+        warning_threshold_pct: "50.00",
+        minimum_observed_months: 6,
+        warning_row_count: 1,
+        eligible: true,
+        status: "eligible",
         rows: [
           {
-            row_key: "asset_zqtz_treasury_bond",
-            business_type: "国债",
+            row_key: "asset_zqtz_interbank_cd",
+            business_type: "同业存单",
             months_observed: 12,
-            negative_ftp_month_share_pct: "66.67",
-            negative_ftp_longest_streak_months: 5,
-          },
-          {
-            row_key: "asset_zqtz_policy_financial_bond",
-            business_type: "政策性金融债",
-            months_observed: 12,
-            negative_ftp_month_share_pct: "16.67",
-            negative_ftp_longest_streak_months: 2,
+            negative_ftp_month_share_pct: "91.67",
+            negative_ftp_longest_streak_months: 9,
+            warning_triggered: true,
+            eligible: true,
+            status: "eligible",
           },
         ],
       },
       share_drift: {
         year: 2026,
-        as_of_date: "2026-02-28",
+        as_of_date: "2026-06-30",
         baseline_year: 2025,
-        baseline_as_of_date: "2025-12-31",
+        baseline_as_of_date: "2025-06-30",
         baseline_available: true,
+        available: true,
+        availability_reason: null,
+        comparison_basis: "PRIOR_YEAR_SAME_PERIOD_YTD_AVG_BALANCE_SHARE",
         rows: [
           {
-            row_key: "asset_zqtz_treasury_bond",
-            business_type: "国债",
-            current_share_pct: "62.50",
-            baseline_share_pct: "70.00",
-            drift_pp: "-7.50",
-          },
-          {
-            row_key: "asset_zqtz_policy_financial_bond",
-            business_type: "政策性金融债",
-            current_share_pct: "37.50",
-            baseline_share_pct: "30.00",
-            drift_pp: "7.50",
+            row_key: "asset_zqtz_public_fund",
+            business_type: "公募基金",
+            current_share_pct: "12.00",
+            baseline_share_pct: "15.52",
+            drift_pp: "-3.52",
+            lifecycle_status: "continued",
           },
         ],
+      },
+      scale_yield_quadrant: {
+        year: 2026,
+        as_of_date: "2026-06-30",
+        currency_basis: "CNY_EQUIVALENT",
+        scale_basis: "YTD_AVG_BALANCE_SHARE",
+        yield_basis: "FTP_NET_ANNUALIZED_YIELD_PCT",
+        minimum_eligible_rows: 6,
+        eligible_row_count: 6,
+        total_avg_balance: "3367.49",
+        available: true,
+        scale_share_median_pct: "17.50",
+        ftp_net_annualized_yield_median_pct: "3.500000",
+        rows: quadrantRows,
       },
       reconciliation_diagnostics: {
-        as_of_date: "2026-02-28",
+        as_of_date: "2026-06-30",
         lookback_months: 12,
+        available: true,
+        availability_reason: null,
         rows: [
-          { report_date: "2025-12-31", untraced_row_count: 0, total_row_count: 2, untraced_share_pct: "0.00" },
-          { report_date: "2026-01-31", untraced_row_count: 0, total_row_count: 2, untraced_share_pct: "0.00" },
-          { report_date: "2026-02-28", untraced_row_count: 0, total_row_count: 2, untraced_share_pct: "0.00" },
+          {
+            report_date: "2026-06-30",
+            untraced_row_count: 117,
+            total_row_count: 1723,
+            untraced_share_pct: "6.79",
+          },
         ],
       },
-      ...overrides,
+      ...resultOverrides,
     },
   };
 }
 
-function buildYtdPayload(
-  overrides?: Partial<PnlByBusinessYtdPayload>,
-): ApiEnvelope<PnlByBusinessYtdPayload> {
-  return {
-    result_meta: resultMeta,
-    result: {
-      year: 2026,
-      period_type: "yearly",
-      period_label: "2026年累计",
-      period_start_date: "2026-01-01",
-      period_end_date: "2026-02-28",
-      total_pnl: "1000.00",
-      source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily"],
-      items: [
-        {
-          row_key: "asset_zqtz_treasury_bond",
-          sort_order: 1,
-          business_type: "国债",
-          interest_income: "600.00",
-          fair_value_change: "0.00",
-          capital_gain: "0.00",
-          manual_adjustment: "0.00",
-          total_pnl: "600.00",
-          avg_balance: "625.00",
-          current_balance: "625.00",
-          balance_yield_pct: "9.60",
-          annualized_yield_pct: "9.60",
-          ftp_rate_pct: "1.60",
-          ftp_cost: "10.00",
-          ftp_net_pnl: "590.00",
-          ftp_net_annualized_yield_pct: "5.00",
-          source_kind: "zqtz",
-          source_note: "父级",
-          proportion: "0.625",
-          assets_count: 3,
-        },
-        {
-          row_key: "asset_zqtz_policy_financial_bond",
-          sort_order: 2,
-          business_type: "政策性金融债",
-          interest_income: "400.00",
-          fair_value_change: "0.00",
-          capital_gain: "0.00",
-          manual_adjustment: "0.00",
-          total_pnl: "400.00",
-          avg_balance: "375.00",
-          current_balance: "375.00",
-          balance_yield_pct: "3.20",
-          annualized_yield_pct: "3.20",
-          ftp_rate_pct: "1.60",
-          ftp_cost: "6.00",
-          ftp_net_pnl: "394.00",
-          ftp_net_annualized_yield_pct: "1.00",
-          source_kind: "zqtz",
-          source_note: "父级",
-          proportion: "0.375",
-          assets_count: 2,
-        },
-      ],
-      ...overrides,
-    },
-  };
+function buildClient(getPnlByBusinessInsights: ApiClient["getPnlByBusinessInsights"]): ApiClient {
+  return { ...createApiClient({ mode: "mock" }), getPnlByBusinessInsights };
 }
 
-function renderPage(client: ApiClient, queryClient: QueryClient) {
-  const router = createMemoryRouter(
-    [{ path: "/pnl-by-business-insights", element: <PnlByBusinessInsightsPage /> }],
-    {
-      initialEntries: ["/pnl-by-business-insights"],
-      future: routerFuture,
-    },
-  );
-
+function renderPage(client: ApiClient, initialEntry = "/pnl-by-business-insights") {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <ApiClientProvider client={client}>
-        <RouterProvider router={router} future={routerFuture} />
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <PnlByBusinessInsightsPage />
+        </MemoryRouter>
       </ApiClientProvider>
     </QueryClientProvider>,
   );
 }
 
-function buildClient(
-  getPnlByBusinessCandidateInsights: ApiClient["getPnlByBusinessCandidateInsights"],
-  getPnlByBusinessYtd?: ApiClient["getPnlByBusinessYtd"],
-): ApiClient {
-  const base = createApiClient({ mode: "mock" });
-  return {
-    ...base,
-    getPnlByBusinessCandidateInsights,
-    getPnlByBusinessYtd: getPnlByBusinessYtd ?? (async () => buildYtdPayload()),
-  };
-}
-
-function buildQueryClient() {
-  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
-}
-
 describe("PnlByBusinessInsightsPage", () => {
-  it("surfaces the unapproved candidate contract status", async () => {
-    const client = buildClient(vi.fn(async () => buildPayload()));
-    renderPage(client, buildQueryClient());
-
-    const statusPanel = await waitFor(() => {
-      const panel = document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]');
-      expect(panel).not.toBeNull();
-      return panel as HTMLElement;
-    });
-
-    expect(statusPanel).toHaveTextContent("未审批");
-    expect(statusPanel).toHaveTextContent("正式可用: 否");
-    expect(statusPanel).toHaveTextContent("口径 analytical");
-    expect(statusPanel).toHaveTextContent("数据截至 2026-02-28");
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-06-30T12:00:00Z"));
   });
 
-  it("shows the full mandatory candidate disclaimer text verbatim", async () => {
-    const client = buildClient(vi.fn(async () => buildPayload()));
-    renderPage(client, buildQueryClient());
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
-    const disclaimer = await waitFor(() => {
-      const node = document.querySelector('[data-testid="pnl-by-business-insights-disclaimer"]');
+  it("reads only the approved insights endpoint and surfaces formal status metadata", async () => {
+    const getInsights = vi.fn(async () => buildPayload());
+    const client = buildClient(getInsights);
+    const candidateSpy = vi.spyOn(client, "getPnlByBusinessCandidateInsights");
+    const ytdSpy = vi.spyOn(client, "getPnlByBusinessYtd");
+    renderPage(client);
+
+    const status = await waitFor(() => {
+      const node = document.querySelector('[data-testid="pnl-by-business-insights-contract-status"]');
       expect(node).not.toBeNull();
       return node as HTMLElement;
     });
 
-    expect(disclaimer).toHaveTextContent(
-      "本页指标为候选分析（status=candidate），仅供内部参考，不构成正式业务结论；最终审批需业务owner确认后方可用于正式汇报。",
-    );
+    expect(getInsights).toHaveBeenCalledWith(2026, "2026-06-30");
+    expect(candidateSpy).not.toHaveBeenCalled();
+    expect(ytdSpy).not.toHaveBeenCalled();
+    expect(status).toHaveTextContent("正式口径");
+    expect(status).toHaveTextContent("质量 warning");
+    expect(status).toHaveTextContent("降级 none");
+    expect(status).toHaveTextContent("tr_pnl_business_insights_test");
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-disclaimer"]')).toBeNull();
   });
 
-  it("renders concentration, negative-FTP persistence, and share-drift sections from mock data", async () => {
-    const client = buildClient(vi.fn(async () => buildPayload()));
-    renderPage(client, buildQueryClient());
+  it("renders the approved concentration, threshold, same-period drift and backend quadrant", async () => {
+    renderPage(buildClient(vi.fn(async () => buildPayload())));
 
-    const kpis = await waitFor(() => {
+    const page = await waitFor(() => {
+      const node = document.querySelector('[data-testid="pnl-by-business-insights-page"]');
+      expect(node).toHaveTextContent("13.42%");
+      return node as HTMLElement;
+    });
+
+    expect(page).toHaveTextContent("50.50%");
+    expect(page).toHaveTextContent("同业存单");
+    expect(page).toHaveTextContent("91.67%");
+    expect(page).toHaveTextContent("至少 6 个已观测月份");
+    expect(page).toHaveTextContent("2025-06-30");
+    expect(page).toHaveTextContent("公募基金");
+    expect(page).toHaveTextContent("-3.52pp");
+    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-grid"]')).not.toBeNull();
+  });
+
+  it("converts concentration average balance from yuan to yi", async () => {
+    const result = buildPayload().result;
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, {
+      concentration: {
+        ...result.concentration,
+        total_avg_balance: "100000000",
+        rows: [
+          {
+            row_key: "row_1",
+            business_type: "业务1",
+            avg_balance: "100000000",
+            share_pct: "100.00",
+          },
+        ],
+      },
+    }))));
+
+    const concentration = await waitFor(() => {
       const node = document.querySelector('[data-testid="pnl-by-business-insights-concentration-kpis"]');
       expect(node).not.toBeNull();
       return node as HTMLElement;
     });
-    expect(kpis).toHaveTextContent("53.12%");
-    expect(kpis).toHaveTextContent("100.00%");
+    expect(concentration).toHaveTextContent("总日均 1.00 亿元");
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-concentration-table"]')).toHaveTextContent(
+      "1.00",
+    );
 
-    const concentrationTable = document.querySelector(
-      '[data-testid="pnl-by-business-insights-concentration-table"]',
-    ) as HTMLElement;
-    expect(concentrationTable).toHaveTextContent("国债");
-    expect(concentrationTable).toHaveTextContent("62.50%");
-    expect(concentrationTable).toHaveTextContent("政策性金融债");
-    expect(concentrationTable).toHaveTextContent("37.50%");
-
-    const negativeFtpTable = document.querySelector(
-      '[data-testid="pnl-by-business-insights-negative-ftp-table"]',
-    ) as HTMLElement;
-    expect(negativeFtpTable).toHaveTextContent("66.67%");
-    expect(negativeFtpTable).toHaveTextContent("16.67%");
-    expect(negativeFtpTable).toHaveTextContent("5");
-    expect(negativeFtpTable).toHaveTextContent("2");
-
-    const shareDriftTable = document.querySelector(
-      '[data-testid="pnl-by-business-insights-share-drift-table"]',
-    ) as HTMLElement;
-    expect(shareDriftTable).toHaveTextContent("-7.50pp");
-    expect(shareDriftTable).toHaveTextContent("+7.50pp");
   });
 
-  it("sorts negative-FTP rows by share descending and highlights rows at or above 50%", async () => {
-    const client = buildClient(vi.fn(async () => buildPayload()));
-    renderPage(client, buildQueryClient());
+  it("preserves a null concentration balance as unavailable", async () => {
+    const result = buildPayload().result;
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, {
+      concentration: { ...result.concentration, total_avg_balance: null, rows: [] },
+    }))));
 
-    const negativeFtpTable = await waitFor(() => {
+    const concentration = await waitFor(() => {
+      const node = document.querySelector('[data-testid="pnl-by-business-insights-concentration-kpis"]');
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+    expect(concentration).toHaveTextContent("总日均 — 亿元");
+  });
+
+  it.each([
+    ["non-formal", { basis: "analytical" as const, formal_use_allowed: false }],
+    ["fallback", { fallback_mode: "latest_snapshot" as const, fallback_date: "2026-05-31" }],
+    ["stale", { quality_flag: "stale" as const }],
+    ["error", { quality_flag: "error" as const }],
+    ["missing", { quality_flag: "missing" as const }],
+    ["vendor unavailable", { vendor_status: "vendor_unavailable" as const }],
+    ["requested cutoff mismatch", { requested_report_date: "2026-05-31" }],
+    ["missing resolved cutoff", { resolved_report_date: null }],
+  ])("fails closed for %s metadata", async (_label, metaOverrides) => {
+    renderPage(buildClient(vi.fn(async () => buildPayload(metaOverrides))));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-review"]')).not.toBeNull();
+    });
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-concentration-kpis"]')).toBeNull();
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-reconciliation-section"]')).toBeNull();
+  });
+
+  it("keeps the contract review visible when an unusable response also has no rows", async () => {
+    const result = buildPayload().result;
+    renderPage(buildClient(vi.fn(async () => buildPayload(
+      { basis: "analytical", formal_use_allowed: false },
+      {
+        concentration: { ...result.concentration, rows: [] },
+        negative_ftp_persistence: { ...result.negative_ftp_persistence, rows: [] },
+        share_drift: { ...result.share_drift, rows: [] },
+      },
+    ))));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-review"]')).not.toBeNull();
+    });
+    expect(document.querySelector(".async-section__empty")).toBeNull();
+  });
+
+  it.each([
+    ["legacy version", "v1"],
+    ["missing version", undefined],
+  ])("fails closed for a %s payload", async (_label, resultVersion) => {
+    renderPage(buildClient(vi.fn(async () => {
+      const response = buildPayload();
+      const runtimeResult = { ...response.result } as Record<string, unknown>;
+      if (resultVersion === undefined) {
+        delete runtimeResult.result_version;
+      } else {
+        runtimeResult.result_version = resultVersion;
+      }
+      return { ...response, result: runtimeResult } as unknown as ApiEnvelope<PnlByBusinessInsightsPayload>;
+    })));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-review"]')).not.toBeNull();
+    });
+    expect(document.querySelector('[data-testid="pnl-by-business-insights-concentration-kpis"]')).toBeNull();
+  });
+
+  it("fails closed when the baseline used a fallback", async () => {
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, {
+      baseline_resolved_report_date: "2025-05-31",
+      baseline_fallback_mode: "latest_snapshot",
+    }))));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-review"]')).not.toBeNull();
+    });
+  });
+
+  it("fails closed when component evidence is stale", async () => {
+    const result = buildPayload().result;
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, {
+      component_evidence: result.component_evidence.map((entry, index) =>
+        index === 0 ? { ...entry, quality_flag: "stale" } : entry,
+      ),
+    }))));
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="pnl-by-business-insights-contract-review"]')).not.toBeNull();
+    });
+  });
+
+  it("shows insufficient observation instead of formal negative-FTP values", async () => {
+    const result = buildPayload().result;
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, {
+      negative_ftp_persistence: {
+        ...result.negative_ftp_persistence,
+        months_observed: 2,
+        negative_ftp_month_share_pct: null,
+        negative_ftp_longest_streak_months: null,
+        eligible: false,
+        status: "insufficient_observations",
+        warning_row_count: 0,
+        rows: [{
+          ...result.negative_ftp_persistence.rows[0],
+          months_observed: 2,
+          negative_ftp_month_share_pct: null,
+          negative_ftp_longest_streak_months: null,
+          warning_triggered: false,
+          eligible: false,
+          status: "insufficient_observations",
+        }],
+      },
+    }))));
+
+    const table = await waitFor(() => {
       const node = document.querySelector('[data-testid="pnl-by-business-insights-negative-ftp-table"]');
       expect(node).not.toBeNull();
       return node as HTMLElement;
     });
-
-    const rows = negativeFtpTable.querySelectorAll("tbody tr");
-    expect(rows[0]).toHaveTextContent("国债");
-    expect(rows[0]).toHaveTextContent("66.67%");
-    expect(rows[1]).toHaveTextContent("政策性金融债");
+    expect(table).toHaveTextContent("观察不足");
+    expect(table).not.toHaveTextContent("0.00%");
+    expect(table).not.toHaveTextContent("0 个月");
   });
 
-  it("sorts share-drift rows by absolute drift descending, largest first", async () => {
-    const payload = buildPayload();
-    payload.result.share_drift.rows = [
-      {
-        row_key: "asset_zqtz_policy_financial_bond",
-        business_type: "政策性金融债",
-        current_share_pct: "37.50",
-        baseline_share_pct: "38.00",
-        drift_pp: "-0.50",
+  it("does not render share drift rows when either comparison denominator is unavailable", async () => {
+    const result = buildPayload().result;
+    renderPage(buildClient(vi.fn(async () => buildPayload({}, {
+      share_drift: {
+        ...result.share_drift,
+        available: false,
+        availability_reason: "current_total_non_positive",
       },
-      {
-        row_key: "asset_zqtz_treasury_bond",
-        business_type: "国债",
-        current_share_pct: "62.50",
-        baseline_share_pct: "70.00",
-        drift_pp: "-7.50",
-      },
-    ];
-    const client = buildClient(vi.fn(async () => payload));
-    renderPage(client, buildQueryClient());
+    }))));
 
-    const shareDriftTable = await waitFor(() => {
-      const node = document.querySelector('[data-testid="pnl-by-business-insights-share-drift-table"]');
-      expect(node).not.toBeNull();
-      return node as HTMLElement;
-    });
-
-    const rows = shareDriftTable.querySelectorAll("tbody tr");
-    expect(rows[0]).toHaveTextContent("国债");
-    expect(rows[0]).toHaveTextContent("-7.50pp");
-    expect(rows[1]).toHaveTextContent("政策性金融债");
-  });
-
-  it("shows an explicit empty state when the prior-year baseline is unavailable", async () => {
-    const payload = buildPayload();
-    payload.result.share_drift.baseline_available = false;
-    payload.result.share_drift.baseline_as_of_date = null;
-    payload.result.share_drift.rows = [];
-    const client = buildClient(vi.fn(async () => payload));
-    renderPage(client, buildQueryClient());
-
-    const emptyState = await waitFor(() => {
+    const empty = await waitFor(() => {
       const node = document.querySelector('[data-testid="pnl-by-business-insights-share-drift-empty"]');
       expect(node).not.toBeNull();
       return node as HTMLElement;
     });
-
-    expect(emptyState).toHaveTextContent("上一年无数据，无法计算漂移");
+    expect(empty).toHaveTextContent("日均余额分母不可用");
     expect(document.querySelector('[data-testid="pnl-by-business-insights-share-drift-table"]')).toBeNull();
   });
 
-  it("renders the capital efficiency quadrant grid from the by-business-ytd query", async () => {
-    const client = buildClient(
-      vi.fn(async () => buildPayload()),
-      vi.fn(async () => buildYtdPayload()),
+  it("initializes the request from validated year and cutoff query parameters", async () => {
+    const getInsights = vi.fn(async () => buildPayload({}, { year: 2025, as_of_date: "2025-12-31" }));
+    renderPage(
+      buildClient(getInsights),
+      "/pnl-by-business-insights?year=2025&as_of_date=2025-12-31",
     );
-    renderPage(client, buildQueryClient());
 
-    const grid = await waitFor(() => {
-      const node = document.querySelector('[data-testid="capital-efficiency-quadrant-grid"]');
-      expect(node).not.toBeNull();
-      return node as HTMLElement;
-    });
-
-    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-large_high"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-large_low"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-small_high"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="capital-efficiency-quadrant-small_low"]')).not.toBeNull();
-    expect(grid).toHaveTextContent("国债");
-    expect(grid).toHaveTextContent("政策性金融债");
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(2025, "2025-12-31"));
   });
 
-  it("renders the reconciliation diagnostics section with its dedicated title and disclaimer", async () => {
-    const client = buildClient(vi.fn(async () => buildPayload()));
-    renderPage(client, buildQueryClient());
+  it("rejects non-canonical query parameters instead of sending them to the formal endpoint", async () => {
+    const getInsights = vi.fn(async () => buildPayload());
+    renderPage(
+      buildClient(getInsights),
+      "/pnl-by-business-insights?year=02025&as_of_date=2025-12-31",
+    );
+
+    await waitFor(() => expect(getInsights).toHaveBeenCalledWith(2026, "2026-06-30"));
+    expect(getInsights).not.toHaveBeenCalledWith(2025, "2025-12-31");
+  });
+
+  it("keeps untraced history in a separate data-quality diagnostic section", async () => {
+    renderPage(buildClient(vi.fn(async () => buildPayload())));
 
     const section = await waitFor(() => {
       const node = document.querySelector('[data-testid="pnl-by-business-insights-reconciliation-section"]');
@@ -394,28 +505,36 @@ describe("PnlByBusinessInsightsPage", () => {
       return node as HTMLElement;
     });
 
-    expect(section).toHaveTextContent("对账健康度诊断（非业务结论）");
-    expect(section).toHaveTextContent(
-      "以下为formal对账诊断趋势，反映的是数据链路完整性问题，不是业务贡献或拖累结论，不构成资源配置或业务评价依据。",
-    );
-    expect(document.querySelector('[data-testid="untraced-reconciliation-trend-panel"]')).not.toBeNull();
-    expect(
-      document.querySelector('[data-testid="pnl-by-business-insights-reconciliation-divider"]'),
-    ).not.toBeNull();
+    expect(section).toHaveTextContent("数据链路诊断");
+    expect(section).toHaveTextContent("非业务结论");
+    expect(section).toHaveTextContent('"data":[6.79]');
   });
 
-  it("shows the reconciliation trend panel empty state when rows are empty", async () => {
-    const payload = buildPayload();
-    payload.result.reconciliation_diagnostics.rows = [];
-    const client = buildClient(vi.fn(async () => payload));
-    renderPage(client, buildQueryClient());
+  it("shows an explicit unavailable state when the diagnostic source cannot be read", async () => {
+    renderPage(
+      buildClient(
+        vi.fn(async () =>
+          buildPayload({}, {
+            reconciliation_diagnostics: {
+              as_of_date: "2026-06-30",
+              lookback_months: 12,
+              available: false,
+              availability_reason: "source_unavailable",
+              rows: [],
+            },
+          }),
+        ),
+      ),
+    );
 
-    const emptyState = await waitFor(() => {
-      const node = document.querySelector('[data-testid="untraced-reconciliation-trend-empty"]');
+    const state = await waitFor(() => {
+      const node = document.querySelector(
+        '[data-testid="pnl-by-business-insights-reconciliation-unavailable"]',
+      );
       expect(node).not.toBeNull();
       return node as HTMLElement;
     });
 
-    expect(emptyState).toHaveTextContent("暂无可用的历史对账诊断数据");
+    expect(state).toHaveTextContent("诊断源暂不可用");
   });
 });

@@ -4,17 +4,54 @@
 
 | 字段 | 内容 |
 |------|------|
-| 页面 | `PAGE-CONTRACT-PENDING:/pnl-by-business-insights` |
+| 页面绑定 | `PAGE-PNL-BY-BUSINESS-001` |
 | 前端路由 | `/pnl-by-business-insights` |
 | 页面文件 | `frontend/src/features/pnl-business-insights/PnlByBusinessInsightsPage.tsx` |
-| 当前状态 | 全部指标 `status=candidate`，`formal_use_allowed=false` |
-| Golden Sample | `GS-PNL-BUSINESS-INSIGHTS-A`（`captured-awaiting-approval`） |
-| 字典登记 | `docs/metric_dictionary.md` §15.2.11（`MTR-PNLBIZ-001`~`006`） |
-| 最后审阅 | 2026-07-07 |
+| 当前治理状态 | `MTR-PNLBIZ-001`~`007` `approved/formal/active` |
+| 正式端点 | `GET /api/pnl/by-business-insights` |
+| Golden Sample | `GS-PNL-BUSINESS-INSIGHTS-A`（`approved` formula/DTO evidence；不证明底层源损益真值） |
+| 字典登记 | `docs/metric_dictionary.md` §15.2.11（`MTR-PNLBIZ-001`~`007`） |
+| Owner / Approver | `组合管理/固收业务分析` / `财务管理/资产负债管理` |
+| 批准日期 | 2026-07-15 |
+| 最后审阅 | 2026-07-15 |
 
-**阅读指引**：本文档面向业务方与治理审批人，不要求阅读代码。每个指标均说明「回答什么业务问题」「怎么算」「数据从哪来」「转正前需确认什么」。
+**阅读指引**：本文档面向业务方与治理审批人。下方“2026-07-15 已批准结论”是当前有效治理口径；其后的 2026-07-07 候选评审章节原样保留为决策证据。两者冲突时，以已批准结论、`docs/metric_dictionary.md` §15.2.11 和 `docs/calc_rules.md` §15 为准。
 
-**全局免责声明（与页面一致）**：
+## 2026-07-15 已批准结论（当前有效）
+
+### 治理结论
+
+- `MTR-PNLBIZ-001`~`MTR-PNLBIZ-007` 的指标定义批准为 `formal`，`approval_status=approved`，`implementation_status=active`。
+- Owner：`组合管理/固收业务分析`；Approver：`财务管理/资产负债管理`。
+- 正式读端点为 `GET /api/pnl/by-business-insights`；后端 schema 包含 `MTR-PNLBIZ-007` 的 `scale_yield_quadrant`，主业务种类损益页按 `PAGE-PNL-BY-BUSINESS-001` 消费正式结果。
+- `GS-PNL-BUSINESS-INSIGHTS-A` 证明批准公式、DTO、单位、门槛和 006/业务分析分区符合合同；它不替代对底层源 PnL、余额、汇率事实及其血缘的独立对账。
+
+### 批准口径矩阵
+
+| Metric ID | 批准定义 | 正式使用条件 | 边界 |
+|---|---|---|---|
+| `MTR-PNLBIZ-001` | 父级业务 YTD 人民币等值日均余额份额的 HHI：`Σ share_i² × 100` | 合格父级日均余额分母大于 0 | 结构分析，不是集中度限额 |
+| `MTR-PNLBIZ-002` | 与 001 同口径份额降序后的 Top 3 合计 | 合格父级日均余额分母大于 0 | 不动态改变 N；不足3行取全部 |
+| `MTR-PNLBIZ-003` | 滚动12自然月内 `ftp_net_pnl < 0` 月数 / 非空月数 | `months_observed >= 6`；缺失月不进分母并中断连续；占比 `>=50%` 才提示 | 提示不是考核、退出或压降结论 |
+| `MTR-PNLBIZ-004` | 同窗口连续 `ftp_net_pnl < 0` 的最长自然月数 | `months_observed >= 6`；缺失月中断连续 | 少于6月显示 `insufficient_observations`，比例与连续月数均为 `null` |
+| `MTR-PNLBIZ-005` | 当前 YTD 日均余额份额减上年同期间 YTD 日均余额份额 | 当前与上年同期间均有有效总分母 | 取两期父级 `row_key` 并集；新进业务上年侧=0，退出业务当前侧=0 |
+| `MTR-PNLBIZ-006` | 近12个月末 formal FI 未追溯行数占比 | `available=true` 且 `total_formal_fi_row_count > 0` | `diagnostic_only`；源不可用/无观测必须显式披露，不能伪装为空趋势；必须与业务结论分区 |
+| `MTR-PNLBIZ-007` | “规模—FTP后收益相对象限”：X=YTD人民币等值日均余额份额，Y=FTP后年化收益率，两轴以当期中位数分割 | X/Y 均非空的父级行至少6行 | 只描述相对位置；不得输出或暗示增配、压降、退出行动 |
+
+### 实现对齐结果（已完成）
+
+1. 正式计算已收口到后端正式计算链路；前端仅格式化、排序和展示。
+2. 份额漂移已改为“上年同期间 YTD”，并通过 lifecycle 字段区分持续、新进和退出业务。
+3. 负 FTP 已实现 `months_observed >= 6` eligibility 与 `insufficient_observations` 状态；少于门槛时正式比例/连续月数 fail closed 为 `null`。
+4. `MTR-PNLBIZ-007` 已使用日均余额份额 × FTP后年化收益率，包含至少6行门槛且不输出增配/压降语言。
+5. 正式 DTO v2 与 `result_meta` 已纳入正式 endpoint 合同，逐项披露 current/baseline YTD 和月度组件证据；正式端点仅接纳完整血缘、精确截止日、无 fallback 且锚定正式事实表的组件，刷新包来源 fail closed；页面按正式状态消费。
+6. `GS-PNL-BUSINESS-INSIGHTS-A/response.json` 已刷新为包含 001~007 的公式/DTO证据；底层源 PnL 真值仍由正式事实及独立对账证据负责。
+
+---
+
+## 历史候选评审证据（2026-07-07，已被上方批准结论取代）
+
+**候选阶段全局免责声明（保留原页面证据）**：
 
 > 本页指标为候选分析（`status=candidate`），仅供内部参考，不构成正式业务结论；最终审批需业务 owner 确认后方可用于正式汇报。
 
@@ -27,7 +64,7 @@
 
 ---
 
-## 指标一览
+## 候选阶段指标一览
 
 | # | 页面模块 | 建议 Metric ID | 计算位置 | API |
 |---|----------|----------------|----------|-----|
@@ -555,4 +592,5 @@ metrics:
 
 | 日期 | 说明 |
 |------|------|
+| 2026-07-15 | 批准并启用 `MTR-PNLBIZ-001`~`007` 当前有效定义；正式端点切换为 `GET /api/pnl/by-business-insights` 并绑定 `PAGE-PNL-BY-BUSINESS-001`。集中度使用 YTD 人民币等值日均余额 Top3；负 FTP 增加6月门槛与50%提示，不足观察期的正式值为 `null`；份额漂移改为上年同期间 YTD、用未舍入原始份额计算并仅在两期分母有效时纳入新进/退出；007 改为日均余额份额 × FTP后年化收益率相对象限；006 保持 diagnostic-only。正式 DTO 升为 v2 并披露组件证据。Golden sample 只证明公式/DTO，不证明底层源 PnL 真值。 |
 | 2026-07-07 | 初版：基于 `PnlByBusinessInsightsPage.tsx` 及后端 `pnl_by_business_candidate_insights` 服务整理 5 个页面模块转正评审材料 |

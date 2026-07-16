@@ -1,9 +1,9 @@
 {
   "method": "GET",
-  "path": "/api/pnl/by-business-candidate-insights",
+  "path": "/api/pnl/by-business-insights",
   "params": {
     "year": 2026,
     "as_of_date": "2026-02-28"
   },
-  "basis": "analytical"
+  "basis": "formal"
 }
