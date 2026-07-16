@@ -24,14 +24,19 @@ def _ytd_item(
     }
 
 
-def _ytd_envelope(items: list[dict[str, object]]) -> dict[str, object]:
+def _ytd_envelope(
+    items: list[dict[str, object]],
+    *,
+    report_date: str = "2026-02-28",
+) -> dict[str, object]:
     return {
         "result_meta": {
             "result_kind": "pnl.by_business_ytd",
             "basis": "formal",
             "formal_use_allowed": True,
+            "resolved_report_date": report_date,
         },
-        "result": {"items": items},
+        "result": {"period_end_date": report_date, "items": items},
     }
 
 
@@ -215,7 +220,10 @@ def test_share_drift_degrades_gracefully_when_baseline_year_has_no_data(
     def fake_ytd_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
         if year == 2025:
             raise ValueError(f"No formal pnl rows found for year={year}.")
-        return _ytd_envelope(current_items)
+        return _ytd_envelope(
+            current_items,
+            report_date=as_of_date or f"{year}-12-31",
+        )
 
     monkeypatch.setattr(
         insights.pnl_service, "pnl_by_business_ytd_envelope", fake_ytd_envelope
@@ -247,7 +255,10 @@ def test_candidate_insights_envelope_hardcodes_formal_use_allowed_false(
     ]
 
     def fake_ytd_envelope(*, duckdb_path, governance_dir, year, as_of_date=None):
-        envelope = _ytd_envelope(items)
+        envelope = _ytd_envelope(
+            items,
+            report_date=as_of_date or f"{year}-12-31",
+        )
         # Simulate an upstream envelope that (incorrectly) claims formal_use_allowed=True;
         # the candidate-insights envelope must never inherit this.
         envelope["result_meta"]["formal_use_allowed"] = True
@@ -369,7 +380,7 @@ def test_untraced_trend_handles_month_with_zero_total_rows_gracefully(
     monkeypatch.setattr(
         PnlRepository,
         "list_formal_fi_report_dates",
-        lambda self: ["2026-01-31"],
+        lambda self, **_kwargs: ["2026-01-31"],
     )
     monkeypatch.setattr(
         PnlRepository,
@@ -398,7 +409,7 @@ def test_untraced_trend_handles_month_with_zero_total_rows_gracefully(
 def test_untraced_trend_marks_storage_failure_as_source_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def unavailable(_self) -> list[str]:
+    def unavailable(_self, **_kwargs) -> list[str]:
         raise RuntimeError("Formal pnl storage is unavailable.")
 
     monkeypatch.setattr(PnlRepository, "list_formal_fi_report_dates", unavailable)
@@ -420,7 +431,7 @@ def test_untraced_trend_marks_empty_window_as_no_observations(
     monkeypatch.setattr(
         PnlRepository,
         "list_formal_fi_report_dates",
-        lambda _self: [],
+        lambda _self, **_kwargs: [],
     )
 
     result = insights.compute_untraced_reconciliation_trend(
@@ -434,13 +445,31 @@ def test_untraced_trend_marks_empty_window_as_no_observations(
     assert result["rows"] == []
 
 
+def test_untraced_trend_marks_missing_formal_fi_table_as_source_unavailable(
+    tmp_path,
+) -> None:
+    duckdb_path = tmp_path / "missing-formal-fi-table.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    conn.close()
+
+    result = insights.compute_untraced_reconciliation_trend(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-01-31",
+        lookback_months=1,
+    )
+
+    assert result["available"] is False
+    assert result["availability_reason"] == "source_unavailable"
+    assert result["rows"] == []
+
+
 def test_untraced_trend_marks_batch_read_failure_as_source_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         PnlRepository,
         "list_formal_fi_report_dates",
-        lambda _self: ["2026-01-31"],
+        lambda _self, **_kwargs: ["2026-01-31"],
     )
 
     def unavailable(_self, _report_dates) -> dict[str, int]:

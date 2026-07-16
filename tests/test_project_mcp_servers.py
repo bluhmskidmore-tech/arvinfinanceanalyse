@@ -2455,6 +2455,8 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
         assert rows["PAGE-BRIDGE-001"]["approval_status"] == "formal_or_governed"
         assert rows["PAGE-BALANCE-001"]["approval_status"] == "formal_or_governed"
         assert rows["PAGE-RISK-001"]["approval_status"] == "formal_or_governed"
+        assert rows["PAGE-PNL-BY-BUSINESS-001"]["approval_status"] == "formal_or_governed"
+        assert rows["PAGE-PNL-BY-BUSINESS-001"]["formal_use_allowed"] is True
         assert rows["PAGE-BANK-LEDGER-001"]["approval_status"] == "candidate_or_pending"
         assert rows["GAP-CASHFLOW-PROJECTION-PAGE"]["approval_status"] == "candidate_or_pending"
         assert rows["GAP-CONCENTRATION-MONITOR-PAGE"]["approval_status"] == "candidate_or_pending"
@@ -2467,7 +2469,7 @@ def test_metric_contracts_evidence_readiness_has_explicit_status_for_every_seede
         assert "tests/golden_samples/GS-PORTFOLIO-HOME-A" in portfolio["checks"]["golden_sample"]["anchors"]
         assert not any("dedicated golden sample" in gap for gap in portfolio["residual_gaps"])
         assert {row["approval_status_source"] for row in rows.values()} == {"explicit_status_map"}
-        assert payload["summary"]["formal_use_allowed_count"] == 5
+        assert payload["summary"]["formal_use_allowed_count"] == 6
     finally:
         server.close()
 
@@ -3293,6 +3295,7 @@ def test_business_pnl_trace_bundle_preserves_page_level_analysis_boundaries() ->
             "PAGE-PNL-BY-BUSINESS-001",
             "/api/pnl/by-business-ytd",
             "/api/pnl/by-business-analysis",
+            "/api/pnl/by-business-insights",
         ):
             result = server.request(
                 "tools/call",
@@ -3303,22 +3306,38 @@ def test_business_pnl_trace_bundle_preserves_page_level_analysis_boundaries() ->
 
         assert payload["page_id"] == "PAGE-PNL-BY-BUSINESS-001"
         assert payload["frontend_route"] == "/pnl-by-business"
-        assert payload["primary_api"] == "/api/pnl/by-business-ytd"
-        assert payload["golden_samples"] == []
+        assert payload["primary_api"] == "/api/pnl/by-business-insights"
+        assert payload["metric_ids"] == [f"MTR-PNLBIZ-{index:03d}" for index in range(1, 8)]
+        assert payload["golden_samples"] == ["tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A"]
+        assert "/api/pnl/by-business-ytd" in payload["supporting_apis"]
         assert "/api/pnl/by-business-monthly" in payload["supporting_apis"]
         assert "/api/pnl/by-business" in payload["supporting_apis"]
         assert "/api/pnl/by-business-analysis" in payload["supporting_apis"]
         assert "/api/adb/comparison" in payload["supporting_apis"]
         assert any("YTD/monthly" in item for item in payload["truth_chain"])
         assert any("formal reconciliation evidence only" in item for item in payload["truth_chain"])
-        assert any("no newly approved MTR" in item for item in payload["truth_chain"])
+        assert any("MTR-PNLBIZ-001 through MTR-PNLBIZ-007" in item for item in payload["truth_chain"])
+        assert any("diagnostic-only" in item for item in payload["guardrails"])
         assert any(
             "Manual adjustment" in item and "official metric" in item for item in payload["guardrails"]
         )
         assert any("Product-category truth" in item for item in payload["guardrails"])
         assert any("Ledger-account PnL truth" in item for item in payload["guardrails"])
-        assert not any("MTR-" in item for item in payload["supporting_apis"])
-        assert not any("GS-" in item for item in payload["supporting_apis"])
+
+        readiness_result = server.request(
+            "tools/call",
+            {
+                "name": "get_page_evidence_readiness",
+                "arguments": {"page_slugs": ["PAGE-PNL-BY-BUSINESS-001"]},
+            },
+        )
+        readiness = json.loads(readiness_result["content"][0]["text"])["pages"][0]
+        assert readiness["approval_status"] == "formal_or_governed"
+        assert readiness["formal_use_allowed"] is True
+        assert readiness["checks"]["golden_sample"] == {
+            "status": "approved",
+            "anchors": ["tests/golden_samples/GS-PNL-BUSINESS-INSIGHTS-A"],
+        }
     finally:
         server.close()
 
@@ -8733,15 +8752,18 @@ def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(
     governance = tmp_path / "governance"
     governance.mkdir()
     record = {
-        "result_kind": "pnl.by_business_ytd",
-        "primary_api": "/api/pnl/by-business-ytd",
+        "result_kind": "pnl.by_business_insights",
+        "primary_api": "/api/pnl/by-business-insights",
+        "metric_ids": [f"MTR-PNLBIZ-{index:03d}" for index in range(1, 8)],
+        "golden_sample_id": "GS-PNL-BUSINESS-INSIGHTS-A",
+        "formal_use_allowed": True,
         "page_slug": "pnl-by-business",
         "tables_used": [
             "fact_formal_pnl_fi",
             "fact_nonstd_pnl_bridge",
             "fact_formal_zqtz_balance_daily",
         ],
-        "boundary": "page-level analytical display no newly approved MTR binding",
+        "boundary": "approved derived-insights overlay; source PnL facts keep their existing contracts",
     }
     (governance / "cache_manifest.jsonl").write_text(
         json.dumps(record) + "\n",
@@ -8764,6 +8786,7 @@ def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(
 
         required_anchors = [
             "pnl-by-business",
+            "/api/pnl/by-business-insights",
             "/api/pnl/by-business-ytd",
             "/api/pnl/by-business-monthly",
             "/api/pnl/by-business",
@@ -8773,11 +8796,14 @@ def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(
             "pnl.by_business_monthly",
             "pnl.by_business",
             "pnl.by_business_analysis",
+            "pnl.by_business_insights",
             "fact_formal_pnl_fi",
             "fact_nonstd_pnl_bridge",
             "fact_formal_zqtz_balance_daily",
             "fact_pnl_by_business_precompute",
             "pnl_by_business_adjustments",
+            "GS-PNL-BUSINESS-INSIGHTS-A",
+            *[f"MTR-PNLBIZ-{index:03d}" for index in range(1, 8)],
         ]
         excluded_anchors = [
             "product_category_pnl_formal_read_model",
@@ -8794,11 +8820,9 @@ def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(
             assert anchor in found_payload["expanded_queries"]
         for anchor in excluded_anchors:
             assert anchor not in found_payload["expanded_queries"]
-        assert not any(anchor.startswith("MTR-") for anchor in found_payload["expanded_queries"])
-        assert not any(anchor.startswith("GS-") for anchor in found_payload["expanded_queries"])
-        assert found_payload["records"][0]["matched_query"] == "/api/pnl/by-business-ytd"
+        assert found_payload["records"][0]["matched_query"] == "/api/pnl/by-business-insights"
         assert found_payload["records"][0]["stream"] == "cache_manifest"
-        assert found_payload["records"][0]["record"]["result_kind"] == "pnl.by_business_ytd"
+        assert found_payload["records"][0]["record"]["result_kind"] == "pnl.by_business_insights"
     finally:
         server.close()
 
@@ -11380,8 +11404,8 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
             lane: breakdown["item_count"]
             for lane, breakdown in lane_breakdown.items()
         } == {
-            "formal_governed_catalog_date_lineage_review": 5,
-            "candidate_formal_source_mixed_review": 16,
+            "formal_governed_catalog_date_lineage_review": 6,
+            "candidate_formal_source_mixed_review": 15,
             "candidate_or_mixed_catalog_date_lineage_review": 7,
             "gap_observational_separate_review": 1,
             "deferred_no_direct_table_config_review": 6,
@@ -11532,6 +11556,7 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
             "PAGE-PROD-CAT-001",
             "PAGE-BALANCE-001",
             "PAGE-PNL-001",
+            "PAGE-PNL-BY-BUSINESS-001",
             "PAGE-BRIDGE-001",
             "PAGE-RISK-001",
         ]
@@ -11540,11 +11565,12 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
                 "product-category-pnl",
                 "balance-analysis",
                 "pnl",
+                "pnl-by-business",
                 "pnl-bridge",
                 "risk-tensor",
             ]
         }
-        assert formal_catalog["work_item_count"] == 5
+        assert formal_catalog["work_item_count"] == 6
         assert formal_catalog["review_priority"] == "P1"
 
         candidate_validation = by_lane_tool[
@@ -11553,13 +11579,12 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
                 "moss-lineage-evidence.validate_page_governance_records",
             )
         ]
-        assert candidate_validation["work_item_count"] == 16
+        assert candidate_validation["work_item_count"] == 15
         assert candidate_validation["arguments"]["page_slugs"] == [
             "dashboard-home",
             "executive-overview",
             "concentration-monitor",
             "balance-movement-analysis",
-            "pnl-by-business",
             "pnl-attribution",
             "operations-analysis",
             "liability-analytics",
@@ -13893,6 +13918,7 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         ]
         assert formal_create["page_ids"] == [
             "PAGE-PNL-001",
+            "PAGE-PNL-BY-BUSINESS-001",
             "PAGE-BRIDGE-001",
         ]
         assert formal_create["next_steps"] == [

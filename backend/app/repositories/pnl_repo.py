@@ -92,8 +92,11 @@ class PnlRepository:
                 conn.close()
         return sorted(report_dates, reverse=True)
 
-    def list_formal_fi_report_dates(self) -> list[str]:
-        return self._list_report_dates("fact_formal_pnl_fi")
+    def list_formal_fi_report_dates(self, *, require_table: bool = False) -> list[str]:
+        return self._list_report_dates(
+            "fact_formal_pnl_fi",
+            require_table=require_table,
+        )
 
     def list_nonstd_bridge_report_dates(self) -> list[str]:
         return self._list_report_dates("fact_nonstd_pnl_bridge")
@@ -961,8 +964,6 @@ class PnlRepository:
                 row = conn.execute(_UNTRACED_COUNT_SQL, [report_date]).fetchone()
                 counts[report_date] = int(row[0] if row else 0)
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return {report_date: 0 for report_date in dates}
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -988,8 +989,6 @@ class PnlRepository:
                 requested,
             ).fetchall()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return empty
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -1580,10 +1579,17 @@ class PnlRepository:
                 conn.close()
         return [dict(zip(columns, row, strict=True)) for row in rows]
 
-    def _list_report_dates(self, table_name: str) -> list[str]:
+    def _list_report_dates(
+        self,
+        table_name: str,
+        *,
+        require_table: bool = False,
+    ) -> list[str]:
         try:
             conn = duckdb.connect(self.path, read_only=True)
             if not self._table_exists(conn, table_name):
+                if require_table:
+                    raise RuntimeError("Formal pnl storage is unavailable.")
                 return []
             rows = conn.execute(
                 f"""

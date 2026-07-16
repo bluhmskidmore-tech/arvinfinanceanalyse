@@ -872,6 +872,86 @@ def test_component_evidence_rejects_missing_lineage_and_wrong_date(
     assert evidence["admission_reason"] == expected_reason
 
 
+@pytest.mark.parametrize(
+    ("component", "result_kind", "payload_date_field"),
+    [
+        ("current_ytd", "pnl.by_business_ytd", "period_end_date"),
+        ("monthly_2026", "pnl.by_business_monthly", "as_of_date"),
+    ],
+)
+@pytest.mark.parametrize("payload_date", [None, "2026-05-31"])
+def test_component_evidence_rejects_missing_or_mismatched_payload_date(
+    component: str,
+    result_kind: str,
+    payload_date_field: str,
+    payload_date: str | None,
+) -> None:
+    from backend.app.services import pnl_by_business_candidate_insights as service
+
+    envelope = _governed_analytical_component_envelope(
+        result_kind=result_kind,
+        report_date="2026-06-30",
+    )
+    if payload_date is None:
+        envelope["result"].pop(payload_date_field)
+    else:
+        envelope["result"][payload_date_field] = payload_date
+
+    evidence = service._component_evidence(
+        component,
+        envelope,
+        requested_default="2026-06-30",
+    )
+
+    assert evidence["formal_source_admitted"] is False
+    assert evidence["admission_reason"] == "date_mismatch"
+
+
+def test_candidate_insights_does_not_fabricate_current_resolved_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.services import pnl_by_business_candidate_insights as service
+
+    current_envelope = _governed_analytical_component_envelope(
+        result_kind="pnl.by_business_ytd",
+        report_date="2026-06-30",
+    )
+    current_envelope["result_meta"].pop("resolved_report_date")
+    current_envelope["result"].pop("period_end_date")
+    current_envelope["result"].pop("as_of_date")
+    current_envelope["result"]["items"] = []
+
+    monkeypatch.setattr(
+        service.pnl_service,
+        "pnl_by_business_ytd_envelope",
+        lambda **_kwargs: current_envelope,
+    )
+    monkeypatch.setattr(
+        service,
+        "_collect_monthly_inputs",
+        lambda **_kwargs: ({}, []),
+    )
+    monkeypatch.setattr(
+        service,
+        "compute_untraced_reconciliation_trend",
+        lambda **_kwargs: {
+            "as_of_date": "2026-06-30",
+            "lookback_months": 12,
+            "available": False,
+            "availability_reason": "no_observations",
+            "rows": [],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="Current YTD resolved report date"):
+        service.pnl_by_business_candidate_insights_envelope(
+            duckdb_path="unused.duckdb",
+            governance_dir="unused-governance",
+            year=2026,
+            as_of_date="2026-06-30",
+        )
+
+
 def test_source_table_lineage_does_not_manufacture_formal_tables() -> None:
     from backend.app.services import pnl_by_business_candidate_insights as service
 

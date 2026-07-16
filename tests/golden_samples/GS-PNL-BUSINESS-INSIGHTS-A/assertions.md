@@ -21,12 +21,12 @@
 - `result_meta.formal_use_allowed == true`.
 - `result_meta.rule_version == "rv_pnl_by_business_insights_v2"`.
 - `result_meta.cache_version == "cv_pnl_by_business_insights_v2"`.
-- `result_meta.quality_flag == "warning"`: the two-row fixture is below the six-row minimum for the formal scale-yield quadrant and contains only two observed months for negative-FTP persistence. This warning does not imply a fallback or permit either unavailable metric to be interpreted.
+- `result_meta.quality_flag == "warning"`: the two-row fixture is below the six-row minimum for the formal scale-yield quadrant and contains only three observed months for negative-FTP persistence. This warning does not imply a fallback or permit either unavailable metric to be interpreted.
 - `result_meta.fallback_mode == "none"`, `result_meta.fallback_date == null`, and `result_meta.date_basis == "formal_report_date_cutoff"`.
 - `result_meta.requested_report_date == result_meta.resolved_report_date == result_meta.as_of_date == "2026-02-28"`.
 - `result_meta.evidence_rows == 2`, `result_meta.source_surface == "formal_pnl"`, and `result_meta.next_drill == ["business_type", "currency_basis", "instrument"]`.
 - `result.result_version == "v2"`; `baseline_requested_report_date`, `baseline_resolved_report_date`, `baseline_fallback_mode`, and `component_evidence` are present and frozen.
-- The fixture has exact current-YTD, baseline-YTD, 2025-monthly, and 2026-monthly component evidence; every component reports its requested/resolved date, fallback, quality, vendor, and source version.
+- The fixture has exact current-YTD, baseline-YTD, 2025-monthly, and 2026-monthly component evidence; every component reports its requested/resolved date, fallback, quality, vendor, upstream basis/formal flag/result kind, trace/source/rule/cache lineage, source surface, tables, and formal-source admission result. The 2025 monthly component is anchored to `2025-12-31`, not the same-period YTD baseline date.
 - `result.concentration`, `result.negative_ftp_persistence`, `result.share_drift`, `result.scale_yield_quadrant`, and `result.reconciliation_diagnostics` are all present.
 - `result.concentration.currency_basis == "CNY_EQUIVALENT"` and `result.concentration.population_basis == "YTD_AVG_BALANCE_PARENT_ROWS"`; only positive YTD parent-row average balances enter the denominator.
 - `result.concentration.hhi_pct` is `null` or within `[0, 100]`; the percentage representation must not be confused with the 0-10,000 HHI-points representation.
@@ -44,10 +44,10 @@
 ## Frozen Values
 
 - `MTR-PNLBIZ-001` / `MTR-PNLBIZ-002`: `total_avg_balance == "1000.00"`, `hhi_pct == "53.12"`, and `top_n_share_pct == "100.00"`. The two current-period parent rows have YTD average-balance shares of 62.50% and 37.50%.
-- `MTR-PNLBIZ-003` / `MTR-PNLBIZ-004`: the rolling window is `2025-03` through `2026-02`, but only 2026-01 and 2026-02 are observed. Overall and both populated business rows have `months_observed == 2`, `eligible == false`, `status == "insufficient_observations"`, null formal share/streak, and `warning_triggered == false`. The other ten months are gaps, not zeros.
+- `MTR-PNLBIZ-003` / `MTR-PNLBIZ-004`: the rolling window is `2025-03` through `2026-02`, but only 2025-12, 2026-01, and 2026-02 are observed. Overall and both populated business rows have `months_observed == 3`, `eligible == false`, `status == "insufficient_observations"`, null formal share/streak, and `warning_triggered == false`. The other nine months are gaps, not zeros.
 - `MTR-PNLBIZ-005`: the exact baseline cutoff is `2025-02-28`. Policy financial bond rises from 30.00% to 37.50% (`+7.50pp`) and treasury bond falls from 70.00% to 62.50% (`-7.50pp`); both rows have `lifecycle_status == "continued"`.
 - `MTR-PNLBIZ-007`: `minimum_eligible_rows == 6`, `eligible_row_count == 2`, and `total_avg_balance == "1000.00"`; therefore `available == false`, both medians are `null`, and `rows == []`.
-- `MTR-PNLBIZ-006`: reconciliation remains a separate diagnostic. Its two in-window rows are `2026-01-31` and `2026-02-28`, each with `untraced_row_count == 0`, `total_row_count == 2`, and `untraced_share_pct == "0.00"`. The 2025-02-28 comparison baseline is outside this diagnostic's `2025-03` through `2026-02` window.
+- `MTR-PNLBIZ-006`: reconciliation remains a separate diagnostic with `available == true` and `availability_reason == null`. Its three in-window rows are `2025-12-31`, `2026-01-31`, and `2026-02-28`, each with `untraced_row_count == 0`, `total_row_count == 2`, and `untraced_share_pct == "0.00"`. The 2025-02-28 comparison baseline is outside this diagnostic's `2025-03` through `2026-02` window.
 
 ## Boundary
 

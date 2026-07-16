@@ -97,10 +97,14 @@ def _envelope_result(envelope: Mapping[str, object]) -> dict[str, object]:
     return dict(result) if isinstance(result, Mapping) else {}
 
 
-def _resolved_ytd_date(envelope: Mapping[str, object], requested_date: str | None) -> str | None:
+def _resolved_ytd_date(envelope: Mapping[str, object]) -> str | None:
     meta = _envelope_meta(envelope)
     result = _envelope_result(envelope)
-    return str(meta.get("resolved_report_date") or result.get("period_end_date") or requested_date or "") or None
+    meta_date = str(meta.get("resolved_report_date") or "") or None
+    payload_date = str(result.get("period_end_date") or "") or None
+    if not meta_date or not payload_date or meta_date != payload_date:
+        return None
+    return meta_date
 
 
 def _prior_year_same_period_date(as_of_date: str) -> str:
@@ -132,7 +136,7 @@ def compute_business_type_concentration(
     return build_business_type_concentration(
         items=list(result.get("items", [])),
         year=year,
-        as_of_date=_resolved_ytd_date(envelope, as_of_date),
+        as_of_date=_resolved_ytd_date(envelope),
         top_n=top_n,
     )
 
@@ -268,7 +272,9 @@ def compute_business_type_share_drift(
         year=year,
         as_of_date=as_of_date,
     )
-    resolved_date = _resolved_ytd_date(current_envelope, as_of_date) or as_of_date
+    resolved_date = _resolved_ytd_date(current_envelope)
+    if resolved_date is None:
+        raise RuntimeError("Current YTD resolved report date is missing or inconsistent.")
     current_result = _envelope_result(current_envelope)
     current = build_business_type_concentration(
         items=list(current_result.get("items", [])),
@@ -285,7 +291,7 @@ def compute_business_type_share_drift(
             year=baseline_year,
             as_of_date=baseline_as_of_date,
         )
-        baseline_resolved_date = _resolved_ytd_date(baseline_envelope, baseline_as_of_date)
+        baseline_resolved_date = _resolved_ytd_date(baseline_envelope)
         if baseline_resolved_date != baseline_as_of_date:
             baseline = None
         else:
@@ -320,10 +326,13 @@ def compute_scale_yield_quadrant(
         as_of_date=as_of_date,
     )
     result = _envelope_result(envelope)
+    resolved_date = _resolved_ytd_date(envelope)
+    if resolved_date is None:
+        raise RuntimeError("Current YTD resolved report date is missing or inconsistent.")
     return build_scale_yield_quadrant(
         items=list(result.get("items", [])),
         year=year,
-        as_of_date=_resolved_ytd_date(envelope, as_of_date) or as_of_date,
+        as_of_date=resolved_date,
     )
 
 
@@ -379,7 +388,7 @@ def compute_untraced_reconciliation_trend(
     }
     repo = PnlRepository(duckdb_path)
     try:
-        all_report_dates = repo.list_formal_fi_report_dates()
+        all_report_dates = repo.list_formal_fi_report_dates(require_table=True)
         report_dates = _resolve_trailing_month_end_report_dates(
             all_report_dates=all_report_dates,
             as_of_date=as_of_date,
@@ -441,9 +450,15 @@ def _component_evidence(
     meta = _envelope_meta(envelope)
     result = _envelope_result(envelope)
     requested = str(meta.get("requested_report_date") or requested_default or "") or None
-    resolved = (
-        str(meta.get("resolved_report_date") or result.get("period_end_date") or result.get("as_of_date") or "") or None
+    resolved = str(meta.get("resolved_report_date") or "") or None
+    payload_date_field = (
+        "period_end_date"
+        if component in {"current_ytd", "baseline_ytd"}
+        else "as_of_date"
+        if component.startswith("monthly_")
+        else None
     )
+    payload_report_date = str(result.get(payload_date_field) or "") or None if payload_date_field is not None else None
     raw_quality = str(meta.get("quality_flag") or "error")
     quality_flag = raw_quality if raw_quality in {"ok", "warning", "error", "stale"} else "error"
     raw_vendor = str(meta.get("vendor_status") or "vendor_unavailable")
@@ -482,6 +497,7 @@ def _component_evidence(
     admission_reason = _component_admission_reason(
         evidence,
         expected_report_date=requested_default,
+        payload_report_date=payload_report_date,
         fallback_date=str(meta.get("fallback_date") or "") or None,
     )
     evidence["formal_source_admitted"] = admission_reason is None
@@ -493,6 +509,7 @@ def _component_admission_reason(
     evidence: Mapping[str, object],
     *,
     expected_report_date: str | None,
+    payload_report_date: str | None,
     fallback_date: str | None,
 ) -> str | None:
     component = str(evidence.get("component") or "")
@@ -523,6 +540,7 @@ def _component_admission_reason(
         not expected_report_date
         or evidence.get("requested_report_date") != expected_report_date
         or evidence.get("resolved_report_date") != expected_report_date
+        or payload_report_date != expected_report_date
     ):
         return "date_mismatch"
     if evidence.get("fallback_mode") != "none" or fallback_date:
@@ -579,7 +597,9 @@ def _build_insights_components(
         as_of_date=as_of_date,
     )
     current_result = _envelope_result(current_envelope)
-    resolved_date = _resolved_ytd_date(current_envelope, as_of_date) or as_of_date
+    resolved_date = _resolved_ytd_date(current_envelope)
+    if resolved_date is None:
+        raise RuntimeError("Current YTD resolved report date is missing or inconsistent.")
     current_items = list(current_result.get("items", []))
 
     concentration = build_business_type_concentration(
@@ -607,10 +627,7 @@ def _build_insights_components(
             as_of_date=baseline_requested_date,
         )
         baseline_envelope = candidate_baseline_envelope
-        baseline_resolved_date = _resolved_ytd_date(
-            candidate_baseline_envelope,
-            baseline_requested_date,
-        )
+        baseline_resolved_date = _resolved_ytd_date(candidate_baseline_envelope)
         baseline_fallback_mode = _normalized_fallback_mode(candidate_baseline_envelope)
         if baseline_resolved_date == baseline_requested_date and baseline_fallback_mode == "none":
             baseline_concentration = build_business_type_concentration(

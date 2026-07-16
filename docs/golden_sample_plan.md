@@ -109,7 +109,7 @@
 | `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | 已有样本包 | `tests/test_ledger_pnl_service.py` + `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 Ledger PnL 页面级 summary DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
 | `GS-LEDGER-PNL-NET-INTEREST-202606-A` | `GET period-comparison` + four component-detail reads | 已有样本包 | `tests/test_ledger_pnl_net_interest_golden_sample.py` + `tests/test_golden_samples_capture_ready.py` + synthetic replay fixture + 样本目录 | 冻结三期总账源锁、净息四类贡献、11 位科目行集指纹与勾稽；clean CI 必跑 synthetic production-chain replay，真实工作簿 replay 为附加检查；保持 candidate-only / `formal_use_allowed=false` / awaiting owner approval |
 | `GS-BANK-LEDGER-CLASSIFICATION-A` | `GET /api/ledger/dashboard` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 Bank Ledger v2 分类矩阵、亿元单位、覆盖率和日期元数据；保持 `formal_use_allowed=false` / pending owner approval |
-| `GS-PNL-BUSINESS-INSIGHTS-A` | `GET /api/pnl/by-business-insights` | 已有样本包 | `tests/test_pnl_by_business_insights_contract.py` + `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结已批准的正式 business-insights DTO；`formal_use_allowed=true`，并保留精确日期、质量、fallback 与组件证据的失效关闭约束 |
+| `GS-PNL-BUSINESS-INSIGHTS-A` | `GET /api/pnl/by-business-insights` | 已有样本包 | `tests/test_pnl_by_business_insights_contract.py` + `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结已批准的正式 business-insights DTO；`formal_use_allowed=true`，并保留精确日期、质量、fallback、正式源准入与诊断可用性的失效关闭约束 |
 
 补充说明：
 

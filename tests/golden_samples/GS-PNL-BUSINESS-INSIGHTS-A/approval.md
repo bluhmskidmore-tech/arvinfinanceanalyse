@@ -22,6 +22,7 @@ This sample approves formula and DTO evidence for the following governed definit
 5. `MTR-PNLBIZ-007`: relative scale–FTP-after-return quadrant where X is YTD CNY-equivalent average-balance share, Y is FTP-after annualized yield, both split at the current eligible-row median; at least 6 eligible rows are required; labels are descriptive and carry no allocation action.
 
 The approved response contract uses `result_kind=pnl.by_business_insights`, `formal_use_allowed=true`, and includes `scale_yield_quadrant` for `MTR-PNLBIZ-007`.
+Each required current/baseline/monthly component must also carry complete upstream lineage and `formal_source_admitted=true`; refresh-bundle or otherwise non-formal source tables do not qualify for the formal envelope.
 
 ## Evidence Boundary
 
@@ -31,3 +32,4 @@ The approved response contract uses `result_kind=pnl.by_business_insights`, `for
 - Approval does not create or alter the governed FTP rate caliber inherited from the upstream YTD/monthly PnL chain.
 - Quadrant labels must not be translated into增配、压降、退出、考核 or limit decisions.
 - `MTR-PNLBIZ-006` must not be mixed into business contribution, drag, concentration, persistence, drift, or quadrant conclusions.
+- `MTR-PNLBIZ-006` source failure and no-observation states must remain explicit through `available`/`availability_reason`; an unavailable empty series is not evidence of a zero untraced share.

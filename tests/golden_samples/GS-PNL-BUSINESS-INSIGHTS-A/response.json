@@ -6,7 +6,7 @@
     "formal_use_allowed": true,
     "amount_currency_basis": null,
     "amount_currency_basis_note": null,
-    "source_version": "sv_pnl_business_insights_PF001_2025-02-28__sv_pnl_business_insights_TB001_2025-02-28+sv_pnl_business_insights_PF001_2026-02-28__sv_pnl_business_insights_TB001_2026-02-28",
+    "source_version": "sv_pnl_business_insights_PF001_2025-02-28__sv_pnl_business_insights_TB001_2025-02-28+sv_pnl_business_insights_PF001_2025-12-31__sv_pnl_business_insights_TB001_2025-12-31+sv_pnl_business_insights_PF001_2026-02-28__sv_pnl_business_insights_TB001_2026-02-28",
     "vendor_version": "vv_none",
     "rule_version": "rv_pnl_by_business_insights_v2",
     "cache_version": "cv_pnl_by_business_insights_v2",
@@ -54,7 +54,22 @@
         "fallback_mode": "none",
         "quality_flag": "warning",
         "vendor_status": "ok",
-        "source_version": "sv_pnl_business_insights_PF001_2026-02-28__sv_pnl_business_insights_TB001_2026-02-28"
+        "basis": "analytical",
+        "formal_use_allowed": false,
+        "result_kind": "pnl.by_business_ytd",
+        "trace_id": "tr_pnl_by_business_ytd_2026_2026-02-28",
+        "source_surface": "formal_pnl",
+        "source_version": "sv_pnl_business_insights_PF001_2026-02-28__sv_pnl_business_insights_TB001_2026-02-28",
+        "rule_version": "rv_pnl_phase2_materialize_v3",
+        "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v3",
+        "tables_used": [
+          "fact_formal_pnl_fi",
+          "fact_nonstd_pnl_bridge",
+          "fact_formal_zqtz_balance_daily",
+          "ZQTZ_ASSET_BOND_ROWS"
+        ],
+        "formal_source_admitted": true,
+        "admission_reason": null
       },
       {
         "component": "baseline_ytd",
@@ -63,16 +78,46 @@
         "fallback_mode": "none",
         "quality_flag": "warning",
         "vendor_status": "ok",
-        "source_version": "sv_pnl_business_insights_PF001_2025-02-28__sv_pnl_business_insights_TB001_2025-02-28"
+        "basis": "analytical",
+        "formal_use_allowed": false,
+        "result_kind": "pnl.by_business_ytd",
+        "trace_id": "tr_pnl_by_business_ytd_2025_2025-02-28",
+        "source_surface": "formal_pnl",
+        "source_version": "sv_pnl_business_insights_PF001_2025-02-28__sv_pnl_business_insights_TB001_2025-02-28",
+        "rule_version": "rv_pnl_phase2_materialize_v3",
+        "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v3",
+        "tables_used": [
+          "fact_formal_pnl_fi",
+          "fact_nonstd_pnl_bridge",
+          "fact_formal_zqtz_balance_daily",
+          "ZQTZ_ASSET_BOND_ROWS"
+        ],
+        "formal_source_admitted": true,
+        "admission_reason": null
       },
       {
         "component": "monthly_2025",
-        "requested_report_date": "2025-02-28",
-        "resolved_report_date": "2025-02-28",
+        "requested_report_date": "2025-12-31",
+        "resolved_report_date": "2025-12-31",
         "fallback_mode": "none",
         "quality_flag": "warning",
         "vendor_status": "ok",
-        "source_version": "sv_pnl_business_insights_PF001_2025-02-28__sv_pnl_business_insights_TB001_2025-02-28"
+        "basis": "analytical",
+        "formal_use_allowed": false,
+        "result_kind": "pnl.by_business_monthly",
+        "trace_id": "tr_pnl_by_business_monthly_2025_2025-12-31",
+        "source_surface": "formal_pnl",
+        "source_version": "sv_pnl_business_insights_PF001_2025-12-31__sv_pnl_business_insights_TB001_2025-12-31",
+        "rule_version": "rv_pnl_phase2_materialize_v3",
+        "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v3",
+        "tables_used": [
+          "fact_formal_pnl_fi",
+          "fact_nonstd_pnl_bridge",
+          "fact_formal_zqtz_balance_daily",
+          "ZQTZ_ASSET_BOND_ROWS"
+        ],
+        "formal_source_admitted": true,
+        "admission_reason": null
       },
       {
         "component": "monthly_2026",
@@ -81,7 +126,22 @@
         "fallback_mode": "none",
         "quality_flag": "warning",
         "vendor_status": "ok",
-        "source_version": "sv_pnl_business_insights_PF001_2026-02-28__sv_pnl_business_insights_TB001_2026-02-28"
+        "basis": "analytical",
+        "formal_use_allowed": false,
+        "result_kind": "pnl.by_business_monthly",
+        "trace_id": "tr_pnl_by_business_monthly_2026_2026-02-28",
+        "source_surface": "formal_pnl",
+        "source_version": "sv_pnl_business_insights_PF001_2026-02-28__sv_pnl_business_insights_TB001_2026-02-28",
+        "rule_version": "rv_pnl_phase2_materialize_v3",
+        "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v3",
+        "tables_used": [
+          "fact_formal_pnl_fi",
+          "fact_nonstd_pnl_bridge",
+          "fact_formal_zqtz_balance_daily",
+          "ZQTZ_ASSET_BOND_ROWS"
+        ],
+        "formal_source_admitted": true,
+        "admission_reason": null
       }
     ],
     "concentration": {
@@ -113,7 +173,7 @@
       "lookback_months": 12,
       "window_start_month": "2025-03",
       "window_end_month": "2026-02",
-      "months_observed": 2,
+      "months_observed": 3,
       "eligible": false,
       "status": "insufficient_observations",
       "negative_ftp_month_share_pct": null,
@@ -215,7 +275,7 @@
         {
           "row_key": "asset_zqtz_policy_financial_bond",
           "business_type": "政策性金融债",
-          "months_observed": 2,
+          "months_observed": 3,
           "eligible": false,
           "status": "insufficient_observations",
           "negative_ftp_month_share_pct": null,
@@ -245,7 +305,7 @@
         {
           "row_key": "asset_zqtz_treasury_bond",
           "business_type": "国债（含凭证式国债）",
-          "months_observed": 2,
+          "months_observed": 3,
           "eligible": false,
           "status": "insufficient_observations",
           "negative_ftp_month_share_pct": null,
@@ -299,7 +359,15 @@
     "reconciliation_diagnostics": {
       "as_of_date": "2026-02-28",
       "lookback_months": 12,
+      "available": true,
+      "availability_reason": null,
       "rows": [
+        {
+          "report_date": "2025-12-31",
+          "untraced_row_count": 0,
+          "total_row_count": 2,
+          "untraced_share_pct": "0.00"
+        },
         {
           "report_date": "2026-01-31",
           "untraced_row_count": 0,
