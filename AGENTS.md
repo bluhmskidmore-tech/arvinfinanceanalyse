@@ -23,6 +23,33 @@ Not current priority:
 - If a metric definition is ambiguous, do not guess. Report the ambiguity with evidence.
 - Business correctness is more important than architectural elegance.
 
+## Frontend change tiers
+Classify the task before exploring or editing, and use the lightest tier that safely covers it. If evidence shows the change crosses a tier boundary, state why and escalate only then.
+
+### Tier 1: visual-only
+Use for copy, spacing, color, typography, responsive layout, and presentation changes that do not alter data access, business meaning, calculations, filters, dates, units, or displayed values.
+
+- Inspect the page/component and its local styles or design tokens.
+- Do not perform metric-contract, lineage, catalog, or full data-flow tracing unless the visual change exposes a data correctness concern.
+- Validate with the narrowest relevant lint/typecheck and browser or component check.
+- Do not require business-logic tests when no business logic changed.
+
+### Tier 2: page-local business display
+Use when a single page changes an adapter, formatter, selector/computed value, filter, metric presentation, date handling, unit, fallback, or state behavior.
+
+- Trace only the affected metric path from API response through the rendered component.
+- Use the relevant metric-contract and lineage evidence; query the data catalog only when source columns, availability, or report dates are material.
+- Add or update the smallest useful adapter, formatter, selector, or component-path test.
+- Run page/workflow-scoped checks first. Widen validation only if a shared boundary is crossed.
+
+### Tier 3: shared or cross-page business logic
+Use when changing shared clients, shared selectors/formatters, formal calculations, cross-page state, or code used by multiple workflows.
+
+- Use GitNexus context and impact evidence before editing shared symbols.
+- Perform contract, lineage, date, unit, fallback, and downstream-consumer checks for the affected paths.
+- Warn before editing when impact is HIGH or CRITICAL.
+- Run broader tests/build checks proportional to the demonstrated blast radius.
+
 ## Large codebase navigation
 - Before broad repository exploration, scan `docs/agent_codebase_map.md` and the relevant subdirectory `CLAUDE.md` / `AGENTS.md`.
 - Keep root-level instructions for global constraints only; put path-specific commands and conventions in the closest subdirectory config.
@@ -58,7 +85,7 @@ Always check:
 - inconsistent filters across cards / charts / tables
 
 ## MCP evidence workflow
-When touching a business metric page, workflow, adapter, formatter, selector, or data-fetch path, use the project MCP servers before deciding the implementation shape:
+For Tier 2 and Tier 3 changes, use the project MCP servers before deciding the implementation shape. Tier 1 changes do not require business-data evidence unless they reveal or alter business behavior:
 
 - Use `moss-metric-contracts` to verify page contracts, metric definitions, units, calculation rules, and golden samples.
 - Use `moss-lineage-evidence` to verify source version, rule/cache lineage, fallback/stale status, and governance evidence.
@@ -109,18 +136,20 @@ When changing business display logic, also add or update the smallest necessary 
 - selector / computed
 - adapter / transform
 
-Always run the narrowest relevant checks available in this repo:
+Run the narrowest relevant checks available in this repo first:
 - lint
 - typecheck
 - targeted tests
-- build
+- build when the changed boundary, risk, or release workflow warrants it
+
+Do not turn every local edit into a repository-wide gate. Expand checks only when the change affects shared code, crosses workflows, or the narrow check reveals a wider problem. `npm run debt:audit` remains required for the frontend paths named in the frontend debt guardrails.
 
 If a command cannot run, explain why instead of skipping silently.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **arvinfinanceanalyse** (108637 symbols, 157730 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **arvinfinanceanalyse** (120492 symbols, 173963 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

@@ -34,6 +34,9 @@ jobs:
       - name: Run bounded backend release suite
         run: python scripts/backend_release_suite.py --governance-audit-output governance-lineage-audit.json
 
+      - name: Run agent harness tests
+        run: python -m pytest tests/test_agent_eval_runner.py tests/test_agent_eval_spec.py tests/test_agent_eval_reward.py -q
+
       - name: Upload governance lineage audit
         if: always()
         uses: actions/upload-artifact@v4
