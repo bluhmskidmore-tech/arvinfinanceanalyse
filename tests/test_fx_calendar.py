@@ -21,6 +21,14 @@ def test_cfets_fx_calendar_marks_usd_currency_holiday() -> None:
     )
 
 
+def test_cfets_fx_calendar_marks_2026_dragon_boat_cny_holiday() -> None:
+    assert is_cfets_fx_non_business_day(
+        date(2026, 6, 19),
+        base_currency="USD",
+        quote_currency="CNY",
+    )
+
+
 def test_cfets_fx_calendar_is_pair_symmetric() -> None:
     assert is_cfets_fx_non_business_day(
         "2026-01-19",

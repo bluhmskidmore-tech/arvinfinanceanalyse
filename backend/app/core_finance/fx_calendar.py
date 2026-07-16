@@ -10,6 +10,7 @@ _WEEKEND_DAYS_BY_CURRENCY = {
 }
 
 _CFETS_CURRENCY_HOLIDAYS = {
+    "CNY": frozenset({date(2026, 6, 19)}),
     "USD": frozenset({date(2026, 1, 19)}),
 }
 
