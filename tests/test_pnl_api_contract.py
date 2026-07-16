@@ -3945,24 +3945,46 @@ def test_rebuild_pnl_by_business_precompute_exact_cutoff_batch_rejects_resolved_
 ):
     from backend.app.tasks import pnl_materialize
 
+    duckdb_path = tmp_path / "moss.duckdb"
+    with duckdb.connect(str(duckdb_path)) as conn:
+        conn.execute("create table preflight_guard (marker varchar)")
+        conn.execute("insert into preflight_guard values ('original')")
+    precompute_calls: list[bool] = []
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert (year, as_of_cap) == (2026, "2026-06-30")
+            return "2026-05-31"
+
+    def fake_precompute(**kwargs):
+        precompute_calls.append(True)
+        with duckdb.connect(str(duckdb_path)) as conn:
+            conn.execute("update preflight_guard set marker = 'mutated'")
+        return {"as_of_date": kwargs["as_of_date"], "records": 1}
+
+    monkeypatch.setattr(pnl_materialize, "PnlRepository", FakePnlRepository, raising=False)
     monkeypatch.setattr(
         pnl_materialize,
         "precompute_pnl_by_business_payloads",
-        lambda **_kwargs: {
-            "as_of_date": "2026-05-31",
-            "records": 1,
-        },
+        fake_precompute,
     )
     monkeypatch.setattr(pnl_materialize, "acquire_lock", lambda *_args, **_kwargs: nullcontext())
     monkeypatch.setattr(pnl_materialize, "_clear_pnl_page_runtime_caches", lambda: None)
 
-    with pytest.raises(RuntimeError, match="requested cutoff=2026-06-30"):
+    with pytest.raises(RuntimeError, match="resolved source cutoff=2026-05-31.*requested cutoff=2026-06-30"):
         pnl_materialize.run_pnl_by_business_precompute_sync(
-            duckdb_path=str(tmp_path / "moss.duckdb"),
+            duckdb_path=str(duckdb_path),
             governance_dir=str(tmp_path / "governance"),
             year=2026,
             as_of_dates=["2026-06-30"],
         )
+
+    assert precompute_calls == []
+    with duckdb.connect(str(duckdb_path), read_only=True) as conn:
+        assert conn.execute("select marker from preflight_guard").fetchone() == ("original",)
 
 
 def test_pnl_by_business_precompute_batch_status_uses_selected_cutoff(
