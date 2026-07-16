@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -3561,16 +3562,41 @@ def test_rebuild_pnl_by_business_precompute_task_records_failure(
 ):
     from backend.app.tasks import pnl_materialize
 
-    def fail_precompute(**_kwargs):
-        raise RuntimeError("precompute fixture failed")
+    calls: list[str] = []
+    lock_state = {"active": False, "entries": 0, "exits": 0}
+    cache_clears: list[bool] = []
+
+    class FakeLockContext:
+        def __enter__(self):
+            lock_state.update(active=True, entries=lock_state["entries"] + 1)
+            return self
+
+        def __exit__(self, _exc_type, _exc, _traceback):
+            lock_state.update(active=False, exits=lock_state["exits"] + 1)
+            return False
+
+    def fail_precompute(**kwargs):
+        assert lock_state["active"] is True
+        cutoff = str(kwargs["as_of_date"])
+        calls.append(cutoff)
+        if cutoff == "2025-02-28":
+            raise RuntimeError("precompute fixture failed")
+        return {"as_of_date": cutoff, "records": 1}
 
     monkeypatch.setattr(pnl_materialize, "precompute_pnl_by_business_payloads", fail_precompute)
+    monkeypatch.setattr(pnl_materialize, "acquire_lock", lambda *_args, **_kwargs: FakeLockContext())
+    monkeypatch.setattr(
+        pnl_materialize,
+        "_clear_pnl_page_runtime_caches",
+        lambda: cache_clears.append(True),
+    )
 
     with pytest.raises(RuntimeError, match="precompute fixture failed"):
         pnl_materialize.run_pnl_by_business_precompute_sync(
             duckdb_path=str(tmp_path / "moss.duckdb"),
             governance_dir=str(tmp_path / "governance"),
             year=2025,
+            as_of_dates=["2025-01-31", "2025-02-28", "2025-03-31"],
             run_id="pnl-by-business-precompute:test-failed",
             trigger_reason="manual_retry",
         )
@@ -3580,6 +3606,9 @@ def test_rebuild_pnl_by_business_precompute_task_records_failure(
         for record in GovernanceRepository(base_dir=tmp_path / "governance").read_all(CACHE_BUILD_RUN_STREAM)
         if record["run_id"] == "pnl-by-business-precompute:test-failed"
     ]
+    assert calls == ["2025-01-31", "2025-02-28"]
+    assert lock_state == {"active": False, "entries": 1, "exits": 1}
+    assert cache_clears == []
     assert [record["status"] for record in run_records] == ["running", "failed"]
     assert run_records[-1]["error_message"] == "precompute fixture failed"
     assert run_records[-1]["failure_category"] == "materialize_failure"
@@ -3639,14 +3668,14 @@ def test_request_pnl_by_business_precompute_rebuild_all_available_dispatches_exa
         def list_union_report_dates(self):
             return [
                 "2026-06-30",
-                "2026-02-28",
-                "2026-01-31",
-                "2026-06-15",
-                "2026-04-30",
-                "2025-12-31",
                 "2026-03-31",
-                "2026-05-31",
-                "2026-02-28",
+                "2026-03-15",
+                "20260430",
+                "2026-W22-7",
+                "not-a-date",
+                "2025-12-31",
+                "2026-01-31",
+                "2026-03-31",
             ]
 
     monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
@@ -3664,21 +3693,130 @@ def test_request_pnl_by_business_precompute_rebuild_all_available_dispatches_exa
 
     expected_cutoffs = [
         "2026-01-31",
-        "2026-02-28",
         "2026-03-31",
-        "2026-04-30",
-        "2026-05-31",
         "2026-06-30",
     ]
     assert queued["scope"] == "all_available"
     assert queued["target_as_of_dates"] == expected_cutoffs
-    assert queued["target_count"] == 6
+    assert queued["target_count"] == 3
     assert len(dispatched) == 1
     assert dispatched[0]["as_of_date"] is None
     assert dispatched[0]["as_of_dates"] == expected_cutoffs
     run_records = GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
     assert run_records[-1]["target_as_of_dates"] == expected_cutoffs
     get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "available_dates",
+    [
+        [],
+        ["not-a-date", "2026-02-15", "2025-12-31"],
+    ],
+)
+def test_request_pnl_by_business_precompute_rebuild_all_available_rejects_empty_valid_target_set(
+    monkeypatch,
+    available_dates,
+):
+    from backend.app.services import pnl_service
+
+    settings = get_settings()
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def list_union_report_dates(self):
+            return available_dates
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "_queue_pnl_by_business_precompute_refresh",
+        lambda *_args, **_kwargs: pytest.fail("invalid targets must not queue"),
+    )
+
+    with pytest.raises(ValueError, match="No available month-end cutoffs"):
+        pnl_service.request_pnl_by_business_precompute_rebuild(
+            settings,
+            year=2026,
+            scope="all_available",
+        )
+
+
+@pytest.mark.parametrize(
+    ("year", "as_of_date"),
+    [
+        (2026, "20260630"),
+        (2026, "2026-W27-2"),
+        (1999, None),
+        (2101, None),
+    ],
+)
+def test_request_pnl_by_business_precompute_rebuild_rejects_noncanonical_dates_and_out_of_range_years(
+    monkeypatch,
+    year,
+    as_of_date,
+):
+    from backend.app.services import pnl_service
+
+    settings = get_settings()
+    monkeypatch.setattr(
+        pnl_service,
+        "_queue_pnl_by_business_precompute_refresh",
+        lambda *_args, **_kwargs: pytest.fail("invalid targets must not queue"),
+    )
+
+    with pytest.raises(ValueError):
+        pnl_service.request_pnl_by_business_precompute_rebuild(
+            settings,
+            year=year,
+            as_of_date=as_of_date,
+        )
+
+
+@pytest.mark.parametrize(
+    ("year", "as_of_dates"),
+    [
+        (2026, ["20260630"]),
+        (2026, ["2026-W27-2"]),
+        (2026, ["2026-06-15"]),
+        (2026, ["2025-12-31"]),
+        (2026, []),
+        (1999, ["1999-12-31"]),
+        (2101, ["2101-12-31"]),
+    ],
+)
+def test_rebuild_pnl_by_business_precompute_batch_rejects_invalid_date_contract(
+    tmp_path,
+    monkeypatch,
+    year,
+    as_of_dates,
+):
+    from backend.app.tasks import pnl_materialize
+
+    monkeypatch.setattr(
+        pnl_materialize,
+        "precompute_pnl_by_business_payloads",
+        lambda **_kwargs: pytest.fail("invalid targets must not precompute"),
+    )
+
+    with pytest.raises(ValueError):
+        pnl_materialize.run_pnl_by_business_precompute_sync(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+            year=year,
+            as_of_dates=as_of_dates,
+        )
+
+
+def test_rebuild_pnl_by_business_precompute_batch_accepts_leap_year_month_end():
+    from backend.app.tasks import pnl_materialize
+
+    assert pnl_materialize._normalize_pnl_by_business_precompute_target_dates(
+        year=2024,
+        as_of_dates=["2024-02-29"],
+    ) == ["2024-02-29"]
 
 
 def test_rebuild_pnl_by_business_precompute_exact_cutoff_batch_uses_one_writer_lock(
@@ -3688,17 +3826,23 @@ def test_rebuild_pnl_by_business_precompute_exact_cutoff_batch_uses_one_writer_l
     from backend.app.tasks import pnl_materialize
 
     calls: list[dict[str, object]] = []
-    lock_entries: list[bool] = []
+    lock_state = {"active": False, "entries": 0, "exits": 0}
 
     class FakeLockContext:
         def __enter__(self):
-            lock_entries.append(True)
+            assert lock_state["active"] is False
+            lock_state["active"] = True
+            lock_state["entries"] += 1
             return self
 
         def __exit__(self, _exc_type, _exc, _traceback):
+            assert lock_state["active"] is True
+            lock_state["active"] = False
+            lock_state["exits"] += 1
             return False
 
     def fake_precompute(**kwargs):
+        assert lock_state["active"] is True
         calls.append(kwargs)
         as_of_date = str(kwargs["as_of_date"])
         record_count = 100 + len(calls)
@@ -3723,7 +3867,7 @@ def test_rebuild_pnl_by_business_precompute_exact_cutoff_batch_uses_one_writer_l
         trigger_reason="manual_retry_all_available",
     )
 
-    assert lock_entries == [True]
+    assert lock_state == {"active": False, "entries": 1, "exits": 1}
     assert [call["as_of_date"] for call in calls] == ["2026-01-31", "2026-06-30"]
     assert result["as_of_dates"] == ["2026-01-31", "2026-06-30"]
     assert result["cutoff_count"] == 2
@@ -3740,6 +3884,87 @@ def test_rebuild_pnl_by_business_precompute_exact_cutoff_batch_uses_one_writer_l
     assert run_records[-1]["record_count"] == 203
 
 
+def test_pnl_by_business_precompute_exact_cutoff_partitions_replace_idempotently_and_stay_isolated(
+    tmp_path,
+):
+    from backend.app.tasks.pnl_by_business_precompute import persist_pnl_by_business_precompute
+
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    def row(cutoff, kind, marker):
+        return {
+            "year": 2026,
+            "as_of_date": cutoff,
+            "result_kind": kind,
+            "dimension": "currency" if kind == "analysis" else "",
+            "business_key": "",
+            "payload_json": json.dumps({"marker": marker}),
+            "source_version": f"source::{cutoff}::{marker}",
+            "rule_version": PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
+            "generated_at": "2026-07-16T12:00:00+00:00",
+        }
+
+    def persist(cutoff, rows):
+        persist_pnl_by_business_precompute(
+            duckdb_path=str(duckdb_path),
+            year=2026,
+            as_of_date=cutoff,
+            records=rows,
+        )
+
+    def snapshot():
+        with duckdb.connect(str(duckdb_path), read_only=True) as conn:
+            return conn.execute(
+                "select as_of_date, result_kind, payload_json "
+                "from fact_pnl_by_business_precompute "
+                "order by as_of_date, result_kind"
+            ).fetchall()
+
+    persist("2026-01-31", [row("2026-01-31", "monthly", "initial")])
+    persist("2026-02-28", [row("2026-02-28", "monthly", "sentinel")])
+    replacement = [
+        row("2026-01-31", "monthly", "current"),
+        row("2026-01-31", "analysis", "current"),
+    ]
+    persist("2026-01-31", replacement)
+    first_rebuild = snapshot()
+    persist("2026-01-31", replacement)
+    second_rebuild = snapshot()
+
+    assert second_rebuild == first_rebuild
+    assert [(item[0], item[1], json.loads(str(item[2]))["marker"]) for item in second_rebuild] == [
+        ("2026-01-31", "analysis", "current"),
+        ("2026-01-31", "monthly", "current"),
+        ("2026-02-28", "monthly", "sentinel"),
+    ]
+
+
+def test_rebuild_pnl_by_business_precompute_exact_cutoff_batch_rejects_resolved_cutoff_drift(
+    tmp_path,
+    monkeypatch,
+):
+    from backend.app.tasks import pnl_materialize
+
+    monkeypatch.setattr(
+        pnl_materialize,
+        "precompute_pnl_by_business_payloads",
+        lambda **_kwargs: {
+            "as_of_date": "2026-05-31",
+            "records": 1,
+        },
+    )
+    monkeypatch.setattr(pnl_materialize, "acquire_lock", lambda *_args, **_kwargs: nullcontext())
+    monkeypatch.setattr(pnl_materialize, "_clear_pnl_page_runtime_caches", lambda: None)
+
+    with pytest.raises(RuntimeError, match="requested cutoff=2026-06-30"):
+        pnl_materialize.run_pnl_by_business_precompute_sync(
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+            year=2026,
+            as_of_dates=["2026-06-30"],
+        )
+
+
 def test_pnl_by_business_precompute_batch_status_uses_selected_cutoff(
     tmp_path,
     monkeypatch,
@@ -3749,7 +3974,7 @@ def test_pnl_by_business_precompute_batch_status_uses_selected_cutoff(
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
     settings = get_settings()
-    target_cutoffs = ["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30"]
+    target_cutoffs = ["2026-01-31", "2026-03-31"]
     queued_record = CacheBuildRunRecord(
         run_id="pnl_by_business_precompute:all-available",
         job_name=pnl_service.PNL_BY_BUSINESS_PRECOMPUTE_JOB_NAME,
@@ -3778,7 +4003,7 @@ def test_pnl_by_business_precompute_batch_status_uses_selected_cutoff(
             return "2026-06-30" if as_of_cap is None else str(as_of_cap)
 
         def fetch_pnl_by_business_precompute_metadata(self, **kwargs):
-            assert kwargs["as_of_date"] == "2026-03-31"
+            assert kwargs["as_of_date"] in {"2026-03-31", "2026-06-30"}
             type(self).verify_current_calls.append(bool(kwargs["verify_current"]))
             return None
 
@@ -3794,6 +4019,14 @@ def test_pnl_by_business_precompute_batch_status_uses_selected_cutoff(
     assert status["run_id"] == "pnl_by_business_precompute:all-available"
     assert status["report_date"] == "2026-03-31"
     assert status["serving_mode"] == "live_fallback"
+
+    unlisted = pnl_service.pnl_by_business_precompute_status(
+        settings,
+        year=2026,
+        as_of_date="2026-06-30",
+    )
+    assert unlisted["status"] == "idle"
+    assert unlisted["run_id"] is None
 
     completed_record = {
         **queued_record,
@@ -3820,7 +4053,7 @@ def test_pnl_by_business_precompute_batch_status_uses_selected_cutoff(
         as_of_date="2026-03-31",
     )
 
-    assert FakePnlRepository.verify_current_calls == [False, True]
+    assert FakePnlRepository.verify_current_calls == [False, True, True]
     assert completed["status"] == "completed"
     assert completed["report_date"] == "2026-03-31"
     assert completed["source_version"] == "source::2026-03-31"
@@ -3837,6 +4070,94 @@ def test_pnl_by_business_precompute_rebuild_openapi_exposes_all_available_scope(
 
     assert scope_parameter["schema"]["default"] == "selected"
     assert scope_parameter["schema"]["enum"] == ["selected", "all_available"]
+
+
+def test_pnl_by_business_precompute_routes_enforce_scopes_before_wiring_requests(
+    tmp_path,
+    monkeypatch,
+):
+    route_module = load_module(
+        f"tests._pnl_routes.precompute_route_contract_{id(monkeypatch)}",
+        "backend/app/api/routes/pnl.py",
+    )
+    service_lookups: list[bool] = []
+    status_calls: list[dict[str, object]] = []
+    rebuild_calls: list[dict[str, object]] = []
+
+    class FakePnlService:
+        class PnlByBusinessPrecomputeConflictError(RuntimeError):
+            pass
+
+        class PnlByBusinessPrecomputeDispatchError(RuntimeError):
+            pass
+
+        @staticmethod
+        def pnl_by_business_precompute_status(_settings, **kwargs):
+            status_calls.append(kwargs)
+            return {"year": kwargs["year"], "status": "idle"}
+
+        @staticmethod
+        def request_pnl_by_business_precompute_rebuild(_settings, **kwargs):
+            rebuild_calls.append(kwargs)
+            return {"status": "queued", **kwargs}
+
+    def load_service():
+        service_lookups.append(True)
+        return FakePnlService
+
+    monkeypatch.setattr(route_module, "_pnl_service", load_service)
+    scope_repo = _setup_route_scope_store(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    headers = {"X-User-Id": "precompute-operator", "X-User-Role": "viewer"}
+    status_path = "/api/pnl/by-business/precompute-status"
+    rebuild_path = "/api/pnl/by-business/precompute-rebuild"
+
+    assert client.get(status_path, params={"year": 2026}, headers=headers).status_code == 403
+    assert (
+        client.post(
+            rebuild_path,
+            params={"year": 2026, "scope": "all_available"},
+            headers=headers,
+        ).status_code
+        == 403
+    )
+    assert service_lookups == status_calls == rebuild_calls == []
+
+    _grant_pnl_read_scope(scope_repo, user_id="precompute-operator")
+    allowed_status = client.get(
+        status_path,
+        params={"year": 2026, "as_of_date": "2026-03-31"},
+        headers=headers,
+    )
+    assert allowed_status.status_code == 200
+
+    scope_repo.grant_scope(
+        user_id="precompute-operator",
+        role=None,
+        resource="pnl_by_business.adjustment",
+        action="write",
+    )
+
+    selected = client.post(
+        rebuild_path,
+        params={"year": 2026, "as_of_date": "2026-03-31"},
+        headers=headers,
+    )
+    all_available = client.post(
+        rebuild_path,
+        params={"year": 2026, "scope": "all_available"},
+        headers=headers,
+    )
+
+    assert selected.status_code == 200
+    assert all_available.status_code == 200
+    assert status_calls == [{"year": 2026, "as_of_date": "2026-03-31"}]
+    assert rebuild_calls == [
+        {"year": 2026, "as_of_date": "2026-03-31", "scope": "selected"},
+        {"year": 2026, "as_of_date": None, "scope": "all_available"},
+    ]
 
 
 def test_pnl_by_business_precompute_status_distinguishes_current_cache_and_live_fallback(
