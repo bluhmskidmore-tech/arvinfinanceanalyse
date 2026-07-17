@@ -182,6 +182,7 @@ def _livermore_signal_confluence_cache_key(
         f"livermore/signal-confluence::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
         f"::data_version={livermore_data_version(duckdb_path)}"
         f"::theme_overlay={theme_overlay_fingerprint}"
+        f"::business_inputs={livermore_business_inputs_version()}"
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date
 from typing import Any
 
@@ -872,6 +873,7 @@ def test_livermore_business_input_signature_invalidates_all_cache_layers(
     for filename, attribute in input_path_attributes.items():
         path = tmp_path / filename
         path.write_text(f"{filename}:v1", encoding="utf-8")
+        os.utime(path, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
         input_paths[filename] = path
         monkeypatch.setattr(service_module, attribute, path)
 
@@ -914,14 +916,32 @@ def test_livermore_business_input_signature_invalidates_all_cache_layers(
     first_outer = outer_key()
     first_direct = direct_strategy_key()
     first_inner = inner_key()
+
+    os.utime(
+        input_paths[changed_input],
+        ns=(1_700_000_001_000_000_000, 1_700_000_001_000_000_000),
+    )
+    touched_outer = outer_key()
+    touched_direct = direct_strategy_key()
+    touched_inner = inner_key()
+
     input_paths[changed_input].write_text(
-        f"{changed_input}:v2-with-a-new-signature",
+        f"{changed_input}:v2",
         encoding="utf-8",
+    )
+    os.utime(
+        input_paths[changed_input],
+        ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000),
     )
     second_outer = outer_key()
     second_direct = direct_strategy_key()
     second_inner = inner_key()
 
+    assert (touched_outer, touched_direct, touched_inner) == (
+        first_outer,
+        first_direct,
+        first_inner,
+    )
     assert {
         "outer_workbench_key_changed": first_outer != second_outer,
         "direct_strategy_key_changed": first_direct != second_direct,
@@ -931,6 +951,29 @@ def test_livermore_business_input_signature_invalidates_all_cache_layers(
         "direct_strategy_key_changed": True,
         "inner_strategy_payload_key_changed": True,
     }
+
+
+def test_signal_confluence_cache_key_invalidates_on_business_input_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    monkeypatch.setattr(route_module, "livermore_data_version", lambda _path: "db-v1")
+    monkeypatch.setattr(route_module, "livermore_business_inputs_version", lambda: "inputs-v1")
+    common = {
+        "duckdb_path": "fixture.duckdb",
+        "catalog_file": "choice-stock.json",
+        "as_of_date": "2026-07-16",
+    }
+
+    first = route_module._livermore_signal_confluence_cache_key(**common)
+    monkeypatch.setattr(route_module, "livermore_business_inputs_version", lambda: "inputs-v2")
+    second = route_module._livermore_signal_confluence_cache_key(**common)
+
+    assert first != second
+    assert "::business_inputs=inputs-v2" in second
 
 
 def test_stock_analysis_workbench_cache_key_normalizes_default_include(

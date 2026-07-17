@@ -5824,10 +5824,10 @@ def livermore_data_version(duckdb_path: str) -> str:
 
 def _livermore_business_input_signature(path: Path) -> str:
     try:
-        stat = path.stat()
+        payload = path.read_bytes()
     except OSError:
         return "missing"
-    return f"{stat.st_mtime_ns}:{stat.st_size}"
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
 def livermore_business_inputs_version() -> str:
