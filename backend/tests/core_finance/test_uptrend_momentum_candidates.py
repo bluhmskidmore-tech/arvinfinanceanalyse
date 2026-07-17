@@ -10,6 +10,14 @@ from backend.app.core_finance.uptrend_momentum_candidates import (
 )
 
 
+def test_uptrend_float_series_reuses_finite_float_history() -> None:
+    history = [10.0, 10.5, 11.0]
+
+    assert uptrend_module._float_series(history) is history
+    assert uptrend_module._float_series([1, "2.5"]) == [1.0, 2.5]
+    assert uptrend_module._float_series([10.0, float("nan")]) is None
+
+
 def _snapshot(
     code: str,
     closes: list[float],

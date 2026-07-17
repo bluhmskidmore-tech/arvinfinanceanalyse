@@ -5,6 +5,7 @@ from typing import Any, cast
 
 import pytest
 
+from backend.app.core_finance import livermore_stock_candidates as stock_module
 from backend.app.core_finance.livermore_stock_candidates import (
     EXP3C_SHADOW_STOCK_CANDIDATE_POLICY,
     FORMULA_VERSION,
@@ -12,6 +13,14 @@ from backend.app.core_finance.livermore_stock_candidates import (
     compute_stock_candidates,
     diagnose_stock_candidate_filters,
 )
+
+
+def test_stock_candidate_float_series_reuses_finite_float_history() -> None:
+    history = [10.0, 10.5, 11.0]
+
+    assert stock_module._float_series(history) is history
+    assert stock_module._float_series([1, "2.5"]) == [1.0, 2.5]
+    assert stock_module._float_series([10.0, float("nan")]) is None
 
 
 class _CountingHistory(list[float]):

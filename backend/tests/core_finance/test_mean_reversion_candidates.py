@@ -13,6 +13,14 @@ from backend.app.core_finance.mean_reversion_candidates import (
 )
 
 
+def test_mean_reversion_float_series_reuses_finite_float_history() -> None:
+    history = [10.0, 10.5, 11.0]
+
+    assert mean_module._float_series(history) is history
+    assert mean_module._float_series([1, "2.5"]) == [1.0, 2.5]
+    assert mean_module._float_series([10.0, float("nan")]) is None
+
+
 def _float_hist(base: float, tail: list[float]) -> list[float]:
     length = len(tail)
     pad = MIN_LEN - length

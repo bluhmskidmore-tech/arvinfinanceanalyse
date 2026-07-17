@@ -201,6 +201,13 @@ def _mean_tail(values: list[float], n: int) -> float:
 
 
 def _float_series(values: Sequence[object]) -> list[float] | None:
+    if type(values) is list:
+        for value in values:
+            if type(value) is not float or not math.isfinite(value):
+                break
+        else:
+            return cast(list[float], values)
+
     converted = [_valid_float(value) for value in values]
     if any(value is None for value in converted):
         return None
