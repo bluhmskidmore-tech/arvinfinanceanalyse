@@ -23,6 +23,8 @@ import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockAnalysisCandidateComparison } from "../features/stock-analysis/components/StockAnalysisCandidateComparison";
 import { StockAnalysisCandidateLedgerTable } from "../features/stock-analysis/components/StockAnalysisCandidateLedgerTable";
 import { StockAnalysisReviewLedgerFirstScreen } from "../features/stock-analysis/components/StockAnalysisReviewLedgerFirstScreen";
+import * as stockAnalysisKlineRadarModel from "../features/stock-analysis/lib/stockAnalysisKlineRadarModel";
+import * as stockAnalysisPageModel from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import type { StockCandidateReviewQueueItem, WorkbenchDataDigest } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -245,6 +247,16 @@ type StockAnalysisStrategyCardId =
   | "strategy-backtest"
   | "strategy-optimization"
   | "events-monitoring";
+
+async function openDeepResearch() {
+  const user = userEvent.setup();
+  const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
+  if (!(deepResearch as HTMLDetailsElement).open) {
+    await user.click(within(deepResearch).getByTestId("stock-analysis-deep-research-summary"));
+  }
+  await within(deepResearch).findByTestId("stock-analysis-deep-zone");
+  return deepResearch;
+}
 
 async function openStrategyModuleDetail(id: StockAnalysisStrategyCardId) {
   const user = userEvent.setup();
@@ -2189,6 +2201,7 @@ describe("StockAnalysisPage", () => {
         },
       }),
     });
+    await openDeepResearch();
 
     const page = await screen.findByTestId("stock-analysis-page");
     expect(page).toHaveAttribute("data-layout-rev", "2026-05-31e");
@@ -2349,6 +2362,7 @@ describe("StockAnalysisPage", () => {
       .mockImplementation(() => new Promise<ApiEnvelope<LivermoreStrategyScorePayload>>(() => undefined));
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     const digest = await screen.findByTestId("stock-analysis-workbench-digest");
     expect(within(digest).getByTestId("stock-analysis-workbench-fact-candidate-depth")).toHaveTextContent("1 / 1");
@@ -2526,6 +2540,7 @@ describe("StockAnalysisPage", () => {
 
   it("keeps first-screen content limited to decision, KPI, review summary, and trust rail", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+    await openDeepResearch();
 
     const firstScreen = await screen.findByTestId("stock-analysis-first-screen-workbench");
     const firstScreenMain = await screen.findByTestId("stock-analysis-first-screen-main");
@@ -3611,6 +3626,7 @@ describe("StockAnalysisPage", () => {
     expect(screen.queryByTestId("stock-analysis-review-workbench-strip")).not.toBeInTheDocument();
     expect(screen.queryByTestId("stock-candidate-000001.SZ")).not.toBeInTheDocument();
     expect(screen.queryByTestId("stock-analysis-sector-review-link")).not.toBeInTheDocument();
+    await openDeepResearch();
     expect(screen.getByTestId("stock-analysis-factor-preview-empty")).toHaveTextContent("0");
     expect(screen.getByTestId("stock-analysis-mean-reversion-preview-empty")).toHaveTextContent("0");
     expect(screen.getByTestId("stock-analysis-theme-leader-empty")).toHaveTextContent("0");
@@ -4831,6 +4847,7 @@ describe("StockAnalysisPage", () => {
 
   it("renders the strategy lens once between the first-screen rail and review stack", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+    await openDeepResearch();
 
     const firstScreenMain = await screen.findByTestId("stock-analysis-first-screen-main");
     const rail = await screen.findByTestId("stock-analysis-first-screen-rail");
@@ -4847,6 +4864,7 @@ describe("StockAnalysisPage", () => {
 
   it("keeps stock trust evidence and review controls before deep analysis", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+    await openDeepResearch();
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
     const reviewQueue = await screen.findByTestId("stock-analysis-review-queue");
@@ -4933,14 +4951,22 @@ describe("StockAnalysisPage", () => {
     expectElementBefore(klineRadar, observationPreview);
   });
 
-  it("mounts deep research only after the closed disclosure is requested", async () => {
+  it("keeps deep research unmounted when the closed disclosure enters the viewport", async () => {
     const user = userEvent.setup();
     const observeNode = vi.fn();
 
     vi.stubGlobal(
       "IntersectionObserver",
-      class IdleIntersectionObserver {
-        observe = observeNode;
+      class IntersectingIntersectionObserver {
+        constructor(private readonly callback: IntersectionObserverCallback) {}
+
+        observe = (node: Element) => {
+          observeNode(node);
+          this.callback(
+            [{ isIntersecting: true, target: node } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          );
+        };
         unobserve = vi.fn();
         disconnect = vi.fn();
         takeRecords = () => [];
@@ -4950,7 +4976,7 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
-    await waitFor(() => expect(observeNode).toHaveBeenCalledWith(deepResearch));
+    expect(observeNode).not.toHaveBeenCalledWith(deepResearch);
 
     expect(
       within(deepResearch).queryByTestId("stock-analysis-deep-zone"),
@@ -4965,22 +4991,83 @@ describe("StockAnalysisPage", () => {
     ).toBeVisible();
   });
 
+  it("defers deep-research data shaping until the disclosure is requested", async () => {
+    const user = userEvent.setup();
+    const observeNode = vi.fn();
+    const deepGateBuilder = vi.spyOn(stockAnalysisPageModel, "buildDeepAnalysisGateSummary");
+    const deepAuditBuilder = vi.spyOn(stockAnalysisPageModel, "buildDeepZoneAuditRows");
+    const klineRadarBuilder = vi.spyOn(
+      stockAnalysisKlineRadarModel,
+      "buildStockAnalysisKlineRadar",
+    );
+    const themeCardsBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeBreakoutCards");
+    const themeLeadersBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeLeaderPreviewItems");
+    const themeEvidenceBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeEvidenceStateRows");
+    const themeReviewBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeBreakoutReviewItems");
+    const themePanelBuilder = vi.spyOn(stockAnalysisPageModel, "buildThemeBreakoutPanelSummary");
+
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IdleIntersectionObserver {
+        observe = observeNode;
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+        takeRecords = () => [];
+      },
+    );
+
+    try {
+      renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+      const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
+      expect(observeNode).not.toHaveBeenCalledWith(deepResearch);
+
+      expect(deepGateBuilder).not.toHaveBeenCalled();
+      expect(deepAuditBuilder).not.toHaveBeenCalled();
+      expect(klineRadarBuilder).not.toHaveBeenCalled();
+      expect(themeCardsBuilder).not.toHaveBeenCalled();
+      expect(themeLeadersBuilder).not.toHaveBeenCalled();
+      expect(themeEvidenceBuilder).not.toHaveBeenCalled();
+      expect(themeReviewBuilder).not.toHaveBeenCalled();
+      expect(themePanelBuilder).not.toHaveBeenCalled();
+
+      await user.click(within(deepResearch).getByTestId("stock-analysis-deep-research-summary"));
+      expect(await within(deepResearch).findByTestId("stock-analysis-deep-zone")).toBeVisible();
+      expect(deepGateBuilder).toHaveBeenCalled();
+      expect(deepAuditBuilder).toHaveBeenCalled();
+      expect(klineRadarBuilder).toHaveBeenCalled();
+      expect(themeCardsBuilder).toHaveBeenCalled();
+      expect(themeLeadersBuilder).toHaveBeenCalled();
+      expect(themeEvidenceBuilder).toHaveBeenCalled();
+      expect(themeReviewBuilder).toHaveBeenCalled();
+      expect(themePanelBuilder).toHaveBeenCalled();
+    } finally {
+      deepGateBuilder.mockRestore();
+      deepAuditBuilder.mockRestore();
+      klineRadarBuilder.mockRestore();
+      themeCardsBuilder.mockRestore();
+      themeLeadersBuilder.mockRestore();
+      themeEvidenceBuilder.mockRestore();
+      themeReviewBuilder.mockRestore();
+      themePanelBuilder.mockRestore();
+    }
+  });
+
   it("keeps secondary research and the duplicate gate ledger collapsed by default", async () => {
     const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
-    const deepZone = within(deepResearch).getByTestId("stock-analysis-deep-zone");
     const gateLedger = await screen.findByTestId("stock-analysis-gate-ledger-disclosure");
     const candidateComparison = await screen.findByTestId("stock-analysis-candidate-comparison");
 
     expect(deepResearch).not.toHaveAttribute("open");
-    expect(deepZone).not.toBeVisible();
+    expect(within(deepResearch).queryByTestId("stock-analysis-deep-zone")).not.toBeInTheDocument();
     expect(gateLedger).not.toHaveAttribute("open");
     expect(candidateComparison).toBeVisible();
 
     await user.click(within(deepResearch).getByTestId("stock-analysis-deep-research-summary"));
     expect(deepResearch).toHaveAttribute("open");
+    const deepZone = await within(deepResearch).findByTestId("stock-analysis-deep-zone");
     expect(deepZone).toBeVisible();
 
     await user.click(within(gateLedger).getByTestId("stock-analysis-gate-ledger-summary"));
@@ -5000,15 +5087,15 @@ describe("StockAnalysisPage", () => {
       renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
       const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
-      const target = await screen.findByTestId("stock-analysis-observation-preview");
       const moreStrategies = await screen.findByTestId("stock-analysis-strategy-lens-more-strategies");
       expect(deepResearch).not.toHaveAttribute("open");
 
       await user.click(within(moreStrategies).getByText("更多候选策略"));
       await user.click(screen.getByRole("button", { name: "前往多因子复核区" }));
 
+      const target = await screen.findByTestId("stock-analysis-observation-preview");
       expect(deepResearch).toHaveAttribute("open");
-      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" }));
       expect(scrollIntoView.mock.instances.at(-1)).toBe(target);
     } finally {
       if (originalScrollIntoView) {
@@ -5024,6 +5111,7 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     const v6Audit = await screen.findByTestId("stock-analysis-v6-audit-disclosure");
+    await openDeepResearch();
     const workspace = document.querySelector<HTMLElement>(".stock-analysis-page__workspace");
     const readiness = await screen.findByTestId("stock-analysis-api-readiness-shell");
     expect(workspace).not.toBeNull();
@@ -5048,8 +5136,6 @@ describe("StockAnalysisPage", () => {
     expect(within(radarDetails).getByTestId("stock-analysis-kline-radar-explanation")).toBeInTheDocument();
     expect(within(radarDetails).getByTestId("stock-analysis-kline-radar-queue-breakout")).toBeInTheDocument();
 
-    const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
-    await user.click(within(deepResearch).getByTestId("stock-analysis-deep-research-summary"));
     await user.click(within(radarDetails).getByText("完整队列、页面状态与来源拓扑"));
     expect(radarDetails).toHaveAttribute("open");
     expect(within(radarDetails).getByTestId("stock-analysis-kline-radar-state-strip")).toBeVisible();
@@ -5059,6 +5145,7 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ metaOverrides: { quality_flag: "warning" } }),
     });
+    await openDeepResearch();
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
     expect(decisionPanel).toHaveTextContent("数据日");
@@ -5233,6 +5320,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const themeLeaders = await screen.findByTestId("stock-analysis-theme-leaders-first-screen");
     expect(themeLeaders).toHaveTextContent("题材突破领涨股");
@@ -5281,6 +5369,7 @@ describe("StockAnalysisPage", () => {
     const candidateHistorySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     await screen.findByTestId("stock-analysis-first-screen-analytics");
     expect(strategyScoreSpy).not.toHaveBeenCalled();
@@ -5301,6 +5390,7 @@ describe("StockAnalysisPage", () => {
     const candidateHistorySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     await screen.findByTestId("stock-analysis-first-screen-analytics");
     expect(strategyOptimizationSpy).not.toHaveBeenCalled();
@@ -5315,6 +5405,7 @@ describe("StockAnalysisPage", () => {
 
   it("renders core sections and candidate evidence", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+    await openDeepResearch();
 
     expect(await screen.findByTestId("market-workbench-topbar")).toHaveTextContent("股票分析");
     expect(await screen.findByTestId("stock-analysis-decision-panel")).toBeInTheDocument();
@@ -5738,6 +5829,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     await screen.findByTestId("stock-analysis-theme-breakout");
     expect(screen.queryByTestId("stock-analysis-theme-evidence-state")).not.toBeInTheDocument();
@@ -5785,6 +5877,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const poolsCard = await screen.findByTestId("stock-analysis-mean-reversion");
     await user.click(within(poolsCard).getByTestId("stock-analysis-strategy-card-observation-pools-toggle"));
@@ -5824,6 +5917,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const preview = await screen.findByTestId("stock-analysis-observation-preview");
     expect(preview).toHaveTextContent("因子快照无数据");
@@ -6007,6 +6101,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const queue = await screen.findByTestId("stock-analysis-review-queue");
     const comparison = within(queue).getByTestId("stock-analysis-candidate-comparison");
@@ -6839,6 +6934,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     expect(await screen.findByTestId("stock-comparison-candidate-row-000001.SZ")).toBeInTheDocument();
     await user.click(screen.getByTestId("sector-bar-801003"));
@@ -6879,6 +6975,7 @@ describe("StockAnalysisPage", () => {
         } as unknown as Partial<LivermoreStrategyPayload>),
       }),
     });
+    await openDeepResearch();
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
     expect(decisionPanel).toHaveTextContent("边界");
@@ -7026,6 +7123,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const themeLeaders = await screen.findByTestId("stock-analysis-theme-leaders-first-screen");
     const blocker = within(themeLeaders).getByTestId("stock-analysis-theme-leader-empty");
@@ -7186,6 +7284,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const section = await screen.findByTestId("stock-analysis-risk-section");
     expect(within(section).getByText("风险退出不可用")).toBeInTheDocument();
@@ -7359,6 +7458,7 @@ describe("StockAnalysisPage", () => {
     const spy = vi.spyOn(client, "getLivermoreSectorRankSeries");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "首屏分析视图" })).toBeInTheDocument();
@@ -7401,6 +7501,7 @@ describe("StockAnalysisPage", () => {
     const spy = vi.spyOn(client, "getLivermoreSectorRankSeries");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     await waitFor(() =>
       expect(spy).toHaveBeenCalledWith(
@@ -7426,6 +7527,7 @@ describe("StockAnalysisPage", () => {
     const seriesSpy = vi.spyOn(client, "getLivermoreSectorRankSeries");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     await requestStockAnalysisAsOfDate(user, strategySpy);
     const sectorSeriesButton = screen.getByRole("button", { name: /多日强弱/ });
@@ -7477,6 +7579,7 @@ describe("StockAnalysisPage", () => {
     const seriesSpy = vi.spyOn(client, "getLivermoreSectorRankSeries");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
     await requestStockAnalysisAsOfDate(user, strategySpy, "2026-05-08", "2026-05-08");
@@ -7497,6 +7600,7 @@ describe("StockAnalysisPage", () => {
     );
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
     await user.click(screen.getByText("多日强弱"));
@@ -7570,6 +7674,7 @@ describe("StockAnalysisPage", () => {
     const strategyOptimizationSpy = vi.spyOn(client, "getLivermoreStrategyOptimization");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     await requestStockAnalysisAsOfDate(user, strategySpy);
     const analytics = await screen.findByTestId("stock-analysis-first-screen-analytics");
@@ -7605,6 +7710,7 @@ describe("StockAnalysisPage", () => {
     const candidateHistorySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     await requestStockAnalysisAsOfDate(user, strategySpy);
     await screen.findByTestId("stock-analysis-strategy-backtest");
@@ -7639,6 +7745,7 @@ describe("StockAnalysisPage", () => {
     const portfolioBacktestSpy = vi.spyOn(client, "getLivermoreCandidateHistoryPortfolioBacktest");
 
     renderWorkbenchApp(["/stock-analysis"], { client });
+    await openDeepResearch();
 
     await requestStockAnalysisAsOfDate(user, strategySpy);
     await screen.findByTestId("stock-analysis-cycle-rotation-framework");
@@ -7991,6 +8098,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
 
@@ -8190,6 +8298,7 @@ describe("StockAnalysisPage", () => {
         ),
       }),
     });
+    await openDeepResearch();
 
     const section = await screen.findByTestId("stock-analysis-market-priority-summary");
     await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
@@ -8255,6 +8364,7 @@ describe("StockAnalysisPage", () => {
         strategyOptimization: enrichedOptimizationPayload,
       }),
     });
+    await openDeepResearch();
 
     const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
     const optimization = await screen.findByTestId("stock-analysis-strategy-optimization");
@@ -8321,6 +8431,7 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ strategyOptimizationResultNull: true }),
     });
+    await openDeepResearch();
 
     const card = await screen.findByTestId("stock-analysis-strategy-optimization");
     await waitFor(() => expect(card).toHaveTextContent("接口未提供"), { timeout: 3_000 });

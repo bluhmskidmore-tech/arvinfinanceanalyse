@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Any
 
 import pytest
@@ -797,6 +798,93 @@ def test_stock_analysis_workbench_cache_key_tracks_choice_catalog_version(
 
     assert first != second
     assert "::catalog_version=" in second
+
+
+@pytest.mark.parametrize(
+    "changed_input",
+    [
+        "hybrid_fusion_strategy.yaml",
+        "cycle_rotation_macro_official_availability.json",
+        "cycle_rotation_macro_official_releases.json",
+    ],
+)
+def test_livermore_business_input_signature_invalidates_all_cache_layers(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed_input: str,
+) -> None:
+    service_module = load_module(
+        "backend.app.services.market_data_livermore_service",
+        "backend/app/services/market_data_livermore_service.py",
+    )
+    input_path_attributes = {
+        "hybrid_fusion_strategy.yaml": "DEFAULT_STRATEGY_YAML",
+        "cycle_rotation_macro_official_availability.json": "_OFFICIAL_AVAILABILITY_MANIFEST_PATH",
+        "cycle_rotation_macro_official_releases.json": "_OFFICIAL_RELEASES_MANIFEST_PATH",
+    }
+    input_paths = {}
+    for filename, attribute in input_path_attributes.items():
+        path = tmp_path / filename
+        path.write_text(f"{filename}:v1", encoding="utf-8")
+        input_paths[filename] = path
+        monkeypatch.setattr(service_module, attribute, path)
+
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    duckdb_path = tmp_path / "fixture.duckdb"
+    duckdb_path.write_bytes(b"duckdb-placeholder")
+    catalog = tmp_path / "choice-stock.json"
+    catalog.write_text("{}", encoding="utf-8")
+    readiness = service_module.choice_stock_readiness_missing("fixture")
+
+    def outer_key() -> str:
+        return route_module._stock_analysis_workbench_cache_key(
+            duckdb_path=str(duckdb_path),
+            catalog_file=catalog,
+            as_of_date=None,
+            include=None,
+            sector_window_days=20,
+            top_k=3,
+        )
+
+    def direct_strategy_key() -> str:
+        return route_module._livermore_strategy_cache_key(
+            duckdb_path=str(duckdb_path),
+            catalog_file=catalog,
+            as_of_date=None,
+        )
+
+    def inner_key() -> tuple[object, ...] | None:
+        return service_module._livermore_strategy_payload_cache_key(
+            duckdb_path=str(duckdb_path),
+            as_of_date=date(2026, 7, 16),
+            stock_readiness=readiness,
+            backfill_mode=False,
+            stock_candidate_policy=None,
+        )
+
+    first_outer = outer_key()
+    first_direct = direct_strategy_key()
+    first_inner = inner_key()
+    input_paths[changed_input].write_text(
+        f"{changed_input}:v2-with-a-new-signature",
+        encoding="utf-8",
+    )
+    second_outer = outer_key()
+    second_direct = direct_strategy_key()
+    second_inner = inner_key()
+
+    assert {
+        "outer_workbench_key_changed": first_outer != second_outer,
+        "direct_strategy_key_changed": first_direct != second_direct,
+        "inner_strategy_payload_key_changed": first_inner != second_inner,
+    } == {
+        "outer_workbench_key_changed": True,
+        "direct_strategy_key_changed": True,
+        "inner_strategy_payload_key_changed": True,
+    }
 
 
 def test_stock_analysis_workbench_cache_key_normalizes_default_include(

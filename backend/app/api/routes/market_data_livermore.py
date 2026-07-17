@@ -30,6 +30,7 @@ from backend.app.services.livermore_signal_confluence_service import livermore_s
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
 from backend.app.services.macro_bond_linkage_service import get_macro_context_v1
 from backend.app.services.market_data_livermore_service import (
+    livermore_business_inputs_version,
     livermore_data_version,
     livermore_strategy_envelope_from_catalog,
 )
@@ -43,8 +44,8 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
-# Freshness is carried by the DuckDB, Choice catalog, and theme-overlay fingerprints
-# in the key. Keep unchanged snapshots for one day to avoid time-only recomputation.
+# Freshness comes from DuckDB, Choice catalog, repository business-input, and
+# theme-overlay fingerprints. Keep unchanged snapshots for one day.
 STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS = 24 * 60 * 60.0
 
 
@@ -143,6 +144,7 @@ def _livermore_strategy_cache_key(
         f"livermore/strategy::as_of={as_of_date or ''}::catalog={catalog_file}::{duckdb_path}"
         f"::data_version={livermore_data_version(duckdb_path)}"
         f"::theme_overlay={theme_overlay_fingerprint}"
+        f"::business_inputs={livermore_business_inputs_version()}"
     )
 
 
@@ -165,6 +167,7 @@ def _stock_analysis_workbench_cache_key(
         f"::catalog={catalog_file}::catalog_version={_choice_stock_catalog_fingerprint(catalog_file)}"
         f"::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
         f"::theme_overlay={theme_overlay_fingerprint}"
+        f"::business_inputs={livermore_business_inputs_version()}"
     )
 
 

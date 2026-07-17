@@ -671,12 +671,7 @@ export default function StockAnalysisPage() {
   const strategyPrioritySection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
   const strategyBacktestSection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
   const strategyOptimizationSection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
-  const intersectionObserverAvailable = typeof IntersectionObserver !== "undefined";
-  const deepResearchSection = useDeferredSectionSeen<HTMLDetailsElement>(
-    deferredSectionsEnabled && intersectionObserverAvailable,
-  );
-  const shouldMountDeepResearch =
-    !intersectionObserverAvailable || deepResearchRequested || deepResearchSection.seen;
+  const shouldMountDeepResearch = deepResearchRequested;
 
   const confluenceQuery = useQuery({
     queryKey: ["stock-analysis", "livermore-signal-confluence", strategyPayload?.as_of_date ?? "__none"],
@@ -848,8 +843,8 @@ export default function StockAnalysisPage() {
   );
 
   const klineRadarSummary = useMemo(
-    () => buildStockAnalysisKlineRadar(strategyPayload),
-    [strategyPayload],
+    () => (shouldMountDeepResearch ? buildStockAnalysisKlineRadar(strategyPayload) : null),
+    [shouldMountDeepResearch, strategyPayload],
   );
 
   function openKlineRadarItem(item: StockAnalysisKlineRadarItem) {
@@ -898,13 +893,14 @@ export default function StockAnalysisPage() {
   }
 
   const themeBreakoutCards = useMemo(
-    () => (strategyPayload ? buildThemeBreakoutCards(strategyPayload) : []),
-    [strategyPayload],
+    () =>
+      shouldMountDeepResearch && strategyPayload ? buildThemeBreakoutCards(strategyPayload) : [],
+    [shouldMountDeepResearch, strategyPayload],
   );
 
   const themeLeaderPreviewItems = useMemo(
-    () => buildThemeLeaderPreviewItems(themeBreakoutCards, 12),
-    [themeBreakoutCards],
+    () => (shouldMountDeepResearch ? buildThemeLeaderPreviewItems(themeBreakoutCards, 12) : []),
+    [shouldMountDeepResearch, themeBreakoutCards],
   );
 
   const sectorHeavyweightPreview = useMemo(
@@ -932,13 +928,19 @@ export default function StockAnalysisPage() {
   }
 
   const themeEvidenceRows = useMemo(
-    () => (strategyPayload ? buildThemeEvidenceStateRows(strategyPayload) : []),
-    [strategyPayload],
+    () =>
+      shouldMountDeepResearch && strategyPayload
+        ? buildThemeEvidenceStateRows(strategyPayload)
+        : [],
+    [shouldMountDeepResearch, strategyPayload],
   );
 
   const themeBreakoutReviewItems = useMemo(
-    () => (strategyPayload ? buildThemeBreakoutReviewItems(strategyPayload) : []),
-    [strategyPayload],
+    () =>
+      shouldMountDeepResearch && strategyPayload
+        ? buildThemeBreakoutReviewItems(strategyPayload)
+        : [],
+    [shouldMountDeepResearch, strategyPayload],
   );
 
   const sectorFilterSummary = useMemo(
@@ -1873,7 +1875,7 @@ export default function StockAnalysisPage() {
 
   const themeBreakoutPanelSummary = useMemo(
     () =>
-      strategyPayload
+      shouldMountDeepResearch && strategyPayload
         ? buildThemeBreakoutPanelSummary({
             payload: strategyPayload,
             cards: themeBreakoutCards,
@@ -1881,7 +1883,13 @@ export default function StockAnalysisPage() {
             unsupportedReason: themeBreakoutUnsupported?.reason,
           })
         : null,
-    [strategyPayload, themeBreakoutCards, themeBreakoutReviewItems.length, themeBreakoutUnsupported?.reason],
+    [
+      shouldMountDeepResearch,
+      strategyPayload,
+      themeBreakoutCards,
+      themeBreakoutReviewItems.length,
+      themeBreakoutUnsupported?.reason,
+    ],
   );
 
   const consensusReviewPanelSummary = useMemo(
@@ -2002,6 +2010,7 @@ export default function StockAnalysisPage() {
   );
 
   const deepAnalysisGateSummary = useMemo(() => {
+    if (!shouldMountDeepResearch) return null;
     const topPriority =
       strategyPriorityRows.find(
         (row) => row.priority_label === "优先复核" && row.sample_status === "sufficient",
@@ -2013,22 +2022,24 @@ export default function StockAnalysisPage() {
         ? strategyDisplayLabel(topPriority.strategy_label, topPriority.signal_kind)
         : null,
     });
-  }, [gateState, themeBreakoutUnsupported?.reason, strategyPriorityRows]);
+  }, [gateState, shouldMountDeepResearch, themeBreakoutUnsupported?.reason, strategyPriorityRows]);
 
   const deepZoneAuditRows = useMemo(
     () =>
-      buildDeepZoneAuditRows({
-        cycleRotationSummary: cycleRotationPanelSummary,
-        themeBreakoutSummary: themeBreakoutPanelSummary,
-        strategyBacktestSummary: strategyBacktestPanelSummary,
-        strategyBacktestDateRangeLabel,
-        consensusItemCount: consensusSummary.items.length,
-        reviewQueueCount: queueTotalCount,
-        consensusReviewSummary: consensusReviewPanelSummary,
-        marketPrioritySummary: marketPriorityPanelSummary,
-        eventsMonitoringSummary: eventsMonitoringPanelSummary,
-        eventMonitorCount: eventMonitorRows.length,
-      }),
+      shouldMountDeepResearch
+        ? buildDeepZoneAuditRows({
+            cycleRotationSummary: cycleRotationPanelSummary,
+            themeBreakoutSummary: themeBreakoutPanelSummary,
+            strategyBacktestSummary: strategyBacktestPanelSummary,
+            strategyBacktestDateRangeLabel,
+            consensusItemCount: consensusSummary.items.length,
+            reviewQueueCount: queueTotalCount,
+            consensusReviewSummary: consensusReviewPanelSummary,
+            marketPrioritySummary: marketPriorityPanelSummary,
+            eventsMonitoringSummary: eventsMonitoringPanelSummary,
+            eventMonitorCount: eventMonitorRows.length,
+          })
+        : [],
     [
       consensusReviewPanelSummary,
       consensusSummary.items.length,
@@ -2037,6 +2048,7 @@ export default function StockAnalysisPage() {
       eventsMonitoringPanelSummary,
       marketPriorityPanelSummary,
       queueTotalCount,
+      shouldMountDeepResearch,
       strategyBacktestDateRangeLabel,
       strategyBacktestPanelSummary,
       themeBreakoutPanelSummary,
@@ -3927,7 +3939,6 @@ export default function StockAnalysisPage() {
             ) : null}
 
             <details
-              ref={deepResearchSection.ref}
               className="stock-analysis-page__deep-research"
               data-testid="stock-analysis-deep-research"
               onToggle={(event) => {
@@ -3959,7 +3970,7 @@ export default function StockAnalysisPage() {
               <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
               <div className="stock-analysis-page__deep-zone" data-testid="stock-analysis-deep-zone">
                 <LazyStockAnalysisDeepZoneHeader
-                  gateSummary={deepAnalysisGateSummary}
+                  gateSummary={deepAnalysisGateSummary!}
                   auditRows={deepZoneAuditRows}
                 />
                 <div
@@ -3975,7 +3986,7 @@ export default function StockAnalysisPage() {
                   />
 
                   <LazyStockAnalysisKlineRadarPanel
-                    summary={klineRadarSummary}
+                    summary={klineRadarSummary!}
                     onOpenRadarItem={openKlineRadarItem}
                   />
 

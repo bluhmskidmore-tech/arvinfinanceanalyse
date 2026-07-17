@@ -13,6 +13,7 @@ import type {
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { designTokens } from "../../../theme/designSystem";
 import { localizeStrategyPanelErrorDetail } from "../lib/stockAnalysisPageModel";
+import { normalizeIsoCalendarDate } from "../lib/stockAnalysisDate";
 import type { StockDetailReviewThesis } from "../lib/stockAnalysisDetailSelection";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import "./StockDetailDrawer.css";
@@ -544,6 +545,7 @@ export function StockDetailDrawer({
 
   const open = stockCode != null && stockCode.trim() !== "";
   const stockCodeForQuery = stockCode?.trim() || undefined;
+  const effectiveAsOfDate = normalizeIsoCalendarDate(asOfDate);
 
   const detailQuery = useQuery({
     queryKey: [
@@ -579,13 +581,14 @@ export function StockDetailDrawer({
     enabled: open,
   });
 
-  const resolvedDetailAsOfDate = detailQuery.data?.result?.as_of_date ?? null;
+  const resolvedDetailAsOfDate = normalizeIsoCalendarDate(detailQuery.data?.result?.as_of_date);
+  const sideQueryAsOfDate = resolvedDetailAsOfDate ?? effectiveAsOfDate;
   const choiceNewsQuery = useQuery({
     queryKey: [
       "stock-analysis",
       "choice-news-latest",
       stockCodeForQuery ?? "__none",
-      resolvedDetailAsOfDate,
+      sideQueryAsOfDate,
       open ? 10 : 0,
     ] as const,
     queryFn: () =>
@@ -593,12 +596,12 @@ export function StockDetailDrawer({
         limit: 10,
         offset: 0,
         stockCode: stockCodeForQuery,
-        receivedTo: receivedToForAsOfDate(resolvedDetailAsOfDate ?? ""),
+        receivedTo: receivedToForAsOfDate(sideQueryAsOfDate ?? ""),
       }),
-    enabled: open && resolvedDetailAsOfDate != null,
+    enabled: open && sideQueryAsOfDate != null,
   });
 
-  const candidateHistoryAsOfDate = resolvedDetailAsOfDate;
+  const candidateHistoryAsOfDate = sideQueryAsOfDate;
   const candidateHistoryQuery = useQuery({
     queryKey: [
       "stock-analysis",
@@ -616,6 +619,27 @@ export function StockDetailDrawer({
       }),
     enabled: open && candidateHistoryAsOfDate != null,
   });
+  const sideQueryDateConfirmed = resolvedDetailAsOfDate != null;
+  const choiceNewsResult = sideQueryDateConfirmed
+    ? choiceNewsQuery.data?.result
+    : undefined;
+  const choiceNewsIsLoading = sideQueryDateConfirmed
+    ? choiceNewsQuery.isLoading
+    : detailQuery.isLoading;
+  const choiceNewsIsError =
+    sideQueryDateConfirmed && choiceNewsQuery.isError;
+  const choiceNewsIsSuccess =
+    sideQueryDateConfirmed && choiceNewsQuery.isSuccess;
+  const candidateHistoryResult = sideQueryDateConfirmed
+    ? candidateHistoryQuery.data?.result
+    : undefined;
+  const candidateHistoryIsLoading = sideQueryDateConfirmed
+    ? candidateHistoryQuery.isLoading
+    : detailQuery.isLoading;
+  const candidateHistoryIsError =
+    sideQueryDateConfirmed && candidateHistoryQuery.isError;
+  const candidateHistoryIsSuccess =
+    sideQueryDateConfirmed && candidateHistoryQuery.isSuccess;
 
   const chartOption = useMemo(() => {
     const candles = detailQuery.data?.result?.candles ?? [];
@@ -659,10 +683,10 @@ export function StockDetailDrawer({
     reviewContext?.reviewThesis?.nextActions,
     "先看 K 线，再核公告/新闻边界",
   );
-  const eventBoundaryEvents = choiceNewsQuery.data?.result?.events ?? [];
+  const eventBoundaryEvents = choiceNewsResult?.events ?? [];
   const choiceNewsDataDateLabel = formatChoiceNewsDataDate(
-    choiceNewsQuery.data?.result?.as_of_date,
-    choiceNewsQuery.data?.result?.excluded_future_rows,
+    choiceNewsResult?.as_of_date,
+    choiceNewsResult?.excluded_future_rows,
   );
   const meta =
     detailQuery.data?.result == null
@@ -884,9 +908,9 @@ export function StockDetailDrawer({
               <div className="stock-detail-drawer__section-title-row">
                 <span className="font-semibold">复核核验</span>
                 <span>
-                  {choiceNewsQuery.isLoading
+                  {choiceNewsIsLoading
                     ? "事件加载中"
-                    : choiceNewsQuery.isError
+                    : choiceNewsIsError
                       ? "事件暂不可用"
                       : eventBoundaryEvents.length > 0
                         ? `事件 ${eventBoundaryEvents.length} 条`
@@ -934,12 +958,12 @@ export function StockDetailDrawer({
                   className="stock-detail-drawer__event-boundary-compact"
                   data-testid="stock-detail-event-boundary-timeline"
                 >
-                  {choiceNewsQuery.isLoading ? (
+                  {choiceNewsIsLoading ? (
                     <p className="stock-detail-drawer__boundary-line">
                       事件边界加载中…
                     </p>
                   ) : null}
-                  {choiceNewsQuery.isError ? (
+                  {choiceNewsIsError ? (
                     <p className="stock-detail-drawer__boundary-line">
                       {stockDetailSubqueryErrorDescription(
                         choiceNewsQuery.error,
@@ -947,9 +971,7 @@ export function StockDetailDrawer({
                       )}
                     </p>
                   ) : null}
-                  {!choiceNewsQuery.isError &&
-                  eventBoundaryEvents.length === 0 &&
-                  !choiceNewsQuery.isLoading ? (
+                  {choiceNewsIsSuccess && eventBoundaryEvents.length === 0 ? (
                     <p className="stock-detail-drawer__boundary-line">
                       暂无公告/新闻事件匹配，仍需人工确认。
                     </p>
@@ -1193,7 +1215,7 @@ export function StockDetailDrawer({
                   <p className="stock-detail-drawer__candidate-history-note">
                     价格回报 · 快照累计
                   </p>
-                  {candidateHistoryQuery.isLoading ? (
+                  {candidateHistoryIsLoading ? (
                     <p
                       className="stock-detail-drawer__candidate-history-loading"
                       data-testid="stock-detail-candidate-history-loading"
@@ -1201,7 +1223,7 @@ export function StockDetailDrawer({
                       入选历史加载中…
                     </p>
                   ) : null}
-                  {candidateHistoryQuery.isError ? (
+                  {candidateHistoryIsError ? (
                     <div
                       className="p-4 mb-4 text-sm text-warning-800 rounded-lg bg-warning-50 flex items-start gap-3 border border-warning-200"
                       role="alert"
@@ -1226,9 +1248,8 @@ export function StockDetailDrawer({
                       </div>
                     </div>
                   ) : null}
-                  {candidateHistoryQuery.isSuccess &&
-                  (candidateHistoryQuery.data?.result?.items?.length ?? 0) ===
-                    0 ? (
+                  {candidateHistoryIsSuccess &&
+                  (candidateHistoryResult?.items?.length ?? 0) === 0 ? (
                     <p
                       className="stock-detail-drawer__candidate-history-empty"
                       data-testid="stock-detail-candidate-history-empty"
@@ -1236,9 +1257,8 @@ export function StockDetailDrawer({
                       暂无入选快照记录（服务端尚未累积或未跑任务）
                     </p>
                   ) : null}
-                  {candidateHistoryQuery.isSuccess &&
-                  (candidateHistoryQuery.data?.result?.items?.length ?? 0) >
-                    0 ? (
+                  {candidateHistoryIsSuccess &&
+                  (candidateHistoryResult?.items?.length ?? 0) > 0 ? (
                     <div className="stock-detail-drawer__history-table-wrap">
                       <table className="stock-detail-drawer__history-table">
                         <thead>
@@ -1254,9 +1274,7 @@ export function StockDetailDrawer({
                           </tr>
                         </thead>
                         <tbody>
-                          {(
-                            candidateHistoryQuery.data?.result?.items ?? []
-                          ).map((row) => (
+                          {(candidateHistoryResult?.items ?? []).map((row) => (
                             <tr
                               key={`${row.snapshot_as_of_date}-${row.candidate_rank}-${row.stock_code}`}
                               className={candidateHistoryRowClass(
@@ -1306,7 +1324,7 @@ export function StockDetailDrawer({
                     >
                       市场事件 · 公告财报待补 · {choiceNewsDataDateLabel}
                     </div>
-                    {choiceNewsQuery.isLoading ? (
+                    {choiceNewsIsLoading ? (
                       <p
                         className="stock-detail-drawer__market-events-loading"
                         data-testid="stock-detail-market-events-loading"
@@ -1314,7 +1332,7 @@ export function StockDetailDrawer({
                         市场事件加载中…
                       </p>
                     ) : null}
-                    {choiceNewsQuery.isError ? (
+                    {choiceNewsIsError ? (
                       <div
                         className="p-4 mb-4 text-sm text-warning-800 rounded-lg bg-warning-50 flex items-start gap-3 border border-warning-200"
                         role="alert"
@@ -1339,8 +1357,7 @@ export function StockDetailDrawer({
                         </div>
                       </div>
                     ) : null}
-                    {choiceNewsQuery.isSuccess &&
-                    !choiceNewsQuery.data?.result?.events?.length ? (
+                    {choiceNewsIsSuccess && !choiceNewsResult?.events?.length ? (
                       <p
                         className="stock-detail-drawer__market-events-empty"
                         data-testid="stock-detail-market-events-empty"
@@ -1348,13 +1365,13 @@ export function StockDetailDrawer({
                         暂无与该股票代码匹配的市场事件，公告财报仍待补。
                       </p>
                     ) : null}
-                    {choiceNewsQuery.isSuccess &&
-                    (choiceNewsQuery.data?.result?.events?.length ?? 0) > 0 ? (
+                    {choiceNewsIsSuccess &&
+                    (choiceNewsResult?.events?.length ?? 0) > 0 ? (
                       <ul
                         className="stock-detail-drawer__market-events-list"
                         data-testid="stock-detail-market-events-list"
                       >
-                        {(choiceNewsQuery.data?.result?.events ?? []).map(
+                        {(choiceNewsResult?.events ?? []).map(
                           (ev) => (
                             <li
                               key={ev.event_key}

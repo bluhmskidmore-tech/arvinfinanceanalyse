@@ -45,7 +45,10 @@ from backend.app.core_finance.gate_macro_overlay import (
 from backend.app.core_finance.hybrid_fusion_candidates import (
     compute_hybrid_fusion_candidates,
 )
-from backend.app.core_finance.hybrid_fusion_config import load_hybrid_fusion_thresholds
+from backend.app.core_finance.hybrid_fusion_config import (
+    DEFAULT_STRATEGY_YAML,
+    load_hybrid_fusion_thresholds,
+)
 from backend.app.core_finance.livermore_risk_exit import (
     MVP_RULE_LABEL,
     RiskExitSnapshot,
@@ -478,6 +481,7 @@ def _livermore_strategy_payload_cache_key(
         backfill_mode,
         stock_candidate_policy or "",
         theme_overlay_fingerprint,
+        livermore_business_inputs_version(),
         RULE_VERSION,
     )
 
@@ -5816,3 +5820,23 @@ def livermore_data_version(duckdb_path: str) -> str:
     except OSError:
         return "missing"
     return f"{stat.st_mtime_ns}:{stat.st_size}"
+
+
+def _livermore_business_input_signature(path: Path) -> str:
+    try:
+        stat = path.stat()
+    except OSError:
+        return "missing"
+    return f"{stat.st_mtime_ns}:{stat.st_size}"
+
+
+def livermore_business_inputs_version() -> str:
+    input_paths = (
+        DEFAULT_STRATEGY_YAML,
+        _OFFICIAL_AVAILABILITY_MANIFEST_PATH,
+        _OFFICIAL_RELEASES_MANIFEST_PATH,
+    )
+    return "|".join(
+        f"{path.name}={_livermore_business_input_signature(path)}"
+        for path in input_paths
+    )
