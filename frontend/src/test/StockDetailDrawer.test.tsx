@@ -454,7 +454,7 @@ describe("StockDetailDrawer", () => {
     );
   });
 
-  it("starts dated news and candidate history before stock detail resolves", async () => {
+  it("starts dated news and candidate history in parallel for a resolved caller date", async () => {
     const client = createApiClient({ mode: "mock" });
     let resolveDetail!: (
       value: ApiEnvelope<LivermoreStockDetailPayload>,
@@ -482,6 +482,7 @@ describe("StockDetailDrawer", () => {
         <StockDetailDrawer
           stockCode="000001.SZ"
           asOfDate="2026-04-29"
+          asOfDateIsResolved
           onClose={() => undefined}
         />
       </AppProviders>,
@@ -513,8 +514,13 @@ describe("StockDetailDrawer", () => {
     expect(
       screen.queryByTestId("stock-detail-candidate-history-empty"),
     ).not.toBeInTheDocument();
+    expect(newsSpy).toHaveBeenCalledOnce();
+    expect(historySpy).toHaveBeenCalledOnce();
 
     resolveDetail(buildStockDetailEnvelope());
+    await waitFor(() => expect(detailSettled).toBe(true));
+    expect(newsSpy).toHaveBeenCalledOnce();
+    expect(historySpy).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -626,7 +632,7 @@ describe("StockDetailDrawer", () => {
     expect(lineageDetail).toHaveTextContent(/规则版本\s*待确认/);
   });
 
-  it("does not show the requested date as the stock detail data date when no data date is resolved", async () => {
+  it("blocks dated side queries when no stock detail data date is resolved", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
       buildStockDetailEnvelope({
@@ -636,10 +642,10 @@ describe("StockDetailDrawer", () => {
         },
       }),
     );
-    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+    const newsSpy = vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
       buildEmptyChoiceNewsEnvelope(),
     );
-    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
+    const historySpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(
       buildCandidateHistoryEnvelope([]),
     );
 
@@ -664,18 +670,18 @@ describe("StockDetailDrawer", () => {
     expect(
       screen.queryByTestId("stock-detail-candidate-history-empty"),
     ).not.toBeInTheDocument();
+    expect(newsSpy).not.toHaveBeenCalled();
+    expect(historySpy).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("stock-detail-market-events-date-pending"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("stock-detail-candidate-history-date-pending"),
+    ).toBeInTheDocument();
   });
 
-  it("rekeys dated side queries when stock detail resolves to an earlier date", async () => {
+  it("waits for the resolved detail date before starting dated side queries", async () => {
     const client = createApiClient({ mode: "mock" });
-    const detailSpy = vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
-      buildStockDetailEnvelope({
-        payload: {
-          requested_as_of_date: "2026-05-08",
-          as_of_date: "2026-04-29",
-        },
-      }),
-    );
     let resolveDetail!: (
       value: ApiEnvelope<LivermoreStockDetailPayload>,
     ) => void;
@@ -684,7 +690,9 @@ describe("StockDetailDrawer", () => {
         resolveDetail = resolve;
       },
     );
-    detailSpy.mockReturnValueOnce(pendingDetail);
+    const detailSpy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockReturnValue(pendingDetail);
     const newsSpy = vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
       buildEmptyChoiceNewsEnvelope(),
     );
@@ -703,28 +711,9 @@ describe("StockDetailDrawer", () => {
       </AppProviders>,
     );
 
-    await waitFor(() =>
-      expect(histSpy).toHaveBeenCalledWith({
-        stockCode: "000001.SZ",
-        snapshotTo: "2026-05-08",
-        evaluationAsOfDate: "2026-05-08",
-        limit: 10,
-      }),
-    );
-    await waitFor(() =>
-      expect(newsSpy).toHaveBeenCalledWith({
-        limit: 10,
-        offset: 0,
-        stockCode: "000001.SZ",
-        receivedTo: "2026-05-08T23:59:59Z",
-      }),
-    );
-    expect(histSpy).not.toHaveBeenCalledWith({
-      stockCode: "000001.SZ",
-      snapshotTo: "2026-04-29",
-      evaluationAsOfDate: "2026-04-29",
-      limit: 10,
-    });
+    await waitFor(() => expect(detailSpy).toHaveBeenCalledOnce());
+    expect(histSpy).not.toHaveBeenCalled();
+    expect(newsSpy).not.toHaveBeenCalled();
     expect(
       screen.queryByTestId("stock-detail-market-events-empty"),
     ).not.toBeInTheDocument();
@@ -754,6 +743,20 @@ describe("StockDetailDrawer", () => {
         stockCode: "000001.SZ",
         receivedTo: "2026-04-29T23:59:59Z",
       });
+    });
+    expect(histSpy).toHaveBeenCalledOnce();
+    expect(newsSpy).toHaveBeenCalledOnce();
+    expect(histSpy).not.toHaveBeenCalledWith({
+      stockCode: "000001.SZ",
+      snapshotTo: "2026-05-08",
+      evaluationAsOfDate: "2026-05-08",
+      limit: 10,
+    });
+    expect(newsSpy).not.toHaveBeenCalledWith({
+      limit: 10,
+      offset: 0,
+      stockCode: "000001.SZ",
+      receivedTo: "2026-05-08T23:59:59Z",
     });
   });
 

@@ -266,6 +266,8 @@ export type StockDetailDrawerProps = {
   stockCode: string | null;
   stockName?: string;
   asOfDate?: string;
+  /** True only when asOfDate came from a resolved upstream data date. */
+  asOfDateIsResolved?: boolean;
   reviewContext?: {
     sourceLabel: string;
     sectorName?: string;
@@ -536,6 +538,7 @@ export function StockDetailDrawer({
   stockCode,
   stockName,
   asOfDate,
+  asOfDateIsResolved = false,
   reviewContext,
   onClose,
 }: StockDetailDrawerProps) {
@@ -546,6 +549,8 @@ export function StockDetailDrawer({
   const open = stockCode != null && stockCode.trim() !== "";
   const stockCodeForQuery = stockCode?.trim() || undefined;
   const effectiveAsOfDate = normalizeIsoCalendarDate(asOfDate);
+  const resolvedCallerAsOfDate =
+    asOfDateIsResolved ? effectiveAsOfDate : null;
 
   const detailQuery = useQuery({
     queryKey: [
@@ -582,7 +587,8 @@ export function StockDetailDrawer({
   });
 
   const resolvedDetailAsOfDate = normalizeIsoCalendarDate(detailQuery.data?.result?.as_of_date);
-  const sideQueryAsOfDate = resolvedDetailAsOfDate ?? effectiveAsOfDate;
+  const sideQueryAsOfDate =
+    resolvedCallerAsOfDate ?? resolvedDetailAsOfDate;
   const choiceNewsQuery = useQuery({
     queryKey: [
       "stock-analysis",
@@ -619,13 +625,14 @@ export function StockDetailDrawer({
       }),
     enabled: open && candidateHistoryAsOfDate != null,
   });
-  const sideQueryDateConfirmed = resolvedDetailAsOfDate != null;
+  const sideQueryDateConfirmed = sideQueryAsOfDate != null;
+  const sideQueryDatePending =
+    detailQuery.isSuccess && !sideQueryDateConfirmed;
   const choiceNewsResult = sideQueryDateConfirmed
     ? choiceNewsQuery.data?.result
     : undefined;
-  const choiceNewsIsLoading = sideQueryDateConfirmed
-    ? choiceNewsQuery.isLoading
-    : detailQuery.isLoading;
+  const choiceNewsIsLoading =
+    sideQueryDateConfirmed && choiceNewsQuery.isLoading;
   const choiceNewsIsError =
     sideQueryDateConfirmed && choiceNewsQuery.isError;
   const choiceNewsIsSuccess =
@@ -633,9 +640,8 @@ export function StockDetailDrawer({
   const candidateHistoryResult = sideQueryDateConfirmed
     ? candidateHistoryQuery.data?.result
     : undefined;
-  const candidateHistoryIsLoading = sideQueryDateConfirmed
-    ? candidateHistoryQuery.isLoading
-    : detailQuery.isLoading;
+  const candidateHistoryIsLoading =
+    sideQueryDateConfirmed && candidateHistoryQuery.isLoading;
   const candidateHistoryIsError =
     sideQueryDateConfirmed && candidateHistoryQuery.isError;
   const candidateHistoryIsSuccess =
@@ -1215,6 +1221,14 @@ export function StockDetailDrawer({
                   <p className="stock-detail-drawer__candidate-history-note">
                     价格回报 · 快照累计
                   </p>
+                  {sideQueryDatePending ? (
+                    <p
+                      className="stock-detail-drawer__candidate-history-loading"
+                      data-testid="stock-detail-candidate-history-date-pending"
+                    >
+                      {"\u6570\u636e\u65e5\u671f\u5f85\u786e\u8ba4\uff0c\u6682\u4e0d\u52a0\u8f7d\u5165\u9009\u5386\u53f2\u3002"}
+                    </p>
+                  ) : null}
                   {candidateHistoryIsLoading ? (
                     <p
                       className="stock-detail-drawer__candidate-history-loading"
@@ -1324,6 +1338,14 @@ export function StockDetailDrawer({
                     >
                       市场事件 · 公告财报待补 · {choiceNewsDataDateLabel}
                     </div>
+                    {sideQueryDatePending ? (
+                      <p
+                        className="stock-detail-drawer__market-events-loading"
+                        data-testid="stock-detail-market-events-date-pending"
+                      >
+                        {"\u6570\u636e\u65e5\u671f\u5f85\u786e\u8ba4\uff0c\u6682\u4e0d\u52a0\u8f7d\u5e02\u573a\u4e8b\u4ef6\u3002"}
+                      </p>
+                    ) : null}
                     {choiceNewsIsLoading ? (
                       <p
                         className="stock-detail-drawer__market-events-loading"

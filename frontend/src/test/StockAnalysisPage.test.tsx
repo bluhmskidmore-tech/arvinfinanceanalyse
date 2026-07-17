@@ -7640,7 +7640,14 @@ describe("StockAnalysisPage", () => {
     const user = userEvent.setup();
     const client = stockClient();
     const strategySpy = mockStrategyLatestSnapshotFallback(client);
-    const detailSpy = vi.spyOn(client, "getLivermoreStockDetail");
+    const detailSpy = vi
+      .spyOn(client, "getLivermoreStockDetail")
+      .mockReturnValue(new Promise<never>(() => undefined));
+    const newsSpy = vi.spyOn(client, "getChoiceNewsEvents");
+    const candidateHistorySpy = vi.spyOn(
+      client,
+      "getLivermoreCandidateHistory",
+    );
 
     renderWorkbenchApp(["/stock-analysis"], { client });
 
@@ -7660,6 +7667,31 @@ describe("StockAnalysisPage", () => {
     );
     expect(detailSpy).not.toHaveBeenCalledWith(
       expect.objectContaining({ stockCode: "000001.SZ", asOfDate: "2026-05-08" }),
+    );
+    await waitFor(() => {
+      expect(newsSpy).toHaveBeenCalledWith({
+        limit: 10,
+        offset: 0,
+        stockCode: "000001.SZ",
+        receivedTo: "2026-04-29T23:59:59Z",
+      });
+      expect(candidateHistorySpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        snapshotTo: "2026-04-29",
+        evaluationAsOfDate: "2026-04-29",
+        limit: 10,
+      });
+    });
+    expect(newsSpy).toHaveBeenCalledOnce();
+    expect(candidateHistorySpy).toHaveBeenCalledOnce();
+    expect(newsSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ receivedTo: "2026-05-08T23:59:59Z" }),
+    );
+    expect(candidateHistorySpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        snapshotTo: "2026-05-08",
+        evaluationAsOfDate: "2026-05-08",
+      }),
     );
   });
 

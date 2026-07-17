@@ -5756,6 +5756,7 @@ export default function StockAnalysisPage() {
               stockCode={detailSelection.code}
               stockName={detailSelection.name}
               asOfDate={stockDetailAsOfDate}
+              asOfDateIsResolved={stockDetailAsOfDate != null}
               reviewContext={buildStockDetailReviewContext(detailSelection)}
               onClose={() => setDetailSelection(null)}
             />
