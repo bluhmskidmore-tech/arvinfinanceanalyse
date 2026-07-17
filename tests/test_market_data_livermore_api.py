@@ -4,6 +4,7 @@ import builtins
 import logging
 import sqlite3
 import sys
+from contextlib import nullcontext
 from datetime import date, timedelta
 from types import SimpleNamespace
 
@@ -1332,6 +1333,224 @@ def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(
         in unsupported_by_key["mean_reversion_candidates"]["reason"]
     )
     get_settings.cache_clear()
+
+
+def test_livermore_strategy_derives_sector_ready_from_partial_full_coverage(
+    monkeypatch,
+) -> None:
+    from backend.app.services import market_data_livermore_service as service
+    from backend.app.tasks.choice_stock_materialize import (
+        ChoiceStockMaterializationCoverage,
+    )
+
+    calls: list[dict[str, object]] = []
+    captured: dict[str, object] = {}
+    full_partial = ChoiceStockMaterializationCoverage(
+        as_of_date="2026-06-18",
+        full_coverage=False,
+        status="partial",
+        completed_request_items=[
+            "sector_membership:sw2021_industry_membership",
+            "sector_strength:daily_return_turnover_amplitude",
+        ],
+        missing_request_items=["stock_universe:a_share_universe_sector_001004"],
+        message=(
+            "Choice stock materialized input coverage is incomplete for 2026-06-18; "
+            "missing request items: stock_universe:a_share_universe_sector_001004."
+        ),
+    )
+
+    def fake_coverage(**kwargs):
+        calls.append(kwargs)
+        return full_partial
+
+    def fake_outputs_on_conn(_conn, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(marker="captured")
+
+    monkeypatch.setattr(
+        service, "load_choice_stock_materialization_coverage", fake_coverage
+    )
+    monkeypatch.setattr(
+        service,
+        "_shared_read_only_connection",
+        lambda _duckdb_path: nullcontext(object()),
+    )
+    monkeypatch.setattr(
+        service, "_load_choice_stock_outputs_on_conn", fake_outputs_on_conn
+    )
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    assert outputs.marker == "captured"
+    assert calls == [{"duckdb_path": "unused.duckdb", "as_of_date": "2026-06-18"}]
+    assert captured["stock_coverage"] is full_partial
+    sector_coverage = captured["sector_coverage"]
+    assert isinstance(sector_coverage, ChoiceStockMaterializationCoverage)
+    assert sector_coverage.full_coverage is True
+    assert sector_coverage.status == "ready"
+    assert sector_coverage.completed_request_items == [
+        "sector_membership:sw2021_industry_membership",
+        "sector_strength:daily_return_turnover_amplitude",
+    ]
+    assert sector_coverage.missing_request_items == []
+    assert (
+        sector_coverage.message
+        == "Choice stock inputs are materialized for 2026-06-18."
+    )
+
+
+def test_livermore_strategy_rechecks_sector_when_full_coverage_is_not_materialized(
+    monkeypatch,
+) -> None:
+    from backend.app.services import market_data_livermore_service as service
+    from backend.app.tasks.choice_stock_materialize import (
+        ChoiceStockMaterializationCoverage,
+    )
+
+    calls: list[dict[str, object]] = []
+    captured: dict[str, object] = {}
+    full_not_materialized = ChoiceStockMaterializationCoverage(
+        as_of_date="2026-06-18",
+        full_coverage=False,
+        status="not_materialized",
+        completed_request_items=[],
+        missing_request_items=["stock_universe:a_share_universe_sector_001004"],
+        message=(
+            "Choice stock catalog is confirmed, but DuckDB materialization is not landed "
+            "for 2026-06-18."
+        ),
+    )
+    sector_ready = ChoiceStockMaterializationCoverage(
+        as_of_date="2026-06-18",
+        full_coverage=True,
+        status="ready",
+        completed_request_items=[
+            "sector_membership:sw2021_industry_membership",
+            "sector_strength:daily_return_turnover_amplitude",
+        ],
+        missing_request_items=[],
+        message="Choice stock inputs are materialized for 2026-06-18.",
+    )
+
+    def fake_coverage(**kwargs):
+        calls.append(kwargs)
+        if kwargs.get("required_items") == service.SECTOR_REQUIRED_ITEMS:
+            return sector_ready
+        return full_not_materialized
+
+    def fake_outputs_on_conn(_conn, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(marker="captured")
+
+    monkeypatch.setattr(
+        service, "load_choice_stock_materialization_coverage", fake_coverage
+    )
+    monkeypatch.setattr(
+        service,
+        "_shared_read_only_connection",
+        lambda _duckdb_path: nullcontext(object()),
+    )
+    monkeypatch.setattr(
+        service, "_load_choice_stock_outputs_on_conn", fake_outputs_on_conn
+    )
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    assert outputs.marker == "captured"
+    assert calls == [
+        {"duckdb_path": "unused.duckdb", "as_of_date": "2026-06-18"},
+        {
+            "duckdb_path": "unused.duckdb",
+            "as_of_date": "2026-06-18",
+            "required_items": service.SECTOR_REQUIRED_ITEMS,
+        },
+    ]
+    assert captured["stock_coverage"] is full_not_materialized
+    assert captured["sector_coverage"] is sector_ready
+
+
+def test_livermore_strategy_projects_partial_sector_coverage_in_required_order(
+    monkeypatch,
+) -> None:
+    from backend.app.services import market_data_livermore_service as service
+    from backend.app.tasks.choice_stock_materialize import (
+        ChoiceStockMaterializationCoverage,
+    )
+
+    calls: list[dict[str, object]] = []
+    captured: dict[str, object] = {}
+    full_partial = ChoiceStockMaterializationCoverage(
+        as_of_date="2026-06-18",
+        full_coverage=False,
+        status="partial",
+        completed_request_items=[
+            "sector_membership:sw2021_industry_membership",
+        ],
+        missing_request_items=[
+            "sector_strength:daily_return_turnover_amplitude",
+            "stock_universe:a_share_universe_sector_001004",
+        ],
+        message=(
+            "Choice stock materialized input coverage is incomplete for 2026-06-18; "
+            "missing request items: sector_strength:daily_return_turnover_amplitude, "
+            "stock_universe:a_share_universe_sector_001004."
+        ),
+    )
+
+    def fake_coverage(**kwargs):
+        calls.append(kwargs)
+        return full_partial
+
+    def fake_outputs_on_conn(_conn, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(marker="captured")
+
+    monkeypatch.setattr(
+        service, "load_choice_stock_materialization_coverage", fake_coverage
+    )
+    monkeypatch.setattr(
+        service,
+        "_shared_read_only_connection",
+        lambda _duckdb_path: nullcontext(object()),
+    )
+    monkeypatch.setattr(
+        service, "_load_choice_stock_outputs_on_conn", fake_outputs_on_conn
+    )
+
+    outputs = service._load_choice_stock_outputs(
+        duckdb_path="unused.duckdb",
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        stock_readiness=_ready_choice_stock_readiness(),
+    )
+
+    assert outputs.marker == "captured"
+    assert calls == [{"duckdb_path": "unused.duckdb", "as_of_date": "2026-06-18"}]
+    sector_coverage = captured["sector_coverage"]
+    assert isinstance(sector_coverage, ChoiceStockMaterializationCoverage)
+    assert sector_coverage.full_coverage is False
+    assert sector_coverage.status == "partial"
+    assert sector_coverage.completed_request_items == [
+        "sector_membership:sw2021_industry_membership",
+    ]
+    assert sector_coverage.missing_request_items == [
+        "sector_strength:daily_return_turnover_amplitude",
+    ]
+    assert sector_coverage.message == (
+        "Choice stock materialized input coverage is incomplete for 2026-06-18; "
+        "missing request items: sector_strength:daily_return_turnover_amplitude."
+    )
 
 
 def test_livermore_strategy_default_execution_skips_inactive_exp3b_stock_candidates_in_overheat(

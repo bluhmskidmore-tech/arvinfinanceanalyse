@@ -132,6 +132,9 @@ SECTOR_REQUIRED_ITEMS: tuple[tuple[str, str], ...] = (
     ("sector_membership", "sw2021_industry_membership"),
     ("sector_strength", "daily_return_turnover_amplitude"),
 )
+_SECTOR_REQUIRED_ITEM_KEYS: tuple[str, ...] = tuple(
+    f"{family}:{field_key}" for family, field_key in SECTOR_REQUIRED_ITEMS
+)
 LIVERMORE_OUTPUT_KEYS: tuple[str, ...] = (
     "market_gate",
     "sector_rank",
@@ -1508,6 +1511,49 @@ def _choice_stock_missing_inputs(*, stock_readiness: ChoiceStockReadiness, famil
     return [str(family) for family in relevant] or list(families)
 
 
+def _project_sector_materialization_coverage(
+    stock_coverage: ChoiceStockMaterializationCoverage,
+) -> ChoiceStockMaterializationCoverage | None:
+    if stock_coverage.status == "ready":
+        if not stock_coverage.full_coverage or stock_coverage.missing_request_items:
+            return None
+    elif stock_coverage.status == "partial":
+        if stock_coverage.full_coverage or not stock_coverage.missing_request_items:
+            return None
+    else:
+        return None
+
+    completed = set(stock_coverage.completed_request_items)
+    missing = set(stock_coverage.missing_request_items)
+    required = set(_SECTOR_REQUIRED_ITEM_KEYS)
+    if completed & missing or not required.issubset(completed | missing):
+        return None
+
+    sector_completed = [item for item in _SECTOR_REQUIRED_ITEM_KEYS if item in completed]
+    sector_missing = [item for item in _SECTOR_REQUIRED_ITEM_KEYS if item in missing]
+    if sector_missing:
+        return ChoiceStockMaterializationCoverage(
+            as_of_date=stock_coverage.as_of_date,
+            full_coverage=False,
+            status="partial",
+            completed_request_items=sector_completed,
+            missing_request_items=sector_missing,
+            message=(
+                "Choice stock materialized input coverage is incomplete for "
+                f"{stock_coverage.as_of_date}; missing request items: "
+                f"{', '.join(sector_missing)}."
+            ),
+        )
+    return ChoiceStockMaterializationCoverage(
+        as_of_date=stock_coverage.as_of_date,
+        full_coverage=True,
+        status="ready",
+        completed_request_items=sector_completed,
+        missing_request_items=[],
+        message=f"Choice stock inputs are materialized for {stock_coverage.as_of_date}.",
+    )
+
+
 def _load_choice_stock_outputs(
     *,
     duckdb_path: str,
@@ -1557,15 +1603,17 @@ def _load_choice_stock_outputs(
         )
         stock_coverage = sector_coverage
     else:
-        sector_coverage = load_choice_stock_materialization_coverage(
-            duckdb_path=duckdb_path,
-            as_of_date=as_of_date,
-            required_items=SECTOR_REQUIRED_ITEMS,
-        )
         stock_coverage = load_choice_stock_materialization_coverage(
             duckdb_path=duckdb_path,
             as_of_date=as_of_date,
         )
+        sector_coverage = _project_sector_materialization_coverage(stock_coverage)
+        if sector_coverage is None:
+            sector_coverage = load_choice_stock_materialization_coverage(
+                duckdb_path=duckdb_path,
+                as_of_date=as_of_date,
+                required_items=SECTOR_REQUIRED_ITEMS,
+            )
     # Reuse one read-only connection for every stock loader in this request
     # instead of opening the DuckDB file once per loader.
     with _shared_read_only_connection(duckdb_path) as stock_conn:
