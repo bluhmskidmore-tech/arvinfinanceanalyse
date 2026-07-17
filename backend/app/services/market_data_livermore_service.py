@@ -252,6 +252,29 @@ def load_livermore_strategy_payload(
             PAYLOAD_CACHE_NAME,
             ttl_seconds=PAYLOAD_CACHE_TTL_SECONDS,
         )
+        if as_of_date is not None:
+            default_cache_key = _livermore_strategy_payload_cache_key(
+                duckdb_path=duckdb_path,
+                as_of_date=None,
+                stock_readiness=resolved_stock_readiness,
+                backfill_mode=backfill_mode,
+                stock_candidate_policy=stock_candidate_policy,
+                theme_overlay_fingerprint=theme_overlay_fingerprint,
+            )
+            if default_cache_key is not None:
+                default_hit, default_cached_value = cache.get(default_cache_key)
+                if default_hit and default_cached_value is not None:
+                    default_payload, default_meta = cast(
+                        tuple[dict[str, object], dict[str, object]],
+                        default_cached_value,
+                    )
+                    requested_text = as_of_date.isoformat()
+                    if default_payload.get("as_of_date") == requested_text:
+                        return (
+                            {**default_payload, "requested_as_of_date": requested_text},
+                            default_meta,
+                        )
+
         return cache.get_or_set(
             cache_key,
             lambda: _load_livermore_strategy_payload_uncached(

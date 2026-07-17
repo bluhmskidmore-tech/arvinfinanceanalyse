@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
+from threading import Event
+
 import duckdb
 
 from backend.app.repositories.choice_stock_adapter import choice_stock_readiness_missing
@@ -439,6 +443,137 @@ def test_livermore_strategy_payload_reuses_same_duckdb_snapshot(monkeypatch, tmp
     assert first_payload["strategy_name"] == second_payload["strategy_name"]
     assert load_count == 1
     clear_runtime_cache("livermore_strategy_payload")
+
+
+def test_livermore_strategy_payload_reuses_resolved_date_without_losing_request_disclosure(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    clear_runtime_cache("livermore_strategy_payload")
+    db_path = tmp_path / "livermore-strategy-resolved-date-cache.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    conn.close()
+
+    load_count = 0
+
+    def _counting_load(*, as_of_date: date | None, **_: object) -> tuple[dict[str, object], dict[str, object]]:
+        nonlocal load_count
+        load_count += 1
+        return (
+            {
+                "strategy_name": "fixture-strategy",
+                "as_of_date": "2026-05-01",
+                "requested_as_of_date": None if as_of_date is None else as_of_date.isoformat(),
+                "stable_business_value": 7,
+            },
+            {"source_version": "fixture-source"},
+        )
+
+    monkeypatch.setattr(livermore_service, "_load_livermore_strategy_payload_uncached", _counting_load)
+
+    first_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=None,
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+    second_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=date(2026, 5, 1),
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+
+    assert load_count == 1
+    assert first_payload["as_of_date"] == second_payload["as_of_date"] == "2026-05-01"
+    assert first_payload["stable_business_value"] == second_payload["stable_business_value"] == 7
+    assert first_payload["requested_as_of_date"] is None
+    assert second_payload["requested_as_of_date"] == "2026-05-01"
+    clear_runtime_cache("livermore_strategy_payload")
+    load_count = 0
+
+    fallback_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=date(2026, 5, 2),
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+    resolved_payload, _ = livermore_service.load_livermore_strategy_payload(
+        duckdb_path=str(db_path),
+        as_of_date=date(2026, 5, 1),
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+
+    assert load_count == 2
+    assert fallback_payload["requested_as_of_date"] == "2026-05-02"
+    assert resolved_payload["requested_as_of_date"] == "2026-05-01"
+    assert fallback_payload["as_of_date"] == resolved_payload["as_of_date"] == "2026-05-01"
+    clear_runtime_cache("livermore_strategy_payload")
+
+
+def test_livermore_strategy_payload_does_not_repopulate_resolved_key_after_clear_during_load(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    clear_runtime_cache("livermore_strategy_payload")
+    db_path = tmp_path / "livermore-strategy-invalidation-cache.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    conn.close()
+
+    started = Event()
+    release = Event()
+    load_count = 0
+
+    def _blocking_load(
+        *,
+        as_of_date: date | None,
+        **_: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        nonlocal load_count
+        load_count += 1
+        if as_of_date is None:
+            started.set()
+            if not release.wait(timeout=5):
+                raise TimeoutError("test producer was not released")
+        return (
+            {
+                "strategy_name": "fixture-strategy",
+                "as_of_date": "2026-05-01",
+                "requested_as_of_date": None if as_of_date is None else as_of_date.isoformat(),
+                "stable_business_value": 7,
+            },
+            {"source_version": "fixture-source"},
+        )
+
+    monkeypatch.setattr(
+        livermore_service,
+        "_load_livermore_strategy_payload_uncached",
+        _blocking_load,
+    )
+    stock_readiness = choice_stock_readiness_missing("")
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    try:
+        future = executor.submit(
+            livermore_service.load_livermore_strategy_payload,
+            duckdb_path=str(db_path),
+            as_of_date=None,
+            stock_readiness=stock_readiness,
+        )
+        assert started.wait(timeout=5)
+        clear_runtime_cache("livermore_strategy_payload")
+        release.set()
+        first_payload, _ = future.result(timeout=5)
+        second_payload, _ = livermore_service.load_livermore_strategy_payload(
+            duckdb_path=str(db_path),
+            as_of_date=date(2026, 5, 1),
+            stock_readiness=stock_readiness,
+        )
+
+        assert load_count == 2
+        assert first_payload["requested_as_of_date"] is None
+        assert second_payload["requested_as_of_date"] == "2026-05-01"
+    finally:
+        release.set()
+        executor.shutdown(wait=True)
+        clear_runtime_cache("livermore_strategy_payload")
 
 
 def test_stock_candidate_state_scopes_resolves_market_state_once_per_stock_row(monkeypatch) -> None:
