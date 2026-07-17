@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: PnL Historical Cutoff Precompute Coverage
-status: executing
-stopped_at: v1.1 roadmap complete; Phase 02 ready for planning
-last_updated: "2026-07-15T08:14:02.023Z"
-last_activity: 2026-07-15
+status: planning
+stopped_at: Phase 02 complete; Phase 03 ready for planning
+last_updated: "2026-07-17T00:12:40.002Z"
+last_activity: 2026-07-17
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 1
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 100
 ---
 
 # Project State
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 **Core value:** Business metrics and governed pages can be released with traceable evidence, green gates, and explicit development security boundaries.
-**Current focus:** Planning Phase 02 exact-cutoff historical coverage for `/pnl-by-business`.
+**Current focus:** Planning Phase 03 incremental rebuild and recovery for `/pnl-by-business`.
 
 ## Current Position
 
 **Milestone:** v1.1 PnL Historical Cutoff Precompute Coverage
-**Phase:** 02 - Exact-Cutoff Historical Coverage
+**Phase:** 03 - Incremental Rebuild and Recovery
 **Plan:** Not started
-**Status:** Ready to execute
-**Last Activity:** 2026-07-15
-**Last Activity Description:** Phase 02 planning complete — 1 plans ready
+**Status:** Ready to plan
+**Last Activity:** 2026-07-17
+**Last Activity Description:** Phase 02 complete, transitioned to Phase 03
 
 **Progress:** 0%
 
 ## Performance Metrics
 
-- Total plans completed: 1
+- Total plans completed: 2
 - Tasks completed: 6
 - Timeline: completed and verified 2026-05-11; final evidence snapshot recorded 2026-05-16; archived 2026-07-15
 - Execution time and model mix: not recorded
@@ -52,8 +52,8 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 ### Pending Todos
 
-- Discuss and plan Phase 02 exact-cutoff historical coverage.
-- Preserve the governed live fallback and exact selected-cutoff semantics during implementation.
+- Discuss and plan Phase 03 incremental rebuild and recovery.
+- Preserve exact cutoff isolation while adding cumulative invalidation, coalesced refresh work, and per-cutoff recovery.
 
 ### Blockers/Concerns
 
@@ -63,6 +63,6 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 ## Session Continuity
 
-**Last session:** 2026-07-15
-**Stopped at:** v1.1 roadmap complete; Phase 02 ready for planning
+**Last session:** 2026-07-17
+**Stopped at:** Phase 02 complete; Phase 03 ready for planning
 **Resume file:** None

@@ -15,7 +15,7 @@
 
 ## Phases
 
-- [ ] **Phase 02: Exact-Cutoff Historical Coverage** - Materialize all available 2026 month-end partitions and expose exact selected-cutoff state.
+- [x] **Phase 02: Exact-Cutoff Historical Coverage** - Materialize all available 2026 month-end partitions and expose exact selected-cutoff state. (completed 2026-07-17)
 - [ ] **Phase 03: Incremental Rebuild and Recovery** - Rebuild only affected cumulative cutoffs, coalesce overlap, and isolate failures.
 - [ ] **Phase 04: Exact Parity and Audit Evidence** - Prove governed live-versus-precomputed equality and publish the cutoff evidence matrix.
 
@@ -35,7 +35,7 @@
 2. Selecting any available 2026 month-end on `/pnl-by-business` resolves data only for that exact cutoff and never inherits a later cutoff's partition or state.
 3. The page identifies whether the exact selected cutoff is current/precomputed or is being served through the governed live fallback.
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
 
 ### Phase 03: Incremental Rebuild and Recovery
 
@@ -72,6 +72,6 @@
 
 | Phase | Requirements | Plans Complete | Status | Completed |
 |-------|--------------|----------------|--------|-----------|
-| 02. Exact-Cutoff Historical Coverage | 3 | 0/TBD | Not started | - |
+| 02. Exact-Cutoff Historical Coverage | 3 | 1/1 | Complete    | 2026-07-17 |
 | 03. Incremental Rebuild and Recovery | 3 | 0/TBD | Not started | - |
 | 04. Exact Parity and Audit Evidence | 2 | 0/TBD | Not started | - |

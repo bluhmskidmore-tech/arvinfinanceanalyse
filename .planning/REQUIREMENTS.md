@@ -7,9 +7,9 @@
 
 ### Cutoff Coverage
 
-- [ ] **COV-01**: A user selecting any available 2026 month-end cutoff can receive a precompute partition resolved to that exact cutoff.
-- [ ] **COV-02**: A user can see the exact selected cutoff's current/precomputed or governed live-fallback status without inheriting a later cutoff's state.
-- [ ] **COV-03**: An authorized operator can request one bounded build that covers every available month-end cutoff in the selected year without creating duplicate partitions.
+- [x] **COV-01**: A user selecting any available 2026 month-end cutoff can receive a precompute partition resolved to that exact cutoff.
+- [x] **COV-02**: A user can see the exact selected cutoff's current/precomputed or governed live-fallback status without inheriting a later cutoff's state.
+- [x] **COV-03**: An authorized operator can request one bounded build that covers every available month-end cutoff in the selected year without creating duplicate partitions.
 
 ### Incremental Rebuild
 
@@ -45,9 +45,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COV-01 | Phase 02 | Pending |
-| COV-02 | Phase 02 | Pending |
-| COV-03 | Phase 02 | Pending |
+| COV-01 | Phase 02 | Complete |
+| COV-02 | Phase 02 | Complete |
+| COV-03 | Phase 02 | Complete |
 | INC-01 | Phase 03 | Pending |
 | INC-02 | Phase 03 | Pending |
 | PAR-01 | Phase 04 | Pending |
