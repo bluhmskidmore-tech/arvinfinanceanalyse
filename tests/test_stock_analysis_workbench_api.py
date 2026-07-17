@@ -735,7 +735,9 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
     assert response.status_code == 200
     assert response.json()["result"]["route"] == "/stock-analysis"
     assert "workbench;dur=" in response.headers["server-timing"]
-    assert 'cache;desc="produce"' in response.headers["server-timing"]
+    assert "overlay;dur=" in response.headers["server-timing"]
+    assert 'cache;desc="produce";dur=' in response.headers["server-timing"]
+    assert "wait;dur=0.000" in response.headers["server-timing"]
     assert calls
     assert calls[0]["as_of_date"] == "2026-06-26"
     assert calls[0]["include"] == "main,signal_confluence"
@@ -753,7 +755,9 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
     )
 
     assert cached.status_code == 200
-    assert 'cache;desc="hit"' in cached.headers["server-timing"]
+    assert "overlay;dur=" in cached.headers["server-timing"]
+    assert 'cache;desc="hit";dur=' in cached.headers["server-timing"]
+    assert "wait;dur=0.000" in cached.headers["server-timing"]
     assert len(calls) == 1
 
     invalid = client.get(
@@ -764,6 +768,48 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
     assert invalid.status_code == 422
     assert len(calls) == 1
     route_module.market_home_response_cache.invalidate()
+
+
+def test_stock_analysis_workbench_server_timing_surfaces_inflight_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    monkeypatch.setattr(route_module, "get_settings", lambda: object())
+    monkeypatch.setattr(
+        route_module, "_ensure_livermore_read_allowed", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        route_module,
+        "_cached_stock_analysis_workbench",
+        lambda **_kwargs: (
+            {"result": {"route": "/stock-analysis"}},
+            "wait",
+            0.0,
+            1.25,
+            8.5,
+        ),
+    )
+
+    app = FastAPI()
+    app.include_router(route_module.router)
+    app.dependency_overrides[route_module.get_auth_context] = lambda: (
+        route_module.AuthContext(
+            user_id="route-test",
+            role="viewer",
+            identity_source="test",
+        )
+    )
+
+    response = TestClient(app).get("/ui/market-data/stock-analysis/workbench")
+
+    assert response.status_code == 200
+    assert "overlay;dur=1.250" in response.headers["server-timing"]
+    assert 'cache;desc="wait";dur=8.500' in response.headers["server-timing"]
+    assert "wait;dur=8.500" in response.headers["server-timing"]
+    assert "compute;dur=0.000" in response.headers["server-timing"]
 
 
 def test_stock_analysis_workbench_cache_key_tracks_choice_catalog_version(

@@ -123,6 +123,57 @@ def test_current_overlay_is_available_only_for_the_matching_observation_date(
     assert reader.fingerprint() == reader.fingerprint()
 
 
+def test_fingerprint_reuses_unchanged_archive_read_and_invalidates_on_signature_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.app.repositories import (
+        stock_analysis_theme_overlay_reader as reader_module,
+    )
+
+    reader_module._cached_theme_overlay_archive_bytes.cache_clear()
+    reader_module._cached_theme_overlay_archive_evidence.cache_clear()
+
+    reader, archive_path = _archive_fixture(tmp_path)
+    original_archive = archive_path.read_bytes()
+    original_read_bytes = Path.read_bytes
+    archive_read_count = 0
+
+    def counted_read_bytes(path: Path, *args, **kwargs) -> bytes:
+        nonlocal archive_read_count
+        if path.resolve() == archive_path.resolve():
+            archive_read_count += 1
+        return original_read_bytes(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", counted_read_bytes)
+
+    first = reader.fingerprint()
+    reader_again = StockAnalysisThemeOverlayReader(
+        archive_root=reader.archive_root,
+        governance_repo=reader.governance_repo,
+    )
+    second = reader_again.fingerprint()
+
+    assert second == first
+    assert archive_read_count == 1
+    archive_cache = reader_module._cached_theme_overlay_archive_bytes.cache_info()
+    evidence_cache = reader_module._cached_theme_overlay_archive_evidence.cache_info()
+    assert (archive_cache.misses, archive_cache.hits) == (1, 1)
+    assert (evidence_cache.misses, evidence_cache.hits) == (1, 1)
+
+    archive_path.write_bytes(original_archive + b"\n")
+
+    changed = reader.fingerprint()
+
+    assert changed != first
+    assert archive_read_count == 2
+
+    assert reader_module._cached_theme_overlay_archive_bytes.cache_info().misses == 2
+    assert (
+        reader_module._cached_theme_overlay_archive_evidence.cache_info().misses == 2
+    )
+
+
 def test_read_uses_one_date_anchored_manifest_snapshot(tmp_path: Path) -> None:
     reader, _ = _archive_fixture(tmp_path)
     delegate = reader.governance_repo

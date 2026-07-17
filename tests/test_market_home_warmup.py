@@ -145,6 +145,46 @@ def test_stock_analysis_prewarm_uses_live_page_request_key(
     )
 
 
+def test_stock_analysis_prewarm_wait_log_uses_cache_duration(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from backend.app.api.routes import market_data_livermore as route
+
+    class Settings:
+        duckdb_path = tmp_path / "moss.duckdb"
+        choice_stock_catalog_file = tmp_path / "choice-stock.json"
+        governance_path = None
+        local_archive_path = None
+
+    monkeypatch.setattr(
+        route,
+        "_cached_stock_analysis_workbench",
+        lambda **_kwargs: ({}, "wait", 1.0, 12.0, 7.9),
+    )
+    monkeypatch.setattr(
+        warmup.market_home_response_cache,
+        "get_or_build",
+        lambda *_args, **_kwargs: {},
+    )
+    caplog.set_level("INFO", logger=warmup.__name__)
+
+    settings = Settings()
+    warmup.warm_market_home_read_caches(
+        duckdb_path=str(settings.duckdb_path),
+        settings=settings,
+    )
+
+    assert any(
+        "market_home_prewarm_step ok step=stock_analysis_workbench" in record.message
+        and "cache_status=wait" in record.message
+        and "cache_ms=7" in record.message
+        and "wait_ms=7" in record.message
+        for record in caplog.records
+    )
+
+
 def test_stock_analysis_prewarm_failure_does_not_block_other_steps(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

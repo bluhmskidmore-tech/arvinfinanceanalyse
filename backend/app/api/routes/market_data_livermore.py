@@ -223,11 +223,13 @@ def _cached_stock_analysis_workbench(
     include: str | None,
     sector_window_days: int,
     top_k: int,
-) -> tuple[dict[str, object], str, float]:
+) -> tuple[dict[str, object], str, float, float, float]:
     duckdb_path = str(settings.duckdb_path)  # type: ignore[attr-defined]
     catalog_file = settings.choice_stock_catalog_file  # type: ignore[attr-defined]
+    overlay_started = time.perf_counter()
     theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
     theme_overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
+    overlay_ms = (time.perf_counter() - overlay_started) * 1000
     compute_ms = 0.0
 
     def build() -> dict[str, object]:
@@ -249,6 +251,7 @@ def _cached_stock_analysis_workbench(
         finally:
             compute_ms = (time.perf_counter() - compute_started) * 1000
 
+    cache_started = time.perf_counter()
     payload, cache_status = market_home_response_cache.get_or_build_with_status(
         _stock_analysis_workbench_cache_key(
             duckdb_path=duckdb_path,
@@ -262,7 +265,8 @@ def _cached_stock_analysis_workbench(
         build,
         ttl_seconds=STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS,
     )
-    return payload, cache_status, compute_ms
+    cache_ms = (time.perf_counter() - cache_started) * 1000
+    return payload, cache_status, compute_ms, overlay_ms, cache_ms
 
 
 def _livermore_stock_detail_cache_key(
@@ -410,7 +414,7 @@ def stock_analysis_workbench(
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
     started_at = time.perf_counter()
-    payload, cache_status, compute_ms = _cached_stock_analysis_workbench(
+    payload, cache_status, compute_ms, overlay_ms, cache_ms = _cached_stock_analysis_workbench(
         settings=settings,
         as_of_date=as_of_date,
         include=include,
@@ -418,8 +422,10 @@ def stock_analysis_workbench(
         top_k=top_k,
     )
     total_ms = (time.perf_counter() - started_at) * 1000
+    wait_ms = cache_ms if cache_status == "wait" else 0.0
     response.headers["Server-Timing"] = (
-        f'workbench;dur={total_ms:.3f}, compute;dur={compute_ms:.3f}, cache;desc="{cache_status}"'
+        f'workbench;dur={total_ms:.3f}, overlay;dur={overlay_ms:.3f}, '
+        f'cache;desc="{cache_status}";dur={cache_ms:.3f}, wait;dur={wait_ms:.3f}, compute;dur={compute_ms:.3f}'
     )
     return payload
 

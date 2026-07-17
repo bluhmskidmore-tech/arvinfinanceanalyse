@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -172,6 +173,46 @@ def _cached_jsonl_manifest_index(
     if (stat_after.st_mtime_ns, stat_after.st_size) != expected_signature:
         raise ValueError("cache manifest changed during index build")
     return latest_by_key, latest_by_key_date
+
+
+def _archive_file_signature(stat_result: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        int(stat_result.st_dev),
+        int(stat_result.st_ino),
+        int(stat_result.st_mtime_ns),
+        int(stat_result.st_ctime_ns),
+        int(stat_result.st_size),
+    )
+
+
+@lru_cache(maxsize=8)
+def _cached_theme_overlay_archive_bytes(
+    target_path: str,
+    expected_device: int,
+    expected_inode: int,
+    expected_mtime_ns: int,
+    expected_ctime_ns: int,
+    expected_size: int,
+) -> bytes:
+    target = Path(target_path)
+    expected_signature = (
+        expected_device,
+        expected_inode,
+        expected_mtime_ns,
+        expected_ctime_ns,
+        expected_size,
+    )
+    if _archive_file_signature(target.stat()) != expected_signature:
+        raise ValueError("theme overlay archive changed before cached read")
+    raw = target.read_bytes()
+    if _archive_file_signature(target.stat()) != expected_signature:
+        raise ValueError("theme overlay archive changed during cached read")
+    return raw
+
+
+@lru_cache(maxsize=8)
+def _cached_theme_overlay_archive_evidence(raw: bytes) -> tuple[str, int]:
+    return hashlib.sha256(raw).hexdigest(), len(raw)
 
 
 @dataclass(frozen=True)
@@ -393,7 +434,14 @@ class StockAnalysisThemeOverlayReader:
             raise ValueError("archived_path filename does not match content_hash")
         if not resolved_archive.is_file():
             raise ValueError("theme overlay archive object is missing")
-        return resolved_archive.read_bytes()
+        archive_signature = _archive_file_signature(resolved_archive.stat())
+        raw = _cached_theme_overlay_archive_bytes(
+            str(resolved_archive),
+            *archive_signature,
+        )
+        if _archive_file_signature(resolved_archive.stat()) != archive_signature:
+            raise ValueError("theme overlay archive changed after cached read")
+        return raw
 
 
 def _theme_overlay_fingerprint(
@@ -409,8 +457,9 @@ def _theme_overlay_fingerprint(
         "overlay_manifest": overlay,
     }
     if raw is not None:
-        evidence["archive_sha256"] = hashlib.sha256(raw).hexdigest()
-        evidence["archive_size"] = len(raw)
+        archive_sha256, archive_size = _cached_theme_overlay_archive_evidence(raw)
+        evidence["archive_sha256"] = archive_sha256
+        evidence["archive_size"] = archive_size
     if error is not None:
         evidence["error"] = f"{type(error).__name__}:{error}"
     encoded = json.dumps(

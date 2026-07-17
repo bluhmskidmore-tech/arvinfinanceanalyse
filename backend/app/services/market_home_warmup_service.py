@@ -92,7 +92,13 @@ def warm_market_home_read_caches(*, duckdb_path: str, settings: object | None = 
     if settings is not None:
         stock_started = time.perf_counter()
         try:
-            _payload, cache_status, compute_ms = _cached_stock_analysis_workbench(
+            (
+                _payload,
+                cache_status,
+                compute_ms,
+                overlay_ms,
+                cache_ms,
+            ) = _cached_stock_analysis_workbench(
                 settings=settings,
                 as_of_date=None,
                 include=None,
@@ -105,11 +111,14 @@ def warm_market_home_read_caches(*, duckdb_path: str, settings: object | None = 
             total_ms = int((time.perf_counter() - stock_started) * 1000)
             logger.info(
                 "market_home_prewarm_step ok step=stock_analysis_workbench ms=%d "
-                "cache_status=%s compute_ms=%d wait_ms=%d top_k=10 sector_window_days=20",
+                "cache_status=%s compute_ms=%d overlay_ms=%d cache_ms=%d wait_ms=%d "
+                "top_k=10 sector_window_days=20",
                 total_ms,
                 cache_status,
                 int(compute_ms),
-                total_ms if cache_status == "wait" else 0,
+                int(overlay_ms),
+                int(cache_ms),
+                int(cache_ms) if cache_status == "wait" else 0,
             )
 
     for step_name, cache_key, builder in steps:
