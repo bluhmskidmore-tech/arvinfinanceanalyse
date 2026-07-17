@@ -167,8 +167,27 @@ def _trading_history_oracle(
     return result
 
 
+class _HistoryResultRowsConnection:
+    def __init__(self, conn: duckdb.DuckDBPyConnection) -> None:
+        self._conn = conn
+        self.history_result_rows = 0
+
+    def execute(self, query: str, parameters=None):
+        if parameters is None:
+            result = self._conn.execute(query)
+        else:
+            result = self._conn.execute(query, parameters)
+        normalized = " ".join(str(query).lower().split())
+        if "ranked_history" not in normalized or "choice_stock_daily_observation" not in normalized:
+            return result
+        rows = result.fetchall()
+        self.history_result_rows += len(rows)
+        return SimpleNamespace(fetchall=lambda: rows)
+
+
 def test_dual_stock_history_scan_matches_both_legacy_windows() -> None:
     conn = duckdb.connect(":memory:")
+    counting_conn = _HistoryResultRowsConnection(conn)
     try:
         _seed_adversarial_history(conn)
         candidate_codes = ["BOTH", "CANDIDATE_ONLY"]
@@ -177,7 +196,7 @@ def test_dual_stock_history_scan_matches_both_legacy_windows() -> None:
         expected_trading = _trading_history_oracle(conn, trading_codes)
 
         actual = service._load_dual_stock_history_inputs(
-            conn=conn,
+            conn=counting_conn,  # type: ignore[arg-type]
             as_of_date=AS_OF_DATE,
             candidate_stock_codes=candidate_codes,
             trading_stock_codes=trading_codes,
@@ -203,6 +222,7 @@ def test_dual_stock_history_scan_matches_both_legacy_windows() -> None:
     assert None in trading_both["volume"]
     assert 9999.0 not in candidate_both["close"]
     assert 9999.0 not in trading_both["close"]
+    assert counting_conn.history_result_rows <= len(set(candidate_codes + trading_codes))
 
 
 class _CountingConnection:

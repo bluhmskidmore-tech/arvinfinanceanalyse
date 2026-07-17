@@ -2078,62 +2078,71 @@ def _load_dual_stock_history_inputs(
           from choice_stock_daily_observation daily
           join targets on targets.stock_code = daily.stock_code
           where cast(daily.trade_date as date) <= cast(? as date)
+        ),
+        tagged_history as (
+          select
+            *,
+            want_candidate and candidate_rn <= ? as include_candidate,
+            want_trading and is_trading and trading_rn <= ? as include_trading
+          from ranked_history
         )
         select
           stock_code,
-          close_value,
-          turn,
-          amount,
-          volume,
-          want_candidate,
-          want_trading,
-          is_trading,
-          candidate_rn,
-          trading_rn
-        from ranked_history
-        where (want_candidate and candidate_rn <= ?)
-           or (want_trading and is_trading and trading_rn <= ?)
+          list(close_value order by candidate_rn desc)
+            filter (where include_candidate) as candidate_closes,
+          list(turn order by candidate_rn desc)
+            filter (where include_candidate) as candidate_turns,
+          list(close_value order by trading_rn desc)
+            filter (where include_trading) as trading_closes,
+          list(amount order by trading_rn desc)
+            filter (where include_trading) as trading_amounts,
+          list(volume order by trading_rn desc)
+            filter (where include_trading) as trading_volumes
+        from tagged_history
+        where include_candidate or include_trading
+        group by stock_code
         """,
         params,
     ).fetchall()
 
-    candidate_ranked: dict[str, list[tuple[int, float, float]]] = {}
-    trading_ranked: dict[str, list[tuple[int, object, object, object]]] = {}
+    candidate_history_by_code: dict[str, dict[str, list[float]]] = {}
+    trading_history_by_code: dict[str, dict[str, list[object]]] = {}
     for row in rows:
         stock_code = str(row[0] or "")
         if not stock_code:
             continue
-        if bool(row[5]) and int(row[8]) <= CHOICE_STOCK_HISTORY_WINDOW:
-            close_value = _safe_float(row[1])
-            turn_value = _safe_float(row[2])
-            if close_value is not None and turn_value is not None:
-                candidate_ranked.setdefault(stock_code, []).append(
-                    (int(row[8]), close_value, turn_value)
-                )
-        if (
-            bool(row[6])
-            and bool(row[7])
-            and int(row[9]) <= CHOICE_STOCK_HISTORY_WINDOW
-        ):
-            trading_ranked.setdefault(stock_code, []).append(
-                (int(row[9]), row[1], row[3], row[4])
-            )
 
-    candidate_history_by_code: dict[str, dict[str, list[float]]] = {}
-    for stock_code, ranked_rows in candidate_ranked.items():
-        ranked_rows.sort(key=lambda item: item[0], reverse=True)
-        candidate_history_by_code[stock_code] = {
-            "close": [item[1] for item in ranked_rows],
-            "turn": [item[2] for item in ranked_rows],
-        }
-    trading_history_by_code: dict[str, dict[str, list[object]]] = {}
-    for stock_code, ranked_rows in trading_ranked.items():
-        ranked_rows.sort(key=lambda item: item[0], reverse=True)
-        trading_history_by_code[stock_code] = {
-            "close": [item[1] for item in ranked_rows],
-            "amount": [item[2] for item in ranked_rows],
-            "volume": [item[3] for item in ranked_rows],
-        }
+        candidate_closes = row[1]
+        candidate_turns = row[2]
+        if candidate_closes is not None and candidate_turns is not None:
+            closes: list[float] = []
+            turns: list[float] = []
+            for close_raw, turn_raw in zip(candidate_closes, candidate_turns, strict=True):
+                close_value = _safe_float(close_raw)
+                turn_value = _safe_float(turn_raw)
+                if close_value is None or turn_value is None:
+                    continue
+                closes.append(close_value)
+                turns.append(turn_value)
+            if closes:
+                candidate_history_by_code[stock_code] = {
+                    "close": closes,
+                    "turn": turns,
+                }
+
+        trading_closes = row[3]
+        trading_amounts = row[4]
+        trading_volumes = row[5]
+        if (
+            trading_closes is not None
+            and trading_amounts is not None
+            and trading_volumes is not None
+        ):
+            trading_history_by_code[stock_code] = {
+                "close": list(trading_closes),
+                "amount": list(trading_amounts),
+                "volume": list(trading_volumes),
+            }
     return _DualStockHistoryInputs(
         candidate_history_by_code=candidate_history_by_code,
         trading_history_by_code=trading_history_by_code,
