@@ -778,6 +778,13 @@ def _float_series(values: Sequence[object]) -> list[float] | None:
 
 
 def _valid_float(value: object) -> float | None:
+    if type(value) is float:
+        return value if math.isfinite(value) else None
+    if type(value) is int:
+        try:
+            return float(value)
+        except OverflowError:
+            return None
     if value is None:
         return None
     text = str(value).strip()
