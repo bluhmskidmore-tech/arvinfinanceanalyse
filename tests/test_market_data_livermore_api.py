@@ -1742,8 +1742,11 @@ def test_livermore_strategy_loads_fresh_trend_watchlist_in_overheat(
 
 def test_livermore_strategy_reuses_trading_snapshot_inputs_for_warm_stock_modules(
     monkeypatch,
+    caplog,
 ) -> None:
     from backend.app.services import market_data_livermore_service as service
+
+    caplog.set_level("INFO", logger=service.__name__)
 
     ready_coverage = SimpleNamespace(
         full_coverage=True,
@@ -1806,12 +1809,20 @@ def test_livermore_strategy_reuses_trading_snapshot_inputs_for_warm_stock_module
     assert outputs.uptrend_momentum_payload is not None
     assert outputs.fresh_trend_watchlist_payload is not None
     assert outputs.mean_reversion_payload is not None
+    assert any(
+        "livermore_stock_loader_timing stage=trading_snapshot_inputs" in record.message
+        and "rows=1" in record.message
+        for record in caplog.records
+    )
 
 
 def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candidates_in_warm(
     monkeypatch,
+    caplog,
 ) -> None:
     from backend.app.services import market_data_livermore_service as service
+
+    caplog.set_level("INFO", logger=service.__name__)
 
     seen_policies: list[str] = []
 
@@ -1885,6 +1896,11 @@ def test_livermore_strategy_default_execution_policy_uses_exp3b_for_stock_candid
     assert seen_policies == ["exp3b"]
     assert outputs.stock_candidates_payload is not None
     assert outputs.stock_candidates_payload["selection_policy"] == "exp3b"
+    assert any(
+        "livermore_stock_loader_timing stage=stock_candidate_snapshots" in record.message
+        and "rows=1" in record.message
+        for record in caplog.records
+    )
 
 
 def test_livermore_strategy_explicit_stock_candidate_policy_overrides_execution_default(

@@ -177,6 +177,39 @@ def test_theme_breakout_nested_stocks_expand_and_merge_theme_memberships_without
     ]
 
 
+def test_candidate_queue_skips_modules_excluded_from_primary() -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    result = {
+        "module_states": [
+            {
+                "key": "factor_screen_candidates",
+                "render_mode": "evidence_only",
+                "excludes_from_primary": True,
+            },
+            {
+                "key": "fresh_trend_watchlist",
+                "render_mode": "primary",
+                "excludes_from_primary": False,
+            },
+        ],
+        "factor_screen_candidates": {
+            "items": [{"stock_code": "600062.SH", "stock_name": "Evidence only"}],
+        },
+        "fresh_trend_watchlist": {
+            "items": [{"stock_code": "000001.SZ", "stock_name": "Primary candidate"}],
+        },
+    }
+
+    rows = module._candidate_queue(result, top_k=1)
+
+    assert [(row["source_module"], row["stock_code"]) for row in rows] == [
+        ("fresh_trend_watchlist", "000001.SZ"),
+    ]
+
+
 def test_theme_breakout_member_rank_falls_back_to_nested_list_order() -> None:
     module = load_module(
         "backend.app.services.stock_analysis_workbench_service",
@@ -233,6 +266,51 @@ def test_workbench_passes_overlay_reader_to_livermore_strategy(
     )
 
     assert calls == [reader]
+
+
+def test_stock_analysis_workbench_logs_strategy_and_projection_timings(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    module = load_module(
+        "backend.app.services.stock_analysis_workbench_service",
+        "backend/app/services/stock_analysis_workbench_service.py",
+    )
+    sentinel = {"result": {"route": "/stock-analysis"}}
+    caplog.set_level("INFO", logger=module.__name__)
+    monkeypatch.setattr(
+        module,
+        "livermore_strategy_envelope_from_catalog",
+        lambda **_kwargs: _strategy_envelope(),
+    )
+    monkeypatch.setattr(
+        module,
+        "build_stock_analysis_workbench_envelope",
+        lambda **_kwargs: sentinel,
+    )
+
+    result = module.stock_analysis_workbench_envelope(
+        duckdb_path="missing.duckdb",
+        as_of_date="2026-06-26",
+        choice_stock_catalog_file="missing.json",
+    )
+
+    assert result is sentinel
+    messages = [record.message for record in caplog.records]
+    assert any(
+        "stock_analysis_workbench_timing stage=strategy_envelope" in message
+        and "ms=" in message
+        for message in messages
+    )
+    assert any(
+        "stock_analysis_workbench_timing stage=workbench_projection" in message
+        and "ms=" in message
+        for message in messages
+    )
+    assert any(
+        "stock_analysis_workbench_timing stage=total" in message and "ms=" in message
+        for message in messages
+    )
 
 
 def test_ready_rule_chain_keeps_optional_data_gaps_in_limited_review() -> None:
@@ -656,7 +734,7 @@ def test_stock_analysis_workbench_route_validates_date_and_delegates_to_service(
     assert response.status_code == 200
     assert response.json()["result"]["route"] == "/stock-analysis"
     assert "workbench;dur=" in response.headers["server-timing"]
-    assert 'cache;desc="miss"' in response.headers["server-timing"]
+    assert 'cache;desc="produce"' in response.headers["server-timing"]
     assert calls
     assert calls[0]["as_of_date"] == "2026-06-26"
     assert calls[0]["include"] == "main,signal_confluence"
@@ -719,6 +797,47 @@ def test_stock_analysis_workbench_cache_key_tracks_choice_catalog_version(
 
     assert first != second
     assert "::catalog_version=" in second
+
+
+def test_stock_analysis_workbench_cache_key_normalizes_default_include(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+    catalog = tmp_path / "choice-stock.json"
+    catalog.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(route_module, "livermore_data_version", lambda _path: "db-v1")
+
+    def cache_key(include: str | None) -> str:
+        return route_module._stock_analysis_workbench_cache_key(
+            duckdb_path="fixture.duckdb",
+            catalog_file=catalog,
+            as_of_date=None,
+            include=include,
+            sector_window_days=20,
+            top_k=10,
+        )
+
+    default_keys = {
+        cache_key(None),
+        cache_key(""),
+        cache_key("main,evidence_summary"),
+        cache_key(" evidence_summary , main , main "),
+    }
+
+    assert len(default_keys) == 1
+    assert cache_key("signal_confluence") != next(iter(default_keys))
+
+
+def test_stock_analysis_workbench_cache_retention_avoids_time_only_recompute() -> None:
+    route_module = load_module(
+        "backend.app.api.routes.market_data_livermore",
+        "backend/app/api/routes/market_data_livermore.py",
+    )
+
+    assert route_module.STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS >= 24 * 60 * 60
 
 
 def test_stock_kline_analysis_route_validates_and_delegates_to_service(

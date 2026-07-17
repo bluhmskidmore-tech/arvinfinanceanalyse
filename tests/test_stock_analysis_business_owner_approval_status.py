@@ -16,7 +16,7 @@ This template is not an approval until completed and signed by the business owne
 
 Page ID: `GAP-STOCK-ANALYSIS-PAGE`
 Page slug: `stock-analysis`
-Primary API: `/ui/market-data/livermore`
+Primary API: `/ui/market-data/stock-analysis/workbench`
 Approval check: `business_owner_approval`
 Approval status: `approval_status=pending`
 Formal use allowed: `formal_use_allowed=false`
@@ -115,7 +115,7 @@ def test_stock_analysis_business_owner_approval_checker_reports_pending_template
 
     assert payload["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
     assert payload["page_slug"] == "stock-analysis"
-    assert payload["primary_api"] == "/ui/market-data/livermore"
+    assert payload["primary_api"] == "/ui/market-data/stock-analysis/workbench"
     assert payload["approval_status"] == "pending"
     assert payload["business_owner_approval_captured"] is False
     assert payload["formal_use_allowed"] is False

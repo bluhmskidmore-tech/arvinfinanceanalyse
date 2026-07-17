@@ -231,8 +231,8 @@ function candidateDecision(
 ): CandidateDecision {
   const evidenceCount = candidateEvidenceCount(card);
   if (evidenceCount < 3) return { label: "降级观察", tone: "warning", reason: "证据不足" };
-  if (index === 0) return { label: "优先复核", tone: "positive", reason: "首位候选" };
   if (boundaryCount > 0) return { label: "等待确认", tone: "warning", reason: "边界待核实" };
+  if (index === 0) return { label: "优先复核", tone: "positive", reason: "首位候选" };
   if (usesHybridFusion) return { label: "等待确认", tone: "neutral", reason: "融合待确认" };
   return { label: "等待确认", tone: "neutral", reason: "排队复核" };
 }

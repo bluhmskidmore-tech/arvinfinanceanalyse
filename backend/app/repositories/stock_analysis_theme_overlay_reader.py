@@ -6,6 +6,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
 from backend.app.schemas.materialize import CacheManifestRecord
@@ -54,16 +55,26 @@ class ThemeOverlayManifestAccessor:
             target = Path(self.base_dir).resolve() / "cache_manifest.jsonl"
             if not target.is_file():
                 return None
-            rows = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line.strip()]
-            for row in reversed(rows):
-                if not isinstance(row, dict):
-                    raise ValueError("cache manifest row must be an object")
-                if str(row.get("cache_key") or "").strip() != cache_key_text:
-                    continue
-                if report_date_text and str(row.get("report_date") or "").strip() != report_date_text:
-                    continue
-                return row
-            return None
+            stat = target.stat()
+            signature = (stat.st_mtime_ns, stat.st_size)
+            latest_by_key, latest_by_key_date = _cached_jsonl_manifest_index(
+                str(target),
+                *signature,
+            )
+            stat_after = target.stat()
+            if (stat_after.st_mtime_ns, stat_after.st_size) != signature:
+                raise ValueError("cache manifest changed during indexed read")
+            serialized = (
+                latest_by_key_date.get((cache_key_text, report_date_text))
+                if report_date_text
+                else latest_by_key.get(cache_key_text)
+            )
+            if serialized is None:
+                return None
+            row = json.loads(serialized)
+            if not isinstance(row, dict):
+                raise ValueError("cache manifest row must be an object")
+            return row
         else:
             sql_dsn = str(self.sql_dsn or "").strip()
             if not sql_dsn:
@@ -130,6 +141,39 @@ class ThemeOverlayManifestAccessor:
             return None
 
 
+@lru_cache(maxsize=2)
+def _cached_jsonl_manifest_index(
+    target_path: str,
+    expected_mtime_ns: int,
+    expected_size: int,
+) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+    target = Path(target_path)
+    stat_before = target.stat()
+    expected_signature = (expected_mtime_ns, expected_size)
+    if (stat_before.st_mtime_ns, stat_before.st_size) != expected_signature:
+        raise ValueError("cache manifest changed before indexed read")
+    latest_by_key: dict[str, str] = {}
+    latest_by_key_date: dict[tuple[str, str], str] = {}
+    for line in target.read_text(encoding="utf-8").splitlines():
+        serialized = line.strip()
+        if not serialized:
+            continue
+        row = json.loads(serialized)
+        if not isinstance(row, dict):
+            raise ValueError("cache manifest row must be an object")
+        cache_key = str(row.get("cache_key") or "").strip()
+        if not cache_key:
+            continue
+        latest_by_key[cache_key] = serialized
+        report_date = str(row.get("report_date") or "").strip()
+        if report_date:
+            latest_by_key_date[(cache_key, report_date)] = serialized
+    stat_after = target.stat()
+    if (stat_after.st_mtime_ns, stat_after.st_size) != expected_signature:
+        raise ValueError("cache manifest changed during index build")
+    return latest_by_key, latest_by_key_date
+
+
 @dataclass(frozen=True)
 class ThemeOverlayReadResult:
     status: str
@@ -161,25 +205,25 @@ class StockAnalysisThemeOverlayReader:
     def fingerprint(self, *, backfill_mode: bool = False) -> str:
         if backfill_mode:
             return BACKFILL_DISABLED_FINGERPRINT
-        evidence: dict[str, object] = {"reader_contract": "theme-overlay-reader-v1"}
+        observation: dict[str, object] | None = None
+        overlay: dict[str, object] | None = None
+        raw: bytes | None = None
         try:
             observation, overlay = self._latest_manifests()
-            evidence["observation_manifest"] = observation
-            evidence["overlay_manifest"] = overlay
             if overlay is not None:
                 raw = self._read_archive_bytes(overlay)
-                evidence["archive_sha256"] = hashlib.sha256(raw).hexdigest()
-                evidence["archive_size"] = len(raw)
         except Exception as exc:  # Fail-closed fingerprint boundary.
-            evidence["error"] = f"{type(exc).__name__}:{exc}"
-        encoded = json.dumps(
-            evidence,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-        return hashlib.sha256(encoded).hexdigest()
+            return _theme_overlay_fingerprint(
+                observation=observation,
+                overlay=overlay,
+                raw=raw,
+                error=exc,
+            )
+        return _theme_overlay_fingerprint(
+            observation=observation,
+            overlay=overlay,
+            raw=raw,
+        )
 
     def read(
         self,
@@ -195,17 +239,40 @@ class StockAnalysisThemeOverlayReader:
                 reason="backfill_mode_suppresses_current_overlay",
                 fingerprint=BACKFILL_DISABLED_FINGERPRINT,
             )
-        fingerprint = self.fingerprint()
+        observation: dict[str, object] | None = None
+        overlay: dict[str, object] | None = None
+        raw: bytes | None = None
+        fingerprint = ""
         try:
             evaluated_at = _utc_datetime(evaluation_time or datetime.now(UTC), field_name="evaluation_time")
             observation, overlay = self._latest_manifests()
             if observation is None:
                 raise ValueError("latest choice-stock observation manifest is missing")
-            if overlay is None:
-                raise ValueError("latest theme overlay manifest is missing")
             observation_manifest = _validate_observation_manifest(observation)
+            observation_created_at = _utc_datetime_text(
+                observation_manifest.get("created_at"),
+                field_name="observation manifest created_at",
+            )
+            if observation_created_at > evaluated_at:
+                raise ValueError("observation anchor created_at is after evaluation_time")
+            if overlay is None:
+                fingerprint = _theme_overlay_fingerprint(
+                    observation=observation,
+                    overlay=None,
+                )
+                return ThemeOverlayReadResult(
+                    status="unavailable",
+                    reason="current_overlay_missing_for_latest_observation",
+                    fingerprint=fingerprint,
+                    report_date=str(observation_manifest["report_date"]),
+                )
             overlay_manifest = _validate_overlay_manifest(overlay)
             raw = self._read_archive_bytes(overlay_manifest)
+            fingerprint = _theme_overlay_fingerprint(
+                observation=observation,
+                overlay=overlay,
+                raw=raw,
+            )
             document = ThemeOverlayArchiveDocument.model_validate_json(raw)
             if canonical_theme_overlay_document_bytes(document) != raw:
                 raise ValueError("archive bytes are not canonical JSON")
@@ -217,10 +284,6 @@ class StockAnalysisThemeOverlayReader:
             manifest_created_at = _utc_datetime_text(
                 overlay_manifest.get("created_at"),
                 field_name="overlay manifest created_at",
-            )
-            observation_created_at = _utc_datetime_text(
-                observation_manifest.get("created_at"),
-                field_name="observation manifest created_at",
             )
             future_timestamps: list[str] = []
             if manifest_created_at > evaluated_at:
@@ -269,7 +332,14 @@ class StockAnalysisThemeOverlayReader:
                 point_in_time=document.point_in_time,
                 historical_use_allowed=document.historical_use_allowed,
             )
-        except Exception:  # Repository boundary must never break the page.
+        except Exception as exc:  # Repository boundary must never break the page.
+            if not fingerprint:
+                fingerprint = _theme_overlay_fingerprint(
+                    observation=observation,
+                    overlay=overlay,
+                    raw=raw,
+                    error=exc,
+                )
             logger.exception("Theme overlay read failed")
             return ThemeOverlayReadResult(
                 status="unavailable",
@@ -278,10 +348,19 @@ class StockAnalysisThemeOverlayReader:
             )
 
     def _latest_manifests(self) -> tuple[dict[str, object] | None, dict[str, object] | None]:
-        return (
-            self.governance_repo.read_latest_manifest(CHOICE_STOCK_OBSERVATION_CACHE_KEY),
-            self.governance_repo.read_latest_manifest(THEME_OVERLAY_CACHE_KEY),
+        observation = self.governance_repo.read_latest_manifest(
+            CHOICE_STOCK_OBSERVATION_CACHE_KEY
         )
+        if observation is None:
+            return None, None
+        observation_report_date = str(observation.get("report_date") or "").strip()
+        if not observation_report_date:
+            return observation, None
+        overlay = self.governance_repo.read_latest_manifest(
+            THEME_OVERLAY_CACHE_KEY,
+            report_date=observation_report_date,
+        )
+        return observation, overlay
 
     def _read_archive_bytes(self, overlay_manifest: dict[str, object]) -> bytes:
         lineage = _required_mapping(overlay_manifest.get("lineage"), field_name="overlay lineage")
@@ -315,6 +394,33 @@ class StockAnalysisThemeOverlayReader:
         if not resolved_archive.is_file():
             raise ValueError("theme overlay archive object is missing")
         return resolved_archive.read_bytes()
+
+
+def _theme_overlay_fingerprint(
+    *,
+    observation: dict[str, object] | None,
+    overlay: dict[str, object] | None,
+    raw: bytes | None = None,
+    error: Exception | None = None,
+) -> str:
+    evidence: dict[str, object] = {
+        "reader_contract": "theme-overlay-reader-v1",
+        "observation_manifest": observation,
+        "overlay_manifest": overlay,
+    }
+    if raw is not None:
+        evidence["archive_sha256"] = hashlib.sha256(raw).hexdigest()
+        evidence["archive_size"] = len(raw)
+    if error is not None:
+        evidence["error"] = f"{type(error).__name__}:{error}"
+    encoded = json.dumps(
+        evidence,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _validate_observation_manifest(payload: dict[str, object]) -> dict[str, object]:

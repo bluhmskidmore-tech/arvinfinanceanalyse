@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Mapping
 from datetime import date
 from typing import Literal, cast
@@ -9,6 +11,8 @@ from backend.app.repositories.stock_analysis_theme_overlay_reader import (
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.market_data_livermore_service import livermore_strategy_envelope_from_catalog
+
+logger = logging.getLogger(__name__)
 
 WORKBENCH_RESULT_KIND = "market_data.stock_analysis.workbench"
 WORKBENCH_RULE_VERSION = "rv_stock_analysis_workbench_v1"
@@ -48,6 +52,7 @@ def stock_analysis_workbench_envelope(
     top_k: int = 10,
     theme_overlay_reader: StockAnalysisThemeOverlayReader | None = None,
 ) -> dict[str, object]:
+    total_started = time.perf_counter()
     strategy_kwargs: dict[str, object] = {
         "duckdb_path": duckdb_path,
         "as_of_date": as_of_date,
@@ -55,14 +60,29 @@ def stock_analysis_workbench_envelope(
     }
     if theme_overlay_reader is not None:
         strategy_kwargs["theme_overlay_reader"] = theme_overlay_reader
+    strategy_started = time.perf_counter()
     strategy_envelope = livermore_strategy_envelope_from_catalog(**strategy_kwargs)
-    return build_stock_analysis_workbench_envelope(
+    logger.info(
+        "stock_analysis_workbench_timing stage=strategy_envelope ms=%d",
+        int((time.perf_counter() - strategy_started) * 1000),
+    )
+    projection_started = time.perf_counter()
+    envelope = build_stock_analysis_workbench_envelope(
         strategy_envelope=strategy_envelope,
         requested_as_of_date=as_of_date,
         include=include,
         sector_window_days=sector_window_days,
         top_k=top_k,
     )
+    logger.info(
+        "stock_analysis_workbench_timing stage=workbench_projection ms=%d",
+        int((time.perf_counter() - projection_started) * 1000),
+    )
+    logger.info(
+        "stock_analysis_workbench_timing stage=total ms=%d",
+        int((time.perf_counter() - total_started) * 1000),
+    )
+    return envelope
 
 
 def build_stock_analysis_workbench_envelope(
@@ -206,9 +226,19 @@ def _candidate_queue(result: dict[str, object], *, top_k: int) -> list[dict[str,
         "mean_reversion_candidates",
         "theme_breakout",
     )
+    excluded_from_primary = {
+        str(state.get("key") or "").strip()
+        for state in _list_of_mappings(result.get("module_states"))
+        if state.get("excludes_from_primary") is True
+    }
+    if "hybrid_fusion" in excluded_from_primary:
+        excluded_from_primary.add("hybrid_fusion_candidates")
+
     rows: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
     for key in keys:
+        if key in excluded_from_primary:
+            continue
         module_items = (
             _theme_breakout_candidate_rows(result.get(key))
             if key == "theme_breakout"

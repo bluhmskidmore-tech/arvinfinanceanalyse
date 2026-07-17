@@ -2,7 +2,7 @@
 
 Page ID: `GAP-STOCK-ANALYSIS-PAGE`
 Route: `/stock-analysis`
-Primary API: `/ui/market-data/livermore`
+Primary API: `/ui/market-data/stock-analysis/workbench`
 Audit status: `pending`
 Governance record write status: `not_requested`
 Formal use allowed: `formal_use_allowed=false`

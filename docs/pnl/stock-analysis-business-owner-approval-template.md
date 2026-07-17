@@ -4,7 +4,7 @@ This template is not an approval until completed and signed by the business owne
 
 Page ID: `GAP-STOCK-ANALYSIS-PAGE`
 Page slug: `stock-analysis`
-Primary API: `/ui/market-data/livermore`
+Primary API: `/ui/market-data/stock-analysis/workbench`
 Approval check: `business_owner_approval`
 Approval status: `approval_status=pending`
 Formal use allowed: `formal_use_allowed=false`

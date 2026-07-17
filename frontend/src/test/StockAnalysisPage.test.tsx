@@ -238,6 +238,34 @@ async function openReviewQueueTable() {
   return within(queue).findByTestId("stock-analysis-review-queue-table");
 }
 
+type StockAnalysisStrategyCardId =
+  | "cycle-rotation"
+  | "theme-breakout"
+  | "market-priority"
+  | "strategy-backtest"
+  | "strategy-optimization"
+  | "events-monitoring";
+
+async function openStrategyModuleDetail(id: StockAnalysisStrategyCardId) {
+  const user = userEvent.setup();
+  const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
+  if (!(deepResearch as HTMLDetailsElement).open) {
+    await user.click(within(deepResearch).getByTestId("stock-analysis-deep-research-summary"));
+  }
+
+  const researchMore = await screen.findByTestId("stock-analysis-strategy-research-more");
+  if (!(researchMore as HTMLDetailsElement).open) {
+    await user.click(within(researchMore).getByTestId("stock-analysis-strategy-research-more-summary"));
+  }
+
+  const toggle = await screen.findByTestId(`stock-analysis-strategy-card-${id}-toggle`);
+  if (toggle.getAttribute("aria-expanded") !== "true") {
+    await user.click(toggle);
+  }
+
+  return screen.findByTestId(`stock-analysis-strategy-card-${id}-detail`);
+}
+
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -1891,7 +1919,7 @@ describe("StockAnalysisPage", () => {
 
     await waitFor(() => expect(workbenchSpy).toHaveBeenCalled());
     await screen.findByTestId("stock-analysis-first-screen-workbench");
-    expect(workbenchSpy.mock.calls[0]?.[0]).toEqual({ topK: 3 });
+    expect(workbenchSpy.mock.calls[0]?.[0]).toEqual({ topK: 10 });
     expect(strategySpy).not.toHaveBeenCalled();
 
     const contract = await screen.findByTestId("stock-analysis-workbench-contract");
@@ -2739,7 +2767,10 @@ describe("StockAnalysisPage", () => {
     expect(within(comparison).getByText("候选横向比较")).toBeInTheDocument();
     expect(within(comparison).getByText("先做取舍，再看单只详情")).toBeInTheDocument();
     expect(within(comparison).getByTestId("stock-analysis-candidate-alternates")).toBeInTheDocument();
-    expect(within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ")).toHaveTextContent("优先复核");
+    const lead = within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ");
+    expect(lead).toHaveTextContent("等待确认");
+    expect(lead).toHaveTextContent("边界待核实");
+    expect(lead).toHaveTextContent("待核 2 条");
     expect(within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ")).toHaveTextContent("Alpha");
     expect(within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ")).toHaveTextContent("0.46%");
     expect(within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ")).toHaveTextContent("11 条");
@@ -3321,7 +3352,22 @@ describe("StockAnalysisPage", () => {
 
   it("labels fresh-trend and hybrid gate sources from their canonical keys", async () => {
     const client = stockClient();
-    const strategy = buildStrategyPayload();
+    const strategy = buildStrategyPayload({
+      module_states: [
+        ...readyModuleStates(),
+        {
+          key: "fresh_trend_watchlist",
+          state: "ready",
+          render_mode: "primary",
+          source_date: "2026-04-29",
+          lag_days: 0,
+          threshold_days: null,
+          reasons: [],
+          evidence_scope: "primary",
+          excludes_from_primary: false,
+        },
+      ],
+    });
     const workbench = buildStockAnalysisWorkbenchPayload(strategy);
     workbench.first_screen.review_queue = [
       {
@@ -3497,7 +3543,7 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByTestId("stock-analysis-tailwind-cockpit")).toBeInTheDocument();
     await waitFor(() => expect(workbenchSpy).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(confluenceSpy).toHaveBeenCalledTimes(1));
-    expect(workbenchSpy.mock.calls[0]?.[0]).toEqual({ topK: 3 });
+    expect(workbenchSpy.mock.calls[0]?.[0]).toEqual({ topK: 10 });
     expect(confluenceSpy).toHaveBeenCalledWith({ asOfDate: "2026-04-29" });
     expect(strategyScoreSpy).not.toHaveBeenCalled();
     expect(strategyOptimizationSpy).not.toHaveBeenCalled();
@@ -4887,6 +4933,38 @@ describe("StockAnalysisPage", () => {
     expectElementBefore(klineRadar, observationPreview);
   });
 
+  it("mounts deep research only after the closed disclosure is requested", async () => {
+    const user = userEvent.setup();
+    const observeNode = vi.fn();
+
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IdleIntersectionObserver {
+        observe = observeNode;
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+        takeRecords = () => [];
+      },
+    );
+
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const deepResearch = await screen.findByTestId("stock-analysis-deep-research");
+    await waitFor(() => expect(observeNode).toHaveBeenCalledWith(deepResearch));
+
+    expect(
+      within(deepResearch).queryByTestId("stock-analysis-deep-zone"),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(deepResearch).getByTestId("stock-analysis-deep-research-summary"),
+    );
+
+    expect(
+      await within(deepResearch).findByTestId("stock-analysis-deep-zone"),
+    ).toBeVisible();
+  });
+
   it("keeps secondary research and the duplicate gate ledger collapsed by default", async () => {
     const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
@@ -5304,6 +5382,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("cycle-rotation");
     const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
     expect(framework).toHaveTextContent("A股景气周期选股与行业轮动");
     expect(framework).toHaveTextContent("轮动规则");
@@ -5370,6 +5449,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("cycle-rotation");
     const section = await screen.findByTestId("stock-analysis-candidate-history-portfolio-backtest");
     await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
     expect(section).toHaveTextContent("数据源缺失");
@@ -5390,6 +5470,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("cycle-rotation");
     const section = await screen.findByTestId("stock-analysis-cycle-proxy-backtest");
     await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
     expect(section).toHaveTextContent("数据源缺失");
@@ -5420,6 +5501,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("cycle-rotation");
     const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
     expect(framework).toHaveTextContent("输入待确认");
     expect(framework).toHaveTextContent("证据待确认");
@@ -5439,6 +5521,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("cycle-rotation");
     const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
     expect(framework).toHaveTextContent("节奏待确认");
     expect(framework).not.toHaveTextContent("external_vendor_daily_rotation");
@@ -5457,6 +5540,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("cycle-rotation");
     const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
     expect(framework).toHaveTextContent("约束待确认");
     expect(framework).not.toHaveTextContent("external_vendor_position_guard");
@@ -5484,6 +5568,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("cycle-rotation");
     const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
     expect(framework).toHaveTextContent("边界待确认");
     expect(framework).not.toHaveTextContent("external_vendor_boundary_guard");
@@ -5512,6 +5597,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("cycle-rotation");
     const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
     expect(framework).toHaveTextContent("证据待确认");
     expect(framework).not.toHaveTextContent("vendor_quality_signal_pending");
@@ -5615,6 +5701,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("theme-breakout");
     const section = await screen.findByTestId("stock-analysis-theme-breakout");
     expect(section).toHaveTextContent("题材突变观察");
     expect(section).toHaveTextContent("半导体领先");
@@ -6854,6 +6941,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("events-monitoring");
     const section = await screen.findByTestId("stock-analysis-events-monitoring");
     expect(section).toHaveTextContent("诊断");
     expect(section).toHaveTextContent("缺口");
@@ -6890,6 +6978,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("events-monitoring");
     const section = await screen.findByTestId("stock-analysis-events-monitoring");
     expect(section).toHaveTextContent("输入待确认诊断");
     expect(section).toHaveTextContent("说明待确认");
@@ -6915,6 +7004,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("events-monitoring");
     const section = await screen.findByTestId("stock-analysis-events-monitoring");
     expect(section).toHaveTextContent("市场宽度");
     expect(section).toHaveTextContent("说明待确认");
@@ -7730,6 +7820,7 @@ describe("StockAnalysisPage", () => {
   it("renders strategy replay rows from legacy per-strategy horizon stats", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
+    await openStrategyModuleDetail("strategy-backtest");
     const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
     await waitFor(() => expect(panel).toHaveTextContent(/180 条/), { timeout: 3_000 });
     const trend = within(await screen.findByTestId("stock-analysis-strategy-backtest-stock_candidate"));
@@ -7759,6 +7850,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("strategy-backtest");
     const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
     await waitFor(() => expect(panel).toHaveTextContent("暂不可用"), { timeout: 3_000 });
     expect(panel).toHaveTextContent("数据源缺失");
@@ -7834,6 +7926,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("market-priority");
     const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
     await waitFor(() => expect(summary).toHaveTextContent("优先复核"));
     await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
@@ -7926,6 +8019,7 @@ describe("StockAnalysisPage", () => {
 
     renderWorkbenchApp(["/stock-analysis"], { client });
 
+    await openStrategyModuleDetail("market-priority");
     const section = await screen.findByTestId("stock-analysis-candidate-maturity");
     await waitFor(() => expect(section).toHaveTextContent("候选明细暂不可用"), { timeout: 3_000 });
     expect(section).toHaveTextContent("数据源缺失");
@@ -7974,6 +8068,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("market-priority");
     const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-stock_candidate");
     expect(row).toHaveTextContent("风险待确认");
     expect(row).not.toHaveTextContent("sourceTableRiskGuard");
@@ -8001,6 +8096,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("market-priority");
     const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
     expect(row).toHaveTextContent("状态待确认");
     expect(row).toHaveTextContent("策略待确认");
@@ -8042,6 +8138,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("market-priority");
     const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
     expect(row).toHaveTextContent("第 11-20 名 状态待确认");
     expect(row).not.toHaveTextContent("sourceTableBucketState");
@@ -8074,6 +8171,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("market-priority");
     const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
     expect(row).toHaveTextContent("排序范围待确认");
     expect(row).not.toHaveTextContent("sourceTableScopeLabel");
@@ -8084,6 +8182,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("localizes strategy priority source-table failures without exposing backend tables", async () => {
+    const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
         strategyScoreError: new Error(
@@ -8094,11 +8193,11 @@ describe("StockAnalysisPage", () => {
 
     const section = await screen.findByTestId("stock-analysis-market-priority-summary");
     await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
-    expect(section).toHaveTextContent("数据源缺失");
     expect(section).not.toHaveTextContent("Failed to fetch");
     expect(section).not.toHaveTextContent("source_table");
     expect(section).not.toHaveTextContent("choice_stock_strategy_score");
     expect(section).not.toHaveTextContent("/ui/market-data/livermore/strategy-score");
+    await user.click(within(section).getByTestId("stock-analysis-strategy-card-market-priority-toggle"));
     const detail = within(section).getByTestId("stock-analysis-strategy-card-market-priority-detail");
     const summaryDetail = detail.querySelector(".stock-analysis-strategy-module-card__detail-line");
     expect(summaryDetail).toHaveTextContent("必需数据源缺失");
@@ -8190,6 +8289,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("strategy-optimization");
     const card = await screen.findByTestId("stock-analysis-strategy-optimization");
     await waitFor(() => expect(card).toHaveTextContent("多因子"), { timeout: 3_000 });
     expect(card).toHaveTextContent("三策略 T+5 排名");
@@ -8302,6 +8402,7 @@ describe("StockAnalysisPage", () => {
       client: stockClient({ strategyOptimization: payload }),
     });
 
+    await openStrategyModuleDetail("strategy-optimization");
     const card = await screen.findByTestId("stock-analysis-strategy-optimization");
     await waitFor(() => expect(card).toHaveTextContent("三策略 T+10 排名"), { timeout: 3_000 });
     expect(card).toHaveTextContent("切片 T+10");
@@ -8319,6 +8420,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("strategy-optimization");
     const card = await screen.findByTestId("stock-analysis-strategy-optimization");
     await waitFor(() => expect(card).toHaveTextContent("暂不可用"), { timeout: 3_000 });
     expect(card).toHaveTextContent("数据源缺失");
@@ -8389,6 +8491,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("market-priority");
     const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
     await waitFor(() => expect(summary).toHaveTextContent("T+1"), { timeout: 3_000 });
     expect(summary).toHaveTextContent("样本不足");
@@ -8635,6 +8738,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("strategy-backtest");
     const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
     await waitFor(() => expect(panel).toHaveTextContent("75.0% / +3.21% / 12条"), {
       timeout: 5_000,
@@ -8686,6 +8790,7 @@ describe("StockAnalysisPage", () => {
       }),
     });
 
+    await openStrategyModuleDetail("strategy-backtest");
     const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
     await waitFor(() => expect(panel).toHaveTextContent("T+1开盘成交·含费·复权"), {
       timeout: 5_000,

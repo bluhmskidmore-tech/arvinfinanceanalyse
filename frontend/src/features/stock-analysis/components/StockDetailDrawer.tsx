@@ -33,15 +33,29 @@ function isFiniteNumber(value: number | null | undefined): value is number {
 function buildCandleVolumeOption(
   candles: LivermoreStockDetailCandle[],
 ): EChartsOption {
-  const dates = candles.map((c) => c.trade_date);
-  const ohlc: [number, number, number, number][] = candles.map((c) => {
-    const o = c.open_value ?? 0;
-    const cl = c.close_value ?? 0;
-    const lo = c.low_value ?? 0;
-    const hi = c.high_value ?? 0;
-    return [o, cl, lo, hi];
+  const chartCandles = candles.flatMap((candle) => {
+    if (
+      !isFiniteNumber(candle.open_value) ||
+      !isFiniteNumber(candle.close_value) ||
+      !isFiniteNumber(candle.low_value) ||
+      !isFiniteNumber(candle.high_value)
+    ) {
+      return [];
+    }
+    return [{
+      tradeDate: candle.trade_date,
+      ohlc: [
+        candle.open_value,
+        candle.close_value,
+        candle.low_value,
+        candle.high_value,
+      ] as [number, number, number, number],
+      volume: isFiniteNumber(candle.volume) ? candle.volume : null,
+    }];
   });
-  const volumes = candles.map((c) => c.volume ?? 0);
+  const dates = chartCandles.map((candle) => candle.tradeDate);
+  const ohlc = chartCandles.map((candle) => candle.ohlc);
+  const volumes = chartCandles.map((candle) => candle.volume);
   const up = designTokens.color.semantic.up;
   const down = designTokens.color.semantic.down;
   const muted = designTokens.color.neutral[600];

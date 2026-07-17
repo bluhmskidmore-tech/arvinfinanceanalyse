@@ -2,7 +2,7 @@
 
 Page ID: `GAP-STOCK-ANALYSIS-PAGE`
 Page slug: `stock-analysis`
-Primary API: `/ui/market-data/livermore`
+Primary API: `/ui/market-data/stock-analysis/workbench`
 Business contract status: `evidence-pending`
 Business contract certified: `false`
 Formal use allowed: `formal_use_allowed=false`

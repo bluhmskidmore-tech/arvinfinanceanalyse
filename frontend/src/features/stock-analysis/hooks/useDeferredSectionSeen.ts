@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const DEFAULT_DEFERRED_SECTION_FALLBACK_MS = 1_000;
 
@@ -6,8 +6,11 @@ export function useDeferredSectionSeen<TElement extends HTMLElement>(
   enabled: boolean,
   delayMs = DEFAULT_DEFERRED_SECTION_FALLBACK_MS,
 ) {
-  const ref = useRef<TElement | null>(null);
+  const [node, setNode] = useState<TElement | null>(null);
   const [seen, setSeen] = useState(false);
+  const ref = useCallback((nextNode: TElement | null) => {
+    setNode(nextNode);
+  }, []);
 
   useEffect(() => {
     if (seen || !enabled) return undefined;
@@ -17,7 +20,6 @@ export function useDeferredSectionSeen<TElement extends HTMLElement>(
       return () => window.clearTimeout(timer);
     }
 
-    const node = ref.current;
     if (!node) return undefined;
 
     const observer = new IntersectionObserver(
@@ -31,7 +33,7 @@ export function useDeferredSectionSeen<TElement extends HTMLElement>(
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [delayMs, enabled, seen]);
+  }, [delayMs, enabled, node, seen]);
 
   return { ref, seen };
 }

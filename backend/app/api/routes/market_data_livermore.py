@@ -33,16 +33,19 @@ from backend.app.services.market_data_livermore_service import (
     livermore_data_version,
     livermore_strategy_envelope_from_catalog,
 )
-from backend.app.services.stock_analysis_workbench_service import stock_analysis_workbench_envelope
+from backend.app.services.stock_analysis_workbench_service import (
+    DEFAULT_INCLUDE_KEYS,
+    stock_analysis_workbench_envelope,
+)
 from backend.app.services.stock_kline_analysis_service import stock_kline_analysis_envelope
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
-# The key fingerprints DuckDB, the Choice catalog, and the theme overlay, so this
-# TTL only reuses a deterministic response while all page inputs are unchanged.
-STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS = 1800.0
+# Freshness is carried by the DuckDB, Choice catalog, and theme-overlay fingerprints
+# in the key. Keep unchanged snapshots for one day to avoid time-only recomputation.
+STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS = 24 * 60 * 60.0
 
 
 class LivermorePositionSnapshotRequest(BaseModel):
@@ -153,8 +156,11 @@ def _stock_analysis_workbench_cache_key(
     top_k: int,
     theme_overlay_fingerprint: str = "theme-overlay-reader:not-configured",
 ) -> str:
+    include_keys = set(DEFAULT_INCLUDE_KEYS)
+    include_keys.update(item.strip() for item in str(include or "").split(",") if item.strip())
+    include_token = ",".join(sorted(include_keys))
     return (
-        f"livermore/workbench::as_of={as_of_date or ''}::include={include or ''}"
+        f"livermore/workbench::as_of={as_of_date or ''}::include={include_token}"
         f"::sector_window_days={sector_window_days}::top_k={top_k}"
         f"::catalog={catalog_file}::catalog_version={_choice_stock_catalog_fingerprint(catalog_file)}"
         f"::{duckdb_path}::data_version={livermore_data_version(duckdb_path)}"
@@ -219,12 +225,10 @@ def _cached_stock_analysis_workbench(
     catalog_file = settings.choice_stock_catalog_file  # type: ignore[attr-defined]
     theme_overlay_reader = _theme_overlay_reader_from_settings(settings)
     theme_overlay_fingerprint = _theme_overlay_fingerprint(theme_overlay_reader)
-    cache_status = "hit"
     compute_ms = 0.0
 
     def build() -> dict[str, object]:
-        nonlocal cache_status, compute_ms
-        cache_status = "miss"
+        nonlocal compute_ms
         compute_started = time.perf_counter()
         try:
             return timed_api_call(
@@ -242,7 +246,7 @@ def _cached_stock_analysis_workbench(
         finally:
             compute_ms = (time.perf_counter() - compute_started) * 1000
 
-    payload = market_home_response_cache.get_or_build(
+    payload, cache_status = market_home_response_cache.get_or_build_with_status(
         _stock_analysis_workbench_cache_key(
             duckdb_path=duckdb_path,
             catalog_file=catalog_file,

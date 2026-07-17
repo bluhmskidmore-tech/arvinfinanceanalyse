@@ -11,7 +11,6 @@ import {
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { Button as AntButton, Drawer as AntDrawer } from "antd";
-import dayjs from "dayjs";
 
 import { useApiClient } from "../../../api/client";
 import type {
@@ -102,6 +101,10 @@ import {
   stockStatusLabel as statusLabel,
   stockStrategyPanelErrorMessage as strategyPanelErrorMessage,
 } from "../lib/stockAnalysisPageCopy";
+import {
+  normalizeIsoCalendarDate,
+  subtractIsoCalendarDays,
+} from "../lib/stockAnalysisDate";
 import {
   buildBackendSupplyOverview,
   cycleBoundaryLabel,
@@ -196,10 +199,8 @@ import {
   StockAnalysisLoadingWorkbench,
 } from "../components/StockAnalysisBoundaryWorkbenches";
 import { StockAnalysisCycleRuleSummary } from "../components/StockAnalysisCycleRuleSummary";
-import { StockAnalysisDeepZoneHeader } from "../components/StockAnalysisDeepZoneHeader";
 import { StockAnalysisCandidateLedgerTable } from "../components/StockAnalysisCandidateLedgerTable";
 import { StockAnalysisCandidateComparison } from "../components/StockAnalysisCandidateComparison";
-import { StockAnalysisConsensusFirstScreen } from "../components/StockAnalysisConsensusFirstScreen";
 import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvidenceLedgerRail";
 import {
   StockAnalysisReviewLedgerFirstScreen,
@@ -207,10 +208,6 @@ import {
   type StockAnalysisLedgerMetric,
 } from "../components/StockAnalysisReviewLedgerFirstScreen";
 import { StockAnalysisStrategyLensSection } from "../components/StockAnalysisStrategyLensSection";
-import { StockAnalysisStrategyReviewCards } from "../components/StockAnalysisStrategyReviewCards";
-import { StockAnalysisThemeBreakoutPanel } from "../components/StockAnalysisThemeBreakoutPanel";
-import { StockAnalysisKlineRadarPanel } from "../components/StockAnalysisKlineRadarPanel";
-import { StockAnalysisObservationPreview } from "../components/StockAnalysisObservationPreview";
 import { CompactStatusTile, StatusIcon } from "../components/StockAnalysisStatusPrimitives";
 import { StrategyModuleCard } from "../components/StrategyModuleCard";
 import { StrategyPanelComplianceDetails } from "../components/StrategyPanelResultStrip";
@@ -237,6 +234,36 @@ const LazyAgentPanel = lazy(() =>
 );
 const LazyStockDetailDrawer = lazy(() =>
   import("../components/StockDetailDrawer").then((module) => ({ default: module.StockDetailDrawer })),
+);
+const LazyStockAnalysisDeepZoneHeader = lazy(() =>
+  import("../components/StockAnalysisDeepZoneHeader").then((module) => ({
+    default: module.StockAnalysisDeepZoneHeader,
+  })),
+);
+const LazyStockAnalysisConsensusFirstScreen = lazy(() =>
+  import("../components/StockAnalysisConsensusFirstScreen").then((module) => ({
+    default: module.StockAnalysisConsensusFirstScreen,
+  })),
+);
+const LazyStockAnalysisKlineRadarPanel = lazy(() =>
+  import("../components/StockAnalysisKlineRadarPanel").then((module) => ({
+    default: module.StockAnalysisKlineRadarPanel,
+  })),
+);
+const LazyStockAnalysisObservationPreview = lazy(() =>
+  import("../components/StockAnalysisObservationPreview").then((module) => ({
+    default: module.StockAnalysisObservationPreview,
+  })),
+);
+const LazyStockAnalysisStrategyReviewCards = lazy(() =>
+  import("../components/StockAnalysisStrategyReviewCards").then((module) => ({
+    default: module.StockAnalysisStrategyReviewCards,
+  })),
+);
+const LazyStockAnalysisThemeBreakoutPanel = lazy(() =>
+  import("../components/StockAnalysisThemeBreakoutPanel").then((module) => ({
+    default: module.StockAnalysisThemeBreakoutPanel,
+  })),
 );
 
 const WORKBENCH_FACT_ENDPOINT_MAP: Record<string, string> = {
@@ -577,6 +604,7 @@ export default function StockAnalysisPage() {
   const [asOfOverride, setAsOfOverride] = useState<string | null>(null);
   const [detailSelection, setDetailSelection] = useState<StockDetailSelection | null>(null);
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
+  const [deepResearchRequested, setDeepResearchRequested] = useState(false);
   const [queueSearchText, setQueueSearchText] = useState("");
   const [queueLedgerOpen, setQueueLedgerOpen] = useState(false);
   const [boundaryDiagnosticsOpen, setBoundaryDiagnosticsOpen] = useState(false);
@@ -615,7 +643,7 @@ export default function StockAnalysisPage() {
     queryFn: () =>
       client.getStockAnalysisWorkbench({
         ...(asOfOverride ? { asOfDate: asOfOverride } : {}),
-        topK: 3,
+        topK: 10,
       }),
     ...stockAnalysisReadQueryOptions,
   });
@@ -643,6 +671,12 @@ export default function StockAnalysisPage() {
   const strategyPrioritySection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
   const strategyBacktestSection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
   const strategyOptimizationSection = useDeferredSectionSeen<HTMLElement>(deferredSectionsEnabled);
+  const intersectionObserverAvailable = typeof IntersectionObserver !== "undefined";
+  const deepResearchSection = useDeferredSectionSeen<HTMLDetailsElement>(
+    deferredSectionsEnabled && intersectionObserverAvailable,
+  );
+  const shouldMountDeepResearch =
+    !intersectionObserverAvailable || deepResearchRequested || deepResearchSection.seen;
 
   const confluenceQuery = useQuery({
     queryKey: ["stock-analysis", "livermore-signal-confluence", strategyPayload?.as_of_date ?? "__none"],
@@ -731,7 +765,26 @@ export default function StockAnalysisPage() {
   const reviewQueue = useMemo(() => {
     const strategyQueue = strategyPayload ? buildCandidateReviewQueue(strategyPayload) : [];
     const workbenchRows = workbenchPayload?.first_screen.review_queue ?? [];
-    const workbenchQueue = buildStockAnalysisWorkbenchReviewQueue(workbenchRows);
+    const workbenchPrimarySourceKeys = [
+      "stock_candidates",
+      "factor_screen_candidates",
+      "uptrend_momentum_candidates",
+      "fresh_trend_watchlist",
+      "mean_reversion_candidates",
+      "theme_breakout",
+    ] as const;
+    const excludedWorkbenchSourceModules = new Set<string>(
+      workbenchPrimarySourceKeys.filter((key) =>
+        isStockModulePrimaryExcluded(strategyPayload, key),
+      ),
+    );
+    if (isStockModulePrimaryExcluded(strategyPayload, "hybrid_fusion")) {
+      excludedWorkbenchSourceModules.add("hybrid_fusion_candidates");
+    }
+    const workbenchQueue = buildStockAnalysisWorkbenchReviewQueue(
+      workbenchRows,
+      excludedWorkbenchSourceModules,
+    );
     if (workbenchQueue.length > 0) {
       return enrichStockAnalysisWorkbenchReviewQueue(workbenchQueue, strategyQueue);
     }
@@ -814,11 +867,23 @@ export default function StockAnalysisPage() {
   }
 
   function scrollToStockSection(targetId: string) {
-    window.setTimeout(() => {
+    const maxAttempts = 150;
+    let attempt = 0;
+
+    function scrollWhenReady() {
       const target =
         document.getElementById(targetId) ??
         document.querySelector<HTMLElement>(`[data-testid="${targetId}"]`);
-      if (!target) return;
+      if (!target) {
+        if (attempt === 0) {
+          setDeepResearchRequested(true);
+        }
+        attempt += 1;
+        if (attempt < maxAttempts) {
+          window.setTimeout(scrollWhenReady, 20);
+        }
+        return;
+      }
 
       let disclosure = target.closest("details");
       while (disclosure) {
@@ -827,7 +892,9 @@ export default function StockAnalysisPage() {
       }
 
       target.scrollIntoView?.({ behavior: "smooth", block: "start" });
-    }, 0);
+    }
+
+    window.setTimeout(scrollWhenReady, 0);
   }
 
   const themeBreakoutCards = useMemo(
@@ -1117,11 +1184,8 @@ export default function StockAnalysisPage() {
     sectorTailRow != null
       ? `最弱 ${sectorTailRow.sectorName} (${sectorTailRow.pctChange})`
       : dailyJudgmentStrip?.weakestSectorChip ?? "弱势待确认";
-  const headerDateValue =
-    strategyPayload?.as_of_date != null ? dayjs(strategyPayload.as_of_date) : null;
-
-  const pickerDisplay =
-    asOfOverride != null && asOfOverride.trim() !== "" ? dayjs(asOfOverride) : headerDateValue;
+  const headerDateValue = normalizeIsoCalendarDate(strategyPayload?.as_of_date);
+  const pickerDisplay = normalizeIsoCalendarDate(asOfOverride) ?? headerDateValue;
 
   const stockDetailAsOfDate = analyticsAsOf ?? undefined;
   const currentMarketState = strategyPayload?.market_gate.state ?? null;
@@ -1173,7 +1237,7 @@ export default function StockAnalysisPage() {
     [strategyOptimizationPayload],
   );
   const strategyPriorityRows = strategyScorePayload?.current_market_state_rows ?? EMPTY_STRATEGY_PRIORITY_ROWS;
-  const strategyBacktestSnapshotFrom = analyticsAsOf ? dayjs(analyticsAsOf).subtract(10, "day").format("YYYY-MM-DD") : null;
+  const strategyBacktestSnapshotFrom = subtractIsoCalendarDays(analyticsAsOf, 10);
 
   const strategyBacktestQuery = useQuery({
     queryKey: [
@@ -3863,8 +3927,14 @@ export default function StockAnalysisPage() {
             ) : null}
 
             <details
+              ref={deepResearchSection.ref}
               className="stock-analysis-page__deep-research"
               data-testid="stock-analysis-deep-research"
+              onToggle={(event) => {
+                if (event.currentTarget.open) {
+                  setDeepResearchRequested(true);
+                }
+              }}
             >
               <summary
                 className="stock-analysis-page__deep-research-summary"
@@ -3874,9 +3944,21 @@ export default function StockAnalysisPage() {
                 <strong>共振、K线、因子、题材与回测</strong>
                 <small>默认收起 · 按需展开完整研究工作台</small>
               </summary>
+              {shouldMountDeepResearch ? (
+                <Suspense
+                  fallback={
+                    <div
+                      className="stock-analysis-page__workspace stock-analysis-page__deep-research-loading"
+                      role="status"
+                      aria-label="正在加载深度研究"
+                    >
+                      <TextSkeleton className="w-full" />
+                    </div>
+                  }
+                >
               <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
               <div className="stock-analysis-page__deep-zone" data-testid="stock-analysis-deep-zone">
-                <StockAnalysisDeepZoneHeader
+                <LazyStockAnalysisDeepZoneHeader
                   gateSummary={deepAnalysisGateSummary}
                   auditRows={deepZoneAuditRows}
                 />
@@ -3884,7 +3966,7 @@ export default function StockAnalysisPage() {
                   className="stock-analysis-page__stock-selection-stack stock-analysis-page__deep-review-workspace"
                   data-testid="stock-analysis-stock-selection"
                 >
-                  <StockAnalysisConsensusFirstScreen
+                  <LazyStockAnalysisConsensusFirstScreen
                     consensusSummary={consensusSummary}
                     consensusHitCount={consensusHitCount}
                     firstScreenItems={consensusFirstScreenItems}
@@ -3892,12 +3974,12 @@ export default function StockAnalysisPage() {
                     onOpenConsensusDetail={(row) => setDetailSelection(buildConsensusDetailSelection(row))}
                   />
 
-                  <StockAnalysisKlineRadarPanel
+                  <LazyStockAnalysisKlineRadarPanel
                     summary={klineRadarSummary}
                     onOpenRadarItem={openKlineRadarItem}
                   />
 
-                  <StockAnalysisObservationPreview
+                  <LazyStockAnalysisObservationPreview
                     factorScreenPayload={factorScreenPayload}
                     factorPreviewItems={factorPreviewItems}
                     factorScreenCoverageNote={factorScreenCoverageNote}
@@ -5121,7 +5203,7 @@ export default function StockAnalysisPage() {
                             complianceDetail={themeBreakoutPanelSummary?.complianceDetail}
                             testId="stock-analysis-theme-panel-compliance"
                           />
-                <StockAnalysisThemeBreakoutPanel
+                <LazyStockAnalysisThemeBreakoutPanel
                   cards={themeBreakoutCards}
                   evidenceRows={themeEvidenceRows}
                   reviewItems={themeBreakoutReviewItems}
@@ -5256,7 +5338,7 @@ export default function StockAnalysisPage() {
                         </div>
               </StrategyModuleCard>
 
-                            <StockAnalysisStrategyReviewCards
+                            <LazyStockAnalysisStrategyReviewCards
                 client={client}
                 analyticsAsOf={analyticsAsOf}
                 currentMarketState={currentMarketState}
@@ -5535,6 +5617,8 @@ export default function StockAnalysisPage() {
               </details>
               </div>
               </AnalysisGrid>
+                </Suspense>
+              ) : null}
             </details>
 
             {decisionSummary && dailyJudgmentStrip ? (

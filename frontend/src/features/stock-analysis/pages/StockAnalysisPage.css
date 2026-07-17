@@ -18798,6 +18798,12 @@ button.stock-analysis-page__workbench-fact {
   background: #070b15 !important;
 }
 
+[data-testid="market-workbench-frame"][data-page-key="stock-analysis"]
+  [data-testid="market-workbench-body"] {
+  min-height: calc(100vh - 96px) !important;
+  min-height: calc(100dvh - 96px) !important;
+}
+
 .stock-analysis-page__uses-home-shell[data-design-target="product-design-option-1"] {
   gap: 20px !important;
 }
@@ -22291,6 +22297,12 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
   padding: 12px;
 }
 
+.stock-analysis-page__deep-research-loading {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+}
+
 .stock-analysis-page__deep-research
   .stock-analysis-page__deep-review-workspace
   .stock-analysis-page__kline-radar-decision {
@@ -22384,5 +22396,17 @@ html body .stock-analysis-page.stock-analysis-page--market-shell
     align-items: start !important;
     overflow: visible !important;
     padding-right: 0 !important;
+  }
+}
+/* Desktop toolbar: reserve both wrapped status rows so controls never overlap. */
+@media (min-width: 1200px) and (max-width: 1499px) {
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] .stock-analysis-page__workbench-actions {
+    grid-template-rows: minmax(64px, auto) minmax(44px, auto) !important;
+  }
+
+  [data-testid="market-workbench-frame"][data-page-key="stock-analysis"] .stock-analysis-page__toolbar-status-row {
+    height: auto !important;
+    align-content: flex-start !important;
+    overflow: visible !important;
   }
 }

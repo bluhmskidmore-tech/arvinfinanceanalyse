@@ -20,9 +20,19 @@ import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { StockDetailDrawer } from "../features/stock-analysis/components/StockDetailDrawer";
 
 vi.mock("../components/charts/BaseChart", () => ({
-  BaseChart: function MockBaseChart({ height }: { height?: number }) {
+  BaseChart: function MockBaseChart({
+    height,
+    option,
+  }: {
+    height?: number;
+    option?: unknown;
+  }) {
     return (
-      <div data-height={height} data-testid="stock-detail-chart-canvas-stub" />
+      <div
+        data-height={height}
+        data-option={JSON.stringify(option)}
+        data-testid="stock-detail-chart-canvas-stub"
+      />
     );
   },
 }));
@@ -317,6 +327,57 @@ describe("StockDetailDrawer", () => {
     expect(
       screen.getByTestId("stock-detail-market-events-banner"),
     ).not.toHaveTextContent("payload");
+  });
+
+  it("omits incomplete OHLC rows and preserves missing volume in the chart", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({
+        candles: [
+          {
+            trade_date: "2026-04-25",
+            open_value: null,
+            high_value: 10.4,
+            low_value: 9.8,
+            close_value: 10.1,
+            volume: 500,
+            amount: 5_000,
+          },
+          {
+            trade_date: "2026-04-26",
+            open_value: 10.2,
+            high_value: 10.8,
+            low_value: 10,
+            close_value: 10.6,
+            volume: null,
+            amount: null,
+          },
+        ],
+      }),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer
+          stockCode="000001.SZ"
+          stockName="Alpha"
+          asOfDate="2026-04-29"
+          onClose={() => undefined}
+        />
+      </AppProviders>,
+    );
+
+    const chart = await screen.findByTestId("stock-detail-chart-canvas-stub");
+    await waitFor(() => {
+      const option = JSON.parse(chart.getAttribute("data-option") ?? "{}") as {
+        xAxis?: Array<{ data: string[] }>;
+        series?: Array<{ data: unknown[] }>;
+      };
+
+      expect(option.xAxis?.[0]?.data).toEqual(["2026-04-26"]);
+      expect(option.series?.[0]?.data).toEqual([[10.2, 10.6, 10, 10.8]]);
+      expect(option.series?.[1]?.data).toEqual([null]);
+    });
   });
 
   it("shows observational K-line analysis from the MOSS kline endpoint", async () => {

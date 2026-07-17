@@ -95,15 +95,20 @@ def test_warm_market_home_read_caches_populates_all_steps(monkeypatch: pytest.Mo
 
 
 def test_stock_analysis_prewarm_uses_live_page_request_key(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
+    tmp_path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     from backend.app.api.routes import market_data_livermore as route
 
     calls: list[tuple[str, dict[str, object]]] = []
+    caplog.set_level("INFO", logger=warmup.__name__)
 
     def fake_get_or_build(key: str, _builder, **kwargs: object):
         calls.append((key, kwargs))
         return {"cache_key": key}
+
+    def fake_get_or_build_with_status(key: str, _builder, **kwargs: object):
+        calls.append((key, kwargs))
+        return {"cache_key": key}, "produce"
 
     class Settings:
         duckdb_path = tmp_path / "moss.duckdb"
@@ -112,7 +117,12 @@ def test_stock_analysis_prewarm_uses_live_page_request_key(
         local_archive_path = None
 
     monkeypatch.setattr(warmup.market_home_response_cache, "get_or_build", fake_get_or_build)
-    monkeypatch.setattr(route.market_home_response_cache, "get_or_build", fake_get_or_build)
+    monkeypatch.setattr(
+        route.market_home_response_cache,
+        "get_or_build_with_status",
+        fake_get_or_build_with_status,
+        raising=False,
+    )
 
     settings = Settings()
     warmup.warm_market_home_read_caches(
@@ -123,9 +133,16 @@ def test_stock_analysis_prewarm_uses_live_page_request_key(
     assert len(calls) == 6
     stock_key, stock_options = calls[0]
     assert stock_key.startswith("livermore/workbench::")
-    assert "::as_of=::include=::sector_window_days=20::top_k=3" in stock_key
+    assert "::as_of=::include=evidence_summary,main::sector_window_days=20::top_k=10" in stock_key
     assert "::catalog_version=" in stock_key
     assert stock_options == {"ttl_seconds": route.STOCK_ANALYSIS_WORKBENCH_CACHE_TTL_SECONDS}
+    assert any(
+        "market_home_prewarm_step ok step=stock_analysis_workbench" in record.message
+        and "cache_status=produce" in record.message
+        and "compute_ms=" in record.message
+        and "wait_ms=0" in record.message
+        for record in caplog.records
+    )
 
 
 def test_stock_analysis_prewarm_failure_does_not_block_other_steps(
@@ -136,10 +153,11 @@ def test_stock_analysis_prewarm_failure_does_not_block_other_steps(
     built: list[str] = []
 
     def fake_get_or_build(key: str, _builder, **_kwargs: object):
-        if key.startswith("livermore/workbench::"):
-            raise RuntimeError("workbench warmup failed")
         built.append(key)
         return {"cache_key": key}
+
+    def fake_get_or_build_with_status(key: str, _builder, **_kwargs: object):
+        raise RuntimeError(f"workbench warmup failed: {key}")
 
     class Settings:
         duckdb_path = tmp_path / "moss.duckdb"
@@ -148,7 +166,12 @@ def test_stock_analysis_prewarm_failure_does_not_block_other_steps(
         local_archive_path = None
 
     monkeypatch.setattr(warmup.market_home_response_cache, "get_or_build", fake_get_or_build)
-    monkeypatch.setattr(route.market_home_response_cache, "get_or_build", fake_get_or_build)
+    monkeypatch.setattr(
+        route.market_home_response_cache,
+        "get_or_build_with_status",
+        fake_get_or_build_with_status,
+        raising=False,
+    )
 
     warmup.warm_market_home_read_caches(
         duckdb_path=str(Settings.duckdb_path),

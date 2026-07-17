@@ -1,5 +1,3 @@
-import dayjs from "dayjs";
-
 import {
   localizeStockBackendText,
   localizeStrategyPanelErrorDetail,
@@ -157,8 +155,7 @@ export function formatGeneratedAtLabel(value: string | null | undefined) {
     const [, month, day, hour, minute] = isoWallClockMatch;
     return `${month}-${day} ${hour}:${minute}`;
   }
-  const parsed = dayjs(value);
-  return parsed.isValid() ? parsed.format("MM-DD HH:mm") : compactStockText(value, 12);
+  return compactStockText(value, 12);
 }
 
 export function iconTone(tone?: string) {

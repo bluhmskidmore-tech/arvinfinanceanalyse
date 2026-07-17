@@ -3,7 +3,7 @@
 This runbook is for the human owner review of `/stock-analysis`. It does not approve closure by itself.
 
 Page ID: `GAP-STOCK-ANALYSIS-PAGE`
-Primary API: `/ui/market-data/livermore`
+Primary API: `/ui/market-data/stock-analysis/workbench`
 Owner approval template: `docs/pnl/stock-analysis-business-owner-approval-template.md`
 Owner evidence packet: `docs/pnl/stock-analysis-owner-evidence-packet.md`
 Sign-off packet: `docs/pnl/stock-analysis-sign-off-packet.md`

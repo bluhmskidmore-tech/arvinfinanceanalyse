@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import re
+import time
 import uuid
 from calendar import monthrange
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import cast
@@ -102,6 +104,8 @@ from backend.app.tasks.choice_stock_materialize import (
     ChoiceStockMaterializationCoverage,
     load_choice_stock_materialization_coverage,
 )
+
+logger = logging.getLogger(__name__)
 
 RULE_VERSION = "rv_livermore_strategy_v1"
 CACHE_VERSION = "cv_livermore_strategy_v1"
@@ -1398,6 +1402,12 @@ class _TradingStockSnapshotInputs:
 
 
 @dataclass(frozen=True)
+class _DualStockHistoryInputs:
+    candidate_history_by_code: dict[str, dict[str, list[float]]]
+    trading_history_by_code: dict[str, dict[str, list[object]]]
+
+
+@dataclass(frozen=True)
 class _CycleInputEvidence:
     price_spread_ready: bool = False
     price_spread_evidence: str = ""
@@ -1566,17 +1576,30 @@ def _load_choice_stock_outputs_on_conn(
     vendor_versions: list[str] = []
     evidence_rows = 0
     trading_snapshot_inputs: _TradingStockSnapshotInputs | None = None
+    dual_stock_history_inputs: _DualStockHistoryInputs | None = None
+
+    def load_trading_snapshot_inputs(*, load_history: bool) -> _TradingStockSnapshotInputs:
+        trading_started = time.perf_counter()
+        inputs = _load_trading_stock_snapshot_inputs(
+            duckdb_path=duckdb_path,
+            as_of_date=as_of_date,
+            include_concepts=True,
+            include_limit_quality=True,
+            load_history=load_history,
+            conn=stock_conn,
+        )
+        logger.info(
+            "livermore_stock_loader_timing stage=trading_snapshot_inputs ms=%d rows=%d history_codes=%d",
+            int((time.perf_counter() - trading_started) * 1000),
+            len(inputs.current_rows),
+            len(inputs.history_by_code),
+        )
+        return inputs
 
     def shared_trading_snapshot_inputs() -> _TradingStockSnapshotInputs:
         nonlocal trading_snapshot_inputs
         if trading_snapshot_inputs is None:
-            trading_snapshot_inputs = _load_trading_stock_snapshot_inputs(
-                duckdb_path=duckdb_path,
-                as_of_date=as_of_date,
-                include_concepts=True,
-                include_limit_quality=True,
-                conn=stock_conn,
-            )
+            trading_snapshot_inputs = load_trading_snapshot_inputs(load_history=True)
         return trading_snapshot_inputs
 
     sector_rank_payload: dict[str, object] | None = None
@@ -1610,11 +1633,69 @@ def _load_choice_stock_outputs_on_conn(
                 market_state=market_state,
             )
         else:
+            candidate_history_loader: (
+                Callable[
+                    [list[str]],
+                    dict[str, dict[str, list[float]]] | None,
+                ]
+                | None
+            ) = None
+            if stock_conn is not None and market_state in {"WARM", "HOT"}:
+                trading_snapshot_inputs = load_trading_snapshot_inputs(load_history=False)
+                trading_stock_codes = [
+                    row.stock_code for row in trading_snapshot_inputs.current_rows if row.stock_code
+                ]
+                if trading_stock_codes:
+
+                    def load_shared_history(
+                        candidate_stock_codes: list[str],
+                    ) -> dict[str, dict[str, list[float]]] | None:
+                        nonlocal dual_stock_history_inputs, trading_snapshot_inputs
+                        history_started = time.perf_counter()
+                        try:
+                            dual_stock_history_inputs = _load_dual_stock_history_inputs(
+                                conn=stock_conn,
+                                as_of_date=as_of_date,
+                                candidate_stock_codes=candidate_stock_codes,
+                                trading_stock_codes=trading_stock_codes,
+                            )
+                        except duckdb.Error:
+                            logger.exception(
+                                "livermore_stock_loader_fallback stage=dual_stock_history_inputs"
+                            )
+                            return None
+                        trading_snapshot_inputs = replace(
+                            trading_snapshot_inputs,
+                            history_by_code=dual_stock_history_inputs.trading_history_by_code,
+                        )
+                        logger.info(
+                            "livermore_stock_loader_timing stage=dual_stock_history_inputs ms=%d "
+                            "candidate_codes=%d trading_codes=%d",
+                            int((time.perf_counter() - history_started) * 1000),
+                            len(dual_stock_history_inputs.candidate_history_by_code),
+                            len(dual_stock_history_inputs.trading_history_by_code),
+                        )
+                        return dual_stock_history_inputs.candidate_history_by_code
+
+                    candidate_history_loader = load_shared_history
+            stock_candidate_started = time.perf_counter()
             snapshots, stock_tables, stock_sources, stock_vendors = _load_stock_candidate_snapshots(
                 duckdb_path=duckdb_path,
                 as_of_date=as_of_date,
                 sector_rank_payload=sector_rank_payload,
+                history_loader=candidate_history_loader,
                 conn=stock_conn,
+            )
+            if (
+                candidate_history_loader is not None
+                and dual_stock_history_inputs is None
+                and trading_snapshot_inputs.current_rows
+            ):
+                trading_snapshot_inputs = None
+            logger.info(
+                "livermore_stock_loader_timing stage=stock_candidate_snapshots ms=%d rows=%d",
+                int((time.perf_counter() - stock_candidate_started) * 1000),
+                len(snapshots),
             )
             evidence_rows += len(snapshots)
             tables_used.extend(stock_tables)
@@ -1908,11 +1989,138 @@ def _load_sector_rank_inputs(
     return constituents, tables_used, source_versions, vendor_versions
 
 
+def _load_dual_stock_history_inputs(
+    *,
+    conn: duckdb.DuckDBPyConnection,
+    as_of_date: str,
+    candidate_stock_codes: list[str],
+    trading_stock_codes: list[str],
+) -> _DualStockHistoryInputs:
+    target_flags: dict[str, list[bool]] = {}
+    for stock_code in candidate_stock_codes:
+        normalized = str(stock_code or "").strip()
+        if normalized:
+            target_flags.setdefault(normalized, [False, False])[0] = True
+    for stock_code in trading_stock_codes:
+        normalized = str(stock_code or "").strip()
+        if normalized:
+            target_flags.setdefault(normalized, [False, False])[1] = True
+    if not target_flags:
+        return _DualStockHistoryInputs(
+            candidate_history_by_code={},
+            trading_history_by_code={},
+        )
+
+    target_values = ",".join("(?, ?, ?)" for _ in target_flags)
+    params: list[object] = []
+    for stock_code, (want_candidate, want_trading) in target_flags.items():
+        params.extend([stock_code, want_candidate, want_trading])
+    params.extend(
+        [
+            as_of_date,
+            CHOICE_STOCK_HISTORY_WINDOW,
+            CHOICE_STOCK_HISTORY_WINDOW,
+        ]
+    )
+    rows = conn.execute(
+        f"""
+        with targets(stock_code, want_candidate, want_trading) as (
+          values {target_values}
+        ),
+        ranked_history as (
+          select
+            daily.stock_code,
+            daily.close_value,
+            daily.turn,
+            daily.amount,
+            daily.volume,
+            targets.want_candidate,
+            targets.want_trading,
+            trim(coalesce(daily.tradestatus, '')) = 'Trading' as is_trading,
+            row_number() over (
+              partition by daily.stock_code
+              order by cast(daily.trade_date as date) desc
+            ) as candidate_rn,
+            count(*) filter (
+              where trim(coalesce(daily.tradestatus, '')) = 'Trading'
+            ) over (
+              partition by daily.stock_code
+              order by cast(daily.trade_date as date) desc
+              rows between unbounded preceding and current row
+            ) as trading_rn
+          from choice_stock_daily_observation daily
+          join targets on targets.stock_code = daily.stock_code
+          where cast(daily.trade_date as date) <= cast(? as date)
+        )
+        select
+          stock_code,
+          close_value,
+          turn,
+          amount,
+          volume,
+          want_candidate,
+          want_trading,
+          is_trading,
+          candidate_rn,
+          trading_rn
+        from ranked_history
+        where (want_candidate and candidate_rn <= ?)
+           or (want_trading and is_trading and trading_rn <= ?)
+        """,
+        params,
+    ).fetchall()
+
+    candidate_ranked: dict[str, list[tuple[int, float, float]]] = {}
+    trading_ranked: dict[str, list[tuple[int, object, object, object]]] = {}
+    for row in rows:
+        stock_code = str(row[0] or "")
+        if not stock_code:
+            continue
+        if bool(row[5]) and int(row[8]) <= CHOICE_STOCK_HISTORY_WINDOW:
+            close_value = _safe_float(row[1])
+            turn_value = _safe_float(row[2])
+            if close_value is not None and turn_value is not None:
+                candidate_ranked.setdefault(stock_code, []).append(
+                    (int(row[8]), close_value, turn_value)
+                )
+        if (
+            bool(row[6])
+            and bool(row[7])
+            and int(row[9]) <= CHOICE_STOCK_HISTORY_WINDOW
+        ):
+            trading_ranked.setdefault(stock_code, []).append(
+                (int(row[9]), row[1], row[3], row[4])
+            )
+
+    candidate_history_by_code: dict[str, dict[str, list[float]]] = {}
+    for stock_code, ranked_rows in candidate_ranked.items():
+        ranked_rows.sort(key=lambda item: item[0], reverse=True)
+        candidate_history_by_code[stock_code] = {
+            "close": [item[1] for item in ranked_rows],
+            "turn": [item[2] for item in ranked_rows],
+        }
+    trading_history_by_code: dict[str, dict[str, list[object]]] = {}
+    for stock_code, ranked_rows in trading_ranked.items():
+        ranked_rows.sort(key=lambda item: item[0], reverse=True)
+        trading_history_by_code[stock_code] = {
+            "close": [item[1] for item in ranked_rows],
+            "amount": [item[2] for item in ranked_rows],
+            "volume": [item[3] for item in ranked_rows],
+        }
+    return _DualStockHistoryInputs(
+        candidate_history_by_code=candidate_history_by_code,
+        trading_history_by_code=trading_history_by_code,
+    )
+
+
 def _load_stock_candidate_snapshots(
     *,
     duckdb_path: str,
     as_of_date: str,
     sector_rank_payload: dict[str, object],
+    history_loader: (
+        Callable[[list[str]], dict[str, dict[str, list[float]]] | None] | None
+    ) = None,
     conn: duckdb.DuckDBPyConnection | None = None,
 ) -> tuple[list[StockCandidateSnapshot], list[str], list[str], list[str]]:
     path = Path(duckdb_path)
@@ -1924,6 +2132,8 @@ def _load_stock_candidate_snapshots(
             conn = duckdb.connect(str(path), read_only=True)
         except duckdb.Error:
             return [], [], [], []
+    history_rows: list[tuple[object, ...]] = []
+    history_by_code: dict[str, dict[str, list[float]]] | None = None
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         required_tables = {
@@ -2070,44 +2280,49 @@ def _load_stock_candidate_snapshots(
         if not stock_codes:
             return [], list(required_tables), [], []
         placeholders = ",".join("?" for _ in stock_codes)
-        history_rows = conn.execute(
-            f"""
-            with ranked_history as (
-              select
-                stock_code,
-                close_value,
-                turn,
-                row_number() over (
-                  partition by stock_code
-                  order by cast(trade_date as date) desc
-                ) as rn
-              from choice_stock_daily_observation
-              where stock_code in ({placeholders})
-                and cast(trade_date as date) <= cast(? as date)
-            )
-            select stock_code, close_value, turn
-            from ranked_history
-            where rn <= ?
-            order by stock_code asc, rn desc
-            """,
-            [*stock_codes, as_of_date, CHOICE_STOCK_HISTORY_WINDOW],
-        ).fetchall()
+        loaded_history = history_loader(stock_codes) if history_loader is not None else None
+        if loaded_history is None:
+            history_rows = conn.execute(
+                f"""
+                with ranked_history as (
+                  select
+                    stock_code,
+                    close_value,
+                    turn,
+                    row_number() over (
+                      partition by stock_code
+                      order by cast(trade_date as date) desc
+                    ) as rn
+                  from choice_stock_daily_observation
+                  where stock_code in ({placeholders})
+                    and cast(trade_date as date) <= cast(? as date)
+                )
+                select stock_code, close_value, turn
+                from ranked_history
+                where rn <= ?
+                order by stock_code asc, rn desc
+                """,
+                [*stock_codes, as_of_date, CHOICE_STOCK_HISTORY_WINDOW],
+            ).fetchall()
+        else:
+            history_by_code = loaded_history
     except duckdb.Error:
         return [], list(required_tables), [], []
     finally:
         if owns_conn:
             conn.close()
 
-    history_by_code: dict[str, dict[str, list[float]]] = {}
-    for row in history_rows:
-        stock_code = str(row[0] or "")
-        close_value = _safe_float(row[1])
-        turn_value = _safe_float(row[2])
-        if not stock_code or close_value is None or turn_value is None:
-            continue
-        history = history_by_code.setdefault(stock_code, {"close": [], "turn": []})
-        history["close"].append(close_value)
-        history["turn"].append(turn_value)
+    if history_by_code is None:
+        history_by_code = {}
+        for row in history_rows:
+            stock_code = str(row[0] or "")
+            close_value = _safe_float(row[1])
+            turn_value = _safe_float(row[2])
+            if not stock_code or close_value is None or turn_value is None:
+                continue
+            history = history_by_code.setdefault(stock_code, {"close": [], "turn": []})
+            history["close"].append(close_value)
+            history["turn"].append(turn_value)
 
     sector_rank_by_key: dict[tuple[str, str], int] = {}
     for item in cast(list[dict[str, object]], sector_rank_payload["items"]):
@@ -2199,6 +2414,7 @@ def _load_trading_stock_snapshot_inputs(
     as_of_date: str,
     include_concepts: bool = False,
     include_limit_quality: bool = False,
+    load_history: bool = True,
     conn: duckdb.DuckDBPyConnection | None = None,
 ) -> _TradingStockSnapshotInputs:
     empty = _TradingStockSnapshotInputs(
@@ -2281,30 +2497,32 @@ def _load_trading_stock_snapshot_inputs(
                 tables_used=tables_used,
             )
         placeholders = ",".join("?" for _ in stock_codes)
-        history_rows = conn.execute(
-            f"""
-            with ranked_history as (
-              select
-                stock_code,
-                close_value,
-                amount,
-                volume,
-                row_number() over (
-                  partition by stock_code
-                  order by cast(trade_date as date) desc
-                ) as rn
-              from choice_stock_daily_observation
-              where stock_code in ({placeholders})
-                and cast(trade_date as date) <= cast(? as date)
-                and trim(coalesce(tradestatus, '')) = 'Trading'
-            )
-            select stock_code, close_value, amount, volume
-            from ranked_history
-            where rn <= ?
-            order by stock_code asc, rn desc
-            """,
-            [*stock_codes, as_of_date, CHOICE_STOCK_HISTORY_WINDOW],
-        ).fetchall()
+        history_rows = []
+        if load_history:
+            history_rows = conn.execute(
+                f"""
+                with ranked_history as (
+                  select
+                    stock_code,
+                    close_value,
+                    amount,
+                    volume,
+                    row_number() over (
+                      partition by stock_code
+                      order by cast(trade_date as date) desc
+                    ) as rn
+                  from choice_stock_daily_observation
+                  where stock_code in ({placeholders})
+                    and cast(trade_date as date) <= cast(? as date)
+                    and trim(coalesce(tradestatus, '')) = 'Trading'
+                )
+                select stock_code, close_value, amount, volume
+                from ranked_history
+                where rn <= ?
+                order by stock_code asc, rn desc
+                """,
+                [*stock_codes, as_of_date, CHOICE_STOCK_HISTORY_WINDOW],
+            ).fetchall()
         concept_rows: list[tuple[object, object]] = []
         if include_concepts and "choice_stock_concept_membership" in tables:
             concept_snapshot_date = _latest_table_date_on_or_before(

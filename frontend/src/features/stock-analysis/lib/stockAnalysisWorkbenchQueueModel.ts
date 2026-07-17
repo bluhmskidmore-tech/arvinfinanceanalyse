@@ -119,8 +119,11 @@ export function resolveStockAnalysisFormalUseAllowed(
 
 export function buildStockAnalysisWorkbenchReviewQueue(
   rows: StockAnalysisWorkbenchPayload["first_screen"]["review_queue"],
+  excludedSourceModules: ReadonlySet<string> = new Set(),
 ): StockCandidateReviewQueueItem[] {
   return rows.flatMap((row, index) => {
+    const sourceModuleKey = textValue(row.source_module);
+    if (sourceModuleKey && excludedSourceModules.has(sourceModuleKey)) return [];
     const stockCode = textValue(row.stock_code);
     if (!stockCode) return [];
 

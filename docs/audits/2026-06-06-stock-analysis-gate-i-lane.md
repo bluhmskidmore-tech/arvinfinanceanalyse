@@ -6,7 +6,7 @@ Route: `/stock-analysis`
 
 Page ID: `GAP-STOCK-ANALYSIS-PAGE`
 
-Primary API: `/ui/market-data/livermore`
+Primary API: `/ui/market-data/stock-analysis/workbench`
 
 Status: `gate-i-gap`
 

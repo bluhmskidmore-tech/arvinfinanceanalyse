@@ -14,6 +14,7 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.repositories.stock_analysis_theme_overlay_reader import (
     StockAnalysisThemeOverlayReader,
+    THEME_OVERLAY_CACHE_KEY,
     ThemeOverlayManifestAccessor,
 )
 from backend.app.schemas.materialize import CacheManifestRecord
@@ -122,6 +123,45 @@ def test_current_overlay_is_available_only_for_the_matching_observation_date(
     assert reader.fingerprint() == reader.fingerprint()
 
 
+def test_read_uses_one_date_anchored_manifest_snapshot(tmp_path: Path) -> None:
+    reader, _ = _archive_fixture(tmp_path)
+    delegate = reader.governance_repo
+    calls: list[tuple[str, str | None]] = []
+
+    class CountingManifestAccessor:
+        def read_latest_manifest(
+            self,
+            cache_key: str,
+            *,
+            report_date: str | None = None,
+        ) -> dict[str, object] | None:
+            calls.append((cache_key, report_date))
+            return delegate.read_latest_manifest(
+                cache_key,
+                report_date=report_date,
+            )
+
+    counted_reader = StockAnalysisThemeOverlayReader(
+        archive_root=reader.archive_root,
+        governance_repo=CountingManifestAccessor(),  # type: ignore[arg-type]
+    )
+
+    result = counted_reader.read(
+        requested_as_of_date="2026-07-08",
+        effective_as_of_date="2026-07-08",
+        evaluation_time=datetime(2026, 7, 9, 2, tzinfo=UTC),
+    )
+
+    assert result.status == "available"
+    assert result.fingerprint == counted_reader.fingerprint()
+    assert calls[:2] == [
+        (CHOICE_STOCK_OBSERVATION_CACHE_KEY, None),
+        (THEME_OVERLAY_CACHE_KEY, "2026-07-08"),
+    ]
+    # The explicit fingerprint check above is a separate call; read itself used two reads.
+    assert len(calls) == 4
+
+
 def test_pure_read_accessor_reads_existing_jsonl_and_sql_authority(
     tmp_path: Path,
 ) -> None:
@@ -169,6 +209,52 @@ def test_pure_read_accessor_reads_existing_jsonl_and_sql_authority(
     )
 
     assert sql_result.status == "available"
+
+
+def test_jsonl_accessor_reuses_unchanged_index_and_invalidates_after_append(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader, _ = _archive_fixture(tmp_path)
+    governance_dir = tmp_path / "governance"
+    manifest_path = governance_dir / "cache_manifest.jsonl"
+    accessor = ThemeOverlayManifestAccessor(base_dir=governance_dir)
+    original_read_text = Path.read_text
+    manifest_read_count = 0
+
+    def counted_read_text(path: Path, *args, **kwargs) -> str:
+        nonlocal manifest_read_count
+        if path.resolve() == manifest_path.resolve():
+            manifest_read_count += 1
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", counted_read_text)
+
+    first = accessor.read_latest_manifest(CHOICE_STOCK_OBSERVATION_CACHE_KEY)
+    second = accessor.read_latest_manifest(CHOICE_STOCK_OBSERVATION_CACHE_KEY)
+    overlay = accessor.read_latest_manifest(
+        THEME_OVERLAY_CACHE_KEY,
+        report_date="2026-07-08",
+    )
+
+    assert first == second
+    assert overlay is not None
+    assert manifest_read_count == 1
+
+    assert first is not None
+    revised = dict(first)
+    revised["source_version"] = "sv_choice_stock_cache_invalidation"
+    revised["run_id"] = "choice_stock_refresh:2026-07-08:cache-invalidation"
+    revised_lineage = dict(revised["lineage"])
+    revised_lineage["refresh_run_id"] = revised["run_id"]
+    revised["lineage"] = revised_lineage
+    reader.governance_repo.append(CACHE_MANIFEST_STREAM, revised)
+
+    refreshed = accessor.read_latest_manifest(CHOICE_STOCK_OBSERVATION_CACHE_KEY)
+
+    assert refreshed is not None
+    assert refreshed["source_version"] == "sv_choice_stock_cache_invalidation"
+    assert manifest_read_count == 2
 
 
 def test_sqlite_authority_read_creates_no_sidecars_while_connection_is_live(
@@ -669,6 +755,49 @@ def test_new_observation_revision_invalidates_old_overlay_anchor(
     assert result.status == "unavailable"
     assert result.reason == "current_overlay_invalid"
     assert result.members == ()
+
+
+def test_newer_observation_without_matching_overlay_is_quietly_unavailable(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    reader, archived_path = _archive_fixture(tmp_path)
+    latest = reader.governance_repo.read_latest_manifest(
+        CHOICE_STOCK_OBSERVATION_CACHE_KEY
+    )
+    assert latest is not None
+    newer = dict(latest)
+    newer["run_id"] = "choice_stock_refresh:2026-07-14:overlay-off"
+    newer["report_date"] = "2026-07-14"
+    newer["source_version"] = "sv_choice_stock_20260714"
+    newer["vendor_version"] = "vv_choice_stock_20260714"
+    newer["created_at"] = "2026-07-14T09:37:13Z"
+    newer_lineage = dict(newer["lineage"])
+    newer_lineage.update(
+        {
+            "materialization_run_id": "choice_stock_materialize:2026-07-14:overlay-off",
+            "refresh_run_id": newer["run_id"],
+            "daily_observation_report_date": "2026-07-14",
+        }
+    )
+    newer["lineage"] = newer_lineage
+    reader.governance_repo.append(CACHE_MANIFEST_STREAM, newer)
+
+    # The old archive is unrelated to the newest observation and must not be read.
+    archived_path.unlink()
+    caplog.set_level(logging.ERROR)
+
+    result = reader.read(
+        requested_as_of_date="2026-07-14",
+        effective_as_of_date="2026-07-14",
+        evaluation_time=datetime(2026, 7, 15, 2, tzinfo=UTC),
+    )
+
+    assert result.status == "unavailable"
+    assert result.reason == "current_overlay_missing_for_latest_observation"
+    assert result.report_date == "2026-07-14"
+    assert result.members == ()
+    assert "Theme overlay read failed" not in caplog.text
 
 
 def test_archived_path_escape_fails_closed_without_reading_outside_file(

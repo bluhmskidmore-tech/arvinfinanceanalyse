@@ -36,7 +36,7 @@ def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary()
     assert packet["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
     assert packet["page_slug"] == "stock-analysis"
     assert packet["route"] == "/stock-analysis"
-    assert packet["primary_api"] == "/ui/market-data/livermore"
+    assert packet["primary_api"] == "/ui/market-data/stock-analysis/workbench"
     assert packet["business_contract_status"] == "evidence-pending"
     assert packet["business_contract_certified"] is False
     assert packet["handoff_status"] == "owner_actions_required"
@@ -144,7 +144,8 @@ def test_stock_analysis_owner_signoff_runbook_preserves_observational_boundary()
 
     assert "It does not approve closure by itself." in text
     assert "`GAP-STOCK-ANALYSIS-PAGE`" in text
-    assert "`/ui/market-data/livermore`" in text
+    assert "`/ui/market-data/stock-analysis/workbench`" in text
+    assert "/ui/market-data/livermore?as_of_date=" in text
     assert "`docs/pnl/stock-analysis-business-owner-approval-template.md`" in text
     assert "`docs/pnl/stock-analysis-owner-evidence-packet.md`" in text
     assert "`docs/pnl/stock-analysis-sign-off-packet.md`" in text

@@ -4,7 +4,7 @@ This checklist prepares the human owner review for `/stock-analysis`. It is not 
 
 Page ID: `GAP-STOCK-ANALYSIS-PAGE`
 Route: `/stock-analysis`
-Primary API: `/ui/market-data/livermore`
+Primary API: `/ui/market-data/stock-analysis/workbench`
 Evidence date: `2026-06-18`
 Technical refresh commit: `7f67fdc39` (`Close Stock Analysis Livermore output loop`)
 Formal use allowed: `formal_use_allowed=false`

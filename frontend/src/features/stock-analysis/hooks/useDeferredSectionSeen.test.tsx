@@ -36,4 +36,34 @@ describe("useDeferredSectionSeen", () => {
 
     expect(result.current.seen).toBe(true);
   });
+
+  it("observes a node that is attached after the hook is enabled", () => {
+    const observeNode = vi.fn();
+    let notifyIntersecting: (() => void) | null = null;
+
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class TestIntersectionObserver {
+        constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) {
+          notifyIntersecting = () => callback([{ isIntersecting: true }]);
+        }
+
+        observe = observeNode;
+        disconnect = vi.fn();
+      },
+    );
+
+    const { result } = renderHook(() => useDeferredSectionSeen<HTMLDivElement>(true));
+    const node = document.createElement("div");
+
+    act(() => {
+      result.current.ref(node);
+    });
+
+    expect(observeNode).toHaveBeenCalledWith(node);
+    act(() => {
+      notifyIntersecting?.();
+    });
+    expect(result.current.seen).toBe(true);
+  });
 });

@@ -1,12 +1,12 @@
-# Stock Analysis Workbench API Contract Draft
+# Stock Analysis Workbench API Contract
 
-Date: 2026-06-30
+Date: 2026-07-16
 
 Route: `/stock-analysis`
 
-Recommended endpoint: `GET /ui/market-data/stock-analysis/workbench`
+Primary endpoint: `GET /ui/market-data/stock-analysis/workbench`
 
-Status: draft, observational only
+Status: implemented, observational only; governance closure pending
 
 ## Plain Answer
 
@@ -51,45 +51,48 @@ Local code and docs inspected:
 - `frontend/src/api/marketDataClient.ts`
 - `frontend/src/api/contracts.ts`
 - `frontend/src/features/stock-analysis/pages/StockAnalysisPage.tsx`
+- `frontend/src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx`
+- `frontend/src/features/stock-analysis/lib/stockAnalysisWorkbenchQueueModel.ts`
 - `frontend/src/features/stock-analysis/components/StockDetailDrawer.tsx`
 - `frontend/src/features/stock-analysis/hooks/useSectorRankSeriesSupport.ts`
 - `backend/app/api/routes/market_data_livermore.py`
+- `backend/app/services/stock_analysis_workbench_service.py`
 - `backend/app/services/market_data_livermore_service.py`
 - `docs/plans/2026-05-06-stock-analysis-workbench.md`
 - `docs/handoff/2026-05-06-stock-analysis-workbench-codex.md`
 - `docs/audits/2026-06-06-stock-analysis-gate-i-lane.md`
 
-Unavailable evidence:
+Governance evidence:
 
-- `moss-metric-contracts`
-- `moss-lineage-evidence`
-- `moss-data-catalog`
-- `gitnexus`
+- The local `moss-metric-contracts` provider now exposes this document and resolves the workbench endpoint to `GAP-STOCK-ANALYSIS-PAGE`.
+- The local `moss-lineage-evidence` query expansion includes the workbench endpoint, result kind, rule version, and cache version.
+- `moss-data-catalog` remains bound to the four underlying observational tables; no new formal table or metric binding is claimed.
+- GitNexus impact evidence was checked before changing the shared reader and contract provider paths.
 
-Those MCP tools were not exposed in the current Codex tool surface, so this draft uses local code evidence only. Metric definitions, catalog dates, and official lineage remain residual risks until those tools or equivalent records are available.
+These records provide route and evidence discoverability only. They do not create `PAGE-STOCK-*`, `MTR-STOCK-*`, formal use, trading approval, or business-owner approval.
 
 Live API note:
 
-- The page at `http://localhost:5888/stock-analysis` reached full business state in browser after waiting.
-- Direct read-only sampling of `/ui/market-data/livermore` and `/ui/market-data/livermore/signal-confluence` timed out at 20 seconds in this session.
-- That supports keeping the proposed endpoint lightweight by default and leaving heavy diagnostics behind explicit `include` options.
+- The page at `http://localhost:5888/stock-analysis` renders its first-screen business state from the workbench endpoint.
+- A live `GET /ui/market-data/stock-analysis/workbench?top_k=10` read returned HTTP 200 and preserved `formal_use_allowed=false`.
+- Heavy diagnostics remain deferred behind explicit include/detail paths, and deep research content mounts lazily in the browser.
 
 ## Current Data Path
 
 Existing frontend path:
 
-1. `StockAnalysisPage.tsx`
-2. TanStack Query state
-3. `marketDataClient.ts`
-4. `/ui/market-data/livermore*`
-5. `market_data_livermore.py`
-6. Livermore service / result envelopes
-7. Page models, cards, rails, tables, charts
+1. `StockAnalysisPage.tsx` lazy-loads `StockAnalysisPageImpl.tsx`.
+2. TanStack Query calls `marketDataClient.getStockAnalysisWorkbench(...)`.
+3. `GET /ui/market-data/stock-analysis/workbench` enters `market_data_livermore.py`.
+4. `stock_analysis_workbench_service.py` composes the page envelope from the underlying Livermore strategy envelope.
+5. `stockAnalysisWorkbenchQueueModel.ts` and page-local selectors render the first-screen decision, queue, status, and evidence boundaries.
+6. Existing Livermore detail endpoints remain lazy drilldowns for stock detail and deeper diagnostics.
 
 Existing endpoint map:
 
 | Frontend method | Backend path | Current role |
 | --- | --- | --- |
+| `getStockAnalysisWorkbench` | `/ui/market-data/stock-analysis/workbench` | Primary first-screen decision, review queue, status, evidence, and module boundaries |
 | `getLivermoreStrategy` | `/ui/market-data/livermore` | Main market gate, sector rank, candidates, diagnostics, data gaps |
 | `getLivermoreSignalConfluence` | `/ui/market-data/livermore/signal-confluence` | Signal confluence, macro/adversarial/replay evidence |
 | `getLivermoreSectorRankSeries` | `/ui/market-data/livermore/sector-rank-series` | Sector trend and fallback rows |
@@ -100,9 +103,9 @@ Existing endpoint map:
 | `getLivermoreCandidateHistoryPortfolioBacktest` | `/ui/market-data/livermore/candidate-history-portfolio-backtest` | Portfolio proxy backtest |
 | `getLivermoreStockDetail` | `/ui/market-data/livermore/stock-detail` | Drawer-only stock detail |
 
-The page already consumes multiple endpoints. The new endpoint should not replace all drilldowns; it should give the first screen and evidence boundary a single stable source.
+The workbench endpoint is the page primary source. It intentionally does not replace drilldowns; stock detail and heavy diagnostics remain separate lazy reads.
 
-## Proposed Endpoint
+## Implemented Endpoint
 
 ```http
 GET /ui/market-data/stock-analysis/workbench?as_of_date=2026-06-26&include=main,signal_confluence
@@ -113,7 +116,7 @@ Parameters:
 | Name | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `as_of_date` | `YYYY-MM-DD` | latest resolved date | Must preserve requested date and resolved date separately |
-| `include` | comma-separated keys | `main,signal_confluence,evidence_summary` | Optional heavy modules stay lazy |
+| `include` | comma-separated keys | `main,evidence_summary` | Optional heavy modules stay deferred/lazy |
 | `sector_window_days` | integer | `20` | Used only when `sector_rank_series` is included |
 | `top_k` | integer | `10` | Used for compact page summaries |
 
@@ -286,7 +289,7 @@ type WorkbenchLinks = {
 
 ## Backend Construction Rule
 
-The backend should be a thin aggregator:
+The backend is a thin aggregator and must remain one:
 
 1. Call existing Livermore service functions.
 2. Reuse existing result envelopes and `workbench_summary` fields.
@@ -298,7 +301,7 @@ Do not add new finance math in the frontend to compensate for missing backend ev
 
 ## Frontend Consumption Rule
 
-Add a domain client method in `frontend/src/api/marketDataClient.ts`, for example:
+The domain client method lives in `frontend/src/api/marketDataClient.ts`:
 
 ```ts
 getStockAnalysisWorkbench(options?: StockAnalysisWorkbenchOptions)
@@ -325,19 +328,18 @@ Existing endpoints remain useful for drawer, expanded diagnostics, and lazy deta
 - The page keeps observational wording: observation, review, evidence, invalidation, boundary.
 - The response never implies buy, sell, order, allocation, or execution approval.
 
-## Minimal Implementation Plan
+## Implemented Surface
 
-1. Add backend route `GET /ui/market-data/stock-analysis/workbench` in the existing market-data route layer.
-2. Add a small service aggregator that composes existing Livermore envelopes.
-3. Add backend tests for default response, missing/deferred modules, date handling, and no-trading wording.
-4. Add TypeScript contracts and `marketDataClient` method.
-5. Move first-screen page query to the new endpoint.
-6. Keep existing detailed queries for drawers and expanded/lazy panels.
-7. Add focused frontend tests for the new adapter/view model path.
+1. The existing market-data route exposes `GET /ui/market-data/stock-analysis/workbench` with bounded defaults and server timing.
+2. The service aggregator composes existing Livermore evidence and returns analytical, observation-only page status.
+3. Backend tests cover response shape, default/deferred modules, date handling, review blocking, queue exclusions, and first-screen boundaries.
+4. TypeScript contracts and `marketDataClient.getStockAnalysisWorkbench` bind the frontend request.
+5. The first screen loads from the workbench endpoint; deep research and detail endpoints remain lazy.
+6. Page and model tests cover queue semantics, loading/error states, null handling, and observational boundaries.
 
 ## Remaining Risks
 
-- Project MCP contract and lineage tools were unavailable, so this draft cannot certify official metric definitions or catalog lineage.
-- Direct API sampling timed out at 20 seconds, so implementation should avoid making the default workbench endpoint call all heavy modules.
-- The current worktree has many unrelated dirty files, including stock-analysis files. Implementation should isolate this contract work carefully and avoid rewriting unrelated changes.
-- `/stock-analysis` remains observational until a standalone page contract, golden samples, metric dictionary rows, lineage evidence, and business-owner approval are complete.
+- `GS-STOCK-ANALYSIS-OBS-A` freezes the underlying `/ui/market-data/livermore` DTO only; it is not an independent golden sample for the workbench wrapper.
+- The workbench endpoint has no direct execution governance record, manual audit closure, or business-owner approval.
+- Current theme overlay availability depends on an overlay archive matching the latest Choice observation date; missing overlays must stay explicit and fail closed.
+- `/stock-analysis` remains `GAP-STOCK-ANALYSIS-PAGE`, observational, and `formal_use_allowed=false`; no standalone `PAGE-STOCK-*` or `MTR-STOCK-*` promotion is implied.

@@ -1,4 +1,3 @@
-import type { Dayjs } from "dayjs";
 import { ClockCircleOutlined, ReloadOutlined, SafetyCertificateOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button as AntButton } from "antd";
 
@@ -8,7 +7,7 @@ import { SA_SHELL_NUM } from "../lib/stockAnalysisPageChrome";
 type ToolbarTone = "negative" | "neutral" | "positive" | "warning";
 
 type StockAnalysisWorkbenchActionsProps = {
-  pickerDisplay: Dayjs | null;
+  pickerDisplay: string | null;
   queueSearchText: string;
   dataStatusLabel: string;
   dataStatusTone: ToolbarTone;
@@ -57,7 +56,7 @@ export function StockAnalysisWorkbenchActions({
         aria-label="as-of-date-picker"
         className="stock-analysis-page__dh-date-picker border-default-200 rounded-md px-3 py-2 text-sm"
         data-testid="stock-analysis-as-of-picker"
-        value={pickerDisplay?.format("YYYY-MM-DD") || ""}
+        value={pickerDisplay ?? ""}
         onChange={(e) => {
           onAsOfOverrideChange(e.target.value || null);
         }}
