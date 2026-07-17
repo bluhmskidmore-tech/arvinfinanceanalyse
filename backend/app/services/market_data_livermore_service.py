@@ -2038,23 +2038,27 @@ def _load_dual_stock_history_inputs(
             trading_history_by_code={},
         )
 
-    target_values = ",".join("(?, ?, ?)" for _ in target_flags)
-    params: list[object] = []
-    for stock_code, (want_candidate, want_trading) in target_flags.items():
-        params.extend([stock_code, want_candidate, want_trading])
-    params.extend(
-        [
-            as_of_date,
-            CHOICE_STOCK_HISTORY_WINDOW,
-            CHOICE_STOCK_HISTORY_WINDOW,
-        ]
-    )
+    target_items = list(target_flags.items())
+    stock_codes = [stock_code for stock_code, _flags in target_items]
+    want_candidate_flags = [flags[0] for _stock_code, flags in target_items]
+    want_trading_flags = [flags[1] for _stock_code, flags in target_items]
+    params: list[object] = [
+        stock_codes,
+        want_candidate_flags,
+        want_trading_flags,
+        as_of_date,
+        CHOICE_STOCK_HISTORY_WINDOW,
+        CHOICE_STOCK_HISTORY_WINDOW,
+    ]
     rows = conn.execute(
-        f"""
-        with targets(stock_code, want_candidate, want_trading) as (
-          values {target_values}
+        """
+        with targets as (
+          select
+            unnest(?::varchar[]) as stock_code,
+            unnest(?::boolean[]) as want_candidate,
+            unnest(?::boolean[]) as want_trading
         ),
-        ranked_history as (
+        base_history as (
           select
             daily.stock_code,
             daily.close_value,
@@ -2063,21 +2067,34 @@ def _load_dual_stock_history_inputs(
             daily.volume,
             targets.want_candidate,
             targets.want_trading,
-            trim(coalesce(daily.tradestatus, '')) = 'Trading' as is_trading,
-            row_number() over (
-              partition by daily.stock_code
-              order by cast(daily.trade_date as date) desc
-            ) as candidate_rn,
-            count(*) filter (
-              where trim(coalesce(daily.tradestatus, '')) = 'Trading'
-            ) over (
-              partition by daily.stock_code
-              order by cast(daily.trade_date as date) desc
-              rows between unbounded preceding and current row
-            ) as trading_rn
+            cast(daily.trade_date as date) as trade_day,
+            trim(coalesce(daily.tradestatus, '')) = 'Trading' as is_trading
           from choice_stock_daily_observation daily
           join targets on targets.stock_code = daily.stock_code
           where cast(daily.trade_date as date) <= cast(? as date)
+        ),
+        ranked_history as (
+          select
+            stock_code,
+            close_value,
+            turn,
+            amount,
+            volume,
+            want_candidate,
+            want_trading,
+            is_trading,
+            row_number() over (
+              partition by stock_code
+              order by trade_day desc
+            ) as candidate_rn,
+            count(*) filter (
+              where is_trading
+            ) over (
+              partition by stock_code
+              order by trade_day desc
+              rows between unbounded preceding and current row
+            ) as trading_rn
+          from base_history
         ),
         tagged_history as (
           select

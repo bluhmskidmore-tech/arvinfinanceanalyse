@@ -225,6 +225,40 @@ def test_dual_stock_history_scan_matches_both_legacy_windows() -> None:
     assert counting_conn.history_result_rows <= len(set(candidate_codes + trading_codes))
 
 
+class _CapturingConnection:
+    def __init__(self) -> None:
+        self.query = ""
+        self.parameters: list[object] = []
+
+    def execute(self, query: str, parameters=None):
+        self.query = query
+        self.parameters = list(parameters or [])
+        return SimpleNamespace(fetchall=lambda: [])
+
+
+def test_dual_stock_history_scan_uses_bounded_query_shape_for_full_universe() -> None:
+    conn = _CapturingConnection()
+    stock_codes = [f"{index:06d}.SZ" for index in range(5_200)]
+
+    service._load_dual_stock_history_inputs(
+        conn=conn,  # type: ignore[arg-type]
+        as_of_date=AS_OF_DATE,
+        candidate_stock_codes=stock_codes,
+        trading_stock_codes=stock_codes,
+    )
+
+    normalized_query = " ".join(conn.query.lower().split())
+    assert len(conn.query) < 4_000
+    assert len(conn.parameters) == 6
+    assert "unnest(?::varchar[])" in normalized_query
+    assert "base_history as" in normalized_query
+    assert normalized_query.count("cast(daily.trade_date as date)") == 2
+    assert normalized_query.count("trim(coalesce(daily.tradestatus, ''))") == 1
+    assert conn.parameters[0] == stock_codes
+    assert conn.parameters[1] == [True] * len(stock_codes)
+    assert conn.parameters[2] == [True] * len(stock_codes)
+
+
 class _CountingConnection:
     def __init__(self, conn: duckdb.DuckDBPyConnection) -> None:
         self._conn = conn
