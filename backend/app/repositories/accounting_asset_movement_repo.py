@@ -99,6 +99,16 @@ _LEDGER_BUSINESS_ROWS = [
     },
 ]
 
+
+def _is_missing_table_error(exc: duckdb.Error) -> bool:
+    message = str(exc).lower()
+    return (
+        isinstance(exc, duckdb.CatalogException)
+        and "table with name" in message
+        and "does not exist" in message
+    )
+
+
 _ZQTZ_NCD_ROW = {
     "row_key": "asset_zqtz_interbank_cd",
     "row_label": "资产端-同业存单",
@@ -112,12 +122,7 @@ class AccountingAssetMovementRepository:
     path: str
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
-        try:
-            return duckdb.connect(self.path, read_only=True)
-        except duckdb.Error as exc:
-            if "different configuration" not in str(exc).lower():
-                raise
-            return duckdb.connect(self.path, read_only=False)
+        return duckdb.connect(self.path, read_only=True)
 
     def list_report_dates(self, *, currency_basis: str = "CNX") -> list[str]:
         try:
@@ -131,7 +136,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -155,7 +162,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis],
             ).fetchone()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return None
         finally:
             if "conn" in locals():
@@ -177,7 +186,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis],
             ).fetchone()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return "sv_accounting_asset_movement_empty"
         finally:
             if "conn" in locals():
@@ -217,7 +228,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis, report_date, month_count],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -263,7 +276,9 @@ class AccountingAssetMovementRepository:
                         currency_basis=currency_basis,
                     )
                 )
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -287,7 +302,9 @@ class AccountingAssetMovementRepository:
                 report_date=report_date,
                 currency_basis=currency_basis,
             )
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -367,6 +384,8 @@ class AccountingAssetMovementRepository:
                 [report_date, currency_basis],
             ).fetchall()
         except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return {
                 "status": "unsupported_missing_columns",
                 "missing_columns": [str(exc)],
@@ -416,6 +435,19 @@ class AccountingAssetMovementRepository:
                 return {
                     "status": "unsupported_missing_columns",
                     "missing_columns": [table],
+                    "zqtz_currency_basis": zqtz_currency_basis,
+                    "rows": [],
+                }
+            required_columns = ("report_date", "currency_basis", "position_scope")
+            missing_required_columns = [
+                column
+                for column in required_columns
+                if not self._column_exists(conn, table, column)
+            ]
+            if missing_required_columns:
+                return {
+                    "status": "unsupported_missing_columns",
+                    "missing_columns": missing_required_columns,
                     "zqtz_currency_basis": zqtz_currency_basis,
                     "rows": [],
                 }
@@ -472,6 +504,8 @@ class AccountingAssetMovementRepository:
                 [report_dates, zqtz_currency_basis, *filter_params],
             ).fetchall()
         except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return {
                 "status": "unsupported_missing_columns",
                 "missing_columns": [str(exc)],
@@ -544,7 +578,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [report_dates, currency_basis],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -590,7 +626,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis, report_date, month_count],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -1119,7 +1157,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [report_dates, currency_basis],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return {}
         finally:
             if "conn" in locals():
@@ -1238,7 +1278,9 @@ class AccountingAssetMovementRepository:
                 out["formal_voucher_accrued_interest"] = Decimal(
                     str(formal[1] if formal else "0")
                 )
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return out
         finally:
             if "conn" in locals():

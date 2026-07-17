@@ -681,11 +681,7 @@ function toSharePoint(month: BalanceMovementTrendMonth): BalanceStructureSharePo
   for (const bucket of balanceMovementBuckets) {
     const row = trendBucket(month, bucket);
     const value = Number(row?.current_balance);
-    point[bucket] = resolveBucketSharePct(
-      row?.current_balance_pct,
-      row?.current_balance,
-      month.current_balance_total,
-    );
+    point[bucket] = resolveBucketSharePct(row?.current_balance_pct);
     if (bucket === "AC") point.acValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
     if (bucket === "OCI") point.ociValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
     if (bucket === "TPL") point.tplValueYi = Number.isFinite(value) ? value / 100000000 : undefined;

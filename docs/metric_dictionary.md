@@ -163,6 +163,7 @@
 | `MTR-BMV-002` | 本期余额总额 | business | `formal` | `backend/app/schemas/accounting_asset_movement.py -> AccountingAssetMovementSummaryPayload.current_balance_total` | `/balance-movement-analysis` summary | 金额；页面仅做展示单位换算 | `resolved_report_date` 绑定；lineage 缺失时沿用页面 fail-closed 语义 | `tests/test_accounting_asset_movement_service.py` |
 | `MTR-BMV-003` | 余额变动总额 | business | `formal` | `backend/app/schemas/accounting_asset_movement.py -> AccountingAssetMovementSummaryPayload.balance_change_total` | `/balance-movement-analysis` summary、首屏业务结论 | 金额；保留源字段正负号 | 与当前/上期余额比较窗口强绑定；不得脱离选定日期解释 | `tests/test_accounting_asset_movement_service.py` |
 | `MTR-BMV-004` | 对账差异总额 | quality | `formal` | `backend/app/schemas/accounting_asset_movement.py -> AccountingAssetMovementSummaryPayload.reconciliation_diff_total` | `/balance-movement-analysis` summary | 金额；用于治理/对账状态可见性 | 与 `result_meta.quality_flag`、refresh 状态共同解释；不得静默隐藏 | `tests/test_accounting_asset_movement_service.py` |
+| `MTR-BMV-005` | 本期会计分类占比 | business | `formal` | `backend/app/schemas/accounting_asset_movement.py -> AccountingAssetMovementRowPayload.current_balance_pct` | `/balance-movement-analysis` structure shift、chart、share table | 百分比；仅格式化后端 Decimal，不得基于可见余额或合计重算 | 与选定 `report_date` / `currency_basis` 绑定；null、空白或无效值保持缺失，任一月份/分类缺失时结构图 fail-closed | `frontend/src/features/balance-movement-analysis/lib/balanceMovementShareModel.test.ts`; `frontend/src/test/BalanceMovementAnalysisPage.test.tsx` |
 
 ## 6.5 Liability Analytics
 

@@ -21,6 +21,75 @@ from backend.app.tasks.accounting_asset_movement import (
 )
 
 
+def test_repository_never_reopens_duckdb_in_write_mode(monkeypatch):
+    calls: list[bool] = []
+
+    def fail_connect(_path: str, *, read_only: bool):
+        calls.append(read_only)
+        raise duckdb.IOException("different configuration")
+
+    monkeypatch.setattr(duckdb, "connect", fail_connect)
+
+    repo = AccountingAssetMovementRepository("movement.duckdb")
+    with pytest.raises(duckdb.IOException, match="different configuration"):
+        repo.list_report_dates()
+
+    assert calls == [True]
+
+
+def test_repository_does_not_disguise_operational_failure_as_empty(monkeypatch):
+    repo = AccountingAssetMovementRepository("movement.duckdb")
+    monkeypatch.setattr(
+        repo,
+        "_connect",
+        lambda: (_ for _ in ()).throw(duckdb.IOException("simulated I/O failure")),
+    )
+
+    with pytest.raises(duckdb.IOException, match="simulated I/O failure"):
+        repo.list_report_dates()
+
+
+def test_repository_keeps_missing_table_as_empty_state(tmp_path):
+    duckdb_path = tmp_path / "empty.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+
+    repo = AccountingAssetMovementRepository(str(duckdb_path))
+
+    assert repo.list_report_dates() == []
+
+
+def test_zqtz_drilldown_reports_missing_required_columns(tmp_path):
+    duckdb_path = tmp_path / "sparse-zqtz.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              currency_basis varchar,
+              bond_type varchar,
+              market_value_amount decimal(24, 8)
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    result = AccountingAssetMovementRepository(
+        str(duckdb_path)
+    ).fetch_zqtz_asset_drilldown_rows(
+        report_dates=["2026-02-28"],
+        currency_basis="CNX",
+    )
+
+    assert result == {
+        "status": "unsupported_missing_columns",
+        "missing_columns": ["position_scope"],
+        "zqtz_currency_basis": "CNY",
+        "rows": [],
+    }
+
+
 def test_refresh_service_queues_task_without_sync_materialization(monkeypatch):
     settings = Settings(
         duckdb_path="test-output/movement.duckdb",

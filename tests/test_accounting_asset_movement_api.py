@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import duckdb
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -202,4 +204,37 @@ def test_balance_movement_refresh_api_keeps_sync_failure_semantics(tmp_path, mon
 
     assert response.status_code == 500
     assert "completed" not in response.text
+    get_settings.cache_clear()
+
+
+def test_balance_movement_read_routes_surface_duckdb_failures_as_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    route_mod = load_module(
+        "backend.app.api.routes.accounting_asset_movement",
+        "backend/app/api/routes/accounting_asset_movement.py",
+    )
+    _seed_balance_movement_read_scope(tmp_path, monkeypatch)
+
+    def fail_read(*_args, **_kwargs):
+        raise duckdb.IOException("simulated storage failure")
+
+    monkeypatch.setattr(route_mod, "accounting_asset_movement_dates_envelope", fail_read)
+    monkeypatch.setattr(route_mod, "accounting_asset_movement_envelope", fail_read)
+
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    for path, params in (
+        ("/ui/balance-movement-analysis/dates", None),
+        ("/ui/balance-movement-analysis", {"report_date": "2026-02-28"}),
+    ):
+        response = client.get(path, params=params, headers=BALANCE_MOVEMENT_READ_HEADERS)
+        assert response.status_code == 503
+        assert response.json() == {
+            "detail": "Balance movement data is temporarily unavailable."
+        }
+
     get_settings.cache_clear()

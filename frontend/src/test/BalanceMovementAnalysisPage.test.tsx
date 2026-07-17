@@ -323,7 +323,7 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getAllByText("+109.80").length).toBe(2);
   });
 
-  it("prefers backend share pct and falls back only when backend pct is missing", async () => {
+  it("uses only backend share pct and keeps missing shares visible", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const nullShareClient: typeof baseClient = {
       ...baseClient,
@@ -385,12 +385,14 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(structureShift).not.toHaveTextContent("+0.00pp");
 
     const structureChart = screen.getByTestId("balance-movement-analysis-structure-chart");
-    expect(within(structureChart).getByTestId("balance-movement-echarts-stub")).toBeInTheDocument();
-    expect(structureChart).not.toHaveTextContent("占比数据缺失，结构图暂不可比");
+    expect(within(structureChart).queryByTestId("balance-movement-echarts-stub")).not.toBeInTheDocument();
+    expect(structureChart).toHaveTextContent("占比数据缺失，结构图暂不可比");
 
     const shareEvolutionTable = screen.getByTestId("balance-movement-analysis-structure-share-table");
     expect(within(shareEvolutionTable).getAllByText("0.00%").length).toBeGreaterThan(0);
-    expect(within(shareEvolutionTable).getAllByText("31.49%").length).toBeGreaterThan(0);
+    expect(within(shareEvolutionTable).queryByText("31.49%")).not.toBeInTheDocument();
+    const currentShareRow = within(shareEvolutionTable).getByRole("row", { name: /26-02/ });
+    expect(within(currentShareRow).getAllByRole("cell")[1]).toHaveTextContent("—");
     expect(shareEvolutionTable).not.toHaveTextContent("NaNpp");
   });
 

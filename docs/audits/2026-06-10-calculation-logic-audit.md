@@ -357,6 +357,9 @@ metric_dictionary 只定义了第一种（MTR-RSK-002~007）。用户在两个�
 ## 五、balance-movement-analysis（余额变动）
 
 - **[P1] `BalanceMovementAnalysisPage.tsx:660-671` — 占比优先前端重算，后端值反成 fallback**：优先用前端 sum 的 total 重算占比，后端 `current_balance_pct` 反而兜底（方向应反过来）；算不出时落 0，缺桶画成 0%。
+
+**2026-07-16 remediation note**：按 Option A 修复，`MTR-BMV-005` 将后端 `AccountingAssetMovementRowPayload.current_balance_pct` 记为正式展示唯一来源；`resolveBucketSharePct` 不再使用可见余额/合计重复计算，后端缺失或无效值保持 `null`。页面将缺失占比显示为 `—`，并在结构占比不完整时 fail-closed 隐藏结构图，不再展示由前端推导的 0% 或可比结论。回归覆盖 backend value precedence、missing-share display 与 chart suppression；残余边界是本修复不认证上游占比计算、来源血缘/新鲜度、页面 owner approval 或其他余额合计逻辑。
+
 - [P2] 同文件 `:466-476, 635-643` — 矩阵合计前端求和且非有限值静默跳过（缺数据按 0 计入合计），无"含缺失"标记。
 - [P2] 同文件 `:2979, 2987` — `shareDelta ?? 0` 把缺失占比变动显示成 "+0.00pp"。
 
