@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+import pytest
+from backend.app.core_finance import fresh_trend_watchlist_candidates as fresh_module
 from backend.app.core_finance.fresh_trend_watchlist_candidates import (
     FreshTrendWatchlistSnapshot,
     compute_fresh_trend_watchlist_candidates,
@@ -97,3 +101,39 @@ def test_fresh_trend_watchlist_pauses_when_market_has_no_tradable_trend() -> Non
     assert result.payload["candidate_count"] == 0
     assert result.payload["input_stock_count"] == 1
     assert result.payload["excluded_stock_count"] == 1
+
+
+def test_fresh_trend_watchlist_normalizes_history_once_for_late_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_float_series = fresh_module._float_series
+    call_count = 0
+
+    def counted_float_series(values: Sequence[object]) -> list[float] | None:
+        nonlocal call_count
+        call_count += 1
+        return original_float_series(values)
+
+    monkeypatch.setattr(fresh_module, "_float_series", counted_float_series)
+    result = compute_fresh_trend_watchlist_candidates(
+        as_of_date="2026-06-18",
+        market_state="OVERHEAT",
+        snapshots=[_snapshot("301010.SZ", [20.0] * 121, name="Flat Growth Reject")],
+    )
+
+    assert result.payload["candidate_count"] == 0
+    assert result.payload["excluded_stock_count"] == 1
+    assert result.payload["insufficient_history_count"] == 0
+    assert call_count == 2
+
+
+def test_fresh_trend_watchlist_counts_short_history_even_when_board_is_excluded() -> None:
+    result = compute_fresh_trend_watchlist_candidates(
+        as_of_date="2026-06-18",
+        market_state="OVERHEAT",
+        snapshots=[_snapshot("600011.SH", [20.0] * 20, name="Mainboard Short")],
+    )
+
+    assert result.payload["candidate_count"] == 0
+    assert result.payload["excluded_stock_count"] == 1
+    assert result.payload["insufficient_history_count"] == 1

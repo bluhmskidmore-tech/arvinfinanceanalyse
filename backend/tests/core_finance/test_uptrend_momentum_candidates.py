@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+import pytest
+from backend.app.core_finance import uptrend_momentum_candidates as uptrend_module
 from backend.app.core_finance.uptrend_momentum_candidates import (
     UptrendMomentumSnapshot,
     compute_uptrend_momentum_candidates,
@@ -79,3 +83,39 @@ def test_uptrend_momentum_pauses_when_market_is_off_or_overheat() -> None:
         assert result.payload["candidate_count"] == 0
         assert result.payload["input_stock_count"] == 1
         assert result.payload["excluded_stock_count"] == 1
+
+
+def test_uptrend_momentum_normalizes_history_once_for_late_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_float_series = uptrend_module._float_series
+    call_count = 0
+
+    def counted_float_series(values: Sequence[object]) -> list[float] | None:
+        nonlocal call_count
+        call_count += 1
+        return original_float_series(values)
+
+    monkeypatch.setattr(uptrend_module, "_float_series", counted_float_series)
+    result = compute_uptrend_momentum_candidates(
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        snapshots=[_snapshot("000010.SZ", [100.0] * 121, name="Flat Reject")],
+    )
+
+    assert result.payload["candidate_count"] == 0
+    assert result.payload["excluded_stock_count"] == 1
+    assert result.payload["insufficient_history_count"] == 0
+    assert call_count == 2
+
+
+def test_uptrend_momentum_counts_short_history_even_when_st_is_excluded() -> None:
+    result = compute_uptrend_momentum_candidates(
+        as_of_date="2026-06-18",
+        market_state="WARM",
+        snapshots=[_snapshot("000011.SZ", [100.0] * 20, name="ST Short")],
+    )
+
+    assert result.payload["candidate_count"] == 0
+    assert result.payload["excluded_stock_count"] == 1
+    assert result.payload["insufficient_history_count"] == 1

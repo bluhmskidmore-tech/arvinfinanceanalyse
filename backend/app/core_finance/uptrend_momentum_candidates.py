@@ -64,10 +64,22 @@ def compute_uptrend_momentum_candidates(
     insufficient_history_count = 0
 
     for snapshot in snapshots:
-        row = _candidate_row(snapshot)
+        closes = _float_series(snapshot.close_history)
+        amounts = _float_series(snapshot.amount_history)
+        if (
+            closes is None
+            or amounts is None
+            or len(closes) < MIN_HISTORY_BARS
+            or len(amounts) < MIN_AMOUNT_BARS
+        ):
+            row = None
+            insufficient_history = True
+        else:
+            row = _candidate_row(snapshot, closes, amounts)
+            insufficient_history = False
         if row is None:
             excluded_stock_count += 1
-            if _is_insufficient_history(snapshot):
+            if insufficient_history:
                 insufficient_history_count += 1
             continue
         items_accum.append(row)
@@ -117,15 +129,12 @@ def _build_payload(
     }
 
 
-def _candidate_row(snapshot: UptrendMomentumSnapshot) -> dict[str, object] | None:
+def _candidate_row(
+    snapshot: UptrendMomentumSnapshot,
+    closes: list[float],
+    amounts: list[float],
+) -> dict[str, object] | None:
     if _is_st_name(snapshot.stock_name):
-        return None
-
-    closes = _float_series(snapshot.close_history)
-    amounts = _float_series(snapshot.amount_history)
-    if closes is None or amounts is None:
-        return None
-    if len(closes) < MIN_HISTORY_BARS or len(amounts) < MIN_AMOUNT_BARS:
         return None
 
     close_price = _valid_float(snapshot.close_value)
@@ -220,14 +229,6 @@ def _window_return(close_price: float, closes: list[float], window: int) -> floa
 
 def _mean_tail(values: list[float], n: int) -> float:
     return sum(values[-n:]) / float(n)
-
-
-def _is_insufficient_history(snapshot: UptrendMomentumSnapshot) -> bool:
-    closes = _float_series(snapshot.close_history)
-    amounts = _float_series(snapshot.amount_history)
-    if closes is None or amounts is None:
-        return True
-    return len(closes) < MIN_HISTORY_BARS or len(amounts) < MIN_AMOUNT_BARS
 
 
 def _float_series(values: Sequence[object]) -> list[float] | None:

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any, cast
 
+import pytest
+from backend.app.core_finance import mean_reversion_candidates as mean_module
 from backend.app.core_finance.mean_reversion_candidates import (
     FORMULA_VERSION,
     MeanReversionSnapshot,
@@ -266,3 +270,47 @@ def test_max_20_candidates() -> None:
     ).payload
     p = cast(dict[str, Any], payload)
     assert len(cast(list[Any], p["items"])) <= 20
+
+
+def test_mean_reversion_length_mismatch_is_not_counted_as_insufficient_history() -> None:
+    snapshot = _base_valid_snapshot()
+    result = compute_mean_reversion_candidates(
+        as_of_date="2026-05-09",
+        market_state="WARM",
+        snapshots=[replace(snapshot, volume_history=[*snapshot.volume_history, 1.0])],
+    )
+
+    assert result.payload["candidate_count"] == 0
+    assert result.payload["excluded_stock_count"] == 1
+    assert result.payload["insufficient_history_count"] == 0
+
+
+def test_mean_reversion_normalizes_history_once_for_late_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_float_series = mean_module._float_series
+    call_count = 0
+
+    def counted_float_series(values: Sequence[object]) -> list[float] | None:
+        nonlocal call_count
+        call_count += 1
+        return original_float_series(values)
+
+    monkeypatch.setattr(mean_module, "_float_series", counted_float_series)
+    snapshot = replace(
+        _base_valid_snapshot(),
+        close_value=100.0,
+        low_value=99.0,
+        high_value=101.0,
+        close_history=[100.0] * MIN_LEN,
+    )
+    result = compute_mean_reversion_candidates(
+        as_of_date="2026-05-09",
+        market_state="WARM",
+        snapshots=[snapshot],
+    )
+
+    assert result.payload["candidate_count"] == 0
+    assert result.payload["excluded_stock_count"] == 1
+    assert result.payload["insufficient_history_count"] == 0
+    assert call_count == 2
