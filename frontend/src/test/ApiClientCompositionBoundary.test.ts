@@ -2008,12 +2008,12 @@ describe("ApiClient composition boundary", () => {
     expect(clientContextSource).toContain("createDeferredApiClient");
     expect(clientContextSource).toContain("MACRO_TOOLKIT_METHODS");
     expect(clientContextSource).toContain("HOME_MARKET_TICKER_METHODS");
+    expect(clientContextSource).toContain("STOCK_ANALYSIS_MARKET_DATA_METHODS");
     expect(clientContextSource).toContain("createRealMacroToolkitClient");
     expect(clientContextSource).toContain("createMockMacroToolkitClient");
     expect(clientContextSource).toContain("createRealHomeMarketTickerClient");
     expect(clientContextSource).toContain("createMockHomeMarketTickerClient");
-    expect(clientContextSource).not.toContain("createRealMarketDataClient");
-    expect(clientContextSource).not.toContain("createMockMarketDataClient");
+    expect(clientContextSource).toMatch(/import\(["']\.\/marketDataClient["']\)/);
     expect(clientContextSource).not.toMatch(/import\s+\{[^}]*createApiClient/);
     expect(clientSource).toContain("from \"./clientContext\"");
   });
@@ -2039,6 +2039,36 @@ describe("ApiClient composition boundary", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://backend.local/ui/macro/toolkit/analysis?detail=core",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("routes stock-analysis reads through the lazy market-data domain client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: {
+            basis: "analytical",
+            result_kind: "market_data.stock_analysis.workbench",
+          },
+          result: { modules: {}, module_states: [], links: {} },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getStockAnalysisWorkbench({ topK: 10 });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/ui/market-data/stock-analysis/workbench?top_k=10",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),

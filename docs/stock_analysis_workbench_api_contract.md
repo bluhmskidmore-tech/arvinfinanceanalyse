@@ -310,6 +310,15 @@ getStockAnalysisWorkbench(options?: StockAnalysisWorkbenchOptions)
 Do not add endpoint logic to `frontend/src/api/client.ts`.
 
 The page should be able to render first screen from one query:
+首屏候选队列遵循以下唯一事实源规则：
+
+- `first_screen.review_queue` 对成员、顺序、数量、`rank`、`source_module` 和空队列状态具有权威性。
+- `modules.main.result` 只允许补充展示证据，不得新增、删除、重排或替换首屏候选。
+- 补证必须按 `(source_module, stock_code)` 复合身份匹配；仅股票代码相同不得跨模块合并。
+- `first_screen.review_queue=[]` 是权威空态，前端不得从主策略 payload 回填候选。
+- `module_states` 不得再次过滤后端已纳入 `first_screen.review_queue` 的行。
+- `top_k` 截断和跨模块去重由 workbench 服务负责，前端保持接口返回边界。
+
 
 ```ts
 ["stock-analysis", "workbench", asOfDate ?? "__default", includeKey]

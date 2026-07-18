@@ -53,7 +53,10 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
     const strategyQueue = [
       buildStrategyCandidate({
         rank: 8,
-        rawFields: [{ key: "fusion_score", label: "Fusion", value: "0.812345" }],
+        rawFields: [
+          { key: "source_module_key", label: "Source module", value: "hybrid_fusion_candidates" },
+          { key: "fusion_score", label: "Fusion", value: "0.812345" },
+        ],
       }),
       buildStrategyCandidate({ stockCode: "999999.SZ", stockName: "Not in workbench" }),
     ];
@@ -71,6 +74,53 @@ describe("buildStockAnalysisWorkbenchReviewQueue", () => {
       label: "Fusion",
       value: "0.812345",
     });
+    expect(enriched[1].boundaryEvidence).toEqual(workbenchQueue[1].boundaryEvidence);
+  });
+
+
+  it("does not enrich a same-code workbench row from a different source module", () => {
+    const workbenchQueue = buildStockAnalysisWorkbenchReviewQueue([
+      {
+        stock_code: "000001.SZ",
+        stock_name: "Factor row",
+        source_module: "factor_screen_candidates",
+      },
+    ] as StockAnalysisWorkbenchPayload["first_screen"]["review_queue"]);
+    const strategyQueue = [
+      buildStrategyCandidate({
+        rawFields: [
+          { key: "source_module_key", label: "Source module", value: "hybrid_fusion_candidates" },
+          { key: "fusion_score", label: "Fusion", value: "0.812345" },
+        ],
+      }),
+    ];
+
+    const [enriched] = enrichStockAnalysisWorkbenchReviewQueue(workbenchQueue, strategyQueue);
+
+    expect(enriched.rawFields).not.toContainEqual({
+      key: "fusion_score",
+      label: "Fusion",
+      value: "0.812345",
+    });
+  });
+
+  it("keeps authoritative workbench rows when legacy module state marks a source as evidence-only", () => {
+    const rows = [
+      {
+        stock_code: "600062.SH",
+        stock_name: "Evidence only",
+        source_module: "factor_screen_candidates",
+      },
+      {
+        stock_code: "000001.SZ",
+        stock_name: "Primary candidate",
+        source_module: "fresh_trend_watchlist",
+      },
+    ] as StockAnalysisWorkbenchPayload["first_screen"]["review_queue"];
+
+    const queue = buildStockAnalysisWorkbenchReviewQueue(rows);
+
+    expect(queue.map((candidate) => candidate.stockCode)).toEqual(["600062.SH", "000001.SZ"]);
   });
 
   it("preserves an authoritative workbench sector name when its sector code is absent", () => {

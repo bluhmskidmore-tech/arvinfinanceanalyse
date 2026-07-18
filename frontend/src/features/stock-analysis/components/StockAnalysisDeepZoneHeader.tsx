@@ -5,6 +5,8 @@ import {
   StockOutlined,
 } from "@ant-design/icons";
 
+import "../pages/StockAnalysisDeepResearch.css";
+
 import type {
   StockDeepAnalysisGateSummary,
   StockDeepZoneAuditRow,

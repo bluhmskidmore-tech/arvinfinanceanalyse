@@ -11,6 +11,7 @@ import type { HomeExecutiveClientMethods } from "./homeExecutiveClient";
 import type { HomeMarketTickerClientMethods } from "./homeMarketTickerClient";
 import type { HomeSupplementalClientMethods } from "./homeSupplementalClient";
 import type { MacroToolkitClientMethods } from "./macroToolkitClient";
+import type { MarketDataClientMethods } from "./marketDataClient";
 
 export type { ApiClient, DataSourceMode } from "./client";
 
@@ -97,6 +98,23 @@ const HOME_MARKET_TICKER_METHODS = new Set<keyof HomeMarketTickerClientMethods>(
   "getResearchCalendarEvents",
 ]);
 
+const STOCK_ANALYSIS_MARKET_DATA_METHODS = new Set<keyof MarketDataClientMethods>([
+  "getLivermoreStrategy",
+  "getStockAnalysisWorkbench",
+  "getLivermoreStockDetail",
+  "getStockKlineAnalysis",
+  "getLivermoreCandidateHistory",
+  "getLivermoreStrategyScore",
+  "getLivermoreStrategyOptimization",
+  "getLivermoreCycleProxyBacktest",
+  "getLivermoreCandidateHistoryPortfolioBacktest",
+  "getLivermoreSectorRankSeries",
+  "getLivermoreSignalConfluence",
+  "materializeLivermorePositionSnapshot",
+  "materializeLivermoreManualPositionSnapshot",
+  "refreshGateSupplement",
+]);
+
 export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClient {
   const mode = options.mode ?? parseDeferredEnvMode();
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? parseDeferredBaseUrl());
@@ -106,6 +124,7 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
   let homeMarketTickerClientPromise: Promise<HomeMarketTickerClientMethods> | null = null;
   let homeSupplementalClientPromise: Promise<HomeSupplementalClientMethods> | null = null;
   let macroToolkitClientPromise: Promise<MacroToolkitClientMethods> | null = null;
+  let marketDataClientPromise: Promise<MarketDataClientMethods> | null = null;
 
   const loadClient = () => {
     if (!clientPromise) {
@@ -126,6 +145,18 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
       );
     }
     return macroToolkitClientPromise;
+  };
+
+  const loadMarketDataClient = () => {
+    if (!marketDataClientPromise) {
+      marketDataClientPromise = import("./marketDataClient").then(
+        ({ createMockMarketDataClient, createRealMarketDataClient }) =>
+          mode === "mock"
+            ? createMockMarketDataClient()
+            : createRealMarketDataClient({ fetchImpl, baseUrl }),
+      );
+    }
+    return marketDataClientPromise;
   };
 
   const loadHomeExecutiveClient = () => {
@@ -197,6 +228,11 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
           if (HOME_MARKET_TICKER_METHODS.has(property as keyof HomeMarketTickerClientMethods)) {
             const client = await loadHomeMarketTickerClient();
             const method = client[property as keyof HomeMarketTickerClientMethods] as (...methodArgs: unknown[]) => unknown;
+            return method(...args);
+          }
+          if (STOCK_ANALYSIS_MARKET_DATA_METHODS.has(property as keyof MarketDataClientMethods)) {
+            const client = await loadMarketDataClient();
+            const method = client[property as keyof MarketDataClientMethods] as (...methodArgs: unknown[]) => unknown;
             return method(...args);
           }
           const client = await loadClient();

@@ -12,7 +12,7 @@ import {
 } from "@ant-design/icons";
 import { Button as AntButton, Drawer as AntDrawer } from "antd";
 
-import { useApiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/clientContext";
 import type {
   BacktestWindowSummary,
   LivermoreCandidateHistoryPortfolioBacktestPayload,
@@ -193,12 +193,10 @@ import { useSectorRankSeriesSupport } from "../hooks/useSectorRankSeriesSupport"
 import { useSectorSortState } from "../hooks/useSectorSortState";
 import { useStockSelectionRefresh } from "../hooks/useStockSelectionRefresh";
 import { useStrategyCardExpansion } from "../hooks/useStrategyCardExpansion";
-import { BacktestBoundaryChips } from "../components/StockAnalysisBacktestBoundaryChips";
 import {
   StockAnalysisErrorWorkbench,
   StockAnalysisLoadingWorkbench,
 } from "../components/StockAnalysisBoundaryWorkbenches";
-import { StockAnalysisCycleRuleSummary } from "../components/StockAnalysisCycleRuleSummary";
 import { StockAnalysisCandidateLedgerTable } from "../components/StockAnalysisCandidateLedgerTable";
 import { StockAnalysisCandidateComparison } from "../components/StockAnalysisCandidateComparison";
 import { StockAnalysisEvidenceLedgerRail } from "../components/StockAnalysisEvidenceLedgerRail";
@@ -209,14 +207,11 @@ import {
 } from "../components/StockAnalysisReviewLedgerFirstScreen";
 import { StockAnalysisStrategyLensSection } from "../components/StockAnalysisStrategyLensSection";
 import { CompactStatusTile, StatusIcon } from "../components/StockAnalysisStatusPrimitives";
-import { StrategyModuleCard } from "../components/StrategyModuleCard";
-import { StrategyPanelComplianceDetails } from "../components/StrategyPanelResultStrip";
 import { StockAnalysisWorkbenchActions } from "../components/StockAnalysisWorkbenchActions";
 import {
   StockAnalysisAccordion as Accordion,
   StockAnalysisAccordionItem as AccordionItem,
 } from "../components/StockAnalysisAccordion";
-import { StockAnalysisTab as Tab, StockAnalysisTabs as Tabs } from "../components/StockAnalysisTabs";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import { EMPTY_STRATEGY_PRIORITY_ROWS, stockAnalysisReadQueryOptions } from "../lib/stockAnalysisQueryOptions";
 import { MarketWorkbenchFrame } from "../../workbench/market-shell";
@@ -263,6 +258,30 @@ const LazyStockAnalysisStrategyReviewCards = lazy(() =>
 const LazyStockAnalysisThemeBreakoutPanel = lazy(() =>
   import("../components/StockAnalysisThemeBreakoutPanel").then((module) => ({
     default: module.StockAnalysisThemeBreakoutPanel,
+  })),
+);
+const loadStockAnalysisDeepResearchPrimitives = () =>
+  import("../components/StockAnalysisDeepResearchPrimitives");
+const LazyBacktestBoundaryChips = lazy(() =>
+  loadStockAnalysisDeepResearchPrimitives().then((module) => ({ default: module.BacktestBoundaryChips })),
+);
+const LazyStockAnalysisCycleRuleSummary = lazy(() =>
+  loadStockAnalysisDeepResearchPrimitives().then((module) => ({
+    default: module.StockAnalysisCycleRuleSummary,
+  })),
+);
+const LazyStockAnalysisTab = lazy(() =>
+  loadStockAnalysisDeepResearchPrimitives().then((module) => ({ default: module.StockAnalysisTab })),
+);
+const LazyStockAnalysisTabs = lazy(() =>
+  loadStockAnalysisDeepResearchPrimitives().then((module) => ({ default: module.StockAnalysisTabs })),
+);
+const LazyStrategyModuleCard = lazy(() =>
+  loadStockAnalysisDeepResearchPrimitives().then((module) => ({ default: module.StrategyModuleCard })),
+);
+const LazyStrategyPanelComplianceDetails = lazy(() =>
+  loadStockAnalysisDeepResearchPrimitives().then((module) => ({
+    default: module.StrategyPanelComplianceDetails,
   })),
 );
 
@@ -679,7 +698,7 @@ export default function StockAnalysisPage() {
       client.getLivermoreSignalConfluence({
         asOfDate: strategyPayload?.as_of_date ?? undefined,
       }),
-    enabled: Boolean(strategyPayload?.as_of_date),
+    enabled: Boolean(strategyPayload?.as_of_date) && shouldMountDeepResearch,
     ...stockAnalysisReadQueryOptions,
   });
 
@@ -758,32 +777,30 @@ export default function StockAnalysisPage() {
   }, [sectorRowsFull, sectorSort]);
 
   const reviewQueue = useMemo(() => {
-    const strategyQueue = strategyPayload ? buildCandidateReviewQueue(strategyPayload) : [];
+    const strategyQueueSourceModule =
+      strategyPayload &&
+      !isStockModulePrimaryExcluded(strategyPayload, "hybrid_fusion") &&
+      (strategyPayload.hybrid_fusion_candidates?.items.length ?? 0) > 0
+        ? "hybrid_fusion_candidates"
+        : strategyPayload &&
+            !isStockModulePrimaryExcluded(strategyPayload, "stock_candidates") &&
+            (strategyPayload.stock_candidates?.items.length ?? 0) > 0
+          ? "stock_candidates"
+          : strategyPayload &&
+              !isStockModulePrimaryExcluded(strategyPayload, "fresh_trend_watchlist") &&
+              (strategyPayload.fresh_trend_watchlist?.items.length ?? 0) > 0
+            ? "fresh_trend_watchlist"
+            : null;
+    const strategyQueue = strategyPayload
+      ? buildCandidateReviewQueue(strategyPayload)
+      : [];
     const workbenchRows = workbenchPayload?.first_screen.review_queue ?? [];
-    const workbenchPrimarySourceKeys = [
-      "stock_candidates",
-      "factor_screen_candidates",
-      "uptrend_momentum_candidates",
-      "fresh_trend_watchlist",
-      "mean_reversion_candidates",
-      "theme_breakout",
-    ] as const;
-    const excludedWorkbenchSourceModules = new Set<string>(
-      workbenchPrimarySourceKeys.filter((key) =>
-        isStockModulePrimaryExcluded(strategyPayload, key),
-      ),
+    const workbenchQueue = buildStockAnalysisWorkbenchReviewQueue(workbenchRows);
+    return enrichStockAnalysisWorkbenchReviewQueue(
+      workbenchQueue,
+      strategyQueue,
+      strategyQueueSourceModule,
     );
-    if (isStockModulePrimaryExcluded(strategyPayload, "hybrid_fusion")) {
-      excludedWorkbenchSourceModules.add("hybrid_fusion_candidates");
-    }
-    const workbenchQueue = buildStockAnalysisWorkbenchReviewQueue(
-      workbenchRows,
-      excludedWorkbenchSourceModules,
-    );
-    if (workbenchQueue.length > 0) {
-      return enrichStockAnalysisWorkbenchReviewQueue(workbenchQueue, strategyQueue);
-    }
-    return strategyQueue;
   }, [strategyPayload, workbenchPayload]);
 
   const gateState = strategyPayload?.market_gate.state;
@@ -1362,7 +1379,7 @@ export default function StockAnalysisPage() {
         key: "signal-confluence",
         label: "信号闭环",
         queryState: endpointQueryState({
-          enabled: Boolean(strategyPayload?.as_of_date),
+          enabled: Boolean(strategyPayload?.as_of_date) && shouldMountDeepResearch,
           isLoading: confluenceQuery.isLoading,
           isFetching: confluenceQuery.isFetching,
           isError: confluenceQuery.isError,
@@ -1517,6 +1534,7 @@ export default function StockAnalysisPage() {
     sectorRankSeriesQuery.data,
     sectorRankSeriesQuery.isError,
     sectorRankSeriesQuery.isFetching,
+    shouldMountDeepResearch,
     sectorRankSeriesQuery.isLoading,
     sectorSeriesExpanded,
     shouldLoadSectorSeriesFallback,
@@ -4254,14 +4272,14 @@ export default function StockAnalysisPage() {
                       </span>
                     </div>
 
-                    <Tabs
+                    <LazyStockAnalysisTabs
                       aria-label="首屏分析视图"
                       className="stock-analysis-page__analytics-tabs"
                       size="sm"
                       selectedKey={firstScreenAnalyticsTab}
                       onSelectionChange={(k) => handleFirstScreenAnalyticsTabChange(String(k))}
                     >
-                      <Tab key="consensus" title="历史共振">
+                      <LazyStockAnalysisTab key="consensus" title="历史共振">
                         {!consensusSummary.hasAnyStrategy ? (
                             <CompactStatusTile
                               icon={<ThunderboltOutlined />}
@@ -4328,8 +4346,8 @@ export default function StockAnalysisPage() {
                               })}
                             </ul>
                           )}
-                      </Tab>
-                      <Tab key="priority" title="策略优先级">
+                      </LazyStockAnalysisTab>
+                      <LazyStockAnalysisTab key="priority" title="策略优先级">
                         {!firstScreenPriorityRequested ? (
                             <CompactStatusTile
                               icon={<LineChartOutlined />}
@@ -4395,8 +4413,8 @@ export default function StockAnalysisPage() {
                               testId="stock-analysis-priority-empty"
                             />
                           )}
-                      </Tab>
-                      <Tab key="optimization" title="优化诊断">
+                      </LazyStockAnalysisTab>
+                      <LazyStockAnalysisTab key="optimization" title="优化诊断">
                         {!firstScreenOptimizationRequested ? (
                             <CompactStatusTile
                               icon={<SafetyCertificateOutlined />}
@@ -4457,8 +4475,8 @@ export default function StockAnalysisPage() {
                               testId="stock-analysis-optimization-empty"
                             />
                           )}
-                      </Tab>
-                    </Tabs>
+                      </LazyStockAnalysisTab>
+                    </LazyStockAnalysisTabs>
                   </section>
 
                     <section
@@ -4510,7 +4528,7 @@ export default function StockAnalysisPage() {
                         <strong className="stock-analysis-page__tabular">{sectorCoverageCount}</strong>
                       </div>
                     </div>
-                    <Tabs
+                    <LazyStockAnalysisTabs
                       aria-label="板块排行视图"
                       className="stock-analysis-page__sector-tabs"
                       size="sm"
@@ -4518,9 +4536,9 @@ export default function StockAnalysisPage() {
                       onSelectionChange={(k) => handleSectorViewChange(String(k))}
                     >
                       {sectorViewTabs.map((tab) => (
-                        <Tab key={tab.key} title={tab.label} />
+                        <LazyStockAnalysisTab key={tab.key} title={tab.label} />
                       ))}
-                    </Tabs>
+                    </LazyStockAnalysisTabs>
 
                     <div className="stock-analysis-page__sector-rank-grid" data-testid="stock-analysis-sector-bars">
                       <div className="stock-analysis-page__sector-rank-col stock-analysis-page__sector-rank-col--top">
@@ -4838,16 +4856,16 @@ export default function StockAnalysisPage() {
                                   ))}
                                 </ul>
                               ) : null}
-                              <Tabs
+                              <LazyStockAnalysisTabs
                                 aria-label="板块序列周期"
                                 size="sm"
                                 selectedKey={String(sectorSeriesWindow)}
                                 onSelectionChange={(k) => handleSectorSeriesWindowChange(String(k))}
                                 className="stock-analysis-page__sector-series-tabs"
                               >
-                                <Tab key="5" title="5 交易日" />
-                                <Tab key="20" title="20 交易日" />
-                              </Tabs>
+                                <LazyStockAnalysisTab key="5" title="5 交易日" />
+                                <LazyStockAnalysisTab key="20" title="20 交易日" />
+                              </LazyStockAnalysisTabs>
                               {sectorRankSeriesQuery.isFetching ? (
                                 <TextSkeleton className="w-full" />
                               ) : null}
@@ -4978,7 +4996,7 @@ export default function StockAnalysisPage() {
                 </summary>
                 <div className="stock-analysis-strategy-card-grid" data-testid="stock-analysis-strategy-card-grid">
               {cycleRotationFramework ? (
-                <StrategyModuleCard
+                <LazyStrategyModuleCard
                   id="cycle-rotation"
                   title={cycleRotationFramework.display_name}
                   subtitle="周期轮动"
@@ -4995,11 +5013,11 @@ export default function StockAnalysisPage() {
                   sectionTestId="stock-analysis-cycle-rotation-framework"
                   className="stock-analysis-page__cycle-framework"
                 >
-                  <StrategyPanelComplianceDetails
+                  <LazyStrategyPanelComplianceDetails
                     complianceDetail={cycleRotationPanelSummary?.complianceDetail}
                     testId="stock-analysis-cycle-panel-compliance"
                   />
-                  <StockAnalysisCycleRuleSummary framework={cycleRotationFramework} />
+                  <LazyStockAnalysisCycleRuleSummary framework={cycleRotationFramework} />
                   {cycleMacroLayerSummary ? (
                     <div
                       className="stock-analysis-page__cycle-macro-layer"
@@ -5081,7 +5099,7 @@ export default function StockAnalysisPage() {
                       candidateHistoryPortfolioBacktestPayload?.status === "portfolio_proxy" &&
                       candidateHistoryPortfolioBacktestPayload.summary ? (
                         <>
-                          <BacktestBoundaryChips
+                          <LazyBacktestBoundaryChips
                             label="组合回测"
                             missingInputs={candidateHistoryPortfolioBacktestPayload.missing_full_strategy_inputs}
                             testId="stock-analysis-portfolio-backtest-boundary"
@@ -5146,7 +5164,7 @@ export default function StockAnalysisPage() {
                     {!cycleProxyBacktestQuery.isLoading && !cycleProxyBacktestQuery.isError ? (
                       cycleProxyBacktestPayload?.status === "proxy" && cycleProxyBacktestPayload.summary ? (
                         <>
-                          <BacktestBoundaryChips
+                          <LazyBacktestBoundaryChips
                             label="代理回测"
                             missingInputs={cycleProxyBacktestPayload.missing_full_strategy_inputs}
                             testId="stock-analysis-cycle-proxy-boundary"
@@ -5188,11 +5206,11 @@ export default function StockAnalysisPage() {
                       )
                     ) : null}
                   </div>
-                </StrategyModuleCard>
+                </LazyStrategyModuleCard>
               ) : null}
 
 
-              <StrategyModuleCard
+              <LazyStrategyModuleCard
                 id="theme-breakout"
                 title="题材突变观察"
                 subtitle="题材代理"
@@ -5210,7 +5228,7 @@ export default function StockAnalysisPage() {
                 mountDetail
                 sectionTestId="stock-analysis-theme-breakout"
               >
-                <StrategyPanelComplianceDetails
+                <LazyStrategyPanelComplianceDetails
                             complianceDetail={themeBreakoutPanelSummary?.complianceDetail}
                             testId="stock-analysis-theme-panel-compliance"
                           />
@@ -5224,9 +5242,9 @@ export default function StockAnalysisPage() {
                       : "当前没有题材观察样本。"
                   }
                 />
-              </StrategyModuleCard>
+              </LazyStrategyModuleCard>
 
-              <StrategyModuleCard
+              <LazyStrategyModuleCard
                 id="consensus-review"
                 title="历史复核 / T+5 共振"
                 subtitle="T+5 共振"
@@ -5347,7 +5365,7 @@ export default function StockAnalysisPage() {
                             T+5 共振 · 超跌仅观察
                           </p>
                         </div>
-              </StrategyModuleCard>
+              </LazyStrategyModuleCard>
 
                             <LazyStockAnalysisStrategyReviewCards
                 client={client}
@@ -5386,7 +5404,7 @@ export default function StockAnalysisPage() {
                 strategyOptimizationSectionRef={strategyOptimizationSection.ref}
               />
 
-              <StrategyModuleCard
+              <LazyStrategyModuleCard
                 id="observation-pools"
                 title="多策略观察池"
                 subtitle="观察池"
@@ -5572,9 +5590,9 @@ export default function StockAnalysisPage() {
                             ) : null}
                           </div>
                         </div>
-              </StrategyModuleCard>
+              </LazyStrategyModuleCard>
 
-              <StrategyModuleCard
+              <LazyStrategyModuleCard
                 id="events-monitoring"
                 title="关键事件与监控"
                 subtitle="事件风险"
@@ -5623,7 +5641,7 @@ export default function StockAnalysisPage() {
                     testId="stock-analysis-events-empty"
                   />
                 )}
-              </StrategyModuleCard>
+              </LazyStrategyModuleCard>
                 </div>
               </details>
               </div>

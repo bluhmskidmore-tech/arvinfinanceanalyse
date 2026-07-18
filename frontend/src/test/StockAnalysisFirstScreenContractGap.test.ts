@@ -103,8 +103,8 @@ function primaryStockCandidatePayload(): LivermoreStrategyPayload {
   };
 }
 
-describe("stock analysis first-screen contract gap", () => {
-  it("snapshots buildCandidateReviewQueue key fields from the frontend-owned queue", () => {
+describe("stock analysis legacy strategy evidence donor contract", () => {
+  it("snapshots buildCandidateReviewQueue fields used only for same-source enrichment", () => {
     const queue = buildCandidateReviewQueue(primaryStockCandidatePayload());
 
     expect(queue).toHaveLength(2);

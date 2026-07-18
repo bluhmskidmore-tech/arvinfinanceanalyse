@@ -119,11 +119,8 @@ export function resolveStockAnalysisFormalUseAllowed(
 
 export function buildStockAnalysisWorkbenchReviewQueue(
   rows: StockAnalysisWorkbenchPayload["first_screen"]["review_queue"],
-  excludedSourceModules: ReadonlySet<string> = new Set(),
 ): StockCandidateReviewQueueItem[] {
   return rows.flatMap((row, index) => {
-    const sourceModuleKey = textValue(row.source_module);
-    if (sourceModuleKey && excludedSourceModules.has(sourceModuleKey)) return [];
     const stockCode = textValue(row.stock_code);
     if (!stockCode) return [];
 
@@ -199,16 +196,32 @@ export function buildStockAnalysisWorkbenchReviewQueue(
   });
 }
 
+function candidateReviewIdentity(
+  candidate: StockCandidateReviewQueueItem,
+  sourceModuleOverride?: string | null,
+): string | null {
+  const sourceModule = (sourceModuleOverride ?? candidate.rawFields.find((field) => field.key === "source_module_key")?.value)
+    ?.trim().toLowerCase();
+  const stockCode = candidate.stockCode.trim().toUpperCase();
+  if (!sourceModule || !stockCode) return null;
+  return `${sourceModule}\u0000${stockCode}`;
+}
+
 export function enrichStockAnalysisWorkbenchReviewQueue(
   workbenchQueue: StockCandidateReviewQueueItem[],
   strategyQueue: StockCandidateReviewQueueItem[],
+  strategySourceModule: string | null = null,
 ): StockCandidateReviewQueueItem[] {
-  const strategyByStockCode = new Map(
-    strategyQueue.map((candidate) => [candidate.stockCode.trim().toUpperCase(), candidate] as const),
+  const strategyByIdentity = new Map(
+    strategyQueue.flatMap((candidate) => {
+      const identity = candidateReviewIdentity(candidate, strategySourceModule);
+      return identity ? [[identity, candidate] as const] : [];
+    }),
   );
 
   return workbenchQueue.map((workbenchCandidate) => {
-    const strategyCandidate = strategyByStockCode.get(workbenchCandidate.stockCode.trim().toUpperCase());
+    const identity = candidateReviewIdentity(workbenchCandidate);
+    const strategyCandidate = identity ? strategyByIdentity.get(identity) : undefined;
     if (!strategyCandidate) return workbenchCandidate;
 
     const workbenchThemeEvidence = selectStockCandidateThemeEvidence(workbenchCandidate);
@@ -248,13 +261,10 @@ export function enrichStockAnalysisWorkbenchReviewQueue(
       reviewFocus: uniqueText([strategyCandidate.reviewFocus, workbenchCandidate.reviewFocus]).join(" · "),
       primaryEvidence: visibleEvidence.slice(0, 3),
       supportingEvidence: visibleEvidence.slice(3),
-      boundaryEvidence:
-        workbenchThemeEvidence.length > 0
-          ? uniqueText([
-              ...strategyCandidate.boundaryEvidence,
-              ...workbenchCandidate.boundaryEvidence,
-            ])
-          : strategyCandidate.boundaryEvidence,
+      boundaryEvidence: uniqueText([
+        ...strategyCandidate.boundaryEvidence,
+        ...workbenchCandidate.boundaryEvidence,
+      ]),
       rawFields: uniqueEvidence([
         ...strategyCandidate.rawFields,
         ...workbenchCandidate.rawFields,

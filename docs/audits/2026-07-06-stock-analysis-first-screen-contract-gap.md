@@ -1,5 +1,21 @@
 # Stock Analysis First-Screen Contract Gap
 
+## 2026-07-18 收口更新
+
+状态：代码层双事实源缺口已关闭；业务 owner 审批与正式用途许可仍未关闭。
+
+当前实现：
+
+- `StockAnalysisPageImpl.tsx` 直接以 `workbenchPayload.first_screen.review_queue` 生成首屏候选成员和顺序。
+- 权威队列为空时保持为空，不再从 `modules.main.result` 回填。
+- `module_states` 不再删除 workbench 已返回的候选行。
+- 主策略 payload 仅提供展示证据，且只按 `(source_module, stock_code)` 复合身份补充。
+- 跨模块股票代码相同不会串联证据；workbench 的边界证据始终保留。
+
+验证由 `StockAnalysisWorkbenchQueueModel.test.ts`、`StockAnalysisPage.test.tsx` 和后端 first-screen contract pytest 覆盖。页面仍保持 `formal_use_allowed=false`、观察用途和当前概念覆盖不可历史使用边界。
+
+以下内容保留为 2026-07-06 的历史差距快照，不再代表当前代码状态。
+
 日期：2026-07-06
 
 范围：只锁定现状并说明差异，不做行为变更。对比后端 `StockAnalysisWorkbenchPayload.first_screen` 与前端 `buildCandidateReviewQueue` 自建首屏队列。

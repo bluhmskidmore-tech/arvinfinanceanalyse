@@ -127,6 +127,18 @@ const DASHBOARD_SNAPSHOT_BOUNDARY_PATH = resolve(
   "src/features/workbench/pages/useDashboardSnapshotBoundary.ts",
 );
 const ROUTES_PATH = resolve(FRONTEND_ROOT, "src/router/routes.tsx");
+const STOCK_ANALYSIS_PAGE_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
+);
+const STOCK_ANALYSIS_DEEP_ZONE_HEADER_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/features/stock-analysis/components/StockAnalysisDeepZoneHeader.tsx",
+);
+const STOCK_ANALYSIS_DEEP_RESEARCH_PRIMITIVES_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/features/stock-analysis/components/StockAnalysisDeepResearchPrimitives.ts",
+);
 
 describe("startup performance guards", () => {
   it("does not block first paint on remote font hosts", () => {
@@ -145,7 +157,7 @@ describe("startup performance guards", () => {
     expect(clientContextSource).toContain("HOME_EXECUTIVE_METHODS");
     expect(clientContextSource).toContain("HOME_SUPPLEMENTAL_METHODS");
     expect(clientContextSource).toContain("HOME_MARKET_TICKER_METHODS");
-    expect(clientContextSource).not.toContain('import("./marketDataClient")');
+    expect(clientContextSource).toContain('import("./marketDataClient")');
     expect(clientContextSource).not.toContain('mode === "real" && HOME_MARKET_TICKER_METHODS');
     expect(clientContextSource).toContain("if (HOME_MARKET_TICKER_METHODS.has(");
     for (const method of [
@@ -175,6 +187,41 @@ describe("startup performance guards", () => {
     ]) {
       expect(clientContextSource).toContain(`"${method}"`);
     }
+  });
+
+  it("keeps stock analysis off the full API client runtime", () => {
+    const stockAnalysisPageSource = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
+
+    expect(stockAnalysisPageSource).toContain("../../../api/clientContext");
+    expect(stockAnalysisPageSource).not.toContain("../../../api/client\"");
+    expect(stockAnalysisPageSource).not.toContain("../../../api/client'");
+  });
+
+  it("keeps deep-research scripts and styles behind the lazy stock-analysis boundary", () => {
+    const stockAnalysisPageSource = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
+    const deepZoneHeaderSource = readFileSync(STOCK_ANALYSIS_DEEP_ZONE_HEADER_PATH, "utf8");
+    const deepResearchPrimitivesSource = readFileSync(
+      STOCK_ANALYSIS_DEEP_RESEARCH_PRIMITIVES_PATH,
+      "utf8",
+    );
+
+    expect(stockAnalysisPageSource).toContain('import("../components/StockAnalysisDeepZoneHeader")');
+    expect(stockAnalysisPageSource).toContain(
+      'import("../components/StockAnalysisDeepResearchPrimitives")',
+    );
+    expect(stockAnalysisPageSource).not.toContain("StockAnalysisDeepResearch.css");
+    for (const staticDeepImport of [
+      "../components/StockAnalysisBacktestBoundaryChips",
+      "../components/StockAnalysisCycleRuleSummary",
+      "../components/StockAnalysisTabs",
+      "../components/StrategyModuleCard",
+      "../components/StrategyPanelResultStrip",
+    ]) {
+      expect(stockAnalysisPageSource).not.toContain(staticDeepImport);
+    }
+    expect(deepZoneHeaderSource).toContain('import "../pages/StockAnalysisDeepResearch.css"');
+    expect(deepResearchPrimitivesSource).toContain('export { StrategyModuleCard }');
+    expect(deepResearchPrimitivesSource).toContain('export { StockAnalysisTab, StockAnalysisTabs }');
   });
 
   it("keeps home market ticker methods in a lightweight client", () => {

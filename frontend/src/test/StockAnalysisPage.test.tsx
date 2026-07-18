@@ -77,6 +77,16 @@ const STOCK_ANALYSIS_CSS_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/pages/StockAnalysisPage.css",
 );
+const STOCK_ANALYSIS_DEEP_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/pages/StockAnalysisDeepResearch.css",
+);
+
+function readStockAnalysisCss() {
+  return [STOCK_ANALYSIS_CSS_PATH, STOCK_ANALYSIS_DEEP_CSS_PATH]
+    .map((cssPath) => readFileSync(cssPath, "utf8"))
+    .join("\n");
+}
 const STOCK_ANALYSIS_PAGE_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/pages/StockAnalysisPage.tsx",
@@ -500,9 +510,18 @@ function buildStockAnalysisWorkbenchPayload(
   strategy: LivermoreStrategyPayload,
 ): StockAnalysisWorkbenchPayload {
   const reviewQueue = [
-    ...(strategy.stock_candidates?.items ?? []),
-    ...(strategy.factor_screen_candidates?.items ?? []),
-    ...(strategy.hybrid_fusion_candidates?.items ?? []),
+    ...(strategy.stock_candidates?.items ?? []).map((item) => ({
+      ...item,
+      source_module: "stock_candidates",
+    })),
+    ...(strategy.factor_screen_candidates?.items ?? []).map((item) => ({
+      ...item,
+      source_module: "factor_screen_candidates",
+    })),
+    ...(strategy.hybrid_fusion_candidates?.items ?? []).map((item) => ({
+      ...item,
+      source_module: "hybrid_fusion_candidates",
+    })),
   ];
   return {
     page_id: "GAP-STOCK-ANALYSIS-PAGE",
@@ -2785,7 +2804,7 @@ describe("StockAnalysisPage", () => {
     const lead = within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ");
     expect(lead).toHaveTextContent("等待确认");
     expect(lead).toHaveTextContent("边界待核实");
-    expect(lead).toHaveTextContent("待核 2 条");
+    expect(lead).toHaveTextContent("边界待核 3 条");
     expect(within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ")).toHaveTextContent("Alpha");
     expect(within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ")).toHaveTextContent("0.46%");
     expect(within(comparison).getByTestId("stock-comparison-candidate-row-000001.SZ")).toHaveTextContent("11 条");
@@ -2894,7 +2913,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the review queue section header from competing with the lead stock", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("Review queue first-choice compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -3329,6 +3348,34 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByTestId("stock-analysis-review-queue")).toHaveTextContent("1 条");
   });
 
+  it("does not repopulate an authoritative empty workbench queue from the main strategy payload", async () => {
+    const client = stockClient();
+    const strategy = buildStrategyPayload();
+    const workbench = buildStockAnalysisWorkbenchPayload(strategy);
+    workbench.first_screen.review_queue = [];
+    workbench.page_question = {
+      ...workbench.page_question,
+      answer_state: "no_data",
+      answer_label: "no_data",
+      reason: "No candidates are available for the resolved date.",
+    };
+    workbench.decision_summary = {
+      ...workbench.decision_summary,
+      top_review_stock_code: null,
+      top_review_stock_name: null,
+      review_queue_count: 0,
+    };
+    vi.spyOn(client, "getStockAnalysisWorkbench").mockResolvedValue(
+      buildMockApiEnvelope("market_data.stock_analysis.workbench", workbench),
+    );
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await screen.findByTestId("stock-analysis-workbench-contract");
+    expect(screen.queryByTestId("stock-analysis-gate-ledger-row-000001.SZ")).not.toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-review-queue")).toHaveTextContent("0 条复核队列候选");
+  });
+
   it("keeps repeated stock codes from separate gate sources as distinct React rows", async () => {
     const client = stockClient();
     const strategy = buildStrategyPayload();
@@ -3452,7 +3499,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps decision memo tones and mobile review queue readable without horizontal table overflow", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const candidateComparisonCss = readFileSync(STOCK_ANALYSIS_CANDIDATE_COMPARISON_CSS_PATH, "utf8");
     const decisionMemoCss = css.slice(css.indexOf("Investment-bank decision memo pass"));
     const densityCss = css.slice(css.indexOf("Stock-analysis information-density and semantic color pass"));
@@ -3557,14 +3604,17 @@ describe("StockAnalysisPage", () => {
 
     expect(await screen.findByTestId("stock-analysis-tailwind-cockpit")).toBeInTheDocument();
     await waitFor(() => expect(workbenchSpy).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(confluenceSpy).toHaveBeenCalledTimes(1));
     expect(workbenchSpy.mock.calls[0]?.[0]).toEqual({ topK: 10 });
-    expect(confluenceSpy).toHaveBeenCalledWith({ asOfDate: "2026-04-29" });
+    expect(confluenceSpy).not.toHaveBeenCalled();
     expect(strategyScoreSpy).not.toHaveBeenCalled();
     expect(strategyOptimizationSpy).not.toHaveBeenCalled();
     expect(candidateHistorySpy).not.toHaveBeenCalled();
     expect(cycleProxySpy).not.toHaveBeenCalled();
     expect(portfolioBacktestSpy).not.toHaveBeenCalled();
+
+    await openDeepResearch();
+    await waitFor(() => expect(confluenceSpy).toHaveBeenCalledTimes(1));
+    expect(confluenceSpy).toHaveBeenCalledWith({ asOfDate: "2026-04-29" });
   });
 
   it("shows first-screen empty states when no stock candidates or sectors are available", async () => {
@@ -3635,7 +3685,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("scopes shell compression to the stock-analysis route", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
 
     expect(css).toContain("@media (min-width: 721px)");
     expect(css).toContain(
@@ -3651,14 +3701,14 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the stock-analysis toolbar title from breaking on tablet width", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
 
     expect(css).toContain(".stock-analysis-page__header h1");
     expect(css).toContain("white-space: nowrap");
   });
 
   it("keeps tablet toolbar dates readable and commands icon-led", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const tabletTopbarStart = css.indexOf("Tablet topbar pass");
     const tabletTopbarCss = css.slice(tabletTopbarStart);
 
@@ -3681,7 +3731,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps narrow hero status strip short and numeric", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const narrowHeroStart = css.indexOf("Narrow hero pass");
     const narrowHeroCss = css.slice(narrowHeroStart);
 
@@ -3695,7 +3745,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps narrow decision verdict compact instead of sentence-led", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const narrowRailStart = css.indexOf("Narrow decision rail pass");
     const narrowRailCss = css.slice(narrowRailStart);
 
@@ -3715,7 +3765,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps narrow KPI strip from repeating hero and decision states", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const narrowKpiStart = css.indexOf("Narrow KPI pass");
     const narrowKpiCss = css.slice(narrowKpiStart);
 
@@ -3729,7 +3779,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("removes repeated rail chrome on narrow screens", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const narrowRailChromeStart = css.indexOf("Narrow rail chrome pass");
     const narrowRailChromeCss = css.slice(narrowRailChromeStart);
 
@@ -3740,7 +3790,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the first screen focused on decision, KPI, review summary, and trust rail", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const consolidationStart = css.indexOf("Stock-analysis first-screen consolidation");
     const consolidationCss = css.slice(consolidationStart);
 
@@ -3761,7 +3811,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the stock review workflow controls reachable in the browser", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const closureStart = css.indexOf("Functional closure: stock-analysis review workflow");
     const closureCss = css.slice(closureStart);
 
@@ -3779,7 +3829,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("compresses the stock-analysis toolbar, rail, and queue footer on the first screen", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const loopPassStart = css.indexOf("IB queue desk loop pass 2");
     const loopPassCss = css.slice(loopPassStart);
 
@@ -3798,7 +3848,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the stock cockpit shell single-column while the rail is hidden", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const conflictingDesktopRule = css.indexOf("@media (min-width: 721px)");
     const containmentOverride = css.indexOf("Intermediate stock cockpit containment");
 
@@ -3810,7 +3860,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps every stock toolbar control visible and touch-sized on narrow screens", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const figmaStart = css.indexOf("Figma handoff pass: Desktop / Stock Analysis Workbench, node 6:3");
     const figmaCss = css.slice(figmaStart);
 
@@ -3857,7 +3907,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps lower supply diagnostics behind disclosures so stock selection moves up", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const disclosureStart = css.indexOf("Lower audit disclosure pass");
     const disclosureCss = css.slice(disclosureStart);
 
@@ -3919,7 +3969,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps strategy lens evidence metadata behind a compact disclosure", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const strategyMetaStart = css.indexOf("Strategy lens metadata disclosure pass");
     const strategyMetaCss = css.slice(strategyMetaStart);
 
@@ -3934,7 +3984,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps strategy lens candidate lists to the top item by default", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const component = readFileSync(STOCK_ANALYSIS_STRATEGY_LENS_SECTION_PATH, "utf8");
     const candidateDisclosureStart = css.indexOf("Strategy lens candidate disclosure pass");
     const candidateDisclosureCss = css.slice(candidateDisclosureStart);
@@ -3953,7 +4003,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps later strategy lenses behind a compact disclosure by default", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const component = readFileSync(STOCK_ANALYSIS_STRATEGY_LENS_SECTION_PATH, "utf8");
     const strategyDisclosureStart = css.indexOf("Strategy lens candidate-strategy disclosure pass");
     const strategyDisclosureCss = css.slice(strategyDisclosureStart);
@@ -3976,7 +4026,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps default strategy lens cards as compact stock-picking entries", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("Strategy lens default-entry compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -4031,7 +4081,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps zero-hit consensus scans compact in the deep-review workspace", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("Consensus empty scan compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -4067,7 +4117,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps zero-candidate strategy cards behind a collapsed background disclosure", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const component = readFileSync(STOCK_ANALYSIS_STRATEGY_LENS_SECTION_PATH, "utf8");
     const emptyStrategyDisclosureStart = css.indexOf("Strategy lens empty-strategy disclosure pass");
     const emptyStrategyDisclosureCss = css.slice(emptyStrategyDisclosureStart);
@@ -4092,7 +4142,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps observation preview candidates to the top item by default", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const component = readFileSync(STOCK_ANALYSIS_OBSERVATION_PREVIEW_PATH, "utf8");
     const disclosureStart = css.indexOf("Observation preview candidate disclosure pass");
     const disclosureCss = css.slice(disclosureStart);
@@ -4179,7 +4229,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps sector strength background detail collapsed by default", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const page = readStockAnalysisPageSource();
 
     expect(page).toContain('data-testid="stock-analysis-sector-detail-more"');
@@ -4209,7 +4259,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps empty theme leader radar as a compact background cue", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const page = readStockAnalysisPageSource();
     const compactStart = css.indexOf("Theme leader empty-state compact pass");
     const compactCss = css.slice(compactStart);
@@ -4237,7 +4287,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps sector heavyweight evidence compact in the stock-selection default flow", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("Sector heavyweight compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -4279,7 +4329,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps sector strength background compact inside stock selection", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("Sector strength background compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -4371,7 +4421,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps first-screen analytics compact until a diagnostic tab is opened", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("First-screen analytics compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -4416,7 +4466,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps every evidence-ledger row reachable in the first-screen rail", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("Evidence ledger compact pass");
     const mobileStart = css.indexOf("Mobile decision rail compact pass", compactStart);
     const compactCss = css.slice(compactStart, mobileStart);
@@ -4438,7 +4488,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("lets the mobile decision rail expand without suppressing evidence rows", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("Mobile decision rail compact pass");
     const nextSectionStart = css.indexOf("Evidence closure strip compact pass", compactStart);
     const compactCss = css.slice(compactStart, nextSectionStart);
@@ -4457,7 +4507,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the evidence closure strip compact until audit details are opened", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const compactStart = css.indexOf("Evidence closure strip compact pass");
     const compactCss = css.slice(compactStart);
 
@@ -4489,7 +4539,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps backend supply mini charts readable instead of squeezing canvas dimensions", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
 
     expect(css).toContain("grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))");
     expect(css).toContain("grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))");
@@ -4502,7 +4552,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("removes section-head accent bars and widens first-screen grid gap on desktop", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const densityStart = css.indexOf("Final density polish");
     const densityCss = css.slice(densityStart);
 
@@ -4517,7 +4567,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the stock dashboard aligned to a summary-first deep-review layout", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const consolidationStart = css.indexOf("Stock-analysis first-screen consolidation");
     const consolidationCss = css.slice(consolidationStart);
 
@@ -4542,7 +4592,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps collapsed strategy research cards as compact entry points", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const page = readStockAnalysisPageSource();
     const compactStart = css.indexOf("Strategy research cards compact pass");
     const compactCss = css.slice(compactStart);
@@ -4576,7 +4626,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the desktop first screen in one main column plus a fixed-width trust rail", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const consolidationStart = css.indexOf("Stock-analysis first-screen consolidation");
     const consolidationCss = css.slice(consolidationStart);
 
@@ -4596,7 +4646,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the wide stock gate layout content-sized instead of filling the viewport", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const balanceStart = css.indexOf("Wide desktop balance: keep the theme rail content-sized");
     const balanceCss = css.slice(balanceStart);
 
@@ -4621,7 +4671,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("eliminates empty wide-desktop rows by spanning the trust rail across populated content", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const densityStart = css.indexOf("Wide desktop density: span the trust rail across populated rows");
     const densityCss = css.slice(densityStart);
 
@@ -4645,7 +4695,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps endpoint evidence reachable on mid-width desktop layouts", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const endpointAccessStart = css.indexOf("Mid-width endpoint access");
     const endpointAccessCss = css.slice(endpointAccessStart);
 
@@ -4665,7 +4715,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("lets an expanded strategy panel span the full research grid", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
 
     expect(css).toMatch(
       /\.stock-analysis-strategy-card-grid\s*>\s*\.stock-analysis-strategy-module-card\[data-expanded="true"\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1/,
@@ -4673,7 +4723,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the trust rail compact on desktop and full-width inside narrow single-column flow", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const polishStart = css.indexOf("Trust rail responsive polish");
     const polishCss = css.slice(polishStart);
 
@@ -4696,7 +4746,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps desktop visual regions aligned with the declarative focus order", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const figmaStart = css.indexOf("Figma handoff pass: Desktop / Stock Analysis Workbench, node 6:3");
     const figmaV6Start = css.indexOf("Figma handoff pass: Desktop / Stock Analysis Workbench v6", figmaStart);
     const figmaDesktopCss = css.slice(figmaStart, figmaV6Start);
@@ -4717,7 +4767,8 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the dark decision desk readable without fixed-height clipping", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
+    const initialCss = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
     const cockpitBlocks = [...css.matchAll(/\[data-testid="stock-analysis-tailwind-cockpit"\]\s*\{([^}]*)\}/g)].map(
       (match) => match[1],
     );
@@ -4749,7 +4800,7 @@ describe("StockAnalysisPage", () => {
     expect(css).toMatch(
       /\.stock-analysis-page__gate-ledger-summary:focus-visible,[\s\S]*?\.stock-analysis-page__deep-research-summary:focus-visible\s*\{[^}]*outline:\s*2px\s+solid\s+var\(--ib-accent\)/,
     );
-    const mobileClosureCss = css.slice(css.lastIndexOf("@media (max-width: 720px)"));
+    const mobileClosureCss = initialCss.slice(initialCss.lastIndexOf("@media (max-width: 720px)"));
     expect(mobileClosureCss).toMatch(
       /\.stock-analysis-page__gate-ledger-summary > small,[\s\S]*?\.stock-analysis-page__deep-research-summary > small\s*\{[^}]*display:\s*none/,
     );
@@ -4762,7 +4813,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps the first-screen regions single-column through intermediate widths", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const figmaStart = css.indexOf("Figma handoff pass: Desktop / Stock Analysis Workbench, node 6:3");
     const figmaCss = css.slice(figmaStart);
 
@@ -4773,7 +4824,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps narrow screens single-column without clipping review or deep modules", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const mobileStart = css.indexOf("Mobile first-screen readability pass");
     const consolidationStart = css.indexOf("Stock-analysis first-screen consolidation");
     const observationMobileStart = css.indexOf("Mobile observation ledger no-scroll pass");
@@ -4826,7 +4877,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("keeps narrow stock trust evidence on the first screen before deep chart exploration", () => {
-    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const css = readStockAnalysisCss();
     const consolidationStart = css.indexOf("Stock-analysis first-screen consolidation");
     const consolidationCss = css.slice(consolidationStart);
 
@@ -5421,7 +5472,7 @@ describe("StockAnalysisPage", () => {
 
     const candidate = screen.getByTestId("stock-comparison-candidate-row-000001.SZ");
     expect(candidate).toHaveTextContent("Alpha");
-    expect(candidate).toHaveTextContent("待核 2 条");
+    expect(candidate).toHaveTextContent("边界待核 3 条");
     expect(candidate).toHaveTextContent("11 条");
     expect(candidate).toHaveTextContent("复核");
     expect(candidate).not.toHaveTextContent("进入依据");
@@ -5981,7 +6032,7 @@ describe("StockAnalysisPage", () => {
     expect(queue).not.toHaveTextContent("买入");
   });
 
-  it("keeps the authoritative workbench source when hybrid evidence enriches the same stock", async () => {
+  it("does not cross-enrich an authoritative factor row from a same-code hybrid candidate", async () => {
     const strategy = buildStrategyPayload({
       supported_outputs: [
         "market_gate",
@@ -5997,7 +6048,7 @@ describe("StockAnalysisPage", () => {
         market_state: "WARM",
         observation_only: true,
         candidate_count: 1,
-        coverage_note: "Hybrid evidence donor for the factor queue row.",
+        coverage_note: "Different-source evidence must not enrich the factor queue row.",
         items: [
           {
             rank: 1,
@@ -6041,7 +6092,7 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client });
 
     const queue = await screen.findByTestId("stock-analysis-review-queue");
-    expect(queue).toHaveTextContent("融合分 0.8123");
+    expect(queue).not.toHaveTextContent("融合分 0.8123");
     expect(queue).toHaveTextContent("候选/ 复核队列");
     expect(queue).not.toHaveTextContent("融合策略 / 复核队列");
     expect(queue).not.toHaveTextContent("factor_screen_candidates");
@@ -6477,6 +6528,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
     const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
@@ -6528,6 +6580,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
@@ -6611,6 +6664,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const summary = await screen.findByTestId("stock-analysis-closed-loop-summary");
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
@@ -6682,6 +6736,7 @@ describe("StockAnalysisPage", () => {
         }),
       }),
     });
+    await openDeepResearch();
 
     const firstScreenSummary = await screen.findByLabelText("首屏复核摘要");
     expect(firstScreenSummary).toHaveTextContent("远期收益成熟度");
@@ -7254,6 +7309,7 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ confluenceError: new Error("confluence unavailable") }),
     });
+    await openDeepResearch();
 
     expect(await screen.findByRole("heading", { name: "风险退出观察" })).toBeInTheDocument();
     expect(await screen.findByText("联动观察暂不可用。")).toBeInTheDocument();
