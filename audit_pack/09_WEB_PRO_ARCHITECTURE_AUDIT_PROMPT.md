@@ -20,7 +20,7 @@
 8. `07_RISK_AND_BUG_SCAN.md`
 9. `08_RUN_AND_TEST.md`
 
-`01_PROJECT_TREE.md` 很大，只在需要定位目录结构时查阅。需要代码证据时，到 `source_snapshot/` 中按路径打开源码。
+`01_PROJECT_TREE.md` 很大，只在需要定位目录结构时查阅。需要代码证据时，上传同一提交生成的 source audit ZIP 与 manifest，并按仓库路径打开源码；不要使用历史复制目录。
 
 ## 系统背景
 

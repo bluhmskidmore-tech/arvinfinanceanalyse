@@ -1,4 +1,4 @@
-# 08 — 启动、测试与环境（脱敏）
+﻿# 08 — 启动、测试与环境（脱敏）
 
 ## 前端
 
@@ -43,7 +43,7 @@
 
 **前端 Vite：`MOSS_VITE_API_PROXY`**（后端代理目标）。
 
-**脱敏拷贝位置**：`audit_pack/source_snapshot/redacted_env/*_redacted.txt` + 模板 `config/.env.example`、`frontend/.env.example`。  
+不再维护 tracked 脱敏副本；环境字段仅参考模板 `config/.env.example`、`frontend/.env.example`。按提交生成的源码制品会排除真实 `.env`。
 勿将真实密钥重新贴入聊天记录。
 
 ---
@@ -80,9 +80,9 @@ from backend.app.services.executive_service'
 
 **`tsc -b` 阶段失败**。代表性 TS 报错（截取）：
 
-- `KpiCard.tsx`：`CSSProperties` 与 `FlexDirection`、`OverflowWrap` 等字面量联合类型不匹配。  
-- `crossAssetTrendChart.ts`：`legend.animationType` 非 ECharts 类型定义字段。  
-- `DashboardBondHeadlineSection.tsx`：`GridContainer` 传入未知 `gap`；tone prop 字面量不匹配。  
+- `KpiCard.tsx`：`CSSProperties` 与 `FlexDirection`、`OverflowWrap` 等字面量联合类型不匹配。
+- `crossAssetTrendChart.ts`：`legend.animationType` 非 ECharts 类型定义字段。
+- `DashboardBondHeadlineSection.tsx`：`GridContainer` 传入未知 `gap`；tone prop 字面量不匹配。
 - `LiabilityAnalyticsPage.tsx`：`'getCockpitWarnings'`、`'getContributionSplit'` 存在于调用但 **`ApiClient` 类型无上此成员**。
 - **`BalanceAnalysisPage.test.tsx`**：mock **`AdbComparisonResponse`** 缺 `calendar_days_inclusive`、`adb_denominator_basis`。
 
@@ -100,7 +100,7 @@ from backend.app.services.executive_service'
 
 ## 建议门禁顺序（复核用）
 
-1. 固定 **`Python` 次要版本** 与 locks。  
-2. `pytest tests/...` — 先修 `executive_service`/`test_home_snapshot_endpoint` ImportError，再全集。  
-3. `npm run build` — 先于 `vite build` 清掉 `tsc -b` 错误。  
-4. `npm run lint` — 对齐 ESLint baseline。  
+1. 固定 **`Python` 次要版本** 与 locks。
+2. `pytest tests/...` — 先修 `executive_service`/`test_home_snapshot_endpoint` ImportError，再全集。
+3. `npm run build` — 先于 `vite build` 清掉 `tsc -b` 错误。
+4. `npm run lint` — 对齐 ESLint baseline。
