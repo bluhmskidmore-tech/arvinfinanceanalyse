@@ -576,8 +576,10 @@ export function buildRiskV6YieldCurveChart(
     return null;
   }
   const tenorX = new Map<string, number>();
+  const tenorOrder = new Map<string, number>();
   tenors.forEach((tenor, index) => {
     tenorX.set(tenor, CURVE_X_LEFT + (index * (CURVE_X_RIGHT - CURVE_X_LEFT)) / (tenors.length - 1));
+    tenorOrder.set(tenor, index);
   });
 
   const pctValues: number[] = [];
@@ -623,7 +625,7 @@ export function buildRiskV6YieldCurveChart(
     let current: Array<{ tenor: string; x: number; y: number; pct: number }> = [];
     for (const point of points) {
       const prev = current[current.length - 1];
-      if (prev !== undefined && tenors.indexOf(point.tenor) - tenors.indexOf(prev.tenor) > 1) {
+      if (prev !== undefined && (tenorOrder.get(point.tenor) ?? 0) - (tenorOrder.get(prev.tenor) ?? 0) > 1) {
         segments.push(current);
         current = [];
       }
