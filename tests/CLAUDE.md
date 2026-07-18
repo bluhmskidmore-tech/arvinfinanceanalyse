@@ -11,5 +11,7 @@ Use this file for work under `tests/` and `backend/tests/`.
 ## Verification
 
 - From the repository root, run targeted pytest as `python -m pytest tests/<target>.py -q`.
+- For the default MCP feedback loop, run `python -m pytest -q -m mcp_fast tests/test_project_mcp_fast_contracts.py`; it uses isolated governance and DuckDB paths.
+- Run `python scripts/backend_release_suite.py --mcp-profile full` only when shared MCP behavior changes or when performing the scheduled/full release check.
 - For frontend tests, run from `frontend/` with `npm run test -- <pattern>`.
 - Keep fixtures small and explicit. Do not read raw `data/` files directly unless the task is about data ingestion or catalog validation.

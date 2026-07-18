@@ -86,3 +86,23 @@ evidence, or enablement-packet gate is still open. Use
 creating the timer. After the first scheduled run, use
 `scripts/tushare_news_backup_timer_preflight.py --stage post-enable` to also
 require the timer evidence fields.
+
+### Homepage macro release source refresh
+
+The homepage release-context refresh is a schedulable operator workflow. It
+refreshes CPI/PPI/GDP through the governed Tushare macro ingest and limits the
+PMI overlap refresh to the actual `tushare_macro` vendor. It does not relabel
+or replace existing NBS evidence.
+
+- Safe plan: `python scripts/home_macro_release_refresh.py --dry-run`
+- Approved synchronous validation: `python scripts/home_macro_release_refresh.py --run-once`
+- External timer target: `python scripts/home_macro_release_refresh.py --enqueue`
+- Fail-closed gate: `python scripts/home_macro_release_refresh_timer_preflight.py`
+- Scheduler handoff: `docs/templates/home_macro_release_refresh_scheduler_handoff.md`
+- Go-live checklist: `docs/templates/home_macro_release_refresh_go_live_checklist.md`
+- Enablement packet: `docs/templates/home_macro_release_refresh_timer_enablement_packet.md`
+
+The repository does not install or enable the timer. Operations must name the
+owner, host, single-writer window, log path, and rollback procedure, then attach
+approved run-once and first-scheduled-run evidence. Until then the preflight
+returns a nonzero, `blocked` result by design.

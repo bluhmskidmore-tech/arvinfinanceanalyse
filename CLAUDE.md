@@ -132,7 +132,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **arvinfinanceanalyse** (120492 symbols, 173963 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **moss-v3-codex-v1** (94281 symbols, 147518 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -155,10 +155,10 @@ This project is indexed by GitNexus as **arvinfinanceanalyse** (120492 symbols, 
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/arvinfinanceanalyse/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/arvinfinanceanalyse/clusters` | All functional areas |
-| `gitnexus://repo/arvinfinanceanalyse/processes` | All execution flows |
-| `gitnexus://repo/arvinfinanceanalyse/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/moss-v3-codex-v1/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/moss-v3-codex-v1/clusters` | All functional areas |
+| `gitnexus://repo/moss-v3-codex-v1/processes` | All execution flows |
+| `gitnexus://repo/moss-v3-codex-v1/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

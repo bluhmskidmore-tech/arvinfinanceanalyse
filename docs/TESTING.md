@@ -38,7 +38,9 @@ python -m pytest -q tests/test_product_category_pnl_flow.py
 python scripts/backend_release_suite.py
 ```
 
-`scripts/backend_release_suite.py` 会先跑治理 lineage audit，再执行一组有界测试文件，包括：
+`scripts/backend_release_suite.py` 默认只运行隔离、可重复的有界测试；治理 lineage 由
+`tests/test_governance_lineage_audit.py` 的临时夹具覆盖，不读取本机 `data/governance`。
+随后它执行的测试文件包括：
 
 - `tests/test_settings_contract.py`
 - `tests/test_health_endpoints.py`
@@ -55,6 +57,16 @@ python scripts/backend_release_suite.py
 - `tests/test_golden_samples_capture_ready.py`
 
 如果你在做 repo-wide formal-compute 主线变更，这个门禁比“跑一次全量 pytest”更接近仓库定义的发布标准。
+
+只有在明确要审计某个本机/部署运行目录时，才使用实时模式：
+
+```bash
+python scripts/backend_release_suite.py \
+  --live-governance-dir data/governance \
+  --governance-audit-output governance-lineage-audit.json
+```
+
+实时模式在未扫描到治理文件时会失败，避免“空目录绿灯”。
 
 ## 前端测试
 
