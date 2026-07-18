@@ -16,6 +16,10 @@ const providersSource = readFileSync(resolve(process.cwd(), "src/app/providers.t
 const shellSource = readFileSync(resolve(process.cwd(), "src/layouts/WorkbenchShell.tsx"), "utf8");
 const dataModeRibbonSource = readFileSync(resolve(process.cwd(), "src/components/DataModeRibbon.tsx"), "utf8");
 const marketDataSource = readFileSync(resolve(process.cwd(), "src/api/marketDataClient.ts"), "utf8");
+const stockAnalysisWorkbenchClientSource = readFileSync(
+  resolve(process.cwd(), "src/api/stockAnalysisWorkbenchClient.ts"),
+  "utf8",
+);
 const kpiSource = readFileSync(resolve(process.cwd(), "src/api/kpiClient.ts"), "utf8");
 const cubeSource = readFileSync(resolve(process.cwd(), "src/api/cubeClient.ts"), "utf8");
 const agentClientSource = readFileSync(resolve(process.cwd(), "src/api/agentClient.ts"), "utf8");
@@ -2014,6 +2018,7 @@ describe("ApiClient composition boundary", () => {
     expect(clientContextSource).toContain("createRealHomeMarketTickerClient");
     expect(clientContextSource).toContain("createMockHomeMarketTickerClient");
     expect(clientContextSource).toMatch(/import\(["']\.\/marketDataClient["']\)/);
+    expect(clientContextSource).toMatch(/import\(["']\.\/stockAnalysisWorkbenchClient["']\)/);
     expect(clientContextSource).not.toMatch(/import\s+\{[^}]*createApiClient/);
     expect(clientSource).toContain("from \"./clientContext\"");
   });
@@ -2045,7 +2050,16 @@ describe("ApiClient composition boundary", () => {
     );
   });
 
-  it("routes stock-analysis reads through the lazy market-data domain client", async () => {
+  it("routes the first-screen stock workbench through its lightweight domain client", async () => {
+    expect(stockAnalysisWorkbenchClientSource).toContain(
+      "/ui/market-data/stock-analysis/workbench",
+    );
+    expect(stockAnalysisWorkbenchClientSource).not.toContain("createRealMarketDataClient");
+    const marketMethodSet = clientContextSource.match(
+      /const STOCK_ANALYSIS_MARKET_DATA_METHODS[\s\S]*?\]\);/,
+    )?.[0];
+    expect(marketMethodSet).toBeDefined();
+    expect(marketMethodSet).not.toContain("getStockAnalysisWorkbench");
     const fetchImpl = vi.fn(async () =>
       new Response(
         JSON.stringify({

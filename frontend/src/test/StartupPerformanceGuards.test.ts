@@ -139,6 +139,10 @@ const STOCK_ANALYSIS_DEEP_RESEARCH_PRIMITIVES_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/stock-analysis/components/StockAnalysisDeepResearchPrimitives.ts",
 );
+const STOCK_ANALYSIS_WORKBENCH_CLIENT_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/api/stockAnalysisWorkbenchClient.ts",
+);
 
 describe("startup performance guards", () => {
   it("does not block first paint on remote font hosts", () => {
@@ -197,6 +201,25 @@ describe("startup performance guards", () => {
     expect(stockAnalysisPageSource).not.toContain("../../../api/client'");
   });
 
+  it("keeps the first-screen stock workbench off the full market-data runtime", () => {
+    const clientContextSource = readFileSync(CLIENT_CONTEXT_PATH, "utf8");
+    const stockAnalysisWorkbenchClientSource = readFileSync(
+      STOCK_ANALYSIS_WORKBENCH_CLIENT_PATH,
+      "utf8",
+    );
+    const marketMethodSet = clientContextSource.match(
+      /const STOCK_ANALYSIS_MARKET_DATA_METHODS[\s\S]*?\]\);/,
+    )?.[0];
+
+    expect(clientContextSource).toContain('import("./stockAnalysisWorkbenchClient")');
+    expect(marketMethodSet).toBeDefined();
+    expect(marketMethodSet).not.toContain("getStockAnalysisWorkbench");
+    expect(stockAnalysisWorkbenchClientSource).toContain(
+      "/ui/market-data/stock-analysis/workbench",
+    );
+    expect(stockAnalysisWorkbenchClientSource).not.toContain("marketDataClient");
+  });
+
   it("keeps deep-research scripts and styles behind the lazy stock-analysis boundary", () => {
     const stockAnalysisPageSource = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
     const deepZoneHeaderSource = readFileSync(STOCK_ANALYSIS_DEEP_ZONE_HEADER_PATH, "utf8");
@@ -206,6 +229,9 @@ describe("startup performance guards", () => {
     );
 
     expect(stockAnalysisPageSource).toContain('import("../components/StockAnalysisDeepZoneHeader")');
+    expect(stockAnalysisPageSource).toContain(
+      'import("../components/StockAnalysisDeepSelectionOverview")',
+    );
     expect(stockAnalysisPageSource).toContain(
       'import("../components/StockAnalysisDeepResearchPrimitives")',
     );

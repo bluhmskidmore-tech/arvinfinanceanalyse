@@ -95,6 +95,10 @@ const STOCK_ANALYSIS_PAGE_IMPL_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
 );
+const STOCK_ANALYSIS_DEEP_SELECTION_OVERVIEW_PATH = resolve(
+  process.cwd(),
+  "src/features/stock-analysis/components/StockAnalysisDeepSelectionOverview.tsx",
+);
 const STOCK_ANALYSIS_CANDIDATE_COMPARISON_CSS_PATH = resolve(
   process.cwd(),
   "src/features/stock-analysis/components/StockAnalysisCandidateComparison.css",
@@ -117,7 +121,11 @@ const EQUITY_KPI_CARD_CSS_PATH = resolve(
 );
 
 function readStockAnalysisPageSource() {
-  return [STOCK_ANALYSIS_PAGE_PATH, STOCK_ANALYSIS_PAGE_IMPL_PATH]
+  return [
+    STOCK_ANALYSIS_PAGE_PATH,
+    STOCK_ANALYSIS_PAGE_IMPL_PATH,
+    STOCK_ANALYSIS_DEEP_SELECTION_OVERVIEW_PATH,
+  ]
     .map((path) => readFileSync(path, "utf8"))
     .join("\n");
 }

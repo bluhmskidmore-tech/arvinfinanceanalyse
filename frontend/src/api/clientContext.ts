@@ -12,6 +12,7 @@ import type { HomeMarketTickerClientMethods } from "./homeMarketTickerClient";
 import type { HomeSupplementalClientMethods } from "./homeSupplementalClient";
 import type { MacroToolkitClientMethods } from "./macroToolkitClient";
 import type { MarketDataClientMethods } from "./marketDataClient";
+import type { StockAnalysisWorkbenchClientMethods } from "./stockAnalysisWorkbenchClient";
 
 export type { ApiClient, DataSourceMode } from "./client";
 
@@ -100,7 +101,6 @@ const HOME_MARKET_TICKER_METHODS = new Set<keyof HomeMarketTickerClientMethods>(
 
 const STOCK_ANALYSIS_MARKET_DATA_METHODS = new Set<keyof MarketDataClientMethods>([
   "getLivermoreStrategy",
-  "getStockAnalysisWorkbench",
   "getLivermoreStockDetail",
   "getStockKlineAnalysis",
   "getLivermoreCandidateHistory",
@@ -125,6 +125,7 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
   let homeSupplementalClientPromise: Promise<HomeSupplementalClientMethods> | null = null;
   let macroToolkitClientPromise: Promise<MacroToolkitClientMethods> | null = null;
   let marketDataClientPromise: Promise<MarketDataClientMethods> | null = null;
+  let stockAnalysisWorkbenchClientPromise: Promise<StockAnalysisWorkbenchClientMethods> | null = null;
 
   const loadClient = () => {
     if (!clientPromise) {
@@ -157,6 +158,19 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
       );
     }
     return marketDataClientPromise;
+  };
+
+  const loadStockAnalysisWorkbenchClient = () => {
+    if (!stockAnalysisWorkbenchClientPromise) {
+      stockAnalysisWorkbenchClientPromise =
+        mode === "mock"
+          ? loadMarketDataClient()
+          : import("./stockAnalysisWorkbenchClient").then(
+              ({ createRealStockAnalysisWorkbenchClient }) =>
+                createRealStockAnalysisWorkbenchClient({ fetchImpl, baseUrl }),
+            );
+    }
+    return stockAnalysisWorkbenchClientPromise;
   };
 
   const loadHomeExecutiveClient = () => {
@@ -229,6 +243,12 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
             const client = await loadHomeMarketTickerClient();
             const method = client[property as keyof HomeMarketTickerClientMethods] as (...methodArgs: unknown[]) => unknown;
             return method(...args);
+          }
+          if (property === "getStockAnalysisWorkbench") {
+            const client = await loadStockAnalysisWorkbenchClient();
+            return client.getStockAnalysisWorkbench(
+              ...(args as Parameters<StockAnalysisWorkbenchClientMethods["getStockAnalysisWorkbench"]>),
+            );
           }
           if (STOCK_ANALYSIS_MARKET_DATA_METHODS.has(property as keyof MarketDataClientMethods)) {
             const client = await loadMarketDataClient();
