@@ -18,6 +18,9 @@ const DashboardHomePage = lazy(
 const ModuleWorkbenchHomePage = lazy(
   () => import("../features/workbench/module-home/ModuleWorkbenchHomePage"),
 );
+const RiskOverviewPage = lazy(
+  () => import("../features/workbench/module-home/RiskOverviewPage"),
+);
 const PortfolioHomePage = lazy(
   () => import("../features/workbench/module-home/PortfolioHomePage"),
 );
@@ -176,7 +179,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/risk-overview") {
       return {
         path: section.path.slice(1),
-        element: themedRouteElement(<ModuleWorkbenchHomePage kind="risk" />),
+        element: themedRouteElement(<RiskOverviewPage />),
       };
     }
 
