@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { buildMockLedgerPnlCandidateFinancialIndicatorPeriodComparison } from "../mocks/ledgerPnlMocks";
 import {
@@ -107,6 +107,17 @@ function bridgeRecord(payload = syntheticBridgePayload()) {
 }
 
 describe("candidate period comparison view model", () => {
+  it("keeps the frontend comparison contract aligned with the active backend v2 schema", () => {
+    const payload = mutableSyntheticComparison();
+
+    expectTypeOf(payload.contract_version).toEqualTypeOf<
+      "candidate-financial-indicator-period-comparison-v2"
+    >();
+    expect(payload.contract_version).toBe(
+      "candidate-financial-indicator-period-comparison-v2",
+    );
+  });
+
   it("accepts v2 and exposes the backend four-item net-interest bridge without recalculation", () => {
     const payload = syntheticBridgePayload();
     const bridge = bridgeRecord(payload);

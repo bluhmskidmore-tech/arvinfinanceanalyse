@@ -6273,51 +6273,6 @@ export type LedgerPnlCandidateFinancialIndicatorNetInterestComponentBridge = {
   components: LedgerPnlCandidateFinancialIndicatorNetInterestComponent[];
 };
 
-export type LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverRow = {
-  rank: number;
-  component_metric_id: LedgerPnlCandidateFinancialIndicatorComponentMetricId;
-  component_metric_name: string;
-  account_code: string;
-  account_name: string;
-  formula_weight: -1 | 1;
-  effective_component_weight: string;
-  effective_net_weight: string;
-  current_value_yi: string;
-  previous_value_yi: string;
-  component_delta_yi: string;
-  contribution_to_net_delta_yi: string;
-};
-
-export type LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverSummary = {
-  analysis_kind: "accounting_account_driver_summary";
-  contribution_grain: "component_account";
-  status: "available" | "not_evaluable";
-  metric_id: "income.interest.net";
-  currency: "CNX";
-  basis: "calendar_month_from_cumulative";
-  method: "finance_metric_account_contribution_ranking";
-  unit: "亿元";
-  quality_status: "standard_candidate" | "degraded_candidate" | "not_evaluable";
-  foot_status: "passed" | "failed" | "not_evaluable";
-  driver_status: "unclear";
-  formal_use_allowed: false;
-  certification_effect: "none";
-  net_delta_yi: string | null;
-  lift_contribution_total_yi: string | null;
-  drag_contribution_total_yi: string | null;
-  account_contribution_total_yi: string | null;
-  reconciliation_delta_yi: string | null;
-  contributing_row_count: number | null;
-  lift_row_count: number | null;
-  drag_row_count: number | null;
-  neutral_row_count: number | null;
-  excluded_offset_row_count: number | null;
-  ranking_limit: 3;
-  top_lifts: LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverRow[];
-  top_drags: LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverRow[];
-  reasons: string[];
-};
-
 export type LedgerPnlCandidateFinancialIndicatorFullScopeGap = {
   reason_code:
     | "missing_source_file"
@@ -6331,7 +6286,7 @@ export type LedgerPnlCandidateFinancialIndicatorFullScopeGap = {
 };
 
 export type LedgerPnlCandidateFinancialIndicatorPeriodComparison = {
-  contract_version: "candidate-financial-indicator-period-comparison-v3";
+  contract_version: "candidate-financial-indicator-period-comparison-v2";
   report_month: string;
   report_date: string;
   comparison_month: string;
@@ -6357,7 +6312,6 @@ export type LedgerPnlCandidateFinancialIndicatorPeriodComparison = {
   idempotency_key: string;
   source_periods: LedgerPnlCandidateFinancialIndicatorComparisonSourcePeriod[];
   net_interest_component_bridge: LedgerPnlCandidateFinancialIndicatorNetInterestComponentBridge;
-  net_interest_account_driver_summary: LedgerPnlCandidateFinancialIndicatorNetInterestAccountDriverSummary;
   metrics: LedgerPnlCandidateFinancialIndicatorPeriodComparisonMetric[];
 };
 

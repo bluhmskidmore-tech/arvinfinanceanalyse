@@ -8,7 +8,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const baseline = {
   apiClientLines: 580,
   // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
-  apiClientMockOccurrences: 55,
+  apiClientMockOccurrences: 54,
   dashboardStyleFiles: {},
   // 2026-07-07: PnlByBusinessInsightsPage migrated to shared PagePrimitives, removing
   // one-off page-chrome style={{}} blocks (title/disclaimer/contract-status/section leads).
@@ -19,16 +19,44 @@ const baseline = {
   totalTsxStyleProps: 1622,
   totalStaticTsxStyleProps: 654,
   maxPageStyleProps: {
-    "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 13,
+    "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 8,
     "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,
     "frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx": 0,
     "frontend/src/layouts/WorkbenchShell.tsx": 0,
-    "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx": 18,
-    "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx": 14,
-    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": 4,
+    "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx": 17,
+    "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx": 0,
+    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": 0,
     "frontend/src/features/risk-overview/RiskOverviewPage.tsx": 0,
   },
   maxPageStaticStyleProps: {},
+  protectedMonolithFiles: {
+    "scripts/mcp/moss_project_mcp.py": {
+      maxLines: 12643,
+      routeHint: "Add provider or domain behavior in a focused scripts/mcp/<domain>_*.py module.",
+    },
+    "tests/test_project_mcp_servers.py": {
+      maxLines: 14518,
+      routeHint: "Add coverage in a focused tests/test_project_mcp_<domain>.py module.",
+    },
+    "frontend/src/api/contracts.ts": {
+      // Post LedgerPnl v1-type cleanup actual; 7429 targets a later domain-module split.
+      maxLines: 7510,
+      routeHint: "Put new contracts in the owning domain contract or client module.",
+    },
+    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": {
+      maxLines: 6687,
+      routeHint: "Add a colocated feature component or model and keep the page compositional.",
+    },
+    "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts": {
+      maxLines: 5591,
+      routeHint: "Create a focused productCategory<Surface>Model.ts instead of moving page debt here.",
+    },
+    "backend/app/services/pnl_service.py": {
+      // HEAD actual is 4218; 4203 is a planned cleanup target owned by another batch.
+      maxLines: 4218,
+      routeHint: "Add focused pnl_<domain>.py logic and keep pnl_service.py as orchestration.",
+    },
+  },
 };
 
 function readText(relativePath) {
@@ -221,6 +249,17 @@ function runSelfTest() {
   ) {
     throw new Error(`tsx style debt counter mismatch: ${JSON.stringify(tsxStyleDebt)}`);
   }
+  if (countLines("first\nsecond\n") !== 2) {
+    throw new Error("line counter must ignore the trailing newline");
+  }
+  for (const [repoPath, policy] of Object.entries(baseline.protectedMonolithFiles)) {
+    if (!Number.isInteger(policy.maxLines) || policy.maxLines <= 0) {
+      throw new Error(`invalid protected monolith maxLines for ${repoPath}`);
+    }
+    if (typeof policy.routeHint !== "string" || policy.routeHint.trim() === "") {
+      throw new Error(`missing protected monolith routeHint for ${repoPath}`);
+    }
+  }
   console.log("audit_frontend_debt self-test: ok");
 }
 
@@ -254,6 +293,15 @@ assertNoGrowth(
   baseline.apiClientMockOccurrences,
   "Move mock payloads out of api/client.ts or reduce existing mock coupling.",
 );
+
+for (const [repoPath, policy] of Object.entries(baseline.protectedMonolithFiles)) {
+  assertNoGrowth(
+    `${repoPath} lines`,
+    countLines(readText(repoPath)),
+    policy.maxLines,
+    policy.routeHint,
+  );
+}
 
 for (const [repoPath, limits] of Object.entries(baseline.dashboardStyleFiles)) {
   const filename = path.basename(repoPath);

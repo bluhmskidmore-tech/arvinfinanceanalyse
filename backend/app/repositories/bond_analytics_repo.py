@@ -138,13 +138,6 @@ _RISK_INDICATORS_KEYS = (
     "reinvestment_ratio_1y",
 )
 
-_DURATION_SCOPE_KEYS = (
-    "rate_risk_market_value",
-    "rate_risk_dv01",
-    "rate_risk_modified_duration",
-    "duration_excluded_market_value",
-    "duration_excluded_count",
-)
 _Q8 = Decimal("0.00000001")
 
 
@@ -634,61 +627,6 @@ class BondAnalyticsRepository:
         if not report_dates:
             return None
         return self.fetch_risk_overview_snapshot(report_date=report_dates[0])
-
-    def fetch_rate_risk_duration_scope(self, report_date: str) -> dict[str, object] | None:
-        conn = _connect_read_only(self.path)
-        if conn is None:
-            return None
-        try:
-            if not _table_exists(conn, FACT_TABLE):
-                return None
-            required_columns = ("market_value", "dv01", "modified_duration", "maturity_date")
-            if not all(_column_exists(conn, FACT_TABLE, column) for column in required_columns):
-                return None
-            row = conn.execute(
-                f"""
-                with scoped as (
-                  select
-                    coalesce(market_value, 0) as market_value,
-                    coalesce(dv01, 0) as dv01,
-                    coalesce(modified_duration, 0) as modified_duration,
-                    case
-                      when {_DURATION_DENOMINATOR_SQL}
-                      then 1 else 0
-                    end as in_duration_scope
-                  from {FACT_TABLE}
-                  where cast(report_date as varchar) = ?
-                )
-                select
-                  coalesce(sum(case when in_duration_scope = 1 then market_value else 0 end), 0)
-                    as rate_risk_market_value,
-                  coalesce(sum(case when in_duration_scope = 1 then dv01 else 0 end), 0)
-                    as rate_risk_dv01,
-                  case
-                    when coalesce(sum(case when in_duration_scope = 1 then market_value else 0 end), 0) > 0
-                    then sum(case when in_duration_scope = 1 then modified_duration * market_value else 0 end)
-                       / sum(case when in_duration_scope = 1 then market_value else 0 end)
-                    else 0
-                  end as rate_risk_modified_duration,
-                  coalesce(sum(case when in_duration_scope = 0 and market_value <> 0 then market_value else 0 end), 0)
-                    as duration_excluded_market_value,
-                  coalesce(sum(case when in_duration_scope = 0 and market_value <> 0 then 1 else 0 end), 0)
-                    as duration_excluded_count
-                from scoped
-                """,
-                [report_date],
-            ).fetchone()
-            if row is None:
-                return None
-            out = dict(zip(_DURATION_SCOPE_KEYS, row, strict=True))
-            out["duration_excluded_count"] = int(out["duration_excluded_count"] or 0)
-            for key in _DURATION_SCOPE_KEYS:
-                if key != "duration_excluded_count":
-                    out[key] = _decimal(out[key])
-            out["rate_risk_modified_duration"] = out["rate_risk_modified_duration"].quantize(_Q8)
-            return out
-        finally:
-            conn.close()
 
     def resolve_prior_curve_anchor_report_date(self, *, report_date: str) -> str | None:
         conn = _connect_read_only(self.path)
