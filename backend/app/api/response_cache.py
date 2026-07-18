@@ -13,9 +13,10 @@ import os
 import threading
 import time
 from collections.abc import Callable
-from typing import TypeVar, cast
+from typing import Literal, TypeVar, cast
 
 T = TypeVar("T")
+CacheBuildStatus = Literal["produce", "wait", "hit"]
 
 DEFAULT_TTL_SECONDS = 300.0
 _TTL_ENV_VAR = "MOSS_MARKET_HOME_CACHE_TTL_SECONDS"
@@ -101,6 +102,59 @@ class TTLResponseCache:
             self._inflight.pop(key, None)
             inflight.event.set()
         return value
+
+    def get_or_build_with_status(
+        self,
+        key: str,
+        builder: Callable[[], T],
+        *,
+        ttl_seconds: float | None = None,
+    ) -> tuple[T, CacheBuildStatus]:
+        """Return the cached value and the caller's actual cache path.
+
+        This additive API keeps ``get_or_build`` unchanged for existing routes
+        while allowing slow endpoints to distinguish a producer from a caller
+        waiting on the same in-flight build.
+        """
+        ttl = self._default_ttl if ttl_seconds is None else ttl_seconds
+        if ttl <= 0:
+            return builder(), "produce"
+
+        now = self._clock()
+        with self._lock:
+            entry = self._store.get(key)
+            if entry is not None and entry[0] > now:
+                return cast(T, entry[1]), "hit"
+            inflight = self._inflight.get(key)
+            if inflight is None:
+                inflight = _InFlightBuild()
+                self._inflight[key] = inflight
+                should_build = True
+            else:
+                should_build = False
+
+        if not should_build:
+            inflight.event.wait()
+            if inflight.error is not None:
+                raise inflight.error
+            return cast(T, inflight.value), "wait"
+
+        try:
+            value = builder()
+        except BaseException as exc:
+            with self._lock:
+                inflight.error = exc
+                self._inflight.pop(key, None)
+                inflight.event.set()
+            raise
+
+        expires_at = self._clock() + ttl
+        with self._lock:
+            self._store[key] = (expires_at, value)
+            inflight.value = value
+            self._inflight.pop(key, None)
+            inflight.event.set()
+        return value, "produce"
 
     def invalidate(self, key: str | None = None) -> None:
         with self._lock:
