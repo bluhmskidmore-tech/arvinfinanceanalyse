@@ -36,7 +36,7 @@ describe("resolveAdbAvgYuan", () => {
 
   it("sums detail rows for 证券业资管计划 when parent key missing", () => {
     const map = new Map<string, number>([
-      ["其中：结构化产业基金（产业基金部分）", 10],
+      ["结构化融资（券商）", 10],
       ["其中：外币委外", 20],
       ["其中：本币委外（市值法）", 30],
       ["其中：本币专户（成本法）", 40],
@@ -69,7 +69,7 @@ describe("resolveAdbAvgYuan", () => {
   it("rolls parent through a fully resolved nested child tree", () => {
     const map = new Map<string, number>([
       ["信托计划", 100],
-      ["其中：结构化产业基金（产业基金部分）", 10],
+      ["结构化融资（券商）", 10],
       ["其中：外币委外", 20],
       ["其中：本币委外（市值法）", 30],
       ["其中：本币专户（成本法）", 40],

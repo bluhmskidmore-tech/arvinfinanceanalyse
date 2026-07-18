@@ -87,6 +87,20 @@ describe("workbench navigation mocks", () => {
     expect(section?.governanceStatus).toBeUndefined();
   });
 
+  it("presents pnl-by-business-insights as the approved formal analysis route", () => {
+    const section = workbenchNavigation.find(
+      (item) => item.key === "pnl-by-business-insights",
+    );
+
+    expect(section?.label).toBe("业务结构与FTP后收益分析");
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("已开放");
+    expect(section?.governanceStatus).toBeUndefined();
+    expect(section?.readinessNote).toContain("/api/pnl/by-business-insights");
+    expect(section?.readinessNote).not.toContain("candidate");
+    expect(section?.readinessNote).not.toContain("formal_use_allowed=false");
+  });
+
   it("promotes risk-overview into the live primary navigation", () => {
     const riskOverview = workbenchNavigation.find((s) => s.key === "risk-overview");
     expect(riskOverview?.readiness).toBe("live");

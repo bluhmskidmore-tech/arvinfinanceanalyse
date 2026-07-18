@@ -27,6 +27,10 @@ vi.mock("../features/pnl/PnlByBusinessPage", () => ({
   default: () => <section data-testid="pnl-by-business-page" />,
 }));
 
+vi.mock("../features/pnl-business-insights/PnlByBusinessInsightsPage", () => ({
+  default: () => <section data-testid="pnl-by-business-insights-page" />,
+}));
+
 vi.mock("../features/workbench/pages/WorkbenchPlaceholderPage", () => ({
   default: () => <section data-testid="workbench-placeholder-page" />,
 }));
@@ -56,6 +60,18 @@ describe("workbench route definitions", () => {
     render(<RouterProvider router={router} future={routerFuture} />);
 
     expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-placeholder-page")).not.toBeInTheDocument();
+  });
+
+  it("resolves /pnl-by-business-insights to its real page instead of the placeholder", async () => {
+    const router = createMemoryRouter(workbenchRoutes, {
+      initialEntries: ["/pnl-by-business-insights"],
+      future: routerFuture,
+    });
+
+    render(<RouterProvider router={router} future={routerFuture} />);
+
+    expect(await screen.findByTestId("pnl-by-business-insights-page")).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-placeholder-page")).not.toBeInTheDocument();
   });
 });

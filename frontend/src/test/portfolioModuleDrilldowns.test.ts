@@ -15,9 +15,9 @@ describe("portfolioModuleDrilldowns", () => {
     const portfolioGroup = primaryWorkbenchNavigationGroups.find(
       (group) => group.key === "portfolio",
     );
-    expect(portfolioGroup?.sections.length).toBe(15);
-    expect(PORTFOLIO_MODULE_DRILLDOWN_COUNT).toBe(15);
-    expect(getPortfolioModuleDrilldowns()).toHaveLength(15);
+    expect(portfolioGroup?.sections.length).toBe(16);
+    expect(PORTFOLIO_MODULE_DRILLDOWN_COUNT).toBe(16);
+    expect(getPortfolioModuleDrilldowns()).toHaveLength(16);
   });
 
   it("derives drilldown entries from live portfolio navigation sections", () => {
@@ -30,5 +30,8 @@ describe("portfolioModuleDrilldowns", () => {
     expect(getPortfolioModuleDrilldowns().map((item) => item.label)).toContain("日均分析");
     expect(getPortfolioModuleDrilldowns().map((item) => item.path)).toContain("/bond-analysis");
     expect(getPortfolioModuleDrilldowns().map((item) => item.path)).toContain("/pnl-by-business");
+    expect(getPortfolioModuleDrilldowns().map((item) => item.path)).toContain(
+      "/pnl-by-business-insights",
+    );
   });
 });

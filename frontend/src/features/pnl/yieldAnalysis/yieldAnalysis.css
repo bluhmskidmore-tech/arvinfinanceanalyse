@@ -1297,6 +1297,22 @@
 }
 
 @media (max-width: 640px) {
+  .yield-analysis-main-tab {
+    min-height: 44px;
+  }
+
+  .yield-analysis-control {
+    height: 44px;
+  }
+
+  .pnl-filter-button {
+    min-height: 44px;
+  }
+
+  .yield-pnl-detail-card__toggle {
+    min-height: 44px;
+  }
+
   .yield-pnl-hero,
   .pnl-filter-panel {
     padding: var(--moss-space-4);

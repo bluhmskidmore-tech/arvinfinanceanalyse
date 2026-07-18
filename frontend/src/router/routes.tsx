@@ -239,6 +239,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/pnl-by-business-insights") {
+      return {
+        path: section.path.slice(1),
+        element: themedRouteElement(<PnlByBusinessInsightsPage />),
+      };
+    }
+
     if (section.path === "/pnl-bridge") {
       return {
         path: section.path.slice(1),
@@ -433,10 +440,6 @@ export const workbenchRoutes: RouteObject[] = [
       {
         path: "pnl-formal-v1",
         element: themedRouteElement(<FormalPnlV1Page />),
-      },
-      {
-        path: "pnl-by-business-insights",
-        element: themedRouteElement(<PnlByBusinessInsightsPage />),
       },
       {
         path: "liabilities",

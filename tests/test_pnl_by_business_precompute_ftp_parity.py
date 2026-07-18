@@ -27,7 +27,7 @@ pnl_service_module = load_module(
 
 def test_precompute_rule_version_tracks_current_analysis_contract() -> None:
     assert pnl_repo_module.PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION == (
-        "rv_pnl_by_business_precompute_v7"
+        "rv_pnl_by_business_precompute_v8"
     )
 
 

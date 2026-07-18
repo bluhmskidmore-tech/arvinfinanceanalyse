@@ -543,14 +543,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "pnl-by-business-insights",
-    label: "业务种类候选分析",
+    label: "业务结构与FTP后收益分析",
     path: "/pnl-by-business-insights",
     icon: "analysis",
-    description: "业务种类集中度、负FTP持续性与份额漂移候选分析（未审批，仅供内部参考）。",
+    description: "业务种类集中度、负FTP持续性、份额漂移与规模—FTP后收益正式结构分析。",
     readiness: "live",
-    readinessLabel: "临时开放",
-    governanceStatus: "temporary-exception",
-    readinessNote: "读取 /api/pnl/by-business-candidate-insights；candidate 指标，formal_use_allowed=false，未经业务审批。",
+    readinessLabel: "已开放",
+    readinessNote: "读取 /api/pnl/by-business-insights；正式指标仅按已批准定义展示，未追溯 FI 趋势保持为独立诊断。",
   },
   {
     key: "agent",

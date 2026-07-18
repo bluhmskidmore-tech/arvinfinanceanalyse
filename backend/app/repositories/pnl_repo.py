@@ -19,7 +19,7 @@ from backend.app.repositories.task_write_guard import require_repository_task_wr
 # import the other. Bump this whenever the `/pnl-by-business` read-model
 # calculation rules change, so stale materialized rows are invalidated and
 # callers fall back to a live recompute instead of serving outdated values.
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v7"
+PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v8"
 
 
 def _position_book_key(portfolio_name: object, cost_center: object) -> str:

@@ -320,7 +320,7 @@ def test_pnl_by_business_analytical_routes_reject_invalid_calendar_date_before_s
     assert calls == []
 
 
-def test_pnl_by_business_analysis_reuses_inputs_for_same_period(monkeypatch):
+def test_pnl_by_business_analysis_reuses_inputs_for_same_period(monkeypatch, tmp_path):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
         pnl_service._clear_pnl_by_business_analysis_cache()
@@ -401,14 +401,14 @@ def test_pnl_by_business_analysis_reuses_inputs_for_same_period(monkeypatch):
 
     first = pnl_service.pnl_by_business_analysis_envelope(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         year=2026,
         as_of_date="2026-04-30",
         dimension="bond_bucket",
     )
     second = pnl_service.pnl_by_business_analysis_envelope(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         year=2026,
         as_of_date="2026-04-30",
         dimension="bond_bucket_monthly",
@@ -472,7 +472,7 @@ def test_pnl_business_classification_uses_prior_daily_balance_for_closed_positio
     assert "asset_zqtz_policy_financial_bond" in matched_keys
 
 
-def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
+def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch, tmp_path):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
         pnl_service._clear_pnl_by_business_analysis_cache()
@@ -569,7 +569,7 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
 
     payload = pnl_service.pnl_by_business_monthly_envelope(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         year=2025,
         as_of_date="2025-12-31",
     )
@@ -593,7 +593,7 @@ def test_pnl_by_business_monthly_prefers_precomputed_payload(monkeypatch):
     }
 
 
-def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
+def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch, tmp_path):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
         pnl_service._clear_pnl_by_business_analysis_cache()
@@ -662,7 +662,7 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
 
     payload = pnl_service.pnl_by_business_analysis_envelope(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         year=2025,
         as_of_date="2025-12-31",
         business_key="asset_zqtz_policy_financial_bond",
@@ -673,7 +673,7 @@ def test_pnl_by_business_analysis_prefers_precomputed_payload(monkeypatch):
     assert payload["result"] == cached_payload
 
 
-def test_pnl_by_business_ytd_prefers_precomputed_payload(monkeypatch):
+def test_pnl_by_business_ytd_prefers_precomputed_payload(monkeypatch, tmp_path):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     pnl_service.clear_pnl_by_business_ytd_cache()
     cached_payload = {
@@ -754,14 +754,14 @@ def test_pnl_by_business_ytd_prefers_precomputed_payload(monkeypatch):
 
     payload = pnl_service.pnl_by_business_ytd_envelope(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         year=2025,
         as_of_date="2025-12-31",
     )
 
     assert fetches == [
         {
-            "governance_dir": "fake-governance",
+            "governance_dir": str(tmp_path / "governance"),
             "year": 2025,
             "as_of_date": "2025-12-31",
             "result_kind": "ytd",
@@ -1999,7 +1999,7 @@ def test_pnl_service_keeps_intentional_local_cache_version_wrapper():
     assert "default_cache_version=PNL_CACHE_VERSION" in src
 
 
-def test_pnl_by_business_analytical_envelope_exposes_requested_resolved_fallback_dates(monkeypatch):
+def test_pnl_by_business_analytical_envelope_exposes_requested_resolved_fallback_dates(monkeypatch, tmp_path):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     monkeypatch.setattr(
         pnl_service,
@@ -2017,7 +2017,7 @@ def test_pnl_by_business_analytical_envelope_exposes_requested_resolved_fallback
     )
 
     payload = pnl_service._build_pnl_by_business_analytical_result_envelope(
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         requested_report_date="2026-06-15",
         resolved_report_date="2026-05-31",
         trace_id="tr_pnl_by_business_dates",
@@ -2041,7 +2041,7 @@ def test_pnl_by_business_analytical_envelope_exposes_requested_resolved_fallback
     assert meta["source_surface"] == "formal_pnl"
 
 
-def test_pnl_by_business_ytd_rechecks_precompute_before_each_request(monkeypatch):
+def test_pnl_by_business_ytd_rechecks_precompute_before_each_request(monkeypatch, tmp_path):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     pnl_service.clear_pnl_by_business_ytd_cache()
     calls: list[dict[str, object]] = []
@@ -2079,13 +2079,13 @@ def test_pnl_by_business_ytd_rechecks_precompute_before_each_request(monkeypatch
 
     first = pnl_service.pnl_by_business_ytd_envelope(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         year=2025,
         as_of_date="2025-12-31",
     )
     second = pnl_service.pnl_by_business_ytd_envelope(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         year=2025,
         as_of_date="2025-12-31",
     )
@@ -2645,7 +2645,7 @@ def test_analysis_classification_uses_formal_source_metadata_when_position_is_ab
     assert "asset_zqtz_local_government_bond" in matched_keys
 
 
-def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypatch):
+def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypatch, tmp_path):
     pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     category_module = load_module(
         "backend.app.core_finance.zqtz_asset_bond_category",
@@ -2767,7 +2767,7 @@ def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypa
 
     payload = pnl_service.pnl_by_business_ytd_envelope(
         duckdb_path="fake.duckdb",
-        governance_dir="fake-governance",
+        governance_dir=str(tmp_path / "governance"),
         year=2025,
         as_of_date="2025-02-28",
     )

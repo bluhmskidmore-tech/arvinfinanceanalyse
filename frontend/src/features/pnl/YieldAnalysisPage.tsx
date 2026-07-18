@@ -18,6 +18,28 @@ import { buildYieldAnalysisAggregates } from "./yieldAnalysis/yieldAnalysisAggre
 import "./yieldAnalysis/yieldAnalysis.css";
 
 type MainTab = "yield" | "pnl" | "period";
+type PnlReadinessState =
+  | "report_loading"
+  | "report_error"
+  | "report_empty"
+  | "detail_loading"
+  | "detail_error"
+  | "detail_empty"
+  | "incomplete"
+  | "filtered_empty"
+  | "ready";
+
+const PNL_READINESS_COPY: Record<PnlReadinessState, string> = {
+  report_loading: "报告期加载中",
+  report_error: "报告期加载失败",
+  report_empty: "暂无可用报告期",
+  detail_loading: "收益明细加载中",
+  detail_error: "收益明细加载失败",
+  detail_empty: "当前报告期暂无收益明细",
+  incomplete: "收益数据不完整",
+  filtered_empty: "筛选条件下无明细结果",
+  ready: "",
+};
 
 const STANDARD_PNL_DETAIL_HEADERS = [
   { label: "资产代码", align: "left" },
@@ -54,12 +76,31 @@ function formatMonthLabel(dateStr: string) {
   return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, "0")}月`;
 }
 
-function parseMoney(value: string | number | null | undefined) {
+function parseMoney(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined || value === "") {
-    return 0;
+    return null;
   }
   const n = Number(String(value).replace(/,/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? n : null;
+}
+
+function addPnlMoney(total: number, value: string | number | null | undefined): number {
+  const parsed = parseMoney(value);
+  return parsed === null ? Number.NaN : total + parsed;
+}
+
+function hasCompletePnlAmounts(row: PnlV1DetailRow): boolean {
+  return [
+    row.interest_income,
+    row.fair_value_change,
+    row.capital_gain,
+    row.total_pnl,
+  ].every((value) => parseMoney(value) !== null);
+}
+
+function fmtPnlWanYuan(value: string | number | null | undefined): string {
+  const parsed = parseMoney(value);
+  return parsed === null ? "—" : fmtWanYuan(parsed);
 }
 
 function fmtWanYuan(value: number) {
@@ -194,7 +235,6 @@ export default function YieldAnalysisPage() {
   });
 
   const pnlDetailData = useMemo(() => detailQuery.data?.result.rows ?? [], [detailQuery.data?.result.rows]);
-  const pnlDetailLoading = detailQuery.isLoading;
 
   const availableMonths = useMemo(() => {
     const sorted = [...reportDates].sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
@@ -244,33 +284,45 @@ export default function YieldAnalysisPage() {
     });
   }, [pnlDetailData, pnlFilterInvestType, pnlFilterPortfolio, pnlFilterSource, pnlSearch]);
 
+  const pnlAmountsComplete = useMemo(
+    () => pnlDetailData.every(hasCompletePnlAmounts),
+    [pnlDetailData],
+  );
+  const pnlComputableRows = useMemo(
+    () => (pnlAmountsComplete ? pnlFilteredRows : []),
+    [pnlAmountsComplete, pnlFilteredRows],
+  );
+
   const pnlDetailTotals = useMemo(() => {
-    return pnlFilteredRows.reduce(
+    return pnlComputableRows.reduce(
       (acc, item) => ({
         rowsCount: acc.rowsCount + 1,
-        interest: acc.interest + parseMoney(item.interest_income),
-        fairValue: acc.fairValue + parseMoney(item.fair_value_change),
-        capitalGain: acc.capitalGain + parseMoney(item.capital_gain),
-        total: acc.total + parseMoney(item.total_pnl),
+        interest: addPnlMoney(acc.interest, item.interest_income),
+        fairValue: addPnlMoney(acc.fairValue, item.fair_value_change),
+        capitalGain: addPnlMoney(acc.capitalGain, item.capital_gain),
+        total: addPnlMoney(acc.total, item.total_pnl),
       }),
       { rowsCount: 0, interest: 0, fairValue: 0, capitalGain: 0, total: 0 },
     );
-  }, [pnlFilteredRows]);
+  }, [pnlComputableRows]);
 
   const standardDetailRows = useMemo(
-    () => pnlFilteredRows.filter((r) => r.source === "FI" || !r.source),
-    [pnlFilteredRows],
+    () => pnlComputableRows.filter((r) => r.source === "FI" || !r.source),
+    [pnlComputableRows],
   );
-  const nonstdDetailRows = useMemo(() => pnlFilteredRows.filter((r) => r.source === "NonStd"), [pnlFilteredRows]);
+  const nonstdDetailRows = useMemo(
+    () => pnlComputableRows.filter((r) => r.source === "NonStd"),
+    [pnlComputableRows],
+  );
 
   const standardDetailTotals = useMemo(
     () =>
       standardDetailRows.reduce(
         (acc, r) => ({
-          interest: acc.interest + parseMoney(r.interest_income),
-          fairValue: acc.fairValue + parseMoney(r.fair_value_change),
-          capitalGain: acc.capitalGain + parseMoney(r.capital_gain),
-          total: acc.total + parseMoney(r.total_pnl),
+          interest: addPnlMoney(acc.interest, r.interest_income),
+          fairValue: addPnlMoney(acc.fairValue, r.fair_value_change),
+          capitalGain: addPnlMoney(acc.capitalGain, r.capital_gain),
+          total: addPnlMoney(acc.total, r.total_pnl),
         }),
         { interest: 0, fairValue: 0, capitalGain: 0, total: 0 },
       ),
@@ -281,26 +333,57 @@ export default function YieldAnalysisPage() {
     () =>
       nonstdDetailRows.reduce(
         (acc, r) => ({
-          interest: acc.interest + parseMoney(r.interest_income),
-          fairValue: acc.fairValue + parseMoney(r.fair_value_change),
-          capitalGain: acc.capitalGain + parseMoney(r.capital_gain),
-          total: acc.total + parseMoney(r.total_pnl),
+          interest: addPnlMoney(acc.interest, r.interest_income),
+          fairValue: addPnlMoney(acc.fairValue, r.fair_value_change),
+          capitalGain: addPnlMoney(acc.capitalGain, r.capital_gain),
+          total: addPnlMoney(acc.total, r.total_pnl),
         }),
         { interest: 0, fairValue: 0, capitalGain: 0, total: 0 },
       ),
     [nonstdDetailRows],
   );
 
-  const aggregatePnL = useMemo(() => buildYieldAnalysisAggregates(pnlFilteredRows), [pnlFilteredRows]);
+  const aggregatePnL = useMemo(
+    () => buildYieldAnalysisAggregates(pnlComputableRows),
+    [pnlComputableRows],
+  );
   const nonstdClassTopRows = useMemo(() => aggregatePnL.by_asset_class_nonstd.slice(0, 12), [aggregatePnL]);
   const largestDriver = useMemo(() => {
     const [first] = aggregatePnL.by_portfolio;
     return first;
   }, [aggregatePnL.by_portfolio]);
   const sourceMixText = useMemo(() => {
-    if (pnlFilteredRows.length === 0) return "暂无明细";
+    if (pnlComputableRows.length === 0) return "暂无明细";
     return `${standardDetailRows.length} 标准 / ${nonstdDetailRows.length} 非标`;
-  }, [nonstdDetailRows.length, pnlFilteredRows.length, standardDetailRows.length]);
+  }, [nonstdDetailRows.length, pnlComputableRows.length, standardDetailRows.length]);
+
+  const pnlDetailReady =
+    detailQuery.isSuccess && pnlDetailData.length > 0 && pnlAmountsComplete;
+  const pnlReadoutReady = pnlDetailReady && pnlFilteredRows.length > 0;
+  const pnlReadiness = useMemo<PnlReadinessState>(() => {
+    if (datesQuery.isLoading) return "report_loading";
+    if (datesQuery.isError) return "report_error";
+    if (reportDates.length === 0) return "report_empty";
+    if (!selectedPnlDate || detailQuery.isLoading || !detailQuery.isSuccess) {
+      return detailQuery.isError ? "detail_error" : "detail_loading";
+    }
+    if (detailQuery.isError) return "detail_error";
+    if (pnlDetailData.length === 0) return "detail_empty";
+    if (!pnlAmountsComplete) return "incomplete";
+    if (pnlFilteredRows.length === 0) return "filtered_empty";
+    return "ready";
+  }, [
+    datesQuery.isError,
+    datesQuery.isLoading,
+    detailQuery.isError,
+    detailQuery.isLoading,
+    detailQuery.isSuccess,
+    pnlAmountsComplete,
+    pnlDetailData.length,
+    pnlFilteredRows.length,
+    reportDates.length,
+    selectedPnlDate,
+  ]);
 
   const yieldData = yieldQuery.data;
   const history = useMemo(() => yieldData?.history ?? [], [yieldData?.history]);
@@ -580,7 +663,40 @@ export default function YieldAnalysisPage() {
             </div>
           </div>
 
-          <div className="yield-pnl-conclusion" data-testid="yield-analysis-pnl-readout">
+          {pnlError ? (
+            <div className="yield-analysis-note yield-analysis-note--error" role="alert">
+              {pnlError}
+            </div>
+          ) : null}
+
+          {pnlReadiness !== "ready" ? (
+            pnlReadiness === "report_loading" || pnlReadiness === "detail_loading" ? (
+              <div className="yield-analysis-loading" role="status">
+                <Spin />
+                <p className="yield-analysis-loading-caption">
+                  {PNL_READINESS_COPY[pnlReadiness]}
+                </p>
+              </div>
+            ) : (
+              <div
+                className={
+                  pnlReadiness === "report_error" || pnlReadiness === "detail_error"
+                    ? "yield-analysis-note yield-analysis-note--error"
+                    : "yield-analysis-empty"
+                }
+                role={
+                  pnlReadiness === "report_error" || pnlReadiness === "detail_error"
+                    ? "alert"
+                    : "status"
+                }
+              >
+                {PNL_READINESS_COPY[pnlReadiness]}
+              </div>
+            )
+          ) : null}
+
+          {pnlReadoutReady ? (
+            <div className="yield-pnl-conclusion" data-testid="yield-analysis-pnl-readout">
             <div className="yield-pnl-conclusion__primary">
               <div className="yield-pnl-hero__total">
                 <span className="yield-pnl-hero__label">筛选后合计损益</span>
@@ -613,9 +729,8 @@ export default function YieldAnalysisPage() {
               </span>
               <span className="yield-pnl-toolbar__meta-item">来源结构：{sourceMixText}</span>
             </div>
-          </div>
-
-
+            </div>
+          ) : null}
 
           <PnlFilterBar
             filterSource={pnlFilterSource}
@@ -635,45 +750,31 @@ export default function YieldAnalysisPage() {
             }}
           />
 
-          {pnlError ? (
-            <div className="yield-analysis-note yield-analysis-note--error">{pnlError}</div>
-          ) : null}
-
-          {!pnlDetailLoading && pnlDetailData.length > 0 ? (
-            pnlFilteredRows.length === 0 ? (
-              <div className="yield-analysis-empty">
-                筛选条件下无明细结果
+          {pnlReadoutReady ? (
+            <section className="yield-pnl-evidence-section" aria-labelledby="yield-pnl-ranking-heading">
+              <h2 id="yield-pnl-ranking-heading" className="yield-pnl-section-heading">
+                按维度排行（点击可筛选）
+              </h2>
+              <div className="yield-pnl-ranking-grid">
+                <RankingBarsCard title="按投资组合" rows={aggregatePnL.by_portfolio} onPick={(k) => setPnlFilterPortfolio(k)} />
+                <RankingBarsCard title="按数据来源" rows={aggregatePnL.by_source} onPick={(k) => setPnlFilterSource(k)} />
+                <RankingBarsCard title="按科目名称（Top）" rows={aggregatePnL.by_bond_name} onPick={(k) => setPnlSearch(k)} />
+                {nonstdClassTopRows.length > 0 ? (
+                  <RankingBarsCard
+                    title="按非标分类"
+                    rows={aggregatePnL.by_asset_class_nonstd}
+                    onPick={(k) => {
+                      setPnlFilterSource("NonStd");
+                      setPnlSearch(k);
+                    }}
+                  />
+                ) : null}
+                <RankingBarsCard title="按币种（投资类型）" rows={aggregatePnL.by_asset_type} onPick={(k) => setPnlFilterInvestType(k)} />
               </div>
-            ) : (
-              <section className="yield-pnl-evidence-section" aria-labelledby="yield-pnl-ranking-heading">
-                <h2 id="yield-pnl-ranking-heading" className="yield-pnl-section-heading">
-                  按维度排行（点击可筛选）
-                </h2>
-                <div className="yield-pnl-ranking-grid">
-                  <RankingBarsCard title="按投资组合" rows={aggregatePnL.by_portfolio} onPick={(k) => setPnlFilterPortfolio(k)} />
-                  <RankingBarsCard title="按数据来源" rows={aggregatePnL.by_source} onPick={(k) => setPnlFilterSource(k)} />
-                  <RankingBarsCard title="按科目名称（Top）" rows={aggregatePnL.by_bond_name} onPick={(k) => setPnlSearch(k)} />
-                  {nonstdClassTopRows.length > 0 ? (
-                    <RankingBarsCard
-                      title="按非标分类"
-                      rows={aggregatePnL.by_asset_class_nonstd}
-                      onPick={(k) => {
-                        setPnlFilterSource("NonStd");
-                        setPnlSearch(k);
-                      }}
-                    />
-                  ) : null}
-                  <RankingBarsCard title="按币种（投资类型）" rows={aggregatePnL.by_asset_type} onPick={(k) => setPnlFilterInvestType(k)} />
-                </div>
-              </section>
-            )
+            </section>
           ) : null}
 
-          {pnlDetailLoading ? (
-            <div className="yield-analysis-loading">
-              <Spin />
-            </div>
-          ) : standardDetailRows.length > 0 ? (
+          {pnlReadoutReady && standardDetailRows.length > 0 ? (
             <section className="yield-pnl-evidence-section" aria-labelledby="yield-pnl-standard-detail-heading">
               <h2 id="yield-pnl-standard-detail-heading" className="yield-pnl-section-heading">
                 标准债券明细
@@ -713,11 +814,11 @@ export default function YieldAnalysisPage() {
                           </td>
                           <td>{row.portfolio || "—"}</td>
                           <td>{row.asset_type || "—"}</td>
-                          <td data-align="right">{fmtWanYuan(parseMoney(row.interest_income))}</td>
-                          <td data-align="right">{fmtWanYuan(parseMoney(row.fair_value_change))}</td>
-                          <td data-align="right">{fmtWanYuan(parseMoney(row.capital_gain))}</td>
+                          <td data-align="right">{fmtPnlWanYuan(row.interest_income)}</td>
+                          <td data-align="right">{fmtPnlWanYuan(row.fair_value_change)}</td>
+                          <td data-align="right">{fmtPnlWanYuan(row.capital_gain)}</td>
                           <td data-align="right" className="yield-pnl-detail-table__total">
-                            {fmtWanYuan(parseMoney(row.total_pnl))}
+                            {fmtPnlWanYuan(row.total_pnl)}
                           </td>
                         </tr>
                       ))}
@@ -740,11 +841,9 @@ export default function YieldAnalysisPage() {
               )}
               </div>
             </section>
-          ) : selectedPnlDate && !pnlDetailLoading ? (
-            <div className="yield-analysis-empty">暂无明细数据</div>
           ) : null}
 
-          {!pnlDetailLoading && nonstdDetailRows.length > 0 ? (
+          {pnlReadoutReady && nonstdDetailRows.length > 0 ? (
             <section className="yield-pnl-evidence-section" aria-labelledby="yield-pnl-nonstd-detail-heading">
               <h2 id="yield-pnl-nonstd-detail-heading" className="yield-pnl-section-heading">
                 非标明细
@@ -772,11 +871,11 @@ export default function YieldAnalysisPage() {
                       <tr key={`ns-${row.trace_id}-${idx}`}>
                         <td>{row.asset_code || "—"}</td>
                         <td>{row.asset_class || row.bond_name || "—"}</td>
-                        <td data-align="right">{fmtWanYuan(parseMoney(row.interest_income))}</td>
-                        <td data-align="right">{fmtWanYuan(parseMoney(row.fair_value_change))}</td>
-                        <td data-align="right">{fmtWanYuan(parseMoney(row.capital_gain))}</td>
+                        <td data-align="right">{fmtPnlWanYuan(row.interest_income)}</td>
+                        <td data-align="right">{fmtPnlWanYuan(row.fair_value_change)}</td>
+                        <td data-align="right">{fmtPnlWanYuan(row.capital_gain)}</td>
                         <td data-align="right" className="yield-pnl-detail-table__total">
-                          {fmtWanYuan(parseMoney(row.total_pnl))}
+                          {fmtPnlWanYuan(row.total_pnl)}
                         </td>
                       </tr>
                     ))}
