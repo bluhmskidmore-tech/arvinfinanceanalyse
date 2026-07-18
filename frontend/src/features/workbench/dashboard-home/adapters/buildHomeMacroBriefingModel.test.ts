@@ -848,4 +848,35 @@ describe("buildHomeMacroBriefingModel release history", () => {
       previousValue: "4月 CPI +1.2% / PPI +2.8%",
     });
   });
+
+  it("keeps maintained history after its release rows leave the forward window", () => {
+    const result = buildHomeMacroBriefingModel({
+      todayIsoDate: "2026-07-16",
+      newsEvents: [],
+      fallbackNewsEvents: [],
+      newsLoading: false,
+      newsError: false,
+      supplyCalendar: {
+        items: [],
+        status: "empty",
+        windowLabel: "2026-07-16 to 2026-08-30",
+        message: null,
+      },
+    });
+
+    expect(result.releaseItems.map((item) => item.id)).toEqual([
+      "fomc-2026-07",
+      "bea-gdp-advance-2026-q2",
+      "nbs-pmi-2026-07",
+    ]);
+    expect(result.releaseItems.every((item) => !item.history)).toBe(true);
+    expect(result.releaseHistoryItems.map((item) => item.id)).toEqual([
+      "nbs-pmi-2026-06",
+      "ism-manufacturing-pmi-2026-07",
+      "bls-employment-situation-2026-06",
+      "ism-services-pmi-2026-07",
+      "nbs-cpi-ppi-2026-06",
+      "bls-cpi-2026-06",
+    ]);
+  });
 });

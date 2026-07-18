@@ -200,6 +200,64 @@ export type HomeIncomeTrendPayload = {
   warnings: string[];
 };
 
+export type HomeMacroSourceStatus = "ready" | "partial" | "stale" | "fallback" | "source_pending" | "error";
+export type HomeMacroDisplayUnit = "index" | "pct" | "persons";
+export type HomeMacroChangeUnit = "index_point" | "pct_point" | "persons" | "bp";
+export type HomeMacroDirection = "up" | "down" | "flat" | "unavailable";
+
+export type HomeMacroReleaseContextMetric = {
+  metric_key: string;
+  label: string;
+  actual_value: number | null;
+  previous_value: number | null;
+  change_value: number | null;
+  display_unit: HomeMacroDisplayUnit;
+  change_unit: HomeMacroChangeUnit;
+  precision: number;
+  direction: HomeMacroDirection;
+};
+
+export type HomeMacroReleaseContextHistoryItem = {
+  indicator_key: string;
+  title: string;
+  region: "CN" | "US";
+  category: "activity" | "inflation" | "growth" | "employment" | "monetary_policy";
+  importance: "high" | "medium" | "low";
+  observation_date: string | null;
+  previous_observation_date: string | null;
+  reference_period: string | null;
+  previous_reference_period: string | null;
+  release_date: string | null;
+  source_status: HomeMacroSourceStatus;
+  source_name: string | null;
+  metrics: HomeMacroReleaseContextMetric[];
+  notes: string[];
+};
+
+export type HomeMacroReleaseContextCoverage = {
+  configured_count: number;
+  ready_count: number;
+  partial_count: number;
+  stale_count: number;
+  fallback_count: number;
+  source_pending_count: number;
+  error_count: number;
+};
+
+export type HomeMacroReleaseContextPayload = {
+  window_start_date: string;
+  window_end_date: string;
+  history_items: HomeMacroReleaseContextHistoryItem[];
+  coverage: HomeMacroReleaseContextCoverage;
+  warnings: string[];
+};
+
+export type GetHomeMacroReleaseContextOptions = {
+  startDate: string;
+  endDate: string;
+  historyLimit?: number;
+};
+
 export type GetHomeSnapshotOptions = {
   reportDate?: string;
   allowPartial?: boolean;

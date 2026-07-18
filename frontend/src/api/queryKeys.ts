@@ -142,6 +142,20 @@ export const apiQueryKeys = {
       normalizeReportDate(reportDate),
       limit,
     ] as const,
+  homeMacroReleaseContext: (
+    mode: string,
+    windowStartDate: string,
+    windowEndDate: string,
+    historyLimit: number,
+  ) =>
+    [
+      "home",
+      "macro-release-context",
+      mode,
+      windowStartDate,
+      windowEndDate,
+      historyLimit,
+    ] as const,
   homeIncomeTrend: (
     mode: string,
     reportDate: string | null | undefined,

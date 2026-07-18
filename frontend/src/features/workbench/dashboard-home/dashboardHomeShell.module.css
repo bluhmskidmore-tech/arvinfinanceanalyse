@@ -96,28 +96,9 @@
   }
 }
 
-.dhPage::before {
-  content: "";
-  position: absolute;
-  top: 10%;
-  left: 5%;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.04) 0%, rgba(59, 130, 246, 0) 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-
+.dhPage::before,
 .dhPage::after {
-  content: "";
-  position: absolute;
-  top: 40%;
-  right: 5%;
-  width: 650px;
-  height: 650px;
-  background: radial-gradient(circle, rgba(114, 167, 220, 0.03) 0%, rgba(114, 167, 220, 0) 70%);
-  pointer-events: none;
-  z-index: 0;
+  content: none;
 }
 
 .dhLayout {
@@ -308,6 +289,7 @@
   gap: 6px;
   height: 30px;
   padding: 0 10px;
+  position: relative;
   transition: border-color 120ms ease, background 120ms ease;
   width: min(340px, 34vw);
 }
@@ -331,6 +313,143 @@
 
 .dhSearch input::placeholder {
   color: var(--ib-ink-muted);
+}
+
+/* ── 报告日期口径指示器 ── */
+.dhDateContext {
+  align-items: center;
+  color: var(--ib-ink-muted);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 500;
+  gap: 6px;
+  max-width: min(360px, 32vw);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dhDateContextDot {
+  background: var(--dh-green);
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
+.dhDateContextDivergent {
+  color: var(--dh-amber);
+}
+
+.dhDateContextDivergent .dhDateContextDot {
+  background: var(--dh-amber);
+}
+
+/* ── 搜索候选下拉（combobox listbox） ── */
+.dhSearchClear {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--ib-ink-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 18px;
+}
+
+.dhSearchClear:hover {
+  color: var(--dh-ink);
+}
+
+.dhSearchListbox {
+  background: var(--dh-card);
+  border: 1px solid var(--dh-line-strong);
+  border-radius: 4px;
+  box-shadow: 0 12px 32px rgba(3, 7, 13, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  left: 0;
+  list-style: none;
+  margin: 4px 0 0;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 4px 0;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 40;
+}
+
+.dhSearchOption {
+  align-items: center;
+  color: var(--dh-ink-2);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 7px 10px;
+}
+
+.dhSearchOption:hover,
+.dhSearchOptionActive {
+  background: var(--dh-blue-soft);
+  color: var(--dh-ink);
+}
+
+.dhSearchOption :global(.moss-light-icon) {
+  color: var(--dh-blue-2);
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.dhSearchOptionName {
+  color: var(--dh-ink);
+  font-weight: 600;
+}
+
+.dhSearchOptionType {
+  background: var(--dh-surface-muted);
+  border: 1px solid var(--dh-line-soft);
+  border-radius: 2px;
+  color: var(--dh-muted);
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+.dhSearchOptionDesc {
+  color: var(--dh-muted);
+  flex: 1;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhSearchNoResults {
+  color: var(--dh-muted);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.dhSearchClearInline {
+  background: transparent;
+  border: 0;
+  color: var(--dh-blue-2);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.dhSearchClearInline:hover {
+  color: var(--dh-blue);
 }
 
 .dhStatusRow {
@@ -2389,6 +2508,12 @@ a.dhEvidenceRow:hover {
   font-weight: 500;
 }
 
+.dhApiSourceGrid:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--dh-api-cyan);
+  outline-offset: 2px;
+}
+
 .dhSourceStatus {
   color: var(--dh-green);
   font-weight: 600;
@@ -3953,7 +4078,7 @@ a.dhEvidenceRow:hover {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.dhApiDecisionBody h2 {
+.dhApiDecisionBody h3 {
   color: #f4f7fb;
   font-size: 30px;
   font-weight: 780;
@@ -4703,7 +4828,7 @@ i.dhApiStateMuted {
   align-items: stretch;
 }
 
-.dhApiDecisionBody h2 {
+.dhApiDecisionBody h3 {
   max-width: 720px;
 }
 
@@ -5239,5 +5364,1292 @@ i.dhApiStateMuted {
   .dhApiBackedHome .dhRailSection,
   .dhDeferredIndexItem {
     transition-duration: 0.01ms;
+  }
+}
+
+/* Homepage information alignment: size against the cockpit content area, not the full viewport. */
+.dhApiBackedHome .dhLayout {
+  column-gap: 16px;
+  row-gap: 18px;
+}
+
+.dhApiBackedHome .dhPrimaryMain {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.dhApiBackedHome .dhDeferredMain {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.dhApiBackedHome .dhRail {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.dhApiKpiGrid {
+  gap: 12px;
+}
+
+.dhApiKpiCard {
+  padding-inline: 12px;
+}
+
+.dhApiKpiValue {
+  font-size: clamp(20px, 1.5vw, 25px);
+}
+
+@media (min-width: 721px) and (max-width: 1560px) {
+  .dhApiBackedHome .dhTopbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dhApiBackedHome .dhTopbarLeft,
+  .dhApiBackedHome .dhTopbarRight {
+    width: 100%;
+  }
+
+  .dhApiBackedHome .dhTopbarRight {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 1280px) {
+  .dhApiBackedHome .dhPrimaryMain {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .dhApiBackedHome .dhRail {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .dhApiBackedHome .dhDeferredMain {
+    grid-column: 1;
+    grid-row: 3;
+  }
+}
+
+@media (max-width: 720px) {
+  .dhApiKpiGrid {
+    gap: 8px;
+  }
+
+  .dhApiKpiCard {
+    padding-inline: 8px;
+  }
+
+  .dhApiKpiValue {
+    font-size: clamp(16px, 4.6vw, 20px);
+  }
+
+  .dhApiBackedHome .dhStatusRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dhApiBackedHome .dhStatusRow > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .dhApiTopRail span:last-child {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}
+
+/* ============================================================
+ * 视觉降噪 + 可访问性覆写（暗色终端 · 首页）
+ * 对齐 DESIGN.md §2.2（面板靠层级不靠阴影）、§3（字号/层级）、
+ * §4（语义色）、§6（状态=内容）、§7（中文化）、§8（动效）、
+ * §11（反模式清单）。
+ * 仅作用于首页 dashboard-home，不改其他页面。
+ * ============================================================ */
+
+/* ── 1. 移除页面径向渐变光斑（"AI 驾驶舱"感） ── */
+.dhPage::before,
+.dhPage::after {
+  content: none;
+  background: none;
+}
+
+/* ── 2. Hero：去渐变背景/重阴影/网格 ::before/内描边 ::after ── */
+.dhApiBackedHome .dhApiHero,
+.dhApiHero {
+  background: var(--dh-api-panel);
+  border: 1px solid var(--dh-api-line);
+  border-top: 1px solid var(--dh-api-line);
+  box-shadow: none;
+  padding: 16px;
+}
+
+.dhApiBackedHome .dhApiHero::before,
+.dhApiHero::before,
+.dhApiBackedHome .dhApiHero::after,
+.dhApiHero::after {
+  content: none;
+  background: none;
+}
+
+/* 装饰画布：仅作为透明占位（动画已在 TS 中静态化） */
+.dhApiHeroCanvas {
+  opacity: 0;
+  display: none;
+}
+
+/* ── 3. 决策/来源/KPI 卡：去玻璃、阴影、网格线；改用面板背景 + 细线 ── */
+.dhApiBackedHome .dhApiDecisionBand,
+.dhApiBackedHome .dhApiSourceGate,
+.dhApiBackedHome .dhApiKpiCard,
+.dhApiDecisionBand,
+.dhApiSourceGate,
+.dhApiKpiCard {
+  background: var(--dh-api-panel-2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--dh-api-line);
+  box-shadow: none;
+}
+
+.dhApiBackedHome .dhApiDecisionBand::before,
+.dhApiBackedHome .dhApiSourceGate::before,
+.dhApiDecisionBand::before,
+.dhApiSourceGate::before {
+  content: none;
+  background: none;
+}
+
+/* ── 4. KPI 卡：去掉顶部发光条 + 内部网格 ::after + 语义色块 ── */
+.dhApiBackedHome .dhApiKpiCard::before,
+.dhApiKpiCard::before,
+.dhApiBackedHome .dhApiKpiCard::after,
+.dhApiKpiCard::after {
+  content: none;
+  background: none;
+  box-shadow: none;
+  opacity: 0;
+}
+
+.dhApiBackedHome .dhApiKpiCard[data-semantic="scale"],
+.dhApiBackedHome .dhApiKpiCard[data-semantic="pnl"],
+.dhApiBackedHome .dhApiKpiCard[data-semantic="duration"],
+.dhApiBackedHome .dhApiKpiCard[data-semantic="ytm"],
+.dhApiKpiCard[data-semantic="scale"],
+.dhApiKpiCard[data-semantic="pnl"],
+.dhApiKpiCard[data-semantic="duration"],
+.dhApiKpiCard[data-semantic="ytm"] {
+  background: var(--dh-api-panel-2);
+}
+
+.dhApiBackedHome .dhApiKpiCard[data-semantic="scale"] .dhApiKpiCode,
+.dhApiBackedHome .dhApiKpiCard[data-semantic="pnl"] .dhApiKpiCode,
+.dhApiBackedHome .dhApiKpiCard[data-semantic="duration"] .dhApiKpiCode,
+.dhApiBackedHome .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiCode,
+.dhApiKpiCard[data-semantic="scale"] .dhApiKpiCode,
+.dhApiKpiCard[data-semantic="pnl"] .dhApiKpiCode,
+.dhApiKpiCard[data-semantic="duration"] .dhApiKpiCode,
+.dhApiKpiCard[data-semantic="ytm"] .dhApiKpiCode {
+  color: var(--dh-api-muted);
+}
+
+/* ── 5. 来源核验行：去装饰点强调 + 行高 12px 起步 ── */
+.dhApiBackedHome .dhApiSourceRow b,
+.dhApiSourceRow b {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.dhApiBackedHome .dhApiSourceRow span,
+.dhApiBackedHome .dhApiSourceRow code,
+.dhApiSourceRow span,
+.dhApiSourceRow code {
+  font-size: 12px;
+}
+
+/* ── 6. 证据分数：去 34px 大号绿字（AI 驾驶舱感），降为普通状态文本 ── */
+.dhApiBackedHome .dhApiEvidenceScore strong,
+.dhApiEvidenceScore strong {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--dh-api-soft);
+  line-height: 1.3;
+}
+
+.dhApiBackedHome .dhApiEvidenceScore span,
+.dhApiBackedHome .dhApiEvidenceScore b,
+.dhApiEvidenceScore span,
+.dhApiEvidenceScore b {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── 7. 顶栏 / 工具条：去阴影、扁平 ── */
+.dhApiBackedHome .dhApiTopRail,
+.dhApiTopRail {
+  box-shadow: none;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 38px;
+  padding: 6px 14px;
+}
+
+.dhApiBackedHome .dhApiTopRail > strong,
+.dhApiTopRail > strong {
+  display: none;
+}
+
+/* ── 8. 命令条同步点：去发光 ── */
+.dhCommandStatusDot {
+  box-shadow: none;
+}
+
+/* ── 9. 首页字号最小不低于 12px（DESIGN.md §3 + 任务约束） ── */
+.dhApiBackedHome .dhApiDecisionEvidence,
+.dhApiDecisionEvidence,
+.dhApiBackedHome .dhStatusPill .dhNum,
+.dhStatusPill .dhNum,
+.dhApiBackedHome .dhApiKpiStatus,
+.dhApiKpiStatus,
+.dhApiBackedHome .dhRailMutedNote,
+.dhRailMutedNote,
+.dhApiBackedHome .dhApiModuleHead span,
+.dhApiModuleHead span {
+  font-size: 12px;
+}
+
+/* ── 10. 标题层级（h1/h2/h3）字号稳定化 ── */
+.dhApiBackedHome .dhApiModuleHead h2,
+.dhApiModuleHead h2 {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--dh-api-ink);
+}
+
+.dhApiBackedHome .dhApiDecisionBody h3,
+.dhApiDecisionBody h3 {
+  font-size: clamp(22px, 1.8vw, 26px);
+  font-weight: 680;
+  line-height: 1.22;
+  color: var(--dh-api-ink);
+  letter-spacing: 0;
+}
+
+/* ── 11. 弱化非关键元数据：等宽粗体只用于对比性数字 ── */
+.dhApiBackedHome .dhApiTopRail span,
+.dhApiTopRail span {
+  font-family: var(--dh-font-sans);
+  font-weight: 500;
+}
+
+.dhApiBackedHome .dhApiTopRail span:last-child,
+.dhApiTopRail span:last-child {
+  font-family: var(--dh-font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 12. 可访问性：focus-visible 全局清晰焦点 ── */
+.dhApiBackedHome :focus-visible,
+.dhApiBackedHome a:focus-visible,
+.dhApiBackedHome button:focus-visible,
+.dhApiBackedHome input:focus-visible,
+.dhApiBackedHome [role="combobox"]:focus-visible,
+.dhApiBackedHome [role="listbox"]:focus-visible,
+.dhApiBackedHome [role="option"]:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* ── 13. 可访问性：触摸目标 ≥ 44×44（移动端） ── */
+@media (max-width: 720px) {
+  .dhApiBackedHome .dhDateSelect,
+  .dhApiBackedHome .dhSearch,
+  .dhApiBackedHome .dhRefreshBtn,
+  .dhApiBackedHome .dhPartialToggle,
+  .dhApiBackedHome .dhStatusPill,
+  .dhApiBackedHome .dhCommandItem {
+    min-height: 44px;
+  }
+  .dhApiBackedHome .dhSearch input,
+  .dhApiBackedHome .dhDateSelect input {
+    min-height: 44px;
+  }
+  .dhApiBackedHome .dhSearchClear,
+  .dhSearchClear {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .dhApiBackedHome .dhApiKpiCard,
+  .dhApiKpiCard {
+    padding: 14px;
+  }
+}
+
+/* ── 14. 可访问性：prefers-reduced-motion 关闭所有非必要动画 ── */
+@media (prefers-reduced-motion: reduce) {
+  .dhApiBackedHome *,
+  .dhApiBackedHome *::before,
+  .dhApiBackedHome *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .dhApiHeroCanvas {
+    display: none !important;
+  }
+}
+
+/* ── 15. 200% 缩放：内容不遮挡（面板 padding 留足 + 横向滚动友好） ── */
+@media (min-resolution: 2dppx) {
+  .dhApiBackedHome .dhApiHero,
+  .dhApiHero {
+    padding: 18px;
+  }
+}
+
+/* Homepage closure: actionable hero, readable action ownership, and responsive evidence flow. */
+.dhApiPrimaryAction {
+  align-items: center;
+  background: rgba(114, 167, 220, 0.12);
+  border: 1px solid rgba(114, 167, 220, 0.42);
+  border-radius: 4px;
+  color: #eef6ff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 10px;
+  justify-content: space-between;
+  line-height: 1.35;
+  margin-top: 12px;
+  min-height: 44px;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.dhApiPrimaryAction:hover {
+  background: rgba(114, 167, 220, 0.2);
+  border-color: rgba(114, 167, 220, 0.62);
+  color: #ffffff;
+}
+
+.dhApiDecisionBody h3 {
+  color: var(--dh-api-ink);
+  font-size: clamp(22px, 1.8vw, 26px);
+  font-weight: 680;
+  line-height: 1.22;
+  margin: 0 0 10px;
+  text-wrap: balance;
+}
+
+.dhApiSourceMobileSummary {
+  color: var(--dh-api-muted);
+  display: none;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dhApiBackedHome .dhRailActionMeta,
+.dhApiBackedHome .dhRailActionOwnership {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 4px 10px;
+  line-height: 1.45;
+}
+
+.dhApiBackedHome .dhRailActionMeta {
+  color: var(--dh-api-soft);
+}
+
+.dhApiBackedHome .dhRailActionOwnership {
+  color: var(--dh-api-amber) !important;
+}
+
+.dhApiBackedHome .dhRailActionOwnership > span {
+  white-space: nowrap;
+}
+
+@media (min-width: 1281px) {
+  .dhApiBackedHome .dhRail {
+    background: var(--dh-api-panel);
+    border: 1px solid var(--dh-api-line);
+    gap: 0;
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    padding: 0 14px;
+  }
+
+  .dhApiBackedHome .dhDeferredMain {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .dhApiBackedHome .dhRailCard,
+  .dhApiBackedHome .dhRailSection {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    border-top: 1px solid var(--dh-api-line-soft) !important;
+    box-shadow: none !important;
+    padding: 14px 0 !important;
+  }
+
+  .dhApiBackedHome .dhRail > :first-child {
+    border-top: 0 !important;
+  }
+
+  .dhApiBackedHome .dhRailCard::before,
+  .dhApiBackedHome .dhRailSection::before {
+    content: none;
+  }
+
+  .dhApiBackedHome .dhRailCard:hover,
+  .dhApiBackedHome .dhRailSection:hover {
+    box-shadow: none !important;
+    transform: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .dhApiBackedHome .dhTopbar {
+    gap: 6px;
+    padding: 8px 12px;
+  }
+
+  .dhApiBackedHome .dhTopbarLeft {
+    align-items: center;
+    display: grid;
+    gap: 6px 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dhApiBackedHome .dhTitleBrand {
+    grid-column: 1;
+    width: auto;
+  }
+
+  .dhApiBackedHome .dhTitleCaption {
+    display: none;
+  }
+
+  .dhApiBackedHome .dhSearch {
+    grid-column: 2;
+    width: 100%;
+  }
+
+  .dhApiBackedHome .dhToolbarControl {
+    align-items: center;
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .dhApiBackedHome .dhDateContext {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dhApiBackedHome .dhTopbarRight {
+    gap: 6px;
+  }
+
+  .dhApiTopRail {
+    gap: 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 38px;
+    padding: 5px 8px;
+  }
+
+  .dhApiTopRail > span:last-child {
+    grid-column: 2;
+  }
+
+  .dhApiBackedHome .dhApiHero,
+  .dhApiHero {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .dhApiDecisionBand {
+    gap: 10px;
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .dhApiDecisionBody {
+    gap: 8px;
+  }
+
+  .dhApiDecisionBody h3 {
+    font-size: 17px;
+    margin-bottom: 7px;
+  }
+
+  .dhApiDecisionBody p {
+    background: transparent;
+    border: 0 !important;
+    border-left: 2px solid rgba(201, 165, 101, 0.46) !important;
+    border-radius: 0;
+    clip: auto;
+    clip-path: none;
+    display: -webkit-box !important;
+    font-size: 12px;
+    height: auto;
+    line-height: 1.45;
+    margin: 0;
+    overflow: hidden;
+    padding: 2px 0 2px 8px !important;
+    position: static !important;
+    white-space: normal;
+    width: auto;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .dhApiPrimaryAction {
+    margin-top: 8px;
+    width: 100%;
+  }
+
+  .dhApiEvidenceScore {
+    min-height: 34px;
+    min-width: 0;
+    padding: 6px 8px;
+  }
+
+  .dhApiSourceGate {
+    gap: 7px;
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .dhApiSourceMobileSummary {
+    display: block;
+  }
+
+  .dhApiSourceRow:nth-child(n + 3) {
+    display: none;
+  }
+
+  .dhApiSourceGrid {
+    gap: 5px;
+  }
+
+  .dhApiBackedHome .dhApiKpiCard,
+  .dhApiKpiCard {
+    min-height: 108px;
+    padding: 12px 8px;
+  }
+
+  .dhApiKpiValue,
+  .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiValue {
+    font-size: clamp(15px, 4.2vw, 19px);
+    letter-spacing: -0.02em;
+  }
+}
+
+/* PAGE-DASH contract closure: governed product-category headline and semantic rail titles. */
+.dhApiBackedHome .dhRailCardHeader > h2 {
+  color: var(--dh-api-ink) !important;
+  font-size: 12px !important;
+  font-weight: 760 !important;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.dhApiProductCategory {
+  background: rgba(11, 18, 31, 0.82);
+  border: 1px solid rgba(58, 78, 108, 0.52);
+  border-radius: 2px;
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.dhApiProductCategory[data-state="stale"],
+.dhApiProductCategory[data-state="error"] {
+  border-color: rgba(235, 169, 75, 0.52);
+}
+
+.dhApiProductCategoryBody {
+  display: grid;
+  gap: 6px;
+}
+
+.dhApiProductCategoryGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dhApiProductCategoryMetric {
+  border-left: 2px solid rgba(78, 150, 230, 0.58);
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 3px 8px;
+}
+
+.dhApiProductCategoryLead {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-block: 2px;
+}
+
+.dhApiProductCategoryMetric > span,
+.dhApiProductCategoryMetric > small {
+  color: var(--dh-api-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhApiProductCategoryLead > small {
+  grid-column: 1 / -1;
+  white-space: normal;
+}
+
+.dhApiProductCategoryMetric > span {
+  font-size: 11px;
+}
+
+.dhApiProductCategoryMetric > strong {
+  color: var(--dh-api-ink);
+  font-family: var(--dh-font-mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dhApiProductCategoryMetric > small {
+  font-size: 10px;
+}
+
+.dhApiProductCategoryEmpty {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  margin: 0;
+  padding: 6px 0;
+}
+
+@media (min-width: 1081px) {
+  .dhApiBackedHome .dhApiHero,
+  .dhApiHero {
+    gap: 0;
+    padding: 0;
+  }
+
+  .dhApiBackedHome .dhApiDecisionBand,
+  .dhApiBackedHome .dhApiSourceGate,
+  .dhApiDecisionBand,
+  .dhApiSourceGate {
+    border: 0;
+    border-radius: 0;
+    min-height: 170px;
+    padding: 20px 22px;
+  }
+
+  .dhApiBackedHome .dhApiDecisionBand,
+  .dhApiDecisionBand {
+    border-right: 1px solid var(--dh-api-line);
+  }
+
+  .dhApiBackedHome .dhApiSourceGate,
+  .dhApiSourceGate {
+    background: rgba(16, 26, 42, 0.72);
+  }
+
+  .dhApiKpiGrid {
+    border-bottom: 1px solid var(--dh-api-line);
+    border-top: 1px solid var(--dh-api-line);
+    gap: 0;
+  }
+
+  .dhApiBackedHome .dhApiKpiCard,
+  .dhApiBackedHome .dhApiKpiCard[data-semantic],
+  .dhApiKpiCard {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    border-right: 1px solid var(--dh-api-line-soft);
+    min-height: 108px;
+    padding: 14px 18px;
+  }
+
+  .dhApiKpiCard:last-child {
+    border-right: 0;
+  }
+
+  .dhApiProductCategory {
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    border-top: 1px solid var(--dh-api-line);
+    padding: 14px 18px 16px;
+  }
+
+  .dhApiDecisionBody p {
+    background: transparent;
+    border: 0;
+    border-left: 2px solid rgba(201, 165, 101, 0.46);
+    border-radius: 0;
+    padding: 2px 0 2px 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  .dhApiProductCategory {
+    padding: 8px 10px;
+  }
+
+  .dhApiProductCategoryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Mobile toolbar closure: three compact rows with full-size touch targets. */
+@media (max-width: 720px) {
+  .dhApiBackedHome .dhTopbar {
+    gap: 6px;
+    padding: 8px 12px;
+  }
+
+  .dhApiBackedHome .dhTopbarLeft {
+    align-items: center;
+    display: grid;
+    gap: 6px 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: 44px 44px;
+  }
+
+  .dhApiBackedHome .dhTitleBrand {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto;
+  }
+
+  .dhApiBackedHome .dhSearch {
+    grid-column: 2;
+    grid-row: 1;
+    height: 44px;
+    width: 100%;
+  }
+
+  .dhApiBackedHome .dhToolbarControl {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 44px;
+  }
+
+  .dhApiBackedHome .dhDateSelect {
+    height: 44px;
+  }
+
+  .dhApiBackedHome .dhTopbarRight {
+    align-items: center;
+    display: grid;
+    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) auto 44px;
+    min-height: 44px;
+  }
+
+  .dhApiBackedHome .dhStatusRow {
+    background: transparent;
+    border: 0;
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .dhApiBackedHome .dhStatusRow > :nth-child(n + 2) {
+    display: none;
+  }
+
+  .dhApiBackedHome .dhStatusRow > :first-child {
+    justify-content: flex-start;
+    max-width: 100%;
+    min-height: 44px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+  }
+
+  .dhApiBackedHome .dhPartialToggle {
+    grid-column: 2;
+    min-height: 44px;
+    padding-inline: 8px;
+  }
+
+  .dhApiBackedHome .dhRefreshBtn {
+    grid-column: 3;
+    height: 44px;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0;
+    width: 44px;
+  }
+
+  .dhApiBackedHome .dhRefreshLabel {
+    display: none;
+  }
+}
+
+/* PAGE-DASH final closure: governed gaps, readable product basis, compact first viewport. */
+.dhApiProductCategory[data-state="partial"] {
+  border-color: rgba(235, 169, 75, 0.52);
+}
+
+.dhApiMissingDomains {
+  background: rgba(235, 169, 75, 0.08);
+  border-left: 2px solid rgba(235, 169, 75, 0.68);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+}
+
+.dhApiProductCategoryMetric > small {
+  color: var(--dh-api-muted);
+  display: none;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.dhCommandStatus[data-status-kind="loading"] .dhCommandStatusDot,
+.dhCommandStatus[data-status-kind="partial"] .dhCommandStatusDot,
+.dhCommandStatus[data-status-kind="fallback"] .dhCommandStatusDot,
+.dhCommandStatus[data-status-kind="stale"] .dhCommandStatusDot {
+  background: var(--dh-api-amber);
+}
+
+.dhCommandStatus[data-status-kind="loading"] .dhCommandStatusSynced,
+.dhCommandStatus[data-status-kind="partial"] .dhCommandStatusSynced,
+.dhCommandStatus[data-status-kind="fallback"] .dhCommandStatusSynced,
+.dhCommandStatus[data-status-kind="stale"] .dhCommandStatusSynced {
+  color: var(--dh-api-amber);
+}
+
+.dhCommandStatus[data-status-kind="error"] .dhCommandStatusDot {
+  background: var(--dh-api-red);
+}
+
+.dhCommandStatus[data-status-kind="error"] .dhCommandStatusSynced {
+  color: var(--dh-api-red);
+}
+
+@media (max-width: 720px) {
+  .dhApiBackedHome .dhApiHero,
+  .dhApiHero {
+    gap: 6px;
+  }
+
+  .dhApiBackedHome .dhApiSourceGate,
+  .dhApiSourceGate {
+    align-items: center;
+    gap: 6px 8px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    min-height: 0;
+    padding: 8px 10px;
+  }
+
+  .dhApiSourceGate > .dhApiModuleHead {
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  .dhApiSourceMobileSummary {
+    grid-column: 2;
+    max-width: 48vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dhApiMissingDomains,
+  .dhApiSourceGrid {
+    grid-column: 1 / -1;
+  }
+
+  .dhApiSourceGrid {
+    display: grid;
+    gap: 6px;
+    grid-auto-columns: minmax(156px, 70vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 2px;
+    scroll-snap-type: inline proximity;
+  }
+
+  .dhApiSourceRow,
+  .dhApiSourceRow:nth-child(n + 3) {
+    display: grid;
+    scroll-snap-align: start;
+  }
+
+  .dhApiKpiGrid,
+  .dhApiProductCategoryGrid {
+    display: grid;
+    gap: 8px;
+    grid-auto-columns: minmax(240px, 82vw);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 3px;
+    scroll-snap-type: inline proximity;
+  }
+
+  .dhApiKpiCard,
+  .dhApiProductCategoryMetric {
+    scroll-snap-align: start;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1080px) {
+  .dhApiSourceGate {
+    gap: 10px;
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .dhApiSourceGrid,
+  .dhApiProductCategoryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .dhApiBackedHome .dhApiSourceGate,
+  .dhApiSourceGate {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    min-height: 0;
+  }
+
+  .dhApiSourceGate > .dhApiModuleHead {
+    flex: 1 1 132px;
+  }
+
+  .dhApiSourceMobileSummary {
+    flex: 0 1 auto;
+    max-width: 44vw;
+  }
+
+  .dhApiMissingDomains {
+    flex: 1 0 100%;
+  }
+
+  .dhApiSourceGrid {
+    display: flex;
+    flex: 1 0 100%;
+    gap: 6px;
+    max-height: 32px;
+    overflow-x: auto;
+  }
+
+  .dhApiSourceRow,
+  .dhApiSourceRow:nth-child(n + 3) {
+    flex: 0 0 min(70vw, 220px);
+    min-height: 28px;
+  }
+
+  .dhApiBackedHome .dhApiKpiCard,
+  .dhApiKpiCard {
+    box-sizing: border-box;
+    min-height: 92px;
+    padding: 8px 10px;
+  }
+
+  .dhApiKpiRule {
+    display: none;
+  }
+
+  .dhApiKpiValue,
+  .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiValue {
+    font-size: clamp(15px, 4vw, 18px);
+  }
+}
+
+@media (max-width: 720px) {
+  .dhApiBackedHome .dhApiKpiCard,
+  .dhApiKpiCard {
+    grid-template-areas:
+      "code status"
+      "label label"
+      "value value";
+    grid-template-rows: auto auto minmax(0, 1fr);
+    height: 92px;
+    min-height: 92px;
+  }
+
+  .dhApiKpiDelta,
+  .dhApiKpiRule {
+    display: none;
+  }
+
+  .dhApiKpiValue {
+    align-self: end;
+  }
+}
+
+/* PAGE-DASH responsive closure: keep all governed metrics visible without hidden columns. */
+@media (max-width: 1080px) {
+  .dhApiKpiGrid,
+  .dhApiProductCategoryGrid {
+    display: grid;
+    gap: 4px;
+    grid-auto-columns: initial;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
+    overscroll-behavior-inline: auto;
+    padding-bottom: 0;
+    scroll-snap-type: none;
+  }
+
+  .dhApiKpiCard,
+  .dhApiProductCategoryMetric {
+    scroll-snap-align: none;
+  }
+
+  .dhApiBackedHome .dhApiHero,
+  .dhApiHero {
+    gap: 6px;
+    padding: 10px;
+  }
+
+  .dhApiTopRail {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 38px;
+    padding: 5px 10px;
+  }
+
+  .dhApiBackedHome .dhApiSourceGate,
+  .dhApiSourceGate {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .dhApiBackedHome .dhApiKpiCard,
+  .dhApiKpiCard {
+    grid-template-areas:
+      "code status"
+      "label label"
+      "value value";
+    grid-template-rows: auto auto minmax(0, 1fr);
+    height: 74px;
+    min-height: 74px;
+    padding: 6px 8px;
+  }
+
+  .dhApiKpiLabel {
+    border: 0 !important;
+    clip: auto;
+    clip-path: none;
+    display: -webkit-box !important;
+    font-size: 12px;
+    height: auto;
+    margin: 1px 0 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 !important;
+    position: static !important;
+    white-space: normal;
+    width: auto;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .dhApiKpiDelta,
+  .dhApiKpiRule {
+    border: 0 !important;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    display: block !important;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0 !important;
+    position: absolute !important;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .dhApiKpiValue,
+  .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiValue {
+    align-self: end;
+    font-size: clamp(14px, 2.2vw, 18px);
+  }
+}
+
+@media (max-width: 720px) {
+  .dhApiBackedHome .dhApiHero,
+  .dhApiHero {
+    gap: 2px;
+    padding: 8px;
+  }
+
+  .dhApiTopRail {
+    display: none;
+  }
+
+  .dhApiDecisionBand {
+    gap: 6px;
+    min-height: 0;
+    padding: 7px 8px;
+  }
+
+  .dhApiDecisionBody {
+    gap: 6px;
+  }
+
+  .dhApiDecisionBody h3 {
+    font-size: 18px;
+    line-height: 1.25;
+    margin-block: 4px;
+  }
+
+  .dhApiKpiDelta,
+  .dhApiKpiRule {
+    border: 0 !important;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    display: block !important;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0 !important;
+    position: absolute !important;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .dhApiDecisionBody .dhApiPrimaryAction {
+    margin-top: 4px;
+    min-height: 44px;
+  }
+
+  .dhApiEvidenceScore {
+    align-items: center;
+    gap: 6px;
+    grid-auto-flow: column;
+    justify-content: start;
+    min-height: 28px;
+    min-width: 0;
+    padding: 4px 6px;
+  }
+
+  .dhApiEvidenceScore strong,
+  .dhApiEvidenceScore span,
+  .dhApiEvidenceScore b {
+    font-size: 12px;
+  }
+
+  .dhApiBackedHome .dhApiKpiCard,
+  .dhApiKpiCard {
+    grid-template-areas:
+      "code status"
+      "label label"
+      "value value";
+    grid-template-rows: auto auto minmax(0, 1fr);
+    height: 70px;
+    min-height: 70px;
+    padding: 5px 8px;
+  }
+
+  .dhApiKpiValue,
+  .dhApiKpiCard[data-semantic="ytm"] .dhApiKpiValue {
+    align-self: end;
+    font-size: clamp(14px, 3.9vw, 17px);
+  }
+
+  .dhApiProductCategory {
+    gap: 0;
+    padding: 4px 8px;
+  }
+
+  .dhApiProductCategory > .dhApiModuleHead {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .dhApiProductCategoryBody {
+    gap: 2px;
+  }
+
+  .dhApiProductCategoryMetric {
+    gap: 1px;
+    padding: 2px 6px;
+  }
+
+  .dhApiProductCategoryLead {
+    min-height: 0;
+  }
+}
+
+/* Keep the lazy lower-screen handoff explicit without flashing a large empty panel. */
+.dhApiBackedHome .dhTerminalDeferredPlaceholder {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: auto minmax(80px, 1fr);
+  margin-top: 18px;
+  min-height: 56px;
+  padding: 12px 16px;
+}
+
+.dhApiBackedHome .dhTerminalDeferredPlaceholder::before {
+  color: var(--dh-api-muted);
+  content: "\6b63\5728\8f7d\5165\6df1\5ea6\8bc1\636e";
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.dhApiBackedHome .dhTerminalDeferredPlaceholder::after {
+  background: linear-gradient(
+    90deg,
+    rgba(114, 167, 220, 0.08),
+    rgba(114, 167, 220, 0.42),
+    rgba(114, 167, 220, 0.08)
+  );
+  content: "";
+  height: 1px;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .dhApiBackedHome .dhTerminalDeferredPlaceholder {
+    gap: 10px;
+    margin-top: 10px;
+    min-height: 52px;
+    padding: 10px 12px;
   }
 }

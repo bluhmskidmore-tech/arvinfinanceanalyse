@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
-import { todayIsoDate } from "../features/workbench/pages/dashboardPageHelpers";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 vi.mock("../lib/echarts", () => ({
@@ -38,10 +37,13 @@ describe("DashboardHomeStatus", () => {
       "error",
     );
     expect(screen.getByTestId("dashboard-home-rail-updated-at")).toHaveTextContent("—");
-    expect(screen.getByPlaceholderText("2026-04-30")).toHaveValue(todayIsoDate());
+    expect(screen.getByPlaceholderText("2026-04-30")).toHaveValue("");
     expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("未取得");
     expect(screen.getAllByText("服务未连接").length).toBeGreaterThan(0);
     expect(screen.getByText("无可用快照")).toBeInTheDocument();
+    const commandDock = screen.getByTestId("dashboard-home-command-dock");
+    expect(commandDock).toHaveTextContent("OFFLINE");
+    expect(commandDock).not.toHaveTextContent("SYNCED");
   });
 
   it("does not replace a failed real snapshot with preview sample KPIs", async () => {
@@ -106,7 +108,10 @@ describe("DashboardHomeStatus", () => {
       "stale",
     );
     const railUpdatedAt = screen.getByTestId("dashboard-home-rail-updated-at");
-    expect(railUpdatedAt).toHaveTextContent(`沿用报告日 ${firstReportDate}`);
-    expect(railUpdatedAt).not.toHaveTextContent(`${firstReportDate} ${firstReportDate}`);
+    expect(railUpdatedAt).toHaveTextContent(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
+    expect(railUpdatedAt).not.toHaveTextContent("沿用报告日");
+    const commandDock = screen.getByTestId("dashboard-home-command-dock");
+    expect(commandDock).toHaveTextContent("STALE");
+    expect(commandDock).not.toHaveTextContent("SYNCED");
   });
 });

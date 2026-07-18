@@ -5,6 +5,7 @@ import { apiQueryKeys } from "../../../api/queryKeys";
 import { todayIsoDate } from "../pages/dashboardPageHelpers";
 import { mapToHomeBodyView } from "./dashboardHomeBodyView";
 import { useDashboardHomeBodyData } from "./useDashboardHomeBodyData";
+import { useDashboardHomeMacroReleaseContextQuery } from "./useDashboardHomeMacroReleaseContextQuery";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 
 type IdleWindow = Window & {
@@ -278,6 +279,11 @@ export function useDashboardHomeViewModel(
   });
 
   const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
+  const { macroReleaseContextQuery } = useDashboardHomeMacroReleaseContextQuery({
+    dataClient,
+    enabled: hasDeferredSupplementalReportDate,
+  });
+
   const macroNewsEvents = useMemo(
     () => macroNewsQueries.flatMap((query) => query.data?.result.events ?? []),
     [macroNewsQueries],
@@ -363,6 +369,10 @@ export function useDashboardHomeViewModel(
         bondNewsPayloads,
         macroNewsLoading,
         macroNewsError,
+        macroReleaseContext: macroReleaseContextQuery.data?.result ?? null,
+        macroReleaseContextLoading:
+          hasDeferredSupplementalReportDate && !macroReleaseContextQuery.data && !macroReleaseContextQuery.isError,
+        macroReleaseContextError: macroReleaseContextQuery.isError,
       }),
     [
       adapterOutput.attribution.vm,
@@ -396,6 +406,8 @@ export function useDashboardHomeViewModel(
       macroNewsEvents,
       macroNewsFallbackEvents,
       macroNewsLoading,
+      macroReleaseContextQuery.data,
+      macroReleaseContextQuery.isError,
       researchCalendarQuery.data,
       researchCalendarQuery.isError,
       researchCalendarQuery.isLoading,

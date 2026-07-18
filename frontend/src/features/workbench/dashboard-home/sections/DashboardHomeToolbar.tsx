@@ -1,7 +1,18 @@
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../../components/LightIcon";
-import type { HomeHeaderStatus } from "../dashboardHomeFirstScreenTypes";
+import { HomeSearchBox } from "../HomeSearchBox";
+import type {
+  HomeDecisionAction,
+  HomeHeaderStatus,
+  HomeReportDateContext,
+  HomeTerminalKpi,
+} from "../dashboardHomeFirstScreenTypes";
+import {
+  hasReportDateDivergence,
+  reportDateContextLabel,
+  reportDateModeLabel,
+} from "../homeReportDateLabel";
 import styles from "../dashboardHomeShell.module.css";
 
 function statusPillClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
@@ -24,12 +35,16 @@ type DashboardHomeToolbarProps = {
   headerStatus: HomeHeaderStatus;
   reportDateInput: string;
   onReportDateChange: (value: string) => void;
+  reportDateContext: HomeReportDateContext;
   toolbarSearch: string;
   onSearchChange: (value: string) => void;
+  terminalKpis: readonly HomeTerminalKpi[];
+  decisionActions: readonly HomeDecisionAction[];
   allowPartial: boolean;
   onAllowPartialChange: (checked: boolean) => void;
   onRefresh: () => void;
   refreshLabel: string;
+  refreshAriaLabel?: string;
 };
 
 export function DashboardHomeToolbar({
@@ -38,13 +53,18 @@ export function DashboardHomeToolbar({
   headerStatus,
   reportDateInput,
   onReportDateChange,
+  reportDateContext,
   toolbarSearch,
   onSearchChange,
+  terminalKpis,
+  decisionActions,
   allowPartial,
   onAllowPartialChange,
   onRefresh,
   refreshLabel,
+  refreshAriaLabel = "刷新首页数据",
 }: DashboardHomeToolbarProps) {
+  const showDateDivergence = hasReportDateDivergence(reportDateContext);
   return (
     <header data-testid={toolbarTestId} className={styles.dhTopbar}>
       <div className={styles.dhTopbarLeft}>
@@ -66,17 +86,32 @@ export function DashboardHomeToolbar({
               onChange={(event) => onReportDateChange(event.target.value)}
             />
           </label>
+          <span
+            data-testid="dashboard-home-report-date-context"
+            data-report-date-mode={reportDateContext.mode}
+            className={`${styles.dhDateContext} ${
+              showDateDivergence ? styles.dhDateContextDivergent : ""
+            }`}
+            title={
+              showDateDivergence || reportDateContext.mode === "mock"
+                ? reportDateContextLabel(reportDateContext)
+                : undefined
+            }
+          >
+            <i className={styles.dhDateContextDot} aria-hidden="true" />
+            {showDateDivergence || reportDateContext.mode === "mock"
+              ? reportDateContextLabel(reportDateContext)
+              : reportDateModeLabel(reportDateContext.mode)}
+          </span>
         </div>
 
-        <label className={styles.dhSearch}>
-          <LightIcon className={styles.dhSearchIcon} name="search" />
-          <input
-            aria-label="搜索指标 / 报告 / 动作"
-            placeholder="搜索指标、报告或动作入口"
-            value={toolbarSearch}
-            onChange={(event) => onSearchChange(event.target.value)}
-          />
-        </label>
+        <HomeSearchBox
+          value={toolbarSearch}
+          onValueChange={onSearchChange}
+          terminalKpis={terminalKpis}
+          decisionActions={decisionActions}
+          reportDate={reportDateContext.actualDataDate}
+        />
       </div>
 
       <div className={styles.dhTopbarRight}>
@@ -118,9 +153,14 @@ export function DashboardHomeToolbar({
           />
           <span>{allowPartial ? "显示部分数据" : "仅完整数据"}</span>
         </label>
-        <button type="button" className={styles.dhRefreshBtn} onClick={onRefresh}>
+        <button
+          type="button"
+          className={styles.dhRefreshBtn}
+          onClick={onRefresh}
+          aria-label={refreshAriaLabel}
+        >
           <LightIcon name="reload" />
-          {refreshLabel}
+          <span className={styles.dhRefreshLabel}>{refreshLabel}</span>
         </button>
       </div>
     </header>

@@ -90,7 +90,6 @@ export function useDashboardHomeSupplementalHydration(
     adapterOutput,
     snapshotResult,
     snapshotMeta,
-    initialEffectiveReportDate,
     supplementalReportDate,
     reportDateDataWarning,
   } = snapshotBoundary;
@@ -139,7 +138,7 @@ export function useDashboardHomeSupplementalHydration(
       (adapterOutput.overview.vm?.metrics ?? []).map((metric) => sanitizeMetricCopy(metric)),
     [adapterOutput.overview.vm?.metrics],
   );
-  const effectiveReportDate = snapshotReportDate || initialEffectiveReportDate;
+  const effectiveReportDate = snapshotReportDate;
   const snapshotUnavailable =
     dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
   const snapshotLoading =
@@ -147,18 +146,18 @@ export function useDashboardHomeSupplementalHydration(
   const snapshotStale =
     dataClient.mode === "real" && Boolean(reportDateDataWarning) && Boolean(snapshotResult);
 
-  const alertCount = useMemo(() => {
-    if (useMockFallback) {
-      return 3;
-    }
-    const missing = snapshotResult?.domains_missing?.length ?? 0;
-    return missing > 0 ? missing : adapterOutput.verdict?.tone === "warning" ? 1 : 0;
-  }, [adapterOutput.verdict?.tone, snapshotResult?.domains_missing?.length, useMockFallback]);
+  // No governed alert feed is hydrated here. Data-quality gaps must not become
+  // synthetic risk tasks or links to the decision queue.
+  const alertCount = 0;
 
   const firstScreenInput = useMemo<MapToHomeFirstScreenViewInput>(
     () => ({
       reportDate: effectiveReportDate,
       useMockFallback,
+      domainsEffectiveDate: adapterOutput.domainsEffectiveDate,
+      domainsMissing: adapterOutput.domainsMissing,
+      productCategoryHeadline: adapterOutput.productCategoryHeadline,
+      snapshotMode: snapshotResult?.mode,
       verdict: adapterOutput.verdict,
       metrics: sanitizedMetrics,
       attribution: adapterOutput.attribution.vm,
@@ -169,16 +168,22 @@ export function useDashboardHomeSupplementalHydration(
       snapshotUnavailable,
       snapshotStale,
       snapshotLoading,
+      staleWarning: reportDateDataWarning,
     }),
     [
       adapterOutput.attribution.vm,
+      adapterOutput.domainsEffectiveDate,
+      adapterOutput.domainsMissing,
+      adapterOutput.productCategoryHeadline,
       adapterOutput.verdict,
       alertCount,
       bondHeadlineQuery.data?.result,
       effectiveReportDate,
       portfolioHeadlinesQuery.data?.result,
+      reportDateDataWarning,
       sanitizedMetrics,
       snapshotMeta,
+      snapshotResult?.mode,
       snapshotStale,
       snapshotLoading,
       snapshotUnavailable,

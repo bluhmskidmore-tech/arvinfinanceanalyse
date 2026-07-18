@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 import type { DashboardHomeView } from "../dashboardHomeView";
 import { DashboardHomeToolbar } from "./DashboardHomeToolbar";
@@ -17,6 +17,15 @@ const headerStatus: DashboardHomeView["headerStatus"] = {
   dataSyncPrefix: "数据更新",
 };
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="toolbar-location-probe">
+      {`${location.pathname}${location.search}${location.hash}`}
+    </output>
+  );
+}
+
 function makeToolbarProps(
   overrides: Partial<ComponentProps<typeof DashboardHomeToolbar>> = {},
 ): ComponentProps<typeof DashboardHomeToolbar> {
@@ -24,8 +33,17 @@ function makeToolbarProps(
     headerStatus,
     reportDateInput: "2026-04-30",
     onReportDateChange: vi.fn(),
+    reportDateContext: {
+      requestedDate: "",
+      actualDataDate: "2026-04-30",
+      divergenceReason: null,
+      dataAsOfDate: "2026-04-30 16:00",
+      mode: "exact",
+    },
     toolbarSearch: "",
     onSearchChange: vi.fn(),
+    terminalKpis: [],
+    decisionActions: [],
     allowPartial: false,
     onAllowPartialChange: vi.fn(),
     onRefresh: vi.fn(),
@@ -86,5 +104,81 @@ describe("DashboardHomeToolbar", () => {
     );
 
     expect(screen.getByLabelText("仅完整数据")).not.toBeChecked();
+  });
+  it("passes the actual data date to search navigation", () => {
+    render(
+      <MemoryRouter>
+        <DashboardHomeToolbar
+          {...makeToolbarProps({
+            reportDateInput: "2026-05-01",
+            reportDateContext: {
+              requestedDate: "2026-05-01",
+              actualDataDate: "2026-04-30",
+              divergenceReason: "fallback",
+              dataAsOfDate: "2026-04-30 16:00",
+              mode: "fallback",
+            },
+            toolbarSearch: "Open search action",
+            decisionActions: [
+              {
+                id: "search-action",
+                title: "Open search action",
+                priority: "high",
+                sourceLabel: "risk",
+                reason: "Review the risk queue",
+                to: "/risk-overview?tab=limits#breaches",
+                statusKind: "ready",
+              },
+            ],
+          })}
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    const input = screen.getByRole("combobox");
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByTestId("toolbar-location-probe")).toHaveTextContent(
+      "/risk-overview?tab=limits&report_date=2026-04-30#breaches",
+    );
+  });
+  it("does not invent a report date when no actual data date exists", () => {
+    render(
+      <MemoryRouter>
+        <DashboardHomeToolbar
+          {...makeToolbarProps({
+            reportDateInput: "2026-05-01",
+            reportDateContext: {
+              requestedDate: "2026-05-01",
+              actualDataDate: "",
+              divergenceReason: "no snapshot",
+              dataAsOfDate: "",
+              mode: "empty",
+            },
+            toolbarSearch: "Open no-date action",
+            decisionActions: [
+              {
+                id: "no-date-search-action",
+                title: "Open no-date action",
+                priority: "high",
+                sourceLabel: "risk",
+                reason: "Review the risk queue",
+                to: "/risk-overview?tab=limits#breaches",
+                statusKind: "ready",
+              },
+            ],
+          })}
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    const input = screen.getByRole("combobox");
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByTestId("toolbar-location-probe")).toHaveTextContent(
+      "/risk-overview?tab=limits#breaches",
+    );
   });
 });

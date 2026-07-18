@@ -64,6 +64,7 @@ const MACRO_TOOLKIT_METHODS = new Set<keyof MacroToolkitClientMethods>([
 
 const HOME_EXECUTIVE_METHODS = new Set<keyof HomeExecutiveClientMethods>([
   "getHomeSnapshot",
+  "getHomeMacroReleaseContext",
   "getHomeResearchReports",
   "getHomeIncomeTrend",
 ]);

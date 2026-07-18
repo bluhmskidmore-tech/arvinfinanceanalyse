@@ -79,10 +79,23 @@ function reportDateCommandPath(path: string, reportDate: string): string {
 function HomeCommandDock({
   reportDate,
   dataSyncPrefix,
+  dataStatusKind,
 }: {
   reportDate: string;
   dataSyncPrefix: string;
+  dataStatusKind: DashboardHomeFirstScreenView["headerStatus"]["dataStatusKind"];
 }) {
+  const statusLabel = dataStatusKind === "ok"
+    ? "SYNCED"
+    : dataStatusKind === "loading"
+      ? "LOADING"
+      : dataStatusKind === "error"
+        ? "OFFLINE"
+        : dataStatusKind === "fallback"
+          ? "FALLBACK"
+          : dataStatusKind === "partial"
+            ? "PARTIAL"
+            : "STALE";
   return (
     <nav className={styles.dhCommandDock} data-testid="dashboard-home-command-dock" aria-label="日报快捷命令">
       <span className={styles.dhCommandLabel}>CMD</span>
@@ -97,9 +110,9 @@ function HomeCommandDock({
           </Link>
         ))}
       </div>
-      <span className={styles.dhCommandStatus}>
+      <span className={styles.dhCommandStatus} data-status-kind={dataStatusKind}>
         <span className={styles.dhCommandStatusDot} aria-hidden="true" />
-        <span className={styles.dhCommandStatusSynced}>SYNCED</span>
+        <span className={styles.dhCommandStatusSynced}>{statusLabel}</span>
         <span aria-hidden="true">·</span>
         <span>{dataSyncPrefix}</span>
       </span>
@@ -224,7 +237,6 @@ export default function DashboardHomePage() {
     setAllowPartial,
     refreshSnapshot,
     snapshotQuery,
-    effectiveReportDate,
     snapshotBoundary,
   } = useDashboardHomeFirstScreenViewModel();
   const {
@@ -263,7 +275,8 @@ export default function DashboardHomePage() {
       hydratedFirstScreen && hydratedFirstScreen.view.reportDate === activeReportDate
         ? {
             ...view,
-            terminalKpis: hydratedFirstScreen.view.terminalKpis,
+            // Supplemental endpoints may enrich context below the fold, but never
+            // replace the four governed snapshot KPI contracts on the first screen.
             keyRiskStrip: hydratedFirstScreen.view.keyRiskStrip,
           }
         : view,
@@ -285,39 +298,57 @@ export default function DashboardHomePage() {
 
   return (
     <div className="dark text-foreground bg-background min-h-screen">
-        <section data-testid="dashboard-home-page" className={`${styles.dhPage} ${styles.dhApiBackedHome}`}>
-      <DashboardHomeToolbar
-        title="组合经营日报"
-        headerStatus={firstScreenView.headerStatus}
-        reportDateInput={reportDate || effectiveReportDate}
-        onReportDateChange={setReportDate}
-        toolbarSearch={toolbarSearch}
-        onSearchChange={setToolbarSearch}
-        allowPartial={allowPartial}
-        onAllowPartialChange={setAllowPartial}
-        onRefresh={() => void refreshSnapshot()}
-        refreshLabel={snapshotQuery.isFetching ? "刷新中…" : "刷新"}
-      />
+      <section
+        data-testid="dashboard-home-page"
+        className={`${styles.dhPage} ${styles.dhApiBackedHome}`}
+      >
+        <DashboardHomeToolbar
+          title="组合经营日报"
+          headerStatus={firstScreenView.headerStatus}
+          reportDateInput={reportDate || firstScreenView.reportDateContext.actualDataDate}
+          onReportDateChange={setReportDate}
+          reportDateContext={firstScreenView.reportDateContext}
+          toolbarSearch={toolbarSearch}
+          onSearchChange={setToolbarSearch}
+          terminalKpis={firstScreenView.terminalKpis}
+          decisionActions={firstScreenView.decisionRail.actions}
+          allowPartial={allowPartial}
+          onAllowPartialChange={setAllowPartial}
+          onRefresh={() => void refreshSnapshot()}
+          refreshLabel={snapshotQuery.isFetching ? "刷新中…" : "刷新"}
+          refreshAriaLabel="刷新首页数据"
+        />
 
-      <div className={styles.dhLayout}>
-        <main className={`${styles.dhMain} flex flex-col gap-4`}>
-          <TerminalHomeFirstScreen view={firstScreenView} />
-          {deferredHomeContent}
+        <main className={styles.dhLayout}>
+          <div className={`${styles.dhMain} ${styles.dhPrimaryMain}`}>
+            <TerminalHomeFirstScreen view={firstScreenView} />
+          </div>
+
+          <DecisionRailSection
+            decisionRail={firstScreenView.decisionRail}
+            reportDate={firstScreenView.reportDate}
+            dataSyncPrefix={firstScreenView.decisionRail.dataSyncPrefix}
+            dataStatusKind={firstScreenView.headerStatus.dataStatusKind}
+            snapshotMeta={snapshotBoundary.snapshotMeta}
+            reportDateContext={firstScreenView.reportDateContext}
+            missingDomains={firstScreenView.missingDomains}
+          />
+
+          <div
+            data-testid="dashboard-home-deferred-content"
+            className={`${styles.dhMain} ${styles.dhDeferredMain}`}
+            aria-busy={!loadDeferredContent}
+          >
+            {deferredHomeContent}
+          </div>
         </main>
 
-        <DecisionRailSection
-          decisionRail={firstScreenView.decisionRail}
-          reportDate={firstScreenView.reportDate}
-          dataSyncPrefix={firstScreenView.decisionRail.dataSyncPrefix}
-          dataStatusKind={firstScreenView.headerStatus.dataStatusKind}
-          snapshotMeta={snapshotBoundary.snapshotMeta}
-        />
-      </div>
         <HomeCommandDock
           reportDate={firstScreenView.reportDate}
           dataSyncPrefix={firstScreenView.headerStatus.dataSyncPrefix}
+          dataStatusKind={firstScreenView.headerStatus.dataStatusKind}
         />
       </section>
-      </div>
+    </div>
   );
 }

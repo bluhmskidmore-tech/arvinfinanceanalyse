@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 
 import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
-import { todayIsoDate } from "../pages/dashboardPageHelpers";
 import { useDashboardSnapshotBoundary } from "../pages/useDashboardSnapshotBoundary";
 import {
   mapToHomeFirstScreenView,
@@ -28,19 +27,13 @@ export function useDashboardHomeFirstScreenViewModel() {
     adapterOutput,
     snapshotResult,
     snapshotMeta,
-    initialEffectiveReportDate,
     reportDateDataWarning,
     snapshotQuery,
   } = snapshotBoundary;
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
   const requestedReportDate = reportDate.trim();
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
-  const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
-  const effectiveReportDate =
-    snapshotReportDate ||
-    initialEffectiveReportDate ||
-    requestedReportDate ||
-    dashboardTodayIsoDate;
+  const effectiveReportDate = snapshotReportDate;
   const snapshotUnavailable =
     dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
   const snapshotLoading =
@@ -55,18 +48,19 @@ export function useDashboardHomeFirstScreenViewModel() {
     [adapterOutput.overview.vm?.metrics],
   );
 
-  const alertCount = useMemo(() => {
-    if (useMockFallback) {
-      return 3;
-    }
-    const missing = snapshotResult?.domains_missing?.length ?? 0;
-    return missing > 0 ? missing : adapterOutput.verdict?.tone === "warning" ? 1 : 0;
-  }, [adapterOutput.verdict?.tone, snapshotResult?.domains_missing?.length, useMockFallback]);
+  // The homepage snapshot has no governed alert feed. Missing domains and a warning
+  // verdict are data-quality signals, not counted risk tasks.
+  const alertCount = 0;
 
   const firstScreenInput = useMemo<MapToHomeFirstScreenViewInput>(
     () => ({
       reportDate: effectiveReportDate,
       useMockFallback,
+      requestedReportDate,
+      domainsEffectiveDate: adapterOutput.domainsEffectiveDate,
+      domainsMissing: adapterOutput.domainsMissing,
+      productCategoryHeadline: adapterOutput.productCategoryHeadline,
+      snapshotMode: snapshotResult?.mode,
       verdict: adapterOutput.verdict,
       metrics: sanitizedMetrics,
       attribution: adapterOutput.attribution.vm,
@@ -77,14 +71,21 @@ export function useDashboardHomeFirstScreenViewModel() {
       snapshotUnavailable,
       snapshotStale,
       snapshotLoading,
+      staleWarning: reportDateDataWarning,
     }),
     [
       alertCount,
       adapterOutput.attribution.vm,
+      adapterOutput.domainsEffectiveDate,
+      adapterOutput.domainsMissing,
+      adapterOutput.productCategoryHeadline,
       adapterOutput.verdict,
       effectiveReportDate,
+      requestedReportDate,
+      reportDateDataWarning,
       sanitizedMetrics,
       snapshotMeta,
+      snapshotResult?.mode,
       snapshotStale,
       snapshotLoading,
       snapshotUnavailable,

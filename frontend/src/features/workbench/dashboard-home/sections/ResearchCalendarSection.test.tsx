@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { HomeMacroBriefingModel } from "../adapters/buildHomeMacroBriefingModel";
+import { buildHomeMacroBriefingModel, type HomeMacroBriefingModel } from "../adapters/buildHomeMacroBriefingModel";
 import { ResearchCalendarSection } from "./ResearchCalendarSection";
 
 const singlePolicyFundingNewsItem = {
@@ -106,6 +106,7 @@ describe("ResearchCalendarSection", () => {
               sourceUrl: "https://www.ismworld.org/",
             },
           ],
+          releaseHistoryItems: [],
           releaseWindowLabel: "未来 45 天 · 1 项",
           releaseMessage: null,
           newsItems: [
@@ -149,6 +150,7 @@ describe("ResearchCalendarSection", () => {
         focusPolicyFunding
         macroBriefing={{
           releaseItems: [],
+          releaseHistoryItems: [],
           releaseWindowLabel: "未来 45 天",
           releaseMessage: "暂无已维护发布日期，请补充配置清单。",
           newsItems: policyFundingSummary.groups.flatMap((group) => group.items),
@@ -232,6 +234,8 @@ describe("ResearchCalendarSection", () => {
       },
       supplyItems: [],
     } as unknown as HomeMacroBriefingModel;
+    macroBriefing.releaseHistoryItems =
+      macroBriefing.releaseItems as HomeMacroBriefingModel["releaseHistoryItems"];
 
     render(<ResearchCalendarSection macroBriefing={macroBriefing} />);
 
@@ -242,5 +246,49 @@ describe("ResearchCalendarSection", () => {
     expect(within(history).getByText("4月 49.0")).toBeInTheDocument();
     expect(within(history).getByText("+0.5")).toBeInTheDocument();
     expect(within(history).getByText("制造业景气回升但仍低于荣枯线。")).toBeInTheDocument();
+  });
+
+  it("shows maintained history when current forward releases have no history", () => {
+    const macroBriefing = buildHomeMacroBriefingModel({
+      todayIsoDate: "2026-07-16",
+      newsEvents: [],
+      fallbackNewsEvents: [],
+      newsLoading: false,
+      newsError: false,
+      supplyCalendar: {
+        items: [],
+        status: "empty",
+        windowLabel: "2026-07-16 to 2026-08-30",
+        message: null,
+      },
+    });
+
+    render(<ResearchCalendarSection macroBriefing={macroBriefing} />);
+
+    expect(screen.getByText("ISM Manufacturing PMI")).toBeInTheDocument();
+    expect(screen.getByText("ISM May 2026 Manufacturing ROB")).toBeInTheDocument();
+  });
+
+  it("keeps maintained history visible when the forward calendar is empty", () => {
+    const macroBriefing = buildHomeMacroBriefingModel({
+      todayIsoDate: "2026-08-01",
+      newsEvents: [],
+      fallbackNewsEvents: [],
+      newsLoading: false,
+      newsError: false,
+      supplyCalendar: {
+        items: [],
+        status: "empty",
+        windowLabel: "2026-08-01 to 2026-09-15",
+        message: null,
+      },
+    });
+
+    expect(macroBriefing.releaseItems).toHaveLength(0);
+    expect(macroBriefing.releaseHistoryItems).toHaveLength(6);
+
+    render(<ResearchCalendarSection macroBriefing={macroBriefing} />);
+
+    expect(screen.getByText("ISM Manufacturing PMI")).toBeInTheDocument();
   });
 });

@@ -376,6 +376,7 @@ function createTerminalStateView(overrides: Partial<DashboardHomeBodyView> = {})
     quickDrilldowns: [],
     macroBriefing: {
       releaseItems: [],
+      releaseHistoryItems: [],
       releaseWindowLabel: "未来 45 天",
       releaseMessage: "暂无已维护发布日期，请补充配置清单。",
       newsItems: [],
@@ -2214,7 +2215,7 @@ describe("DashboardHomePage", () => {
     });
   });
 
-  it("hydrates first-screen KPI cards only after below-fold basic data has started", async () => {
+  it("never lets supplemental bond metrics replace an empty governed overview", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -2316,6 +2317,10 @@ describe("DashboardHomePage", () => {
           result: {
             ...envelope.result,
             report_date: "2026-04-30",
+            overview: {
+              ...envelope.result.overview,
+              metrics: [],
+            },
           },
         };
       },
@@ -2326,6 +2331,14 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     const hero = await screen.findByTestId("dashboard-home-hero");
+    const primaryCards = within(hero).getAllByRole("article");
+    expect(primaryCards.map((card) => card.getAttribute("data-testid"))).toEqual([
+      "dashboard-home-kpi-aum",
+      "dashboard-home-kpi-yield",
+      "dashboard-home-kpi-nim",
+      "dashboard-home-kpi-dv01",
+    ]);
+    primaryCards.forEach((card) => expect(card).toHaveTextContent("—"));
     expect(within(hero).queryByTestId("dashboard-home-kpi-bond-market-value")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(idle.pendingCount()).toBeGreaterThan(0);
@@ -2345,14 +2358,9 @@ describe("DashboardHomePage", () => {
 
     await waitFor(() => {
       expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-04-30");
-      const hydratedHero = within(hero);
-      expect(hydratedHero.getByTestId("dashboard-home-kpi-bond-market-value")).toHaveTextContent("3,287.09");
-      expect(hydratedHero.getByTestId("dashboard-home-kpi-unrealized-pnl")).toHaveTextContent("未实现损益");
-      expect(hydratedHero.getByTestId("dashboard-home-kpi-unrealized-pnl")).toHaveTextContent("+18.42");
-      expect(hydratedHero.getByTestId("dashboard-home-kpi-duration")).toHaveTextContent("加权久期");
-      expect(hydratedHero.getByTestId("dashboard-home-kpi-duration")).toHaveTextContent("4.23");
-      expect(hydratedHero.getByTestId("dashboard-home-kpi-ytm")).toHaveTextContent("组合YTM");
-      expect(hydratedHero.getByTestId("dashboard-home-kpi-ytm")).toHaveTextContent("2.85");
+      expect(within(hero).queryByTestId("dashboard-home-kpi-bond-market-value")).not.toBeInTheDocument();
+      expect(within(hero).queryByTestId("dashboard-home-kpi-duration")).not.toBeInTheDocument();
+      expect(within(hero).queryByTestId("dashboard-home-kpi-ytm")).not.toBeInTheDocument();
     });
   });
 

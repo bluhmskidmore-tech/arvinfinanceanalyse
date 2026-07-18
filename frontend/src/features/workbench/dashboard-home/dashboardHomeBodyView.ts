@@ -9,6 +9,7 @@ import type {
   ChoiceNewsEventsPayload,
   CreditSpreadMigrationPayload,
   HomeIncomeTrendPayload,
+  HomeMacroReleaseContextPayload,
   HomeResearchReportsPayload,
   IndustryDistPayload,
   MaturityStructurePayload,
@@ -37,6 +38,7 @@ import {
   type HomeMacroBriefingModel,
   type HomeMacroNewsItem,
 } from "./adapters/buildHomeMacroBriefingModel";
+import { buildHomeMacroReleaseHistoryItems } from "./adapters/buildHomeMacroReleaseHistoryItems";
 import {
   buildHomeMarketContextModel,
   type HomeMarketContextModel,
@@ -225,6 +227,9 @@ export type MapToHomeBodyViewInput = {
   bondNewsPayloads?: readonly ChoiceNewsEventsPayload[] | null;
   macroNewsLoading?: boolean;
   macroNewsError?: boolean;
+  macroReleaseContext?: HomeMacroReleaseContextPayload | null;
+  macroReleaseContextLoading?: boolean;
+  macroReleaseContextError?: boolean;
 };
 
 const GAP = "—";
@@ -947,7 +952,7 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     startDate: input.calendarStartDate,
     endDate: input.calendarEndDate,
   });
-  const macroBriefing = buildHomeMacroBriefingModel({
+  const macroBriefingBase = buildHomeMacroBriefingModel({
     todayIsoDate,
     newsEvents: input.macroNewsEvents,
     fallbackNewsEvents: input.macroNewsFallbackEvents,
@@ -956,6 +961,21 @@ export function mapToHomeBodyView(input: MapToHomeBodyViewInput): DashboardHomeB
     supplyCalendar: researchCalendar,
   });
   const marketTape = mapMarketTape(input.marketPoints);
+  const releaseHistoryItems = input.macroReleaseContext
+    ? buildHomeMacroReleaseHistoryItems(input.macroReleaseContext.history_items)
+    : [];
+  const releaseHistoryMessage = input.macroReleaseContextLoading
+    ? "历史数据读取中…"
+    : input.macroReleaseContextError
+      ? "历史数据读取失败，请稍后重试。"
+      : releaseHistoryItems.length === 0
+        ? "当前窗口暂无可用历史数据。"
+        : null;
+  const macroBriefing: HomeMacroBriefingModel = {
+    ...macroBriefingBase,
+    releaseHistoryItems,
+    releaseHistoryMessage,
+  };
   const marketContext = buildHomeMarketContextModel({
     marketTape,
     marketPoints: input.marketPoints,

@@ -6,7 +6,7 @@ vi.mock("../../../lib/echarts", () => ({
   default: () => null,
 }));
 
-import type { Numeric, VerdictPayload } from "../../../api/contracts";
+import type { Numeric, ResultMeta, VerdictPayload } from "../../../api/contracts";
 import { DecisionRailSection } from "./sections/DecisionRailSection";
 import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen";
 import { DashboardHomeToolbar } from "./sections/DashboardHomeToolbar";
@@ -52,6 +52,18 @@ function firstScreenView(
   return {
     reportDate: "2026-04-30",
     useMockFallback: false,
+    reportDateContext: {
+      requestedDate: "",
+      actualDataDate: "2026-04-30",
+      divergenceReason: null,
+      dataAsOfDate: "2026-04-30 16:00",
+      mode: "exact",
+    },
+    productCategoryHeadline: {
+      state: "empty",
+      metrics: [],
+    },
+    missingDomains: [],
     headerStatus: {
       dataStatusKind: "ok",
       dataUpdatedAt: "16:00",
@@ -69,7 +81,13 @@ function firstScreenView(
       maxContributionLabel: "carry",
       maxContributionValue: "+0.20",
       keyRisk: "duration",
-      suggestions: ["review duration"],
+      suggestions: [
+        {
+          id: "suggestion-1-risk",
+          text: "review duration",
+          to: "/risk-tensor?report_date=2026-04-30",
+        },
+      ],
       pendingSummary: "1 item",
       reportDate: "2026-04-30",
       dataUpdatedAt: "16:00",
@@ -97,8 +115,8 @@ function firstScreenView(
         state: "ready",
       },
       {
-        id: "pnl",
-        label: "PnL",
+        id: "yield",
+        label: "年度损益",
         value: "+20.00",
         delta: "+1.20",
         deltaTone: "up",
@@ -106,8 +124,8 @@ function firstScreenView(
         state: "ready",
       },
       {
-        id: "spread",
-        label: "Spread",
+        id: "nim",
+        label: "净息差",
         value: "1.05%",
         delta: "+0.10bp",
         deltaTone: "warn",
@@ -138,7 +156,7 @@ function firstScreenView(
 }
 
 describe("dashboard home first-screen actions", () => {
-  it("preserves backend suggestion links and adds the risk review queue action", () => {
+  it("keeps backend navigation suggestions separate from the risk review queue", () => {
     const view = mapToHomeFirstScreenView({
       reportDate: "2026-04-30",
       useMockFallback: false,
@@ -154,34 +172,34 @@ describe("dashboard home first-screen actions", () => {
       snapshotLoading: false,
     });
 
-    expect(decisionActions(view)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          title: "review duration",
-          to: "/risk-tensor?report_date=2026-04-30",
-          statusKind: "ready",
-        }),
-        expect.objectContaining({
-          id: "risk-review-queue",
-          to: "/decision-items?source=dashboard-home&report_date=2026-04-30&action_id=risk-review-queue",
-          statusKind: "ready",
-        }),
-      ]),
-    );
+    expect(decisionActions(view)).toEqual([
+      expect.objectContaining({
+        id: "risk-review-queue",
+        to: "/decision-items?source=dashboard-home&report_date=2026-04-30&action_id=risk-review-queue",
+        statusKind: "ready",
+      }),
+    ]);
+    expect(view.decisionRail.suggestions).toEqual([
+      expect.objectContaining({
+        text: "review duration",
+        to: "/risk-tensor?report_date=2026-04-30",
+      }),
+    ]);
+    expect(view.decisionRail.pendingSummary).toBe("1 项");
   });
 
-  it("hydrates the first-screen duration KPI from home snapshot metrics", () => {
+  it("hydrates the first-screen governed DV01 KPI from home snapshot metrics", () => {
     const view = mapToHomeFirstScreenView({
       reportDate: "2026-04-30",
       useMockFallback: false,
       verdict,
       metrics: [
         {
-          id: "duration",
-          label: "加权久期",
+          id: "dv01",
+          label: "组合 DV01",
           caliberLabel: "利率风险资产口径",
-          value: numeric(4.37, "4.37", "ratio"),
-          delta: { ...numeric(-0.05, "-0.05", "ratio"), sign_aware: true },
+          value: numeric(4.37, "4.37", "dv01"),
+          delta: { ...numeric(-0.05, "-0.05", "dv01"), sign_aware: true },
           tone: "warning",
           detail: "portfolio_modified_duration",
           history: [4.42, 4.37],
@@ -200,12 +218,12 @@ describe("dashboard home first-screen actions", () => {
     expect(view.terminalKpis).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "duration",
+          id: "dv01",
           value: "4.37",
         }),
       ]),
     );
-    expect(view.terminalKpis.find((kpi) => kpi.id === "duration")?.delta).toContain("-0.05");
+    expect(view.terminalKpis.find((kpi) => kpi.id === "dv01")?.delta).toContain("-0.05");
 
     render(
       <MemoryRouter>
@@ -213,7 +231,7 @@ describe("dashboard home first-screen actions", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByTestId("dashboard-home-kpi-duration")).toHaveTextContent("4.37");
+    expect(screen.getByTestId("dashboard-home-kpi-dv01")).toHaveTextContent("4.37");
   });
 
   it("routes risk review queue actions into decision items with dashboard context", () => {
@@ -294,11 +312,14 @@ describe("dashboard home first-screen actions", () => {
       snapshotLoading: false,
     });
 
-    expect(decisionActions(view)).toEqual([
+    expect(view.decisionRail.suggestions).toEqual([
       expect.objectContaining({
-        title: "review linked duration date",
+        text: "review linked duration date",
         to: "/risk-tensor?report_date=2026-04-30&tab=dv01#bucket",
       }),
+    ]);
+    expect(decisionActions(view)).toEqual([
+      expect.objectContaining({ id: "no-action", statusKind: "empty" }),
     ]);
   });
 
@@ -585,6 +606,7 @@ describe("dashboard home first-screen actions", () => {
           reportDate={view.reportDate}
           dataSyncPrefix={view.headerStatus.dataSyncPrefix}
           dataStatusKind={view.headerStatus.dataStatusKind}
+          reportDateContext={view.reportDateContext}
         />
       </MemoryRouter>,
     );
@@ -618,6 +640,7 @@ describe("dashboard home first-screen actions", () => {
           reportDate={view.reportDate}
           dataSyncPrefix={view.headerStatus.dataSyncPrefix}
           dataStatusKind={view.headerStatus.dataStatusKind}
+          reportDateContext={view.reportDateContext}
         />
       </MemoryRouter>,
     );
@@ -625,6 +648,13 @@ describe("dashboard home first-screen actions", () => {
     const rail = screen.getByTestId("dashboard-home-decision-rail");
     expect(rail).toHaveTextContent("review duration");
     expect(rail).not.toHaveTextContent("回传入口");
+    expect(
+      within(rail).getByTestId("dashboard-home-review-entry-card"),
+    ).not.toHaveTextContent("review duration");
+    expect(
+      within(rail).getByTestId("dashboard-home-action-queue-card"),
+    ).toHaveTextContent("review duration");
+    expect(textOccurrences(rail.textContent ?? "", "review duration")).toBe(1);
   });
 
   it("anchors the first screen on a morning-judgment hero and operational right rail", () => {
@@ -638,6 +668,7 @@ describe("dashboard home first-screen actions", () => {
           reportDate={view.reportDate}
           dataSyncPrefix={view.headerStatus.dataSyncPrefix}
           dataStatusKind={view.headerStatus.dataStatusKind}
+          reportDateContext={view.reportDateContext}
         />
       </MemoryRouter>,
     );
@@ -649,22 +680,15 @@ describe("dashboard home first-screen actions", () => {
     expect(screen.getByTestId("dashboard-home-ambient-canvas")).toHaveAttribute("aria-hidden", "true");
 
     const heroKpiStrip = screen.getByTestId("dashboard-home-hero-kpi-strip");
-    expect(within(heroKpiStrip).getAllByTestId(/dashboard-home-hero-kpi-/)).toHaveLength(4);
+    expect(within(heroKpiStrip).getAllByRole("article")).toHaveLength(4);
 
-    const workspace = screen.getByTestId("dashboard-home-signal-workspace");
-    expect(workspace).toHaveTextContent("risk workspace");
-    expect(workspace).toHaveTextContent("attribution pulse");
-    expect(workspace).toHaveTextContent("source linked");
-    expect(workspace).toHaveTextContent("market & macro");
-    expect(workspace).toHaveTextContent("asset allocation");
-    expect(workspace).toHaveTextContent("rates -1.00");
-    expect(workspace).toHaveTextContent("carry +0.20");
-    expect(workspace).toHaveTextContent("待接入");
+    expect(screen.queryByTestId("dashboard-home-signal-workspace")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard-home-market")).not.toBeInTheDocument();
 
     const rail = screen.getByTestId("dashboard-home-decision-rail");
     expect(within(rail).getByTestId("dashboard-home-review-entry-card")).toHaveTextContent("待复核");
     expect(within(rail).getByTestId("dashboard-home-action-queue-card")).toHaveTextContent(
-      "待办事项",
+      "决策建议",
     );
     expect(within(rail).getByTestId("dashboard-home-data-quality-card")).toHaveTextContent(
       "数据质量",
@@ -695,8 +719,11 @@ describe("dashboard home first-screen actions", () => {
           headerStatus={view.headerStatus}
           reportDateInput={view.reportDate}
           onReportDateChange={() => {}}
+          reportDateContext={view.reportDateContext}
           toolbarSearch=""
           onSearchChange={() => {}}
+          terminalKpis={view.terminalKpis}
+          decisionActions={view.decisionRail.actions}
           allowPartial={false}
           onAllowPartialChange={() => {}}
           onRefresh={() => {}}
@@ -708,6 +735,7 @@ describe("dashboard home first-screen actions", () => {
           reportDate={view.reportDate}
           dataSyncPrefix={view.headerStatus.dataSyncPrefix}
           dataStatusKind={view.headerStatus.dataStatusKind}
+          reportDateContext={view.reportDateContext}
         />
       </MemoryRouter>,
     );
@@ -741,6 +769,7 @@ describe("dashboard home first-screen actions", () => {
           reportDate={view.reportDate}
           dataSyncPrefix={view.headerStatus.dataSyncPrefix}
           dataStatusKind={view.headerStatus.dataStatusKind}
+          reportDateContext={view.reportDateContext}
         />
       </MemoryRouter>,
     );
@@ -778,6 +807,7 @@ describe("dashboard home first-screen actions", () => {
           reportDate={noPendingView.reportDate}
           dataSyncPrefix={noPendingView.headerStatus.dataSyncPrefix}
           dataStatusKind={noPendingView.headerStatus.dataStatusKind}
+          reportDateContext={noPendingView.reportDateContext}
         />
       </MemoryRouter>,
     );
@@ -803,6 +833,7 @@ describe("dashboard home first-screen actions", () => {
           reportDate={view.reportDate}
           dataSyncPrefix={view.headerStatus.dataSyncPrefix}
           dataStatusKind={view.headerStatus.dataStatusKind}
+          reportDateContext={view.reportDateContext}
         />
       </MemoryRouter>,
     );
@@ -828,6 +859,7 @@ describe("dashboard home first-screen actions", () => {
           reportDate={view.reportDate}
           dataSyncPrefix={view.headerStatus.dataSyncPrefix}
           dataStatusKind={view.headerStatus.dataStatusKind}
+          reportDateContext={view.reportDateContext}
         />
       </MemoryRouter>,
     );
@@ -851,14 +883,263 @@ describe("dashboard home first-screen actions", () => {
     expect(within(sourceGate).getByTitle(/503/)).toHaveTextContent("暂不可用");
   });
 
-  it("routes the first-screen risk strip to the real risk overview page", () => {
+  it("renders only the four governed PAGE-DASH KPI contracts", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict: null,
+      metrics: [
+        { id: "aum", label: "资产规模", caliberLabel: null, value: numeric(1, "1.00", "yuan"), delta: numeric(0, "0.00", "yuan"), tone: "neutral", detail: "", history: null },
+        { id: "yield", label: "年度损益", caliberLabel: null, value: numeric(2, "2.00", "yuan"), delta: numeric(0, "0.00", "yuan"), tone: "neutral", detail: "", history: null },
+        { id: "nim", label: "净息差", caliberLabel: null, value: numeric(0.01, "1.00%", "pct"), delta: numeric(0, "0.00%", "pct"), tone: "neutral", detail: "", history: null },
+        { id: "dv01", label: "组合 DV01", caliberLabel: null, value: numeric(3, "3.00", "dv01"), delta: numeric(0, "0.00", "dv01"), tone: "neutral", detail: "", history: null },
+        { id: "duration", label: "加权久期", caliberLabel: null, value: numeric(4, "4.00"), delta: numeric(0, "0.00"), tone: "neutral", detail: "", history: null },
+      ],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: false,
+    });
+
     render(
       <MemoryRouter>
-        <TerminalHomeFirstScreen view={firstScreenView()} />
+        <TerminalHomeFirstScreen view={view} />
       </MemoryRouter>,
     );
 
-    const marketPanel = screen.getByTestId("dashboard-home-market");
-    expect(within(marketPanel).getByRole("link")).toHaveAttribute("href", "/risk-overview");
+    const cards = within(screen.getByTestId("dashboard-home-hero-kpi-strip")).getAllByRole("article");
+    expect(cards.map((card) => card.getAttribute("data-testid"))).toEqual([
+      "dashboard-home-kpi-aum",
+      "dashboard-home-kpi-yield",
+      "dashboard-home-kpi-nim",
+      "dashboard-home-kpi-dv01",
+    ]);
+    expect(screen.queryByTestId("dashboard-home-kpi-duration")).not.toBeInTheDocument();
   });
+
+  it("distinguishes a governed zero from a null KPI", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict: null,
+      metrics: [
+        { id: "aum", label: "资产规模", caliberLabel: null, value: numeric(0, "0.00", "yuan"), delta: numeric(0, "0.00", "yuan"), tone: "neutral", detail: "", history: null },
+        { id: "yield", label: "年度损益", caliberLabel: null, value: { ...numeric(0, "0.00 亿", "yuan"), raw: null }, delta: numeric(0, "0.00", "yuan"), tone: "neutral", detail: "", history: null },
+      ],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: false,
+    });
+
+    expect(view.terminalKpis.find((kpi) => kpi.id === "aum")?.state).toBe("ready");
+    expect(view.terminalKpis.find((kpi) => kpi.id === "yield")?.state).toBe("empty");
+    expect(view.terminalKpis.find((kpi) => kpi.id === "yield")?.delta).toBe("—");
+    expect(view.terminalKpis.find((kpi) => kpi.id === "yield")?.deltaTone).toBe("muted");
+
+    render(
+      <MemoryRouter>
+        <TerminalHomeFirstScreen view={view} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("0.00亿");
+    expect(screen.getByTestId("dashboard-home-kpi-yield")).toHaveTextContent("—");
+    expect(screen.getByTestId("dashboard-home-kpi-yield")).not.toHaveTextContent(
+      "0.00亿",
+    );
+    expect(screen.getByTestId("dashboard-home-kpi-yield")).not.toHaveTextContent(
+      "较前日 0.00",
+    );
+  });
+
+  it("keeps a zero-action snapshot neutral without inventing a sync task", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict: { conclusion: "stable", tone: "neutral", reasons: [], suggestions: [] },
+      metrics: [],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: false,
+    });
+
+    expect(view.decisionRail.pendingSummary).toBe("暂无");
+    expect(view.decisionRail.suggestions).toEqual([]);
+  });
+
+  it("renders the governed product-category headline and its explicit empty state", () => {
+    const readyView = {
+      ...firstScreenView(),
+      productCategoryHeadline: {
+        state: "ready",
+        metrics: [
+          { id: "ytd-summary-pnl", label: "年度汇总损益", value: "+12.30 亿元", detail: "后端口径" },
+          { id: "monthly-income", label: "本月收入", value: "+1.20 亿元", detail: "后端口径" },
+        ],
+      },
+    } as DashboardHomeFirstScreenView;
+
+    render(
+      <MemoryRouter>
+        <TerminalHomeFirstScreen view={readyView} />
+      </MemoryRouter>,
+    );
+    const headline = screen.getByTestId("dashboard-home-product-category-headline");
+    expect(headline).toHaveTextContent("年度汇总损益");
+    expect(headline).toHaveTextContent("+12.30 亿元");
+
+    const emptyView = {
+      ...firstScreenView(),
+      productCategoryHeadline: { state: "empty", metrics: [] },
+    } as DashboardHomeFirstScreenView;
+    render(
+      <MemoryRouter>
+        <TerminalHomeFirstScreen view={emptyView} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("暂无产品分类经营摘要")).toBeInTheDocument();
+  });
+  it("surfaces the concrete missing domain ids in the source gate and data-quality rail", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      domainsMissing: ["balance_sheet", "pnl"],
+      verdict: null,
+      metrics: [],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: false,
+    });
+
+    render(
+      <MemoryRouter>
+        <TerminalHomeFirstScreen view={view} />
+        <DecisionRailSection
+          decisionRail={view.decisionRail}
+          reportDate={view.reportDate}
+          dataSyncPrefix={view.headerStatus.dataSyncPrefix}
+          dataStatusKind={view.headerStatus.dataStatusKind}
+          reportDateContext={view.reportDateContext}
+          missingDomains={view.missingDomains}
+        />
+      </MemoryRouter>,
+    );
+
+    const sourceGate = screen.getByRole("region", { name: "来源核验" });
+    expect(sourceGate).toHaveTextContent("balance_sheet");
+    expect(sourceGate).toHaveTextContent("pnl");
+    const dataQuality = screen.getByTestId("dashboard-home-data-quality-card");
+    expect(dataQuality).toHaveTextContent("balance_sheet");
+    expect(dataQuality).toHaveTextContent("pnl");
+  });
+
+  it("keeps generated_at as the rail update time when a governed snapshot needs review", () => {
+    const view = firstScreenView({
+      headerStatus: {
+        ...firstScreenView().headerStatus,
+        dataStatusKind: "stale",
+        dataSyncPrefix: "部分数据域缺失，需复核",
+      },
+    });
+    const snapshotMeta: ResultMeta = {
+      trace_id: "trace-home",
+      basis: "formal",
+      result_kind: "home_snapshot",
+      formal_use_allowed: false,
+      source_version: "source-v1",
+      vendor_version: "vendor-v1",
+      rule_version: "rule-v1",
+      cache_version: "cache-v1",
+      quality_flag: "warning",
+      vendor_status: "vendor_stale",
+      fallback_mode: "none",
+      scenario_flag: false,
+      generated_at: "2026-05-01T08:42:00+08:00",
+    };
+
+    render(
+      <MemoryRouter>
+        <DecisionRailSection
+          decisionRail={view.decisionRail}
+          reportDate={view.reportDate}
+          dataSyncPrefix={view.headerStatus.dataSyncPrefix}
+          dataStatusKind={view.headerStatus.dataStatusKind}
+          snapshotMeta={snapshotMeta}
+          reportDateContext={view.reportDateContext}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("dashboard-home-rail-updated-at")).toHaveTextContent(
+      "2026-05-01 08:42",
+    );
+    expect(screen.getByTestId("dashboard-home-rail-updated-at")).not.toHaveTextContent(
+      "沿用报告日",
+    );
+  });
+});
+
+describe("DecisionRailSection governed usage", () => {
+  it.each(["partial", "fallback", "stale"] as const)(
+    "forces %s snapshots to review-only even when metadata allows formal use",
+    (dataStatusKind) => {
+      const view = firstScreenView({
+        headerStatus: {
+          ...firstScreenView().headerStatus,
+          dataStatusKind,
+          dataSyncPrefix: "主链需复核",
+        },
+      });
+      const snapshotMeta: ResultMeta = {
+        trace_id: "trace-home-formal-use",
+        basis: "formal",
+        result_kind: "home_snapshot",
+        formal_use_allowed: true,
+        source_version: "source-v1",
+        vendor_version: "vendor-v1",
+        rule_version: "rule-v1",
+        cache_version: "cache-v1",
+        quality_flag: "ok",
+        vendor_status: "ok",
+        fallback_mode: "none",
+        scenario_flag: false,
+        generated_at: "2026-05-01T08:42:00+08:00",
+      };
+
+      render(
+        <MemoryRouter>
+          <DecisionRailSection
+            decisionRail={view.decisionRail}
+            reportDate={view.reportDate}
+            dataSyncPrefix={view.headerStatus.dataSyncPrefix}
+            dataStatusKind={dataStatusKind}
+            snapshotMeta={snapshotMeta}
+            reportDateContext={view.reportDateContext}
+          />
+        </MemoryRouter>,
+      );
+
+      const dataQuality = screen.getByTestId("dashboard-home-data-quality-card");
+      expect(dataQuality).toHaveTextContent("复核参考");
+      expect(dataQuality).not.toHaveTextContent("正式经营决策");
+    },
+  );
 });

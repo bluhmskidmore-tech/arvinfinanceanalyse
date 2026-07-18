@@ -7,7 +7,9 @@ import type {
   AlertsPayload,
   ContributionPayload,
   GetHomeSnapshotOptions,
+  GetHomeMacroReleaseContextOptions,
   HomeIncomeTrendPayload,
+  HomeMacroReleaseContextPayload,
   HomeResearchReportsPayload,
   HomeSnapshotPayload,
   OverviewPayload,
@@ -27,6 +29,9 @@ export type ExecutiveClientMethods = {
   getHomeSnapshot: (
     options?: GetHomeSnapshotOptions,
   ) => Promise<ApiEnvelope<HomeSnapshotPayload>>;
+  getHomeMacroReleaseContext: (
+    options: GetHomeMacroReleaseContextOptions,
+  ) => Promise<ApiEnvelope<HomeMacroReleaseContextPayload>>;
   getHomeResearchReports: (
     reportDate: string,
     limit?: number,
@@ -61,6 +66,7 @@ type ExecutiveThinClientMethods = Pick<
   ExecutiveClientMethods,
   | "getOverview"
   | "getHomeSnapshot"
+  | "getHomeMacroReleaseContext"
   | "getHomeResearchReports"
   | "getHomeIncomeTrend"
   | "getSummary"
@@ -146,6 +152,32 @@ export function createDemoExecutiveClient(
       await delay();
       const bundle = await ensureBundle();
       return bundle.buildMockApiEnvelope("home.snapshot", bundle.mockHomeSnapshot);
+    },
+    async getHomeMacroReleaseContext(options: GetHomeMacroReleaseContextOptions) {
+      await delay();
+      const bundle = await ensureBundle();
+      return bundle.buildMockApiEnvelope<HomeMacroReleaseContextPayload>(
+        "home.macro_release_context",
+        {
+          window_start_date: options.startDate,
+          window_end_date: options.endDate,
+          history_items: [],
+          coverage: {
+            configured_count: 8,
+            ready_count: 0,
+            partial_count: 0,
+            stale_count: 0,
+            fallback_count: 0,
+            source_pending_count: 8,
+            error_count: 0,
+          },
+          warnings: [],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+        },
+      );
     },
     async getHomeResearchReports(reportDate: string, limit = 5) {
       await delay();
@@ -442,6 +474,18 @@ export function createRealExecutiveClient(
       ),
     getHomeSnapshot: (options?: GetHomeSnapshotOptions) =>
       fetchHomeSnapshotEnvelope(fetchImpl, baseUrl, options),
+    getHomeMacroReleaseContext: (options: GetHomeMacroReleaseContextOptions) => {
+      const params = new URLSearchParams({
+        start_date: options.startDate,
+        end_date: options.endDate,
+        history_limit: String(options.historyLimit ?? 8),
+      });
+      return requestJson<HomeMacroReleaseContextPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/home/macro-release-context?${params.toString()}`,
+      );
+    },
     getHomeResearchReports: (reportDate: string, limit = 5) => {
       const params = new URLSearchParams({
         report_date: reportDate,

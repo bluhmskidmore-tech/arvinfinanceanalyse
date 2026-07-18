@@ -12,8 +12,14 @@ import type {
 import type {
   DashboardHomeFirstScreenView,
   HomeDecisionAction,
+  HomeDecisionSuggestion,
   HomeDataStateKind,
   HomeDeltaTone,
+  HomeGovernanceStatusKind,
+  HomeMissingDomain,
+  HomeProductCategoryHeadline,
+  HomeReportDateContext,
+  HomeReportDateMode,
   HomeTerminalKpi,
 } from "./dashboardHomeFirstScreenTypes";
 
@@ -22,6 +28,11 @@ type NumericLike = Numeric | string | number | null | undefined;
 export type MapToHomeFirstScreenViewInput = {
   reportDate: string;
   useMockFallback: boolean;
+  requestedReportDate?: string;
+  domainsEffectiveDate?: Readonly<Record<string, string>>;
+  domainsMissing?: readonly string[];
+  productCategoryHeadline?: HomeProductCategoryHeadline;
+  snapshotMode?: "strict" | "partial";
   verdict: VerdictPayload | null;
   metrics: readonly HomeSnapshotOverviewMetricVM[];
   attribution: HomeSnapshotPnlAttributionVM | null;
@@ -32,6 +43,7 @@ export type MapToHomeFirstScreenViewInput = {
   snapshotUnavailable: boolean;
   snapshotStale: boolean;
   snapshotLoading: boolean;
+  staleWarning?: string | null;
 };
 
 const GAP = "—";
@@ -46,6 +58,37 @@ const DECISION_ACTION_ROUTES = new Set([
   "/risk-overview",
   "/risk-tensor",
 ]);
+
+const DOMAIN_LABELS: Readonly<Record<string, string>> = {
+  attribution: "损益归因",
+  balance_sheet: "资产负债",
+  overview: "经营总览",
+  pnl: "损益",
+  product_category: "产品分类经营",
+};
+
+function buildMissingDomains(values: readonly string[] | undefined): HomeMissingDomain[] {
+  const seen = new Set<string>();
+  const domains: HomeMissingDomain[] = [];
+  for (const value of values ?? []) {
+    const id = value.trim();
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    domains.push({
+      id,
+      label: DOMAIN_LABELS[id] ?? id.replace(/[_-]+/g, " "),
+    });
+  }
+  return domains;
+}
+
+function missingDomainSummary(domains: readonly HomeMissingDomain[]): string {
+  return domains
+    .map((domain) => `${domain.label}（${domain.id}）`)
+    .join("、");
+}
 
 function isNumericObject(value: NumericLike): value is Numeric {
   return typeof value === "object" && value !== null && "raw" in value;
@@ -106,6 +149,9 @@ function numericDisplay(value: NumericLike, fallback = GAP, unitHint?: string): 
   const unit = isNumericObject(value) ? value.unit : unitHint;
   const signAware = isNumericObject(value) ? value.sign_aware : false;
   const display = isNumericObject(value) ? value.display?.trim() : undefined;
+  if (isNumericObject(value) && raw == null) {
+    return fallback;
+  }
   if (raw != null) {
     if (unit === "yuan") {
       const hasScaledUnit = Boolean(display && /[亿万]/.test(display));
@@ -305,30 +351,32 @@ function decisionItemPath(actionId: string, reportDate: string): string | undefi
   return reportDatePath(`/decision-items?${params.toString()}`, reportDate);
 }
 
-function sourceLabelForPath(path: string): string {
-  const pathname = path.split(/[?#]/, 1)[0] ?? "";
-  if (pathname === "/bond-analysis") return "债券分析";
-  if (pathname === "/decision-items") return "待办";
-  if (pathname === "/risk-tensor") return "风险张量";
-  if (pathname === "/risk-overview") return "风险";
-  if (pathname === "/pnl-attribution") return "归因";
-  if (pathname === "/cross-asset") return "跨资产";
 
-  const firstSegment = pathname.split("/").filter(Boolean)[0];
-  return firstSegment || "home";
-}
-
-function actionIdForSuggestion(index: number, to: string, title: string): string {
-  const source = sourceLabelForPath(to);
+function suggestionId(index: number, title: string): string {
   const titleToken = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  return `suggestion-${index + 1}-${titleToken || source}`;
+  return `suggestion-${index + 1}-${titleToken || "drilldown"}`;
+}
+
+function buildDecisionSuggestions(
+  verdict: VerdictPayload | null,
+  reportDate: string,
+): HomeDecisionSuggestion[] {
+  return (verdict?.suggestions ?? [])
+    .map((suggestion, index) => {
+      const text = suggestion.text.trim();
+      const to = reportDatePath(suggestion.link, reportDate);
+      return text
+        ? { id: suggestionId(index, text), text, ...(to ? { to } : {}) }
+        : null;
+    })
+    .filter((suggestion): suggestion is HomeDecisionSuggestion => suggestion !== null)
+    .slice(0, 3);
 }
 
 function buildDecisionActions(args: {
-  verdict: VerdictPayload | null;
   alertCount: number;
   reportDate: string;
   snapshotUnavailable: boolean;
@@ -360,23 +408,6 @@ function buildDecisionActions(args: {
       statusKind: to ? "ready" : "stale",
     });
   }
-
-  args.verdict?.suggestions?.forEach((suggestion, index) => {
-    const title = suggestion.text.trim();
-    const to = reportDatePath(suggestion.link, args.reportDate);
-    if (!title || !to) {
-      return;
-    }
-    actions.push({
-      id: actionIdForSuggestion(index, to, title),
-      title,
-      priority: args.alertCount > 0 ? "medium" : "high",
-      sourceLabel: sourceLabelForPath(to),
-      reason: "进入对应页面核对明细",
-      to,
-      statusKind: "ready",
-    });
-  });
 
   if (actions.length > 0) {
     return actions.slice(0, 4);
@@ -414,22 +445,23 @@ function terminalKpiFromNumeric(args: {
     delta: delta.delta,
     deltaTone: delta.tone,
     sparkline: args.sparkline,
-    state: args.value ? args.state ?? "ready" : "empty",
+    state: numericRaw(args.value) != null ? args.state ?? "ready" : "empty",
   };
 }
 
 function terminalKpiFromSnapshotMetric(metric: HomeSnapshotOverviewMetricVM): HomeTerminalKpi {
+  const valueRaw = numericRaw(metric.value);
   const split = splitNumericDisplay(metric.value);
-  const delta = numericDisplay(metric.delta);
+  const delta = valueRaw == null ? GAP : numericDisplay(metric.delta);
   return {
     id: metric.id,
     label: metric.label,
     value: split.value,
     unit: split.unit,
     delta: delta === GAP ? GAP : `较前日 ${delta}`,
-    deltaTone: metricToneToDelta(metric.tone),
+    deltaTone: valueRaw == null ? "muted" : metricToneToDelta(metric.tone),
     sparkline: buildSparklineFromHistory(metric.history, flatSparkline(numericRaw(metric.value) ?? 1)),
-    state: "ready",
+    state: valueRaw != null ? "ready" : "empty",
   };
 }
 
@@ -443,8 +475,7 @@ function buildTerminalKpis(args: {
   portfolio: BondPortfolioHeadlinesPayload | null;
   attribution: HomeSnapshotPnlAttributionVM | null;
 }): HomeTerminalKpi[] {
-  const totalMarketValue =
-    args.headline?.kpis.total_market_value ?? args.portfolio?.total_market_value ?? args.aumMetric?.value;
+  const totalMarketValue = args.aumMetric?.value;
   const duration =
     args.durationMetric?.value ??
     args.headline?.kpis.weighted_duration ??
@@ -658,23 +689,202 @@ function formatVerdictReason(reason: VerdictPayload["reasons"][number] | undefin
   return segments.length > 0 ? segments.join(" · ") : GAP;
 }
 
+const DOMAIN_EFFECTIVE_DATE_LABELS: Readonly<Record<string, string>> = {
+  balance_sheet: "资产负债",
+  pnl: "损益",
+};
+
+function formatSnapshotGeneratedAt(generatedAt: string | null | undefined): string {
+  const trimmed = generatedAt?.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(trimmed);
+  return match ? `${match[1]} ${match[2]}` : trimmed;
+}
+
+function formatDomainEffectiveDates(
+  domainsEffectiveDate: Readonly<Record<string, string>> | undefined,
+): string {
+  return Object.entries(domainsEffectiveDate ?? {})
+    .map(([domain, date]) => {
+      const trimmedDate = typeof date === "string" ? date.trim() : "";
+      if (!trimmedDate) {
+        return null;
+      }
+      const label = DOMAIN_EFFECTIVE_DATE_LABELS[domain] ?? domain;
+      return `${label} ${trimmedDate}`;
+    })
+    .filter((item): item is string => Boolean(item))
+    .join(" · ");
+}
+
+/**
+ * 构建首页报告日期上下文。实际数据日只认 snapshot.result.report_date；
+ * 分域有效日期与快照生成时间分别保留，不再用 result_meta 日期互相回填。
+ */
+function buildReportDateContext(args: {
+  reportDate: string;
+  useMockFallback: boolean;
+  requestedReportDate?: string;
+  domainsEffectiveDate?: Readonly<Record<string, string>>;
+  snapshotMeta: ResultMeta | null;
+  snapshotUnavailable: boolean;
+  snapshotStale: boolean;
+  snapshotLoading: boolean;
+  staleWarning?: string | null;
+}): HomeReportDateContext {
+  const meta = args.snapshotMeta;
+  const requestedDate =
+    args.requestedReportDate?.trim() ||
+    (typeof meta?.requested_report_date === "string" ? meta.requested_report_date.trim() : "") ||
+    "";
+  const actualDataDate = args.reportDate.trim();
+  const dataAsOfDate = formatDomainEffectiveDates(args.domainsEffectiveDate);
+  const generatedAt = formatSnapshotGeneratedAt(meta?.generated_at);
+
+  let mode: HomeReportDateMode;
+  let divergenceReason: string | null = null;
+
+  if (args.useMockFallback) {
+    mode = "mock";
+    divergenceReason = "样例数据日";
+  } else if (args.snapshotUnavailable) {
+    mode = "error";
+    divergenceReason = "首页数据服务不可达";
+  } else if (args.snapshotLoading) {
+    mode = "loading";
+    divergenceReason = "主快照读取中";
+  } else if (args.snapshotStale) {
+    mode = "stale";
+    divergenceReason = args.staleWarning ?? "新报告日数据获取失败，当前展示上一版本数据";
+  } else if (actualDataDate.length === 0) {
+    mode = "empty";
+    divergenceReason = "暂无可用数据日";
+  } else if (
+    meta?.fallback_mode === "latest_snapshot" ||
+    (requestedDate.length > 0 && requestedDate !== actualDataDate)
+  ) {
+    mode = "fallback";
+    divergenceReason =
+      meta?.fallback_mode === "latest_snapshot"
+        ? "回退至最近可用快照"
+        : "请求日无数据，已回退至最近可用快照";
+  } else {
+    mode = "exact";
+    divergenceReason = null;
+  }
+
+  return {
+    requestedDate,
+    actualDataDate,
+    divergenceReason,
+    dataAsOfDate,
+    generatedAt,
+    mode,
+  };
+}
+
+type GovernanceReview = {
+  kind: Exclude<HomeGovernanceStatusKind, "ok" | "loading" | "error">;
+  reason: string;
+};
+
+function productCategoryGovernanceReview(
+  headline: HomeProductCategoryHeadline | undefined,
+): GovernanceReview | null {
+  if (!headline || headline.state === "ready") return null;
+  if (headline.state === "stale") {
+    return { kind: "stale", reason: "产品分类经营摘要偏旧，需复核" };
+  }
+  if (headline.state === "empty") {
+    return { kind: "partial", reason: "产品分类经营摘要未下发，需复核" };
+  }
+  if (headline.state === "partial") {
+    return { kind: "partial", reason: "产品分类经营摘要不完整，需复核" };
+  }
+  if (headline.state === "error") {
+    return { kind: "partial", reason: "产品分类经营摘要读取异常，需复核" };
+  }
+  return { kind: "partial", reason: "产品分类经营摘要读取中，需复核" };
+}
+
+function governanceReviewReason(
+  input: MapToHomeFirstScreenViewInput,
+  missingDomains: readonly HomeMissingDomain[],
+  productCategoryHeadline: HomeProductCategoryHeadline,
+): GovernanceReview | null {
+  const actualDataDate = cleanDate(input.reportDate);
+  if (!actualDataDate) {
+    return { kind: "partial", reason: "暂无可用快照，需复核" };
+  }
+  if (input.snapshotMeta && input.snapshotMeta.fallback_mode !== "none") {
+    return { kind: "fallback", reason: "快照使用回退链路，需复核" };
+  }
+  const requestedDate =
+    input.requestedReportDate?.trim() ||
+    input.snapshotMeta?.requested_report_date?.trim() ||
+    "";
+  if (requestedDate && requestedDate !== actualDataDate) {
+    return { kind: "fallback", reason: "请求日与实际快照日不一致，需复核" };
+  }
+  if (
+    input.snapshotMeta?.vendor_status === "vendor_stale" ||
+    input.snapshotMeta?.quality_flag === "stale"
+  ) {
+    return { kind: "stale", reason: "快照或外部数据源偏旧，需复核" };
+  }
+  if (missingDomains.length > 0) {
+    return {
+      kind: "partial",
+      reason: `部分数据域缺失：${missingDomainSummary(missingDomains)}，需复核`,
+    };
+  }
+  const productReview = productCategoryGovernanceReview(productCategoryHeadline);
+  if (productReview) {
+    return productReview;
+  }
+  if (input.snapshotMeta && input.snapshotMeta.vendor_status !== "ok") {
+    return { kind: "partial", reason: "外部数据源不可用，需复核" };
+  }
+  if (input.snapshotMeta && input.snapshotMeta.quality_flag !== "ok") {
+    return { kind: "partial", reason: "快照质量状态异常，需复核" };
+  }
+  return null;
+}
+
 export function mapToHomeFirstScreenView(
   input: MapToHomeFirstScreenViewInput,
 ): DashboardHomeFirstScreenView {
   const reportDate = cleanDate(input.reportDate) || GAP;
+  const missingDomains = buildMissingDomains(input.domainsMissing);
+  const productCategoryHeadline = input.productCategoryHeadline ?? {
+    state: "empty",
+    metrics: [],
+  };
+  const governanceReview =
+    input.snapshotUnavailable || input.snapshotLoading || input.snapshotStale
+      ? null
+      : governanceReviewReason(input, missingDomains, productCategoryHeadline);
   const dataStatusKind =
-    input.snapshotUnavailable ? "error" : input.snapshotLoading ? "loading" : input.snapshotStale ? "stale" : "ok";
+    input.snapshotUnavailable
+      ? "error"
+      : input.snapshotLoading
+        ? "loading"
+        : input.snapshotStale
+          ? "stale"
+          : governanceReview?.kind ?? "ok";
   const dataSyncPrefix = input.snapshotUnavailable
     ? "首页数据服务不可达"
     : input.snapshotLoading
       ? "主快照读取中"
-    : input.snapshotStale
-      ? "展示上一版本"
-      : "数据已更新";
-  const dataUpdatedAt =
-    input.snapshotUnavailable || input.snapshotLoading || input.snapshotStale
-      ? reportDate
-      : input.snapshotMeta?.generated_at?.slice(11, 16) ?? GAP;
+      : input.snapshotStale
+        ? "展示上一版本"
+        : governanceReview?.reason ?? "数据已更新";
+  const generatedTime = input.snapshotMeta?.generated_at?.slice(11, 16)?.trim();
+  const dataUpdatedAt = input.snapshotUnavailable || input.snapshotLoading
+    ? GAP
+    : generatedTime || GAP;
   const aumMetric = findMetric(input.metrics, ["aum"]);
   const yieldMetric = findMetric(input.metrics, ["yield"]);
   const nimMetric = findMetric(input.metrics, ["nim"]);
@@ -689,8 +899,7 @@ export function mapToHomeFirstScreenView(
   const headline = headlineOk ? input.bondHeadline : null;
   const portfolio = portfolioOk ? input.portfolio : null;
   const verdict = input.verdict;
-  const suggestions =
-    verdict?.suggestions?.map((item) => item.text).filter(Boolean).slice(0, 3) ?? [];
+  const suggestions = buildDecisionSuggestions(verdict, reportDate);
   const terminalKpis = buildTerminalKpis({
     aumMetric,
     yieldMetric,
@@ -702,10 +911,33 @@ export function mapToHomeFirstScreenView(
     attribution: input.attribution,
   });
   const keyRiskStrip = buildKeyRiskStrip({ headline, portfolio });
+  const reportDateContext = buildReportDateContext({
+    reportDate: cleanDate(input.reportDate),
+    useMockFallback: input.useMockFallback,
+    requestedReportDate: input.requestedReportDate,
+    domainsEffectiveDate: input.domainsEffectiveDate,
+    snapshotMeta: input.snapshotMeta,
+    snapshotUnavailable: input.snapshotUnavailable,
+    snapshotStale: input.snapshotStale,
+    snapshotLoading: input.snapshotLoading,
+    staleWarning: input.staleWarning,
+  });
+  const decisionActions = buildDecisionActions({
+    alertCount: input.alertCount,
+    reportDate,
+    snapshotUnavailable: input.snapshotUnavailable,
+  });
+  const actionableCount = decisionActions.filter(
+    (action) => action.statusKind === "ready" && Boolean(action.to),
+  ).length;
+  const decisionSuggestions = input.snapshotUnavailable
+    ? [{ id: "snapshot-unavailable-suggestion", text: "恢复首页数据服务后刷新日报" }]
+    : suggestions;
 
   return {
     reportDate,
     useMockFallback: false,
+    reportDateContext,
     headerStatus: {
       dataStatusKind,
       dataUpdatedAt,
@@ -713,17 +945,24 @@ export function mapToHomeFirstScreenView(
         ? "服务未连接"
         : input.snapshotLoading
           ? "等待数据"
-        : input.snapshotStale
-          ? "新报告日失败"
-          : "市场已收盘",
+          : input.snapshotStale
+            ? "新报告日失败"
+            : governanceReview
+              ? "来源需复核"
+              : "市场已收盘",
       valuationLabel: input.snapshotUnavailable
         ? "无可用快照"
         : input.snapshotLoading
           ? "读取中"
-        : input.snapshotStale
-          ? "沿用旧快照"
-          : "估值已完成",
-      valuationTone: input.snapshotUnavailable || input.snapshotLoading || input.snapshotStale ? "warn" : "ok",
+          : input.snapshotStale
+            ? "沿用旧快照"
+            : governanceReview
+              ? "估值待复核"
+              : "估值已完成",
+      valuationTone:
+        input.snapshotUnavailable || input.snapshotLoading || input.snapshotStale || governanceReview
+          ? "warn"
+          : "ok",
       riskReviewCount: input.alertCount,
       showRiskReview: input.alertCount > 0,
       dataSyncPrefix,
@@ -737,22 +976,15 @@ export function mapToHomeFirstScreenView(
       keyRisk: input.snapshotUnavailable
         ? "未执行：风险核验依赖主快照，当前服务不可达"
         : formatVerdictReason(verdict?.reasons?.[0]),
-      suggestions: input.snapshotUnavailable
-        ? ["恢复首页数据服务后刷新日报"]
-        : suggestions.length > 0
-          ? suggestions
-          : ["数据待同步"],
-      actions: buildDecisionActions({
-        verdict,
-        alertCount: input.alertCount,
-        reportDate,
-        snapshotUnavailable: input.snapshotUnavailable,
-      }),
-      pendingSummary: `${input.alertCount} 项`,
+      suggestions: decisionSuggestions,
+      actions: decisionActions,
+      pendingSummary: actionableCount > 0 ? `${actionableCount} 项` : "暂无",
       reportDate,
       dataUpdatedAt,
       dataSyncPrefix,
     },
+    missingDomains,
+    productCategoryHeadline,
     terminalKpis,
     keyRiskStrip,
   };

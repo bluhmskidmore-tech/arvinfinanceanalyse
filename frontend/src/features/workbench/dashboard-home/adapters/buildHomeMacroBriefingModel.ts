@@ -45,6 +45,10 @@ export type HomeMacroReleaseHistory = {
   sourceLabel: string | null;
 };
 
+export type HomeMacroReleaseHistoryItem = HomeMacroReleaseItem & {
+  history: HomeMacroReleaseHistory;
+};
+
 export type HomeMacroNewsItem = {
   id: string;
   timeLabel: string;
@@ -107,6 +111,8 @@ export type HomePolicyFundingSummary = {
 
 export type HomeMacroBriefingModel = {
   releaseItems: readonly HomeMacroReleaseItem[];
+  releaseHistoryItems: readonly HomeMacroReleaseHistoryItem[];
+  releaseHistoryMessage?: string | null;
   releaseWindowLabel: string;
   releaseMessage: string | null;
   newsItems: readonly HomeMacroNewsItem[];
@@ -699,6 +705,36 @@ function buildReleaseItems(todayIsoDate: string): HomeMacroReleaseItem[] {
     });
 }
 
+function buildReleaseHistoryItems(todayIsoDate: string): HomeMacroReleaseHistoryItem[] {
+  return macroReleaseCalendar
+    .flatMap((item) => {
+      const history = buildReleaseHistory(item.history);
+      if (!history) {
+        return [];
+      }
+      return [{
+        id: item.id,
+        date: item.date,
+        dateLabel: dateLabel(item.date),
+        daysUntilLabel: daysUntilLabel(item.date, todayIsoDate),
+        region: item.region,
+        title: item.title,
+        category: item.category,
+        importance: item.importance,
+        importanceLabel: importanceLabel(item.importance),
+        timeLabel: item.time_label,
+        sourceName: item.source_name,
+        sourceUrl: item.source_url,
+        history,
+      }];
+    })
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(right.date) || left.title.localeCompare(right.title, "zh-CN"),
+    )
+    .slice(-RELEASE_LIMIT);
+}
+
 function buildNewsItemsFromEvents(input: {
   events?: readonly ChoiceNewsEvent[] | null;
   todayIsoDate: string;
@@ -1102,6 +1138,7 @@ export function buildHomeMacroBriefingModel(input: {
   supplyCalendar: HomeResearchCalendarModel;
 }): HomeMacroBriefingModel {
   const releaseItems = buildReleaseItems(input.todayIsoDate);
+  const releaseHistoryItems = buildReleaseHistoryItems(input.todayIsoDate);
   const news = resolveHomeMacroNewsBriefing({
     choiceEvents: input.newsEvents,
     fallbackEvents: input.fallbackNewsEvents,
@@ -1112,6 +1149,7 @@ export function buildHomeMacroBriefingModel(input: {
 
   return {
     releaseItems,
+    releaseHistoryItems,
     releaseWindowLabel:
       releaseItems.length > 0 ? `未来 ${RELEASE_WINDOW_DAYS} 天 · ${releaseItems.length} 项` : `未来 ${RELEASE_WINDOW_DAYS} 天`,
     releaseMessage: releaseItems.length > 0 ? null : "暂无已维护发布日期，请补充配置清单。",

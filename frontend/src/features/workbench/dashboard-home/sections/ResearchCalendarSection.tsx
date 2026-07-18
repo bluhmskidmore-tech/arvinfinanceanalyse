@@ -8,16 +8,6 @@ type ResearchCalendarSectionProps = {
   focusPolicyFunding?: boolean;
 };
 
-type ReleaseItemWithHistory = HomeMacroBriefingModel["releaseItems"][number] & {
-  history: NonNullable<HomeMacroBriefingModel["releaseItems"][number]["history"]>;
-};
-
-function hasReleaseHistory(
-  item: HomeMacroBriefingModel["releaseItems"][number],
-): item is ReleaseItemWithHistory {
-  return Boolean(item.history);
-}
-
 function releaseImportanceClass(importance: string): string {
   if (importance === "high") {
     return styles.dhMacroReleaseItemHigh ?? "";
@@ -41,8 +31,8 @@ export function ResearchCalendarSection({
         { id: "action", text: summary.diagnostics.actionHint },
       ].filter((item): item is { id: string; text: string } => Boolean(item.text)).slice(0, 3)
     : [];
-  const releaseHistoryItems = macroBriefing.releaseItems.filter(hasReleaseHistory);
-  const visibleReleaseHistoryItems = releaseHistoryItems.slice(0, macroBriefing.releaseItems.length);
+  const releaseHistoryItems = macroBriefing.releaseHistoryItems;
+  const visibleReleaseHistoryItems = releaseHistoryItems;
 
   useEffect(() => {
     if (!focusPolicyFunding) {
@@ -115,7 +105,24 @@ export function ResearchCalendarSection({
             ) : (
               <p className={styles.dhMacroBriefingMessage}>{macroBriefing.releaseMessage}</p>
             )}
-            {macroBriefing.releaseItems.length > 0 ? (
+            {releaseHistoryItems.length > 0 ||
+              macroBriefing.releaseItems.length > 0 ||
+              Boolean(macroBriefing.releaseHistoryMessage) ? (
+              <details
+                className={styles.dhMacroReleaseDisclosure}
+                data-testid="dashboard-home-release-history-disclosure"
+              >
+                <summary className={styles.dhMacroReleaseDisclosureSummary} role="button">
+                  <span>过去数据与变动</span>
+                  <span className={styles.dhMacroReleaseDisclosureMeta}>
+                    <small>
+                      {releaseHistoryItems.length > 0
+                        ? `共 ${releaseHistoryItems.length} 项`
+                        : "暂无可用历史数据"}
+                    </small>
+                    <span className={styles.dhMacroReleaseDisclosureChevron} aria-hidden="true" />
+                  </span>
+                </summary>
               <div className={styles.dhMacroReleaseInsight} aria-label="重大信息过往数据与变动">
                 <div className={styles.dhMacroReleaseInsightHeader}>
                   <span>过往数据与变动</span>
@@ -128,7 +135,11 @@ export function ResearchCalendarSection({
                 {visibleReleaseHistoryItems.length > 0 ? (
                   <div className={styles.dhMacroReleaseHistoryList}>
                     {visibleReleaseHistoryItems.map((item) => (
-                      <div key={item.id} className={styles.dhMacroReleaseHistoryRow}>
+                      <div
+                        key={item.id}
+                        className={styles.dhMacroReleaseHistoryRow}
+                        data-testid="dashboard-home-release-history-row"
+                      >
                         <span className={styles.dhMacroReleaseHistoryTitle}>{item.title}</span>
                         <span className={styles.dhMacroReleaseHistoryMetric}>
                           <small>{item.history.latestLabel}</small>
@@ -156,10 +167,15 @@ export function ResearchCalendarSection({
                   </div>
                 ) : (
                   <p className={styles.dhMacroReleaseHistoryMessage}>
+                    {macroBriefing.releaseHistoryMessage ?? (
+                      <>
                     当前前瞻清单尚未维护历史值与变动。
+                      </>
+                    )}
                   </p>
                 )}
               </div>
+              </details>
             ) : null}
           </div>
 
