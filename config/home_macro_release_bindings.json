@@ -1,0 +1,225 @@
+{
+  "rule_version": "rv_home_macro_release_context_v1",
+  "groups": [
+    {
+      "indicator_key": "cn_pmi",
+      "title": "中国 PMI",
+      "region": "CN",
+      "category": "activity",
+      "importance": "high",
+      "priority": 1,
+      "availability": "automatic",
+      "publisher_name": "National Bureau of Statistics of China",
+      "vendor_name": "Choice",
+      "metrics": [
+        {
+          "metric_key": "manufacturing_pmi",
+          "label": "制造业 PMI",
+          "table": "fact_choice_macro_daily",
+          "series_id": "M0017126",
+          "cadence": "monthly",
+          "display_unit": "index",
+          "change_unit": "index_point",
+          "precision": 1
+        }
+      ]
+    },
+    {
+      "indicator_key": "cn_inflation",
+      "title": "中国通胀",
+      "region": "CN",
+      "category": "inflation",
+      "importance": "high",
+      "priority": 2,
+      "availability": "automatic",
+      "publisher_name": "National Bureau of Statistics of China",
+      "vendor_name": "Tushare",
+      "metrics": [
+        {
+          "metric_key": "cpi_yoy",
+          "label": "CPI YoY",
+          "table": "std_external_macro_daily",
+          "series_id": "tushare.macro.cn_cpi.monthly",
+          "cadence": "monthly",
+          "display_unit": "pct",
+          "change_unit": "pct_point",
+          "precision": 1
+        },
+        {
+          "metric_key": "ppi_yoy",
+          "label": "PPI YoY",
+          "table": "std_external_macro_daily",
+          "series_id": "tushare.macro.cn_ppi.monthly",
+          "cadence": "monthly",
+          "display_unit": "pct",
+          "change_unit": "pct_point",
+          "precision": 1
+        }
+      ]
+    },
+    {
+      "indicator_key": "cn_growth",
+      "title": "中国增长",
+      "region": "CN",
+      "category": "growth",
+      "importance": "high",
+      "priority": 3,
+      "availability": "automatic",
+      "publisher_name": "National Bureau of Statistics of China",
+      "vendor_name": "NBS official release",
+      "metrics": [
+        {
+          "metric_key": "gdp_yoy",
+          "label": "GDP YoY",
+          "source_candidates": [
+            {
+              "table": "std_external_macro_daily",
+              "series_id": "nbs.macro.cn_gdp.quarterly",
+              "vendor_name": "NBS official release",
+              "priority": 1
+            },
+            {
+              "table": "std_external_macro_daily",
+              "series_id": "tushare.macro.cn_gdp.quarterly",
+              "vendor_name": "Tushare",
+              "priority": 2
+            }
+          ],
+          "cadence": "quarterly",
+          "display_unit": "pct",
+          "change_unit": "pct_point",
+          "precision": 1
+        }
+      ]
+    },
+    {
+      "indicator_key": "us_ism",
+      "title": "美国 ISM",
+      "region": "US",
+      "category": "activity",
+      "importance": "high",
+      "priority": 4,
+      "availability": "source_pending",
+      "publisher_name": null,
+      "vendor_name": null,
+      "metrics": [
+        {
+          "metric_key": "manufacturing_ism",
+          "label": "制造业 ISM",
+          "cadence": "monthly",
+          "display_unit": "index",
+          "change_unit": "index_point",
+          "precision": 1
+        },
+        {
+          "metric_key": "services_ism",
+          "label": "服务业 ISM",
+          "cadence": "monthly",
+          "display_unit": "index",
+          "change_unit": "index_point",
+          "precision": 1
+        }
+      ]
+    },
+    {
+      "indicator_key": "us_inflation",
+      "title": "美国通胀",
+      "region": "US",
+      "category": "inflation",
+      "importance": "high",
+      "priority": 5,
+      "availability": "source_pending",
+      "publisher_name": null,
+      "vendor_name": null,
+      "metrics": [
+        {
+          "metric_key": "us_cpi_yoy",
+          "label": "CPI YoY",
+          "cadence": "monthly",
+          "display_unit": "pct",
+          "change_unit": "pct_point",
+          "precision": 1
+        },
+        {
+          "metric_key": "us_ppi_yoy",
+          "label": "PPI YoY",
+          "cadence": "monthly",
+          "display_unit": "pct",
+          "change_unit": "pct_point",
+          "precision": 1
+        }
+      ]
+    },
+    {
+      "indicator_key": "us_employment",
+      "title": "美国就业",
+      "region": "US",
+      "category": "employment",
+      "importance": "high",
+      "priority": 6,
+      "availability": "source_pending",
+      "publisher_name": null,
+      "vendor_name": null,
+      "metrics": [
+        {
+          "metric_key": "nonfarm_payrolls",
+          "label": "非农就业人数",
+          "cadence": "monthly",
+          "display_unit": "persons",
+          "change_unit": "persons",
+          "precision": 0
+        },
+        {
+          "metric_key": "unemployment_rate",
+          "label": "失业率",
+          "cadence": "monthly",
+          "display_unit": "pct",
+          "change_unit": "pct_point",
+          "precision": 1
+        }
+      ]
+    },
+    {
+      "indicator_key": "us_growth",
+      "title": "美国增长",
+      "region": "US",
+      "category": "growth",
+      "importance": "high",
+      "priority": 7,
+      "availability": "source_pending",
+      "publisher_name": null,
+      "vendor_name": null,
+      "metrics": [
+        {
+          "metric_key": "us_gdp_yoy",
+          "label": "GDP YoY",
+          "cadence": "quarterly",
+          "display_unit": "pct",
+          "change_unit": "pct_point",
+          "precision": 1
+        }
+      ]
+    },
+    {
+      "indicator_key": "fomc",
+      "title": "FOMC",
+      "region": "US",
+      "category": "monetary_policy",
+      "importance": "high",
+      "priority": 8,
+      "availability": "source_pending",
+      "publisher_name": null,
+      "vendor_name": null,
+      "metrics": [
+        {
+          "metric_key": "policy_rate",
+          "label": "联邦基金目标利率",
+          "cadence": "event",
+          "display_unit": "pct",
+          "change_unit": "bp",
+          "precision": 2
+        }
+      ]
+    }
+  ]
+}

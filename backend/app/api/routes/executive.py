@@ -1,9 +1,14 @@
-from datetime import date
+from datetime import date, timedelta
+from pathlib import Path
 from typing import Annotated
 
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.home_macro_release_context_repo import (
+    HomeMacroReleaseContextRepository,
+)
 from backend.app.schemas.executive_dashboard import ExecutiveOverviewEnvelope
+from backend.app.schemas.home_macro_release_context import HomeMacroReleaseContextEnvelope
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.executive_service import (
     executive_alerts,  # noqa: F401 - reserved route contract monkeypatch target
@@ -16,10 +21,14 @@ from backend.app.services.executive_service import (
     home_research_reports_envelope,
     home_snapshot_envelope,
 )
+from backend.app.services.home_macro_release_context_service import (
+    HomeMacroReleaseContextService,
+)
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/ui")
 
+_HOME_MACRO_RELEASE_BINDINGS = Path(__file__).resolve().parents[4] / "config" / "home_macro_release_bindings.json"
 
 def _normalize_report_date(report_date: str | None) -> str | None:
     if report_date is None:
@@ -178,5 +187,39 @@ def home_income_trend(
         lambda: home_income_trend_envelope(
             report_date=normalized_report_date,
             window=window,
+        ),
+    )
+
+
+@router.get(
+    "/home/macro-release-context",
+    response_model=HomeMacroReleaseContextEnvelope,
+)
+def home_macro_release_context(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    start_date: date | None = None,
+    end_date: date | None = None,
+    history_limit: int = Query(8, ge=1, le=20),
+) -> HomeMacroReleaseContextEnvelope:
+    _ensure_executive_read_allowed(auth)
+    effective_start = start_date or date.today()
+    effective_end = end_date or effective_start + timedelta(days=45)
+    if effective_end < effective_start:
+        raise HTTPException(
+            status_code=422,
+            detail="end_date must be on or after start_date.",
+        )
+
+    settings = get_settings()
+    service = HomeMacroReleaseContextService(
+        repository=HomeMacroReleaseContextRepository(settings.duckdb_path),
+        bindings_path=_HOME_MACRO_RELEASE_BINDINGS,
+    )
+    return timed_api_call(
+        "/ui/home/macro-release-context",
+        lambda: service.build_envelope(
+            window_start_date=effective_start,
+            window_end_date=effective_end,
+            history_limit=history_limit,
         ),
     )

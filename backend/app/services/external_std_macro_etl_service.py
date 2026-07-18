@@ -57,6 +57,9 @@ class ExternalStdMacroEtlService:
         raw_zone_path: str,
         catalog_entry: ExternalDataCatalogEntry,
         ingest_batch_id: str,
+        *,
+        vendor_version: str | None = None,
+        rule_version: str | None = None,
     ) -> int:
         if catalog_entry.standardized_table not in (None, "std_external_macro_daily"):
             msg = f"ETL only supports std_external_macro_daily, got {catalog_entry.standardized_table!r}"
@@ -81,8 +84,8 @@ class ExternalStdMacroEtlService:
                 source_version = f"raw@{payload.get('fetched_at')}"
             if source_version is None:
                 source_version = f"ingest_{ingest_batch_id[:12]}"
-            vver = f"{vendor}|{catalog_entry.catalog_version}"
-            rver = "m2b.external_std_macro_etl.v1"
+            vver = vendor_version or f"{vendor}|{catalog_entry.catalog_version}"
+            rver = rule_version or "m2b.external_std_macro_etl.v1"
             self._conn.execute(
                 _INSERT_SQL,
                 [
