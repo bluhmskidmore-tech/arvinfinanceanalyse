@@ -321,7 +321,7 @@ export function createMockBalanceMovementClient(): BalanceMovementClientMethods 
           ["asset_zqtz_detail_securities_asset_management_plan", "证券业资管计划", "400000000", 84],
           [
             "asset_zqtz_detail_structured_finance_broker",
-            "其中：结构化产业基金（产业基金部分）",
+            "结构化融资（券商）",
             "200000000",
             85,
           ],

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createMockBalanceMovementClient } from "./balanceMovementClient";
 
 describe("createMockBalanceMovementClient", () => {
-  it("uses the governed J4 industry-fund label", async () => {
+  it("uses the governed J4 structured-finance broker label", async () => {
     const response = await createMockBalanceMovementClient().getBalanceMovementAnalysis({
       reportDate: "2026-06-30",
       currencyBasis: "CNY",
@@ -15,6 +15,6 @@ describe("createMockBalanceMovementClient", () => {
       (row) => row.row_key === "asset_zqtz_detail_structured_finance_broker",
     );
 
-    expect(j4Row?.row_label).toBe("其中：结构化产业基金（产业基金部分）");
+    expect(j4Row?.row_label).toBe("结构化融资（券商）");
   });
 });
