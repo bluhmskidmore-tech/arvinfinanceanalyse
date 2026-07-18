@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 import duckdb
+import pytest
 
 from backend.app.services import market_data_livermore_service as service
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
@@ -257,6 +258,53 @@ def test_dual_stock_history_scan_uses_bounded_query_shape_for_full_universe() ->
     assert conn.parameters[0] == stock_codes
     assert conn.parameters[1] == [True] * len(stock_codes)
     assert conn.parameters[2] == [True] * len(stock_codes)
+
+
+def test_dual_stock_history_conversion_reuses_native_duckdb_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_closes: list[object] = [1.0, 0.0, None, "2.5"]
+    candidate_turns: list[object] = [3.0, 4.0, 5.0, "6.5"]
+    trading_closes: list[object] = [7.0, None]
+    trading_amounts: list[object] = [70.0, 71.0]
+    trading_volumes: list[object] = [700.0, 701.0]
+    conn = _CapturingConnection()
+    conn.execute = lambda _query, _parameters=None: SimpleNamespace(  # type: ignore[method-assign]
+        fetchall=lambda: [
+            (
+                "600000.SH",
+                candidate_closes,
+                candidate_turns,
+                trading_closes,
+                trading_amounts,
+                trading_volumes,
+            )
+        ]
+    )
+    safe_float_calls: list[object] = []
+    original_safe_float = service._safe_float
+
+    def counting_safe_float(value: object) -> float | None:
+        safe_float_calls.append(value)
+        return original_safe_float(value)
+
+    monkeypatch.setattr(service, "_safe_float", counting_safe_float)
+
+    actual = service._load_dual_stock_history_inputs(
+        conn=conn,  # type: ignore[arg-type]
+        as_of_date=AS_OF_DATE,
+        candidate_stock_codes=["600000.SH"],
+        trading_stock_codes=["600000.SH"],
+    )
+
+    assert actual.candidate_history_by_code == {
+        "600000.SH": {"close": [1.0, 2.5], "turn": [3.0, 6.5]}
+    }
+    assert safe_float_calls == [None, 5.0, "2.5", "6.5"]
+    trading_history = actual.trading_history_by_code["600000.SH"]
+    assert trading_history["close"] is trading_closes
+    assert trading_history["amount"] is trading_amounts
+    assert trading_history["volume"] is trading_volumes
 
 
 class _CountingConnection:

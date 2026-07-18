@@ -2183,6 +2183,12 @@ def _load_dual_stock_history_inputs(
             closes: list[float] = []
             turns: list[float] = []
             for close_raw, turn_raw in zip(candidate_closes, candidate_turns, strict=True):
+                if isinstance(close_raw, float) and isinstance(turn_raw, float):
+                    if close_raw == 0.0 or turn_raw == 0.0:
+                        continue
+                    closes.append(close_raw)
+                    turns.append(turn_raw)
+                    continue
                 close_value = _safe_float(close_raw)
                 turn_value = _safe_float(turn_raw)
                 if close_value is None or turn_value is None:
@@ -2204,9 +2210,15 @@ def _load_dual_stock_history_inputs(
             and trading_volumes is not None
         ):
             trading_history_by_code[stock_code] = {
-                "close": list(trading_closes),
-                "amount": list(trading_amounts),
-                "volume": list(trading_volumes),
+                "close": (
+                    trading_closes if isinstance(trading_closes, list) else list(trading_closes)
+                ),
+                "amount": (
+                    trading_amounts if isinstance(trading_amounts, list) else list(trading_amounts)
+                ),
+                "volume": (
+                    trading_volumes if isinstance(trading_volumes, list) else list(trading_volumes)
+                ),
             }
     return _DualStockHistoryInputs(
         candidate_history_by_code=candidate_history_by_code,
