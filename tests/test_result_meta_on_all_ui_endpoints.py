@@ -20,6 +20,7 @@ from backend.app.repositories.governance_repo import (
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.schemas.result_meta import ResultMeta
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.tasks.balance_analysis_materialize import CACHE_KEY, RULE_VERSION
 from tests.helpers import load_module
@@ -43,43 +44,58 @@ MACRO_TOOLKIT_READ_PATHS = {
 
 
 def _required_result_meta_keys() -> frozenset[str]:
-    meta = load_module(
-        "backend.app.schemas.result_meta",
-        "backend/app/schemas/result_meta.py",
-    ).ResultMeta.model_fields.keys()
-    return frozenset(meta)
+    return frozenset(ResultMeta.model_fields)
 
 
 REQUIRED_RESULT_META_KEYS = _required_result_meta_keys()
 
 
 def _stub_result_meta(result_kind: str) -> dict[str, Any]:
-    meta = {key: None for key in REQUIRED_RESULT_META_KEYS}
-    meta.update(
-        {
-            "trace_id": f"tr_{result_kind.replace('.', '_')}",
-            "basis": "analytical",
-            "formal_use_allowed": False,
-            "scenario_flag": False,
-            "result_kind": result_kind,
-            "quality_flag": "ok",
-            "source_version": "sv_result_meta_contract",
-            "vendor_version": "vv_none",
-            "rule_version": "rv_result_meta_contract",
-            "cache_version": "cv_result_meta_contract",
-            "vendor_status": "ok",
-            "fallback_mode": "none",
-            "evidence_rows": 0,
-            "tables_used": [],
-            "filters_applied": {},
-            "sql_executed": [],
-        }
-    )
-    return meta
+    return ResultMeta(
+        trace_id=f"tr_{result_kind.replace('.', '_')}",
+        basis="analytical",
+        formal_use_allowed=False,
+        scenario_flag=False,
+        result_kind=result_kind,
+        quality_flag="ok",
+        source_version="sv_result_meta_contract",
+        vendor_version="vv_none",
+        rule_version="rv_result_meta_contract",
+        cache_version="cv_result_meta_contract",
+        vendor_status="ok",
+        fallback_mode="none",
+        evidence_rows=0,
+        source_surface="executive_analytical",
+    ).model_dump(mode="json")
 
 
 def _stub_executive_payload(result_kind: str) -> dict[str, Any]:
-    return {"result_meta": _stub_result_meta(result_kind), "result": {}}
+    result: dict[str, Any] = {}
+    if result_kind == "executive.overview":
+        result = {"title": "overview", "metrics": []}
+    return {"result_meta": _stub_result_meta(result_kind), "result": result}
+
+
+def _stub_home_macro_payload() -> dict[str, Any]:
+    meta = _stub_result_meta("home.macro_release_context")
+    meta["source_surface"] = "market_data"
+    return {
+        "result_meta": meta,
+        "result": {
+            "window_start_date": "2026-07-16",
+            "window_end_date": "2026-08-30",
+            "history_items": [],
+            "coverage": {
+                "configured_count": 0,
+                "ready_count": 0,
+                "partial_count": 0,
+                "stale_count": 0,
+                "fallback_count": 0,
+                "source_pending_count": 0,
+                "error_count": 0,
+            },
+        },
+    }
 
 
 def _grant_executive_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -104,6 +120,15 @@ def _executive_contract_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
         "tests._result_meta_exec.executive_contract",
         "backend/app/api/routes/executive.py",
     )
+
+    class _HomeMacroService:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def build_envelope(self, **_kwargs: object) -> dict[str, Any]:
+            return _stub_home_macro_payload()
+
+    monkeypatch.setattr(module, "HomeMacroReleaseContextService", _HomeMacroService)
     monkeypatch.setattr(
         module,
         "executive_overview",
@@ -286,6 +311,7 @@ def _grant_macro_toolkit_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     "path,params",
     [
         ("/ui/home/overview", {}),
+        ("/ui/home/macro-release-context", {"start_date": "2026-07-16", "end_date": "2026-08-30"}),
         ("/ui/home/summary", {}),
         ("/ui/pnl/attribution", {}),
         ("/ui/pnl/product-category/dates", {}),
@@ -324,7 +350,12 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
         _grant_macro_toolkit_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
-    if path in {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}:
+    if path in {
+        "/ui/home/overview",
+        "/ui/home/summary",
+        "/ui/pnl/attribution",
+        "/ui/home/macro-release-context",
+    }:
         client = _executive_contract_client(monkeypatch, tmp_path)
     else:
         for mod in (

@@ -122,6 +122,7 @@ def test_fastapi_application_exposes_executive_dashboard_routes():
     assert "/ui/risk/overview" in paths
     assert "/ui/home/contribution" in paths
     assert "/ui/home/alerts" in paths
+    assert "/ui/home/macro-release-context" in paths
 
 
 def test_executive_dashboard_endpoints_return_result_meta_envelopes(monkeypatch, tmp_path):
@@ -157,6 +158,7 @@ def test_executive_overview_read_surface_requires_explicit_read_scope(tmp_path, 
         ("/ui/home/snapshot", {"report_date": "2025-11-20"}),
         ("/ui/home/research-reports", {"report_date": "2025-11-20"}),
         ("/ui/home/income-trend", {"report_date": "2025-11-20"}),
+        ("/ui/home/macro-release-context", {"start_date": "2026-07-16", "end_date": "2026-08-30"}),
     ],
 )
 def test_executive_remaining_read_surfaces_require_explicit_read_scope(

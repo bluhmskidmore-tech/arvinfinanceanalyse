@@ -36,7 +36,7 @@ function createHydration(
       maxContributionLabel: "carry",
       maxContributionValue: "1.20",
       keyRisk: "no new risk",
-      suggestions: ["monitor"],
+      suggestions: [{ id: "monitor", text: "monitor" }],
       actions: [],
       pendingSummary: "none",
       reportDate: "2026-04-30",

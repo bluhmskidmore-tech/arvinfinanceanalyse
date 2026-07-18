@@ -364,7 +364,7 @@ describe("WorkbenchShell", () => {
 
     const subnav = screen.getByTestId("workbench-section-subnav");
     expect(subnav).toHaveTextContent("全部已开放页面");
-    expect(within(subnav).getByRole("link", { name: /收益分析/ })).toHaveAttribute("href", "/pnl");
+    expect(within(subnav).getByRole("link", { name: "正式损益" })).toHaveAttribute("href", "/pnl");
   });
 
   it("keeps live balance-analysis focused on page content without shell guidance", async () => {

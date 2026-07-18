@@ -627,6 +627,82 @@ describe("ModuleWorkbenchHome model", () => {
     expect(view.dataNote.lines.join(" ")).toContain("不使用前端补数");
   });
 
+  it("surfaces rule-version blocked risk dates instead of a plain empty state", () => {
+    const view = buildModuleHomeView(
+      "risk",
+      { mode: "real" },
+      {
+        riskDates: query({
+          data: envelope({
+            report_dates: [],
+            blocked_report_dates: [
+              {
+                report_date: "2026-05-31",
+                reason:
+                  "Risk tensor stale against rule version for report_date=2026-05-31; expected rv_risk_tensor_formal_materialize_v3, got rv_risk_tensor_formal_materialize_v2. Rematerialize required.",
+              },
+              {
+                report_date: "2026-06-30",
+                reason:
+                  "Risk tensor stale against rule version for report_date=2026-06-30; expected rv_risk_tensor_formal_materialize_v3, got rv_risk_tensor_formal_materialize_v2. Rematerialize required.",
+              },
+            ],
+          }),
+        }),
+      },
+    );
+
+    expect(view.decision?.conclusion).toContain("2 个报告日被规则版本拦截");
+    expect(view.decision?.conclusion).toContain("重新物化");
+    expect(view.statuses[0]?.value).toBe("全部拦截");
+    expect(view.statuses[0]?.tone).toBe("watch");
+    expect(view.stateDetail).toContain("拦截 2 个");
+    const blockedFact = view.decision?.facts.find((fact) => fact.label === "拦截日期");
+    expect(blockedFact?.value).toBe("2 个 · 最新 2026-06-30");
+    expect(blockedFact?.tone).toBe("watch");
+  });
+
+  it("marks risk dates as partially blocked when usable and blocked dates coexist", () => {
+    const view = buildModuleHomeView(
+      "risk",
+      { mode: "real" },
+      {
+        riskDates: query({
+          data: envelope({
+            report_dates: ["2026-06-30"],
+            blocked_report_dates: [
+              {
+                report_date: "2026-05-31",
+                reason:
+                  "Risk tensor stale against rule version for report_date=2026-05-31. Rematerialize required.",
+              },
+            ],
+          }),
+        }),
+      },
+    );
+
+    expect(view.statuses[0]?.value).toBe("部分拦截");
+    expect(view.statuses[0]?.tone).toBe("watch");
+    expect(view.stateDetail).toContain("可用日期 1 个");
+    expect(view.stateDetail).toContain("拦截 1 个");
+  });
+
+  it("keeps the plain dates status when no report date is blocked", () => {
+    const view = buildModuleHomeView(
+      "risk",
+      { mode: "real" },
+      {
+        riskDates: query({
+          data: envelope({ report_dates: ["2026-06-30"], blocked_report_dates: [] }),
+        }),
+      },
+    );
+
+    expect(view.statuses[0]?.value).toBe("已返回");
+    expect(view.decision?.facts.some((fact) => fact.label === "拦截日期")).toBe(false);
+  });
+
   it("keeps stale or fallback metadata visible in KPI details", () => {
     const view = buildModuleHomeView(
       "market",
@@ -1991,6 +2067,11 @@ describe("ModuleWorkbenchHome model", () => {
             liquidity_gap_90d: "250000000.00000000",
             liquidity_gap_30d_ratio: "0.05000000",
             total_market_value: "500000000.00000000",
+            rate_risk_market_value: "400000000.00000000",
+            rate_risk_dv01: "120000.00000000",
+            rate_risk_modified_duration: "4.20000000",
+            duration_excluded_market_value: "100000000.00000000",
+            duration_excluded_count: 2,
             bond_count: 8,
             quality_flag: "warning",
             warnings: [],
@@ -2017,6 +2098,9 @@ describe("ModuleWorkbenchHome model", () => {
     expect(view.stateLabel).toBe("已接入");
     expect(view.kpis.find((item) => item.key === "portfolio-dv01")?.value).toContain("万元");
     expect(view.kpis.find((item) => item.key === "liquidity-gap")?.label).toBe("久期缺口");
+    expect(view.kpis.every((item) => item.sparkline === undefined)).toBe(true);
+    expect(view.decision?.facts.some((fact) => fact.label === "限额状态")).toBe(false);
+    expect(view.decision?.detail).toContain("字段级证据");
 
     const tensorPanel = view.detailPanels?.find((panel) => panel.key === "risk-tensor-detail");
     expect(tensorPanel?.rows.some((row) => row.label === "KRD 5Y")).toBe(true);

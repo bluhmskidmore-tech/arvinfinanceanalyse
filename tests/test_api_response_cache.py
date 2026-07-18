@@ -132,6 +132,68 @@ def test_get_or_build_deduplicates_concurrent_builds_for_same_key() -> None:
     assert results == [{"value": 1}, {"value": 1}]
 
 
+def test_get_or_build_with_status_reports_produce_then_hit() -> None:
+    cache = TTLResponseCache(default_ttl_seconds=300.0)
+    calls = {"count": 0}
+
+    def builder() -> dict[str, int]:
+        calls["count"] += 1
+        return {"value": calls["count"]}
+
+    first, first_status = cache.get_or_build_with_status("k", builder)
+    second, second_status = cache.get_or_build_with_status("k", builder)
+
+    assert first == {"value": 1}
+    assert first_status == "produce"
+    assert second == {"value": 1}
+    assert second_status == "hit"
+    assert calls["count"] == 1
+
+
+def test_get_or_build_with_status_reports_wait_for_concurrent_reader() -> None:
+    cache = TTLResponseCache(default_ttl_seconds=300.0)
+    builder_started = threading.Event()
+    release_builder = threading.Event()
+    second_started = threading.Event()
+    calls = {"count": 0}
+    results: list[tuple[dict[str, int], str]] = []
+
+    def builder() -> dict[str, int]:
+        calls["count"] += 1
+        builder_started.set()
+        assert release_builder.wait(timeout=2.0)
+        return {"value": calls["count"]}
+
+    def first_read() -> None:
+        results.append(cache.get_or_build_with_status("k", builder))
+
+    def second_read() -> None:
+        second_started.set()
+        results.append(cache.get_or_build_with_status("k", builder))
+
+    first = threading.Thread(target=first_read)
+    second = threading.Thread(target=second_read)
+    first.start()
+    assert builder_started.wait(timeout=1.0)
+    second.start()
+    assert second_started.wait(timeout=1.0)
+
+    try:
+        for _ in range(100):
+            if second.is_alive():
+                time.sleep(0.005)
+                break
+        assert second.is_alive()
+    finally:
+        release_builder.set()
+        first.join(timeout=2.0)
+        second.join(timeout=2.0)
+
+    assert calls["count"] == 1
+    assert sorted(status for _value, status in results) == ["produce", "wait"]
+    assert [value for value, _status in results] == [{"value": 1}, {"value": 1}]
+
+
 def test_get_or_build_propagates_inflight_error_and_allows_rebuild() -> None:
     cache = TTLResponseCache(default_ttl_seconds=300.0)
     builder_started = threading.Event()

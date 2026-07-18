@@ -130,7 +130,11 @@ def test_risk_tensor_api_503_preserves_structured_result_meta(tmp_path, monkeypa
         "risk_tensor_envelope",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("materialized fact unavailable")),
     )
-    client = _risk_tensor_client(tmp_path, monkeypatch, raise_server_exceptions=False)
+    _grant_risk_tensor_read(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+    client.headers.update(RISK_TENSOR_READ_HEADERS)
 
     response = client.get("/api/risk/tensor", params={"report_date": REPORT_DATE})
 

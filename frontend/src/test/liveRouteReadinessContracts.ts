@@ -244,6 +244,18 @@ export const liveRouteReadinessContracts = {
     sourceAnchors: ["pnl-by-business-page", "pnl-by-business-state-surfaces"],
     verificationFiles: ["src/test/PnlRoutesSmoke.test.tsx"],
   },
+  "/pnl-by-business-insights": {
+    sourceFiles: ["src/features/pnl-business-insights/PnlByBusinessInsightsPage.tsx"],
+    sourceAnchors: [
+      "pnl-by-business-insights-page",
+      "pnl-by-business-insights-contract-status",
+      "pnl-by-business-insights-reconciliation-section",
+    ],
+    verificationFiles: [
+      "src/features/pnl-business-insights/PnlByBusinessInsightsPage.test.tsx",
+      "src/test/routes.test.tsx",
+    ],
+  },
   "/agent": {
     sourceFiles: ["src/features/agent/AgentWorkbenchPage.tsx"],
     sourceAnchors: ["agent-workbench-shell", "agent-conversation-bottom"],
