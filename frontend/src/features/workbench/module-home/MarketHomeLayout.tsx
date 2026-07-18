@@ -137,6 +137,7 @@ function MarketMacroOverviewCard({ panel }: { panel: ModuleHomeDetailPanel }) {
       <ModuleHomeSectionHead
         label={panel.title}
         title=""
+        index="03"
         className={dhStyles.dhSectionTitle}
         trailing={<span className={marketStyles.marketStatusOutline}>{panel.stateLabel}</span>}
       />
@@ -389,7 +390,9 @@ export default function MarketHomeLayout({
             <MarketStructureTabPanel panel={panel} />
           </div>
         ) : (
-          <p className={marketStyles.panelEmpty}>暂无数据</p>
+          <p className={marketStyles.panelEmpty} data-empty>
+            暂无数据
+          </p>
         ),
       };
     });
@@ -473,7 +476,9 @@ export default function MarketHomeLayout({
               </section>
               <div className={marketStyles.evidenceRailScrollBlock} data-testid="module-home-market-evidence-rail-actions-scroll">
                 <nav aria-label="市场模块入口" className={marketStyles.evidenceRailActionList}>
-                  <Link to={marketDataHref} className={marketStyles.evidenceRailLink}>市场数据</Link>
+                  <Link to={marketDataHref} className={marketStyles.evidenceRailLink}>
+                    <i data-row-index aria-hidden="true">01</i>市场数据
+                  </Link>
                   <button
                     type="button"
                     className={`${marketStyles.evidenceRailLink} ${marketStyles.evidenceRailRefreshButton}`}
@@ -481,10 +486,15 @@ export default function MarketHomeLayout({
                     disabled={isRefreshing}
                     onClick={() => void onRefreshData()}
                   >
+                    <i data-row-index aria-hidden="true">02</i>
                     {isRefreshing ? "刷新中" : "刷新数据"}
                   </button>
-                  <Link to="/macro-toolkit" className={marketStyles.evidenceRailLink}>宏观工具</Link>
-                  <Link to="/cross-asset" className={marketStyles.evidenceRailLink}>跨资产</Link>
+                  <Link to="/macro-toolkit" className={marketStyles.evidenceRailLink}>
+                    <i data-row-index aria-hidden="true">03</i>宏观工具
+                  </Link>
+                  <Link to="/cross-asset" className={marketStyles.evidenceRailLink}>
+                    <i data-row-index aria-hidden="true">04</i>跨资产
+                  </Link>
                 </nav>
               </div>
             </aside>
@@ -492,6 +502,7 @@ export default function MarketHomeLayout({
               <ModuleHomeSectionHead
                 label="深度数据"
                 title=""
+                index="01"
                 className={dhStyles.dhSectionTitle}
                 trailing={<Link to={marketDataHref} className={dhStyles.dhLink}>完整市场数据 →</Link>}
               />
@@ -499,7 +510,7 @@ export default function MarketHomeLayout({
                 className={`${dhStyles.dhCard} ${marketStyles.marketDeskPanel} ${marketStyles.terminalCard} ${marketStyles.marketAnalysisRates} ${isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""}`}
                 data-testid="module-home-market-terminal"
               >
-                <ModuleHomeSectionHead label="正式利率序列 / 目录 / 快讯" title="" className={dhStyles.dhSectionTitle} />
+                <ModuleHomeSectionHead label="正式利率序列 / 目录 / 快讯" title="" index="02" className={dhStyles.dhSectionTitle} />
                 <Tabs defaultActiveKey="formal-rate-series" items={auditTabItems} />
               </div>
               <section className={marketStyles.marketDistributionGrid} data-testid="module-home-market-distribution-grid">
@@ -776,15 +787,20 @@ export default function MarketHomeLayout({
                 </div>
                 {newsHeadlineRows.length > 0 ? (
                   <ul className={marketStyles.marketNewsStripList}>
-                    {newsHeadlineRows.map((row) => (
+                    {newsHeadlineRows.map((row, index) => (
                       <li data-testid={`module-home-news-headline-${row.key}`} key={row.key}>
+                        <i data-row-index aria-hidden="true">
+                          {String(index + 1).padStart(2, "0")}
+                        </i>
                         <strong>{row.value}</strong>
                         <em>{compactMarketParts([row.tradeDate, row.source]).join(" · ")}</em>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className={marketStyles.panelEmpty}>{newsEventsPanel?.stateDetail ?? "新闻事件摘要待读取。"}</p>
+                  <p className={marketStyles.panelEmpty} data-empty>
+                    {newsEventsPanel?.stateDetail ?? "新闻事件摘要待读取。"}
+                  </p>
                 )}
               </section>
             ) : null}

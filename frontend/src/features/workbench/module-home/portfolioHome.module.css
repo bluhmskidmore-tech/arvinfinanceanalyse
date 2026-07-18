@@ -5691,3 +5691,117 @@
     font-size: 18px;
   }
 }
+
+/* ── B-tier visual pass (2026-07-17): editorial section indices, empty-state glyphs,
+   row numbering, striped skeletons and hover micro-interactions. Additive only. ── */
+
+/* Section index inside workbench section titles. */
+.workbenchSectionHead h2 i[data-section-index] {
+  margin-right: 9px;
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+  vertical-align: 1px;
+}
+
+/* Row numbering on the review action loop. */
+.decisionAction {
+  grid-template-columns: auto 8px minmax(0, 1fr) auto;
+}
+
+.decisionAction i[data-row-index] {
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
+
+/* Empty states: dashed hairline box + small void glyph. */
+.portfolioPageMain p[data-empty] {
+  position: relative;
+  padding: 10px 12px 10px 34px;
+  border: 1px dashed var(--dh-line-soft, rgba(125, 211, 252, 0.3));
+  border-radius: 6px;
+}
+
+.portfolioPageMain p[data-empty]::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  border-radius: 99px;
+  background: radial-gradient(circle at center, rgba(125, 211, 252, 0.55) 0 2px, transparent 2px);
+  transform: translateY(-50%);
+}
+
+/* Striped skeletons: pending structure reads as hatch, not flat bars. */
+.chartMiniSkeleton span {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(226, 239, 255, 0.16) 0 4px,
+    rgba(226, 239, 255, 0.04) 4px 8px
+  );
+}
+
+/* Hover micro-interactions on interactive cards and rows. */
+.quickAccessCard,
+.drillCard,
+.decisionAction,
+.workbenchNav a,
+.structureGapAction {
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.quickAccessCard:hover,
+.drillCard:hover,
+.decisionAction:hover {
+  transform: translateY(-1px);
+}
+
+.workbenchNav a:hover {
+  transform: translateX(2px);
+}
+
+.exposureLedgerRow span,
+.exposureLedgerRow strong,
+.exposureLedgerRow em {
+  transition: background-color 0.16s ease;
+}
+
+.exposureLedgerRow:hover span,
+.exposureLedgerRow:hover strong,
+.exposureLedgerRow:hover em {
+  background: rgba(125, 211, 252, 0.07);
+}
+
+/* Decision fact labels read as quiet caps above tabular values. */
+.decisionFact span {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quickAccessCard,
+  .drillCard,
+  .decisionAction,
+  .workbenchNav a,
+  .structureGapAction,
+  .exposureLedgerRow span,
+  .exposureLedgerRow strong,
+  .exposureLedgerRow em {
+    transition: none;
+  }
+}

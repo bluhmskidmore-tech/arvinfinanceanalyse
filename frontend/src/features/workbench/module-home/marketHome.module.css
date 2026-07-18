@@ -8589,3 +8589,158 @@
   gap: 12px;
   padding: 12px;
 }
+
+/* ── B-tier visual pass (2026-07-17): section indices on depth-zone heads, empty-state
+   glyphs, numbered rails/headlines, segmented audit tabs, hover micro-interactions. ── */
+
+/* Section indices inside shared dhSectionTitle heads. */
+.marketDeskPanel i[data-section-index],
+.marketDepthZone i[data-section-index] {
+  margin-right: 8px;
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+/* Empty panels: dashed hairline + void glyph. */
+.panelEmpty[data-empty] {
+  position: relative;
+  border-style: dashed;
+  padding-left: 36px;
+}
+
+.panelEmpty[data-empty]::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  border-radius: 99px;
+  background: radial-gradient(circle at center, rgba(125, 211, 252, 0.55) 0 2px, transparent 2px);
+  transform: translateY(-50%);
+}
+
+/* Numbered module rail. */
+.evidenceRailLink {
+  justify-content: flex-start;
+  gap: 8px;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.evidenceRailLink::after {
+  margin-left: auto;
+}
+
+.evidenceRailLink:hover {
+  transform: translateX(2px);
+}
+
+.evidenceRailLink i[data-row-index] {
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
+
+/* Numbered news headlines (editorial activity list). */
+.marketNewsStripList li {
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.marketNewsStripList i[data-row-index] {
+  grid-row: span 2;
+  color: var(--dh-api-blue, var(--dh-blue));
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
+.marketNewsStripList strong,
+.marketNewsStripList em {
+  grid-column: 2;
+}
+
+/* Segmented audit tabs (style-only, no behavior change). */
+.terminalCard :global(.ant-tabs-tab) {
+  padding: 5px 12px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 999px;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.terminalCard :global(.ant-tabs-tab + .ant-tabs-tab) {
+  margin-left: 6px;
+}
+
+.terminalCard :global(.ant-tabs-tab-active) {
+  border-color: rgba(125, 211, 252, 0.45);
+  background: rgba(125, 211, 252, 0.12);
+}
+
+.terminalCard :global(.ant-tabs-ink-bar) {
+  display: none;
+}
+
+.terminalCard :global(.ant-tabs-nav::before) {
+  border-bottom: 0;
+}
+
+/* Hover continuity on cards that already react. */
+.marketKpiTile,
+.marketBottomNavItem,
+.marketThesisBriefingCard {
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evidenceRailLink,
+  .marketKpiTile,
+  .marketBottomNavItem,
+  .marketThesisBriefingCard,
+  .terminalCard :global(.ant-tabs-tab) {
+    transition: none;
+  }
+}
+
+/* ── B-tier fix pass (2026-07-17): rail numbering must win over the cohesion pass
+   (same-context selector), and the active audit tab needs readable ink. ── */
+.marketCockpitCohesion .evidenceRailLink {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.marketCockpitCohesion .evidenceRailLink::after {
+  margin-left: auto;
+}
+
+.terminalCard :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: var(--dh-ink, #eaf2fb);
+}
+
+/* The tab label is a custom module span; its own color beats inheritance, so the
+   active state must restate ink on the label class itself. */
+.terminalCard :global(.ant-tabs-tab-active) .marketAuditTabLabel {
+  color: var(--dh-ink, #eaf2fb);
+}

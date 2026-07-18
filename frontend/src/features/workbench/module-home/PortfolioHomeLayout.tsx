@@ -137,7 +137,9 @@ function DetailPanelBody({
           ))}
         </ul>
       ) : (
-        <p className={`${styles.detailSource} ${toneClass(panel.tone)}`}>{panel.stateDetail}</p>
+        <p className={`${styles.detailSource} ${toneClass(panel.tone)}`} data-empty>
+          {panel.stateDetail}
+        </p>
       )}
     </>
   );
@@ -228,6 +230,7 @@ function WorkbenchSectionHead({
   detail,
   meta,
   action,
+  index,
 }: {
   titleId: string;
   code: string;
@@ -235,12 +238,20 @@ function WorkbenchSectionHead({
   detail: string;
   meta?: string;
   action?: ReactNode;
+  index?: string;
 }) {
   return (
     <div className={styles.workbenchSectionHead}>
       <div>
         <span>{code}</span>
-        <h2 id={titleId}>{title}</h2>
+        <h2 id={titleId}>
+          {index ? (
+            <i data-section-index aria-hidden="true">
+              {index}
+            </i>
+          ) : null}
+          {title}
+        </h2>
         <p>{detail}</p>
       </div>
       {meta || action ? (
@@ -322,7 +333,9 @@ function PortfolioExposureLedger({ view }: { view: ModuleHomeView }) {
           ))}
         </div>
       ) : (
-        <p className={`${styles.dataNote} ${styles.toneWatch}`}>当前无可用暴露事实；不展示样例读数。</p>
+        <p className={`${styles.dataNote} ${styles.toneWatch}`} data-empty>
+          当前无可用暴露事实；不展示样例读数。
+        </p>
       )}
     </div>
   );
@@ -605,6 +618,9 @@ function DecisionPanel({ view }: { view: ModuleHomeView }) {
                   key={action.title}
                   data-testid={index === 0 ? "module-home-portfolio-action-loop-primary" : undefined}
                 >
+                  <i data-row-index aria-hidden="true">
+                    {String(index + 1).padStart(2, "0")}
+                  </i>
                   <span className={`${styles.decisionActionDot} ${toneClass(action.tone)}`} />
                   <span className={styles.decisionActionText}>
                     <strong className={toneClass(action.tone)}>{action.title}</strong>
@@ -741,7 +757,7 @@ export default function PortfolioHomeLayout({
         children: panel ? (
           <PortfolioStructureTabPanel panel={panel} />
         ) : (
-          <p className={`${styles.detailSource} ${styles.toneWatch}`}>
+          <p className={`${styles.detailSource} ${styles.toneWatch}`} data-empty>
             当前无可用正式结构读数；样例明细不作为业务决策依据。
           </p>
         ),
@@ -841,6 +857,7 @@ export default function PortfolioHomeLayout({
                   >
                     <WorkbenchSectionHead
                       titleId="portfolio-holdings-workbench-title"
+                      index="01"
                       code="图表"
                       title="持仓结构全景"
                       detail="券种、子组合与关键暴露并排复核。"
@@ -875,6 +892,7 @@ export default function PortfolioHomeLayout({
                   >
                     <WorkbenchSectionHead
                       titleId="portfolio-structure-workbench-title"
+                      index="02"
                       code="结构"
                       title="结构拆解工作台"
                       detail="子组合、收益率、利差、业务类型统一按表格核对。"
@@ -919,6 +937,7 @@ export default function PortfolioHomeLayout({
                   >
                     <WorkbenchSectionHead
                       titleId="portfolio-risk-workbench-title"
+                      index="03"
                       code="收益"
                       title={riskClosureBlocked || analyticalOnlySource ? "分析读数与归因" : "收益与风险"}
                       detail="闭合前门、风险读数、收益归因和日期闭合线并排复核。"
@@ -1004,6 +1023,7 @@ export default function PortfolioHomeLayout({
                   >
                     <WorkbenchSectionHead
                       titleId="portfolio-action-workbench-title"
+                      index="04"
                       code="入口"
                       title="快捷分析入口 / 全部明细入口"
                       detail="按业务动作而不是页面名称分组。"

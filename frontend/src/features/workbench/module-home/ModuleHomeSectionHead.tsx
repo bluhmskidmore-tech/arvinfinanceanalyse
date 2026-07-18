@@ -5,15 +5,24 @@ export function ModuleHomeSectionHead({
   title,
   trailing,
   className,
+  index,
 }: {
   label: string;
   title: string;
   trailing?: ReactNode;
   className?: string;
+  index?: string;
 }) {
   return (
     <div className={className}>
-      <span>{label}</span>
+      <span>
+        {index ? (
+          <i data-section-index aria-hidden="true">
+            {index}
+          </i>
+        ) : null}
+        {label}
+      </span>
       <strong>{title}</strong>
       {trailing}
     </div>

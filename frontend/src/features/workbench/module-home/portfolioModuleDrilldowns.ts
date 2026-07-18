@@ -16,7 +16,7 @@ function sectionToDrilldown(section: WorkbenchSection): ModuleHomeDrilldown {
   };
 }
 
-/** 与侧栏「组合工作台」分组下的 live 子页面数量保持一致（当前为 15）。 */
+/** 与侧栏「组合工作台」分组下的 live 子页面数量保持一致（当前为 16）。 */
 export function getPortfolioModuleDrilldowns(): ModuleHomeDrilldown[] {
   return primaryWorkbenchNavigation
     .filter((section) => resolveWorkbenchGroupKey(section) === "portfolio")
