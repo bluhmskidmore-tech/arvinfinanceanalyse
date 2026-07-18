@@ -1,0 +1,776 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+
+import { useApiClient } from "../../../api/client";
+import {
+  buildModuleHomeView,
+  type ModuleHomeTone,
+} from "./moduleHomeModel";
+import {
+  moduleWorkbenchHomeConfigs,
+  type ModuleWorkbenchHomeKind,
+} from "./moduleHomeConfig";
+import {
+  buildRiskV6Briefs,
+  buildRiskV6CashflowTrack,
+  buildRiskV6DetailTables,
+  buildRiskV6Hero,
+  buildRiskV6KpiCards,
+  buildRiskV6KrdBars,
+  buildRiskV6LineageRows,
+  buildRiskV6YieldCurveChart,
+  type RiskV6CurveTone,
+  type RiskV6KpiCard,
+} from "./riskHomeAdapter";
+import dh from "../dashboard-home/dashboardHomeShell.module.css";
+import styles from "./riskOverview.module.css";
+
+type RiskOverviewPageProps = {
+  kind?: ModuleWorkbenchHomeKind;
+};
+
+function dhStateClass(tone: ModuleHomeTone): string {
+  if (tone === "ok") return dh.dhApiStateOk;
+  if (tone === "error") return dh.dhApiStateBad;
+  if (tone === "watch") return dh.dhApiStateWarn;
+  return dh.dhApiStateMuted;
+}
+
+function roToneClass(tone: ModuleHomeTone): string {
+  if (tone === "ok") return styles.roToneOk;
+  if (tone === "watch") return styles.roToneWatch;
+  if (tone === "error") return styles.roToneError;
+  return styles.roToneMuted;
+}
+
+function v6PillClass(tone: ModuleHomeTone): string {
+  if (tone === "ok") return styles.roV6Pill;
+  if (tone === "watch") return `${styles.roV6Pill} ${styles.roV6PillWarn}`;
+  if (tone === "error") return `${styles.roV6Pill} ${styles.roV6PillBad}`;
+  return `${styles.roV6Pill} ${styles.roV6PillMut}`;
+}
+
+function curveToneClass(tone: RiskV6CurveTone): string {
+  if (tone === "amber") return styles.roV6CurveAmber;
+  if (tone === "acc") return styles.roV6CurveAcc;
+  return styles.roV6CurveInk;
+}
+
+/* ── KPI 曜石卡（渐变描边 ::before mask + 渐变数字 + 辉光走势 + 涨跌胶囊） ── */
+function V6KpiCardView({ card }: { card: RiskV6KpiCard }) {
+  return (
+    <article
+      className={`${styles.roV6Kpi} ${card.alert ? styles.roV6KpiAlert : ""}`}
+      data-testid={`risk-overview-kpi-${card.key}`}
+    >
+      <div className={styles.roV6KpiCap}>
+        {card.label}
+        <i className={card.alert ? styles.roV6CapDotBad : styles.roV6CapDot} aria-hidden="true" />
+      </div>
+      <div
+        className={`${styles.roV6KpiNum} ${card.valuePresent ? "" : styles.roV6KpiNumVoid}`}
+        title={card.valuePresent ? `${card.amount}${card.unit ? ` ${card.unit}` : ""}` : "待接入"}
+      >
+        {card.amount}
+        {card.unit ? <small> {card.unit}</small> : null}
+      </div>
+      {card.sparkline ? (
+        <svg
+          className={styles.roV6Spark}
+          viewBox="0 0 96 30"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <path className={styles.roV6SparkArea} d={card.sparkline.areaPath} />
+          <path className={styles.roV6SparkLine} d={card.sparkline.linePath} />
+          <circle
+            className={styles.roV6SparkHalo}
+            cx={card.sparkline.endX}
+            cy={card.sparkline.endY}
+            r="5.5"
+          />
+          <circle
+            className={styles.roV6SparkDot}
+            cx={card.sparkline.endX}
+            cy={card.sparkline.endY}
+            r="2.2"
+          />
+        </svg>
+      ) : (
+        <div className={styles.roV6SparkEmpty}>近 24 期序列待接入</div>
+      )}
+      <div className={styles.roV6KpiFoot}>
+        {card.delta ? (
+          <span className={styles.roV6KpiChip}>{card.delta.text}</span>
+        ) : (
+          <span className={styles.roV6KpiChipVoid}>—</span>
+        )}
+        <span className={styles.roV6KpiSub} title={card.caption}>
+          {card.caption}
+        </span>
+      </div>
+    </article>
+  );
+}
+
+export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProps) {
+  const client = useApiClient();
+
+  const riskDatesQuery = useQuery({
+    queryKey: ["risk-overview", "risk-dates", client.mode],
+    queryFn: () => client.getRiskTensorDates(),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const riskReportDate = riskDatesQuery.data?.result.report_dates[0] ?? "";
+  const blockedReportDates = riskDatesQuery.data?.result.blocked_report_dates ?? [];
+  const latestBlocked =
+    blockedReportDates.length > 0
+      ? [...blockedReportDates].sort((a, b) =>
+          b.report_date.localeCompare(a.report_date),
+        )[0]
+      : undefined;
+  const riskTensorQuery = useQuery({
+    queryKey: ["risk-overview", "risk-tensor", client.mode, riskReportDate],
+    queryFn: () => client.getRiskTensor(riskReportDate),
+    enabled: Boolean(riskReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const cashflowQuery = useQuery({
+    queryKey: ["risk-overview", "cashflow", client.mode, riskReportDate],
+    queryFn: () => client.getCashflowProjection(riskReportDate),
+    enabled: Boolean(riskReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const riskHistoryQuery = useQuery({
+    queryKey: ["risk-overview", "risk-tensor-history", client.mode, riskReportDate],
+    queryFn: () => client.getRiskTensorHistory(riskReportDate, 24),
+    enabled: Boolean(riskReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const yieldCurveQuery = useQuery({
+    queryKey: ["risk-overview", "yield-curve-term", client.mode, riskReportDate],
+    queryFn: () =>
+      client.getBondAnalyticsYieldCurveTermStructure(riskReportDate, {
+        curveTypes: "treasury,cdb,aaa_credit",
+      }),
+    enabled: Boolean(riskReportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const config = moduleWorkbenchHomeConfigs[kind];
+  const view = useMemo(
+    () =>
+      buildModuleHomeView(kind, client, {
+        riskDates: riskDatesQuery,
+        riskTensor: riskTensorQuery,
+        cashflow: cashflowQuery,
+      }),
+    [kind, client, riskDatesQuery, riskTensorQuery, cashflowQuery],
+  );
+
+  const tensor = riskTensorQuery.data?.result;
+  const history = riskHistoryQuery.data?.result;
+  const cashflow = cashflowQuery.data?.result;
+
+  const hero = useMemo(() => buildRiskV6Hero(tensor), [tensor]);
+  const kpiCards = useMemo(() => buildRiskV6KpiCards(tensor, history), [tensor, history]);
+  const briefs = useMemo(() => buildRiskV6Briefs(tensor), [tensor]);
+  const krdBars = useMemo(() => buildRiskV6KrdBars(tensor), [tensor]);
+  const curveChart = useMemo(
+    () => buildRiskV6YieldCurveChart(yieldCurveQuery.data?.result),
+    [yieldCurveQuery.data],
+  );
+  const cashTrack = useMemo(() => buildRiskV6CashflowTrack(tensor), [tensor]);
+  const detailTables = useMemo(() => buildRiskV6DetailTables(tensor, cashflow), [tensor, cashflow]);
+  const lineageRows = useMemo(
+    () => buildRiskV6LineageRows(riskTensorQuery.data?.result_meta),
+    [riskTensorQuery.data],
+  );
+  const tensorWarnings = tensor?.warnings ?? [];
+  const hotKrdBucket = krdBars.find((bar) => bar.hot)?.bucket;
+
+  const isFetching =
+    riskDatesQuery.isFetching ||
+    riskTensorQuery.isFetching ||
+    cashflowQuery.isFetching ||
+    riskHistoryQuery.isFetching ||
+    yieldCurveQuery.isFetching;
+
+  const refreshAll = () => {
+    void riskDatesQuery.refetch();
+    void riskTensorQuery.refetch();
+    void cashflowQuery.refetch();
+    void riskHistoryQuery.refetch();
+    void yieldCurveQuery.refetch();
+  };
+
+  const reportDate = view.decision?.facts.find((fact) => fact.label === "报告日")?.value ?? "-";
+
+  const tones = [
+    ...view.kpis.map((kpi) => kpi.tone),
+    ...view.statuses.map((status) => status.tone),
+  ];
+  const grade =
+    tones.includes("error")
+      ? { label: "承压", tone: "error" as ModuleHomeTone }
+      : tones.includes("watch")
+        ? { label: "关注", tone: "watch" as ModuleHomeTone }
+        : { label: "可控", tone: "ok" as ModuleHomeTone };
+
+  const stateTone: ModuleHomeTone = view.stateLabel === "读取失败" ? "error" : "ok";
+
+  const heroFacts = [
+    ...(view.decision?.facts ?? []),
+    ...(hero.totalMarketValueYi !== null
+      ? [{ label: "总市值", value: `${hero.totalMarketValueYi} 亿元`, tone: "ok" as ModuleHomeTone }]
+      : []),
+    ...(hero.bondCount !== null
+      ? [
+          {
+            label: "持仓",
+            value: `${hero.bondCount.toLocaleString("zh-CN")} 只`,
+            tone: "ok" as ModuleHomeTone,
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <section
+      className={`${dh.dhPage} ${dh.dhApiBackedHome} ${styles.roV6Scope}`}
+      data-testid="risk-overview-page"
+    >
+      <main className={dh.dhLayout}>
+        <div className={dh.dhMain}>
+          {/* Top rail — report identity + state + refresh */}
+          <div className={dh.dhApiTopRail}>
+            <strong>MOSS 利率风险总览</strong>
+            <span>
+              {reportDate !== "-" ? `报告日 ${reportDate}` : "暂无数据日"}
+              {view.question ? ` · ${view.question}` : ""}
+            </span>
+            <span>
+              <i
+                className={`${dhStateClass(stateTone)} ${styles.roStateDot}`}
+                aria-hidden="true"
+              />
+              {view.stateLabel}
+              <button
+                type="button"
+                className={`${dh.dhRefreshBtn} ${styles.roRefreshBtn}`}
+                onClick={refreshAll}
+                disabled={isFetching}
+              >
+                {isFetching ? "刷新中…" : "刷新"}
+              </button>
+            </span>
+          </div>
+
+          {/* 质量警示横幅 — 规则版本拦截的报告日 */}
+          {blockedReportDates.length > 0 ? (
+            <section
+              className={styles.roBlockedBand}
+              data-testid="risk-overview-blocked-band"
+            >
+              <span className={styles.roBlockedBadge}>数据陈旧</span>
+              <div className={styles.roBlockedBody}>
+                <strong>
+                  {blockedReportDates.length} 个报告日被规则版本拦截
+                  {latestBlocked ? `，最新 ${latestBlocked.report_date}` : ""}
+                </strong>
+                <span title={latestBlocked?.reason}>
+                  {latestBlocked?.reason ?? "需重新物化后恢复风险张量读取。"}
+                </span>
+              </div>
+              <Link className={styles.roBlockedLink} to="/risk-tensor">
+                前往风险张量页 →
+              </Link>
+            </section>
+          ) : null}
+
+          {/* 01 风险处置判断（hero 大数字 + 上下文 chips） */}
+          <section className={styles.roV6Hero} data-testid="risk-overview-hero">
+            <div data-testid="risk-overview-decision">
+              <div className={styles.roSecHead}>
+                <i>01</i>
+                <h2>风险处置判断</h2>
+                <span>数据来源 风险张量 / 现金流</span>
+              </div>
+              <div className={styles.roV6HeroGrid}>
+                <div>
+                  <div className={styles.roV6HeroQ}>利率每变动 1 个基点，组合市值约变动</div>
+                  <div
+                    className={`${styles.roV6HeroNum} ${
+                      hero.dv01Wan === null ? styles.roV6HeroNumVoid : ""
+                    }`}
+                  >
+                    {hero.dv01Wan ?? "—"}
+                    {hero.dv01Wan !== null ? <small> 万元</small> : null}
+                  </div>
+                  {hero.dv01Wan !== null ? (
+                    <div className={styles.roV6HeroSub}>
+                      ≈ {hero.dv01Yi} 亿元 / bp
+                      {hero.peakKrdBucket !== null && hero.peakKrdWan !== null ? (
+                        <>
+                          {" "}
+                          · 峰值敞口位于{" "}
+                          <b>
+                            {hero.peakKrdBucket}（KRD {hero.peakKrdWan} 万元）
+                          </b>
+                        </>
+                      ) : null}
+                      {hero.duration !== null ? ` · 修正久期 ${hero.duration}` : null}
+                      {hero.convexity !== null ? ` · 凸度 ${hero.convexity}` : null}
+                    </div>
+                  ) : tensor === undefined ? (
+                    <div className={styles.roV6HeroSub}>主链数据读取中…</div>
+                  ) : (
+                    <div className={styles.roV6HeroSub}>监管 DV01 待接入，不用估值口径回填。</div>
+                  )}
+                  <p className={styles.roV6HeroLede}>
+                    {view.decision?.conclusion ?? "等待数据"} {view.decision?.detail ?? ""}
+                  </p>
+                  {heroFacts.length > 0 ? (
+                    <div className={styles.roV6Facts} data-testid="risk-overview-decision-facts">
+                      {heroFacts.map((fact) => (
+                        <span key={fact.label}>
+                          <i
+                            className={fact.tone === "watch" ? styles.roV6FactDotWarn : styles.roV6FactDot}
+                            aria-hidden="true"
+                          />
+                          {fact.label}{" "}
+                          <b className={fact.tone === "watch" ? styles.roV6FactWarnText : undefined}>
+                            {fact.value}
+                          </b>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className={styles.roV6HeroSide}>
+                  <div className={styles.roV6Rate}>
+                    <div className={styles.roV6RateCap}>组合风险评级</div>
+                    <div className={`${styles.roV6RateVal} ${roToneClass(grade.tone)}`}>
+                      {grade.label}
+                    </div>
+                    <div className={styles.roV6RateNote}>组合层面综合信号，由 KPI 与链路状态推导</div>
+                  </div>
+                  <div className={styles.roV6Gate} data-testid="risk-overview-status-strip">
+                    <h3>
+                      链路状态<span title={view.stateDetail}>{view.stateDetail}</span>
+                    </h3>
+                    {view.statuses.map((status) => (
+                      <div className={styles.roV6GateRow} key={status.key}>
+                        <span>{status.label}</span>
+                        <span className={v6PillClass(status.tone)} title={status.detail}>
+                          <i aria-hidden="true" />
+                          {status.value}
+                        </span>
+                        {status.tone === "error" ? (
+                          <em className={styles.roV6GateDetail}>{status.detail}</em>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 曜石 KPI 卡 ×8 */}
+          <section className={styles.roV6Kpis} data-testid="risk-overview-kpi-strip">
+            {kpiCards.length > 0 ? (
+              kpiCards.map((card) => <V6KpiCardView card={card} key={card.key} />)
+            ) : (
+              <div className={styles.roEmptyState}>
+                <i className={styles.roEmptyGlyph} aria-hidden="true" />
+                <p className={styles.roV6EmptyText}>风险张量未返回，KPI 待接入。</p>
+              </div>
+            )}
+          </section>
+          {kpiCards.length > 0 ? (
+            history ? (
+              <div className={styles.roV6SparkCap} data-testid="risk-overview-sparkcap">
+                走势为近 {history.points.length} 期真实读数 · {history.window.from} →{" "}
+                {history.window.to} · 血缘版本见 04
+              </div>
+            ) : (
+              <div className={styles.roV6SparkCap} data-testid="risk-overview-sparkcap">
+                近 24 期序列未返回，走势与涨跌胶囊暂不展示，不使用前端补数。
+              </div>
+            )
+          ) : null}
+
+          {/* 02 风险截面摘要（开放三栏） */}
+          <section data-testid="risk-overview-briefings">
+            <div className={styles.roSecHead}>
+              <i>02</i>
+              <h2>风险截面摘要</h2>
+              <span>字段级读数，不在首页补算</span>
+            </div>
+            <div className={styles.roV6BriefGrid}>
+              {briefs.map((brief) => (
+                <article className={styles.roV6Brief} key={brief.key}>
+                  <div className={styles.roV6BriefT}>{brief.title}</div>
+                  <div className={styles.roV6BriefC}>{brief.body}</div>
+                  <div className={styles.roV6BriefE}>{brief.note}</div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          {/* 03 风险证据链 */}
+          <section data-testid="risk-overview-evidence">
+            <div className={styles.roSecHead}>
+              <i>03</i>
+              <h2>风险证据板</h2>
+              <span>KRD · 收益率曲线 · 现金流窗口 · 字段级明细</span>
+            </div>
+            <div className={styles.roV6Duo}>
+              <div className={styles.roV6Panel} data-testid="risk-overview-krd-panel">
+                <div className={styles.roV6PanelHead}>
+                  <b>KRD 分布</b>
+                  <span>DV01 贡献 · 万元</span>
+                </div>
+                {krdBars.length > 0 ? (
+                  <>
+                    {krdBars.map((bar) => (
+                      <div className={styles.roV6KrdRow} key={bar.bucket}>
+                        <span
+                          className={`${styles.roV6KrdBk} ${bar.hot ? styles.roV6KrdHot : ""}`}
+                        >
+                          {bar.bucket}
+                        </span>
+                        <span className={styles.roV6KrdTrack} aria-hidden="true">
+                          <svg
+                            className={styles.roV6KrdSvg}
+                            preserveAspectRatio="none"
+                            viewBox="0 0 100 11"
+                          >
+                            <rect
+                              className={`${styles.roV6KrdBar} ${bar.hot ? styles.roV6KrdBarHot : ""}`}
+                              height="11"
+                              rx="4"
+                              width={bar.widthPct}
+                              x="0"
+                              y="0"
+                            />
+                            <rect
+                              className={`${styles.roV6KrdBarTip} ${bar.hot ? styles.roV6KrdBarTipHot : ""}`}
+                              height="7"
+                              rx="1.4"
+                              width="2.8"
+                              x={Math.max(0, bar.widthPct - 2.2)}
+                              y="2"
+                            />
+                          </svg>
+                        </span>
+                        <span
+                          className={`${styles.roV6KrdVal} ${bar.hot ? styles.roV6KrdHot : ""} ${styles.roNum}`}
+                        >
+                          {bar.wanText}
+                        </span>
+                      </div>
+                    ))}
+                    <div className={styles.roV6PanelFoot}>
+                      条形长度为读数比例{hotKrdBucket ? ` · ${hotKrdBucket} 为峰值桶（琥珀）` : ""}
+                    </div>
+                  </>
+                ) : (
+                  <p className={styles.roV6EmptyText}>KRD 字段待接入。</p>
+                )}
+              </div>
+
+              <div className={styles.roV6Panel} data-testid="risk-overview-curve-panel">
+                <div className={styles.roV6PanelHead}>
+                  <b>收益率曲线水平</b>
+                  <span>
+                    {curveChart?.resolvedDate ?? reportDate} · %{curveChart?.ruleVersion ? ` · ${curveChart.ruleVersion}` : ""}
+                  </span>
+                </div>
+                {curveChart ? (
+                  <>
+                    <div className={styles.roV6CurveLegend}>
+                      {curveChart.series.map((series) => (
+                        <span key={series.curveType}>
+                          <i className={curveToneClass(series.tone)} aria-hidden="true" />
+                          {series.label}
+                        </span>
+                      ))}
+                    </div>
+                    <svg
+                      className={styles.roV6CurveSvg}
+                      viewBox="0 0 420 190"
+                      role="img"
+                      aria-label="收益率曲线水平"
+                    >
+                      {curveChart.yTicks.map((tick) => (
+                        <g key={tick.text}>
+                          <line
+                            className={styles.roV6CurveGrid}
+                            x1="36"
+                            y1={tick.y}
+                            x2="352"
+                            y2={tick.y}
+                          />
+                          <text className={styles.roV6CurveTick} x="358" y={tick.y + 3}>
+                            {tick.text}
+                          </text>
+                        </g>
+                      ))}
+                      {curveChart.xLabels.map((label) => (
+                        <text
+                          className={styles.roV6CurveTick}
+                          key={label.tenor}
+                          x={label.x}
+                          y="176"
+                          textAnchor="middle"
+                        >
+                          {label.tenor}
+                        </text>
+                      ))}
+                      {curveChart.series.map((series) => (
+                        <g key={series.curveType}>
+                          {series.areaPath ? (
+                            <path
+                              className={`${styles.roV6CurveArea} ${curveToneClass(series.tone)}`}
+                              d={series.areaPath}
+                            />
+                          ) : null}
+                          {series.linePath ? (
+                            <path
+                              className={`${styles.roV6CurveLine} ${curveToneClass(series.tone)}`}
+                              d={series.linePath}
+                            />
+                          ) : null}
+                          {series.endLabel ? (
+                            <>
+                              <circle
+                                className={`${styles.roV6CurveEndHalo} ${curveToneClass(series.tone)}`}
+                                cx={series.endLabel.x - 6}
+                                cy={series.endLabel.y}
+                                r="5"
+                              />
+                              <circle
+                                className={`${styles.roV6CurveEndDot} ${curveToneClass(series.tone)}`}
+                                cx={series.endLabel.x - 6}
+                                cy={series.endLabel.y}
+                                r="2.6"
+                              />
+                              <text
+                                className={`${styles.roV6CurveEndText} ${curveToneClass(series.tone)}`}
+                                x={series.endLabel.x + 17}
+                                y={series.endLabel.y + 3.5}
+                                textAnchor="middle"
+                              >
+                                {series.endLabel.text}
+                              </text>
+                            </>
+                          ) : null}
+                        </g>
+                      ))}
+                    </svg>
+                    <div className={styles.roV6PanelFoot}>
+                      治理规则读数直读{curveChart.ruleVersion ? ` · ${curveChart.ruleVersion}` : ""}
+                    </div>
+                  </>
+                ) : (
+                  <p className={styles.roV6EmptyText}>
+                    收益率曲线待接入{yieldCurveQuery.isError ? "（读取失败，不使用前端补数）" : ""}。
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className={`${styles.roV6Panel} ${styles.roV6CashPanel}`} data-testid="risk-overview-cashflow-panel">
+              <div className={styles.roV6PanelHead}>
+                <b>现金流窗口 · 资产端 vs 负债端</b>
+                <span>亿元 · 30D / 90D</span>
+              </div>
+              {cashTrack ? (
+                <>
+                  {cashTrack.rows.map((row) => (
+                    <div className={styles.roV6CashRow} key={row.key}>
+                      <span className={styles.roV6CashW}>{row.kind === "asset" ? row.window : ""}</span>
+                      <span className={styles.roV6CashT}>{row.label}</span>
+                      <span className={styles.roV6CashTrack} aria-hidden="true">
+                        <svg
+                          className={styles.roV6CashSvg}
+                          preserveAspectRatio="none"
+                          viewBox="0 0 100 9"
+                        >
+                          <rect
+                            className={
+                              row.kind === "asset" ? styles.roV6CashBarA : styles.roV6CashBarL
+                            }
+                            height="9"
+                            rx="3"
+                            width={row.widthPct}
+                            x="0"
+                            y="0"
+                          />
+                        </svg>
+                      </span>
+                      <span className={`${styles.roV6CashVal} ${styles.roNum}`}>{row.yiText}</span>
+                    </div>
+                  ))}
+                  {cashTrack.chips.length > 0 ? (
+                    <div className={styles.roV6GapChips}>
+                      {cashTrack.chips.map((chip) => (
+                        <span
+                          className={`${styles.roV6GapChip} ${
+                            chip.tone === "dim" ? styles.roV6GapChipDim : ""
+                          }`}
+                          key={chip.key}
+                        >
+                          <span>{chip.label}</span>
+                          <b className={styles.roNum}>{chip.text}</b>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <p className={styles.roV6EmptyText}>现金流窗口字段待接入。</p>
+              )}
+            </div>
+
+            <div className={styles.roV6Tables}>
+              {detailTables.map((table) => (
+                <div className={styles.roV6Tbl} data-testid={`risk-overview-table-${table.key}`} key={table.key}>
+                  <div className={styles.roV6TblHead}>
+                    {table.title}
+                    <span>字段级证据</span>
+                  </div>
+                  {table.rows.length > 0 ? (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>字段</th>
+                          <th>读数</th>
+                          <th>报告日</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {table.rows.map((row) => (
+                          <tr key={row.key}>
+                            <td>{row.label}</td>
+                            <td
+                              className={`${styles.roV6TblNum} ${styles.roNum} ${
+                                row.tone === "watch" ? styles.roToneWatch : ""
+                              }`}
+                            >
+                              {row.value}
+                            </td>
+                            <td className={`${styles.roV6TblDt} ${styles.roNum}`}>{row.date}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className={styles.roV6EmptyText}>字段待接入。</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 04 数据质量与血缘 */}
+          <section data-testid="risk-overview-quality">
+            <div className={styles.roSecHead}>
+              <i>04</i>
+              <h2>数据质量与血缘</h2>
+              <span>warnings_json 原文 · 版本与追溯</span>
+            </div>
+            <div className={styles.roV6Qual}>
+              <div>
+                <div className={styles.roV6TblHead}>
+                  质量提示 · {tensorWarnings.length} 条
+                  <span
+                    className={
+                      tensorWarnings.length > 0
+                        ? `${styles.roV6Pill} ${styles.roV6PillWarn}`
+                        : styles.roV6Pill
+                    }
+                  >
+                    <i aria-hidden="true" />
+                    {tensor?.quality_flag?.toUpperCase() ?? "待接入"}
+                  </span>
+                </div>
+                {tensorWarnings.length > 0 ? (
+                  <div className={styles.roV6Warns}>
+                    {tensorWarnings.map((warning) => (
+                      <p key={warning}>{warning}</p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className={styles.roV6EmptyText}>
+                    {tensor ? "无质量提示。" : "风险张量未返回，质量标记待接入。"}
+                  </p>
+                )}
+              </div>
+              <div data-testid="risk-overview-lineage">
+                <div className={styles.roV6TblHead}>
+                  血缘 · LINEAGE
+                  <span>报告日 {tensor?.report_date ?? reportDate}</span>
+                </div>
+                {lineageRows.length > 0 ? (
+                  <div className={styles.roV6Lineage}>
+                    {lineageRows.map((row) => (
+                      <div className={styles.roV6LineageRow} key={row.key}>
+                        <span className={styles.roV6LineageKey}>{row.label}</span>
+                        <span className={styles.roV6LineageVal}>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className={styles.roV6EmptyText}>血缘元数据待接入。</p>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <aside className={dh.dhRail} data-testid="risk-overview-rail">
+          <section className={dh.dhRailCard} data-testid="risk-overview-drilldowns">
+            <div className={dh.dhRailCardHeader}>
+              <span>下钻入口</span>
+              <span className={dh.dhRailCardKicker}>Drill-down</span>
+            </div>
+            <div className={dh.dhRailCardBody}>
+              <div className={dh.dhRailActionList}>
+                {config.drilldowns.map((item) => (
+                  <div className={`${dh.dhRailActionRow} ${styles.roDrillRow}`} key={item.key}>
+                    <Link to={item.path}>
+                      <span>{item.label}</span>
+                    </Link>
+                    <span>{item.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className={dh.dhRailCard} data-testid="risk-overview-data-note">
+            <div className={dh.dhRailCardHeader}>
+              <span>{view.dataNote.title}</span>
+            </div>
+            <div className={dh.dhRailCardBody}>
+              <ul className={dh.dhRailSuggestionList}>
+                {view.dataNote.lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        </aside>
+      </main>
+    </section>
+  );
+}

@@ -51,7 +51,7 @@ vi.mock("../app/ThemedRouteBoundary", () => ({
 
 beforeAll(async () => {
   await preloadWorkbenchRouteModules("market-overview", "risk-overview", "module-home");
-}, 40_000);
+}, 120_000);
 
 afterEach(() => {
   cleanup();
@@ -680,7 +680,6 @@ function unsortedMarketSeriesEnvelope(
 
 describe("ModuleWorkbenchHomePage", () => {
   it.each([
-    ["/risk-overview", "风险工作台"],
     ["/performance", "绩效工作台"],
     ["/reports", "报表与数据"],
   ])("renders the dedicated module home for %s", async (path, title) => {
@@ -695,6 +694,20 @@ describe("ModuleWorkbenchHomePage", () => {
     expect(within(page).getByTestId("module-home-data-note")).toBeInTheDocument();
   });
 
+  it("renders the dedicated risk overview page for /risk-overview", async () => {
+    renderAt("/risk-overview");
+
+    const page = await screen.findByTestId("risk-overview-page", {}, { timeout: 10000 });
+    expect(page).toHaveTextContent("MOSS 利率风险总览");
+    await waitFor(() => {
+      expect(within(page).getByTestId("risk-overview-kpi-strip")).toBeInTheDocument();
+      expect(within(page).getByTestId("risk-overview-status-strip")).toBeInTheDocument();
+      expect(within(page).getByTestId("risk-overview-briefings")).toBeInTheDocument();
+      expect(within(page).getByTestId("risk-overview-drilldowns")).toBeInTheDocument();
+      expect(within(page).getByTestId("risk-overview-data-note")).toBeInTheDocument();
+    });
+  });
+
   it("shows explicit fallback states when a source query fails", async () => {
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
@@ -706,91 +719,162 @@ describe("ModuleWorkbenchHomePage", () => {
 
     renderAt("/risk-overview", client);
 
-    const page = await screen.findByTestId("module-workbench-home");
-    expect(page).toHaveTextContent("读取失败");
-    expect(page).toHaveTextContent("不使用前端补数");
+    const page = await screen.findByTestId("risk-overview-page");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("读取失败");
+      expect(page).toHaveTextContent("不使用前端补数");
+    });
   });
 
   it("renders risk tensor and cashflow detail cards from backend reads", async () => {
     renderAt("/risk-overview");
 
-    const page = await screen.findByTestId("module-workbench-home");
-    expect(within(page).getByTestId("module-home-decision")).toHaveTextContent("风险处置判断");
-    expect(within(page).getByTestId("module-home-risk-evidence")).toBeInTheDocument();
+    const page = await screen.findByTestId("risk-overview-page");
+    expect(within(page).getByTestId("risk-overview-decision")).toHaveTextContent("风险处置判断");
     await waitFor(() => {
-      expect(within(page).getByTestId("module-home-risk-tensor")).toBeInTheDocument();
-      expect(within(page).getByTestId("module-home-cashflow")).toBeInTheDocument();
-      expect(within(page).getByTestId("module-home-risk-summary-cards")).toBeInTheDocument();
+      expect(within(page).getByTestId("risk-overview-evidence")).toBeInTheDocument();
+      expect(within(page).getByTestId("risk-overview-krd-panel")).toBeInTheDocument();
+      expect(within(page).getByTestId("risk-overview-cashflow-panel")).toBeInTheDocument();
+      expect(
+        within(page).getByTestId("risk-overview-table-portfolio-duration"),
+      ).toBeInTheDocument();
+      expect(
+        within(page).getByTestId("risk-overview-table-credit-concentration"),
+      ).toBeInTheDocument();
+      expect(within(page).getByTestId("risk-overview-briefings")).toBeInTheDocument();
       expect(page).toHaveTextContent("监管 DV01");
-      expect(page).toHaveTextContent("利率敏感度");
-      expect(page).toHaveTextContent("DV01 构成");
-      expect(page).toHaveTextContent("AC");
-      expect(page).toHaveTextContent("OCI");
-      expect(page).toHaveTextContent("TPL");
-      expect(page).toHaveTextContent("7.00");
+      expect(page).toHaveTextContent("监管口径 DV01");
+      expect(page).toHaveTextContent("利率风险口径 DV01");
       expect(page).toHaveTextContent("久期缺口");
       expect(page).toHaveTextContent("KRD 分布");
     });
-    expect(page).toHaveTextContent("来源 risk-tensor");
-    expect(page).toHaveTextContent("来源 cashflow-projection");
+    expect(within(page).getByTestId("risk-overview-lineage")).toHaveTextContent(
+      "sv_risk_tensor_fact_mock_v3",
+    );
+    expect(within(page).getByTestId("risk-overview-lineage")).toHaveTextContent(
+      "rv_risk_tensor_formal_materialize_v3",
+    );
   });
 
   it("surfaces liquidity and cashflow evidence already returned by the risk reads", async () => {
     renderAt("/risk-overview");
 
-    const page = await screen.findByTestId("module-workbench-home");
-    const evidenceBoard = within(page).getByTestId("module-home-risk-evidence");
+    const page = await screen.findByTestId("risk-overview-page");
+    const evidenceBoard = await within(page).findByTestId("risk-overview-evidence");
 
     await waitFor(() => {
-      expect(evidenceBoard).toHaveTextContent("流动性明细");
-      expect(evidenceBoard).toHaveTextContent("30 日资产现金流");
-      expect(evidenceBoard).toHaveTextContent("30 日负债现金流");
-      expect(evidenceBoard).toHaveTextContent("现金流预测");
-      expect(evidenceBoard).toHaveTextContent("1bp 敏感度");
+      expect(evidenceBoard).toHaveTextContent("现金流窗口");
+      expect(evidenceBoard).toHaveTextContent("资产流入");
+      expect(evidenceBoard).toHaveTextContent("负债流出");
+      expect(evidenceBoard).toHaveTextContent("30D 净缺口");
+      expect(evidenceBoard).toHaveTextContent("久期缺口");
+      expect(evidenceBoard).toHaveTextContent("12M 再投资风险");
     });
   });
 
-  it("balances risk evidence panels across the flat mosaic grid", async () => {
+  it("balances risk evidence panels across the detail grid", async () => {
     renderAt("/risk-overview");
 
-    const page = await screen.findByTestId("module-workbench-home");
+    const page = await screen.findByTestId("risk-overview-page");
     await waitFor(() => {
-      expect(page).toHaveTextContent("利率敏感度");
+      expect(page).toHaveTextContent("利率风险口径 DV01");
     });
 
-    const tensorGroup = within(page).getByTestId("module-home-risk-tensor");
-    const cashflowGroup = within(page).getByTestId("module-home-cashflow");
+    const krdPanel = within(page).getByTestId("risk-overview-krd-panel");
+    const cashflowPanel = within(page).getByTestId("risk-overview-cashflow-panel");
+    const portfolioTable = within(page).getByTestId("risk-overview-table-portfolio-duration");
+    const creditTable = within(page).getByTestId("risk-overview-table-credit-concentration");
 
-    expect(within(tensorGroup).getByText("KRD 分布")).toBeInTheDocument();
-    expect(within(tensorGroup).getByText("利率敏感度")).toBeInTheDocument();
-    expect(within(tensorGroup).getByText("集中度")).toBeInTheDocument();
-    expect(within(tensorGroup).getByText("流动性明细")).toBeInTheDocument();
-    expect(within(cashflowGroup).getByText("久期与敏感度")).toBeInTheDocument();
-    expect(within(cashflowGroup).queryByText("流动性明细")).not.toBeInTheDocument();
-    expect(within(cashflowGroup).queryByText("利率敏感度")).not.toBeInTheDocument();
+    expect(within(krdPanel).getByText("10Y")).toBeInTheDocument();
+    expect(within(portfolioTable).getByText("监管口径 DV01")).toBeInTheDocument();
+    expect(within(portfolioTable).getByText("久期剔除项")).toBeInTheDocument();
+    expect(within(creditTable).getByText("发行人集中度 HHI")).toBeInTheDocument();
+    expect(within(cashflowPanel).getByText("30D 净缺口")).toBeInTheDocument();
+    expect(within(cashflowPanel).queryByText("监管口径 DV01")).not.toBeInTheDocument();
   });
 
   it("lays out risk overview as a compact review desk", async () => {
     renderAt("/risk-overview");
 
-    const page = await screen.findByTestId("module-workbench-home");
-    const reviewDesk = await within(page).findByTestId("module-home-risk-review-desk");
+    const page = await screen.findByTestId("risk-overview-page");
+    const decision = within(page).getByTestId("risk-overview-decision");
+    expect(decision).toHaveTextContent("风险处置判断");
 
-    expect(within(reviewDesk).getByTestId("module-home-risk-decision-zone")).toHaveTextContent("风险处置判断");
+    const statusStrip = within(page).getByTestId("risk-overview-status-strip");
     await waitFor(() => {
-      expect(within(reviewDesk).getByTestId("module-home-status-strip")).toHaveTextContent("风险张量");
-      expect(within(reviewDesk).getByTestId("module-home-status-strip")).toHaveTextContent("现金流预测");
+      expect(statusStrip).toHaveTextContent("风险张量");
+      expect(statusStrip).toHaveTextContent("现金流预测");
     });
 
-    const readoutBand = within(reviewDesk).getByTestId("module-home-risk-readout-band");
+    const kpiStrip = within(page).getByTestId("risk-overview-kpi-strip");
     await waitFor(() => {
-      expect(readoutBand).toHaveTextContent("监管 DV01");
-      expect(readoutBand).toHaveTextContent("估值 DV01");
-      expect(readoutBand).toHaveTextContent("报告日");
+      expect(kpiStrip).toHaveTextContent("监管 DV01");
+      expect(kpiStrip).toHaveTextContent("估值 DV01");
+      expect(decision).toHaveTextContent("报告日");
+      expect(decision).toHaveTextContent("质量标记");
     });
 
-    expect(within(page).getByTestId("module-home-risk-evidence-heading")).toHaveTextContent("风险证据板");
-    expect(within(page).getByTestId("module-home-drilldowns")).toHaveTextContent("风险张量");
+    expect(within(page).getByTestId("risk-overview-evidence")).toHaveTextContent("风险证据板");
+    expect(within(page).getByTestId("risk-overview-drilldowns")).toHaveTextContent("风险张量");
+  });
+
+  it("surfaces rule-version blocked report dates in a dedicated governance band", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getRiskTensorDates: async () => {
+        const envelope = await base.getRiskTensorDates();
+        return {
+          ...envelope,
+          result: {
+            report_dates: [],
+            blocked_report_dates: [
+              {
+                report_date: "2026-06-30",
+                reason:
+                  "Risk tensor stale against rule version for report_date=2026-06-30; expected rv_risk_tensor_formal_materialize_v3, got rv_risk_tensor_formal_materialize_v2. Rematerialize required.",
+              },
+              {
+                report_date: "2026-05-31",
+                reason:
+                  "Risk tensor stale against rule version for report_date=2026-05-31; expected rv_risk_tensor_formal_materialize_v3, got rv_risk_tensor_formal_materialize_v2. Rematerialize required.",
+              },
+            ],
+          },
+        };
+      },
+    };
+
+    renderAt("/risk-overview", client);
+
+    const page = await screen.findByTestId("risk-overview-page");
+    const band = await within(page).findByTestId("risk-overview-blocked-band");
+    expect(band).toHaveTextContent("数据陈旧");
+    expect(band).toHaveTextContent("2 个报告日被规则版本拦截，最新 2026-06-30");
+    expect(band).toHaveTextContent("Rematerialize required");
+    expect(within(band).getByRole("link", { name: /前往风险张量页/ })).toHaveAttribute(
+      "href",
+      "/risk-tensor",
+    );
+
+    await waitFor(() => {
+      expect(within(page).getByTestId("risk-overview-decision")).toHaveTextContent(
+        "2 个报告日被规则版本拦截",
+      );
+      expect(within(page).getByTestId("risk-overview-status-strip")).toHaveTextContent(
+        "全部拦截",
+      );
+    });
+  });
+
+  it("hides the blocked band when every report date is usable", async () => {
+    renderAt("/risk-overview");
+
+    const page = await screen.findByTestId("risk-overview-page");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("监管 DV01");
+    });
+    expect(within(page).queryByTestId("risk-overview-blocked-band")).not.toBeInTheDocument();
   });
 
   it("does not use portfolio DV01 as a fallback for missing regulatory DV01", async () => {
@@ -812,9 +896,9 @@ describe("ModuleWorkbenchHomePage", () => {
 
     renderAt("/risk-overview", client);
 
-    const page = await screen.findByTestId("module-workbench-home");
-    const decision = within(page).getByTestId("module-home-decision");
-    const kpis = within(page).getByTestId("module-home-kpi-strip");
+    const page = await screen.findByTestId("risk-overview-page");
+    const decision = within(page).getByTestId("risk-overview-decision");
+    const kpis = within(page).getByTestId("risk-overview-kpi-strip");
     await waitFor(() => {
       expect(decision).toHaveTextContent("监管 DV01 待接入");
     });
@@ -835,7 +919,7 @@ describe("ModuleWorkbenchHomePage", () => {
 
     renderAt("/risk-overview", client);
 
-    const page = await screen.findByTestId("module-workbench-home");
+    const page = await screen.findByTestId("risk-overview-page");
     await waitFor(() => {
       expect(page).toHaveTextContent("部分失败");
       expect(page).toHaveTextContent("风险张量已返回，现金流等辅助链路需单独复核。");

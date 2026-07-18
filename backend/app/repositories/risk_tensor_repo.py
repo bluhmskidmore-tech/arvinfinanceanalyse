@@ -254,6 +254,56 @@ class RiskTensorRepository:
         finally:
             conn.close()
 
+    def fetch_risk_tensor_history(
+        self,
+        report_date: str,
+        periods: int,
+    ) -> list[dict[str, object]]:
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return []
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return []
+            table_columns = _table_columns(conn, FACT_TABLE)
+            regulatory_dv01 = _column_or_default(
+                table_columns,
+                "regulatory_dv01",
+                "cast(null as decimal(24, 8))",
+            )
+            rows = conn.execute(
+                f"""
+                select cast(report_date as varchar) as report_date,
+                       portfolio_dv01,
+                       {regulatory_dv01},
+                       portfolio_modified_duration,
+                       portfolio_convexity,
+                       cs01,
+                       issuer_concentration_hhi,
+                       issuer_top5_weight,
+                       liquidity_gap_30d
+                from {FACT_TABLE}
+                where cast(report_date as varchar) <= ?
+                order by cast(report_date as varchar) desc
+                limit ?
+                """,
+                [report_date, periods],
+            ).fetchall()
+            columns = [
+                "report_date",
+                "portfolio_dv01",
+                "regulatory_dv01",
+                "portfolio_modified_duration",
+                "portfolio_convexity",
+                "cs01",
+                "issuer_concentration_hhi",
+                "issuer_top5_weight",
+                "liquidity_gap_30d",
+            ]
+            return [dict(zip(columns, row, strict=True)) for row in rows]
+        finally:
+            conn.close()
+
     def fetch_risk_tensor_row(self, report_date: str) -> dict[str, object] | None:
         conn = _connect_read_only(self.path)
         if conn is None:

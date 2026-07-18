@@ -16,6 +16,7 @@ import type {
   RiskOverviewPayload,
   RiskScenarioStressPayload,
   RiskTensorDatesPayload,
+  RiskTensorHistoryPayload,
   RiskTensorPayload,
   SummaryPayload,
 } from "./contracts";
@@ -38,6 +39,10 @@ export type ExecutiveClientMethods = {
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
   getRiskTensorDates: () => Promise<ApiEnvelope<RiskTensorDatesPayload>>;
   getRiskTensor: (reportDate: string) => Promise<ApiEnvelope<RiskTensorPayload>>;
+  getRiskTensorHistory: (
+    reportDate: string,
+    periods?: number,
+  ) => Promise<ApiEnvelope<RiskTensorHistoryPayload>>;
   getRiskScenarioStress: (reportDate: string) => Promise<ApiEnvelope<RiskScenarioStressPayload>>;
   getContribution: () => Promise<ApiEnvelope<ContributionPayload>>;
   getAlerts: () => Promise<ApiEnvelope<AlertsPayload>>;
@@ -62,6 +67,7 @@ type ExecutiveThinClientMethods = Pick<
   | "getRiskOverview"
   | "getRiskTensorDates"
   | "getRiskTensor"
+  | "getRiskTensorHistory"
   | "getRiskScenarioStress"
   | "getContribution"
   | "getAlerts"
@@ -238,6 +244,46 @@ export function createDemoExecutiveClient(
           warnings: [
             "2 rows carry market_value=100000000.00000000 and are excluded from portfolio duration denominator.",
           ],
+        },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: RISK_TENSOR_FORMAL_SOURCE_VERSION,
+          rule_version: RISK_TENSOR_FORMAL_RULE_VERSION,
+          cache_version: RISK_TENSOR_FORMAL_CACHE_VERSION,
+        },
+      );
+    },
+    async getRiskTensorHistory(reportDate: string, periods = 24) {
+      await delay();
+      const bundle = await ensureBundle();
+      const vary = (base: number, amplitude: number, index: number, offset: number) =>
+        (base * (1 + Math.sin(index * 0.55 + offset) * amplitude)).toFixed(8);
+      const end = new Date(`${reportDate}T00:00:00Z`).getTime();
+      const points = Array.from({ length: periods }, (_, index) => {
+        const day = new Date(end - (periods - 1 - index) * 86400000);
+        return {
+          report_date: day.toISOString().slice(0, 10),
+          portfolio_dv01: vary(120000, 0.04, index, 0.0),
+          regulatory_dv01: vary(120000, 0.04, index, 0.0),
+          portfolio_modified_duration: vary(4.2, 0.03, index, 1.3),
+          portfolio_convexity: vary(24.5, 0.03, index, 2.1),
+          cs01: vary(18000, 0.05, index, 0.7),
+          issuer_concentration_hhi: vary(0.12, 0.06, index, 2.9),
+          issuer_top5_weight: vary(0.36, 0.05, index, 3.7),
+          liquidity_gap_30d: vary(100000000, 0.35, index, 4.4),
+        };
+      });
+      return bundle.buildMockApiEnvelope(
+        "risk.tensor.history",
+        {
+          report_date: reportDate,
+          periods: points.length,
+          window: {
+            from: points[0]?.report_date ?? reportDate,
+            to: points[points.length - 1]?.report_date ?? reportDate,
+          },
+          points,
         },
         {
           basis: "formal",
@@ -438,6 +484,17 @@ export function createRealExecutiveClient(
         baseUrl,
         `/api/risk/tensor?report_date=${encodeURIComponent(reportDate)}`,
       ),
+    getRiskTensorHistory: (reportDate: string, periods = 24) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        periods: String(periods),
+      });
+      return requestJson<RiskTensorHistoryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/risk/tensor/history?${params.toString()}`,
+      );
+    },
     getRiskScenarioStress: (reportDate: string) =>
       requestJson<RiskScenarioStressPayload>(
         fetchImpl,

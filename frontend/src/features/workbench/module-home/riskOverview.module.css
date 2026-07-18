@@ -1,0 +1,1244 @@
+/* Risk Overview v6 — 曜石卡 × 编辑风开放纪律（已批准设计原型回灌）。
+   外壳（top rail / 右栏）复用 dashboardHomeShell.module.css 的 .dhApi* 类；
+   本文件只承载 v6 中央内容列：hero、曜石 KPI 卡、开放摘要栏、证据链面板、
+   字段级明细表、质量与血缘。所有色值取自应用 --dh-api-* token（墨版语义），
+   不硬编码原型色值。 */
+
+/* ── v6 作用域 token（派生自应用 dh token） ───────────────────── */
+.roV6Scope {
+  --ro-acc: var(--dh-api-blue);
+  --ro-acc-dim: rgba(114, 167, 220, 0.55);
+  --ro-err: var(--dh-api-red);
+  --ro-amber: var(--dh-api-amber);
+  --ro-ok: var(--dh-api-green);
+  --ro-ink: var(--dh-api-ink);
+  --ro-ink-2: var(--dh-api-soft);
+  --ro-mut: var(--dh-api-muted);
+  --ro-line: var(--dh-api-line-soft);
+  --ro-line-2: var(--dh-api-line);
+  --ro-panel: var(--dh-api-panel);
+  --ro-panel-2: var(--dh-api-panel-2);
+  --ro-glass-line: rgba(232, 238, 247, 0.09);
+  --ro-glass-hi: rgba(232, 238, 247, 0.055);
+  --ro-glass-hi-line: rgba(232, 238, 247, 0.1);
+  --ro-glass-shadow: 0 16px 34px rgba(0, 0, 0, 0.36);
+  --ro-hero-grad: linear-gradient(92deg, var(--dh-api-ink) 25%, var(--ro-acc) 95%);
+  --ro-hero-glow: rgba(114, 167, 220, 0.32);
+  --ro-num-grad: linear-gradient(92deg, var(--dh-api-ink) 20%, var(--ro-acc) 90%);
+  --ro-num-err: linear-gradient(
+    92deg,
+    color-mix(in srgb, var(--dh-api-red) 30%, var(--dh-api-ink)) 12%,
+    var(--dh-api-red) 95%
+  );
+  --ro-spark-fill: var(--dh-api-blue-soft);
+  --ro-spark-fill-err: var(--dh-api-red-soft);
+}
+
+/* ── 编号节题（01 / 02 / 03 / 04 统一件） ─────────────────────── */
+.roSecHead {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ro-line);
+  display: flex;
+  gap: 12px;
+  padding-bottom: 10px;
+}
+
+.roSecHead i {
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.roSecHead h2 {
+  color: var(--ro-ink);
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.roSecHead span {
+  color: var(--ro-mut);
+  font-size: 11.5px;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 状态胶囊（gpill） ────────────────────────────────────────── */
+.roV6Pill {
+  align-items: center;
+  border: 1px solid var(--ro-line-2);
+  border-radius: 999px;
+  color: var(--ro-ink-2);
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  gap: 6px;
+  letter-spacing: 0.03em;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.roV6Pill i {
+  background: var(--ro-ok);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--ro-ok);
+  display: inline-block;
+  height: 6px;
+  width: 6px;
+}
+
+.roV6PillWarn {
+  border-color: var(--ro-amber);
+  color: var(--ro-amber);
+}
+
+.roV6PillWarn i {
+  background: var(--ro-amber);
+  box-shadow: 0 0 8px var(--ro-amber);
+}
+
+.roV6PillBad {
+  border-color: var(--ro-err);
+  color: var(--ro-err);
+}
+
+.roV6PillBad i {
+  background: var(--ro-err);
+  box-shadow: 0 0 8px var(--ro-err);
+}
+
+.roV6PillMut {
+  color: var(--ro-mut);
+}
+
+.roV6PillMut i {
+  background: var(--ro-mut);
+  box-shadow: none;
+}
+
+/* ── 01 Hero（编辑风无盒 + 渐变主角数字） ─────────────────────── */
+.roV6Hero {
+  position: relative;
+}
+
+.roV6HeroGrid {
+  display: grid;
+  gap: 30px;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  margin-top: 4px;
+}
+
+.roV6HeroQ {
+  color: var(--ro-ink-2);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  margin-top: 16px;
+}
+
+.roV6HeroNum {
+  background: var(--ro-hero-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 22px var(--ro-hero-glow));
+  font-family: var(--dh-font-serif);
+  font-size: clamp(40px, 4.2vw, 56px);
+  font-weight: 680;
+  letter-spacing: 0.01em;
+  line-height: 1.08;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.roV6HeroNum small {
+  font-family: var(--dh-font-mono);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  -webkit-text-fill-color: var(--ro-mut);
+}
+
+.roV6HeroNumVoid {
+  background: none;
+  color: var(--ro-mut);
+  filter: none;
+}
+
+.roV6HeroSub {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 11.5px;
+  margin-top: 10px;
+}
+
+.roV6HeroSub b {
+  color: var(--ro-amber);
+  font-weight: 700;
+}
+
+.roV6HeroLede {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  font-size: 13px;
+  margin: 14px 0 0;
+  max-width: 46em;
+  padding-top: 12px;
+}
+
+.roV6Facts {
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--dh-font-mono);
+  font-size: 11.5px;
+  gap: 8px 20px;
+  margin-top: 14px;
+}
+
+.roV6Facts span {
+  align-items: center;
+  color: var(--ro-ink-2);
+  display: inline-flex;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.roV6Facts b {
+  color: var(--ro-ink);
+  font-weight: 700;
+}
+
+.roV6FactDot,
+.roV6FactDotWarn {
+  border-radius: 50%;
+  display: inline-block;
+  height: 6px;
+  width: 6px;
+}
+
+.roV6FactDot {
+  background: var(--ro-mut);
+}
+
+.roV6FactDotWarn {
+  background: var(--ro-amber);
+}
+
+.roV6FactWarnText {
+  color: var(--ro-amber) !important;
+}
+
+.roV6HeroSide {
+  align-content: start;
+  display: grid;
+  gap: 22px;
+  padding-top: 16px;
+}
+
+.roV6Rate {
+  border-top: 2px solid var(--ro-ink);
+  padding-top: 10px;
+}
+
+.roV6RateCap {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.roV6RateVal {
+  font-family: var(--dh-font-serif);
+  font-size: 34px;
+  font-weight: 680;
+  line-height: 1.1;
+  margin-top: 6px;
+}
+
+.roV6RateNote {
+  color: var(--ro-mut);
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.roV6Gate {
+  border-top: 2px solid var(--ro-ink);
+  padding-top: 10px;
+}
+
+.roV6Gate h3 {
+  align-items: baseline;
+  color: var(--ro-mut);
+  display: flex;
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  gap: 10px;
+  letter-spacing: 0.16em;
+  margin: 0;
+}
+
+.roV6Gate h3 span {
+  color: var(--ro-mut);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roV6GateRow {
+  align-items: center;
+  border-bottom: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.roV6GateRow:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.roV6GateRow .roV6Pill {
+  margin-left: auto;
+}
+
+.roV6GateDetail {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 10.5px;
+  font-style: normal;
+  width: 100%;
+}
+
+/* ── 曜石 KPI 卡 ×8 ───────────────────────────────────────────── */
+.roV6Kpis {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.roV6Kpi {
+  background:
+    linear-gradient(165deg, var(--ro-glass-hi), rgba(232, 238, 247, 0.012) 58%),
+    var(--ro-panel);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 var(--ro-glass-hi-line),
+    var(--ro-glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 15px 18px 12px;
+  position: relative;
+  transition: transform 0.2s ease;
+}
+
+.roV6Kpi:hover {
+  transform: translateY(-3px);
+}
+
+/* 渐变描边：::before 1px mask 技巧 */
+.roV6Kpi::before {
+  background: linear-gradient(
+    160deg,
+    var(--ro-acc-dim),
+    var(--ro-glass-line) 32%,
+    var(--ro-glass-line) 68%,
+    var(--ro-acc-dim)
+  );
+  border-radius: 14px;
+  content: "";
+  inset: 0;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  pointer-events: none;
+  position: absolute;
+}
+
+.roV6KpiAlert::before {
+  background: linear-gradient(
+    160deg,
+    var(--ro-err),
+    var(--ro-glass-line) 32%,
+    var(--ro-glass-line) 68%,
+    var(--ro-err)
+  );
+}
+
+.roV6KpiCap {
+  align-items: center;
+  color: var(--ro-mut);
+  display: flex;
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  justify-content: space-between;
+  letter-spacing: 0.14em;
+}
+
+.roV6CapDot,
+.roV6CapDotBad {
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  height: 6px;
+  width: 6px;
+}
+
+.roV6CapDot {
+  background: var(--ro-ok);
+  box-shadow: 0 0 8px var(--ro-ok);
+}
+
+.roV6CapDotBad {
+  background: var(--ro-err);
+  box-shadow: 0 0 8px var(--ro-err);
+}
+
+.roV6KpiNum {
+  background: var(--ro-num-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-family: var(--dh-font-mono);
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.roV6KpiNum small {
+  font-size: 11px;
+  font-weight: 650;
+  -webkit-text-fill-color: var(--ro-mut);
+}
+
+.roV6KpiAlert .roV6KpiNum {
+  background: var(--ro-num-err);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.roV6KpiNumVoid {
+  background: none;
+  color: var(--ro-mut);
+}
+
+.roV6Spark {
+  display: block;
+  height: 30px;
+  width: 100%;
+}
+
+.roV6SparkArea {
+  fill: var(--ro-spark-fill);
+}
+
+.roV6SparkLine {
+  fill: none;
+  filter: drop-shadow(0 0 5px var(--ro-acc-dim));
+  stroke: var(--ro-acc);
+  stroke-width: 1.5;
+}
+
+.roV6SparkHalo {
+  fill: var(--ro-spark-fill);
+}
+
+.roV6SparkDot {
+  fill: var(--ro-acc);
+}
+
+.roV6KpiAlert .roV6SparkArea {
+  fill: var(--ro-spark-fill-err);
+}
+
+.roV6KpiAlert .roV6SparkLine {
+  filter: drop-shadow(0 0 5px var(--ro-err));
+  stroke: var(--ro-err);
+}
+
+.roV6KpiAlert .roV6SparkHalo {
+  fill: var(--ro-spark-fill-err);
+}
+
+.roV6KpiAlert .roV6SparkDot {
+  fill: var(--ro-err);
+}
+
+.roV6SparkEmpty {
+  align-items: center;
+  border: 1px dashed var(--ro-line-2);
+  border-radius: 6px;
+  color: var(--ro-mut);
+  display: flex;
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  height: 30px;
+  justify-content: center;
+  letter-spacing: 0.08em;
+}
+
+.roV6KpiFoot {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.roV6KpiChip {
+  background: var(--ro-spark-fill);
+  border-radius: 999px;
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.roV6KpiAlert .roV6KpiChip {
+  background: var(--ro-spark-fill-err);
+  color: var(--ro-err);
+}
+
+.roV6KpiChipVoid {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  padding: 2px 9px;
+}
+
+.roV6KpiSub {
+  color: var(--ro-mut);
+  font-size: 10.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roV6SparkCap {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  margin-top: -12px;
+  padding: 0 2px;
+}
+
+/* ── 02 摘要开放栏 ────────────────────────────────────────────── */
+.roV6BriefGrid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.roV6Brief {
+  border-top: 2px solid var(--ro-ink);
+  padding-top: 10px;
+}
+
+.roV6BriefT {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.roV6BriefC {
+  color: var(--ro-ink);
+  font-family: var(--dh-font-serif);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.roV6BriefE {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-mut);
+  font-size: 11px;
+  margin-top: 9px;
+  padding-top: 8px;
+}
+
+/* ── 03 证据板玻璃面板 ────────────────────────────────────────── */
+.roV6Duo {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  margin-top: 16px;
+}
+
+.roV6Panel {
+  background:
+    linear-gradient(180deg, var(--ro-glass-hi), rgba(232, 238, 247, 0.015) 34%, rgba(0, 0, 0, 0) 62%),
+    var(--ro-panel);
+  border: 1px solid var(--ro-glass-line);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 var(--ro-glass-hi-line),
+    var(--ro-glass-shadow);
+  padding: 18px 20px;
+}
+
+.roV6CashPanel {
+  margin-top: 16px;
+}
+
+.roV6PanelHead {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 12px;
+}
+
+.roV6PanelHead b {
+  color: var(--ro-ink);
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+}
+
+.roV6PanelHead span {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roV6PanelFoot {
+  border-top: 1px solid var(--ro-line);
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  margin-top: 10px;
+  padding-top: 9px;
+}
+
+/* KRD 分布条形 */
+.roV6KrdRow {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 44px minmax(0, 1fr) 84px;
+  padding: 8px 0;
+}
+
+.roV6KrdRow + .roV6KrdRow {
+  border-top: 1px solid var(--ro-line);
+}
+
+.roV6KrdBk {
+  color: var(--ro-ink-2);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.roV6KrdHot {
+  color: var(--ro-amber);
+}
+
+.roV6KrdTrack {
+  display: flex;
+  height: 16px;
+  position: relative;
+}
+
+.roV6KrdSvg {
+  display: block;
+  height: 11px;
+  align-self: center;
+  width: 100%;
+}
+
+.roV6KrdBar {
+  fill: var(--ro-acc);
+  filter: drop-shadow(0 0 8px var(--ro-hero-glow));
+}
+
+.roV6KrdBarHot {
+  fill: var(--ro-amber);
+  filter: drop-shadow(0 0 10px rgba(201, 165, 101, 0.45));
+}
+
+.roV6KrdBarTip {
+  fill: var(--dh-api-ink);
+  opacity: 0.9;
+}
+
+.roV6KrdBarTipHot {
+  fill: color-mix(in srgb, var(--ro-amber) 45%, var(--dh-api-ink));
+  opacity: 1;
+}
+
+.roV6KrdVal {
+  color: var(--ro-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* 收益率曲线 */
+.roV6CurveLegend {
+  display: flex;
+  gap: 10px;
+  padding-bottom: 6px;
+}
+
+.roV6CurveLegend span {
+  align-items: center;
+  border: 1px solid var(--ro-line);
+  border-radius: 999px;
+  color: var(--ro-ink-2);
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  font-size: 10px;
+  gap: 7px;
+  padding: 3px 10px;
+}
+
+.roV6CurveLegend i {
+  border-radius: 50%;
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+}
+
+.roV6CurveInk {
+  color: var(--ro-ink);
+}
+
+.roV6CurveAmber {
+  color: var(--ro-amber);
+}
+
+.roV6CurveAcc {
+  color: var(--ro-acc);
+}
+
+.roV6CurveLegend i.roV6CurveInk {
+  background: var(--ro-ink);
+}
+
+.roV6CurveLegend i.roV6CurveAmber {
+  background: var(--ro-amber);
+}
+
+.roV6CurveLegend i.roV6CurveAcc {
+  background: var(--ro-acc);
+}
+
+.roV6CurveSvg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.roV6CurveGrid {
+  stroke: var(--ro-line);
+  stroke-dasharray: 3 5;
+  stroke-width: 1;
+}
+
+.roV6CurveTick {
+  fill: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 8.5px;
+}
+
+path.roV6CurveLine {
+  fill: none;
+  stroke-width: 1.8;
+}
+
+path.roV6CurveLine.roV6CurveInk {
+  filter: drop-shadow(0 0 6px var(--ro-hero-glow));
+  stroke: var(--ro-ink);
+  stroke-width: 2;
+}
+
+path.roV6CurveLine.roV6CurveAmber {
+  filter: drop-shadow(0 0 5px rgba(201, 165, 101, 0.4));
+  stroke: var(--ro-amber);
+}
+
+path.roV6CurveLine.roV6CurveAcc {
+  filter: drop-shadow(0 0 5px var(--ro-acc-dim));
+  stroke: var(--ro-acc);
+}
+
+path.roV6CurveArea.roV6CurveInk {
+  fill: var(--ro-spark-fill);
+}
+
+circle.roV6CurveEndHalo.roV6CurveInk {
+  fill: var(--ro-spark-fill);
+}
+
+circle.roV6CurveEndHalo.roV6CurveAmber {
+  fill: var(--dh-api-amber-soft);
+}
+
+circle.roV6CurveEndHalo.roV6CurveAcc {
+  fill: var(--ro-spark-fill);
+}
+
+circle.roV6CurveEndDot.roV6CurveInk {
+  fill: var(--ro-ink);
+}
+
+circle.roV6CurveEndDot.roV6CurveAmber {
+  fill: var(--ro-amber);
+}
+
+circle.roV6CurveEndDot.roV6CurveAcc {
+  fill: var(--ro-acc);
+}
+
+.roV6CurveEndText {
+  font-family: var(--dh-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+text.roV6CurveEndText.roV6CurveInk {
+  fill: var(--ro-ink);
+}
+
+text.roV6CurveEndText.roV6CurveAmber {
+  fill: var(--ro-amber);
+}
+
+text.roV6CurveEndText.roV6CurveAcc {
+  fill: var(--ro-acc);
+}
+
+/* 现金流双轨 */
+.roV6CashRow {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 52px 56px minmax(0, 1fr) 76px;
+  padding: 7px 0;
+}
+
+.roV6CashRow + .roV6CashRow {
+  border-top: 1px solid var(--ro-line);
+}
+
+.roV6CashW {
+  color: var(--ro-acc);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.roV6CashT {
+  color: var(--ro-ink-2);
+  font-size: 12px;
+}
+
+.roV6CashTrack {
+  display: flex;
+  height: 13px;
+}
+
+.roV6CashSvg {
+  align-self: center;
+  display: block;
+  height: 9px;
+  width: 100%;
+}
+
+.roV6CashBarA {
+  fill: var(--ro-acc);
+  filter: drop-shadow(0 0 8px var(--ro-hero-glow));
+}
+
+.roV6CashBarL {
+  fill: var(--ro-amber);
+  filter: drop-shadow(0 0 8px rgba(201, 165, 101, 0.3));
+}
+
+.roV6CashVal {
+  color: var(--ro-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.roV6GapChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.roV6GapChip {
+  align-items: baseline;
+  border: 1px solid color-mix(in srgb, var(--dh-api-red) 40%, transparent);
+  border-radius: 10px;
+  display: inline-flex;
+  font-family: var(--dh-font-mono);
+  gap: 8px;
+  padding: 7px 12px;
+}
+
+.roV6GapChip span {
+  color: var(--ro-mut);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+}
+
+.roV6GapChip b {
+  color: var(--ro-err);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.roV6GapChipDim {
+  border-color: var(--ro-line-2);
+}
+
+.roV6GapChipDim b {
+  color: var(--ro-ink);
+}
+
+/* ── 03 字段级明细表（编辑风纯粹表） ──────────────────────────── */
+.roV6Tables {
+  display: grid;
+  gap: 30px;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 24px;
+}
+
+.roV6TblHead {
+  align-items: baseline;
+  border-bottom: 2px solid var(--ro-ink);
+  color: var(--ro-ink-2);
+  display: flex;
+  font-size: 12px;
+  font-weight: 750;
+  justify-content: space-between;
+  letter-spacing: 0.08em;
+  padding-bottom: 9px;
+}
+
+.roV6TblHead span {
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.roV6Tbl table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.roV6Tbl th {
+  border-bottom: 1px solid var(--ro-line-2);
+  color: var(--ro-mut);
+  font-family: var(--dh-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  padding: 9px 0 7px;
+  text-align: left;
+}
+
+.roV6Tbl th:last-child,
+.roV6Tbl td:last-child {
+  text-align: right;
+}
+
+.roV6Tbl td {
+  border-bottom: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  font-size: 12.5px;
+  padding: 9px 0;
+}
+
+.roV6Tbl tr:last-child td {
+  border-bottom: 0;
+}
+
+.roV6TblNum {
+  color: var(--ro-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.roV6TblDt {
+  color: var(--ro-mut);
+  font-size: 10.5px;
+  text-align: right;
+}
+
+/* ── 04 数据质量与血缘 ────────────────────────────────────────── */
+.roV6Qual {
+  display: grid;
+  gap: 30px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  margin-top: 16px;
+}
+
+.roV6Warns {
+  counter-reset: roV6Warn;
+  display: grid;
+}
+
+.roV6Warns p {
+  border-bottom: 1px solid var(--ro-line);
+  color: var(--ro-ink-2);
+  counter-increment: roV6Warn;
+  display: grid;
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  gap: 8px;
+  grid-template-columns: 26px 1fr;
+  line-height: 1.65;
+  margin: 0;
+  padding: 9px 0;
+}
+
+.roV6Warns p:last-child {
+  border-bottom: 0;
+}
+
+.roV6Warns p::before {
+  color: var(--ro-amber);
+  content: counter(roV6Warn, decimal-leading-zero);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.roV6Lineage {
+  font-family: var(--dh-font-mono);
+}
+
+.roV6LineageRow {
+  border-bottom: 1px solid var(--ro-line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 108px 1fr;
+  padding: 8px 0;
+}
+
+.roV6LineageRow:last-child {
+  border-bottom: 0;
+}
+
+.roV6LineageKey {
+  color: var(--ro-mut);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  padding-top: 2px;
+}
+
+.roV6LineageVal {
+  color: var(--ro-ink-2);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ── 空态 ─────────────────────────────────────────────────────── */
+.roV6EmptyText {
+  color: var(--ro-mut);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 6px 0;
+}
+
+/* ── 既有件：陈旧拦截条 / 右栏 / 辅助类（保留原实现） ─────────── */
+.roBlockedBand {
+  align-items: center;
+  background:
+    linear-gradient(145deg, rgba(201, 165, 101, 0.14), rgba(201, 165, 101, 0.04) 46%, rgba(7, 12, 20, 0.22)),
+    rgba(10, 17, 29, 0.78);
+  backdrop-filter: blur(8px) saturate(1.15);
+  border: 1px solid rgba(201, 165, 101, 0.42);
+  border-radius: 6px;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(232, 238, 247, 0.07);
+  display: flex;
+  gap: 14px;
+  padding: 12px 16px;
+}
+
+.roBlockedBadge {
+  background: rgba(201, 165, 101, 0.16);
+  border: 1px solid rgba(201, 165, 101, 0.5);
+  border-radius: 4px;
+  color: var(--dh-api-amber);
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+
+.roBlockedBody {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+
+.roBlockedBody strong {
+  color: var(--dh-api-ink);
+  font-size: 12.5px;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.roBlockedBody span {
+  color: var(--dh-api-muted);
+  font-family: var(--dh-font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roBlockedLink {
+  color: var(--dh-api-blue);
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 680;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.roBlockedLink:hover {
+  text-decoration: underline;
+}
+
+.roStateDot {
+  background: currentColor;
+  border-radius: 99px;
+  display: inline-block;
+  height: 6px;
+  margin-right: 7px;
+  width: 6px;
+}
+
+.roRefreshBtn {
+  margin-left: 12px;
+}
+
+.roDrillRow {
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.roDrillRow:hover {
+  transform: translateX(3px);
+}
+
+.roNum {
+  font-family: var(--dh-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.roToneOk {
+  color: var(--dh-api-green);
+}
+
+.roToneWatch {
+  color: var(--dh-api-amber);
+}
+
+.roToneError {
+  color: var(--dh-api-red);
+}
+
+.roToneMuted {
+  color: var(--dh-api-muted);
+}
+
+.roEmptyState {
+  align-items: center;
+  border: 1px dashed rgba(126, 157, 194, 0.3);
+  border-radius: 5px;
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  justify-items: center;
+  padding: 26px 18px;
+  text-align: center;
+}
+
+.roEmptyGlyph {
+  background:
+    radial-gradient(circle at center, rgba(114, 167, 220, 0.5) 0 3px, transparent 3px),
+    conic-gradient(from 0deg, rgba(114, 167, 220, 0.4), transparent 26%);
+  border: 1px solid rgba(114, 167, 220, 0.3);
+  border-radius: 99px;
+  display: block;
+  height: 30px;
+  width: 30px;
+}
+
+/* ── 响应式 ───────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .roV6Kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .roV6HeroGrid,
+  .roV6BriefGrid,
+  .roV6Duo,
+  .roV6Tables,
+  .roV6Qual {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .roBlockedBand {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roV6Kpi,
+  .roDrillRow {
+    transition: none;
+  }
+}

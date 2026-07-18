@@ -84,12 +84,7 @@ import {
   buildPortfolioReadinessGate,
   type PortfolioEvidenceSource,
 } from "./portfolioReadinessGate";
-import {
-  buildRiskKrdChart,
-  dv01LimitStatusLabel,
-  enrichRiskSectionsWithSparklines,
-  riskKpiSparklineFromTensor,
-} from "./riskHomeAdapter";
+import { buildRiskKrdChart } from "./riskHomeAdapter";
 
 export type ModuleHomeTone = "ok" | "watch" | "error" | "muted";
 
@@ -3739,10 +3734,34 @@ function buildCashflowDetailSections(cashflow: CashflowProjectionPayload): Modul
   return sections;
 }
 
+function riskDatesStatus(
+  query: UseQueryResult<ApiEnvelope<RiskTensorDatesPayload>> | undefined,
+  availableCount: number,
+  blockedCount: number,
+): ModuleHomeStatus {
+  const base = queryStatus("dates", "风险报告日", query, "风险日期列表已返回。");
+  if (base.tone !== "ok" || blockedCount === 0) {
+    return base;
+  }
+  return {
+    ...base,
+    value: availableCount > 0 ? "部分拦截" : "全部拦截",
+    detail: `${blockedCount} 个报告日因规则版本过期被拦截，需重新物化。`,
+    tone: "watch",
+  };
+}
+
 function riskView(
   queries: ModuleHomeSourceQueries,
 ): Omit<ModuleHomeView, "kind" | "title" | "question" | "summary" | "sourceScope"> {
   const dates = queries.riskDates?.data?.result.report_dates ?? [];
+  const blockedDates = queries.riskDates?.data?.result.blocked_report_dates ?? [];
+  const blockedCount = blockedDates.length;
+  const latestBlockedReportDate =
+    blockedCount > 0
+      ? [...blockedDates].sort((a, b) => b.report_date.localeCompare(a.report_date))[0]
+          ?.report_date
+      : undefined;
   const tensor = queries.riskTensor?.data?.result;
   const cashflow = queries.cashflow?.data?.result;
   const reportDate = tensor?.report_date ?? cashflow?.report_date ?? dates[0] ?? "-";
@@ -3769,7 +3788,9 @@ function riskView(
     : hasLoading(queries)
       ? "风险链路读取中，等待正式接口返回。"
       : !tensor
-        ? "风险张量未返回，先补齐主链数据。"
+        ? blockedCount > 0
+          ? `风险张量 ${blockedCount} 个报告日被规则版本拦截，重新物化前不能形成处置判断。`
+          : "风险张量未返回，先补齐主链数据。"
         : hasRiskPartialError
           ? "风险张量已返回，现金流等辅助链路需单独复核。"
         : tensorWarnings.length > 0
@@ -3778,12 +3799,10 @@ function riskView(
             ? "监管 DV01 待接入，不能判定限额状态。"
             : "主链已返回，按后端字段做截面风险复核。";
   const decisionDetail =
-    tensor?.dv01_controls?.control_message ??
-    tensor?.prior_period_change?.summary ??
     "下方保留字段级证据；正式处置进入风险张量、集中度和现金流页面。";
 
   const riskTensorSections = tensor
-    ? enrichRiskSectionsWithSparklines(buildRiskTensorDetailSections(tensor), tensor)
+    ? buildRiskTensorDetailSections(tensor)
     : [];
   const riskTensorRows = flattenDetailSections(riskTensorSections);
   const riskTensorStatus = queryStatus(
@@ -3841,7 +3860,7 @@ function riskView(
       ? "风险主链路失败，不使用前端补数。"
       : hasRiskPartialError
         ? `风险报告日 ${reportDate}，主链已返回；辅助链路存在失败。`
-      : `风险报告日 ${reportDate}，可用日期 ${dates.length} 个。`,
+      : `风险报告日 ${reportDate}，可用日期 ${dates.length} 个${blockedCount > 0 ? `，规则版本拦截 ${blockedCount} 个` : ""}。`,
     kpis: [
       {
         key: "regulatory-dv01",
@@ -3849,7 +3868,6 @@ function riskView(
         value: tensor ? riskTensorPendingOrWan(tensor.regulatory_dv01) : "-",
         detail: "来自 regulatory_dv01；缺失时不使用估值 DV01 替代。",
         tone: tensor ? riskTensorValueTone(tensor.regulatory_dv01) : "watch",
-        sparkline: tensor ? riskKpiSparklineFromTensor(tensor, "regulatory_dv01") : undefined,
       },
       {
         key: "portfolio-dv01",
@@ -3864,7 +3882,6 @@ function riskView(
         value: tensor ? riskTensorDisplay(tensor.portfolio_modified_duration) : "-",
         detail: "portfolio_modified_duration。",
         tone: tensor ? "ok" : "watch",
-        sparkline: tensor ? riskKpiSparklineFromTensor(tensor, "portfolio_modified_duration") : undefined,
       },
       {
         key: "liquidity-gap",
@@ -3872,11 +3889,10 @@ function riskView(
         value: cashflow || tensor ? durationGapKpi.value : "-",
         detail: durationGapKpi.detail,
         tone: cashflow || tensor ? "ok" : "watch",
-        sparkline: tensor ? riskKpiSparklineFromTensor(tensor, "liquidity_gap_30d_ratio") : undefined,
       },
     ],
     statuses: [
-      queryStatus("dates", "风险报告日", queries.riskDates, "风险日期列表已返回。"),
+      riskDatesStatus(queries.riskDates, dates.length, blockedCount),
       queryStatus("tensor", "风险张量", queries.riskTensor, "风险张量已返回。"),
       queryStatus("cashflow", "现金流预测", queries.cashflow, "现金流预测已返回。"),
       {
@@ -3900,22 +3916,21 @@ function riskView(
           tone: tensor?.quality_flag === "ok" ? "ok" : tensor ? "watch" : "muted",
         },
         {
-          label: "限额状态",
-          value: tensor?.dv01_controls?.limit_status
-            ? dv01LimitStatusLabel(tensor.dv01_controls.limit_status)
-            : "未返回",
-          tone:
-            tensor?.dv01_controls?.limit_status === "ok"
-              ? "ok"
-              : tensor?.dv01_controls?.limit_status === "breach"
-                ? "error"
-                : "watch",
-        },
-        {
           label: "数据提示",
           value: `${tensorWarnings.length} 条`,
           tone: tensorWarnings.length > 0 ? "watch" : "ok",
         },
+        ...(blockedCount > 0
+          ? [
+              {
+                label: "拦截日期",
+                value: latestBlockedReportDate
+                  ? `${blockedCount} 个 · 最新 ${latestBlockedReportDate}`
+                  : `${blockedCount} 个`,
+                tone: "watch" as ModuleHomeTone,
+              },
+            ]
+          : []),
       ],
     },
     briefings: [

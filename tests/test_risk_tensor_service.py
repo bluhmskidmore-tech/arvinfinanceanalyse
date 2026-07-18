@@ -301,6 +301,45 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     get_settings.cache_clear()
 
 
+def test_risk_tensor_history_envelope_returns_window_points(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+
+    payload = service_mod.risk_tensor_history_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date=REPORT_DATE,
+        periods=24,
+    )
+
+    assert payload["result_meta"]["result_kind"] == "risk.tensor.history"
+    assert payload["result_meta"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
+    assert payload["result_meta"]["evidence_rows"] == 1
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+
+    result = payload["result"]
+    assert result["report_date"] == REPORT_DATE
+    assert result["periods"] == 1
+    assert result["window"] == {"from": REPORT_DATE, "to": REPORT_DATE}
+    assert len(result["points"]) == 1
+    point = result["points"][0]
+    assert point["report_date"] == REPORT_DATE
+
+    materialized_row = service_mod.RiskTensorRepository(str(duckdb_path)).fetch_risk_tensor_row(REPORT_DATE)
+    assert materialized_row is not None
+    assert Decimal(str(point["portfolio_dv01"])) == materialized_row["portfolio_dv01"]
+    assert Decimal(str(point["liquidity_gap_30d"])) == materialized_row["liquidity_gap_30d"]
+    assert Decimal(str(point["issuer_top5_weight"])) == materialized_row["issuer_top5_weight"]
+
+    history_rows = service_mod.RiskTensorRepository(str(duckdb_path)).fetch_risk_tensor_history(REPORT_DATE, 24)
+    assert [row["report_date"] for row in history_rows] == [REPORT_DATE]
+
+    get_settings.cache_clear()
+
+
 def test_formal_risk_tensor_excludes_unapproved_derivatives_even_when_prior_exists(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
     core_mod = load_module(

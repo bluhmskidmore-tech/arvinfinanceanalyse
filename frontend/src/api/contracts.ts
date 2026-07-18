@@ -976,6 +976,29 @@ export type RiskTensorDatesPayload = {
   blocked_report_dates?: BlockedReportDate[];
 };
 
+/**
+ * `/api/risk/tensor/history?report_date=&periods=` — 走势图/涨跌胶囊只读窗口序列；
+ * 数值为字符串（与张量载荷的历史字符串口径一致），展示层解析归一化，不在前端补算指标。
+ */
+export type RiskTensorHistoryPoint = {
+  report_date: string;
+  portfolio_dv01: string | null;
+  regulatory_dv01?: string | null;
+  portfolio_modified_duration: string | null;
+  portfolio_convexity: string | null;
+  cs01: string | null;
+  issuer_concentration_hhi: string | null;
+  issuer_top5_weight: string | null;
+  liquidity_gap_30d: string | null;
+};
+
+export type RiskTensorHistoryPayload = {
+  report_date: string;
+  periods: number;
+  window: { from: string; to: string };
+  points: RiskTensorHistoryPoint[];
+};
+
 export type RiskScenarioStressCategory = "rate" | "credit" | "liquidity" | "fx";
 
 export type RiskScenarioStressRow = {

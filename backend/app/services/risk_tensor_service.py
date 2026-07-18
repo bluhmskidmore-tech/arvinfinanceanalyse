@@ -328,6 +328,127 @@ def _risk_tensor_envelope_uncached(
     return envelope
 
 
+def risk_tensor_history_envelope(
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str | date,
+    periods: int,
+) -> dict[str, object]:
+    report_date_value = _coerce_report_date(report_date)
+    report_date_text = report_date_value.isoformat()
+    periods_value = max(2, min(int(periods), 60))
+    cache_key = _risk_tensor_cache_key(
+        "tensor_history",
+        duckdb_path,
+        governance_dir,
+        report_date_text,
+        periods_value,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _RISK_TENSOR_CACHE.get_or_set(
+                cache_key,
+                lambda: _risk_tensor_history_envelope_uncached(
+                    duckdb_path=duckdb_path,
+                    governance_dir=governance_dir,
+                    report_date_value=report_date_value,
+                    report_date_text=report_date_text,
+                    periods_value=periods_value,
+                ),
+            )
+        )
+    return _risk_tensor_history_envelope_uncached(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date_value=report_date_value,
+        report_date_text=report_date_text,
+        periods_value=periods_value,
+    )
+
+
+def _risk_tensor_history_envelope_uncached(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date_value: date,
+    report_date_text: str,
+    periods_value: int,
+) -> dict[str, object]:
+    repo = RiskTensorRepository(str(duckdb_path))
+    latest_row = repo.fetch_risk_tensor_row(report_date_text)
+
+    if latest_row is None:
+        upstream_lineage = load_latest_bond_analytics_lineage(
+            governance_dir=governance_dir,
+            report_date=report_date_text,
+        )
+        if upstream_lineage is None:
+            raise ValueError(f"No risk tensor data found for report_date={report_date_text}.")
+        raise RuntimeError(
+            f"Risk tensor fact missing for report_date={report_date_text} while bond analytics lineage exists."
+        )
+
+    stale_reason = _risk_tensor_freshness_error(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date_text=report_date_text,
+        row=latest_row,
+    )
+    if stale_reason is not None:
+        raise RuntimeError(stale_reason)
+
+    rows_desc = repo.fetch_risk_tensor_history(report_date_text, periods_value)
+    if not rows_desc:
+        raise ValueError(f"No risk tensor history found for report_date={report_date_text}.")
+
+    points = [
+        {
+            "report_date": str(row["report_date"]),
+            "portfolio_dv01": _history_scalar(row["portfolio_dv01"]),
+            "regulatory_dv01": _history_scalar(row["regulatory_dv01"]),
+            "portfolio_modified_duration": _history_scalar(row["portfolio_modified_duration"]),
+            "portfolio_convexity": _history_scalar(row["portfolio_convexity"]),
+            "cs01": _history_scalar(row["cs01"]),
+            "issuer_concentration_hhi": _history_scalar(row["issuer_concentration_hhi"]),
+            "issuer_top5_weight": _history_scalar(row["issuer_top5_weight"]),
+            "liquidity_gap_30d": _history_scalar(row["liquidity_gap_30d"]),
+        }
+        for row in reversed(rows_desc)
+    ]
+    payload = {
+        "report_date": report_date_text,
+        "periods": len(points),
+        "window": {"from": points[0]["report_date"], "to": points[-1]["report_date"]},
+        "points": points,
+    }
+    envelope = build_formal_result_envelope_from_lineage(
+        trace_id=_trace_id(),
+        result_kind="risk.tensor.history",
+        lineage=latest_row,
+        default_cache_version=CACHE_VERSION,
+        source_version=str(latest_row["source_version"]),
+        rule_version=str(latest_row.get("rule_version") or RULE_VERSION),
+        vendor_version="vv_none",
+        quality_flag=str(latest_row["quality_flag"]),
+        source_surface="risk_tensor",
+        requested_report_date=report_date_text,
+        resolved_report_date=report_date_text,
+        as_of_date=report_date_text,
+        date_basis="formal_snapshot",
+        fallback_date=None,
+        result_payload=payload,
+    )
+    envelope["result_meta"]["tables_used"] = [FACT_TABLE]
+    envelope["result_meta"]["evidence_rows"] = len(points)
+    return envelope
+
+
+def _history_scalar(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
 def _trace_id() -> str:
     return f"tr_{uuid.uuid4().hex[:12]}"
 

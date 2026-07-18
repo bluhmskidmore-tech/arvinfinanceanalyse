@@ -8,6 +8,7 @@ from backend.app.security.auth_context import AuthContext, ensure_user_allowed, 
 from backend.app.services.risk_tensor_service import (
     risk_tensor_dates_envelope,
     risk_tensor_envelope,
+    risk_tensor_history_envelope,
 )
 from backend.app.services.risk_scenario_stress_service import risk_scenario_stress_envelope
 from backend.app.services.formal_result_runtime import build_result_envelope
@@ -97,6 +98,37 @@ def risk_tensor(
         return _risk_tensor_unavailable_response(
             error=exc,
             result_kind="risk.tensor",
+            basis="formal",
+            report_date=report_date,
+        )
+
+
+@router.get("/tensor/history")
+def risk_tensor_history(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str = Query(...),
+    periods: int = Query(24, ge=2, le=60),
+) -> dict:
+    try:
+        date.fromisoformat(report_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid report_date. Expected YYYY-MM-DD.") from exc
+
+    settings = get_settings()
+    _ensure_risk_tensor_read_allowed(auth, settings)
+    try:
+        return risk_tensor_history_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+            periods=periods,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        return _risk_tensor_unavailable_response(
+            error=exc,
+            result_kind="risk.tensor.history",
             basis="formal",
             report_date=report_date,
         )
