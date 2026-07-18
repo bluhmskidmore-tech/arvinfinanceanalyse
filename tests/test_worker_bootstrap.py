@@ -40,7 +40,10 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.fx_mid_materialize",
         "backend.app.tasks.commodity_daily_ingest",
         "backend.app.tasks.crisis_score_inputs_refresh",
+        "backend.app.tasks.nbs_gdp_release_ingest",
         "backend.app.tasks.choice_macro",
+        "backend.app.tasks.tushare_macro_ingest",
+        "backend.app.tasks.home_macro_release_refresh",
         "backend.app.tasks.choice_news",
         "backend.app.tasks.stock_factor_refresh",
         "backend.app.tasks.research_calendar_upstream_fetch",
@@ -65,6 +68,12 @@ def test_choice_news_task_module_declares_tushare_news_background_actor():
     assert "ingest_tushare_news_to_choice_news = register_actor_once" in text
 
 
+
+def test_tushare_macro_task_declares_refresh_actor():
+    task_path = ROOT / "backend" / "app" / "tasks" / "tushare_macro_ingest.py"
+    text = task_path.read_text(encoding="utf-8")
+    assert "refresh_tushare_macro = register_actor_once(" in text
+    assert '"refresh_tushare_macro"' in text
 def test_broker_uses_redis_broker_in_production_even_under_pytest(monkeypatch):
     broker_module = load_module(
         "backend.app.tasks.broker",

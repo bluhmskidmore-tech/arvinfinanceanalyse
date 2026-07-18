@@ -70,6 +70,7 @@ def test_retry_recovers_transient_series_failure(tmp_path: Path) -> None:
     svc, manifest = _service(tmp_path, adapter)
 
     summary = svc.ingest_all_seed_series_with_summary("batch-retry", retry_sleep_seconds=0)
+    assert summary["status"] == "success"
 
     assert summary["failed"] == []
     assert summary["succeeded"] == [c["series_id"] for c in TUSHARE_M2A_SERIES]
@@ -84,6 +85,7 @@ def test_persistent_failure_is_aggregated_without_aborting_batch(tmp_path: Path)
     svc, manifest = _service(tmp_path, adapter)
 
     summary = svc.ingest_all_seed_series_with_summary("batch-dead", retry_sleep_seconds=0)
+    assert summary["status"] == "partial"
 
     assert [f["series_id"] for f in summary["failed"]] == [dead_id]
     assert "ConnectionError" in summary["failed"][0]["error"]
@@ -138,6 +140,8 @@ def test_task_partial_failure_logs_error_and_reports_failed(
     with caplog.at_level(logging.ERROR, logger="backend.app.tasks.tushare_macro_ingest"):
         out = run_tushare_macro_ingest_once("batch-partial")
 
+    assert out["status"] == "partial"
+    assert all(result["materialized_rows"] == 1 for result in out["results"])
     assert [f["series_id"] for f in out["failed"]] == [dead_id]
     assert {r["series_id"] for r in out["results"]} == {
         c["series_id"] for c in TUSHARE_M2A_SERIES if c["series_id"] != dead_id
