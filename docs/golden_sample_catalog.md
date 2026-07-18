@@ -253,8 +253,8 @@ tests/golden_samples/
   - `result_meta.result_kind == "pnl.overview"`
   - `result_meta.source_version == "fi-shared-v1__nonstd-shared-v1"`
   - `result_meta.vendor_version == "vv_none"`
-  - `result_meta.rule_version == "rv_pnl_phase2_materialize_v1"`
-  - `result_meta.cache_version == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"`
+  - `result_meta.rule_version == "rv_pnl_phase2_materialize_v3"`
+  - `result_meta.cache_version == "cv_pnl_formal__rv_pnl_phase2_materialize_v3"`
   - `MTR-PNL-101 == 1`
   - `MTR-PNL-102 == 1`
   - `MTR-PNL-001 == "12.50"`

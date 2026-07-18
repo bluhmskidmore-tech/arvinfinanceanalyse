@@ -166,6 +166,7 @@
 | `daily_changes` | 日 / 周 / 月变动 | 仅当补充读面报告日等于首页快照 `report_date` | `supplemental`，只能在下钻区展示 |
 | `market_context` | 市场上下文 | 不作为报告日判断依据 | `supplemental`，只能在下钻区展示 |
 | `research_calendar` | 关键事件日历 | 不作为报告日判断依据 | `supplemental`，只能在下钻区展示 |
+| `macro_release_context` | 宏观发布与历史变动 | 使用独立自然日窗口，不作为报告日判断依据 | `supplemental`，只能在延迟加载的下钻区展示；未接入来源保持 `source_pending` |
 | `risk_overview` | 风险概览 | 当前不启用 | `reserved`，不发 live 首页请求 |
 | `alerts` | 预警中心 | 当前不启用 | `reserved`，不发 live 首页请求 |
 | `contribution` | 团队/账户/策略贡献 | 当前不启用 | `reserved`，不发 live 首页请求 |
@@ -184,6 +185,7 @@
 | `daily_changes` | `supplemental` / `blocked` | 否 | 补充读面报告日必须等于首页快照 `report_date`；不一致则 `blocked`。 |
 | `market_context` | `supplemental` | 否 | 市场/宏观数据不绑定首页严格报告日，只能作为下钻上下文。 |
 | `research_calendar` | `supplemental` | 否 | 自然日事件窗口，只能作为下钻上下文。 |
+| `macro_release_context` | `supplemental` | 否 | 由 `/ui/home/macro-release-context` 提供自然日宏观发布与历史变动上下文；不参与首页主判断，`source_pending` 不得伪装成 0 或正常值。 |
 | `risk_overview` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
 | `contribution` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
 | `alerts` | `reserved` | 否 | 当前边界为 reserved/excluded surface，不发 live 首页请求。 |
@@ -206,6 +208,8 @@
   - 本轮先使用 `domains_effective_date` 显示各核心域有效日期
 - `generated_at`：
   - 来自 `/ui/home/snapshot.result_meta.generated_at`
+- `macro_release_context` 自然日窗口：
+  - 使用独立的 `start_date` / `end_date` / `history_limit`，不复用 snapshot `report_date`，不参与首页主判断。
 - latest fallback 是否允许：
   - strict 默认使用最新严格交集；手动开启 partial 才允许含缺域
 - latest fallback 是否必须可见：
@@ -220,6 +224,7 @@
 | 摘要 | `/ui/home/summary` | `SummaryPayload` | `analytical` | 当前已纳入 cutover |
 | 收益归因 | `/ui/pnl/attribution` | `PnlAttributionPayload` | `analytical` | 当前已纳入 cutover |
 | 风险概览 | `/ui/risk/overview` | `RiskOverviewPayload` | `analytical` | 当前 excluded，默认 `503` |
+| 宏观发布与历史变动 | `/ui/home/macro-release-context` | `HomeMacroReleaseContextEnvelope` | `analytical` | supporting API；`result_kind` = `home.macro_release_context`、`formal_use_allowed=false`、`source_surface=market_data`；不进入首屏主判断 |
 | 贡献 | `/ui/home/contribution` | `ContributionPayload` | `analytical` | 当前 excluded，默认 `503` |
 | 预警 | `/ui/home/alerts` | `AlertsPayload` | `analytical` | 当前 excluded，默认 `503` |
 
@@ -253,6 +258,8 @@
   - excluded surface 返回 `503` 时，该 section 直接不显示，不得渲染为 live 正常卡片
   - `core_metrics` / `daily_changes` 与首页快照报告日不一致时必须阻断展示，只能提示报告日不一致
 
+  - `macro_release_context` 的 `ready` / `partial` / `stale` / `fallback` / `source_pending` / `error` 与 `no-data` 必须可见；美国未接入指标保持 `source_pending`。
+  - 禁止静态历史数值回退；自动接口失败或无可用证据时显示 `自动数据暂不可用`，不得恢复人工维护值。
 ### H. 对账与黄金样本
 
 - 黄金样本：
@@ -2397,6 +2404,77 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Approved-insights API/formulas: `tests/test_pnl_by_business_insights_contract.py`, `tests/test_pnl_by_business_candidate_insights_contract.py`.
 - Mutation authorization: `tests/test_write_route_auth_contract.py`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
+### I. Governed insights detail route
+
+#### I.1 Page identity
+
+- Governing Page ID: `PAGE-PNL-BY-BUSINESS-001`
+- Governed detail route: `/pnl-by-business-insights`
+- Status: `active governed formal-analysis detail page`
+- This route is a dedicated presentation surface under the existing page contract; it does not create a second page identity or metric definition.
+- Primary frontend files:
+  - `frontend/src/features/pnl-business-insights/PnlByBusinessInsightsPage.tsx`
+  - `frontend/src/features/pnl-business-insights/CapitalEfficiencyQuadrantPanel.tsx`
+  - `frontend/src/features/pnl-business-insights/UntracedReconciliationTrendPanel.tsx`
+  - `frontend/src/api/pnlClient.ts`
+
+#### I.2 Primary business question
+
+- The page answers: 业务结构是否集中、哪些业务持续未覆盖 FTP、日均份额同比如何变化、规模与 FTP 后收益处于什么相对位置？
+- It is a descriptive formal-analysis detail page, not a concentration-limit, FTP-rate, allocation, performance-assessment, or source-fact certification page.
+
+#### I.3 Data chain
+
+- The page reads only `GET /api/pnl/by-business-insights?year=...&as_of_date=...`.
+- It must not call the legacy candidate endpoint or rebuild metrics from YTD/monthly rows in the browser.
+- Formal display requires the approved v2 envelope, exact cutoff, complete component evidence, no fallback, usable vendor/quality state, and admitted formal sources.
+- `GS-PNL-BUSINESS-INSIGHTS-A` is formula/DTO evidence, not independent source-fact truth.
+
+#### I.4 Required sections
+
+| section_key | Purpose | Data source |
+| --- | --- | --- |
+| `decision_hero` | Show the exact cutoff and primary business question | query parameters |
+| `data_status` | Show formal status, quality, cutoff, fallback, and trace | `result_meta` |
+| `concentration` | Show `MTR-PNLBIZ-001` and `MTR-PNLBIZ-002` | formal endpoint |
+| `negative_ftp_persistence` | Show `MTR-PNLBIZ-003` and `MTR-PNLBIZ-004`, including insufficient-observation state | formal endpoint |
+| `share_drift` | Show `MTR-PNLBIZ-005` and any unavailable reason | formal endpoint |
+| `scale_yield_quadrant` | Show descriptive `MTR-PNLBIZ-007` only when eligible | formal endpoint |
+| `reconciliation_diagnostics` | Show `MTR-PNLBIZ-006` in a separately labelled non-business-conclusion section | formal endpoint |
+
+#### I.5 Units, dates, and status
+
+- `001`/`002`/`003`/`006` use `%`; `004` uses `月`; `005` uses signed `pp`; `007` uses a quadrant label plus `%`.
+- The selected `year` and canonical `as_of_date` must reach the formal endpoint unchanged.
+- Non-formal, fallback, stale, error, missing, vendor-unusable, date-mismatched, malformed-v2, or incomplete-component evidence fails closed to `待复核`.
+- A warning remains usable only when it is visible.
+- Null, insufficient observations, source unavailable, and no observations must not become zero.
+
+#### I.6 Metric status and boundaries
+
+- `MTR-PNLBIZ-001` through `005` and `007` are approved formal `business_analysis` metrics for descriptive analysis only.
+- `MTR-PNLBIZ-006` is also approved/formal, but its `metric_kind` is `diagnostic_only`; it must remain structurally separated from business conclusions.
+- This route reuses the definitions and golden sample bound to `PAGE-PNL-BY-BUSINESS-001`; it creates no new `MTR-*` identifiers.
+- No metric creates a concentration limit, changes the FTP caliber, or authorizes 增配、压降、退出, or performance conclusions.
+
+#### I.7 Evidence boundary and known risks
+
+- Golden approval proves formula, DTO, units, thresholds, null behavior, and diagnostic separation only.
+- Underlying PnL, balance, FX, and lineage facts remain subject to independent reconciliation.
+- A live exact-cutoff read of `GET /api/pnl/by-business-insights?year=2026&as_of_date=2026-06-30` was captured on `2026-07-16` through `scripts/emit_pnl_by_business_insights_governance_record.py`; the governance stream now reports `direct_page_or_api_records_present` and `direct_records_ready_for_audit_review` for `PAGE-PNL-BY-BUSINESS-001`.
+- This direct record preserves the real trace/source/rule/cache versions, exact requested/resolved/as-of date, no-fallback state, and admitted current/baseline/monthly component evidence. It does not turn the golden sample into independent source-fact truth or prove page-execution completeness.
+- Audit review remains open with `closure_approved=false`; the written record is evidence for review, not a new page identity, a new metric approval, source-fact certification, or permission to mix diagnostic-only `MTR-PNLBIZ-006` into business conclusions.
+- Diagnostic unavailability must expose `available=false` and `availability_reason`; an unavailable empty series is not zero.
+
+#### I.8 Tests
+
+- Frontend page: `frontend/src/features/pnl-business-insights/PnlByBusinessInsightsPage.test.tsx`.
+- Frontend client: `frontend/src/test/PnlBusinessInsightsClient.test.ts`.
+- Route/readiness: `frontend/src/test/LiveRouteReadiness.test.tsx`, `frontend/src/test/routes.test.tsx`.
+- API/formulas: `tests/test_pnl_by_business_insights_contract.py`, `tests/test_pnl_by_business_candidate_insights_contract.py`.
+- Golden sample: `tests/test_golden_samples_capture_ready.py`.
+- Governance: `tests/test_live_route_page_contract_completeness.py`, `tests/test_governance_doc_contract.py`.
 
 ## 14.9 PAGE-REPORTS-HOME-001 Reports And Data Home
 

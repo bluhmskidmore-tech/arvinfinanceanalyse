@@ -429,11 +429,15 @@ def test_ledger_pnl_candidate_metrics_bind_existing_page_contract_without_formal
     assert "PAGE-CONTRACT-PENDING:/ledger-pnl" not in metric_dictionary
 
 
-def test_pnl_by_business_page_contract_lands_without_metric_promotion():
-    contract = _page_contract_section(
+def test_pnl_by_business_contracts_keep_approved_insights_and_diagnostics_separate():
+    business_contract = _page_contract_section(
         "## 14.8.1 PAGE-PNL-BY-BUSINESS-001",
         "## 14.9 PAGE-REPORTS-HOME-001",
     )
+    insights_contract = business_contract.split(
+        "### I. Governed insights detail route",
+        maxsplit=1,
+    )[1]
     maturity = _read_doc("live_route_maturity.md")
 
     for required in (
@@ -443,15 +447,38 @@ def test_pnl_by_business_page_contract_lands_without_metric_promotion():
         "GET /api/pnl/by-business",
         "ZQTZ 管理披露分类",
         "Formal primary is a reconciliation evidence view only",
-        "This page has no newly approved `MTR-*` metric binding",
+        "Approved derived-analysis bindings are `MTR-PNLBIZ-001` through `MTR-PNLBIZ-005` and `MTR-PNLBIZ-007`",
+        "`MTR-PNLBIZ-006` is an approved diagnostic-only untraced-FI trend",
         "Product-category truth remains governed by `PAGE-PROD-CAT-PNL-001`",
         "Ledger-account PnL truth/candidate display remains governed by `PAGE-LEDGER-PNL-001`",
         "Current 2026-05-31 local evidence shows 148 formal FI rows untraced",
         "T`, `A`, and `H`",
     ):
-        assert required in contract
+        assert required in business_contract
+
+    for required in (
+        "Governing Page ID: `PAGE-PNL-BY-BUSINESS-001`",
+        "Governed detail route: `/pnl-by-business-insights`",
+        "Status: `active governed formal-analysis detail page`",
+        "does not create a second page identity or metric definition",
+        "GET /api/pnl/by-business-insights?year=...&as_of_date=...",
+        "`MTR-PNLBIZ-001` through `005` and `007`",
+        "`MTR-PNLBIZ-006`",
+        "diagnostic_only",
+        "not independent source-fact truth",
+        "direct_page_or_api_records_present",
+        "direct_records_ready_for_audit_review",
+        "closure_approved=false",
+    ):
+        assert required in insights_contract
 
     assert "| `/pnl-by-business` | temporary-exception | candidate | PAGE-PNL-BY-BUSINESS-001 |" in maturity
+    assert (
+        "| `/pnl-by-business-insights` | live | governed | "
+        "PAGE-PNL-BY-BUSINESS-001 |"
+    ) in maturity
+    assert "PAGE-PNL-BY-BUSINESS-INSIGHTS-001" not in business_contract
+    assert "PAGE-PNL-BY-BUSINESS-INSIGHTS-001" not in maturity
     assert "GAP-PNL-BY-BUSINESS-PAGE" not in maturity
 
 

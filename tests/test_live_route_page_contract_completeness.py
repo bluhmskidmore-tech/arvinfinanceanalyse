@@ -1,7 +1,7 @@
 """
 Contract source:
 - `frontend/src/mocks/navigation.ts` `workbenchNavigation`
-- `docs/page_contracts.md` `PAGE-*` sections and their primary front-end route
+- `docs/page_contracts.md` `PAGE-*` sections and their primary or explicitly governed detail routes
 
 Whitelist:
 - `TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST` only covers live routes that are
@@ -176,19 +176,32 @@ def _extract_primary_route(section_text: str) -> str | None:
     return paths[0] if paths else None
 
 
+def _extract_governed_detail_routes(section_text: str) -> list[str]:
+    return [
+        _normalize_route_path(path)
+        for path in re.findall(
+            r"^- Governed detail route: `(/[^`]*)`$",
+            section_text,
+            re.MULTILINE,
+        )
+    ]
+
+
 def _build_route_to_page_map() -> dict[str, str]:
     route_to_page: dict[str, str] = {}
     duplicates: list[str] = []
 
     for page_id, section_text in _extract_page_sections().items():
-        route = _extract_primary_route(section_text)
-        if route is None:
-            continue
-        existing = route_to_page.get(route)
-        if existing is not None and existing != page_id:
-            duplicates.append(f"{route}: {existing}, {page_id}")
-            continue
-        route_to_page[route] = page_id
+        primary_route = _extract_primary_route(section_text)
+        routes = _extract_governed_detail_routes(section_text)
+        if primary_route is not None:
+            routes.insert(0, primary_route)
+        for route in routes:
+            existing = route_to_page.get(route)
+            if existing is not None and existing != page_id:
+                duplicates.append(f"{route}: {existing}, {page_id}")
+                continue
+            route_to_page[route] = page_id
 
     if duplicates:
         pytest.fail(
@@ -341,8 +354,8 @@ def test_live_routes_have_page_contracts_or_explicit_temporary_exception_whiteli
         if missing:
             lines.append(f"unexpected_missing={len(missing)}")
             lines.extend(
-                f"- {path}: live in navigation but missing a dedicated `PAGE-*` section in "
-                f"`docs/page_contracts.md`."
+                    f"- {path}: live in navigation but missing a dedicated `PAGE-*` section in "
+                    f"`docs/page_contracts.md` or an explicit governed-detail mapping."
                 for path in missing
             )
 
@@ -389,6 +402,18 @@ def test_live_routes_have_maturity_registry_rows():
             lines.append(f"stale={len(stale)}")
             lines.extend(f"- {path}: present in route maturity registry but not live in navigation." for path in stale)
         pytest.fail("\n".join(lines))
+
+
+def test_live_route_maturity_page_contract_matches_mapped_route_contract():
+    route_to_page = _build_route_to_page_map()
+    registry = _parse_route_maturity_registry()
+    mismatches = [
+        f"{route}: maturity={registry[route].page_contract}, contract={page_id}"
+        for route, page_id in route_to_page.items()
+        if route in registry and registry[route].page_contract != page_id
+    ]
+
+    assert mismatches == []
 
 
 def test_temporary_exception_routes_have_burn_down_metadata():
