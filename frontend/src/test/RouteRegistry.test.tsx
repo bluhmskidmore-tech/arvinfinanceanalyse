@@ -568,10 +568,10 @@ describe("RouteRegistry", () => {
       expect(screen.getByTestId("ledger-dashboard-classification-quality")).toHaveTextContent("100.00%");
     });
   });
-  it("renders the risk-overview route as a live module home page", async () => {
+  it("renders the risk-overview route as the rebuilt v6 page", async () => {
     renderWorkbenchApp(["/risk-overview"], { client: mockClient });
 
-    expect(await screen.findByTestId("module-workbench-home")).toHaveTextContent("风险工作台");
+    expect(await screen.findByTestId("risk-overview-page")).toHaveTextContent("MOSS 利率风险总览");
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
