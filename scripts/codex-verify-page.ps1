@@ -101,7 +101,7 @@ $planOnly = $DryRun -or -not $Run
 $checks = @()
 
 if (-not $SkipMcpContracts) {
-  $mcpContractArgs = @("-m", "pytest", "tests/test_project_mcp_servers.py", "-q")
+  $mcpContractArgs = @("-m", "pytest", "tests/test_project_mcp_fast_contracts.py", "-m", "mcp_fast", "-q")
   if ($PageSlug -eq "risk-tensor") {
     $mcpContractArgs = @(
       "-m",

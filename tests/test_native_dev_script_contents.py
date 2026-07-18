@@ -453,6 +453,10 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "Test-CodexBrowserSmokeCheck" in script
     assert "Codex verify page" in script
     assert "dashboard-home" in script
+    assert (
+        '$mcpContractArgs = @("-m", "pytest", "tests/test_project_mcp_fast_contracts.py", "-m", "mcp_fast", "-q")'
+        in script
+    )
     assert "tests/test_project_mcp_servers.py" in script
     assert "tests/test_home_snapshot_endpoint.py" in script
     assert "tests/test_dashboard_api_contract.py" in script

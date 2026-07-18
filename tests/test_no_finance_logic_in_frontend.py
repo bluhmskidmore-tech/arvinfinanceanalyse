@@ -50,9 +50,9 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
     "features/workbench/dashboard-home/dashboardHomeBodyView.ts": (
         # Dashboard home body reads backend-provided metrics and fixed mock values
         # for display; these snippets are display-only field formatting.
-        '{ id: "dv01", label: "利率风险 DV01", value: numericValueOrGap(payload.total_dv01, "dv01") },',
+        '{ id: "dv01", label: "利率风险 DV01", value: dv01WanValueOrGap(payload.total_dv01) },',
         '{ id: "convexity", label: "加权凸性", value: numericValueOrGap(payload.weighted_convexity, "ratio") },',
-        '{ id: "spread-dv01", label: "利差 DV01", value: numericValueOrGap(payload.total_spread_dv01, "dv01") },',
+        '{ id: "spread-dv01", label: "利差 DV01", value: dv01WanValueOrGap(payload.total_spread_dv01) },',
         '{ id: "dv01", label: "利率风险 DV01", value: "10,615.59 万" },',
         '{ id: "spread-dv01", label: "利差 DV01", value: GAP },',
     ),
@@ -117,7 +117,13 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "{ id: ",
         "label: ",
     ),
+    "features/workbench/dashboard-home/dashboardHomeFirstScreenMockView.ts": (
+        # Mock view labels only; values are fixed display fixtures.
+        "label: ",
+    ),
     "features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx": (
+        "code: ",
+        "label: ",
         "<span",
         "<td",
         "{ label: ",
@@ -177,10 +183,35 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
         "description: ",
     ),
     "features/workbench/module-home/riskHomeAdapter.ts": (
+        # Display adapter: formats backend risk-tensor fields (labels, 万元
+        # readouts, field keys) without recomputing risk measures.
         "const RISK_KRD_FIELDS",
         "{ key: ",
         "for (const field of RISK_KRD_FIELDS)",
         "title: ",
+        "label: ",
+        "key: ",
+        "note: ",
+        "amount: ",
+        "series: ",
+        "convexity: ",
+        "const convexity = ",
+        "dv01 !== null",
+        "? `",
+        "| ",
+        "/*",
+        "peakKrdBucket = ",
+        "rows.push(",
+        "push(portfolioRows, ",
+        "push(creditRows, ",
+    ),
+    "features/workbench/module-home/RiskOverviewPage.tsx": (
+        # JSX display copy for backend-provided hero/KRD values; no computation.
+        "{hero.",
+        "<div",
+        "<span",
+        "<b>",
+        "<p ",
     ),
 }
 

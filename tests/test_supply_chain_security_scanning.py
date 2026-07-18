@@ -21,7 +21,7 @@ def test_supply_chain_security_assets_exist():
     assert not missing, "Missing expected supply-chain security assets:\n" + "\n".join(missing)
 
 
-def test_gitleaks_config_extends_defaults_with_narrow_generated_artifact_allowlists():
+def test_gitleaks_config_extends_defaults_without_tracked_source_snapshot_allowlist():
     config = tomllib.loads((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"))
 
     assert config["extend"]["useDefault"] is True
@@ -33,7 +33,7 @@ def test_gitleaks_config_extends_defaults_with_narrow_generated_artifact_allowli
         for path_pattern in allowlist.get("paths", [])
     )
 
-    assert "audit_pack/source_snapshot" in allowlist_paths
+    assert "audit_pack/source_snapshot" not in allowlist_paths
     assert ".codex-tmp" in allowlist_paths
     assert ".omx" in allowlist_paths
     assert "data" in allowlist_paths
@@ -54,6 +54,10 @@ def test_gitleaks_config_extends_defaults_with_narrow_generated_artifact_allowli
     assert "regulatory_dv01" in allowlist_regexes
     assert "dominant_krd_bucket" in allowlist_regexes
     assert "apiKey" not in allowlist_regexes
+
+
+def test_legacy_source_snapshot_is_removed_from_the_repository():
+    assert not (ROOT / "audit_pack" / "source_snapshot").exists()
 
 
 def test_supply_chain_scan_dry_run_emits_expected_plan(capsys):

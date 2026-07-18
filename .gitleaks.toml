@@ -2,9 +2,8 @@
 useDefault = true
 
 [[allowlists]]
-description = "Generated repo snapshots and local artifact directories"
+description = "Local generated artifact and runtime directories"
 paths = [
-  '''^audit_pack/source_snapshot/''',
   '''^\.codex-tmp/''',
   '''^\.codex-pr-logs/''',
   '''^\.omx/''',

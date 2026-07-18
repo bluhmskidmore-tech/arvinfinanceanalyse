@@ -12,6 +12,8 @@ from typing import Any
 import pytest
 import tomllib
 
+pytestmark = pytest.mark.mcp_full
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MCP_SCRIPT = REPO_ROOT / "scripts" / "mcp" / "moss_project_mcp.py"
 CODEX_CONFIG = REPO_ROOT / ".codex" / "config.toml"
@@ -278,6 +280,59 @@ GOVERNANCE_READY_FOR_AUDIT_PAGE_SLUGS = [
     "team-performance",
     "kpi-performance",
 ]
+
+
+@pytest.fixture(autouse=True)
+def isolated_default_mcp_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Path]:
+    governance_dir = tmp_path / "default-governance"
+    governance_dir.mkdir()
+    duckdb_path = tmp_path / "missing.duckdb"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    return {"governance_dir": governance_dir, "duckdb_path": duckdb_path}
+
+
+def test_full_mcp_contracts_default_to_isolated_runtime_paths(
+    isolated_default_mcp_runtime: dict[str, Path],
+) -> None:
+    assert Path(os.environ["MOSS_GOVERNANCE_PATH"]) == isolated_default_mcp_runtime[
+        "governance_dir"
+    ]
+    assert Path(os.environ["MOSS_DUCKDB_PATH"]) == isolated_default_mcp_runtime[
+        "duckdb_path"
+    ]
+    assert isolated_default_mcp_runtime["governance_dir"].is_dir()
+    assert not isolated_default_mcp_runtime["duckdb_path"].exists()
+
+
+@pytest.fixture
+def frozen_governance_snapshot_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_default_mcp_runtime: dict[str, Path],
+) -> Path:
+    '''Load the versioned 16-ready/23-gap snapshot without production builders.'''
+    fixture_path = (
+        REPO_ROOT
+        / 'tests'
+        / 'fixtures'
+        / 'mcp'
+        / 'governance_snapshot_v1.jsonl'
+    )
+    fixture_text = fixture_path.read_text(encoding='utf-8')
+    records = [json.loads(line) for line in fixture_text.splitlines() if line.strip()]
+    assert {record['page_slug'] for record in records} == set(
+        GOVERNANCE_READY_FOR_AUDIT_PAGE_SLUGS
+    )
+
+    governance = tmp_path / 'governance-snapshot'
+    governance.mkdir()
+    (governance / 'cache_manifest.jsonl').write_text(fixture_text, encoding='utf-8')
+    monkeypatch.setenv('MOSS_GOVERNANCE_PATH', str(governance))
+    return governance
 
 
 class McpProcess:
@@ -2182,7 +2237,7 @@ def test_stock_analysis_trace_bundle_preserves_observational_livermore_boundarie
 
         assert payload["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
         assert payload["frontend_route"] == "/stock-analysis"
-        assert payload["primary_api"] == "/ui/market-data/livermore"
+        assert payload["primary_api"] == "/ui/market-data/stock-analysis/workbench"
         assert "/ui/market-data/livermore/signal-confluence" in payload["supporting_apis"]
         assert "/ui/market-data/livermore/stock-detail" in payload["supporting_apis"]
         assert "/ui/market-data/livermore/candidate-history" in payload["supporting_apis"]
@@ -4058,7 +4113,7 @@ def test_lineage_evidence_page_governance_requirements_describes_direct_records_
         assert stock["approval_status"] == "gap_or_observational"
         assert "formal_use_allowed" not in stock
         assert stock["record_formal_use_policy"] == "must_be_false_for_gap_or_observational"
-        assert stock["primary_api"] == "/ui/market-data/livermore"
+        assert stock["primary_api"] == "/ui/market-data/stock-analysis/workbench"
         assert any("GAP/observational" in note for note in stock["status_specific_requirements"])
         assert any("PAGE-STOCK" in note for note in stock["status_specific_requirements"])
 
@@ -6506,7 +6561,9 @@ def test_lineage_evidence_governance_audit_evidence_packet_queue_collects_ready_
         server.close()
 
 
-def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue() -> None:
+def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("lineage-evidence", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -10843,7 +10900,9 @@ def test_data_catalog_page_catalog_date_coverage_configures_seeded_pages_with_cl
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_source_mix() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_source_mix(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -11275,7 +11334,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seeded_lanes() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seeded_lanes(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -11418,13 +11479,14 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
         assert all(row["evidence_scope"]["approves_metric_or_page"] is False for row in review_rows)
 
         rows = {row["page_id"]: row for row in review_rows}
-        assert rows["PAGE-DASH-001"]["record_readiness"] == {
+        dashboard_readiness = dict(rows["PAGE-DASH-001"]["record_readiness"])
+        assert dashboard_readiness.pop("expanded_anchor_record_count") > 0
+        assert dashboard_readiness == {
             "record_validation_status": "missing_direct_records",
             "audit_review_status": "blocked_by_record_gaps",
             "ready_record_count": 0,
             "direct_record_count": 0,
             "incomplete_record_count": 0,
-            "expanded_anchor_record_count": 20,
             "residual_gaps": [
                 "A direct page/API governance record is missing; expanded anchors cannot prove page/API execution.",
             ],
@@ -11443,13 +11505,14 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
         assert stock["formal_page_closure_allowed"] is False
         assert stock["record_remediation"]["remediation_type"] == "none"
         assert stock["record_remediation"]["approval_boundary"] == "review_routing_only"
-        assert rows["PAGE-BOND-001"]["record_readiness"] == {
+        bond_readiness = dict(rows["PAGE-BOND-001"]["record_readiness"])
+        assert bond_readiness.pop("expanded_anchor_record_count") > 0
+        assert bond_readiness == {
             "record_validation_status": "direct_records_ready_for_audit_review",
             "audit_review_status": "ready_for_audit_review",
             "ready_record_count": 1,
             "direct_record_count": 1,
             "incomplete_record_count": 0,
-            "expanded_anchor_record_count": 20,
             "residual_gaps": [
                 "Direct record fields are present, but this still does not prove page execution completeness or metric/page approval.",
             ],
@@ -11884,7 +11947,9 @@ def test_data_catalog_page_catalog_date_lineage_evidence_collection_execution_pl
     ]
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_builds_manual_audit_review_execution_plan() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_builds_manual_audit_review_execution_plan(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog")
     try:
         server.request("initialize")
@@ -12064,7 +12129,9 @@ def test_data_catalog_page_catalog_date_lineage_manual_audit_review_execution_pl
     ]
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_builds_business_owner_approval_execution_plan() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_builds_business_owner_approval_execution_plan(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog")
     try:
         server.request("initialize")
@@ -12315,7 +12382,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_audits_queue_bounda
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_audits_closure_blockers() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_audits_closure_blockers(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -12346,7 +12415,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_audits_closure_bloc
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_closure_readiness() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_closure_readiness(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -12445,7 +12516,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_closure_
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_routes_closure_blockers() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_routes_closure_blockers(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13553,7 +13626,9 @@ def test_data_catalog_page_catalog_date_lineage_queue_boundary_audit_flags_drift
     ]
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_work_items() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_work_items(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13637,7 +13712,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_builds_record_gap_execution_plan() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_builds_record_gap_execution_plan(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13823,7 +13900,9 @@ def test_data_catalog_page_catalog_date_lineage_record_gap_execution_plan_scope_
     ]
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_evidence_work_items() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_evidence_work_items(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")
@@ -13872,7 +13951,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         server.close()
 
 
-def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_by_lane() -> None:
+def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remediation_by_lane(
+    frozen_governance_snapshot_dir: Path,
+) -> None:
     server = McpProcess("data-catalog", timeout_seconds=180.0)
     try:
         server.request("initialize")

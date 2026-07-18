@@ -8,9 +8,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts():
     config_path = ROOT / "frontend" / "playwright.config.mjs"
     spec_path = ROOT / "frontend" / "tests" / "playwright" / "a11y-visual-smoke.spec.mjs"
+    insights_spec_path = (
+        ROOT
+        / "frontend"
+        / "tests"
+        / "playwright"
+        / "pnl-by-business-insights-smoke.spec.mjs"
+    )
 
     assert config_path.exists(), f"Missing Playwright config: {config_path}"
     assert spec_path.exists(), f"Missing Playwright smoke spec: {spec_path}"
+    assert insights_spec_path.exists(), f"Missing Insights smoke spec: {insights_spec_path}"
 
     config_text = config_path.read_text(encoding="utf-8")
     assert "../.codex-tmp/playwright-results" in config_text
@@ -21,7 +29,10 @@ def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts
     assert "baseURL: playwrightBaseURL" in config_text
     assert 'process.env.MOSS_PLAYWRIGHT_USE_WEB_SERVER === "1"' in config_text
     assert "npm run dev -- --host 127.0.0.1 --port ${playwrightPort}" in config_text
-    assert 'VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "real"' in config_text
+    assert 'VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "mock"' in config_text
+    assert 'const playwrightStatePort = process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889"' in config_text
+    assert "npm run dev -- --host 127.0.0.1 --port ${playwrightStatePort}" in config_text
+    assert 'VITE_DATA_SOURCE: "real"' in config_text
 
     spec_text = spec_path.read_text(encoding="utf-8")
     assert "@axe-core/playwright" in spec_text
@@ -31,7 +42,8 @@ def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts
     assert 'toBeVisible({ timeout: smokePage.readyTimeout ?? 60_000 })' in spec_text
     assert "page.screenshot({" in spec_text
     assert "fullPage: smokePage.screenshotFullPage ?? true" in spec_text
-    assert "violations.filter((violation) => violation.impact === \"critical\")" in spec_text
+    assert 'smokePage.blockedAxeImpacts ?? ["critical"]' in spec_text
+    assert "blockedAxeImpacts.includes(violation.impact)" in spec_text
     assert "excludeSelectors" in spec_text
     assert "axeSelector" in spec_text
     assert "screenshotFullPage" in spec_text
@@ -48,6 +60,15 @@ def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts
     assert "macro-toolkit-tailwind-cockpit" in spec_text
     assert "stock-analysis-page" in spec_text
     assert "pnl-attribution-page-title" in spec_text
+
+    insights_spec_text = insights_spec_path.read_text(encoding="utf-8")
+    assert "MOSS_PLAYWRIGHT_STATE_BASE_URL" in insights_spec_text
+    assert "GS-PNL-BUSINESS-INSIGHTS-A" in insights_spec_text
+    assert "pnl-by-business-insights-page" in insights_spec_text
+    assert "pnl-by-business-insights-contract-status" in insights_spec_text
+    assert "pnl-by-business-insights-contract-review" in insights_spec_text
+    assert "pnl-by-business-insights-reconciliation-section" in insights_spec_text
+    assert 'violation.impact === "critical"' in insights_spec_text
 
 
 def test_frontend_playwright_smoke_covers_high_risk_business_display_routes():

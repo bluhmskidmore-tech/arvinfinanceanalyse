@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, "codex/**"]
+    branches: [main, "codex/**"]
   pull_request:
-    branches: [master]
+    branches: [main]
   schedule:
     - cron: "0 18 * * *"
 
@@ -32,23 +32,16 @@ jobs:
         run: pip install -e "./backend[dev]"
 
       - name: Run bounded backend release suite
-        run: python scripts/backend_release_suite.py --governance-audit-output governance-lineage-audit.json
+        run: python scripts/backend_release_suite.py
 
       - name: Run agent harness tests
         run: python -m pytest tests/test_agent_eval_runner.py tests/test_agent_eval_spec.py tests/test_agent_eval_reward.py -q
-
-      - name: Upload governance lineage audit
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: governance-lineage-audit
-          path: governance-lineage-audit.json
 
   backend-full-pytest:
     name: Backend Full Pytest
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
 
     steps:
       - uses: actions/checkout@v4

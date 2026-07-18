@@ -1169,7 +1169,7 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
     assert report["page_slug"] == "stock-analysis"
     assert report["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
     assert report["route"] == "/stock-analysis"
-    assert report["primary_api"] == "/ui/market-data/livermore"
+    assert report["primary_api"] == "/ui/market-data/stock-analysis/workbench"
     assert report["approval_status"] == "gap_or_observational"
     assert report["formal_use_allowed"] is False
     assert report["overall_status"] == "static-pass"

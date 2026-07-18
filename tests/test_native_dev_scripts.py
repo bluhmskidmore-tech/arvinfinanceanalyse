@@ -281,7 +281,9 @@ def test_codex_verify_page_supports_pnl_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "pnl")
 
     assert "Codex verify page: pnl" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "tests/test_project_mcp_fast_contracts.py" in output
+    assert "-m mcp_fast" in output
+    assert "tests/test_project_mcp_servers.py" not in output
     assert "tests/test_pnl_api_contract.py" in output
     assert "PnlRoutesSmoke.test.tsx" in output
     assert "@pnl" in output
