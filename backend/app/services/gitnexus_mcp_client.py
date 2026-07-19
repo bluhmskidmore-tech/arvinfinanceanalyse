@@ -46,6 +46,7 @@ class _GitNexusMcpSession:
         self._timeout_seconds = timeout_seconds
         self._process: subprocess.Popen[bytes] | None = None
         self._next_id = 1
+        self._read_buffer = bytearray()
 
     def __enter__(self) -> _GitNexusMcpSession:
         self._process = subprocess.Popen(
@@ -98,10 +99,13 @@ class _GitNexusMcpSession:
         request_id = self._next_id
         self._next_id += 1
         self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
-        response = self._read_message()
-        if response.get("id") != request_id:
-            raise RuntimeError(f"Unexpected GitNexus MCP response id for {method}.")
-        return response
+        while True:
+            response = self._read_message()
+            if "id" not in response:
+                continue
+            if response.get("id") != request_id:
+                raise RuntimeError(f"Unexpected GitNexus MCP response id for {method}.")
+            return response
 
     def _notify(self, method: str, params: dict[str, Any]) -> None:
         self._send({"jsonrpc": "2.0", "method": method, "params": params})
@@ -118,23 +122,23 @@ class _GitNexusMcpSession:
         if self._process is None or self._process.stdout is None:
             raise RuntimeError("GitNexus MCP stdout is not available.")
         deadline = time.time() + self._timeout_seconds
-        buffer = b""
         while time.time() < deadline:
+            separator_index = self._read_buffer.find(b"\r\n\r\n")
+            if separator_index >= 0:
+                body_start = separator_index + 4
+                length = _parse_content_length(bytes(self._read_buffer[:separator_index]))
+                frame_end = body_start + length
+                if len(self._read_buffer) >= frame_end:
+                    body = bytes(self._read_buffer[body_start:frame_end])
+                    del self._read_buffer[:frame_end]
+                    return json.loads(body.decode("utf-8"))
+
             chunk = self._process.stdout.peek(32768)
             if chunk:
-                buffer += self._process.stdout.read(len(chunk))
-                if b"\r\n\r\n" in buffer:
-                    header, _, rest = buffer.partition(b"\r\n\r\n")
-                    length = _parse_content_length(header)
-                    while len(rest) < length and time.time() < deadline:
-                        time.sleep(0.05)
-                        chunk = self._process.stdout.peek(32768)
-                        if chunk:
-                            rest += self._process.stdout.read(len(chunk))
-                    if len(rest) < length:
-                        raise TimeoutError("Timed out while reading GitNexus MCP response body.")
-                    return json.loads(rest[:length].decode("utf-8"))
+                self._read_buffer.extend(self._process.stdout.read(len(chunk)))
+                continue
             time.sleep(0.05)
+
         raise TimeoutError("Timed out while waiting for GitNexus MCP response.")
 
 
