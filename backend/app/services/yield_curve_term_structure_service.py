@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import uuid
+from copy import deepcopy
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.yield_curve_repo import (
@@ -17,6 +19,7 @@ from backend.app.schemas.yield_curve_term_structure import (
     YieldCurveTermStructureResponse,
 )
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 # Display axis only — must match tenor strings in `fact_formal_yield_curve_daily` / `yield_curve_daily`.
 YIELD_CURVE_TERM_STRUCTURE_TENORS: tuple[str, ...] = (
@@ -39,6 +42,54 @@ EMPTY_SOURCE_VERSION = "sv_yield_curve_term_structure_empty"
 RESULT_KIND = "bond_analytics.yield_curve_term_structure"
 FACT_TABLE = "fact_formal_yield_curve_daily"
 
+_TERM_STRUCTURE_CACHE_TTL_SECONDS = 300.0
+_TermStructureCacheKey = tuple[object, ...]
+_TERM_STRUCTURE_CACHE: InMemoryTTLCache[_TermStructureCacheKey, dict] = get_runtime_cache(
+    "yield_curve.term_structure",
+    ttl_seconds=_TERM_STRUCTURE_CACHE_TTL_SECONDS,
+)
+
+
+def _term_structure_cache_key(
+    duckdb_path: str,
+    report_date: date,
+    curve_types: tuple[str, ...],
+) -> _TermStructureCacheKey | None:
+    """Cache key bound to the DuckDB file identity; returns None when uncacheable.
+
+    Folds the WAL mtime in (like duckdb_repo.catalog_presence_cached) so
+    un-checkpointed writes invalidate the entry before the next checkpoint.
+    """
+    path = Path(duckdb_path)
+    try:
+        stat = path.stat()
+        mtime_ns = stat.st_mtime_ns
+        size = stat.st_size
+        resolved = str(path.resolve())
+    except OSError:
+        return None
+    try:
+        mtime_ns = max(mtime_ns, Path(f"{duckdb_path}.wal").stat().st_mtime_ns)
+    except OSError:
+        pass
+    return (
+        RESULT_KIND,
+        CACHE_VERSION,
+        resolved,
+        mtime_ns,
+        size,
+        report_date.isoformat(),
+        curve_types,
+    )
+
+
+def _with_fresh_trace(envelope: dict) -> dict:
+    response = deepcopy(envelope)
+    meta = response.get("result_meta")
+    if isinstance(meta, dict):
+        meta["trace_id"] = _trace_id()
+    return response
+
 
 def _trace_id() -> str:
     return str(uuid.uuid4())
@@ -50,6 +101,26 @@ def _merge_lineage_str(*values: str) -> str:
 
 def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str, ...]) -> dict:
     path = str(get_settings().duckdb_path)
+    cache_key = _term_structure_cache_key(path, report_date, curve_types)
+    if cache_key is None:
+        return _compute_yield_curve_term_structure(path=path, report_date=report_date, curve_types=curve_types)
+    envelope = _TERM_STRUCTURE_CACHE.get_or_set(
+        cache_key,
+        lambda: _compute_yield_curve_term_structure(
+            path=path,
+            report_date=report_date,
+            curve_types=curve_types,
+        ),
+    )
+    return _with_fresh_trace(envelope)
+
+
+def _compute_yield_curve_term_structure(
+    *,
+    path: str,
+    report_date: date,
+    curve_types: tuple[str, ...],
+) -> dict:
     repo = YieldCurveRepository(path)
     requested = report_date.isoformat()
     snapshot_results = repo.resolve_curve_snapshots_many(
@@ -118,11 +189,14 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
             y_prev = prev_map.get(tenor) if prev_map else None
             yld = None
             if y_now is not None:
+                # `rate_pct` is percent-points (2.15 == 2.15%); declare it so
+                # sub-1% yields are not misread as decimal ratios.
                 yld = numeric_from_raw(
                     raw=float(y_now),
                     unit="pct",
                     precision=2,
                     sign_aware=True,
+                    raw_scale="percent",
                 )
             delta = None
             if y_now is not None and y_prev is not None:

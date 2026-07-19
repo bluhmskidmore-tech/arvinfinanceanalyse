@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Modal, Spin, Table, Tabs, Typography } from "antd";
+import type { TableColumnsType } from "antd";
 import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import type { CustomerBondDetailItem } from "../../../api/contracts";
 import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { formatAmountYi, formatRatePercent } from "../utils/format";
@@ -11,6 +13,8 @@ import { formatAmountYi, formatRatePercent } from "../utils/format";
 /** A股配色：红涨绿跌 — 余额上行红色，下行绿色 */
 const UP_COLOR = "#cf1322";
 const DOWN_COLOR = "#389e0d";
+
+type CustomerBondDetailRow = CustomerBondDetailItem & { key: string };
 
 type Props = {
   open: boolean;
@@ -57,6 +61,87 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
 
   const details = detailsQuery.data;
   const trend = trendQuery.data;
+
+  const detailRows = useMemo<CustomerBondDetailRow[]>(
+    () => (details?.items ?? []).map((row) => ({ key: row.bond_code, ...row })),
+    [details?.items],
+  );
+
+  const detailColumns = useMemo<TableColumnsType<CustomerBondDetailRow>>(
+    () => [
+      {
+        title: "债券代码",
+        dataIndex: "bond_code",
+        fixed: "left",
+        render: (bondCode: string) =>
+          bondCode && reportDate ? (
+            <Link
+              to={buildBondTradingDeskPath(bondCode, reportDate)}
+              data-testid={`customer-detail-trading-desk-link-${bondCode}`}
+            >
+              {bondCode}
+            </Link>
+          ) : (
+            bondCode || "—"
+          ),
+      },
+      { title: "券种", dataIndex: "sub_type", render: (v: string | null) => v || "—" },
+      {
+        title: "评级",
+        dataIndex: "rating",
+        render: (r: string) => (
+          <Typography.Text
+            style={{
+              padding: "2px 8px",
+              borderRadius: 6,
+              background:
+                r === "AAA"
+                  ? "#f6ffed"
+                  : r.startsWith("AA")
+                    ? "#fffbe6"
+                    : r === "未评级"
+                      ? "#fafafa"
+                      : "#fff2e8",
+              color:
+                r === "AAA"
+                  ? "#237804"
+                  : r.startsWith("AA")
+                    ? "#ad6800"
+                    : r === "未评级"
+                      ? "#595959"
+                      : "#ad4e00",
+            }}
+          >
+            {r}
+          </Typography.Text>
+        ),
+      },
+      {
+        title: "行业",
+        dataIndex: "industry",
+        ellipsis: true,
+      },
+      {
+        title: "市值(亿元)",
+        dataIndex: "market_value",
+        align: "right",
+        render: (v: string) => formatAmountYi(v),
+      },
+      {
+        title: "收益率",
+        dataIndex: "yield_rate",
+        align: "right",
+        render: (v: string | null) => formatRatePercent(v),
+      },
+      {
+        title: "到期日",
+        dataIndex: "maturity_date",
+        align: "right",
+        render: (v: string | null) => v || "—",
+      },
+    ],
+    [reportDate],
+  );
 
   const chartOption = useMemo((): EChartsOption | null => {
     const items = trend?.items ?? [];
@@ -159,79 +244,8 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
                 size="small"
                 pagination={false}
                 scroll={{ y: 320 }}
-                dataSource={details.items.map((row) => ({ key: row.bond_code, ...row }))}
-                columns={[
-                  {
-                    title: "债券代码",
-                    dataIndex: "bond_code",
-                    fixed: "left",
-                    render: (bondCode: string) =>
-                      bondCode && reportDate ? (
-                        <Link
-                          to={buildBondTradingDeskPath(bondCode, reportDate)}
-                          data-testid={`customer-detail-trading-desk-link-${bondCode}`}
-                        >
-                          {bondCode}
-                        </Link>
-                      ) : (
-                        bondCode || "—"
-                      ),
-                  },
-                  { title: "券种", dataIndex: "sub_type", render: (v: string | null) => v || "—" },
-                  {
-                    title: "评级",
-                    dataIndex: "rating",
-                    render: (r: string) => (
-                      <Typography.Text
-                        style={{
-                          padding: "2px 8px",
-                          borderRadius: 6,
-                          background:
-                            r === "AAA"
-                              ? "#f6ffed"
-                              : r.startsWith("AA")
-                                ? "#fffbe6"
-                                : r === "未评级"
-                                  ? "#fafafa"
-                                  : "#fff2e8",
-                          color:
-                            r === "AAA"
-                              ? "#237804"
-                              : r.startsWith("AA")
-                                ? "#ad6800"
-                                : r === "未评级"
-                                  ? "#595959"
-                                  : "#ad4e00",
-                        }}
-                      >
-                        {r}
-                      </Typography.Text>
-                    ),
-                  },
-                  {
-                    title: "行业",
-                    dataIndex: "industry",
-                    ellipsis: true,
-                  },
-                  {
-                    title: "市值(亿元)",
-                    dataIndex: "market_value",
-                    align: "right",
-                    render: (v: string) => formatAmountYi(v),
-                  },
-                  {
-                    title: "收益率",
-                    dataIndex: "yield_rate",
-                    align: "right",
-                    render: (v: string | null) => formatRatePercent(v),
-                  },
-                  {
-                    title: "到期日",
-                    dataIndex: "maturity_date",
-                    align: "right",
-                    render: (v: string | null) => v || "—",
-                  },
-                ]}
+                dataSource={detailRows}
+                columns={detailColumns}
               />
             ) : (
               <Typography.Text type="secondary">暂无持仓数据</Typography.Text>

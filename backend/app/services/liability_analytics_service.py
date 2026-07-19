@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any
 
 from backend.app.core_finance.liability_analytics_compat import (
@@ -36,6 +38,7 @@ from backend.app.schemas.liability_analytics import (
 )
 from backend.app.services.explicit_numeric import promote_payload_numerics
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
 
 LIABILITY_ANALYTICS_CACHE_VERSION = "cv_liability_analytics_v1"
 LIABILITY_ANALYTICS_RULE_VERSION = "rv_liability_analytics_compat_v1"
@@ -54,6 +57,58 @@ _LIABILITY_MONTH_LIST_FIELDS = {
     "issued_term_buckets": LiabilityMonthlyBreakdownRow,
     "counterparty_details": LiabilityMonthlyBreakdownRow,
 }
+
+_YIELD_METRICS_CACHE_TTL_SECONDS = 300.0
+_YieldMetricsCacheKey = tuple[object, ...]
+_YIELD_METRICS_CACHE: InMemoryTTLCache[_YieldMetricsCacheKey, dict[str, object]] = get_runtime_cache(
+    "liability_analytics.yield_metrics",
+    ttl_seconds=_YIELD_METRICS_CACHE_TTL_SECONDS,
+)
+
+
+def _yield_metrics_runtime_cache_enabled() -> bool:
+    """Only cache when the module-level repo/compute symbols are the canonical
+    ones — tests monkeypatch them on this module, and cached results must not
+    leak across those substitutions."""
+    from backend.app.core_finance.liability_analytics_compat import (
+        compute_liability_yield_metrics as _canonical_compute,
+    )
+    from backend.app.repositories.liability_analytics_repo import (
+        LiabilityAnalyticsRepository as _canonical_repo,
+    )
+
+    return (
+        LiabilityAnalyticsRepository is _canonical_repo
+        and compute_liability_yield_metrics is _canonical_compute
+    )
+
+
+def _yield_metrics_cache_key(duckdb_path: str, report_date: str | None) -> _YieldMetricsCacheKey | None:
+    """Key bound to the DuckDB file identity (mtime/size, WAL folded in) so the
+    entry expires as soon as the underlying data is rewritten."""
+    if not _yield_metrics_runtime_cache_enabled():
+        return None
+    path = Path(duckdb_path)
+    try:
+        stat = path.stat()
+        mtime_ns = stat.st_mtime_ns
+        size = stat.st_size
+        resolved = str(path.resolve())
+    except OSError:
+        return None
+    try:
+        mtime_ns = max(mtime_ns, Path(f"{duckdb_path}.wal").stat().st_mtime_ns)
+    except OSError:
+        pass
+    return (
+        "liability_analytics.yield_metrics",
+        LIABILITY_ANALYTICS_CACHE_VERSION,
+        LIABILITY_ANALYTICS_RULE_VERSION,
+        resolved,
+        mtime_ns,
+        size,
+        str(report_date or "").strip() or None,
+    )
 
 
 def _resolve_report_date(repo: LiabilityAnalyticsRepository, report_date: str | None) -> str:
@@ -318,6 +373,20 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
 
 
 def liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
+    cache_key = _yield_metrics_cache_key(duckdb_path, report_date)
+    if cache_key is None:
+        return _compute_liability_yield_metrics_payload(duckdb_path=duckdb_path, report_date=report_date)
+    envelope = _YIELD_METRICS_CACHE.get_or_set(
+        cache_key,
+        lambda: _compute_liability_yield_metrics_payload(
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+        ),
+    )
+    return deepcopy(envelope)
+
+
+def _compute_liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
     repo = LiabilityAnalyticsRepository(duckdb_path)
     resolved_date = _resolve_report_date(repo, report_date)
     zqtz_rows = repo.fetch_zqtz_yield_rows(resolved_date) if resolved_date else []

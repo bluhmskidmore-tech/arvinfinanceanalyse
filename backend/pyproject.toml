@@ -19,6 +19,7 @@ dependencies = [
   "minio>=7.2,<8",
   "numpy>=1.26,<3",
   "openpyxl>=3.1,<4",
+  "scipy>=1.13,<2",
   "xlrd>=2.0,<3",
 ]
 
@@ -27,6 +28,7 @@ dev = [
   "httpx>=0.28,<1",
   "pandas>=2.2,<3",
   "pytest>=9.0.3,<10",
+  "pytest-xdist>=3.6,<4",
 ]
 otel = [
     "opentelemetry-api>=1.39,<2",

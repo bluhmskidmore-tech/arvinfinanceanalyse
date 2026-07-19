@@ -365,6 +365,7 @@ def materialize_livermore_candidate_history(
     *,
     as_of_date: str | None = None,
     stock_candidate_policy: str | None = None,
+    _schema_ready: bool = False,
 ) -> dict[str, object]:
     """Persist Livermore candidate rows with forward closes from choice_stock_daily_observation (task write path)."""
     parsed_as_of: date | None = None
@@ -414,7 +415,8 @@ def materialize_livermore_candidate_history(
 
     conn = duckdb.connect(str(duckdb_file), read_only=False)
     try:
-        ensure_livermore_candidate_history_schema(conn)
+        if not _schema_ready:
+            ensure_livermore_candidate_history_schema(conn)
         observation_table_ok = TABLE_OBS in {r[0] for r in conn.execute("show tables").fetchall()}
 
         computed_rows: list[dict[str, object]] = []
@@ -658,6 +660,15 @@ def backfill_livermore_candidate_history(
             "stock_candidate_policy": stock_candidate_policy or EXECUTION_STOCK_CANDIDATE_POLICY,
         }
 
+    # Ensure schema once for the whole window instead of per trade date; the
+    # per-date materialize calls then skip their redundant DDL/pragma pass.
+    duckdb_file.parent.mkdir(parents=True, exist_ok=True)
+    schema_conn = duckdb.connect(str(duckdb_file), read_only=False)
+    try:
+        ensure_livermore_candidate_history_schema(schema_conn)
+    finally:
+        schema_conn.close()
+
     date_results: list[dict[str, object]] = []
     total_rows = 0
     total_skipped = 0
@@ -667,6 +678,7 @@ def backfill_livermore_candidate_history(
             str(duckdb_file),
             as_of_date=trade_date,
             stock_candidate_policy=stock_candidate_policy,
+            _schema_ready=True,
         )
         row_count = _safe_int(result.get("row_count"), default=0)
         skipped_count = _safe_int(result.get("skipped_count"), default=0)

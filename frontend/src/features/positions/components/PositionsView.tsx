@@ -15,6 +15,7 @@ import {
   Tabs,
   Typography,
 } from "antd";
+import type { TableColumnsType } from "antd";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
@@ -24,8 +25,10 @@ import { displayTokens } from "../../../theme/displayTokens";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
   BondPositionItem,
+  CounterpartyStatItem,
   CounterpartyStatsResponse,
   IndustryStatsResponse,
+  InterbankPositionItem,
   PositionDirection,
   RateCoverage,
   RatingStatsResponse,
@@ -50,6 +53,81 @@ const ALL_INTERBANK_PRODUCT = "__all_interbank_products__";
 
 type TabKey = "bonds" | "interbank";
 type InterbankDirectionFilter = PositionDirection | "ALL";
+
+type BondListRow = BondPositionItem & { key: string };
+type InterbankListRow = InterbankPositionItem & { key: string };
+type CounterpartyRow = CounterpartyStatItem & { key: string };
+
+const INTERBANK_LIST_COLUMNS: TableColumnsType<InterbankListRow> = [
+  { title: "交易ID", dataIndex: "deal_id" },
+  { title: "对手方", dataIndex: "counterparty", ellipsis: true, render: (v: string | null) => v || "—" },
+  { title: "产品类型", dataIndex: "product_type", render: (v: string | null) => v || "—" },
+  { title: "方向", dataIndex: "direction", render: (v: string | null) => v || "—" },
+  {
+    title: "金额",
+    dataIndex: "amount",
+    align: "right",
+    render: (v: string) => formatAmountYi(v),
+  },
+  {
+    title: "利率",
+    dataIndex: "interest_rate",
+    align: "right",
+    render: (v: string | null) => formatRatePercent(v),
+  },
+  {
+    title: "到期日",
+    dataIndex: "maturity_date",
+    align: "right",
+    render: (v: string | null) => v || "—",
+  },
+];
+
+const BONDS_COUNTERPARTY_COLUMNS: TableColumnsType<CounterpartyRow> = [
+  {
+    title: "客户",
+    dataIndex: "customer_name",
+    ellipsis: true,
+    render: (v: string) => (
+      <Typography.Link>{v}</Typography.Link>
+    ),
+  },
+  {
+    title: "日均",
+    dataIndex: "avg_daily_balance",
+    align: "right",
+    render: (v: string) => formatAmountYi(v),
+  },
+  {
+    title: "加权收益率",
+    dataIndex: "weighted_rate",
+    align: "right",
+    render: (v: string | null) => formatRatePercent(v),
+  },
+  {
+    title: "加权付息率",
+    dataIndex: "weighted_coupon_rate",
+    align: "right",
+    render: (v: string | null | undefined) =>
+      v ? formatRatePercent(v) : "—",
+  },
+];
+
+const INTERBANK_COUNTERPARTY_RANK_COLUMNS: TableColumnsType<CounterpartyRow> = [
+  { title: "对手方", dataIndex: "customer_name", ellipsis: true },
+  {
+    title: "日均",
+    dataIndex: "avg_daily_balance",
+    align: "right",
+    render: (v: string) => formatAmountYi(v),
+  },
+  {
+    title: "利率",
+    dataIndex: "weighted_rate",
+    align: "right",
+    render: (v: string | null) => formatRatePercent(v),
+  },
+];
 
 function formatCoverageSummary(coverage: RateCoverage | null | undefined): string {
   if (!coverage) {
@@ -451,6 +529,105 @@ export default function PositionsView() {
     return items.filter((x) => x.customer_name.includes(q));
   }, [interbankCpSplit?.liability_items, searchText]);
 
+  const bondsListDataSource = useMemo<BondListRow[]>(
+    () =>
+      (bondsListQuery.data?.items ?? []).map((row, index) => ({
+        key: [
+          page,
+          index,
+          row.bond_code || "",
+          row.asset_class || "",
+          row.market_value || "",
+        ].join(":"),
+        ...row,
+      })),
+    [bondsListQuery.data?.items, page],
+  );
+
+  const bondsListColumns = useMemo<TableColumnsType<BondListRow>>(
+    () => [
+      { title: "代码", dataIndex: "bond_code" },
+      { title: "授信主体", dataIndex: "credit_name", render: (v: string | null) => v || "—" },
+      { title: "业务种类", dataIndex: "sub_type", render: (v: string | null) => v || "—" },
+      {
+        title: "市值",
+        dataIndex: "market_value",
+        align: "right",
+        render: (v: string | null) => formatAmountYi(v),
+      },
+      {
+        title: "估值净价",
+        dataIndex: "valuation_net_price",
+        align: "right",
+        render: (v: string | null) => (v ? `${v}` : "—"),
+      },
+      {
+        title: "收益率",
+        dataIndex: "yield_rate",
+        align: "right",
+        render: (v: string | null) => formatRatePercent(v),
+      },
+      {
+        title: "单券台",
+        key: "trading_desk",
+        render: (_: unknown, row: BondPositionItem) =>
+          row.bond_code ? (
+            <Link
+              to={buildBondTradingDeskPath(row.bond_code, reportDate)}
+              data-testid={`positions-bond-trading-desk-link-${row.bond_code}`}
+            >
+              打开
+            </Link>
+          ) : (
+            "—"
+          ),
+      },
+    ],
+    [reportDate],
+  );
+
+  const interbankListDataSource = useMemo<InterbankListRow[]>(
+    () =>
+      (interbankListQuery.data?.items ?? []).map((row, index) => ({
+        key: [
+          page,
+          index,
+          row.deal_id || "",
+          row.counterparty || "",
+          row.amount || "",
+        ].join(":"),
+        ...row,
+      })),
+    [interbankListQuery.data?.items, page],
+  );
+
+  const bondsCpDataSource = useMemo<CounterpartyRow[]>(
+    () =>
+      filteredBondsCpItems.map((row) => ({
+        key: row.customer_name,
+        ...row,
+      })),
+    [filteredBondsCpItems],
+  );
+
+  const assetRankDataSource = useMemo<CounterpartyRow[]>(
+    () =>
+      filteredAssetItems.map((row) => ({
+        key: row.customer_name,
+        ...row,
+      })),
+    [filteredAssetItems],
+  );
+
+  const liabilityRankDataSource = useMemo<CounterpartyRow[]>(
+    () =>
+      filteredLiabilityItems.map((row) => ({
+        key: row.customer_name,
+        ...row,
+      })),
+    [filteredLiabilityItems],
+  );
+
   const currentList = tab === "bonds" ? bondsListQuery.data : interbankListQuery.data;
   const listLoading = tab === "bonds" ? bondsListQuery.isLoading : interbankListQuery.isLoading;
   const totalPages = currentList ? Math.ceil(currentList.total / PAGE_SIZE) : 0;
@@ -666,54 +843,8 @@ export default function PositionsView() {
                     size="small"
                     pagination={false}
                     scroll={{ x: "max-content" }}
-                    dataSource={bondsListQuery.data.items.map((row, index) => ({
-                      key: [
-                        page,
-                        index,
-                        row.bond_code || "",
-                        row.asset_class || "",
-                        row.market_value || "",
-                      ].join(":"),
-                      ...row,
-                    }))}
-                    columns={[
-                      { title: "代码", dataIndex: "bond_code" },
-                      { title: "授信主体", dataIndex: "credit_name", render: (v: string | null) => v || "—" },
-                      { title: "业务种类", dataIndex: "sub_type", render: (v: string | null) => v || "—" },
-                      {
-                        title: "市值",
-                        dataIndex: "market_value",
-                        align: "right",
-                        render: (v: string | null) => formatAmountYi(v),
-                      },
-                      {
-                        title: "估值净价",
-                        dataIndex: "valuation_net_price",
-                        align: "right",
-                        render: (v: string | null) => (v ? `${v}` : "—"),
-                      },
-                      {
-                        title: "收益率",
-                        dataIndex: "yield_rate",
-                        align: "right",
-                        render: (v: string | null) => formatRatePercent(v),
-                      },
-                      {
-                        title: "单券台",
-                        key: "trading_desk",
-                        render: (_: unknown, row: BondPositionItem) =>
-                          row.bond_code ? (
-                            <Link
-                              to={buildBondTradingDeskPath(row.bond_code, reportDate)}
-                              data-testid={`positions-bond-trading-desk-link-${row.bond_code}`}
-                            >
-                              打开
-                            </Link>
-                          ) : (
-                            "—"
-                          ),
-                      },
-                    ]}
+                    dataSource={bondsListDataSource}
+                    columns={bondsListColumns}
                   />
                   {currentList ? (
                     <Space className="positions-view__pager">
@@ -754,10 +885,7 @@ export default function PositionsView() {
                     size="small"
                     pagination={false}
                     scroll={{ x: "max-content" }}
-                    dataSource={filteredBondsCpItems.map((row) => ({
-                      key: row.customer_name,
-                      ...row,
-                    }))}
+                    dataSource={bondsCpDataSource}
                     onRow={(record) => ({
                       onClick: () => {
                         setSelectedCustomer(record.customer_name);
@@ -765,35 +893,7 @@ export default function PositionsView() {
                       },
                       style: { cursor: "pointer" },
                     })}
-                    columns={[
-                      {
-                        title: "客户",
-                        dataIndex: "customer_name",
-                        ellipsis: true,
-                        render: (v: string) => (
-                          <Typography.Link>{v}</Typography.Link>
-                        ),
-                      },
-                      {
-                        title: "日均",
-                        dataIndex: "avg_daily_balance",
-                        align: "right",
-                        render: (v: string) => formatAmountYi(v),
-                      },
-                      {
-                        title: "加权收益率",
-                        dataIndex: "weighted_rate",
-                        align: "right",
-                        render: (v: string | null) => formatRatePercent(v),
-                      },
-                      {
-                        title: "加权付息率",
-                        dataIndex: "weighted_coupon_rate",
-                        align: "right",
-                        render: (v: string | null | undefined) =>
-                          v ? formatRatePercent(v) : "—",
-                      },
-                    ]}
+                    columns={BONDS_COUNTERPARTY_COLUMNS}
                   />
                 ) : (
                   <Typography.Text type="secondary">暂无数据</Typography.Text>
@@ -876,40 +976,8 @@ export default function PositionsView() {
                       size="small"
                       pagination={false}
                       scroll={{ x: "max-content" }}
-                      dataSource={interbankListQuery.data.items.map((row, index) => ({
-                        key: [
-                          page,
-                          index,
-                          row.deal_id || "",
-                          row.counterparty || "",
-                          row.amount || "",
-                        ].join(":"),
-                        ...row,
-                      }))}
-                      columns={[
-                        { title: "交易ID", dataIndex: "deal_id" },
-                        { title: "对手方", dataIndex: "counterparty", ellipsis: true, render: (v: string | null) => v || "—" },
-                        { title: "产品类型", dataIndex: "product_type", render: (v: string | null) => v || "—" },
-                        { title: "方向", dataIndex: "direction", render: (v: string | null) => v || "—" },
-                        {
-                          title: "金额",
-                          dataIndex: "amount",
-                          align: "right",
-                          render: (v: string) => formatAmountYi(v),
-                        },
-                        {
-                          title: "利率",
-                          dataIndex: "interest_rate",
-                          align: "right",
-                          render: (v: string | null) => formatRatePercent(v),
-                        },
-                        {
-                          title: "到期日",
-                          dataIndex: "maturity_date",
-                          align: "right",
-                          render: (v: string | null) => v || "—",
-                        },
-                      ]}
+                      dataSource={interbankListDataSource}
+                      columns={INTERBANK_LIST_COLUMNS}
                     />
                     {currentList ? (
                       <Space className="positions-view__pager">
@@ -985,25 +1053,8 @@ export default function PositionsView() {
                       size="small"
                       pagination={false}
                       scroll={{ x: "max-content", y: 240 }}
-                      dataSource={filteredAssetItems.map((row) => ({
-                        key: row.customer_name,
-                        ...row,
-                      }))}
-                      columns={[
-                        { title: "对手方", dataIndex: "customer_name", ellipsis: true },
-                        {
-                          title: "日均",
-                          dataIndex: "avg_daily_balance",
-                          align: "right",
-                          render: (v: string) => formatAmountYi(v),
-                        },
-                        {
-                          title: "利率",
-                          dataIndex: "weighted_rate",
-                          align: "right",
-                          render: (v: string | null) => formatRatePercent(v),
-                        },
-                      ]}
+                      dataSource={assetRankDataSource}
+                      columns={INTERBANK_COUNTERPARTY_RANK_COLUMNS}
                     />
                   ) : (
                     <Typography.Text type="secondary">暂无资产端数据</Typography.Text>
@@ -1060,25 +1111,8 @@ export default function PositionsView() {
                       size="small"
                       pagination={false}
                       scroll={{ x: "max-content", y: 240 }}
-                      dataSource={filteredLiabilityItems.map((row) => ({
-                        key: row.customer_name,
-                        ...row,
-                      }))}
-                      columns={[
-                        { title: "对手方", dataIndex: "customer_name", ellipsis: true },
-                        {
-                          title: "日均",
-                          dataIndex: "avg_daily_balance",
-                          align: "right",
-                          render: (v: string) => formatAmountYi(v),
-                        },
-                        {
-                          title: "利率",
-                          dataIndex: "weighted_rate",
-                          align: "right",
-                          render: (v: string | null) => formatRatePercent(v),
-                        },
-                      ]}
+                      dataSource={liabilityRankDataSource}
+                      columns={INTERBANK_COUNTERPARTY_RANK_COLUMNS}
                     />
                   ) : (
                     <Typography.Text type="secondary">暂无负债端数据</Typography.Text>
