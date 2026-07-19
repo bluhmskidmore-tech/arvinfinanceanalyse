@@ -593,6 +593,16 @@
   border-bottom: 1px solid var(--macro-toolkit-border-muted);
 }
 
+.macro-toolkit-observation-decision {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.macro-toolkit-observation-decision .macro-toolkit-capability-result {
+  min-height: 0;
+}
+
 .macro-toolkit-cockpit--observation .macro-toolkit-cockpit__conclusion {
   align-content: start;
   padding: 12px 14px;
