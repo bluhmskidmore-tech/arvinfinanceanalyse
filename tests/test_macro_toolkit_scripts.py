@@ -8,7 +8,7 @@ import sys
 import time
 from datetime import UTC, date, datetime
 from pathlib import Path
-from threading import Event, Lock
+from threading import Event, Lock, get_ident
 from types import SimpleNamespace
 
 import duckdb
@@ -2291,6 +2291,53 @@ def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shad
     assert payload["result"]["shadow_portfolio_report"]["status"] == "complete"
 
 
+class _TrackedMacroToolkitConnection:
+    def __init__(self, connection: object, *, fail_query_contains: str | None = None) -> None:
+        self._connection = connection
+        self._fail_query_contains = fail_query_contains
+        self.queries: list[str] = []
+        self.close_count = 0
+        self.thread_id = get_ident()
+        self.use_thread_ids: set[int] = set()
+
+    def execute(self, query: str, parameters: object | None = None):
+        current_thread_id = get_ident()
+        self.use_thread_ids.add(current_thread_id)
+        assert current_thread_id == self.thread_id, "DuckDB connection crossed worker threads"
+        normalized = " ".join(query.casefold().split())
+        self.queries.append(normalized)
+        if self._fail_query_contains and self._fail_query_contains in normalized:
+            raise duckdb.IOException("forced factor snapshot read failure")
+        if parameters is None:
+            return self._connection.execute(query)
+        return self._connection.execute(query, parameters)
+
+    def close(self) -> None:
+        assert get_ident() == self.thread_id, "DuckDB connection closed from a different worker thread"
+        self.close_count += 1
+        self._connection.close()
+
+
+def _track_macro_toolkit_connections(
+    monkeypatch,
+    *,
+    fail_query_contains: str | None = None,
+) -> list[_TrackedMacroToolkitConnection]:
+    real_connect = macro_toolkit_service.duckdb.connect
+    connections: list[_TrackedMacroToolkitConnection] = []
+
+    def tracked_connect(*args, **kwargs) -> _TrackedMacroToolkitConnection:
+        tracked = _TrackedMacroToolkitConnection(
+            real_connect(*args, **kwargs),
+            fail_query_contains=fail_query_contains,
+        )
+        connections.append(tracked)
+        return tracked
+
+    monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", tracked_connect)
+    return connections
+
+
 def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     duckdb_path.write_bytes(b"placeholder")
@@ -2342,9 +2389,17 @@ def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, m
             normalized = " ".join(query.casefold().split())
             if normalized == "show tables":
                 return FakeResult(rows=[("choice_stock_daily_observation",)])
-            if "max(try_cast(trade_date as date))" in normalized:
+            if "max(trade_date)" in normalized:
+                assert "max(try_cast(trade_date as date))" not in normalized
+                assert "try_cast(max(trade_date) as date)" in normalized
                 return FakeResult(row=(dates[-1].date(),))
             if "latest_sample" in normalized and "choice_stock_daily_observation" in normalized:
+                assert "where trade_date = ?" in normalized
+                assert "where daily.trade_date > ? and daily.trade_date <= ?" in normalized
+                assert "order by daily.trade_date asc, daily.stock_code asc" in normalized
+                assert "try_cast(daily.trade_date as date) as trade_date" in normalized
+                assert "where try_cast" not in normalized
+                assert parameters == ["2026-03-31", "2025-07-14", "2026-03-31"]
                 return FakeResult(frame=price_rows)
             raise AssertionError(f"unexpected query: {query}")
 
@@ -2352,6 +2407,12 @@ def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, m
             pass
 
     monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", lambda *_args, **_kwargs: FakeConnection())
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
     monkeypatch.setattr(macro_toolkit_service, "load_equity_strategy_factor_snapshot", lambda *_args, **_kwargs: None)
 
     context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
@@ -2360,6 +2421,43 @@ def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, m
     assert price_query_used_df is True
     assert context["prices"].shape == (90, 2)
     assert len(context["observations"]) == len(price_rows)
+
+
+def test_equity_strategy_price_and_factor_share_one_connection(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_stock_strategy_db(duckdb_path)
+    _seed_choice_stock_factor_snapshot(duckdb_path)
+    connections = _track_macro_toolkit_connections(monkeypatch)
+
+    context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
+
+    assert context is not None
+    assert isinstance(context["financials"], pd.DataFrame)
+    assert len(connections) == 1
+    assert connections[0].close_count == 1
+    assert any("from choice_stock_daily_observation" in query for query in connections[0].queries)
+    assert any("from choice_stock_factor_snapshot" in query for query in connections[0].queries)
+
+
+def test_equity_strategy_factor_failure_keeps_price_context_and_closes_once(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_stock_strategy_db(duckdb_path)
+    _seed_choice_stock_factor_snapshot(duckdb_path)
+    connections = _track_macro_toolkit_connections(
+        monkeypatch,
+        fail_query_contains="from choice_stock_factor_snapshot",
+    )
+
+    context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
+
+    assert context is not None
+    assert context["financials"] is None
+    assert context["tables_used"] == ["choice_stock_daily_observation"]
+    assert len(connections) == 1
+    assert connections[0].close_count == 1
 
 
 def test_equity_strategy_price_context_delegates_to_service(tmp_path, monkeypatch) -> None:
@@ -2448,9 +2546,17 @@ def test_a_share_stampede_risk_context_loads_observations_as_dataframe(tmp_path,
     class FakeConnection:
         def execute(self, query: str, parameters: object | None = None) -> FakeResult:
             normalized = " ".join(query.casefold().split())
-            if "max(try_cast(trade_date as date))" in normalized:
+            if "max(trade_date)" in normalized:
+                assert "max(try_cast(trade_date as date))" not in normalized
+                assert "try_cast(max(trade_date) as date)" in normalized
                 return FakeResult(row=(dates[-1].date(),))
             if "latest_sample" in normalized and "choice_stock_daily_observation" in normalized:
+                assert "where trade_date = ?" in normalized
+                assert "where daily.trade_date > ? and daily.trade_date <= ?" in normalized
+                assert "order by daily.trade_date asc, daily.stock_code asc" in normalized
+                assert "try_cast(daily.trade_date as date) as trade_date" in normalized
+                assert "where try_cast" not in normalized
+                assert parameters == ["2026-05-10", "2026-04-05", "2026-05-10"]
                 return FakeResult(frame=observation_rows)
             raise AssertionError(f"unexpected query: {query}")
 
@@ -2458,6 +2564,12 @@ def test_a_share_stampede_risk_context_loads_observations_as_dataframe(tmp_path,
             pass
 
     monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", lambda *_args, **_kwargs: FakeConnection())
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
     monkeypatch.setattr(
         macro_toolkit_service,
         "_duckdb_table_exists",
@@ -2470,6 +2582,299 @@ def test_a_share_stampede_risk_context_loads_observations_as_dataframe(tmp_path,
     assert observation_query_used_df is True
     assert context["observations"].shape == (len(observation_rows), len(observation_rows.columns))
     assert context["tables_used"] == ["choice_stock_daily_observation"]
+
+
+def test_macro_toolkit_hotpath_iso_dates_keep_boundary_and_date_output_types(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    daily_dates = pd.date_range("2026-02-09", "2026-04-30", freq="D")
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar, stock_code varchar, open_value double, high_value double,
+              low_value double, close_value double, amount double, pctchange double,
+              turn double, amplitude double, tradestatus varchar, highlimit varchar,
+              lowlimit varchar, source_version varchar, vendor_version varchar
+            )
+            """
+        )
+        daily_rows = [
+            (
+                trade_date.date().isoformat(),
+                stock_code,
+                10.0 + stock_number,
+                10.5 + stock_number,
+                9.5 + stock_number,
+                10.2 + stock_number + row_number * 0.01,
+                1000.0 + stock_number,
+                0.1,
+                1.0,
+                2.0,
+                "Trading",
+                "20.0",
+                "5.0",
+                "sv_stock",
+                "vv_stock",
+            )
+            for row_number, trade_date in enumerate(daily_dates)
+            for stock_number, stock_code in enumerate(
+                ("000001.SZ", "000002.SZ"),
+                start=1,
+            )
+        ]
+        conn.executemany(
+            "insert into choice_stock_daily_observation values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                *reversed(daily_rows),
+                (
+                    "2026-2-01",
+                    "999999.SZ",
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    "Trading",
+                    "2.0",
+                    "0.5",
+                    "sv_dirty",
+                    "vv_dirty",
+                ),
+                (
+                    "not-a-date",
+                    "888888.SZ",
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    "Trading",
+                    "2.0",
+                    "0.5",
+                    "sv_dirty",
+                    "vv_dirty",
+                ),
+            ],
+        )
+        conn.execute(
+            """
+            create table fact_formal_risk_tensor_daily (
+              report_date varchar, total_market_value double, issuer_top5_weight double,
+              portfolio_dv01 double, bond_count integer, asset_cashflow_30d double,
+              asset_cashflow_90d double, liability_cashflow_30d double,
+              liability_cashflow_90d double, liquidity_gap_30d double,
+              liquidity_gap_90d double, liquidity_gap_30d_ratio double, ignored_payload varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into fact_formal_risk_tensor_daily values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-01", 300.0, 0.3, 3.0, 3, 30.0, 90.0, 15.0, 45.0, 15.0, 45.0, 0.05, "future"),
+                ("2026-04-29", 100.0, 0.1, 1.0, 1, 10.0, 30.0, 5.0, 15.0, 5.0, 15.0, 0.05, "prior"),
+                ("2026-04-30", 200.0, 0.2, 2.0, 2, 20.0, 60.0, 10.0, 30.0, 10.0, 30.0, 0.05, "boundary"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_equity_strategy_factor_snapshot",
+        lambda *_args, **_kwargs: None,
+    )
+
+    price_context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
+    risk_row = macro_toolkit_service.load_latest_risk_tensor_row(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert price_context is not None
+    assert price_context["as_of_date"] == "2026-04-30"
+    assert price_context["observations"]["trade_date"].iloc[0] == pd.Timestamp("2026-02-09")
+    assert isinstance(price_context["observations"]["trade_date"].iloc[0], pd.Timestamp)
+    assert price_context["observations"]["trade_date"].iloc[-1] == pd.Timestamp("2026-04-30")
+    assert risk_row is not None
+    assert risk_row["total_market_value"] == 200.0
+    assert "ignored_payload" not in risk_row
+
+
+def test_latest_risk_tensor_row_falls_back_for_noncanonical_date_storage(
+    tmp_path,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_risk_tensor_daily (
+              report_date varchar, total_market_value double, issuer_top5_weight double,
+              portfolio_dv01 double, bond_count integer, asset_cashflow_30d double,
+              asset_cashflow_90d double, liability_cashflow_30d double,
+              liability_cashflow_90d double, liquidity_gap_30d double,
+              liquidity_gap_90d double, liquidity_gap_30d_ratio double
+            )
+            """
+        )
+        conn.executemany(
+            "insert into fact_formal_risk_tensor_daily values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-01-31", 100.0, 0.1, 1.0, 1, 10.0, 30.0, 5.0, 15.0, 5.0, 15.0, 0.05),
+                ("2026-2-01", 200.0, 0.2, 2.0, 2, 20.0, 60.0, 10.0, 30.0, 10.0, 30.0, 0.05),
+            ],
+        )
+    finally:
+        conn.close()
+
+    row = macro_toolkit_service.load_latest_risk_tensor_row(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert row is not None
+    assert row["total_market_value"] == 200.0
+
+
+def test_canonical_date_probe_is_cached_by_duckdb_file_version(tmp_path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    writer = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        writer.execute(
+            "create table choice_stock_daily_observation (trade_date varchar)"
+        )
+        writer.execute(
+            "insert into choice_stock_daily_observation values ('2026-04-30')"
+        )
+    finally:
+        writer.close()
+
+    def probe_with_new_connection() -> tuple[bool, int]:
+        raw = duckdb.connect(str(duckdb_path), read_only=True)
+        probe_queries = 0
+
+        class CountingConnection:
+            def execute(
+                self,
+                query: str,
+                parameters: object | None = None,
+            ) -> object:
+                nonlocal probe_queries
+                normalized = " ".join(query.casefold().split())
+                if "parsed_date is null" in normalized:
+                    probe_queries += 1
+                if parameters is None:
+                    return raw.execute(query)
+                return raw.execute(query, parameters)
+
+        try:
+            result = macro_toolkit_service._duckdb_date_column_is_canonical_iso(
+                CountingConnection(),  # type: ignore[arg-type]
+                "choice_stock_daily_observation",
+                "trade_date",
+                database_path=duckdb_path,
+            )
+        finally:
+            raw.close()
+        return result, probe_queries
+
+    assert probe_with_new_connection() == (True, 1)
+    assert probe_with_new_connection() == (True, 0)
+
+    writer = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        writer.execute(
+            "insert into choice_stock_daily_observation values ('2026-4-30')"
+        )
+    finally:
+        writer.close()
+
+    assert probe_with_new_connection() == (False, 1)
+
+
+def test_latest_risk_tensor_row_uses_pushdown_safe_projected_query(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    expected_columns = {
+        "total_market_value",
+        "issuer_top5_weight",
+        "portfolio_dv01",
+        "bond_count",
+        "asset_cashflow_30d",
+        "asset_cashflow_90d",
+        "liability_cashflow_30d",
+        "liability_cashflow_90d",
+        "liquidity_gap_30d",
+        "liquidity_gap_90d",
+        "liquidity_gap_30d_ratio",
+    }
+
+    class FakeResult:
+        def fetchdf(self) -> pd.DataFrame:
+            return pd.DataFrame(
+                [
+                    {
+                        column: row_number
+                        for row_number, column in enumerate(sorted(expected_columns), start=1)
+                    }
+                ]
+            )
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            assert "select *" not in normalized
+            assert "try_cast(report_date as date)" not in normalized
+            assert "where report_date <= ?" in normalized
+            assert "order by report_date desc" in normalized
+            assert parameters == ["2026-04-30"]
+            selected_columns = {
+                column.strip()
+                for column in normalized.partition("from")[0].removeprefix("select").split(",")
+            }
+            assert selected_columns == expected_columns
+            return FakeResult()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        macro_toolkit_service.duckdb,
+        "connect",
+        lambda *_args, **_kwargs: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_table_exists",
+        lambda *_args, **_kwargs: True,
+    )
+
+    row = macro_toolkit_service.load_latest_risk_tensor_row(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert row is not None
+    assert set(row) == expected_columns
 
 
 def test_a_share_stampede_risk_context_delegates_to_service(tmp_path, monkeypatch) -> None:
@@ -2696,6 +3101,73 @@ def test_latest_bond_positions_delegate_to_service(tmp_path, monkeypatch) -> Non
     assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_latest_bond_positions)
 
 
+def test_macro_capability_context_reuses_one_connection_for_curve_risk_and_bonds(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    connection_ids: dict[str, int] = {}
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    connections: list[FakeConnection] = []
+
+    def fake_connect(*_args, **_kwargs) -> FakeConnection:
+        connection = FakeConnection()
+        connections.append(connection)
+        return connection
+
+    def fake_curve(conn: object, path: object, report_date: date) -> list[dict[str, object]]:
+        connection_ids["curve"] = id(conn)
+        assert path == duckdb_path
+        return [{"biz_date": report_date.isoformat(), "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.2}]
+
+    def fake_risk(
+        conn: object,
+        report_date: date,
+        duckdb_path_arg: object,
+    ) -> dict[str, object]:
+        connection_ids["risk"] = id(conn)
+        assert duckdb_path_arg == duckdb_path
+        return {"report_date": report_date.isoformat(), "total_market_value": 100.0}
+
+    def fake_bonds(conn: object, report_date: date) -> list[dict[str, object]]:
+        connection_ids["bond"] = id(conn)
+        return [{"market_value": 50.0, "maturity_date": report_date, "coupon_rate": 2.4}]
+
+    monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", fake_connect)
+    monkeypatch.setattr(macro_toolkit_service, "_load_macro_curve_rows_from_conn", fake_curve, raising=False)
+    monkeypatch.setattr(macro_toolkit_service, "_load_latest_risk_tensor_row_from_conn", fake_risk, raising=False)
+    monkeypatch.setattr(macro_toolkit_service, "_load_latest_bond_positions_from_conn", fake_bonds, raising=False)
+
+    curve_rows, risk_tensor, positions = macro_toolkit_service.load_macro_capability_context(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert curve_rows[0]["curve_id"] == "CN_GOVT"
+    assert risk_tensor is not None and risk_tensor["total_market_value"] == 100.0
+    assert positions[0]["market_value"] == 50.0
+    assert len(connections) == 1
+    assert connections[0].close_count == 1
+    assert set(connection_ids.values()) == {id(connections[0])}
+
+
+def test_macro_capability_results_uses_page_local_aggregate_loader() -> None:
+    source = inspect.getsource(macro_toolkit_route._macro_capability_results)
+
+    assert "_load_macro_capability_context(" in source
+    assert "_load_macro_curve_rows(" not in source
+    assert "_load_latest_risk_tensor_row(" not in source
+    assert "_load_latest_bond_positions(" not in source
+
+
 def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -2832,6 +3304,68 @@ def test_macro_toolkit_full_analysis_blocks_run_heavy_sections_concurrently(monk
     assert a_share_risk == {"status": "complete"}
     assert capability_results == [{"key": "capability"}]
     assert strategy_summaries == [{"key": "strategy"}]
+
+
+def test_macro_toolkit_full_analysis_uses_three_worker_local_connections(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    connections = _track_macro_toolkit_connections(monkeypatch)
+    started: list[str] = []
+    started_lock = Lock()
+    all_started = Event()
+    empty_frame = pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
+
+    def synchronize(name: str) -> None:
+        with started_lock:
+            started.append(name)
+            if len(started) == 3:
+                all_started.set()
+        assert all_started.wait(1.0), f"{name} did not overlap the other full-analysis workers"
+
+    def load_a_share(path: object) -> dict[str, object]:
+        synchronize("a_share")
+        return macro_toolkit_service.load_a_share_stampede_risk_context(path) or {}
+
+    def load_capabilities(
+        path: object,
+        *,
+        report_date: date,
+        history_limit: int,
+    ) -> list[dict[str, object]]:
+        assert history_limit == 19
+        synchronize("capabilities")
+        macro_toolkit_service.load_macro_capability_context(path, report_date)
+        return []
+
+    def load_strategies(path: object) -> list[dict[str, object]]:
+        synchronize("strategies")
+        macro_toolkit_service.load_equity_strategy_price_context(path)
+        return []
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_series_by_aliases",
+        lambda aliases, **_kwargs: {alias: empty_frame.copy() for alias in aliases},
+    )
+    monkeypatch.setattr(macro_toolkit_route, "_a_share_stampede_risk", load_a_share)
+    monkeypatch.setattr(macro_toolkit_route, "_macro_capability_results", load_capabilities)
+    monkeypatch.setattr(macro_toolkit_route, "_equity_strategy_summaries", load_strategies)
+
+    result = macro_toolkit_route._build_macro_toolkit_full_analysis_blocks(
+        duckdb_path,
+        date(2026, 4, 30),
+        history_limit=19,
+    )
+
+    assert result == ({}, [], [])
+    assert set(started) == {"a_share", "capabilities", "strategies"}
+    assert len(connections) == 3
+    assert len({connection.thread_id for connection in connections}) == 3
+    assert all(connection.close_count == 1 for connection in connections)
+    assert all(connection.use_thread_ids == {connection.thread_id} for connection in connections)
 
 
 def test_macro_toolkit_analysis_surfaces_crisis_score_from_system_sources(tmp_path, monkeypatch) -> None:

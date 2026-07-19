@@ -5,7 +5,11 @@ from __future__ import annotations
 import threading
 import time
 
-from backend.app.api.response_cache import TTLResponseCache, resolve_default_ttl
+from backend.app.api.response_cache import (
+    CacheBuildTimeoutError,
+    TTLResponseCache,
+    resolve_default_ttl,
+)
 
 
 class FakeClock:
@@ -233,6 +237,128 @@ def test_get_or_build_propagates_inflight_error_and_allows_rebuild() -> None:
     assert all(isinstance(error, RuntimeError) for error in errors)
     assert {str(error) for error in errors} == {"first build failed"}
     assert cache.get_or_build("k", builder) == {"value": 2}
+
+
+def test_get_or_build_times_out_waiter_when_same_key_builder_is_stuck() -> None:
+    cache = TTLResponseCache(default_ttl_seconds=300.0, wait_timeout_seconds=0.01)
+    builder_started = threading.Event()
+    release_builder = threading.Event()
+    waiter_finished = threading.Event()
+    third_finished = threading.Event()
+    calls = {"count": 0}
+    producer_results: list[str] = []
+    waiter_errors: list[BaseException] = []
+    third_errors: list[BaseException] = []
+
+    def builder() -> str:
+        calls["count"] += 1
+        builder_started.set()
+        assert release_builder.wait(timeout=1.0)
+        return "built"
+
+    def producer() -> None:
+        producer_results.append(cache.get_or_build("k", builder))
+
+    def waiter(errors: list[BaseException], finished: threading.Event) -> None:
+        try:
+            cache.get_or_build("k", builder)
+        except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+            errors.append(exc)
+        finally:
+            finished.set()
+
+    producer_thread = threading.Thread(target=producer)
+    waiter_thread = threading.Thread(target=waiter, args=(waiter_errors, waiter_finished))
+    third_thread = threading.Thread(target=waiter, args=(third_errors, third_finished))
+    producer_thread.start()
+    assert builder_started.wait(timeout=1.0)
+    waiter_thread.start()
+
+    try:
+        assert waiter_finished.wait(timeout=1.0)
+        assert len(waiter_errors) == 1
+        assert isinstance(waiter_errors[0], CacheBuildTimeoutError)
+        assert "'k'" in str(waiter_errors[0])
+        assert "timed out after 0.01s" in str(waiter_errors[0])
+
+        third_thread.start()
+        assert third_finished.wait(timeout=1.0)
+        assert len(third_errors) == 1
+        assert isinstance(third_errors[0], CacheBuildTimeoutError)
+        assert calls["count"] == 1
+    finally:
+        release_builder.set()
+        producer_thread.join(timeout=1.0)
+        waiter_thread.join(timeout=1.0)
+        third_thread.join(timeout=1.0)
+
+    assert not producer_thread.is_alive()
+    assert not waiter_thread.is_alive()
+    assert not third_thread.is_alive()
+    assert producer_results == ["built"]
+    assert cache.get_or_build("k", builder) == "built"
+    assert calls["count"] == 1
+
+
+def test_get_or_build_with_status_times_out_waiter_when_same_key_builder_is_stuck() -> None:
+    cache = TTLResponseCache(default_ttl_seconds=300.0, wait_timeout_seconds=0.01)
+    builder_started = threading.Event()
+    release_builder = threading.Event()
+    waiter_finished = threading.Event()
+    third_finished = threading.Event()
+    calls = {"count": 0}
+    producer_results: list[tuple[str, str]] = []
+    waiter_errors: list[BaseException] = []
+    third_errors: list[BaseException] = []
+
+    def builder() -> str:
+        calls["count"] += 1
+        builder_started.set()
+        assert release_builder.wait(timeout=1.0)
+        return "built"
+
+    def producer() -> None:
+        producer_results.append(cache.get_or_build_with_status("k", builder))
+
+    def waiter(errors: list[BaseException], finished: threading.Event) -> None:
+        try:
+            cache.get_or_build_with_status("k", builder)
+        except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+            errors.append(exc)
+        finally:
+            finished.set()
+
+    producer_thread = threading.Thread(target=producer)
+    waiter_thread = threading.Thread(target=waiter, args=(waiter_errors, waiter_finished))
+    third_thread = threading.Thread(target=waiter, args=(third_errors, third_finished))
+    producer_thread.start()
+    assert builder_started.wait(timeout=1.0)
+    waiter_thread.start()
+
+    try:
+        assert waiter_finished.wait(timeout=1.0)
+        assert len(waiter_errors) == 1
+        assert isinstance(waiter_errors[0], CacheBuildTimeoutError)
+        assert "'k'" in str(waiter_errors[0])
+        assert "timed out after 0.01s" in str(waiter_errors[0])
+
+        third_thread.start()
+        assert third_finished.wait(timeout=1.0)
+        assert len(third_errors) == 1
+        assert isinstance(third_errors[0], CacheBuildTimeoutError)
+        assert calls["count"] == 1
+    finally:
+        release_builder.set()
+        producer_thread.join(timeout=1.0)
+        waiter_thread.join(timeout=1.0)
+        third_thread.join(timeout=1.0)
+
+    assert not producer_thread.is_alive()
+    assert not waiter_thread.is_alive()
+    assert not third_thread.is_alive()
+    assert producer_results == [("built", "produce")]
+    assert cache.get_or_build_with_status("k", builder) == ("built", "hit")
+    assert calls["count"] == 1
 
 
 def test_resolve_default_ttl_reads_env(monkeypatch) -> None:

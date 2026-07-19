@@ -38,6 +38,14 @@ def warm_market_home_cache_if_configured(settings: object) -> bool:
     return True
 
 
+def warm_market_home_cache_in_current_thread_if_configured(settings: object) -> bool:
+    if not bool(getattr(settings, "market_home_prewarm_enabled", False)):
+        return False
+    duckdb_path = str(getattr(settings, "duckdb_path", "") or "")
+    _warm_market_home_cache_quietly(duckdb_path=duckdb_path, settings=settings)
+    return True
+
+
 def _warm_market_home_cache_quietly(*, duckdb_path: str, settings: object | None = None) -> None:
     try:
         warm_market_home_read_caches(duckdb_path=duckdb_path, settings=settings)

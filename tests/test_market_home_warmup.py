@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -44,6 +45,31 @@ def test_market_home_prewarm_starts_background_thread(monkeypatch: pytest.Monkey
         "name": "moss-market-home-warmup",
     }
     assert started[1] == ("start", {})
+
+
+def test_market_home_current_thread_entry_preserves_flag_and_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    disabled = SimpleNamespace(
+        market_home_prewarm_enabled=False,
+        duckdb_path="data/disabled.duckdb",
+    )
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        warmup,
+        "_warm_market_home_cache_quietly",
+        lambda **kwargs: calls.append(kwargs),
+    )
+
+    assert warmup.warm_market_home_cache_in_current_thread_if_configured(disabled) is False
+    assert calls == []
+
+    enabled = SimpleNamespace(
+        market_home_prewarm_enabled=True,
+        duckdb_path="data/enabled.duckdb",
+    )
+    assert warmup.warm_market_home_cache_in_current_thread_if_configured(enabled) is True
+    assert calls == [{"duckdb_path": "data/enabled.duckdb", "settings": enabled}]
 
 
 def test_warm_market_home_read_caches_populates_all_steps(monkeypatch: pytest.MonkeyPatch) -> None:

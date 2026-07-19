@@ -1,9 +1,12 @@
+import { ConfigProvider } from "antd";
 import type { ReactNode } from "react";
+
+import { workbenchTheme } from "../theme/theme";
 
 type ThemedRouteBoundaryProps = {
   children: ReactNode;
 };
 
 export default function ThemedRouteBoundary({ children }: ThemedRouteBoundaryProps) {
-  return <>{children}</>;
+  return <ConfigProvider theme={workbenchTheme}>{children}</ConfigProvider>;
 }

@@ -127,6 +127,11 @@ const DASHBOARD_SNAPSHOT_BOUNDARY_PATH = resolve(
   "src/features/workbench/pages/useDashboardSnapshotBoundary.ts",
 );
 const ROUTES_PATH = resolve(FRONTEND_ROOT, "src/router/routes.tsx");
+const APP_PROVIDERS_PATH = resolve(FRONTEND_ROOT, "src/app/providers.tsx");
+const THEMED_ROUTE_BOUNDARY_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/app/ThemedRouteBoundary.tsx",
+);
 const STOCK_ANALYSIS_PAGE_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
@@ -633,10 +638,19 @@ describe("startup performance guards", () => {
 
   it("keeps non-home Ant Design theme boundary lazy", () => {
     const routeSource = readFileSync(ROUTES_PATH, "utf8");
+    const appProvidersSource = readFileSync(APP_PROVIDERS_PATH, "utf8");
+    const themedBoundarySource = readFileSync(THEMED_ROUTE_BOUNDARY_PATH, "utf8");
 
     expect(routeSource).toContain('lazy(() => import("../app/ThemedRouteBoundary"))');
     expect(routeSource).toContain("themedRouteElement(<PnlByBusinessPage />)");
+    expect(routeSource).toContain("themedRouteElement(<CrossAssetPage />)");
     expect(routeSource).toContain("element: routeElement(<DashboardHomePage />)");
+    expect(appProvidersSource).not.toContain('import("antd")');
+    expect(appProvidersSource).not.toContain("ConfigProvider");
+    expect(appProvidersSource).not.toContain("loadAntdTheme");
+    expect(themedBoundarySource).toMatch(/from\s+["']antd["']/);
+    expect(themedBoundarySource).toContain("ConfigProvider");
+    expect(themedBoundarySource).toContain("workbenchTheme");
   });
 
   it("wires the production home startup bundle guard into npm scripts", () => {
@@ -655,6 +669,9 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain("ag-theme-alpine");
     expect(guardSource).toContain("assertNoAgGridImplementation");
     expect(guardSource).toContain("isAntdVendorAsset");
+    expect(guardSource).toMatch(
+      /"DashboardHomePage preload deps",\s*homeRouteAssets,\s*isAntdVendorAsset/,
+    );
     expect(guardSource).toContain("homeSupplementalClient");
     expect(guardSource).toContain("homeMarketTickerClient");
     expect(guardSource).toContain("isWorkbenchShellMarketTickerAsset");
@@ -686,6 +703,11 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain("/assets/dashboardHomeFirstScreenMockView-");
     expect(guardSource).toContain("home should not load the market ticker mock chunk");
     expect(guardSource).toContain("home should not load the first-screen mock view chunk");
+    expect(guardSource).toContain("/assets/antd-vendor-");
+    expect(guardSource).toContain("home should not load the Ant Design vendor chunk");
+    expect(guardSource).toContain(
+      "cross-asset Ant Design vendor chunk should load in the first-screen window",
+    );
     expect(guardSource).toContain("src/layouts/WorkbenchShellMarketTicker.tsx");
     expect(guardSource).toContain("src/layouts/workbenchShellTicker.ts");
     expect(guardSource).toContain("/assets/WorkbenchShellMarketTicker-");

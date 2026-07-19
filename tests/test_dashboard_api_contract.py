@@ -951,7 +951,11 @@ def test_dashboard_core_metrics_logs_api_perf(tmp_path, monkeypatch, caplog) -> 
     records = _perf_records(caplog, "/api/dashboard/core_metrics")
     assert records
     record = records[-1]
-    assert record.getMessage() == "moss_api_perf"
+    assert record.getMessage() == (
+        f'moss_api_perf endpoint="{record.endpoint}" duration_ms={record.duration_ms} '
+        f'trace_id="{record.trace_id}" result_kind="{record.result_kind}" '
+        "duckdb_statement_count=null"
+    )
     assert getattr(record, "duration_ms") >= 0
     assert getattr(record, "result_kind") == "dashboard.core_metrics"
     assert getattr(record, "trace_id")

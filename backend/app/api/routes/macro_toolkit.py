@@ -1611,7 +1611,10 @@ def _macro_capability_results(
             for item in _CAPABILITY_DEFINITIONS
         ]
 
-    curve_rows = _load_macro_curve_rows(duckdb_path, parsed_report_date)
+    curve_rows, risk_tensor, positions = _load_macro_capability_context(
+        duckdb_path,
+        parsed_report_date,
+    )
     report_date_frames_by_alias = load_series_by_aliases(
         tuple(
             dict.fromkeys(
@@ -1635,9 +1638,7 @@ def _macro_capability_results(
         curve_rows,
         frames_by_alias=report_date_frames_by_alias,
     )
-    risk_tensor = _load_latest_risk_tensor_row(duckdb_path, parsed_report_date)
     proxy_rows, bucket_rows, total_assets = _risk_tensor_to_liquidity_inputs(risk_tensor)
-    positions = _load_latest_bond_positions(duckdb_path, parsed_report_date)
     portfolio_profile = build_bond_portfolio_profile(positions, parsed_report_date)
     current_curve = _current_gov_curve(curve_rows, parsed_report_date)
 
@@ -3123,6 +3124,13 @@ def _parse_report_date(value: str | None) -> date | None:
 
 def _load_macro_curve_rows(duckdb_path: str | Path, report_date: date) -> list[dict[str, object]]:
     return macro_toolkit_service.load_macro_curve_rows(duckdb_path, report_date)
+
+
+def _load_macro_capability_context(
+    duckdb_path: str | Path,
+    report_date: date,
+) -> tuple[list[dict[str, object]], dict[str, object] | None, list[dict[str, object]]]:
+    return macro_toolkit_service.load_macro_capability_context(duckdb_path, report_date)
 
 
 def _load_macro_wide_rows(

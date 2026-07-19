@@ -1,6 +1,9 @@
 import os
+import sys
 from decimal import Decimal
 from pathlib import Path
+from threading import RLock
+from types import ModuleType
 from typing import Any, cast
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +17,15 @@ _ENV_FILES = (
 DEFAULT_POSTGRES_DSN = "postgresql://moss:moss@localhost:5432/moss"
 DEV_POSTGRES_DSN = "postgresql://moss:moss@127.0.0.1:55432/moss"
 _DEV_POSTGRES_CLUSTER_DATA_DIR = Path("tmp-governance") / "pgdev" / "data"
+_SETTINGS_CACHE_STATE_MODULE = "backend.app.governance._settings_cache_state"
+_settings_cache_state_module = sys.modules.setdefault(
+    _SETTINGS_CACHE_STATE_MODULE,
+    ModuleType(_SETTINGS_CACHE_STATE_MODULE),
+)
+_settings_cache_state = vars(_settings_cache_state_module)
+_settings_cache_state.setdefault("lock", RLock())
+_settings_cache_state.setdefault("generation", 0)
+_settings_cache_state.pop("settings", None)
 
 
 def resolve_postgres_dsn(postgres_dsn: str, *, repo_root: Path = _REPO_ROOT) -> str:
@@ -234,12 +246,24 @@ def _resolve_production_governance_backend(
     return normalized or "sql-authority"
 
 
+_settings_cache_generation = -1
+_settings_cache_value: Settings | None = None
+
+
 def get_settings() -> Settings:
-    return Settings()
+    global _settings_cache_generation, _settings_cache_value
+
+    with _settings_cache_state["lock"]:
+        generation = _settings_cache_state["generation"]
+        if _settings_cache_value is None or _settings_cache_generation != generation:
+            _settings_cache_value = Settings()
+            _settings_cache_generation = generation
+        return _settings_cache_value
 
 
 def _cache_clear() -> None:
-    return None
+    with _settings_cache_state["lock"]:
+        _settings_cache_state["generation"] += 1
 
 
 cast(Any, get_settings).cache_clear = _cache_clear

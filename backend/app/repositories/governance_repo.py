@@ -5,6 +5,8 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -230,6 +232,41 @@ class GovernanceRepository:
             raise RuntimeError(f"SQL governance read failed for stream={stream}") from exc
         return [json.loads(str(row[0])) for row in rows]
 
+    def _read_latest_row(
+        self,
+        stream: str,
+        matches: Callable[[dict[str, object]], bool],
+    ) -> dict[str, object] | None:
+        if self._reads_sql(stream):
+            return self._read_latest_sql(stream, matches)
+        with acquire_lock(self._batch_lock(), base_dir=self.base_dir, timeout_seconds=5.0):
+            target = Path(self.base_dir) / f"{stream}.jsonl"
+            rows = _read_jsonl_rows_cached(target)
+            for row in reversed(rows):
+                if matches(row):
+                    return deepcopy(row)
+        return None
+
+    def _read_latest_sql(
+        self,
+        stream: str,
+        matches: Callable[[dict[str, object]], bool],
+    ) -> dict[str, object] | None:
+        assert self._sql_engine is not None
+        table = self._sql_tables[stream]
+        try:
+            with self._sql_engine.connect() as connection:
+                result = connection.execute(_read_latest_sql_statement(stream, table))
+                while rows := result.fetchmany(64):
+                    for raw_row in rows:
+                        row = json.loads(str(raw_row[0]))
+                        if matches(row):
+                            return row
+        except Exception as exc:
+            # Keep the same stable repository-level error boundary as read_all.
+            raise RuntimeError(f"SQL governance read failed for stream={stream}") from exc
+        return None
+
     def read_latest_manifest(
         self,
         cache_key: str,
@@ -240,13 +277,14 @@ class GovernanceRepository:
         if not cache_key_text:
             return None
         report_date_text = str(report_date or "").strip()
-        rows = self.read_all(CACHE_MANIFEST_STREAM)
-        for row in reversed(rows):
-            if str(row.get("cache_key") or "").strip() == cache_key_text:
-                if report_date_text and str(row.get("report_date") or "").strip() != report_date_text:
-                    continue
-                return row
-        return None
+        def matches(row: dict[str, object]) -> bool:
+            if str(row.get("cache_key") or "").strip() != cache_key_text:
+                return False
+            if report_date_text and str(row.get("report_date") or "").strip() != report_date_text:
+                return False
+            return True
+
+        return self._read_latest_row(CACHE_MANIFEST_STREAM, matches)
 
     def read_latest_completed_run(
         self,
@@ -261,20 +299,20 @@ class GovernanceRepository:
             return None
         job_name_text = str(job_name or "").strip()
         report_date_text = str(report_date or "").strip()
-        rows = self.read_all(CACHE_BUILD_RUN_STREAM)
-        for row in reversed(rows):
+        def matches(row: dict[str, object]) -> bool:
             if str(row.get("cache_key") or "").strip() != cache_key_text:
-                continue
+                return False
             if str(row.get("status") or "").strip() != "completed":
-                continue
+                return False
             if job_name_text and str(row.get("job_name") or "").strip() != job_name_text:
-                continue
+                return False
             if report_date_text and str(row.get("report_date") or "").strip() != report_date_text:
-                continue
+                return False
             if require_source_version and not str(row.get("source_version") or "").strip():
-                continue
-            return row
-        return None
+                return False
+            return True
+
+        return self._read_latest_row(CACHE_BUILD_RUN_STREAM, matches)
 
     def _normalize_payload_for_stream(
         self,
@@ -318,14 +356,18 @@ def _copy_jsonl_rows(rows: tuple[dict[str, object], ...]) -> list[dict[str, obje
 
 
 def _read_jsonl_file_cached(path: Path) -> list[dict[str, object]]:
+    return _copy_jsonl_rows(_read_jsonl_rows_cached(path))
+
+
+def _read_jsonl_rows_cached(path: Path) -> tuple[dict[str, object], ...]:
     cache_key = _jsonl_file_cache_key(path)
     if cache_key is None:
-        return []
+        return ()
 
     with _JSONL_READ_CACHE_LOCK:
         cached_rows = _JSONL_READ_CACHE.get(cache_key)
         if cached_rows is not None:
-            return _copy_jsonl_rows(cached_rows)
+            return cached_rows
 
     parsed_rows = tuple(
         json.loads(line)
@@ -336,11 +378,11 @@ def _read_jsonl_file_cached(path: Path) -> list[dict[str, object]]:
     with _JSONL_READ_CACHE_LOCK:
         current_key = _jsonl_file_cache_key(path)
         if current_key is None:
-            return []
+            return ()
         if current_key != cache_key:
             cached_rows = _JSONL_READ_CACHE.get(current_key)
             if cached_rows is not None:
-                return _copy_jsonl_rows(cached_rows)
+                return cached_rows
             parsed_rows = tuple(
                 json.loads(line)
                 for line in path.read_text(encoding="utf-8").splitlines()
@@ -352,7 +394,7 @@ def _read_jsonl_file_cached(path: Path) -> list[dict[str, object]]:
         for stale_key in stale_keys:
             del _JSONL_READ_CACHE[stale_key]
         _JSONL_READ_CACHE[cache_key] = parsed_rows
-        return _copy_jsonl_rows(parsed_rows)
+        return parsed_rows
 
 
 def _sql_record_for_stream(stream: str, payload: dict[str, object]) -> dict[str, object]:
@@ -452,4 +494,10 @@ def _read_all_sql_statement(stream: str, table: Table):
         return select(table.c.payload_json).order_by(table.c.row_id.asc())
     if stream == CACHE_MANIFEST_STREAM:
         return select(table.c.payload_json).order_by(table.c.row_id.asc())
+    raise KeyError(f"Unsupported SQL governance stream: {stream}")
+
+
+def _read_latest_sql_statement(stream: str, table: Table):
+    if stream in SUPPORTED_SQL_STREAMS:
+        return select(table.c.payload_json).order_by(table.c.row_id.desc())
     raise KeyError(f"Unsupported SQL governance stream: {stream}")

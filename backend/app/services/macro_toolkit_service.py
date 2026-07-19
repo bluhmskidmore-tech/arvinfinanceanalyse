@@ -7,7 +7,9 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import uuid
+from _thread import LockType
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -69,6 +71,15 @@ EQUITY_PRICE_MIN_OBSERVATIONS = 80
 EQUITY_PRICE_MAX_STOCKS = 500
 A_SHARE_RISK_LOOKBACK_DAYS = 35
 A_SHARE_RISK_MAX_STOCKS = 8000
+_CANONICAL_ISO_DATE_COLUMNS = {
+    ("choice_stock_daily_observation", "trade_date"),
+    ("fact_formal_risk_tensor_daily", "report_date"),
+}
+_DateColumnCacheKey = tuple[str, int, int, str, str]
+_CANONICAL_ISO_DATE_CACHE: dict[_DateColumnCacheKey, bool] = {}
+_CANONICAL_ISO_DATE_CACHE_LOCK = threading.Lock()
+_CANONICAL_ISO_DATE_PROBE_LOCKS: dict[_DateColumnCacheKey, LockType] = {}
+_CANONICAL_ISO_DATE_CACHE_MAX_ENTRIES = 64
 MACRO_TOOLKIT_OBSERVATION_ONLY = True
 MACRO_TOOLKIT_FORMAL_USE_ALLOWED = False
 MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS = ("日期", "date", "trade_date", "as_of_date")
@@ -970,9 +981,20 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "choice_stock_daily_observation" not in tables:
             return None
+        canonical_dates = _duckdb_date_column_is_canonical_iso(
+            conn,
+            "choice_stock_daily_observation",
+            "trade_date",
+            database_path=path,
+        )
+        latest_date_select = (
+            "try_cast(max(trade_date) as date)"
+            if canonical_dates
+            else "max(try_cast(trade_date as date))"
+        )
         latest_row = conn.execute(
-            """
-            select max(try_cast(trade_date as date))
+            f"""
+            select {latest_date_select}
             from choice_stock_daily_observation
             where close_value is not null
               and close_value > 0
@@ -982,19 +1004,36 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
         if latest_trade_date is None:
             return None
         start_date = latest_trade_date - timedelta(days=EQUITY_PRICE_LOOKBACK_DAYS)
+        sample_date_expression = (
+            "trade_date" if canonical_dates else "try_cast(trade_date as date)"
+        )
+        daily_date_expression = (
+            "daily.trade_date"
+            if canonical_dates
+            else "try_cast(daily.trade_date as date)"
+        )
+        date_parameters = (
+            [
+                latest_trade_date.isoformat(),
+                start_date.isoformat(),
+                latest_trade_date.isoformat(),
+            ]
+            if canonical_dates
+            else [latest_trade_date, start_date, latest_trade_date]
+        )
         frame = conn.execute(
             f"""
             with latest_sample as (
               select stock_code
               from choice_stock_daily_observation
-              where try_cast(trade_date as date) = ?
+              where {sample_date_expression} = ?
                 and close_value is not null
                 and close_value > 0
               order by coalesce(amount, 0) desc, stock_code asc
               limit {EQUITY_PRICE_MAX_STOCKS}
             )
             select
-              daily.try_cast_date as trade_date,
+              try_cast(daily.trade_date as date) as trade_date,
               daily.stock_code,
               daily.close_value,
               daily.amount,
@@ -1005,31 +1044,26 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
               daily.lowlimit,
               daily.source_version,
               daily.vendor_version
-            from (
-              select
-                try_cast(trade_date as date) as try_cast_date,
-                stock_code,
-                close_value,
-                amount,
-                pctchange,
-                turn,
-                amplitude,
-                highlimit,
-                lowlimit,
-                source_version,
-                vendor_version
-              from choice_stock_daily_observation
-            ) daily
+            from choice_stock_daily_observation daily
             join latest_sample sample
               on sample.stock_code = daily.stock_code
-            where daily.try_cast_date > ?
-              and daily.try_cast_date <= ?
+            where {daily_date_expression} > ?
+              and {daily_date_expression} <= ?
               and daily.close_value is not null
               and daily.close_value > 0
-            order by daily.try_cast_date asc, daily.stock_code asc
+            order by {daily_date_expression} asc, daily.stock_code asc
             """,
-            [latest_trade_date, start_date, latest_trade_date],
+            date_parameters,
         ).df()
+        financials = None
+        if not frame.empty:
+            try:
+                financials = _load_equity_strategy_factor_snapshot_from_conn(
+                    conn,
+                    latest_trade_date.isoformat(),
+                )
+            except duckdb.Error:
+                financials = None
     except duckdb.Error:
         return None
     finally:
@@ -1059,7 +1093,6 @@ def load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[s
             "lowlimit",
         ]
     ].copy()
-    financials = load_equity_strategy_factor_snapshot(path, latest_trade_date.isoformat())
     return {
         "prices": prices.astype("float64"),
         "observations": observations,
@@ -1084,47 +1117,59 @@ def load_equity_strategy_factor_snapshot(
     except duckdb.Error:
         return None
     try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "choice_stock_factor_snapshot" not in tables:
-            return None
-        factor_date_row = conn.execute(
-            """
-            select max(try_cast(as_of_date as date))
-            from choice_stock_factor_snapshot
-            where try_cast(as_of_date as date) <= try_cast(? as date)
-            """,
-            [as_of_date],
-        ).fetchone()
-        factor_as_of_date = factor_date_row[0] if factor_date_row else None
-        if factor_as_of_date is None:
-            return None
-        rows = conn.execute(
-            """
-            select
-              stock_code,
-              pe,
-              pb,
-              ps,
-              roe,
-              gross_margin,
-              three_month_return,
-              twelve_month_return,
-              volatility,
-              dividend_yield,
-              industry,
-              source_version,
-              vendor_version,
-              rule_version,
-              run_id
-            from choice_stock_factor_snapshot
-            where try_cast(as_of_date as date) = ?
-            """,
-            [factor_as_of_date],
-        ).fetchall()
+        return _load_equity_strategy_factor_snapshot_from_conn(
+            conn,
+            as_of_date,
+            stock_codes=stock_codes,
+        )
     except duckdb.Error:
         return None
     finally:
         conn.close()
+
+
+def _load_equity_strategy_factor_snapshot_from_conn(
+    conn: duckdb.DuckDBPyConnection,
+    as_of_date: str,
+    stock_codes: list[str] | None = None,
+) -> pd.DataFrame | None:
+    tables = {row[0] for row in conn.execute("show tables").fetchall()}
+    if "choice_stock_factor_snapshot" not in tables:
+        return None
+    factor_date_row = conn.execute(
+        """
+        select max(try_cast(as_of_date as date))
+        from choice_stock_factor_snapshot
+        where try_cast(as_of_date as date) <= try_cast(? as date)
+        """,
+        [as_of_date],
+    ).fetchone()
+    factor_as_of_date = factor_date_row[0] if factor_date_row else None
+    if factor_as_of_date is None:
+        return None
+    rows = conn.execute(
+        """
+        select
+          stock_code,
+          pe,
+          pb,
+          ps,
+          roe,
+          gross_margin,
+          three_month_return,
+          twelve_month_return,
+          volatility,
+          dividend_yield,
+          industry,
+          source_version,
+          vendor_version,
+          rule_version,
+          run_id
+        from choice_stock_factor_snapshot
+        where try_cast(as_of_date as date) = ?
+        """,
+        [factor_as_of_date],
+    ).fetchall()
     if not rows:
         return None
     frame = pd.DataFrame(
@@ -1188,9 +1233,20 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
     try:
         if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
             return None
+        canonical_dates = _duckdb_date_column_is_canonical_iso(
+            conn,
+            "choice_stock_daily_observation",
+            "trade_date",
+            database_path=path,
+        )
+        latest_date_select = (
+            "try_cast(max(trade_date) as date)"
+            if canonical_dates
+            else "max(try_cast(trade_date as date))"
+        )
         latest_row = conn.execute(
-            """
-            select max(try_cast(trade_date as date))
+            f"""
+            select {latest_date_select}
             from choice_stock_daily_observation
             where close_value is not null
               and close_value > 0
@@ -1200,19 +1256,36 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
         if latest_trade_date is None:
             return None
         start_date = latest_trade_date - timedelta(days=A_SHARE_RISK_LOOKBACK_DAYS)
+        sample_date_expression = (
+            "trade_date" if canonical_dates else "try_cast(trade_date as date)"
+        )
+        daily_date_expression = (
+            "daily.trade_date"
+            if canonical_dates
+            else "try_cast(daily.trade_date as date)"
+        )
+        date_parameters = (
+            [
+                latest_trade_date.isoformat(),
+                start_date.isoformat(),
+                latest_trade_date.isoformat(),
+            ]
+            if canonical_dates
+            else [latest_trade_date, start_date, latest_trade_date]
+        )
         observations = conn.execute(
             f"""
             with latest_sample as (
               select stock_code
               from choice_stock_daily_observation
-              where try_cast(trade_date as date) = ?
+              where {sample_date_expression} = ?
                 and close_value is not null
                 and close_value > 0
               order by coalesce(amount, 0) desc, stock_code asc
               limit {A_SHARE_RISK_MAX_STOCKS}
             )
             select
-              daily.try_cast_date as trade_date,
+              try_cast(daily.trade_date as date) as trade_date,
               daily.stock_code,
               daily.open_value,
               daily.high_value,
@@ -1227,34 +1300,16 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
               try_cast(daily.lowlimit as double) as lowlimit,
               daily.source_version,
               daily.vendor_version
-            from (
-              select
-                try_cast(trade_date as date) as try_cast_date,
-                stock_code,
-                open_value,
-                high_value,
-                low_value,
-                close_value,
-                amount,
-                pctchange,
-                turn,
-                amplitude,
-                tradestatus,
-                highlimit,
-                lowlimit,
-                source_version,
-                vendor_version
-              from choice_stock_daily_observation
-            ) daily
+            from choice_stock_daily_observation daily
             join latest_sample sample
               on sample.stock_code = daily.stock_code
-            where daily.try_cast_date > ?
-              and daily.try_cast_date <= ?
+            where {daily_date_expression} > ?
+              and {daily_date_expression} <= ?
               and daily.close_value is not null
               and daily.close_value > 0
-            order by daily.try_cast_date asc, daily.stock_code asc
+            order by {daily_date_expression} asc, daily.stock_code asc
             """,
-            [latest_trade_date, start_date, latest_trade_date],
+            date_parameters,
         ).df()
         if observations.empty:
             return None
@@ -1276,41 +1331,50 @@ def load_a_share_stampede_risk_context(duckdb_path: str | Path | None) -> dict[s
 
 
 def load_macro_curve_rows(duckdb_path: str | Path, report_date: date) -> list[dict[str, object]]:
-    rows: list[dict[str, object]] = []
     path = Path(duckdb_path)
+    conn: duckdb.DuckDBPyConnection | None = None
     if path.exists():
         try:
             conn = duckdb.connect(str(path), read_only=True)
         except duckdb.Error:
             conn = None
+    try:
+        return _load_macro_curve_rows_from_conn(conn, duckdb_path, report_date)
+    finally:
         if conn is not None:
-            try:
-                if _duckdb_table_exists(conn, "fact_formal_yield_curve_daily"):
-                    formal_rows = conn.execute(
-                        """
-                        select
-                          cast(trade_date as varchar) as biz_date,
-                          lower(curve_type) as curve_type,
-                          tenor,
-                          cast(rate_pct as double) as rate_value
-                        from fact_formal_yield_curve_daily
-                        where try_cast(trade_date as date) <= ?
-                        """,
-                        [report_date],
-                    ).fetchall()
-                    for biz_date, curve_type, tenor, rate_value in formal_rows:
-                        curve_id = _CURVE_TYPE_TO_ID.get(str(curve_type))
-                        if curve_id and rate_value is not None:
-                            rows.append(
-                                {
-                                    "biz_date": str(biz_date)[:10],
-                                    "curve_id": curve_id,
-                                    "tenor": str(tenor),
-                                    "rate_value": float(rate_value),
-                                }
-                            )
-            finally:
-                conn.close()
+            conn.close()
+
+
+def _load_macro_curve_rows_from_conn(
+    conn: duckdb.DuckDBPyConnection | None,
+    duckdb_path: str | Path,
+    report_date: date,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    if conn is not None and _duckdb_table_exists(conn, "fact_formal_yield_curve_daily"):
+        formal_rows = conn.execute(
+            """
+            select
+              cast(trade_date as varchar) as biz_date,
+              lower(curve_type) as curve_type,
+              tenor,
+              cast(rate_pct as double) as rate_value
+            from fact_formal_yield_curve_daily
+            where try_cast(trade_date as date) <= ?
+            """,
+            [report_date],
+        ).fetchall()
+        for biz_date, curve_type, tenor, rate_value in formal_rows:
+            curve_id = _CURVE_TYPE_TO_ID.get(str(curve_type))
+            if curve_id and rate_value is not None:
+                rows.append(
+                    {
+                        "biz_date": str(biz_date)[:10],
+                        "curve_id": curve_id,
+                        "tenor": str(tenor),
+                        "rate_value": float(rate_value),
+                    }
+                )
 
     frames_by_alias = load_series_by_aliases(
         tuple(alias for alias, _, _ in _CURVE_ALIAS_POINTS),
@@ -1351,20 +1415,50 @@ def load_latest_risk_tensor_row(
     except duckdb.Error:
         return None
     try:
-        if not _duckdb_table_exists(conn, "fact_formal_risk_tensor_daily"):
-            return None
-        frame = conn.execute(
-            """
-            select *
-            from fact_formal_risk_tensor_daily
-            where try_cast(report_date as date) <= ?
-            order by try_cast(report_date as date) desc
-            limit 1
-            """,
-            [report_date],
-        ).fetchdf()
+        return _load_latest_risk_tensor_row_from_conn(conn, report_date, path)
     finally:
         conn.close()
+
+
+def _load_latest_risk_tensor_row_from_conn(
+    conn: duckdb.DuckDBPyConnection | None,
+    report_date: date,
+    duckdb_path: str | Path,
+) -> dict[str, object] | None:
+    if conn is None or not _duckdb_table_exists(conn, "fact_formal_risk_tensor_daily"):
+        return None
+    canonical_dates = _duckdb_date_column_is_canonical_iso(
+        conn,
+        "fact_formal_risk_tensor_daily",
+        "report_date",
+        database_path=duckdb_path,
+    )
+    report_date_expression = (
+        "report_date"
+        if canonical_dates
+        else "try_cast(report_date as date)"
+    )
+    frame = conn.execute(
+        f"""
+        select
+          total_market_value,
+          issuer_top5_weight,
+          portfolio_dv01,
+          bond_count,
+          asset_cashflow_30d,
+          asset_cashflow_90d,
+          liability_cashflow_30d,
+          liability_cashflow_90d,
+          liquidity_gap_30d,
+          liquidity_gap_90d,
+          liquidity_gap_30d_ratio
+        from fact_formal_risk_tensor_daily
+        where {report_date_expression} <= ?
+        order by {report_date_expression} desc
+        limit 1
+        """,
+        [report_date.isoformat() if canonical_dates else report_date],
+    ).fetchdf()
     if frame.empty:
         return None
     return dict(frame.iloc[0])
@@ -1382,28 +1476,35 @@ def load_latest_bond_positions(
     except duckdb.Error:
         return []
     try:
-        if not _duckdb_table_exists(conn, "fact_formal_bond_analytics_daily"):
-            return []
-        frame = conn.execute(
-            """
-            with latest as (
-              select max(try_cast(report_date as date)) as report_date
-              from fact_formal_bond_analytics_daily
-              where try_cast(report_date as date) <= ?
-            )
-            select
-              cast(market_value as double) as market_value,
-              maturity_date,
-              cast(coupon_rate as double) as coupon_rate
-            from fact_formal_bond_analytics_daily, latest
-            where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.report_date
-              and coalesce(cast(market_value as double), 0) > 0
-            limit 5000
-            """,
-            [report_date],
-        ).fetchdf()
+        return _load_latest_bond_positions_from_conn(conn, report_date)
     finally:
         conn.close()
+
+
+def _load_latest_bond_positions_from_conn(
+    conn: duckdb.DuckDBPyConnection | None,
+    report_date: date,
+) -> list[dict[str, object]]:
+    if conn is None or not _duckdb_table_exists(conn, "fact_formal_bond_analytics_daily"):
+        return []
+    frame = conn.execute(
+        """
+        with latest as (
+          select max(try_cast(report_date as date)) as report_date
+          from fact_formal_bond_analytics_daily
+          where try_cast(report_date as date) <= ?
+        )
+        select
+          cast(market_value as double) as market_value,
+          maturity_date,
+          cast(coupon_rate as double) as coupon_rate
+        from fact_formal_bond_analytics_daily, latest
+        where try_cast(fact_formal_bond_analytics_daily.report_date as date) = latest.report_date
+          and coalesce(cast(market_value as double), 0) > 0
+        limit 5000
+        """,
+        [report_date],
+    ).fetchdf()
     if frame.empty:
         return []
     positions: list[dict[str, object]] = []
@@ -1419,6 +1520,27 @@ def load_latest_bond_positions(
             }
         )
     return positions
+
+
+def load_macro_capability_context(
+    duckdb_path: str | Path,
+    report_date: date,
+) -> tuple[list[dict[str, object]], dict[str, object] | None, list[dict[str, object]]]:
+    path = Path(duckdb_path)
+    conn: duckdb.DuckDBPyConnection | None = None
+    if path.exists():
+        try:
+            conn = duckdb.connect(str(path), read_only=True)
+        except duckdb.Error:
+            conn = None
+    try:
+        curve_rows = _load_macro_curve_rows_from_conn(conn, duckdb_path, report_date)
+        risk_tensor = _load_latest_risk_tensor_row_from_conn(conn, report_date, path)
+        positions = _load_latest_bond_positions_from_conn(conn, report_date)
+        return curve_rows, risk_tensor, positions
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def _merge_a_share_universe(
@@ -2655,3 +2777,93 @@ def _duckdb_table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bo
     except duckdb.Error:
         return False
     return bool(row and row[0])
+
+
+def _duckdb_date_column_is_canonical_iso(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    column_name: str,
+    *,
+    database_path: str | Path | None = None,
+) -> bool:
+    if (table_name, column_name) not in _CANONICAL_ISO_DATE_COLUMNS:
+        raise ValueError(f"unsupported date column: {table_name}.{column_name}")
+    cache_key = _duckdb_date_column_cache_key(database_path, table_name, column_name)
+    if cache_key is None:
+        return _probe_duckdb_date_column_is_canonical_iso(conn, table_name, column_name)
+
+    with _CANONICAL_ISO_DATE_CACHE_LOCK:
+        if cache_key in _CANONICAL_ISO_DATE_CACHE:
+            return _CANONICAL_ISO_DATE_CACHE[cache_key]
+        probe_lock = _CANONICAL_ISO_DATE_PROBE_LOCKS.setdefault(
+            cache_key,
+            threading.Lock(),
+        )
+
+    with probe_lock:
+        with _CANONICAL_ISO_DATE_CACHE_LOCK:
+            if cache_key in _CANONICAL_ISO_DATE_CACHE:
+                return _CANONICAL_ISO_DATE_CACHE[cache_key]
+        try:
+            result = _probe_duckdb_date_column_is_canonical_iso(
+                conn,
+                table_name,
+                column_name,
+            )
+        except Exception:
+            with _CANONICAL_ISO_DATE_CACHE_LOCK:
+                if _CANONICAL_ISO_DATE_PROBE_LOCKS.get(cache_key) is probe_lock:
+                    _CANONICAL_ISO_DATE_PROBE_LOCKS.pop(cache_key, None)
+            raise
+        with _CANONICAL_ISO_DATE_CACHE_LOCK:
+            _CANONICAL_ISO_DATE_CACHE[cache_key] = result
+            while len(_CANONICAL_ISO_DATE_CACHE) > _CANONICAL_ISO_DATE_CACHE_MAX_ENTRIES:
+                oldest_key = next(iter(_CANONICAL_ISO_DATE_CACHE))
+                _CANONICAL_ISO_DATE_CACHE.pop(oldest_key, None)
+            if _CANONICAL_ISO_DATE_PROBE_LOCKS.get(cache_key) is probe_lock:
+                _CANONICAL_ISO_DATE_PROBE_LOCKS.pop(cache_key, None)
+        return result
+
+
+def _duckdb_date_column_cache_key(
+    database_path: str | Path | None,
+    table_name: str,
+    column_name: str,
+) -> _DateColumnCacheKey | None:
+    if database_path is None:
+        return None
+    try:
+        resolved_path = Path(database_path).resolve(strict=True)
+        stat = resolved_path.stat()
+    except OSError:
+        return None
+    return (
+        os.path.normcase(str(resolved_path)),
+        stat.st_mtime_ns,
+        stat.st_size,
+        table_name,
+        column_name,
+    )
+
+
+def _probe_duckdb_date_column_is_canonical_iso(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    column_name: str,
+) -> bool:
+    row = conn.execute(
+        f"""
+        select 1
+        from (
+          select
+            {column_name} as raw_date,
+            try_cast({column_name} as date) as parsed_date
+          from {table_name}
+          where {column_name} is not null
+        ) dates
+        where parsed_date is null
+           or cast(parsed_date as varchar) != raw_date
+        limit 1
+        """
+    ).fetchone()
+    return row is None

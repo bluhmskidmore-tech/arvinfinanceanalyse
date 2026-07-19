@@ -349,6 +349,45 @@ def test_home_snapshot_cache_invalidates_when_governance_manifest_changes(
     assert second["result"]["tag"] == "v2"
 
 
+def test_home_income_trend_prewarm_entries_preserve_flag_and_thread_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    disabled = SimpleNamespace(home_income_trend_prewarm_enabled=False)
+    with patch.object(es, "_warm_home_income_trend_cache_quietly") as mock_warm:
+        assert es.warm_home_income_trend_cache_if_configured(disabled) is False
+        assert es.warm_home_income_trend_cache_in_current_thread_if_configured(disabled) is False
+    mock_warm.assert_not_called()
+
+    started: list[tuple[object, dict[str, object]]] = []
+
+    class FakeThread:
+        def __init__(self, *, target, kwargs=None, daemon=False, name=""):
+            started.append((target, {"kwargs": kwargs or {}, "daemon": daemon, "name": name}))
+
+        def start(self):
+            started.append(("start", {}))
+
+    monkeypatch.setattr(es.threading, "Thread", FakeThread)
+    enabled = SimpleNamespace(home_income_trend_prewarm_enabled=True)
+
+    assert es.warm_home_income_trend_cache_if_configured(enabled) is True
+    assert started == [
+        (
+            es._warm_home_income_trend_cache_quietly,
+            {
+                "kwargs": {"report_date": None, "window": 7},
+                "daemon": True,
+                "name": "moss-home-income-trend-warmup",
+            },
+        ),
+        ("start", {}),
+    ]
+
+    with patch.object(es, "_warm_home_income_trend_cache_quietly") as mock_warm:
+        assert es.warm_home_income_trend_cache_in_current_thread_if_configured(enabled) is True
+    mock_warm.assert_called_once_with(report_date=None, window=7)
+
+
 def test_home_snapshot_prewarm_can_be_disabled() -> None:
     class Settings:
         home_snapshot_prewarm_enabled = False

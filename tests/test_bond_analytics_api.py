@@ -40,6 +40,74 @@ def _perf_records(caplog, endpoint: str):
     ]
 
 
+def test_log_api_perf_message_includes_basic_formatter_fields(monkeypatch, caplog):
+    perf_logging = load_module("backend.app.api.perf_logging", "backend/app/api/perf_logging.py")
+    monkeypatch.setattr(perf_logging.time, "perf_counter", lambda: 12.345)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        payload = perf_logging.log_api_perf(
+            endpoint="/test/perf",
+            started_at=12.0,
+            payload={"result_meta": {"trace_id": "trace-123", "result_kind": "test.kind"}},
+            duckdb_statement_count=7,
+        )
+
+    record = caplog.records[-1]
+    assert payload["result_meta"]["trace_id"] == "trace-123"
+    assert (
+        record.getMessage()
+        == 'moss_api_perf endpoint="/test/perf" duration_ms=345.0 '
+        'trace_id="trace-123" result_kind="test.kind" duckdb_statement_count=7'
+    )
+    assert record.endpoint == "/test/perf"
+    assert record.duration_ms == 345.0
+    assert record.trace_id == "trace-123"
+    assert record.result_kind == "test.kind"
+    assert record.duckdb_statement_count == 7
+
+
+def test_log_api_perf_message_quotes_spaces_and_distinguishes_empty_from_none(monkeypatch, caplog):
+    perf_logging = load_module("backend.app.api.perf_logging", "backend/app/api/perf_logging.py")
+    monkeypatch.setattr(perf_logging.time, "perf_counter", lambda: 12.345)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        perf_logging.log_api_perf(
+            endpoint="/test perf",
+            started_at=12.0,
+            payload={"result_meta": {"trace_id": "trace 123", "result_kind": ""}},
+            duckdb_statement_count=None,
+        )
+
+    assert (
+        caplog.records[-1].getMessage()
+        == 'moss_api_perf endpoint="/test perf" duration_ms=345.0 '
+        'trace_id="trace 123" result_kind="" duckdb_statement_count=null'
+    )
+
+
+def test_log_api_perf_skips_message_encoding_when_info_disabled(monkeypatch, caplog):
+    perf_logging = load_module("backend.app.api.perf_logging", "backend/app/api/perf_logging.py")
+    payload = {"result_meta": {"trace_id": "trace-disabled", "result_kind": "test.disabled"}}
+    encoded_values = []
+
+    monkeypatch.setattr(
+        perf_logging.json,
+        "dumps",
+        lambda *args, **kwargs: encoded_values.append((args, kwargs)) or '"encoded"',
+    )
+    with caplog.at_level(logging.WARNING, logger="backend.app.api.perf"):
+        returned = perf_logging.log_api_perf(
+            endpoint="/test/disabled",
+            started_at=12.0,
+            payload=payload,
+            duckdb_statement_count=7,
+        )
+
+    assert returned is payload
+    assert encoded_values == []
+    assert not any(record.name == "backend.app.api.perf" for record in caplog.records)
+
+
 _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
     (
         "/api/bond-analytics/dates",

@@ -19,7 +19,17 @@ T = TypeVar("T")
 CacheBuildStatus = Literal["produce", "wait", "hit"]
 
 DEFAULT_TTL_SECONDS = 300.0
+DEFAULT_WAIT_TIMEOUT_SECONDS = 120.0
 _TTL_ENV_VAR = "MOSS_MARKET_HOME_CACHE_TTL_SECONDS"
+
+
+class CacheBuildTimeoutError(TimeoutError):
+    """Raised when a caller waits too long for an in-flight cache build."""
+
+    def __init__(self, key: object, wait_timeout_seconds: float) -> None:
+        super().__init__(
+            f"timed out after {wait_timeout_seconds:g}s waiting for cache build: {key!r}"
+        )
 
 
 class _InFlightBuild:
@@ -49,9 +59,11 @@ class TTLResponseCache:
         *,
         default_ttl_seconds: float = DEFAULT_TTL_SECONDS,
         clock: Callable[[], float] = time.monotonic,
+        wait_timeout_seconds: float = DEFAULT_WAIT_TIMEOUT_SECONDS,
     ) -> None:
         self._default_ttl = default_ttl_seconds
         self._clock = clock
+        self._wait_timeout_seconds = wait_timeout_seconds
         self._lock = threading.Lock()
         self._store: dict[str, tuple[float, object]] = {}
         self._inflight: dict[str, _InFlightBuild] = {}
@@ -81,7 +93,8 @@ class TTLResponseCache:
                 should_build = False
 
         if not should_build:
-            inflight.event.wait()
+            if not inflight.event.wait(timeout=self._wait_timeout_seconds):
+                raise CacheBuildTimeoutError(key, self._wait_timeout_seconds)
             if inflight.error is not None:
                 raise inflight.error
             return cast(T, inflight.value)
@@ -134,7 +147,8 @@ class TTLResponseCache:
                 should_build = False
 
         if not should_build:
-            inflight.event.wait()
+            if not inflight.event.wait(timeout=self._wait_timeout_seconds):
+                raise CacheBuildTimeoutError(key, self._wait_timeout_seconds)
             if inflight.error is not None:
                 raise inflight.error
             return cast(T, inflight.value), "wait"

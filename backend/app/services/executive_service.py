@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
-import hashlib
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -3625,6 +3625,13 @@ def warm_home_income_trend_cache_if_configured(settings: object) -> bool:
         name="moss-home-income-trend-warmup",
     )
     thread.start()
+    return True
+
+
+def warm_home_income_trend_cache_in_current_thread_if_configured(settings: object) -> bool:
+    if not bool(getattr(settings, "home_income_trend_prewarm_enabled", False)):
+        return False
+    _warm_home_income_trend_cache_quietly(report_date=None, window=7)
     return True
 
 

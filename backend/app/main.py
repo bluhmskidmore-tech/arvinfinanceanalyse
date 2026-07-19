@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from backend.app.governance.settings import get_settings
@@ -14,11 +15,13 @@ validate_auth_startup_guardrails(_settings)
 from backend.app.api import router as api_router  # noqa: E402
 from backend.app.observability import setup_opentelemetry  # noqa: E402
 from backend.app.services.executive_service import (  # noqa: E402
+    warm_home_income_trend_cache_in_current_thread_if_configured,
     warm_home_snapshot_cache_blocking_if_configured,
-    warm_home_income_trend_cache_if_configured,
 )
 from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured  # noqa: E402
-from backend.app.services.market_home_warmup_service import warm_market_home_cache_if_configured  # noqa: E402
+from backend.app.services.market_home_warmup_service import (  # noqa: E402
+    warm_market_home_cache_in_current_thread_if_configured,
+)
 from backend.app.storage_bootstrap import run_startup_storage_migrations  # noqa: E402
 
 if not logging.getLogger().handlers:
@@ -29,6 +32,27 @@ if not logging.getLogger().handlers:
 logging.getLogger("backend.app.services.executive_service").setLevel(logging.INFO)
 
 
+def warm_home_background_caches_if_configured(settings: object) -> bool:
+    if not (
+        bool(getattr(settings, "home_income_trend_prewarm_enabled", False))
+        or bool(getattr(settings, "market_home_prewarm_enabled", False))
+    ):
+        return False
+    thread = threading.Thread(
+        target=_warm_home_background_caches_quietly,
+        args=(settings,),
+        daemon=True,
+        name="moss-home-background-warmup",
+    )
+    thread.start()
+    return True
+
+
+def _warm_home_background_caches_quietly(settings: object) -> None:
+    warm_home_income_trend_cache_in_current_thread_if_configured(settings)
+    warm_market_home_cache_in_current_thread_if_configured(settings)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Blocking Postgres/DuckDB bootstrap off the event loop (Windows uvicorn + sync
@@ -37,8 +61,7 @@ async def lifespan(_app: FastAPI):
     settings = get_settings()
     warm_hermes_bridge_if_configured(settings)
     await asyncio.to_thread(warm_home_snapshot_cache_blocking_if_configured, settings)
-    warm_home_income_trend_cache_if_configured(settings)
-    warm_market_home_cache_if_configured(settings)
+    warm_home_background_caches_if_configured(settings)
     yield
 
 

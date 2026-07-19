@@ -385,6 +385,7 @@ async function sampleHome(page, baseUrl) {
     "/assets/WorkbenchShellMarketTicker-",
     "/assets/workbenchShellTicker-",
   ];
+  const antdVendorNeedles = ["/assets/antd-vendor-"];
 
   const ready = {
     page: await page.locator('[data-testid="dashboard-home-page"]').count(),
@@ -406,6 +407,7 @@ async function sampleHome(page, baseUrl) {
     marketTickerMockChunk: countAny(initialUrls, marketTickerMockNeedles),
     firstScreenMockChunk: countAny(initialUrls, firstScreenMockNeedles),
     workbenchShellMarketTickerChunk: countAny(initialUrls, workbenchShellMarketTickerNeedles),
+    antdVendorChunk: countAny(initialUrls, antdVendorNeedles),
     echarts: countAny(initialUrls, echartsNeedles),
     fullDashboardHomeStylesheet: countAny(initialUrls, fullDashboardHomeStyleNeedles),
     firstScreenHomeStylesheet: countAny(initialUrls, firstScreenHomeStyleNeedles),
@@ -425,6 +427,7 @@ async function sampleHome(page, baseUrl) {
     marketTickerMockChunk: countAny(allUrls, marketTickerMockNeedles),
     firstScreenMockChunk: countAny(allUrls, firstScreenMockNeedles),
     workbenchShellMarketTickerChunk: countAny(allUrls, workbenchShellMarketTickerNeedles),
+    antdVendorChunk: countAny(allUrls, antdVendorNeedles),
     fullDashboardHomeStylesheet: countAny(allUrls, fullDashboardHomeStyleNeedles),
     failedResponses: failOnUnexpectedResponses("home", responseLog),
   };
@@ -471,6 +474,11 @@ async function sampleHome(page, baseUrl) {
   }
   if (initialCounts.echarts !== 0) {
     addFailure(`ECharts should stay out of the first-screen window, got ${initialCounts.echarts}`);
+  }
+  if (initialCounts.antdVendorChunk !== 0) {
+    addFailure(
+      `Ant Design should stay out of the first-screen window, got ${initialCounts.antdVendorChunk}`,
+    );
   }
   if (initialCounts.fullDashboardHomeStylesheet !== 0) {
     addFailure(
@@ -522,6 +530,11 @@ async function sampleHome(page, baseUrl) {
       `home should not load the first-screen mock view chunk, got ${allCounts.firstScreenMockChunk}`,
     );
   }
+  if (allCounts.antdVendorChunk !== 0) {
+    addFailure(
+      `home should not load the Ant Design vendor chunk, got ${allCounts.antdVendorChunk}`,
+    );
+  }
 
   return {
     route: "/",
@@ -563,6 +576,7 @@ async function sampleNonHomeShell(page, baseUrl) {
   const initialCounts = {
     institutionalStylesheet: countAny(initialUrls, ["/assets/workbenchInstitutionalConsole-"]),
     workbenchChromeStylesheet: countAny(initialUrls, ["/assets/workbenchDeferredChrome-"]),
+    antdVendorChunk: countAny(initialUrls, ["/assets/antd-vendor-"]),
   };
   const failedResponses = failOnUnexpectedResponses("cross-asset", responseLog);
   const allCounts = {
@@ -572,6 +586,7 @@ async function sampleNonHomeShell(page, baseUrl) {
       "/assets/WorkbenchShellMarketTicker-",
       "/assets/workbenchShellTicker-",
     ]),
+    antdVendorChunk: countAny(allUrls, ["/assets/antd-vendor-"]),
     failedResponses,
   };
 
@@ -586,6 +601,11 @@ async function sampleNonHomeShell(page, baseUrl) {
   if (initialCounts.workbenchChromeStylesheet < 1) {
     addFailure(
       `cross-asset workbench chrome stylesheet did not load in the first-screen window, got ${initialCounts.workbenchChromeStylesheet}.`,
+    );
+  }
+  if (initialCounts.antdVendorChunk < 1) {
+    addFailure(
+      `cross-asset Ant Design vendor chunk should load in the first-screen window, got ${initialCounts.antdVendorChunk}.`,
     );
   }
   if (allCounts.workbenchShellMarketTickerChunk < 1) {
