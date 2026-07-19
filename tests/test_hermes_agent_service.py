@@ -114,6 +114,150 @@ def test_build_hermes_bridge_command_uses_wsl_env_and_repo_script():
     assert args[args.index("--toolsets") + 1] == "evidence,query,research"
 
 
+class _FakeBridgeProcess:
+    def __init__(self, *, poll_result=None):
+        self.poll_result = poll_result
+        self.events = []
+
+    def poll(self):
+        return self.poll_result
+
+    def terminate(self):
+        self.events.append("terminate")
+
+    def wait(self, timeout):
+        self.events.append(("wait", timeout))
+        return self.poll_result
+
+    def kill(self):
+        self.events.append("kill")
+
+
+def _bridge_config(**overrides):
+    values = {
+        "command": "wsl.exe",
+        "wsl_distro": "HermesUbuntu",
+        "hermes_home": "/home/hermes/.hermes-moss",
+        "bridge_url": "http://127.0.0.1:7891",
+        "model": "gpt-test",
+        "toolsets": "evidence,query,research",
+        "max_turns": 20,
+    }
+    values.update(overrides)
+    return service.HermesBridgeConfig(**values)
+
+
+def _ensure_bridge(config):
+    service._ensure_hermes_bridge(
+        command=config.command,
+        wsl_distro=config.wsl_distro,
+        hermes_home=config.hermes_home,
+        bridge_url=config.bridge_url,
+        model=config.model,
+        toolsets=config.toolsets,
+        max_turns=config.max_turns,
+        timeout_seconds=1.0,
+    )
+
+
+def test_ensure_hermes_bridge_reuses_healthy_managed_process_with_same_config(monkeypatch):
+    config = _bridge_config()
+    process = _FakeBridgeProcess()
+    monkeypatch.setattr(service, "_HERMES_BRIDGE_PROCESS", process)
+    monkeypatch.setattr(service, "_HERMES_BRIDGE_CONFIG", config)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(
+        service.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("managed bridge should be reused")
+        ),
+    )
+
+    _ensure_bridge(config)
+
+    assert process.events == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("bridge_url", "http://127.0.0.1:7999"),
+        ("model", "gpt-next"),
+        ("toolsets", "evidence"),
+        ("max_turns", 30),
+    ],
+)
+def test_ensure_hermes_bridge_restarts_managed_process_when_config_changes(
+    field,
+    value,
+    monkeypatch,
+    tmp_path,
+):
+    previous_config = _bridge_config()
+    next_config = _bridge_config(**{field: value})
+    previous_process = _FakeBridgeProcess()
+    next_process = _FakeBridgeProcess()
+    popen_calls = []
+
+    def fake_popen(args, **kwargs):
+        popen_calls.append((args, kwargs))
+        return next_process
+
+    monkeypatch.setattr(service, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(service, "_HERMES_BRIDGE_PROCESS", previous_process)
+    monkeypatch.setattr(service, "_HERMES_BRIDGE_CONFIG", previous_config)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(service.subprocess, "Popen", fake_popen)
+
+    _ensure_bridge(next_config)
+
+    assert previous_process.events == ["terminate", ("wait", 2)]
+    assert len(popen_calls) == 1
+    assert service._HERMES_BRIDGE_PROCESS is next_process
+    assert service._HERMES_BRIDGE_CONFIG == next_config
+
+
+def test_ensure_hermes_bridge_does_not_manage_external_healthy_bridge(monkeypatch):
+    config = _bridge_config()
+    monkeypatch.setattr(service, "_HERMES_BRIDGE_PROCESS", None)
+    monkeypatch.setattr(service, "_HERMES_BRIDGE_CONFIG", None, raising=False)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(
+        service.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("external bridge should not be replaced")
+        ),
+    )
+
+    _ensure_bridge(config)
+
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
+
+
+def test_ensure_hermes_bridge_clears_config_for_exited_managed_process(monkeypatch):
+    config = _bridge_config()
+    process = _FakeBridgeProcess(poll_result=0)
+    monkeypatch.setattr(service, "_HERMES_BRIDGE_PROCESS", process)
+    monkeypatch.setattr(service, "_HERMES_BRIDGE_CONFIG", config)
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(
+        service.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("healthy external bridge should be reused")
+        ),
+    )
+
+    _ensure_bridge(config)
+
+    assert process.events == []
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
+
+
 def test_run_hermes_agent_uses_bridge_transport(monkeypatch):
     calls = []
 

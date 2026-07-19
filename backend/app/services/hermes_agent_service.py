@@ -8,6 +8,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,7 +28,21 @@ from backend.app.repositories.governance_repo import GovernanceRepository
 
 RULE_VERSION = "rv_agent_hermes_v1"
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+@dataclass(frozen=True)
+class HermesBridgeConfig:
+    command: str
+    wsl_distro: str
+    hermes_home: str
+    bridge_url: str
+    model: str
+    toolsets: str
+    max_turns: int
+
+
 _HERMES_BRIDGE_PROCESS: subprocess.Popen | None = None
+_HERMES_BRIDGE_CONFIG: HermesBridgeConfig | None = None
 _HERMES_BRIDGE_LOCK = threading.Lock()
 _LOCAL_OPEN_CHAT_EXACT = {
     "?",
@@ -337,25 +352,51 @@ def _ensure_hermes_bridge(
     max_turns: int,
     timeout_seconds: float,
 ) -> None:
-    if _hermes_bridge_healthy(bridge_url):
-        return
+    requested_config = HermesBridgeConfig(
+        command=command,
+        wsl_distro=wsl_distro,
+        hermes_home=hermes_home,
+        bridge_url=bridge_url,
+        model=model,
+        toolsets=_normalize_toolsets(toolsets),
+        max_turns=max(max_turns, 1),
+    )
 
     with _HERMES_BRIDGE_LOCK:
-        if _hermes_bridge_healthy(bridge_url):
-            return
+        global _HERMES_BRIDGE_CONFIG, _HERMES_BRIDGE_PROCESS
 
-        global _HERMES_BRIDGE_PROCESS
-        if _HERMES_BRIDGE_PROCESS is not None and _HERMES_BRIDGE_PROCESS.poll() is None:
-            pass
+        managed_process = _HERMES_BRIDGE_PROCESS
+        restart_managed = False
+        if managed_process is not None and managed_process.poll() is not None:
+            _HERMES_BRIDGE_PROCESS = None
+            _HERMES_BRIDGE_CONFIG = None
+            managed_process = None
+        elif managed_process is not None and _HERMES_BRIDGE_CONFIG != requested_config:
+            managed_process.terminate()
+            try:
+                managed_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                managed_process.kill()
+                managed_process.wait(timeout=2)
+            _HERMES_BRIDGE_PROCESS = None
+            _HERMES_BRIDGE_CONFIG = None
+            managed_process = None
+            restart_managed = True
+
+        if managed_process is not None:
+            if _hermes_bridge_healthy(requested_config.bridge_url):
+                return
         else:
+            if not restart_managed and _hermes_bridge_healthy(requested_config.bridge_url):
+                return
             args = _build_hermes_bridge_command(
-                command=command,
-                wsl_distro=wsl_distro,
-                hermes_home=hermes_home,
-                bridge_url=bridge_url,
-                model=model,
-                toolsets=toolsets,
-                max_turns=max_turns,
+                command=requested_config.command,
+                wsl_distro=requested_config.wsl_distro,
+                hermes_home=requested_config.hermes_home,
+                bridge_url=requested_config.bridge_url,
+                model=requested_config.model,
+                toolsets=requested_config.toolsets,
+                max_turns=requested_config.max_turns,
             )
             log_dir = _REPO_ROOT / "tmp-governance" / "runtime-clean" / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -366,18 +407,25 @@ def _ensure_hermes_bridge(
                 cwd=str(_REPO_ROOT),
                 stdout=stdout,
                 stderr=stderr,
-                env=_build_hermes_subprocess_env(hermes_home if not _is_wsl_command(command) else ""),
+                env=_build_hermes_subprocess_env(
+                    requested_config.hermes_home
+                    if not _is_wsl_command(requested_config.command)
+                    else ""
+                ),
             )
+            _HERMES_BRIDGE_CONFIG = requested_config
 
         deadline = time.monotonic() + min(max(timeout_seconds, 1.0), 30.0)
         while time.monotonic() < deadline:
-            if _hermes_bridge_healthy(bridge_url):
+            if _hermes_bridge_healthy(requested_config.bridge_url):
                 return
             if _HERMES_BRIDGE_PROCESS is not None and _HERMES_BRIDGE_PROCESS.poll() is not None:
+                _HERMES_BRIDGE_PROCESS = None
+                _HERMES_BRIDGE_CONFIG = None
                 raise RuntimeError("Hermes bridge exited before it became ready.")
             time.sleep(0.25)
 
-    raise RuntimeError(f"Hermes bridge did not become ready at {bridge_url}")
+    raise RuntimeError(f"Hermes bridge did not become ready at {requested_config.bridge_url}")
 
 
 def _post_hermes_bridge_query(
