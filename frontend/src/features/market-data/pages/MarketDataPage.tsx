@@ -410,6 +410,7 @@ export default function MarketDataPage() {
   const [linkageCollapseExpanded, setLinkageCollapseExpanded] = useState(false);
   const lazyExtended = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
   const lazySupplementary = useLazyMount({ rootMargin: "300px", fallbackDelayMs: 0 });
+  const lazyLivermore = useLazyMount({ rootMargin: "400px", fallbackDelayMs: 2000 });
   const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
   const [viewMode] = useState<"default" | "compact">("default");
   const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
@@ -438,64 +439,60 @@ export default function MarketDataPage() {
     ncdFundingProxy,
     refreshGateSupplement,
   } = useMarketDataPageData({
-    livermoreEnabled: true,
+    // Defer the heavy Livermore strategy payload until the section approaches the viewport.
+    livermoreEnabled: lazyLivermore.shouldMount,
     linkageEnabled: linkageFetchEnabled,
   });
+  // Warm-only queries: refresh still refetches them, but they must not fire on first paint.
+  const deferredWarmQueryOptions = {
+    enabled: false,
+    retry: false as const,
+    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+  };
   const livermoreSignalConfluenceQuery = useQuery({
     queryKey: ["market-data", "livermore-signal-confluence", client.mode, watchDate],
     queryFn: () => client.getLivermoreSignalConfluence({ asOfDate: watchDate }),
-    enabled: Boolean(watchDate),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const livermoreStrategyScoreQuery = useQuery({
     queryKey: ["market-data", "livermore-strategy-score", client.mode],
     queryFn: () => client.getLivermoreStrategyScore(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const livermoreSectorRankSeriesQuery = useQuery({
     queryKey: ["market-data", "livermore-sector-rank-series", client.mode, watchDate],
     queryFn: () => client.getLivermoreSectorRankSeries({ asOfDate: watchDate, topK: 5 }),
-    enabled: Boolean(watchDate),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const livermoreCandidateHistoryQuery = useQuery({
     queryKey: ["market-data", "livermore-candidate-history", client.mode],
     queryFn: () => client.getLivermoreCandidateHistory({ limit: 40 }),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const livermoreStrategyOptimizationQuery = useQuery({
     queryKey: ["market-data", "livermore-strategy-optimization", client.mode],
     queryFn: () => client.getLivermoreStrategyOptimization(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const livermoreCycleProxyBacktestQuery = useQuery({
     queryKey: ["market-data", "livermore-cycle-proxy-backtest", client.mode],
     queryFn: () => client.getLivermoreCycleProxyBacktest(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const livermorePortfolioBacktestQuery = useQuery({
     queryKey: ["market-data", "livermore-portfolio-backtest", client.mode],
     queryFn: () => client.getLivermoreCandidateHistoryPortfolioBacktest(),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const tushareSupplementQuery = useQuery({
     queryKey: ["market-data", "tushare-supplement", client.mode],
     queryFn: () => client.getTushareSupplement({ moneySupplyLimit: 12, ecoCalLimit: 30 }),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const macroToolkitAnalysisQuery = useQuery({
     queryKey: ["market-data", "macro-toolkit-analysis-core", client.mode],
     queryFn: () => client.getMacroToolkitAnalysis({ detail: "core" }),
-    retry: false,
-    ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...deferredWarmQueryOptions,
   });
   const {
     catalog,
@@ -1144,19 +1141,21 @@ export default function MarketDataPage() {
               )}
             </div>
 
-            <MarketDataLivermoreSection
-              model={livermoreStrategy}
-              isLoading={livermoreStrategyQuery.isLoading}
-              isError={livermoreStrategyQuery.isError}
-              fetchErrorDetail={
-                livermoreStrategyQuery.error instanceof Error
-                  ? livermoreStrategyQuery.error.message
-                  : null
-              }
-              onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
-              onRefreshGateSupplement={refreshGateSupplement}
-              onExpandedChange={setLivermoreExpanded}
-            />
+            <div ref={lazyLivermore.ref} data-lazy-mount="livermore-section">
+              <MarketDataLivermoreSection
+                model={livermoreStrategy}
+                isLoading={livermoreStrategyQuery.isLoading}
+                isError={livermoreStrategyQuery.isError}
+                fetchErrorDetail={
+                  livermoreStrategyQuery.error instanceof Error
+                    ? livermoreStrategyQuery.error.message
+                    : null
+                }
+                onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
+                onRefreshGateSupplement={refreshGateSupplement}
+                onExpandedChange={setLivermoreExpanded}
+              />
+            </div>
 
             <MarketDataLinkageSection
               macroBondLinkageQuery={macroBondLinkageQuery}

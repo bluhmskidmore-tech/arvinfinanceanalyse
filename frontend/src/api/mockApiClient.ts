@@ -15,7 +15,7 @@ import { createDemoExecutiveClient } from "./executiveClient";
 import { createDemoHealthClient } from "./healthClient";
 import { createDemoLiabilityAdbClient } from "./liabilityAdbClient";
 import { createMockPnlBusinessClient } from "./pnlClient";
-import { createDemoPnlCoreClient } from "./pnlCoreClient";
+import { createDemoPnlCoreClient } from "./pnlCoreMockClient";
 import { createDemoPnlAttributionClient } from "./pnlAttributionMockClient";
 import { createDemoProductCategoryClient } from "./productCategoryClient";
 import { createDemoQdbGlMonthlyAnalysisClient } from "./qdbGlMonthlyAnalysisClient";

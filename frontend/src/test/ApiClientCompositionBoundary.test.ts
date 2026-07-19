@@ -1906,9 +1906,10 @@ describe("ApiClient composition boundary", () => {
     expect(cashflowClientSource).not.toContain("/api/positions/");
   });
 
-  it("requires pnlCoreClient.ts to own PnL core API implementations", () => {
-    expect(pnlCoreClientSource).toContain("createDemoPnlCoreClient");
+  it("requires pnlCoreClient.ts to own real PnL core API implementations", () => {
     expect(pnlCoreClientSource).toContain("createRealPnlCoreClient");
+    expect(pnlCoreClientSource).not.toContain("createDemoPnlCoreClient");
+    expect(pnlCoreClientSource).not.toContain("../mocks/");
     expect(pnlCoreClientSource).toContain("/api/pnl/dates");
     expect(pnlCoreClientSource).toContain("/api/pnl/data");
     expect(pnlCoreClientSource).toContain("/api/pnl/overview");
@@ -1923,33 +1924,41 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).toContain("/api/pnl/bridge");
     expect(pnlCoreClientSource).toContain("/api/data/refresh_pnl");
     expect(pnlCoreClientSource).toContain("/api/data/import_status/pnl");
-    expect(pnlCoreClientSource).toContain("pnl.dates");
-    expect(pnlCoreClientSource).toContain("pnl.data");
-    expect(pnlCoreClientSource).toContain("pnl.overview");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.dates");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.data");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.summary");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.analysis");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.account_detail");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.formal_financial_indicator_source_contract");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.candidate_financial_indicators");
-    expect(pnlCoreClientSource).toContain("pnl.bridge");
-    expect(pnlCoreClientSource).toMatch(/async getFormalPnlDates\(/);
-    expect(pnlCoreClientSource).toMatch(/async getFormalPnlData\(/);
-    expect(pnlCoreClientSource).toMatch(/async getFormalPnlOverview\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlDates\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlData\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlSummary\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlAnalysis\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlAccountDetail\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlCandidateFinancialIndicators\(/);
     expect(pnlCoreClientSource).toContain("revalidateLedgerPnlCandidateFinancialIndicators");
-    expect(pnlCoreClientSource).toMatch(/async getPnlBridge\(/);
-    expect(pnlCoreClientSource).toMatch(/async refreshFormalPnl\(/);
-    expect(pnlCoreClientSource).toMatch(/async getFormalPnlImportStatus\(/);
     expect(pnlCoreClientSource).not.toContain("/api/pnl-attribution/");
     expect(pnlCoreClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
+  });
+
+  it("keeps pnl core demo factory in pnlCoreMockClient.ts", () => {
+    const pnlCoreMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/pnlCoreMockClient.ts"),
+      "utf8",
+    );
+    expect(pnlCoreMockClientSource).toContain("createDemoPnlCoreClient");
+    expect(pnlCoreMockClientSource).toContain("pnl.dates");
+    expect(pnlCoreMockClientSource).toContain("pnl.data");
+    expect(pnlCoreMockClientSource).toContain("pnl.overview");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.dates");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.data");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.summary");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.analysis");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.account_detail");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.formal_financial_indicator_source_contract");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.candidate_financial_indicators");
+    expect(pnlCoreMockClientSource).toContain("pnl.bridge");
+    expect(pnlCoreMockClientSource).toMatch(/async getFormalPnlDates\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getFormalPnlData\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getFormalPnlOverview\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlDates\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlData\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlSummary\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlAnalysis\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlAccountDetail\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlCandidateFinancialIndicators\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getPnlBridge\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async refreshFormalPnl\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getFormalPnlImportStatus\(/);
   });
 
   it("requires pnlAttributionClient.ts to own real PnL attribution API implementations", () => {

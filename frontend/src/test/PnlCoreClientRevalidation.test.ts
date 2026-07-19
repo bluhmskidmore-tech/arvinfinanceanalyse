@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  createDemoPnlCoreClient,
   createRealPnlCoreClient,
   type PnlCoreClientFactoryOptions,
 } from "../api/pnlCoreClient";
+import { createDemoPnlCoreClient } from "../api/pnlCoreMockClient";
 
 describe("PnL core candidate revalidation client", () => {
   it("fails explicitly instead of inventing a persisted-looking demo receipt", async () => {
