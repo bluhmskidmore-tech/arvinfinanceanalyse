@@ -1224,6 +1224,21 @@ export const CRISIS_GAP_GROUP_LABELS: Record<CrisisGapGroupKey, string> = {
   other: "其他输入",
 };
 
+export function normalizeInputEvidence(result: MacroToolkitCapabilityResult) {
+  const raw = result.input_evidence ?? result.result.input_evidence;
+  if (!raw) {
+    return null;
+  }
+  const inputs = raw.inputs ?? [];
+  const missingInputs = raw.missing_inputs ?? [];
+  const sources = raw.sources ?? [];
+  const latestDates = raw.latest_dates ?? [];
+  if (!inputs.length && !missingInputs.length && !sources.length && !latestDates.length) {
+    return null;
+  }
+  return { inputs, missingInputs, sources, latestDates };
+}
+
 export function uniqueDisplayParts(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
 }
