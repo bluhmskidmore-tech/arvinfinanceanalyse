@@ -152,15 +152,27 @@ describe("BondDashboard bundle client", () => {
     );
   });
 
-  it("supports the default deferred mock client path without relying on method this binding", async () => {
+  it("preserves the deferred mock client receiver for analytics bundle sections", async () => {
     const client = createDeferredApiClient({ mode: "mock" });
 
     const bundle = await client.fetchBondDashboardBundle("2026-03-31", [
       "headline-kpis",
       "risk-indicators",
-    ]);
+      "top-holdings",
+      "yield-curve-term-structure",
+    ], {
+      analyticsTopN: 10,
+      curveTypes: "treasury,cdb",
+    });
 
     expect(bundle.result.sections["headline-kpis"]?.result.report_date).toBe("2026-03-31");
     expect(bundle.result.sections["risk-indicators"]?.result.report_date).toBe("2026-03-31");
+    expect(
+      bundle.result.sections["top-holdings"]?.result.items[0]?.instrument_code,
+    ).toBe("230210.IB");
+    expect(
+      bundle.result.sections["yield-curve-term-structure"]?.result.report_date,
+    ).toBe("2026-03-31");
+    expect(bundle.result.failed_sections).toEqual([]);
   });
 });

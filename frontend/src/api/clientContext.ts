@@ -261,7 +261,7 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
             return value;
           }
           const method = value as (...methodArgs: unknown[]) => unknown;
-          return method(...args);
+          return Reflect.apply(method, client, args);
         };
       },
     },
