@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import duckdb
 import pandas as pd
@@ -35,22 +35,76 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.security.auth_context import AuthContext
-from backend.app.services.cffex_member_rank_service import materialize_cffex_member_rank
-from backend.app.tasks.choice_stock_materialize import (
-    materialize_choice_stock_factor_snapshot,
-    materialize_choice_stock_inputs,
-)
-from backend.app.tasks.choice_stock_observation_manifest import (
-    append_choice_stock_refresh_completion,
-    build_choice_stock_observation_manifest,
-    verify_choice_stock_daily_observation_landing,
-)
-from backend.app.tasks.choice_stock_theme_overlay_refresh import (
-    ThemeOverlayRefreshMode,
-    refresh_choice_stock_theme_overlay,
-)
-from backend.app.tasks.commodity_daily_ingest import run_commodity_daily_ingest, run_commodity_daily_ingest_task
 from fastapi import BackgroundTasks
+
+# 本地副本，避免模块级 import tasks（commodity_daily_ingest 会 register_actor）。
+ThemeOverlayRefreshMode = Literal["off", "dry_run", "archive"]
+
+
+def materialize_choice_stock_factor_snapshot(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_materialize import (
+        materialize_choice_stock_factor_snapshot as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def materialize_choice_stock_inputs(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_materialize import (
+        materialize_choice_stock_inputs as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def append_choice_stock_refresh_completion(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_observation_manifest import (
+        append_choice_stock_refresh_completion as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def build_choice_stock_observation_manifest(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_observation_manifest import (
+        build_choice_stock_observation_manifest as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def verify_choice_stock_daily_observation_landing(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_observation_manifest import (
+        verify_choice_stock_daily_observation_landing as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def refresh_choice_stock_theme_overlay(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.choice_stock_theme_overlay_refresh import (
+        refresh_choice_stock_theme_overlay as _fn,
+    )
+
+    return _fn(*args, **kwargs)
+
+
+def run_commodity_daily_ingest(*args: object, **kwargs: object) -> object:
+    from backend.app.tasks.commodity_daily_ingest import run_commodity_daily_ingest as _fn
+
+    return _fn(*args, **kwargs)
+
+
+class _RunCommodityDailyIngestTaskProxy:
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.commodity_daily_ingest import (
+            run_commodity_daily_ingest_task as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+
+run_commodity_daily_ingest_task = _RunCommodityDailyIngestTaskProxy()
 
 logger = logging.getLogger(__name__)
 
@@ -399,6 +453,15 @@ def _run_macro_toolkit_chain_unlocked(
         "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
         "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
     }
+
+
+def materialize_cffex_member_rank(*args: object, **kwargs: object) -> object:
+    """延迟导入：避免冷导入本模块时经 cffex_member_rank_service 触达 tasks。"""
+    from backend.app.services.cffex_member_rank_service import (
+        materialize_cffex_member_rank as _materialize,
+    )
+
+    return _materialize(*args, **kwargs)
 
 
 def refresh_cffex_member_rank(

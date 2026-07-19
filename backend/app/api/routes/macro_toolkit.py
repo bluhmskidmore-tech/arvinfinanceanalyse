@@ -74,8 +74,6 @@ from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRA
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.tasks.commodity_daily_ingest import COMMODITY_PRODUCTS
-from backend.app.tasks.macro_backfill import backfill_macro_series
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -127,7 +125,13 @@ _SOURCE_BACKFILL_TARGETS = {
 }
 
 _DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS = macro_toolkit_service.DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS
-_MACRO_COMMODITY_PRODUCT_CODES = frozenset(spec.product_code.upper() for spec in COMMODITY_PRODUCTS)
+
+
+def _macro_commodity_product_codes() -> frozenset[str]:
+    # 延迟导入：commodity_daily_ingest 模块级 register_actor，冷启动不得触达。
+    from backend.app.tasks.commodity_daily_ingest import COMMODITY_PRODUCTS
+
+    return frozenset(spec.product_code.upper() for spec in COMMODITY_PRODUCTS)
 
 _ANALYSIS_INDICATORS = (
     {"key": "hs300", "alias": "sh000300", "label": "沪深300", "unit": "点", "group": "风险资产"},
@@ -846,7 +850,7 @@ def _macro_commodity_refresh_products(products: list[str] | None) -> tuple[str, 
             status_code=400,
             detail="At least one commodity futures product is required.",
         )
-    unknown = tuple(product for product in normalized if product not in _MACRO_COMMODITY_PRODUCT_CODES)
+    unknown = tuple(product for product in normalized if product not in _macro_commodity_product_codes())
     if unknown:
         unknown_labels = ", ".join(product or "<blank>" for product in unknown)
         raise HTTPException(
@@ -1047,6 +1051,8 @@ def _execute_source_backfill(
             "results": {backfill_alias: total_added},
             "errors": payload.get("errors") or {},
         }
+    from backend.app.tasks.macro_backfill import backfill_macro_series
+
     return backfill_macro_series(
         duckdb_path=duckdb_path,
         series_names=[str(target["series_name"])],
