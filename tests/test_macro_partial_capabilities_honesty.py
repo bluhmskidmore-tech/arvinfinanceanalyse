@@ -72,6 +72,7 @@ def test_m8_secondary_spreads_not_zero_filled() -> None:
     assert payload["spreads"]["10Y-5Y"] is None
     assert payload["spreads"]["30Y-10Y"] is None
     assert "SPREAD_10Y_5Y_UNAVAILABLE" in payload["warnings"]
+    assert "SPREAD_30Y_10Y_UNAVAILABLE" in payload["warnings"]
 
 
 def test_m9_marks_missing_aa_and_change_windows() -> None:

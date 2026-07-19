@@ -1508,7 +1508,8 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "deferred": False,
         "missing_aliases": ["M0041813"],
     }
-    # 种子补齐 1Y/3Y/5Y/7Y/10Y/30Y 后 M8 可 complete；其余可算模块多为 degraded。
+    # M8 诚实降级：缺 30Y-10Y 时发 SPREAD_30Y_10Y_UNAVAILABLE 且 degraded（不再静默填 0）。
+    # 本种子补齐 1Y/3Y/5Y/7Y/10Y/30Y 后 M8 可 complete；其余可算模块多为 degraded。
     # 美林/CTA/DCC/风险平价在种子库无足够价格腿时计 unavailable；
     # M12 无可算对照相关腿时诚实计 unavailable（不再 degraded +「常态」）。
     assert data_health["capability_results"] == {
@@ -1609,6 +1610,11 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     }
     assert capability_results["decision_summary"]["headline"]
     assert capability_results["decision_summary"]["status"] in {"complete", "degraded"}
+    yield_curve_shape = capability_results["yield_curve_shape"]
+    assert yield_curve_shape["status"] == "complete"
+    assert yield_curve_shape["result"]["spreads"]["30Y-10Y"] is not None
+    ycs_warnings = yield_curve_shape.get("warnings") or yield_curve_shape["result"].get("warnings") or []
+    assert "SPREAD_30Y_10Y_UNAVAILABLE" not in ycs_warnings
     monetary_policy = capability_results["monetary_policy_stance"]
     policy_inputs = {
         item["field"]: item
