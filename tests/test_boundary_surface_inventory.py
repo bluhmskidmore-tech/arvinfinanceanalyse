@@ -125,6 +125,12 @@ READ_LIKE_POST_SURFACES = {
     ("POST", "backend/app/api/routes/agent.py", "/query", "query_agent"),
     ("POST", "backend/app/api/routes/agent.py", "/runs", "create_agent_run_endpoint"),
     ("POST", "backend/app/api/routes/cube_query.py", "/query", "cube_query"),
+    (
+        "POST",
+        "backend/app/api/routes/ledger_pnl.py",
+        "/ledger-pnl/candidate-financial-indicators/revalidate",
+        "revalidate_candidate_financial_indicators",
+    ),
 }
 
 PUBLIC_OR_ECHO_READ_SURFACES = set(PUBLIC_OR_ECHO_READ_POLICIES)
