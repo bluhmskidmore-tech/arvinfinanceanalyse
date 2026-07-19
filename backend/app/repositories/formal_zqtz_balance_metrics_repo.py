@@ -4,24 +4,11 @@ from dataclasses import dataclass
 
 import duckdb
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
-
-
-def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.tables
-        where table_schema = current_schema()
-          and table_name = ?
-        limit 1
-        """,
-        [table_name],
-    ).fetchone()
-    return row is not None
+from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 
 @dataclass
-class FormalZqtzBalanceMetricsRepository:
+class FormalZqtzBalanceMetricsRepository(DuckDBRepository):
     """
     Read-only aggregates over governed formal balance facts (no snapshot / preview tables).
 
@@ -35,8 +22,7 @@ class FormalZqtzBalanceMetricsRepository:
 
     def list_report_dates(self, *, currency_basis: str = "CNY") -> list[str]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
+            with read_only_connection(self.path) as conn:
                 rows = conn.execute(
                     """
                     select distinct cast(report_date as varchar)
@@ -47,8 +33,6 @@ class FormalZqtzBalanceMetricsRepository:
                     """,
                     [currency_basis],
                 ).fetchall()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         return [str(row[0]) for row in rows]
@@ -60,9 +44,8 @@ class FormalZqtzBalanceMetricsRepository:
         currency_basis: str = "CNY",
     ) -> list[str]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
-                if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists_on_conn(conn, "fact_formal_tyw_balance_daily"):
                     return self.list_report_dates(currency_basis=currency_basis)
                 rows = conn.execute(
                     """
@@ -83,8 +66,6 @@ class FormalZqtzBalanceMetricsRepository:
                     """,
                     [position_scope, currency_basis, position_scope, currency_basis],
                 ).fetchall()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         return [str(row[0]) for row in rows]
@@ -96,8 +77,7 @@ class FormalZqtzBalanceMetricsRepository:
         currency_basis: str = "CNY",
     ) -> dict[str, object] | None:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
+            with read_only_connection(self.path) as conn:
                 row = conn.execute(
                     """
                     select cast(report_date as varchar), coalesce(sum(market_value_amount), 0) as total_market_value_amount
@@ -109,8 +89,6 @@ class FormalZqtzBalanceMetricsRepository:
                     """,
                     [currency_basis, report_date],
                 ).fetchone()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         if row is None:
@@ -127,13 +105,11 @@ class FormalZqtzBalanceMetricsRepository:
         position_scope: str = "asset",
         currency_basis: str = "CNY",
     ) -> dict[str, object] | None:
+        # Use catalog-presence cache so a warm process avoids an extra open solely for
+        # the TYW existence probe before BalanceAnalysisRepository opens its own conn.
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
-                if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
-                    return None
-            finally:
-                conn.close()
+            if not self._table_exists("fact_formal_tyw_balance_daily"):
+                return None
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         overview = BalanceAnalysisRepository(self.path).fetch_formal_overview(
@@ -161,9 +137,8 @@ class FormalZqtzBalanceMetricsRepository:
             return {}
         placeholders = ", ".join(["?"] * len(dates))
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
-                if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists_on_conn(conn, "fact_formal_tyw_balance_daily"):
                     rows = conn.execute(
                         f"""
                         select
@@ -209,8 +184,6 @@ class FormalZqtzBalanceMetricsRepository:
                         """,
                         [position_scope, currency_basis, *dates, position_scope, currency_basis, *dates],
                     ).fetchall()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         return {
@@ -227,8 +200,7 @@ class FormalZqtzBalanceMetricsRepository:
         currency_basis: str = "CNY",
     ) -> dict[str, object] | None:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
-            try:
+            with read_only_connection(self.path) as conn:
                 rows = conn.execute(
                     """
                     select report_date, coalesce(sum(market_value_amount), 0) as total_market_value_amount
@@ -241,8 +213,6 @@ class FormalZqtzBalanceMetricsRepository:
                     """,
                     [currency_basis],
                 ).fetchall()
-            finally:
-                conn.close()
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         if not rows:

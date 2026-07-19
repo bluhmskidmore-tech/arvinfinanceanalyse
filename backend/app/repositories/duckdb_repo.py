@@ -2,12 +2,57 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
+
+# Catalog probes (information_schema lookups) cost tens of milliseconds on large
+# DuckDB files, so presence results are cached per (path, kind, name) and
+# invalidated whenever the database file mtime changes (i.e. after a writer
+# checkpoint). Entries are never returned for a missing/unstattable file.
+_CATALOG_PRESENCE_CACHE: dict[tuple[str, str, str], tuple[int, bool]] = {}
+_CATALOG_PRESENCE_CACHE_LOCK = threading.Lock()
+_CATALOG_PRESENCE_CACHE_MAX_ENTRIES = 4096
+
+
+def catalog_presence_cached(
+    path: str,
+    kind: str,
+    name: str,
+    probe: Callable[[], bool],
+) -> bool:
+    """Return a cached catalog presence result, re-probing when the file changes."""
+    try:
+        mtime_ns = Path(path).stat().st_mtime_ns
+    except OSError:
+        return probe()
+    try:
+        # Un-checkpointed writes live in the WAL; fold its mtime into the cache
+        # stamp so fresh tables/columns are observed before the next checkpoint.
+        mtime_ns = max(mtime_ns, Path(f"{path}.wal").stat().st_mtime_ns)
+    except OSError:
+        pass
+
+    key = (str(path), kind, name)
+    with _CATALOG_PRESENCE_CACHE_LOCK:
+        entry = _CATALOG_PRESENCE_CACHE.get(key)
+        if entry is not None and entry[0] == mtime_ns:
+            return entry[1]
+
+    result = bool(probe())
+    with _CATALOG_PRESENCE_CACHE_LOCK:
+        if len(_CATALOG_PRESENCE_CACHE) >= _CATALOG_PRESENCE_CACHE_MAX_ENTRIES:
+            _CATALOG_PRESENCE_CACHE.clear()
+        _CATALOG_PRESENCE_CACHE[key] = (mtime_ns, result)
+    return result
+
+
+def reset_catalog_presence_cache() -> None:
+    with _CATALOG_PRESENCE_CACHE_LOCK:
+        _CATALOG_PRESENCE_CACHE.clear()
 
 
 @contextmanager
@@ -138,18 +183,27 @@ class DuckDBRepository:
     def _table_exists(self, table_name: str) -> bool:
         scoped = getattr(self._scope, "conn", None)
         if scoped is not None:
-            return self._table_exists_on_conn(scoped, table_name)
+            return catalog_presence_cached(
+                self.path,
+                "table",
+                table_name,
+                lambda: self._table_exists_on_conn(scoped, table_name),
+            )
         if getattr(self._scope, "active", False):
             return False
         if self.guard_path_exists and not Path(self.path).exists():
             return False
-        conn = self._connect_read_only()
-        if conn is None:
-            return False
-        try:
-            return self._table_exists_on_conn(conn, table_name)
-        finally:
-            conn.close()
+
+        def _probe() -> bool:
+            conn = self._connect_read_only()
+            if conn is None:
+                return False
+            try:
+                return self._table_exists_on_conn(conn, table_name)
+            finally:
+                conn.close()
+
+        return catalog_presence_cached(self.path, "table", table_name, _probe)
 
     @staticmethod
     def _table_exists_on_conn(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:

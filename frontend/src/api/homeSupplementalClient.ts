@@ -265,7 +265,7 @@ async function loadMockClient(): Promise<HomeSupplementalClientMethods> {
       import("./workbenchDashboardApi"),
       import("./bondAnalyticsClient"),
       import("./balanceAnalysisClient"),
-      import("./pnlAttributionClient"),
+      import("./pnlAttributionMockClient"),
       import("./liabilityAdbClient"),
     ]).then(
       ([

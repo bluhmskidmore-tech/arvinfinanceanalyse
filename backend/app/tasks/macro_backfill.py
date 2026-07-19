@@ -1434,20 +1434,44 @@ def _insert_rows(
 ) -> int:
     if not rows:
         return 0
-    added = 0
+    # Keep the first occurrence per key, matching the previous row-by-row semantics.
+    deduped: list[BackfillRow] = []
+    seen_keys: set[tuple[str, str]] = set()
     for row in rows:
-        exists = conn.execute(
-            """
-            select 1
-            from fact_choice_macro_daily
-            where series_id = ? and trade_date = ?
-            limit 1
-            """,
-            [row.series_id, row.trade_date],
-        ).fetchone()
-        if exists:
+        key = (row.series_id, row.trade_date)
+        if key in seen_keys:
             continue
-        conn.execute(
+        seen_keys.add(key)
+        deduped.append(row)
+
+    conn.execute(
+        """
+        create or replace temp table _macro_backfill_stage (
+          series_id varchar,
+          series_name varchar,
+          trade_date varchar,
+          value_numeric double,
+          frequency varchar,
+          unit varchar
+        )
+        """
+    )
+    try:
+        conn.executemany(
+            "insert into _macro_backfill_stage values (?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    row.series_id,
+                    row.series_name,
+                    row.trade_date,
+                    row.value_numeric,
+                    row.frequency,
+                    row.unit,
+                )
+                for row in deduped
+            ],
+        )
+        inserted = conn.execute(
             """
             insert into fact_choice_macro_daily (
               series_id,
@@ -1462,24 +1486,30 @@ def _insert_rows(
               quality_flag,
               run_id
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            select
+              s.series_id,
+              s.series_name,
+              s.trade_date,
+              s.value_numeric,
+              s.frequency,
+              s.unit,
+              ?,
+              ?,
+              ?,
+              'ok',
+              ?
+            from _macro_backfill_stage s
+            where not exists (
+              select 1
+              from fact_choice_macro_daily f
+              where f.series_id = s.series_id and f.trade_date = s.trade_date
+            )
             """,
-            [
-                row.series_id,
-                row.series_name,
-                row.trade_date,
-                row.value_numeric,
-                row.frequency,
-                row.unit,
-                source_version,
-                vendor_version,
-                RULE_VERSION,
-                "ok",
-                run_id,
-            ],
-        )
-        added += 1
-    return added
+            [source_version, vendor_version, RULE_VERSION, run_id],
+        ).fetchone()
+    finally:
+        conn.execute("drop table if exists _macro_backfill_stage")
+    return int(inserted[0]) if inserted else 0
 
 
 def _count_snapshot_rows(conn_path: Path, *, series_id: str, start_date: str, end_date: str) -> int:

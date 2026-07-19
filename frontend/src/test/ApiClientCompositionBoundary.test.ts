@@ -16,6 +16,10 @@ const providersSource = readFileSync(resolve(process.cwd(), "src/app/providers.t
 const shellSource = readFileSync(resolve(process.cwd(), "src/layouts/WorkbenchShell.tsx"), "utf8");
 const dataModeRibbonSource = readFileSync(resolve(process.cwd(), "src/components/DataModeRibbon.tsx"), "utf8");
 const marketDataSource = readFileSync(resolve(process.cwd(), "src/api/marketDataClient.ts"), "utf8");
+const marketDataMockSource = readFileSync(
+  resolve(process.cwd(), "src/api/marketDataMockClient.ts"),
+  "utf8",
+);
 const stockAnalysisWorkbenchClientSource = readFileSync(
   resolve(process.cwd(), "src/api/stockAnalysisWorkbenchClient.ts"),
   "utf8",
@@ -1611,16 +1615,17 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getPnlCampisiMaturityBuckets\(/);
   });
 
-  it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
-    expect(marketDataSource).toMatch(/async getSourceFoundation\(/);
-    expect(marketDataSource).toMatch(/async refreshSourcePreview\(/);
-    expect(marketDataSource).toMatch(/async getSourcePreviewRefreshStatus\(/);
-    expect(marketDataSource).toMatch(/async getSourceFoundationHistory\(/);
-    expect(marketDataSource).toMatch(/async getSourceFoundationRows\(/);
-    expect(marketDataSource).toMatch(/async getSourceFoundationTraces\(/);
-    expect(marketDataSource).toMatch(/async getChoiceNewsEvents\(/);
-    expect(marketDataSource).toMatch(/async getResearchCalendarEvents\(/);
-    expect(marketDataSource).toMatch(/async ingestTushareNprNews\(/);
+  it("requires the market-data domain modules to own the extracted composition slice", () => {
+    expect(marketDataSource).toMatch(/getSourceFoundation: \(\) =>/);
+    expect(marketDataMockSource).toMatch(/async getSourceFoundation\(/);
+    expect(marketDataMockSource).toMatch(/async refreshSourcePreview\(/);
+    expect(marketDataMockSource).toMatch(/async getSourcePreviewRefreshStatus\(/);
+    expect(marketDataMockSource).toMatch(/async getSourceFoundationHistory\(/);
+    expect(marketDataMockSource).toMatch(/async getSourceFoundationRows\(/);
+    expect(marketDataMockSource).toMatch(/async getSourceFoundationTraces\(/);
+    expect(marketDataMockSource).toMatch(/async getChoiceNewsEvents\(/);
+    expect(marketDataMockSource).toMatch(/async getResearchCalendarEvents\(/);
+    expect(marketDataMockSource).toMatch(/async ingestTushareNprNews\(/);
   });
 
   it("requires KPI and cube clients to own their extracted composition slices", () => {
@@ -1947,9 +1952,10 @@ describe("ApiClient composition boundary", () => {
     expect(pnlCoreClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
   });
 
-  it("requires pnlAttributionClient.ts to own PnL attribution API implementations", () => {
-    expect(pnlAttributionClientSource).toContain("createDemoPnlAttributionClient");
+  it("requires pnlAttributionClient.ts to own real PnL attribution API implementations", () => {
     expect(pnlAttributionClientSource).toContain("createRealPnlAttributionClient");
+    expect(pnlAttributionClientSource).not.toContain("createDemoPnlAttributionClient");
+    expect(pnlAttributionClientSource).not.toContain("../mocks/");
     expect(pnlAttributionClientSource).toContain("/ui/pnl/attribution");
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/volume-rate");
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/tpl-market");
@@ -1963,34 +1969,42 @@ describe("ApiClient composition boundary", () => {
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/four-effects");
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/enhanced");
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/maturity-buckets");
-    expect(pnlAttributionClientSource).toContain("executive.pnl-attribution");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.volume_rate");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.tpl_market");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.composition");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.summary");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.carry_rolldown");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.spread");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.krd");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.advanced_summary");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.campisi");
-    expect(pnlAttributionClientSource).toContain("campisi.four_effects");
-    expect(pnlAttributionClientSource).toContain("campisi.enhanced");
-    expect(pnlAttributionClientSource).toContain("campisi.maturity_buckets");
-    expect(pnlAttributionClientSource).toMatch(/async getPnlAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getVolumeRateAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getTplMarketCorrelation\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCompositionBreakdown\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlAttributionAnalysisSummary\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCarryRollDown\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlSpreadAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlKrdAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlAdvancedAttributionSummary\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiFourEffects\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiEnhanced\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiMaturityBuckets\(/);
     expect(pnlAttributionClientSource).not.toContain("/api/pnl/bridge");
     expect(pnlAttributionClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
+  });
+
+  it("keeps pnl attribution demo factory in pnlAttributionMockClient.ts", () => {
+    const pnlAttributionMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/pnlAttributionMockClient.ts"),
+      "utf8",
+    );
+    expect(pnlAttributionMockClientSource).toContain("createDemoPnlAttributionClient");
+    expect(pnlAttributionMockClientSource).toContain("executive.pnl-attribution");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.volume_rate");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.tpl_market");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.composition");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.summary");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.carry_rolldown");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.spread");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.krd");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.advanced_summary");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.campisi");
+    expect(pnlAttributionMockClientSource).toContain("campisi.four_effects");
+    expect(pnlAttributionMockClientSource).toContain("campisi.enhanced");
+    expect(pnlAttributionMockClientSource).toContain("campisi.maturity_buckets");
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getVolumeRateAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getTplMarketCorrelation\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCompositionBreakdown\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlAttributionAnalysisSummary\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCarryRollDown\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlSpreadAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlKrdAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlAdvancedAttributionSummary\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCampisiAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCampisiFourEffects\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCampisiEnhanced\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCampisiMaturityBuckets\(/);
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {

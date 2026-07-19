@@ -120,46 +120,108 @@ def upsert_macro_seed_rows(
 ) -> int:
     if not rows:
         return 0
-    written = 0
+
+    # Keep first occurrence per key to match prior row-by-row first-writer semantics.
+    deduped: list[MacroSeedRow] = []
+    seen_keys: set[tuple[str, str]] = set()
     for row in rows:
-        existing = conn.execute(
-            """
-            select source_version
-            from fact_choice_macro_daily
-            where series_id = ? and trade_date = ?
-            limit 1
-            """,
-            [row.series_id, row.trade_date],
-        ).fetchone()
-        if existing:
-            if not overwrite_existing:
-                continue
+        key = (row.series_id, row.trade_date)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(row)
+
+    conn.execute(
+        """
+        create or replace temp table _cycle_macro_seed_stage (
+          series_id varchar,
+          series_name varchar,
+          trade_date varchar,
+          value_numeric double,
+          frequency varchar,
+          unit varchar
+        )
+        """
+    )
+    try:
+        conn.executemany(
+            "insert into _cycle_macro_seed_stage values (?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    row.series_id,
+                    row.series_name,
+                    row.trade_date,
+                    row.value_numeric,
+                    row.frequency,
+                    row.unit,
+                )
+                for row in deduped
+            ],
+        )
+        if overwrite_existing:
             conn.execute(
-                "delete from fact_choice_macro_daily where series_id = ? and trade_date = ?",
-                [row.series_id, row.trade_date],
+                """
+                delete from fact_choice_macro_daily as f
+                using _cycle_macro_seed_stage as s
+                where f.series_id = s.series_id and f.trade_date = s.trade_date
+                """
             )
-        conn.execute(
+            written_rows = conn.execute(
+                """
+                insert into fact_choice_macro_daily (
+                  series_id, series_name, trade_date, value_numeric, frequency, unit,
+                  source_version, vendor_version, rule_version, quality_flag, run_id
+                )
+                select
+                  s.series_id,
+                  s.series_name,
+                  s.trade_date,
+                  s.value_numeric,
+                  s.frequency,
+                  s.unit,
+                  ?,
+                  ?,
+                  ?,
+                  'ok',
+                  ?
+                from _cycle_macro_seed_stage s
+                returning series_id
+                """,
+                [source_version, vendor_version, RULE_VERSION, run_id],
+            ).fetchall()
+            return len(written_rows)
+
+        written_rows = conn.execute(
             """
             insert into fact_choice_macro_daily (
               series_id, series_name, trade_date, value_numeric, frequency, unit,
               source_version, vendor_version, rule_version, quality_flag, run_id
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?)
+            )
+            select
+              s.series_id,
+              s.series_name,
+              s.trade_date,
+              s.value_numeric,
+              s.frequency,
+              s.unit,
+              ?,
+              ?,
+              ?,
+              'ok',
+              ?
+            from _cycle_macro_seed_stage s
+            where not exists (
+              select 1
+              from fact_choice_macro_daily f
+              where f.series_id = s.series_id and f.trade_date = s.trade_date
+            )
+            returning series_id
             """,
-            [
-                row.series_id,
-                row.series_name,
-                row.trade_date,
-                row.value_numeric,
-                row.frequency,
-                row.unit,
-                source_version,
-                vendor_version,
-                RULE_VERSION,
-                run_id,
-            ],
-        )
-        written += 1
-    return written
+            [source_version, vendor_version, RULE_VERSION, run_id],
+        ).fetchall()
+        return len(written_rows)
+    finally:
+        conn.execute("drop table if exists _cycle_macro_seed_stage")
 
 
 def materialize_cycle_rotation_macro_fixture(

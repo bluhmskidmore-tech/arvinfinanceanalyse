@@ -1,110 +1,82 @@
 import type { ApiEnvelope } from "./contracts";
 import {
-  createDemoBalanceAnalysisClient,
   createRealBalanceAnalysisClient,
   type BalanceAnalysisClientMethods,
 } from "./balanceAnalysisClient";
 import {
-  createDemoBondAnalyticsClient,
-  createDemoBondDashboardClient,
   createRealBondAnalyticsClient,
   createRealBondDashboardClient,
   type BondAnalyticsClientMethods,
 } from "./bondAnalyticsClient";
 import {
-  createDemoCashflowClient,
   createRealCashflowClient,
   type CashflowClientMethods,
 } from "./cashflowClient";
 import {
-  createDemoExecutiveClient,
   createRealExecutiveClient,
   type ExecutiveClientMethods,
 } from "./executiveClient";
 import {
-  createDemoHealthClient,
   createRealHealthClient,
   type HealthClientMethods,
 } from "./healthClient";
 import {
-  createDemoLiabilityAdbClient,
   createRealLiabilityAdbClient,
   type LiabilityAdbClientMethods,
 } from "./liabilityAdbClient";
 import type { MarketDataClientMethods } from "./marketDataClient";
 import type { MacroToolkitClientMethods } from "./macroToolkitClient";
 import {
-  createMockPnlBusinessClient,
   createRealPnlBusinessClient,
   type PnlClientMethods,
 } from "./pnlClient";
 import {
-  createDemoPnlCoreClient,
   createRealPnlCoreClient,
   type PnlCoreClientMethods,
 } from "./pnlCoreClient";
 import {
-  createDemoPnlAttributionClient,
   createRealPnlAttributionClient,
   type PnlAttributionClientMethods,
 } from "./pnlAttributionClient";
 import {
-  createDemoProductCategoryClient,
   createRealProductCategoryClient,
   type ProductCategoryClientMethods,
 } from "./productCategoryClient";
 import {
-  createDemoQdbGlMonthlyAnalysisClient,
   createRealQdbGlMonthlyAnalysisClient,
   type QdbGlMonthlyAnalysisClientMethods,
 } from "./qdbGlMonthlyAnalysisClient";
 import {
-  createDemoPositionsClient,
   createRealPositionsClient,
   type PositionsClientMethods,
 } from "./positionsClient";
 import {
-  createMockBalanceMovementClient,
   createRealBalanceMovementClient,
   type BalanceMovementClientMethods,
 } from "./balanceMovementClient";
 import {
-  createMockLedgerClient,
   createRealLedgerClient,
   type LedgerClientMethods,
 } from "./ledgerClient";
+import { createRealMarketDataClient } from "./marketDataClient";
+import { createRealMacroToolkitClient } from "./macroToolkitClient";
 import {
-  createMockMarketDataClient,
-  createRealMarketDataClient,
-} from "./marketDataClient";
-import {
-  createMockMacroToolkitClient,
-  createRealMacroToolkitClient,
-} from "./macroToolkitClient";
-import {
-  createMockKpiClient,
   createRealKpiClient,
   type KpiClientMethods,
 } from "./kpiClient";
 import {
-  createMockCubeClient,
   createRealCubeClient,
   type CubeClientMethods,
 } from "./cubeClient";
 import {
-  createDemoAgentClient,
   createRealAgentClient,
   type AgentClientMethods,
 } from "./agentClient";
 import {
-  dashboardWorkbenchDemoEndpoints,
   dashboardWorkbenchLiveEndpoints,
   type DashboardClientMethods,
 } from "./workbenchDashboardApi";
-import {
-  bondDashboardDemoEndpoints,
-  bondDashboardLiveEndpoints,
-} from "./bondDashboardWorkbenchEndpoints";
+import { bondDashboardLiveEndpoints } from "./bondDashboardWorkbenchEndpoints";
 
 export type DataSourceMode = "mock" | "real";
 export { ApiClientProvider, useApiClient } from "./clientContext";
@@ -490,40 +462,86 @@ const requestActionWithBody = async <TResponse, TBody>(
   return (await response.json()) as TResponse;
 };
 
+// Cache only the mockApiClient *module* import so real-mode bundles stay free
+// of mock payloads. Each createApiClient({ mode: "mock" }) call still builds a
+// fresh composition so mutable mock state does not leak across callers/tests.
+let mockApiClientModulePromise: Promise<typeof import("./mockApiClient")> | null = null;
+let cachedApiClientMethodNames: string[] | null = null;
+let mockSurfaceAsserted = false;
+
+function loadMockApiClientModule(): Promise<typeof import("./mockApiClient")> {
+  mockApiClientModulePromise ??= import("./mockApiClient");
+  return mockApiClientModulePromise;
+}
+
+function getApiClientMethodNames(): string[] {
+  // Discover the public surface from a throwaway real client once. Mock calls
+  // must not rebuild the full real composition on every createApiClient().
+  cachedApiClientMethodNames ??= Object.keys(
+    createApiClient({ mode: "real", baseUrl: "", fetchImpl: defaultFetch }),
+  );
+  return cachedApiClientMethodNames;
+}
+
+function assertMockClientSurface(methodNames: string[], mockClient: ApiClient): void {
+  if (mockSurfaceAsserted) {
+    return;
+  }
+  if (!(import.meta.env.DEV || import.meta.env.MODE === "test")) {
+    return;
+  }
+  mockSurfaceAsserted = true;
+  const mockKeys = new Set(Object.keys(mockClient));
+  const missing = methodNames.filter((name) => name !== "mode" && !mockKeys.has(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `Mock ApiClient is missing methods expected by the real surface: ${missing.join(", ")}`,
+    );
+  }
+}
+
+function createLazyMockClient(methodNames: string[]): ApiClient {
+  // Per-instance composition (not a module singleton).
+  const mockClientPromise = loadMockApiClientModule().then(({ createMockApiClient }) => {
+    const mockClient = createMockApiClient(delay, ensureMockClientBundle);
+    assertMockClientSurface(methodNames, mockClient);
+    return mockClient;
+  });
+
+  // A plain object (not a Proxy) so object spread, Object.keys, and test spies
+  // behave exactly like the eager mock client did. Method names come from the
+  // real composition, which implements the same ApiClient surface.
+  const client = { mode: "mock" } as unknown as Record<string, unknown>;
+  for (const name of methodNames) {
+    if (name === "mode") {
+      continue;
+    }
+    // Classic function preserves call-site `this` so fetchBondDashboardBundle
+    // can resolve sibling methods on the composed client (and test overrides).
+    client[name] = async function (this: unknown, ...args: unknown[]) {
+      const mockClient = await mockClientPromise;
+      const value = mockClient[name as keyof ApiClient];
+      if (typeof value !== "function") {
+        return value;
+      }
+      return (value as (this: unknown, ...methodArgs: unknown[]) => unknown).call(
+        this ?? client,
+        ...args,
+      );
+    };
+  }
+  return client as unknown as ApiClient;
+}
+
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const mode = options.mode ?? parseEnvMode();
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? parseBaseUrl());
   const fetchImpl = options.fetchImpl ?? defaultFetch;
 
-  const mockClient: ApiClient = {
-    mode: "mock",
-    ...createDemoHealthClient(delay),
-    ...createMockBalanceMovementClient(),
-    ...createMockLedgerClient(),
-    ...createMockMarketDataClient(),
-    ...createMockMacroToolkitClient(),
-    ...createMockKpiClient(),
-    ...createMockCubeClient(),
-    ...createMockPnlBusinessClient(),
-    ...createDemoAgentClient(delay),
-    ...createDemoExecutiveClient(delay, ensureMockClientBundle),
-    ...dashboardWorkbenchDemoEndpoints(delay, ensureMockClientBundle),
-    ...bondDashboardDemoEndpoints(delay, ensureMockClientBundle),
-    ...createDemoBondAnalyticsClient(delay, ensureMockClientBundle),
-    ...createDemoBondDashboardClient(delay, ensureMockClientBundle),
-    ...createDemoPnlCoreClient(delay),
-    ...createDemoPnlAttributionClient(delay),
-    ...createDemoProductCategoryClient(delay),
-    ...createDemoQdbGlMonthlyAnalysisClient(delay, ensureMockClientBundle),
-    ...createDemoBalanceAnalysisClient(delay, ensureMockClientBundle),
-    ...createDemoPositionsClient(delay, ensureMockClientBundle),
-    ...createDemoLiabilityAdbClient(delay, ensureMockClientBundle),
-    ...createDemoCashflowClient(delay),
-  };
-
   if (mode === "mock") {
     void ensureMockClientBundle();
-    return mockClient;
+    void loadMockApiClientModule();
+    return createLazyMockClient(getApiClientMethodNames());
   }
 
   return {
