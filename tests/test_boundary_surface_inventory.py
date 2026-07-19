@@ -592,6 +592,7 @@ def test_api_router_registry_classifies_every_included_router() -> None:
     assert missing_owner == []
     assert route_groups >= {
         "formal_mainline",
+        "analytical_compatibility",
         "preview",
         "macro_market",
         "agent_experimental",
@@ -602,6 +603,8 @@ def test_api_router_registry_classifies_every_included_router() -> None:
     assert entries_by_name["macro_etf_strategy"].group == "macro_market"
     assert entries_by_name["macro_toolkit"].group == "macro_market"
     assert entries_by_name["pnl"].group == "formal_mainline"
+    assert entries_by_name["liability_analytics"].group == "analytical_compatibility"
+    assert entries_by_name["cube_query"].group == "support"
 
 
 def test_api_router_registry_covers_every_route_module_file() -> None:
