@@ -695,6 +695,28 @@ def refresh_choice_macro_snapshot(
     return result
 
 
+def _delete_fact_rows_in_fetched_window(
+    conn: duckdb.DuckDBPyConnection,
+    history_rows: list[dict[str, object]],
+) -> None:
+    """Delete only the per-series date window being rewritten, preserving older history.
+
+    Backfilled history (e.g. macro_backfill) lives outside the fetch window and must
+    survive incremental refreshes; see docs/plans/2026-07-19-macro-data-freshness-remediation.md.
+    """
+    window_starts: dict[str, str] = {}
+    for row in history_rows:
+        series_id = str(row["series_id"])
+        trade_date = str(row["trade_date"])
+        if series_id not in window_starts or trade_date < window_starts[series_id]:
+            window_starts[series_id] = trade_date
+    for series_id in sorted(window_starts):
+        conn.execute(
+            "delete from fact_choice_macro_daily where series_id = ? and trade_date >= ?",
+            [series_id, window_starts[series_id]],
+        )
+
+
 def refresh_public_cross_asset_headlines(
     duckdb_path: str | None = None,
     lookback_days: int = PUBLIC_HEADLINE_LOOKBACK_DAYS,
@@ -725,10 +747,7 @@ def refresh_public_cross_asset_headlines(
             _ensure_tables(conn)
             conn.execute("begin transaction")
             placeholders = ", ".join(["?"] * len(series_ids))
-            conn.execute(
-                f"delete from fact_choice_macro_daily where series_id in ({placeholders})",
-                series_ids,
-            )
+            _delete_fact_rows_in_fetched_window(conn, history_rows)
             conn.execute(
                 f"delete from choice_market_snapshot where series_id in ({placeholders})",
                 series_ids,
@@ -888,10 +907,7 @@ def refresh_tushare_ncd_shibor_proxy(
             _ensure_tables(conn)
             conn.execute("begin transaction")
             placeholders = ", ".join(["?"] * len(series_ids))
-            conn.execute(
-                f"delete from fact_choice_macro_daily where series_id in ({placeholders})",
-                series_ids,
-            )
+            _delete_fact_rows_in_fetched_window(conn, history_rows)
             conn.execute(
                 f"delete from choice_market_snapshot where series_id in ({placeholders})",
                 series_ids,

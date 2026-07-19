@@ -1437,6 +1437,24 @@ def test_cffex_member_rank_refresh_materializes_choice_rows(tmp_path, monkeypatc
 def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
+    # 补齐国债 1Y/3Y/7Y 正式曲线节点：M8/M13/M15 的 data_aliases 修正为实际
+    # 消费的曲线输入（S0059743/S0059746/S0059748）后，能力矩阵在输入齐备时
+    # 应保持 ready；这些节点经 legacy.yield.choice.treasury.* 解析命中。
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_yield_curve_daily values
+              ('2026-04-10', 'treasury', '1Y', 1.62, 'choice',
+               'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1'),
+              ('2026-04-10', 'treasury', '3Y', 1.98, 'choice',
+               'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1'),
+              ('2026-04-10', 'treasury', '7Y', 2.41, 'choice',
+               'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1')
+            """
+        )
+    finally:
+        conn.close()
     output_dir = tmp_path / "macro_toolkit_output"
     output_dir.mkdir()
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -1479,15 +1497,18 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "deferred": False,
         "missing_aliases": ["M0041813"],
     }
+    # 种子补齐国债 1Y/3Y/7Y 后，M8 曲线形态由 unavailable 变为 complete。
     assert data_health["capability_results"] == {
-        "complete": 0,
+        "complete": 1,
         "degraded": 5,
-        "unavailable": 6,
+        "unavailable": 5,
         "total_count": 11,
         "deferred": False,
     }
+    # ready=6：种子补齐国债 1Y/3Y/7Y 后，除原有 2 个 ready 能力外，
+    # M7（原声明即含 S0059743）、M8、M13、M15 的声明输入全部命中。
     assert data_health["capability_plan"] == {
-        "ready_count": 4,
+        "ready_count": 6,
         "wired_count": 11,
         "total_count": 11,
         "deferred": False,
@@ -5062,6 +5083,75 @@ def test_macro_toolkit_capability_plan_reuses_source_check_cache(monkeypatch) ->
     assert "DR007.IB" not in calls
     assert "S0059749" not in calls
     assert len(calls) == len(set(calls))
+
+
+def test_capability_definitions_declare_actual_curve_inputs_via_data_tables() -> None:
+    definitions = {item["key"]: item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS}
+
+    # M8/M9/M13/M15 的实际计算经 load_macro_capability_context 走正式曲线表。
+    for key in ("yield_curve_shape", "credit_spread_risk", "rate_turning_point", "macro_portfolio_impact"):
+        assert "fact_formal_yield_curve_daily" in definitions[key]["data_tables"], key
+
+    # M15 组合概况来自正式债券持仓表。
+    assert "fact_formal_bond_analytics_daily" in definitions["macro_portfolio_impact"]["data_tables"]
+
+    # 未被 compute 函数消费的别名不得再声明。
+    assert "S0059670" not in definitions["credit_spread_risk"]["data_aliases"]
+    assert set(definitions["rate_turning_point"]["data_aliases"]) == {"S0059743", "S0059749"}
+    assert "S0059760" not in definitions["macro_portfolio_impact"]["data_aliases"]
+    assert "M0067855" not in definitions["macro_portfolio_impact"]["data_aliases"]
+    # 仍作为曲线回退点真实消费的别名保持声明。
+    assert set(definitions["yield_curve_shape"]["data_aliases"]) == {"S0059743", "S0059747", "S0059749"}
+    assert set(definitions["macro_portfolio_impact"]["data_aliases"]) == {
+        "S0059743",
+        "S0059746",
+        "S0059747",
+        "S0059748",
+        "S0059749",
+    }
+
+
+def test_capability_payload_passes_through_data_tables() -> None:
+    definitions = {item["key"]: item for item in macro_toolkit_route._CAPABILITY_DEFINITIONS}
+    definition = definitions["macro_portfolio_impact"]
+    cache = {
+        str(alias): {
+            "alias": str(alias),
+            "row_count": 1,
+            "latest": {
+                "date": "2026-04-30",
+                "series_id": str(alias),
+                "vendor_name": "choice",
+                "value": 1.0,
+            },
+        }
+        for alias in definition["data_aliases"]
+    }
+
+    payload = macro_toolkit_route._capability_payload(
+        definition,
+        "dummy.duckdb",
+        source_check_cache=cache,
+    )
+
+    assert payload["data_tables"] == [
+        "fact_formal_yield_curve_daily",
+        "fact_formal_bond_analytics_daily",
+    ]
+    assert payload["data_status"] == "ready"
+
+    # 没有声明 data_tables 的能力透传为空列表。
+    monetary = definitions["monetary_policy_stance"]
+    monetary_cache = {
+        str(alias): {"alias": str(alias), "row_count": 0, "latest": None}
+        for alias in monetary["data_aliases"]
+    }
+    monetary_payload = macro_toolkit_route._capability_payload(
+        monetary,
+        "dummy.duckdb",
+        source_check_cache=monetary_cache,
+    )
+    assert monetary_payload["data_tables"] == []
 
 
 def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monkeypatch) -> None:

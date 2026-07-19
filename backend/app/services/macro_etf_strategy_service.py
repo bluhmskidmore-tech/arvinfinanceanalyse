@@ -34,12 +34,12 @@ def macro_etf_strategy_envelope(
     portfolio_state_path: str | Path | None = None,
 ) -> dict[str, object]:
     resolved_date = _normalize_date(as_of_date)
-    config_payload, config_warnings = _load_json_mapping(
+    config_payload, config_warnings, config_file_status, config_defaulted_keys = _load_json_mapping(
         config_path or DEFAULT_CONFIG_PATH,
         fallback=DEFAULT_CONFIG,
         label="config",
     )
-    macro_payload, macro_warnings = _load_json_mapping(
+    macro_payload, macro_warnings, macro_file_status, macro_defaulted_keys = _load_json_mapping(
         macro_state_path or DEFAULT_MACRO_STATE_PATH,
         fallback=DEFAULT_MACRO_STATE,
         label="macro_state",
@@ -61,6 +61,16 @@ def macro_etf_strategy_envelope(
         *list(result.get("warnings") or []),
     ]
     result["warnings"] = warnings
+    fallback_defaults_used = "builtin_defaults_used" in {config_file_status, macro_file_status}
+    data_status = dict(result.get("data_status") or {})
+    data_status["config_status"] = "builtin_defaults_used" if fallback_defaults_used else "files_loaded"
+    data_status["config_file_status"] = config_file_status
+    data_status["macro_state_file_status"] = macro_file_status
+    data_status["config_defaulted_keys"] = config_defaulted_keys
+    data_status["macro_state_defaulted_keys"] = macro_defaulted_keys
+    if fallback_defaults_used and data_status.get("status") == "ready":
+        data_status["status"] = "warning"
+    result["data_status"] = data_status
     result["input_files"] = {
         "config_path": str(Path(config_path or DEFAULT_CONFIG_PATH)),
         "macro_state_path": str(Path(macro_state_path or DEFAULT_MACRO_STATE_PATH)),
@@ -116,17 +126,41 @@ def _evidence_rows(result: Mapping[str, Any]) -> int:
     return len(universe) if isinstance(universe, Mapping) else 0
 
 
-def _load_json_mapping(path: str | Path, *, fallback: Mapping[str, Any], label: str) -> tuple[dict[str, Any], list[str]]:
+def _load_json_mapping(
+    path: str | Path, *, fallback: Mapping[str, Any], label: str
+) -> tuple[dict[str, Any], list[str], str, list[str]]:
     source = Path(path)
+    all_keys = sorted(fallback)
     if not source.exists():
-        return dict(fallback), [f"{label} file missing at {source}; built-in defaults used"]
+        return (
+            dict(fallback),
+            [f"{label} file missing at {source}; built-in defaults used"],
+            "builtin_defaults_used",
+            all_keys,
+        )
     try:
         payload = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        return dict(fallback), [f"{label} file failed to load at {source}: {exc.__class__.__name__}; defaults used"]
+        return (
+            dict(fallback),
+            [f"{label} file failed to load at {source}: {exc.__class__.__name__}; defaults used"],
+            "builtin_defaults_used",
+            all_keys,
+        )
     if not isinstance(payload, Mapping):
-        return dict(fallback), [f"{label} file at {source} is not a JSON object; defaults used"]
-    return deep_merge(fallback, payload), []
+        return (
+            dict(fallback),
+            [f"{label} file at {source} is not a JSON object; defaults used"],
+            "builtin_defaults_used",
+            all_keys,
+        )
+    defaulted_keys = sorted(set(fallback) - set(payload))
+    warnings = (
+        [f"{label} file at {source} missing top-level keys {defaulted_keys}; built-in defaults backfilled those keys"]
+        if defaulted_keys
+        else []
+    )
+    return deep_merge(fallback, payload), warnings, "loaded", defaulted_keys
 
 
 def _load_optional_json_mapping(path: str | Path | None, *, label: str) -> tuple[dict[str, Any] | None, list[str]]:

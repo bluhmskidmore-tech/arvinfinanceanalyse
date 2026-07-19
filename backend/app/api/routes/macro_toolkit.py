@@ -152,6 +152,7 @@ _CAPABILITY_DEFINITIONS = (
         "route_status": "partial",
         "frontend_status": "partial",
         "data_aliases": ("S0059743", "S0059747", "S0059749"),
+        "data_tables": ("fact_formal_yield_curve_daily",),
         "next_step": "复用正式曲线表，把曲线形态纯函数输出接到宏观工具箱。",
     },
     {
@@ -162,7 +163,8 @@ _CAPABILITY_DEFINITIONS = (
         "implementation_status": "partial",
         "route_status": "partial",
         "frontend_status": "partial",
-        "data_aliases": ("S0059652", "S0059670", "S0059760"),
+        "data_aliases": ("S0059652", "S0059747", "S0059760"),
+        "data_tables": ("fact_formal_yield_curve_daily",),
         "next_step": "把信用利差风险/分位结果合并到本页信用信号区。",
     },
     {
@@ -217,7 +219,8 @@ _CAPABILITY_DEFINITIONS = (
         "implementation_status": "library_ready",
         "route_status": "not_wired",
         "frontend_status": "planned",
-        "data_aliases": ("DR007.IB", "S0059747", "S0059749"),
+        "data_aliases": ("S0059743", "S0059749"),
+        "data_tables": ("fact_formal_yield_curve_daily",),
         "next_step": "用正式曲线和资金利率输出拐点概率。",
     },
     {
@@ -239,7 +242,8 @@ _CAPABILITY_DEFINITIONS = (
         "implementation_status": "library_ready",
         "route_status": "partial",
         "frontend_status": "partial",
-        "data_aliases": ("S0059749", "S0059760", "M0067855"),
+        "data_aliases": ("S0059743", "S0059746", "S0059747", "S0059748", "S0059749"),
+        "data_tables": ("fact_formal_yield_curve_daily", "fact_formal_bond_analytics_daily"),
         "next_step": "把组合暴露输入与宏观情景结果合并展示。",
     },
     {
@@ -247,11 +251,11 @@ _CAPABILITY_DEFINITIONS = (
         "legacy_module": "M16",
         "label": "宏观决策摘要",
         "group": "决策摘要",
-        "implementation_status": "not_wired",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("DR007.IB", "S0059749", "sh000300", "M0067855"),
-        "next_step": "聚合 M7-M15 后生成一屏决策摘要，而不是前端拼文案。",
+        "next_step": "细化聚合权重与证据引用，并沉淀为独立宏观决策端点。",
     },
 )
 
@@ -1388,6 +1392,7 @@ def _capability_payload(
         "data_status": data_status,
         "data_hit_count": hit_count,
         "data_required_count": required_count,
+        "data_tables": [str(table) for table in definition.get("data_tables", ())],
         "evidence": [
             {
                 "alias": check["alias"],
@@ -1721,13 +1726,28 @@ def _macro_capability_results(
             source_frames_by_alias=report_date_frames_by_alias,
         )
 
+    return _assemble_capability_cards(raw_results, parsed_report_date)
+
+
+def _assemble_capability_cards(
+    raw_results: dict[str, dict[str, object]],
+    report_date: date,
+) -> list[dict[str, object]]:
+    """Build capability cards; the decision summary always aggregates every
+    non-decision card regardless of its position in the definition tuple."""
+    non_decision_cards = {
+        str(definition["key"]): _capability_result_card(definition, raw_results.get(str(definition["key"])))
+        for definition in _CAPABILITY_DEFINITIONS
+        if definition["key"] != "decision_summary"
+    }
     cards: list[dict[str, object]] = []
     for definition in _CAPABILITY_DEFINITIONS:
         if definition["key"] == "decision_summary":
-            cards.append(_decision_summary_card(definition, cards, parsed_report_date))
+            cards.append(
+                _decision_summary_card(definition, list(non_decision_cards.values()), report_date)
+            )
             continue
-        raw_result = raw_results.get(str(definition["key"]))
-        cards.append(_capability_result_card(definition, raw_result))
+        cards.append(non_decision_cards[str(definition["key"])])
     return cards
 
 
@@ -3553,7 +3573,11 @@ def _decision_summary_card(
     positive_count = sum(1 for card in usable_cards if card["tone"] == "positive")
     negative_count = sum(1 for card in usable_cards if card["tone"] == "negative")
     missing_count = sum(1 for card in cards if card["status"] == "unavailable")
-    if negative_count > positive_count:
+    total_count = len(cards)
+    if not usable_cards:
+        tone = "missing"
+        headline = "宏观模块均不可用，无法给出方向性判断。"
+    elif negative_count > positive_count:
         tone = "negative"
         headline = "宏观信号偏谨慎，优先控制久期和信用敞口。"
     elif positive_count > negative_count:
@@ -3562,7 +3586,12 @@ def _decision_summary_card(
     else:
         tone = "neutral"
         headline = "宏观信号分化，维持中性观察。"
-    status = "complete" if len(usable_cards) >= 7 and missing_count == 0 else "degraded"
+    if not usable_cards:
+        status = "unavailable"
+    elif len(usable_cards) == total_count and missing_count == 0:
+        status = "complete"
+    else:
+        status = "degraded"
     score = round(50 + (positive_count - negative_count) * 8 - missing_count * 3, 2)
     evidence = [
         f"{card['legacy_module']} {card['headline']}"
@@ -3576,11 +3605,15 @@ def _decision_summary_card(
         "group": definition["group"],
         "status": status,
         "tone": tone,
-        "score": max(0.0, min(100.0, score)),
+        "score": max(0.0, min(100.0, score)) if usable_cards else None,
         "headline": headline,
-        "primary_metric": _metric("可用模块", len(usable_cards), "/9"),
+        "primary_metric": _metric("可用模块", len(usable_cards), f"/{total_count}"),
         "evidence": evidence,
-        "warnings": ["部分模块数据降级或不可用"] if status == "degraded" else [],
+        "warnings": ["宏观模块结果全部不可用"]
+        if status == "unavailable"
+        else ["部分模块数据降级或不可用"]
+        if status == "degraded"
+        else [],
         "result": {
             "report_date": report_date.isoformat(),
             "data_status": status,

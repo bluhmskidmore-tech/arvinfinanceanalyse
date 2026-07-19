@@ -84,6 +84,109 @@ def test_service_envelope_marks_missing_quotes_without_generating_orders(tmp_pat
     assert envelope["result"]["data_status"]["quote_status"] == "quotes_missing"
 
 
+def test_service_envelope_flags_builtin_default_fallback_when_config_files_missing(tmp_path: Path) -> None:
+    quotes_path = tmp_path / "quotes.json"
+    quotes_path.write_text(
+        json.dumps(
+            {
+                code: {"price": 1.0, "prev_close": 1.0, "volume": 1000000}
+                for code in DEFAULT_CONFIG["universe"]
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_path = tmp_path / "portfolio_state.json"
+    state_path.write_text(json.dumps({"cash": 200000.0, "holdings": {}}), encoding="utf-8")
+
+    envelope = macro_etf_strategy_envelope(
+        as_of_date="2026-07-03",
+        config_path=tmp_path / "missing_config.json",
+        macro_state_path=tmp_path / "missing_macro_state.json",
+        quotes_path=quotes_path,
+        portfolio_state_path=state_path,
+    )
+
+    data_status = envelope["result"]["data_status"]
+    assert data_status["config_status"] == "builtin_defaults_used"
+    assert data_status["status"] != "ready"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert any("missing" in warning for warning in envelope["result"]["warnings"])
+
+
+def test_service_envelope_lists_config_keys_backfilled_by_defaults(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "macro_etf_strategy.json"
+    macro_path = tmp_path / "macro_etf_macro_state.json"
+    cfg_path.write_text(json.dumps({"universe": DEFAULT_CONFIG["universe"]}), encoding="utf-8")
+    macro_path.write_text(json.dumps(DEFAULT_MACRO_STATE), encoding="utf-8")
+    quotes_path = tmp_path / "quotes.json"
+    quotes_path.write_text(
+        json.dumps(
+            {
+                code: {"price": 1.0, "prev_close": 1.0, "volume": 1000000}
+                for code in DEFAULT_CONFIG["universe"]
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_path = tmp_path / "portfolio_state.json"
+    state_path.write_text(json.dumps({"cash": 200000.0, "holdings": {}}), encoding="utf-8")
+
+    envelope = macro_etf_strategy_envelope(
+        as_of_date="2026-07-03",
+        config_path=cfg_path,
+        macro_state_path=macro_path,
+        quotes_path=quotes_path,
+        portfolio_state_path=state_path,
+    )
+
+    data_status = envelope["result"]["data_status"]
+    expected_defaulted = sorted(set(DEFAULT_CONFIG) - {"universe"})
+    assert data_status["config_status"] == "files_loaded"
+    assert data_status["config_file_status"] == "loaded"
+    assert data_status["macro_state_file_status"] == "loaded"
+    assert data_status["config_defaulted_keys"] == expected_defaulted
+    assert data_status["macro_state_defaulted_keys"] == []
+    assert any(
+        "config" in warning and "built-in defaults" in warning for warning in envelope["result"]["warnings"]
+    )
+    # 口径锁定：文件存在且缺失键已显式列出时，不因部分键补齐而降级 quality_flag。
+    assert data_status["status"] == "ready"
+    assert envelope["result_meta"]["quality_flag"] == "ok"
+
+
+def test_service_envelope_distinguishes_which_config_file_fell_back(tmp_path: Path) -> None:
+    macro_path = tmp_path / "macro_etf_macro_state.json"
+    macro_path.write_text(json.dumps(DEFAULT_MACRO_STATE), encoding="utf-8")
+
+    envelope = macro_etf_strategy_envelope(
+        as_of_date="2026-07-03",
+        config_path=tmp_path / "missing_config.json",
+        macro_state_path=macro_path,
+    )
+
+    data_status = envelope["result"]["data_status"]
+    assert data_status["config_status"] == "builtin_defaults_used"
+    assert data_status["config_file_status"] == "builtin_defaults_used"
+    assert data_status["macro_state_file_status"] == "loaded"
+    assert data_status["config_defaulted_keys"] == sorted(DEFAULT_CONFIG)
+    assert data_status["macro_state_defaulted_keys"] == []
+
+
+def test_service_envelope_marks_loaded_config_files_explicitly(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "macro_etf_strategy.json"
+    macro_path = tmp_path / "macro_etf_macro_state.json"
+    cfg_path.write_text(json.dumps(DEFAULT_CONFIG), encoding="utf-8")
+    macro_path.write_text(json.dumps(DEFAULT_MACRO_STATE), encoding="utf-8")
+
+    envelope = macro_etf_strategy_envelope(
+        as_of_date="2026-07-03",
+        config_path=cfg_path,
+        macro_state_path=macro_path,
+    )
+
+    assert envelope["result"]["data_status"]["config_status"] == "files_loaded"
+
+
 def test_macro_etf_strategy_endpoint_returns_standard_envelope(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
