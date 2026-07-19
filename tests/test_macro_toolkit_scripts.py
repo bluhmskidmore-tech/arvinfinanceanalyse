@@ -600,6 +600,8 @@ def test_system_source_layer_reads_merrill_clock_stable_macro_aliases(tmp_path, 
     get_settings.cache_clear()
 
     pmi = load_series_by_alias("M0017126")
+    pmi_by_name = load_series_by_alias("制造业PMI")
+    pmi_by_cn = load_series_by_alias("cn_pmi")
     pmi_new_orders = load_series_by_alias("M0017127")
     ppi = load_series_by_alias("M0001227")
     m2 = load_series_by_alias("M0001385")
@@ -607,6 +609,10 @@ def test_system_source_layer_reads_merrill_clock_stable_macro_aliases(tmp_path, 
 
     assert pmi["series_id"].tolist() == ["M0017126"]
     assert pmi["value"].tolist() == [50.0]
+    assert pmi_by_name["series_id"].tolist() == ["M0017126"]
+    assert pmi_by_name["value"].tolist() == [50.0]
+    assert pmi_by_cn["series_id"].tolist() == ["M0017126"]
+    assert pmi_by_cn["value"].tolist() == [50.0]
     assert pmi_new_orders["series_id"].tolist() == ["M0017127"]
     assert pmi_new_orders["value"].tolist() == [48.5]
     assert ppi["series_id"].tolist() == ["tushare.macro.cn_ppi.monthly"]
@@ -1498,19 +1504,20 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "missing_aliases": ["M0041813"],
     }
     # 种子补齐国债 1Y/3Y/7Y 后，M8 曲线形态由 unavailable 变为 complete。
+    # 新增美林/CTA/DCC/风险平价观察卡在种子库无足够价格腿时计为 unavailable。
     assert data_health["capability_results"] == {
         "complete": 1,
         "degraded": 5,
-        "unavailable": 5,
-        "total_count": 11,
+        "unavailable": 9,
+        "total_count": 15,
         "deferred": False,
     }
     # ready=6：种子补齐国债 1Y/3Y/7Y 后，除原有 2 个 ready 能力外，
     # M7（原声明即含 S0059743）、M8、M13、M15 的声明输入全部命中。
     assert data_health["capability_plan"] == {
         "ready_count": 6,
-        "wired_count": 11,
-        "total_count": 11,
+        "wired_count": 15,
+        "total_count": 15,
         "deferred": False,
     }
     assert data_health["warnings"] == []
@@ -1587,6 +1594,10 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "cross_market_linkage",
         "rate_turning_point",
         "economic_cycle",
+        "merrill_clock_cn",
+        "cta_trend_cn",
+        "dcc_garch_cn",
+        "risk_parity_cn",
         "macro_portfolio_impact",
         "decision_summary",
     }
@@ -5095,6 +5106,17 @@ def test_capability_definitions_declare_actual_curve_inputs_via_data_tables() ->
     # M15 组合概况来自正式债券持仓表。
     assert "fact_formal_bond_analytics_daily" in definitions["macro_portfolio_impact"]["data_tables"]
 
+    # M7/M10/M14 声明实际落库表，且保持 wired/visible（observation）。
+    assert definitions["monetary_policy_stance"]["route_status"] == "wired"
+    assert definitions["monetary_policy_stance"]["frontend_status"] == "visible"
+    assert "std_external_macro_daily" in definitions["monetary_policy_stance"]["data_tables"]
+    assert definitions["leading_indicator"]["route_status"] == "wired"
+    assert definitions["leading_indicator"]["frontend_status"] == "visible"
+    assert "fact_choice_macro_daily" in definitions["leading_indicator"]["data_tables"]
+    assert definitions["economic_cycle"]["route_status"] == "wired"
+    assert definitions["economic_cycle"]["frontend_status"] == "visible"
+    assert "fact_choice_macro_daily" in definitions["economic_cycle"]["data_tables"]
+
     # 未被 compute 函数消费的别名不得再声明。
     assert "S0059670" not in definitions["credit_spread_risk"]["data_aliases"]
     assert set(definitions["rate_turning_point"]["data_aliases"]) == {"S0059743", "S0059749"}
@@ -5140,7 +5162,7 @@ def test_capability_payload_passes_through_data_tables() -> None:
     ]
     assert payload["data_status"] == "ready"
 
-    # 没有声明 data_tables 的能力透传为空列表。
+    # M7 声明实际落库表；别名全空时 data_status 仍为 missing。
     monetary = definitions["monetary_policy_stance"]
     monetary_cache = {
         str(alias): {"alias": str(alias), "row_count": 0, "latest": None}
@@ -5151,7 +5173,11 @@ def test_capability_payload_passes_through_data_tables() -> None:
         "dummy.duckdb",
         source_check_cache=monetary_cache,
     )
-    assert monetary_payload["data_tables"] == []
+    assert monetary_payload["data_tables"] == [
+        "fact_formal_yield_curve_daily",
+        "std_external_macro_daily",
+    ]
+    assert monetary_payload["data_status"] == "missing"
 
 
 def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monkeypatch) -> None:
