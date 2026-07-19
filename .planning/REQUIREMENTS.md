@@ -48,11 +48,11 @@
 | COV-01 | Phase 02 | Complete |
 | COV-02 | Phase 02 | Complete |
 | COV-03 | Phase 02 | Complete |
-| INC-01 | Phase 03 | Pending |
-| INC-02 | Phase 03 | Pending |
-| PAR-01 | Phase 04 | Pending |
-| PAR-02 | Phase 04 | Pending |
-| REC-01 | Phase 03 | Pending |
+| INC-01 | Phase 03 | Deferred: side-branch implementation exists (`codex/phase-03-incremental-rebuild`), not adopted, not merged |
+| INC-02 | Phase 03 | Deferred: side-branch implementation exists, not adopted, not merged |
+| PAR-01 | Phase 04 | Deferred: parity evidence on side branch only, no standard closure |
+| PAR-02 | Phase 04 | Deferred: parity evidence on side branch only, no standard closure |
+| REC-01 | Phase 03 | Deferred: side-branch implementation exists, not adopted, not merged |
 
 **Coverage:**
 - v1.1 requirements: 8 total
@@ -61,4 +61,4 @@
 
 ---
 *Requirements defined: 2026-07-15*
-*Last updated: 2026-07-15 after roadmap creation*
+*Last updated: 2026-07-19 after forensic branch reconciliation (`.planning/forensics/report-20260719-055254.md`): Phase 03/04 requirements marked Deferred; checkboxes stay unchecked until a business adoption decision.*

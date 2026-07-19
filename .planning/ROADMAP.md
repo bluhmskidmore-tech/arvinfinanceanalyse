@@ -15,9 +15,21 @@
 
 ## Phases
 
-- [x] **Phase 02: Exact-Cutoff Historical Coverage** - Materialize all available 2026 month-end partitions and expose exact selected-cutoff state. (completed 2026-07-17)
-- [ ] **Phase 03: Incremental Rebuild and Recovery** - Rebuild only affected cumulative cutoffs, coalesce overlap, and isolate failures.
-- [ ] **Phase 04: Exact Parity and Audit Evidence** - Prove governed live-versus-precomputed equality and publish the cutoff evidence matrix.
+- [x] **Phase 02: Exact-Cutoff Historical Coverage** - Materialize all available 2026 month-end partitions and expose exact selected-cutoff state. (completed 2026-07-17; merged into `codex/V1`)
+- [ ] **Phase 03: Incremental Rebuild and Recovery** - Rebuild only affected cumulative cutoffs, coalesce overlap, and isolate failures. **DEFERRED** (see status note below)
+- [ ] **Phase 04: Exact Parity and Audit Evidence** - Prove governed live-versus-precomputed equality and publish the cutoff evidence matrix. **DEFERRED** (see status note below)
+
+## Phase 03/04 Status Note (2026-07-19 forensic reconciliation)
+
+Per `.planning/forensics/report-20260719-055254.md`, Phase 03 and 04 have three distinct states that must not be collapsed into a single "Complete":
+
+| Dimension | Phase 03 | Phase 04 |
+| --- | --- | --- |
+| Technical implementation | Complete on side branch `codex/phase-03-incremental-rebuild` (HEAD `ad28d974a`, ~3297 lines) | Parity evidence exists but is mixed into the Phase 03 side branch and docs; no standalone phase directory |
+| Adopted by current business | **No.** Business rule is monthly PnL updates with no routine historical backtrace, so automatic cascade rebuild is a low-frequency protection mechanism, not a current need | **No.** Parity evidence has not been reviewed through the standard SUMMARY/VERIFICATION closure |
+| Merged into mainline (`codex/V1`) | **No** | **No** |
+
+Disposition: the side branch is preserved as a **historical-traceability capability candidate / reference implementation**. Do not continue Phase 03 development, do not merge the side branch directly, and do not treat Phase 03/04 as next-round work. Requirements INC-01, INC-02, REC-01, PAR-01, PAR-02 remain unchecked until a business adoption decision reopens them.
 
 ## Phase Details
 
@@ -73,5 +85,5 @@
 | Phase | Requirements | Plans Complete | Status | Completed |
 |-------|--------------|----------------|--------|-----------|
 | 02. Exact-Cutoff Historical Coverage | 3 | 1/1 | Complete    | 2026-07-17 |
-| 03. Incremental Rebuild and Recovery | 3 | 0/TBD | Not started | - |
-| 04. Exact Parity and Audit Evidence | 2 | 0/TBD | Not started | - |
+| 03. Incremental Rebuild and Recovery | 3 | 2/2 (side branch only) | Deferred: technically complete on `codex/phase-03-incremental-rebuild`, not adopted, not merged | - |
+| 04. Exact Parity and Audit Evidence | 2 | 0/TBD | Deferred: evidence on side branch, no standard closure | - |

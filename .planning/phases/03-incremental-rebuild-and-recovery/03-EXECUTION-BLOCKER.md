@@ -1,11 +1,14 @@
 ---
 phase: 03
-status: blocked_by_local_tooling
+status: superseded_deferred
 date: 2026-07-17
-resume_from: 03-01-PLAN.md
+superseded_on: 2026-07-19
+superseded_by: .planning/forensics/report-20260719-055254.md
 ---
 
-# Phase 03 Execution Blocker
+# Phase 03 Execution Blocker (SUPERSEDED)
+
+> **2026-07-19 update:** Do NOT resume from this file. The 2026-07-19 forensic reconciliation found Phase 03 was already technically implemented on side branch `codex/phase-03-incremental-rebuild` (HEAD `ad28d974a`), but it is not adopted by current business and not merged into `codex/V1`. Phase 03/04 are deferred; see the status note in `.planning/ROADMAP.md`. The original blocker record below is kept for history only.
 
 Planning, research, validation design, and GitNexus impact analysis are complete. Business-code execution has not started.
 
