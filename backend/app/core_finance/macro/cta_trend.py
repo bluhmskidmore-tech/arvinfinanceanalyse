@@ -5,13 +5,15 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping, Sequence
 from datetime import date
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
+from app.core_finance.macro.helpers import normalize_price_inputs as _normalize_price_inputs
 
 CTA_TREND_RULE_VERSION = "rv_macro_cta_trend_cn_v1"
 ASSET_LABELS = {
@@ -83,7 +85,9 @@ def compute_cta_trend_payload(
     report_date: date,
     min_history: int = 80,
 ) -> dict[str, Any]:
-    frame, warnings = _normalize_prices(prices, report_date=report_date)
+    frame, warnings = _normalize_price_inputs(
+        prices, report_date=report_date, missing_token="NO_CTA_TREND_INPUTS"
+    )
     if frame.empty:
         return _unavailable(report_date, warnings or ["NO_CTA_TREND_INPUTS"])
 
@@ -134,49 +138,6 @@ def compute_cta_trend_payload(
     }
 
 
-def _normalize_prices(
-    prices: Mapping[str, Sequence[tuple[date, float]]] | pd.DataFrame | None,
-    *,
-    report_date: date,
-) -> tuple[pd.DataFrame, list[str]]:
-    warnings: list[str] = []
-    if prices is None:
-        return pd.DataFrame(), ["NO_CTA_TREND_INPUTS"]
-    if isinstance(prices, pd.DataFrame):
-        frame = prices.copy()
-    else:
-        columns: dict[str, pd.Series] = {}
-        for key, points in prices.items():
-            series = _to_series(points)
-            if series.empty:
-                warnings.append(f"{str(key).upper()}_MISSING")
-                continue
-            columns[str(key)] = series
-        frame = pd.DataFrame(columns) if columns else pd.DataFrame()
-    if frame.empty:
-        return frame, warnings or ["NO_CTA_TREND_INPUTS"]
-    if not isinstance(frame.index, pd.DatetimeIndex):
-        frame.index = pd.to_datetime(frame.index)
-    frame = frame.sort_index()
-    frame = frame[frame.index.date <= report_date]
-    for column in frame.columns:
-        frame[column] = pd.to_numeric(frame[column], errors="coerce")
-    return frame.dropna(how="all"), warnings
-
-
-def _to_series(points: Sequence[tuple[date, float]] | None) -> pd.Series:
-    if not points:
-        return pd.Series(dtype="float64")
-    rows = [
-        (pd.Timestamp(point_date), float(value))
-        for point_date, value in points
-        if point_date is not None and value is not None and math.isfinite(float(value))
-    ]
-    if not rows:
-        return pd.Series(dtype="float64")
-    return pd.Series({ts: value for ts, value in rows}, dtype="float64").sort_index()
-
-
 def _unavailable(report_date: date, warnings: list[str]) -> dict[str, Any]:
     return {
         "report_date": report_date.isoformat(),
@@ -192,14 +153,3 @@ def _unavailable(report_date: date, warnings: list[str]) -> dict[str, Any]:
         "headline": "CTA趋势数据不足",
         "warnings": _dedupe(warnings),
     }
-
-
-def _dedupe(values: Sequence[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
-    return out

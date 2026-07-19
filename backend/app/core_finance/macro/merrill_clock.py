@@ -14,6 +14,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from app.core_finance.macro.helpers import dedupe_preserving_order as _dedupe
+from app.core_finance.macro.helpers import series_from_points as _series_from_points
+
 MERRILL_CLOCK_RULE_VERSION = "rv_macro_merrill_clock_cn_v1"
 
 # 与脚本 GROWTH_INDICATORS / INFLATION / LIQUIDITY 列名对齐
@@ -281,7 +284,7 @@ def _series_data_to_frame(
     columns: dict[str, pd.Series] = {}
     for key, points in series_data.items():
         script_name = _WIDE_TO_SCRIPT_COLUMNS.get(str(key), str(key))
-        series = _to_series(points)
+        series = _series_from_points(points)
         if series.empty:
             continue
         columns[script_name] = series
@@ -321,19 +324,6 @@ def _wide_rows_to_frame(wide_rows: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
     return frame.groupby(month_keys, sort=True).tail(1)
 
 
-def _to_series(points: Sequence[tuple[date, float]] | None) -> pd.Series:
-    if not points:
-        return pd.Series(dtype="float64")
-    rows = [
-        (pd.Timestamp(point_date), float(value))
-        for point_date, value in points
-        if point_date is not None and value is not None and math.isfinite(float(value))
-    ]
-    if not rows:
-        return pd.Series(dtype="float64")
-    return pd.Series({point_date: value for point_date, value in rows}, dtype="float64").sort_index()
-
-
 def _missing_input_warnings(frame: pd.DataFrame) -> list[str]:
     warnings: list[str] = []
     for column in _SYSTEM_GROWTH_COLUMNS:
@@ -369,14 +359,3 @@ def _unavailable_payload(report_date: date, warnings: list[str]) -> dict[str, An
         "headline": "美林时钟数据不足",
         "warnings": _dedupe(warnings),
     }
-
-
-def _dedupe(values: Sequence[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
-    return out
