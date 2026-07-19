@@ -24,7 +24,7 @@
 | decision_summary 观察卡投票 | 4 张 observation 卡（merrill/cta/dcc/rp）计入可用分母但不参与久期/信用方向投票；result 增加 `formal_use_allowed=false` 与 `observation_excluded_count`。注：排除集实际含 6 个 key——并行静默降级任务把 `cross_market_linkage`/`rate_turning_point` 也接为 observation 卡，同口径排除，属预期共存 | ✅ |
 | Merrill `next_step` 英文脚手架 | 替换为中文观察口径文案（补齐 PMI 新订单/发电量等增长代理历史） | ✅ |
 | DCC/RP 脚本 parity 守护 | 新增 `garch_standardize`、`classify_warning`、`solve_risk_parity`、`solve_risk_budget`、`risk_contributions` 库-脚本 parity 测试（脚本无 Wind 耦合，仅 akshare 顶层 import，本环境可导入） | ✅ |
-| 前端 MOCK_CAPABILITIES 目录 + mock decision_summary 分数 | 由并行前端任务处理（不在本收口范围） | ↗ 移交 |
+| 前端 MOCK_CAPABILITIES 目录 + mock decision_summary 分数 | `70b17badb` 已对齐 observation 投票口径 | ✅ |
 
 ### SDD 两阶段评审收口（2026-07-19 下午）
 
@@ -33,7 +33,17 @@
 | Spec 合规评审 | ✅ 通过 | 排除集含 6 key 的说明已补入本文档 |
 | 代码质量评审 | ✅ 通过（复评确认） | I-1 SLSQP 未检查收敛→`*_with_status`+`RISK_PARITY/RISK_BUDGET_SOLVER_NOT_CONVERGED`；I-2 DCC 配对静默跳过→`KeyError`+`DCC_GARCH_PAIR_SKIPPED_*`；M-1 退化协方差→`RISK_PARITY_COV_DEGENERATE` unavailable（新测试）；M-2 warning 令牌统一 UPPER_SNAKE；M-3/M-4 代码简化；M-5 mock 美林卡补黄金腿 |
 
-已知外部残留：`test_macro_toolkit_scripts.py::test_macro_toolkit_api_exposes_analysis_payload` 因并行任务改 `yield_curve_shape`（`SPREAD_30Y_10Y_UNAVAILABLE`）预期漂移，由该任务线收口。
+已知外部残留：已由 `9b4854871` 锁定诚实降级契约（有 30Y → complete；无 30Y → degraded + `SPREAD_30Y_10Y_UNAVAILABLE`）。
+
+### 下一步波次（2026-07-19 晚）
+
+| Commit | 内容 |
+| --- | --- |
+| `89b45263c` | 观察模型共享 helpers + LEI 缺失月不再零填 |
+| `9b4854871` | 锁定 yield_curve_shape 诚实降级测试契约 |
+| `70b17badb` | mock decision_summary 对齐 observation 投票 |
+
+SDD 复审：Spec ✅ / Quality ✅（Minor：LEI 缺专项单测；mock 排除集与后端未共享常量）。
 
 ## 约束
 
