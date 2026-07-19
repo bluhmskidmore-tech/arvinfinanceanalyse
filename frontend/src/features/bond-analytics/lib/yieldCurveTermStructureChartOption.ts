@@ -20,7 +20,7 @@ const IB_AXIS = ibTokens.color.inkMuted;
 function pctNumericToAxisPercent(n: Numeric | null | undefined): number | null {
   if (!n || n.raw == null) return null;
   if (n.unit !== "pct") return n.raw;
-  return Math.abs(n.raw) < 1 ? n.raw * 100 : n.raw;
+  return n.raw * 100;
 }
 
 function bpNumericToAxis(n: Numeric | null | undefined): number | null {

@@ -119,7 +119,7 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
             yld = None
             if y_now is not None:
                 yld = numeric_from_raw(
-                    raw=float(y_now),
+                    raw=float(y_now / Decimal("100")),
                     unit="pct",
                     precision=2,
                     sign_aware=True,
@@ -155,6 +155,17 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
         )
     if all_missing and curve_types:
         warnings.append("No yield curve snapshots available for the requested report_date and curve types.")
+    has_missing = any(curve.trade_date_resolved is None for curve in curves_out)
+    resolved_dates = {
+        curve.trade_date_resolved
+        for curve in curves_out
+        if curve.trade_date_resolved is not None
+    }
+    shared_resolved_date = (
+        next(iter(resolved_dates))
+        if curves_out and not has_missing and len(resolved_dates) == 1
+        else None
+    )
 
     meta = build_formal_result_meta(
         trace_id=_trace_id(),
@@ -164,13 +175,26 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
         rule_version=_merge_lineage_str(RULE_VERSION_STABLE, *rule_parts) or RULE_VERSION_STABLE,
         vendor_version=_merge_lineage_str(*vendor_parts) or "vv_none",
         quality_flag="warning" if warnings else "ok",
-        vendor_status="vendor_stale" if any_fallback else ("vendor_unavailable" if all_missing else "ok"),
+        vendor_status=(
+            "vendor_unavailable"
+            if has_missing
+            else ("vendor_stale" if any_fallback else "ok")
+        ),
         fallback_mode="latest_snapshot" if any_fallback else "none",
         tables_used=[FACT_TABLE],
         filters_applied={"report_date": requested, "curve_types": list(curve_types)},
         source_surface="bond_analytics",
+        requested_report_date=requested,
+        resolved_report_date=shared_resolved_date,
+        as_of_date=shared_resolved_date,
+        date_basis=(
+            "yield_curve_trade_date_shared"
+            if shared_resolved_date is not None
+            else "yield_curve_trade_date_per_curve"
+        ),
+        fallback_date=shared_resolved_date if any_fallback else None,
     )
-    if any_fallback:
+    if any_fallback and not has_missing:
         meta = meta.model_copy(
             update={
                 "quality_flag": "stale",

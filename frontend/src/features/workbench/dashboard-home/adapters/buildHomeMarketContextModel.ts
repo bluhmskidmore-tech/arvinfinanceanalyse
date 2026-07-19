@@ -8,6 +8,11 @@ import type {
   YieldCurveTermStructureCurvePayload,
   YieldCurveTermStructurePayload,
 } from "../../../../api/contracts";
+import {
+  formatYieldCurveDateSummary,
+  summarizeYieldCurveDates,
+  type YieldCurveDateSummary,
+} from "../../../../lib/yieldCurveDateSummary";
 import type { HomeMarketTicker } from "../dashboardHomeMarket";
 
 export type HomeMarketContextTone = "cool" | "neutral" | "hot";
@@ -303,7 +308,10 @@ function formatTenorPoint(curve: YieldCurveTermStructureCurvePayload, tenor: str
   return delta === GAP ? `${tenor} ${numericDisplay(point.yield_pct)}` : `${tenor} ${numericDisplay(point.yield_pct)}(${delta})`;
 }
 
-function buildCurveBlock(payload: YieldCurveTermStructurePayload | null | undefined): HomeMarketContextBlock {
+function buildCurveBlock(
+  payload: YieldCurveTermStructurePayload | null | undefined,
+  dateSummary: YieldCurveDateSummary,
+): HomeMarketContextBlock {
   const curve = findCurve(payload);
   if (!curve) {
     return {
@@ -328,7 +336,7 @@ function buildCurveBlock(payload: YieldCurveTermStructurePayload | null | undefi
     label: "曲线/利率",
     title: `${title}${delta}`,
     detail,
-    foot: `曲线日期 ${curve.trade_date_resolved ?? curve.trade_date_requested} · ${availableCurves}`,
+    foot: `${formatYieldCurveDateSummary(dateSummary)} · ${availableCurves}`,
   };
 }
 
@@ -412,15 +420,18 @@ export function buildHomeMarketContextModel(input: {
   void input.macroNewsEvents;
   void input.todayIsoDate;
   const temperature = buildTemperature(input.marketTape);
+  const yieldCurveDateSummary = summarizeYieldCurveDates(
+    input.yieldCurveTermStructure?.curves ?? [],
+  );
   const contextBlocks = [
     buildPnlBlock(input.campisiFourEffects, input.returnDecomposition, input.attribution),
-    buildCurveBlock(input.yieldCurveTermStructure),
+    buildCurveBlock(input.yieldCurveTermStructure, yieldCurveDateSummary),
     buildCreditBlock(input.creditSpreadMigration),
   ];
   const asOfDate = latestIsoDate([
     input.returnDecomposition?.report_date,
     input.campisiFourEffects?.report_date,
-    input.yieldCurveTermStructure?.report_date,
+    yieldCurveDateSummary.sharedResolvedDate,
     input.creditSpreadMigration?.report_date,
   ]);
 
