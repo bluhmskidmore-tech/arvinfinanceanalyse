@@ -2355,6 +2355,19 @@ describe("MacroToolkitPage", () => {
     expect((await screen.findAllByText(/M16/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("signal_aggregator")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("equity_strategies")).length).toBeGreaterThan(0);
+
+    const capabilitySection = requireClosestElement(
+      screen.getByRole("heading", { level: 2, name: "功能结果" }).closest(".macro-toolkit-section") as HTMLElement | null,
+      "macro toolkit capability results section",
+    );
+    const capabilityHeads = Array.from(
+      capabilitySection.querySelectorAll(".macro-toolkit-capability-result-head"),
+    ).map((node) => node.textContent ?? "");
+    expect(capabilityHeads.some((text) => text.includes("美林时钟（中国版）"))).toBe(true);
+    expect(capabilityHeads.some((text) => text.includes("CTA 趋势跟踪"))).toBe(true);
+    expect(capabilityHeads.some((text) => text.includes("DCC-GARCH 相关"))).toBe(true);
+    expect(capabilityHeads.some((text) => text.includes("风险平价影子"))).toBe(true);
+    expect(within(capabilitySection).getByText("可用模块 9/14")).toBeInTheDocument();
   });
 
   it("renders macro observation as a read-only analysis route without operations controls", async () => {
@@ -2496,7 +2509,7 @@ describe("MacroToolkitPage", () => {
     expect(evidenceTraceSummary).toHaveTextContent("数据健康");
     expect(evidenceTraceSummary).toHaveTextContent("指标覆盖");
     expect(evidenceTraceSummary).toHaveTextContent("能力证据");
-    expect(evidenceTraceSummary).toHaveTextContent("6 项证据");
+    expect(evidenceTraceSummary).toHaveTextContent("10 项证据");
     expect(evidenceTraceSummary).toHaveTextContent("不是正式投资信号");
     expect(evidenceTraceSummary).toHaveTextContent("观察框架");
     expect(evidenceTraceSummary).toHaveTextContent("观察就绪");
@@ -2522,6 +2535,29 @@ describe("MacroToolkitPage", () => {
     expect(screen.queryByRole("button", { name: /运行选中脚本/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 2, name: "脚本注册表" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 2, name: "运行结果" })).not.toBeInTheDocument();
+  });
+
+  it("promotes the decision summary to the observation first-screen primary answer", async () => {
+    renderWorkbenchApp(["/macro-observation"]);
+
+    const decisionSummary = await screen.findByTestId("macro-observation-decision-summary");
+    const cockpit = await screen.findByTestId("macro-toolkit-tailwind-cockpit");
+    const houseView = requireClosestElement(
+      cockpit.querySelector("[data-testid='macro-toolkit-house-view']"),
+      "macro observation house view",
+    );
+    const conclusion = requireClosestElement(
+      cockpit.querySelector(".macro-toolkit-cockpit__conclusion"),
+      "macro observation conclusion",
+    );
+    expect(houseView.contains(decisionSummary)).toBe(true);
+    expectElementBefore(decisionSummary, conclusion);
+    expect(decisionSummary).toHaveTextContent("M16 · 宏观决策摘要");
+    expect(decisionSummary).toHaveTextContent("宏观信号分化，维持中性观察。");
+    expect(decisionSummary).toHaveTextContent(/可用模块 \d+\/\d+/);
+    expect(decisionSummary).toHaveTextContent("M7 资金面偏平衡");
+    expect(decisionSummary).toHaveTextContent("部分降级");
+    expect(decisionSummary).toHaveTextContent("部分模块数据降级或不可用");
   });
 
   it("keeps toolkit data-health deferred tickets in committee language", async () => {
