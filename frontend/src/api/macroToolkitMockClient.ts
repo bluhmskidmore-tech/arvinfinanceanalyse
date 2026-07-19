@@ -948,21 +948,25 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
     label: "宏观决策摘要",
     group: "决策摘要",
     status: "degraded",
-    tone: "neutral",
-    // 后端 _decision_summary_card 公式：50 + (positive-negative)*8 - missing*3 = 50 + 3*8 - 5*3 = 59
-    score: 59,
-    headline: "宏观信号分化，维持中性观察。",
+    // 投票仅计非 observation 卡：usable 中 crisis_score_cn=positive；
+    // yield_curve/merrill/cta/dcc/rp 计入分母但不投票。
+    // 公式：50 + (1-0)*8 - 5*3 = 43；分母对齐 15 个定义中的 14 张非 decision 卡。
+    tone: "positive",
+    score: 43,
+    headline: "宏观信号偏支持，组合可保留适度久期与高等级信用。",
     primary_metric: { label: "可用模块", value: 9, unit: "/14" },
     evidence: ["M7 资金面偏平衡", "M10 LEI 处于中性区间", "美林时钟观察可用", "CTA趋势：震荡观望"],
     warnings: ["部分模块数据降级或不可用"],
     result: {
       report_date: "2026-04-30",
       data_status: "degraded",
-      positive_count: 3,
+      formal_use_allowed: false,
+      positive_count: 1,
       negative_count: 0,
+      observation_excluded_count: 5,
       missing_count: 5,
       usable_count: 9,
-      headline: "宏观信号分化，维持中性观察。",
+      headline: "宏观信号偏支持，组合可保留适度久期与高等级信用。",
     },
   },
 ];

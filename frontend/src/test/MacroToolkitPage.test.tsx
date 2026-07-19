@@ -2553,7 +2553,7 @@ describe("MacroToolkitPage", () => {
     expect(houseView.contains(decisionSummary)).toBe(true);
     expectElementBefore(decisionSummary, conclusion);
     expect(decisionSummary).toHaveTextContent("M16 · 宏观决策摘要");
-    expect(decisionSummary).toHaveTextContent("宏观信号分化，维持中性观察。");
+    expect(decisionSummary).toHaveTextContent("宏观信号偏支持，组合可保留适度久期与高等级信用。");
     expect(decisionSummary).toHaveTextContent(/可用模块 \d+\/\d+/);
     expect(decisionSummary).toHaveTextContent("M7 资金面偏平衡");
     expect(decisionSummary).toHaveTextContent("部分降级");
