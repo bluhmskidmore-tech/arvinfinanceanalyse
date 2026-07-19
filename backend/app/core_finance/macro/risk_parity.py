@@ -46,6 +46,11 @@ def risk_contributions(weights: np.ndarray, cov: np.ndarray) -> tuple[np.ndarray
 
 
 def solve_risk_parity(cov: np.ndarray) -> np.ndarray:
+    weights, _ = solve_risk_parity_with_status(cov)
+    return weights
+
+
+def solve_risk_parity_with_status(cov: np.ndarray) -> tuple[np.ndarray, bool]:
     n = cov.shape[0]
     w0 = np.ones(n) / n
 
@@ -61,10 +66,18 @@ def solve_risk_parity(cov: np.ndarray) -> np.ndarray:
         constraints=[{"type": "eq", "fun": lambda w: float(np.sum(w)) - 1.0}],
         options={"ftol": 1e-12, "maxiter": 2000},
     )
-    return result.x
+    return _normalized_weights(result.x), bool(result.success)
 
 
 def solve_risk_budget(cov: np.ndarray, budget: Sequence[float]) -> np.ndarray:
+    weights, _ = solve_risk_budget_with_status(cov, budget)
+    return weights
+
+
+def solve_risk_budget_with_status(
+    cov: np.ndarray,
+    budget: Sequence[float],
+) -> tuple[np.ndarray, bool]:
     n = cov.shape[0]
     b = np.asarray(budget, dtype=float)
     b = b / b.sum()
@@ -83,7 +96,15 @@ def solve_risk_budget(cov: np.ndarray, budget: Sequence[float]) -> np.ndarray:
         constraints=[{"type": "eq", "fun": lambda w: float(np.sum(w)) - 1.0}],
         options={"ftol": 1e-12, "maxiter": 2000},
     )
-    return result.x
+    return _normalized_weights(result.x), bool(result.success)
+
+
+def _normalized_weights(weights: np.ndarray) -> np.ndarray:
+    w = np.asarray(weights, dtype=float)
+    total = float(w.sum())
+    if total > 0:
+        return w / total
+    return w
 
 
 def compute_risk_parity_payload(
@@ -101,22 +122,30 @@ def compute_risk_parity_payload(
     if len(usable) < min_history:
         return _unavailable(
             report_date,
-            _dedupe([*warnings, "RISK_PARITY_HISTORY_SHORT", f"rows={len(usable)}"]),
+            _dedupe([*warnings, "RISK_PARITY_HISTORY_SHORT", f"RISK_PARITY_HISTORY_ROWS_{len(usable)}"]),
         )
 
     cov, _log_ret, vol = calc_cov(usable)
     if not np.all(np.isfinite(cov)):
         return _unavailable(report_date, _dedupe([*warnings, "RISK_PARITY_COV_INVALID"]))
+    # 全零/退化协方差（如价格被 ffill 成常数）会让 sig=0、目标函数恒 0，
+    # 输出"等权 + 0 波动"假象；必须显式不可用而不是 complete。
+    if float(np.trace(cov)) <= 0:
+        return _unavailable(report_date, _dedupe([*warnings, "RISK_PARITY_COV_DEGENERATE"]))
 
     columns = list(usable.columns)
-    w_rp = solve_risk_parity(cov)
+    w_rp, rp_converged = solve_risk_parity_with_status(cov)
+    if not rp_converged:
+        warnings.append("RISK_PARITY_SOLVER_NOT_CONVERGED")
     phase = clock_phase if clock_phase in BUDGET_MAP else "衰退"
     if clock_phase is None:
         warnings.append("CLOCK_PHASE_MISSING_DEFAULT_RECESSION")
     elif clock_phase not in BUDGET_MAP:
         warnings.append(f"CLOCK_PHASE_FALLBACK:{clock_phase}->{phase}")
     budget = [BUDGET_MAP[phase].get(col, 1.0 / len(columns)) for col in columns]
-    w_rb = solve_risk_budget(cov, budget)
+    w_rb, rb_converged = solve_risk_budget_with_status(cov, budget)
+    if not rb_converged:
+        warnings.append("RISK_BUDGET_SOLVER_NOT_CONVERGED")
     rc_rp, sig_rp = risk_contributions(w_rp, cov)
     rc_rb, sig_rb = risk_contributions(w_rb, cov)
 

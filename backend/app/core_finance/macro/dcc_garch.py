@@ -66,7 +66,7 @@ def compute_dcc_garch_payload(
     if len(usable) < min_history:
         return _unavailable(
             report_date,
-            _dedupe([*warnings, "DCC_GARCH_HISTORY_SHORT", f"rows={len(usable)}"]),
+            _dedupe([*warnings, "DCC_GARCH_HISTORY_SHORT", f"DCC_GARCH_HISTORY_ROWS_{len(usable)}"]),
         )
 
     log_ret = np.log(usable / usable.shift(1)).dropna()
@@ -83,16 +83,21 @@ def compute_dcc_garch_payload(
     pair_rows: list[dict[str, Any]] = []
     for i, a in enumerate(cols):
         for b in cols[i + 1 :]:
+            # 单个配对提取失败必须显式可见：跳过的腿会偏移 avg_correlation，
+            # 不能静默吞掉后仍标 complete。
             try:
                 series = rolling.loc[(slice(None), a), b]
                 series.index = series.index.droplevel(1)
-            except Exception:
+            except KeyError:
+                warnings.append(f"DCC_GARCH_PAIR_SKIPPED_{a.upper()}_{b.upper()}")
                 continue
             latest = series.dropna()
             if latest.empty:
+                warnings.append(f"DCC_GARCH_PAIR_SKIPPED_{a.upper()}_{b.upper()}")
                 continue
             value = float(latest.iloc[-1])
             if not math.isfinite(value):
+                warnings.append(f"DCC_GARCH_PAIR_SKIPPED_{a.upper()}_{b.upper()}")
                 continue
             pair_avgs.append(value)
             pair_rows.append(

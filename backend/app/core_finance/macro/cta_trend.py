@@ -54,8 +54,7 @@ def compute_composite(price: pd.Series) -> pd.DataFrame:
     ma = signal_ma_cross(price)
     don = signal_donchian(price)
     atr = signal_atr_position(price)
-    composite = ma * 0.4 + don * 0.3 + atr * 0.3
-    composite = composite.apply(lambda x: float(np.tanh(x)) if not np.isnan(x) else np.nan)
+    composite = np.tanh(ma * 0.4 + don * 0.3 + atr * 0.3)
     return pd.DataFrame(
         {
             "ma_signal": ma,
