@@ -40,10 +40,17 @@ _WIDE_TO_SCRIPT_COLUMNS: dict[str, str] = {
     "social_financing": "social_financing",
 }
 
-_SYSTEM_GROWTH_COLUMNS = ("pmi", "industrial_va")
+# PMI 为系统必填增长腿；industrial_va 与路由 _CAPABILITY_INPUT_REQUIREMENTS
+# （required=False）对齐，缺失只提示不可用，不单独把状态打成 degraded。
+_SYSTEM_GROWTH_COLUMNS = ("pmi",)
 _SYSTEM_INFLATION_COLUMNS = ("cpi_yoy", "ppi_yoy")
 _SYSTEM_LIQUIDITY_COLUMNS = ("m2_yoy", "social_financing")
-_OPTIONAL_GROWTH_COLUMNS = ("pmi_new_orders", "electricity", "freight")
+_OPTIONAL_GROWTH_COLUMNS = ("industrial_va", "pmi_new_orders", "electricity", "freight")
+# 社融 warning 与路由 SOCIAL_FINANCING_YOY_MISSING 对齐（避免两套拼写）。
+_LIQUIDITY_WARNING_BY_COLUMN = {
+    "m2_yoy": "M2_YOY_MISSING",
+    "social_financing": "SOCIAL_FINANCING_YOY_MISSING",
+}
 
 
 def compute_momentum(
@@ -61,18 +68,22 @@ def compute_momentum(
 
 
 def compute_growth_momentum(df: pd.DataFrame) -> pd.Series:
-    """合成增长动量（多指标加权，权重按可用列归一化）。"""
+    """合成增长动量（多指标加权，按行有效权重归一化）。
+
+    整行无有效分量时必须输出 NaN 而不是 0：停更 / 常数序列 / 历史不足
+    不得被伪装成"零动量"，否则会以 complete 状态落入滞胀/衰退象限。
+    """
     momentums: dict[str, pd.Series] = {}
-    for name, weight in GROWTH_WEIGHTS.items():
+    for name in GROWTH_WEIGHTS:
         if name in df.columns:
-            momentums[name] = compute_momentum(df[name]) * weight
+            momentums[name] = compute_momentum(df[name])
     if not momentums:
         return pd.Series(dtype=float)
-    result = pd.DataFrame(momentums).sum(axis=1)
-    total_weight = sum(GROWTH_WEIGHTS[key] for key in momentums)
-    if total_weight > 0:
-        result = result / total_weight
-    return result
+    momentum_frame = pd.DataFrame(momentums)
+    weights = pd.Series({name: GROWTH_WEIGHTS[name] for name in momentum_frame.columns})
+    numerator = momentum_frame.mul(weights, axis=1).sum(axis=1, min_count=1)
+    available_weight = momentum_frame.notna().mul(weights, axis=1).sum(axis=1)
+    return numerator / available_weight.replace(0, np.nan)
 
 
 def compute_inflation_momentum(df: pd.DataFrame) -> pd.Series:
@@ -170,9 +181,7 @@ def compute_merrill_clock_payload(
     growth = float(latest["growth_momentum"])
     inflation = float(latest["inflation_momentum"])
     liquidity_raw = latest.get("liquidity_momentum")
-    if liquidity_raw is None or (isinstance(liquidity_raw, float) and math.isnan(liquidity_raw)) or pd.isna(
-        liquidity_raw
-    ):
+    if liquidity_raw is None or pd.isna(liquidity_raw):
         liquidity = 0.0
         warnings.append("LIQUIDITY_MOMENTUM_DEFAULT_ZERO")
     else:
@@ -338,7 +347,7 @@ def _missing_input_warnings(frame: pd.DataFrame) -> list[str]:
             warnings.append(f"{column.upper()}_MISSING")
     for column in _SYSTEM_LIQUIDITY_COLUMNS:
         if column not in frame.columns or frame[column].dropna().empty:
-            warnings.append(f"{column.upper()}_MISSING")
+            warnings.append(_LIQUIDITY_WARNING_BY_COLUMN.get(column, f"{column.upper()}_MISSING"))
     return warnings
 
 

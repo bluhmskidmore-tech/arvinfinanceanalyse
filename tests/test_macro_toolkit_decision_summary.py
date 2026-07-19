@@ -42,6 +42,39 @@ def test_decision_summary_denominator_matches_aggregated_card_count() -> None:
     assert card["status"] == "complete"
 
 
+def test_decision_summary_excludes_observation_cards_from_tone_voting() -> None:
+    observation_keys = ["merrill_clock_cn", "cta_trend_cn", "dcc_garch_cn", "risk_parity_cn"]
+    cards = [
+        _make_card("m7", "complete", "neutral"),
+        _make_card("m8", "complete", "neutral"),
+        *[_make_card(key, "complete", "positive") for key in observation_keys],
+    ]
+
+    card = macro_toolkit_route._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
+
+    # 4 张 observation 卡全是 positive，也不得驱动方向性久期/信用建议
+    assert card["tone"] == "neutral"
+    assert card["result"]["positive_count"] == 0
+    assert card["result"]["negative_count"] == 0
+    assert card["result"]["observation_excluded_count"] == 4
+    assert card["score"] == 50.0
+    # observation 卡仍计入可用分母
+    assert card["result"]["usable_count"] == 6
+    assert card["primary_metric"]["value"] == 6
+    assert card["primary_metric"]["unit"] == "/6"
+    assert card["result"]["formal_use_allowed"] is False
+
+
+def test_decision_summary_result_marks_formal_use_not_allowed() -> None:
+    cards = [_make_card("m7", "complete", "positive")]
+
+    card = macro_toolkit_route._decision_summary_card(_decision_definition(), cards, date(2026, 7, 10))
+
+    assert card["result"]["formal_use_allowed"] is False
+    assert card["tone"] == "positive"
+    assert card["result"]["positive_count"] == 1
+
+
 def test_decision_summary_marks_degraded_when_any_module_unavailable() -> None:
     cards = [
         _make_card("m7", "complete", "positive"),

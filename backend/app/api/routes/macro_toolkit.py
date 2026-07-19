@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
@@ -12,6 +12,11 @@ from backend.app.api.response_cache import (
     market_home_macro_analysis_cache_key,
     market_home_response_cache,
     market_home_strategy_summaries_cache_key,
+)
+from backend.app.core_finance.data_freshness import (
+    FRESHNESS_TIER_EXPIRED,
+    FRESHNESS_TIER_STALE,
+    assess_freshness,
 )
 from backend.app.core_finance.macro import (
     DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
@@ -153,24 +158,24 @@ _CAPABILITY_DEFINITIONS = (
         "legacy_module": "M8",
         "label": "收益率曲线形态",
         "group": "曲线",
-        "implementation_status": "partial",
-        "route_status": "partial",
-        "frontend_status": "partial",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("S0059743", "S0059747", "S0059749"),
         "data_tables": ("fact_formal_yield_curve_daily",),
-        "next_step": "复用正式曲线表，把曲线形态纯函数输出接到宏观工具箱。",
+        "next_step": "观察口径曲线形态已上分析卡；缺 5Y/30Y 节点时次级利差诚实标 unavailable。",
     },
     {
         "key": "credit_spread_risk",
         "legacy_module": "M9",
         "label": "信用利差预警",
         "group": "信用",
-        "implementation_status": "partial",
-        "route_status": "partial",
-        "frontend_status": "partial",
+        "implementation_status": "library_ready",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("S0059652", "S0059747", "S0059760"),
         "data_tables": ("fact_formal_yield_curve_daily",),
-        "next_step": "把信用利差风险/分位结果合并到本页信用信号区。",
+        "next_step": "观察口径信用利差风险已上分析卡；缺 AA 腿或变动窗口时 degraded。",
     },
     {
         "key": "leading_indicator",
@@ -190,10 +195,11 @@ _CAPABILITY_DEFINITIONS = (
         "label": "流动性压力测试",
         "group": "压力测试",
         "implementation_status": "library_ready",
-        "route_status": "partial",
-        "frontend_status": "partial",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("DR007.IB", "M0041813"),
-        "next_step": "接入资产/负债期限桶，避免只用市场代理指标。",
+        "data_tables": ("fact_formal_risk_tensor_daily",),
+        "next_step": "观察口径流动性压力已上分析卡；桶字段缺失不计为 0 缺口。",
     },
     {
         "key": "crisis_score_cn",
@@ -212,10 +218,12 @@ _CAPABILITY_DEFINITIONS = (
         "label": "跨市场联动",
         "group": "联动",
         "implementation_status": "library_ready",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
-        "data_aliases": ("sh000300", "CU0", "M0067855"),
-        "next_step": "把跨资产纯函数输出为联动矩阵和主导变量。",
+        "route_status": "wired",
+        "frontend_status": "visible",
+        # 实际消费：treasury_10y（曲线 enrich）、brent_oil、usdcny；VIX/美债 10Y 系统源未登记时诚实降级。
+        "data_aliases": ("CA.BRENT", "M0067855", "S0059749"),
+        "data_tables": ("fact_formal_yield_curve_daily", "std_external_macro_daily"),
+        "next_step": "观察口径联动风险已上分析卡；接入 VIX/美债 10Y 系统别名后可补齐股债与中美相关腿。",
     },
     {
         "key": "rate_turning_point",
@@ -223,11 +231,11 @@ _CAPABILITY_DEFINITIONS = (
         "label": "利率拐点判断",
         "group": "曲线",
         "implementation_status": "library_ready",
-        "route_status": "not_wired",
-        "frontend_status": "planned",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("S0059743", "S0059749"),
         "data_tables": ("fact_formal_yield_curve_daily",),
-        "next_step": "用正式曲线和资金利率输出拐点概率。",
+        "next_step": "观察口径拐点信号已上分析卡；后续接入资金利率并沉淀拐点概率口径。",
     },
     {
         "key": "economic_cycle",
@@ -251,7 +259,7 @@ _CAPABILITY_DEFINITIONS = (
         "frontend_status": "visible",
         "data_aliases": ("M0017126", "M0000545", "M0000612", "M0001227", "M0001385", "M5525763"),
         "data_tables": ("fact_choice_macro_daily", "std_external_macro_daily"),
-        "next_step": "Expose the migrated merrill_clock_cn model in the macro analysis result cards.",
+        "next_step": "观察口径美林时钟象限；补齐 PMI 新订单/发电量等增长代理历史后提升象限置信度。",
     },
     {
         "key": "cta_trend_cn",
@@ -295,11 +303,11 @@ _CAPABILITY_DEFINITIONS = (
         "label": "宏观情景组合影响",
         "group": "组合影响",
         "implementation_status": "library_ready",
-        "route_status": "partial",
-        "frontend_status": "partial",
+        "route_status": "wired",
+        "frontend_status": "visible",
         "data_aliases": ("S0059743", "S0059746", "S0059747", "S0059748", "S0059749"),
         "data_tables": ("fact_formal_yield_curve_daily", "fact_formal_bond_analytics_daily"),
-        "next_step": "把组合暴露输入与宏观情景结果合并展示。",
+        "next_step": "观察口径情景冲击已上分析卡；缺曲线节点时禁止默认收益率填洞。",
     },
     {
         "key": "decision_summary",
@@ -1506,6 +1514,23 @@ _WIDE_SERIES_ALIASES = (
     ("dr007", "DR007.IB"),
 )
 
+# 宽表 ffill 停止 carry 的最大陈旧天数（日历日）。月频用宽于 STALE_AFTER_DAYS
+# 的窗口，避免把「自然发布滞后」误判为停更；日频允许跨周末。
+_MONTHLY_WIDE_FIELDS = frozenset(
+    {
+        "pmi",
+        "cpi_yoy",
+        "ppi_yoy",
+        "m2_yoy",
+        "social_financing_yoy",
+        "industrial_yoy",
+    }
+)
+_WIDE_FFILL_MAX_STALE_DAYS = {
+    "monthly": 65,
+    "daily": 10,
+}
+
 _CRISIS_SCORE_INPUTS = (
     {"field": "hs300", "label": "HS300 close", "alias": "sh000300", "warning": "HS300_MISSING"},
     {"field": "aa_5y", "label": "AA credit yield 5Y", "alias": "S0059760", "warning": "AA_5Y_MISSING"},
@@ -2401,12 +2426,12 @@ def _load_multi_asset_price_series(
         end=report_date.isoformat(),
         duckdb_path=duckdb_path,
     )
-    series_data: dict[str, list[tuple[date, float]]] = {}
-    for item in _MULTI_ASSET_PRICE_INPUTS:
-        points = _frame_to_crisis_points(frames_by_alias[str(item["alias"])])
-        if points:
-            series_data[str(item["field"])] = points
-    return series_data
+    # 缺数据的腿保留为空列表：库层 _normalize_prices 会据此产出
+    # {FIELD}_MISSING 警告并把状态降级，而不是静默丢腿。
+    return {
+        str(item["field"]): _frame_to_crisis_points(frames_by_alias[str(item["alias"])])
+        for item in _MULTI_ASSET_PRICE_INPUTS
+    }
 
 
 def _merrill_regime_from_payload(payload: Mapping[str, object] | None) -> str | None:
@@ -3248,22 +3273,34 @@ def _with_capability_input_evidence(
         for item in inputs
         if item["required"] and not item["available"]
     ]
+    stale_inputs = [
+        _stale_warning_from_missing(str(item["warning"]))
+        for item in inputs
+        if item["required"] and item["available"] and item.get("stale")
+    ]
     warnings = [str(item) for item in result.get("warnings", []) if item]
-    for warning in missing_inputs:
+    for warning in [*missing_inputs, *stale_inputs]:
         if warning not in warnings:
             warnings.append(warning)
 
     enriched = dict(result)
-    if missing_inputs and str(enriched.get("data_status") or "").lower() == "complete":
+    if (missing_inputs or stale_inputs) and str(enriched.get("data_status") or "").lower() == "complete":
         enriched["data_status"] = "degraded"
     enriched["warnings"] = warnings
     enriched["input_evidence"] = {
         "inputs": inputs,
         "missing_inputs": missing_inputs,
+        "stale_inputs": stale_inputs,
         "sources": _unique_sorted_texts(item.get("source") for item in inputs),
         "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in inputs),
     }
     return enriched
+
+
+def _stale_warning_from_missing(missing_warning: str) -> str:
+    if missing_warning.endswith("_MISSING"):
+        return f"{missing_warning[: -len('_MISSING')]}_STALE"
+    return f"{missing_warning}_STALE"
 
 
 def _capability_input_evidence_item(
@@ -3288,6 +3325,13 @@ def _capability_input_evidence_item(
     if value is None and isinstance(latest, dict):
         value = latest.get("value")
     available = value is not None if derived else latest is not None
+    latest_date = latest.get("date") if isinstance(latest, dict) else None
+    cadence = str(requirement.get("cadence") or _input_cadence_for_field(field))
+    freshness = assess_freshness(latest_date, report_date, cadence=cadence)
+    stale = bool(
+        available
+        and freshness.tier in {FRESHNESS_TIER_STALE, FRESHNESS_TIER_EXPIRED}
+    )
     return {
         "field": field,
         "label": str(requirement["label"]),
@@ -3295,12 +3339,22 @@ def _capability_input_evidence_item(
         "warning": str(requirement["warning"]),
         "required": bool(requirement.get("required", True)),
         "available": available,
+        "stale": stale,
+        "stale_days": freshness.age_days if stale else None,
+        "freshness_tier": freshness.tier if available else None,
+        "cadence": cadence,
         "row_count": int(check.get("row_count") or 0),
-        "latest_date": latest.get("date") if isinstance(latest, dict) else None,
+        "latest_date": latest_date,
         "series_id": latest.get("series_id") if isinstance(latest, dict) else None,
         "source": latest.get("vendor_name") if isinstance(latest, dict) else None,
         "value": value,
     }
+
+
+def _input_cadence_for_field(field: str) -> str:
+    if field in _MONTHLY_WIDE_FIELDS or field.endswith("_yoy") or field == "pmi":
+        return "monthly"
+    return "daily"
 
 
 def _first_available_source_check(
@@ -3400,16 +3454,24 @@ def _load_macro_wide_rows(
         if row_date is not None and row_date <= report_date:
             wide_by_date.setdefault(row_date, {})
 
+    # ffill with per-field stale cap: stop carrying once the gap from the
+    # original observation exceeds the cadence limit (monthly ~65d / daily ~10d).
     last_seen: dict[str, float] = {}
+    last_seen_date: dict[str, date] = {}
     for sample_date in sorted(wide_by_date):
         current = wide_by_date[sample_date]
+        fresh_fields = {field for field in fields if field in current}
         for field in fields:
             if field not in current and field in last_seen:
-                current[field] = last_seen[field]
-        for field in fields:
+                cadence = "monthly" if field in _MONTHLY_WIDE_FIELDS else "daily"
+                max_stale = _WIDE_FFILL_MAX_STALE_DAYS[cadence]
+                if (sample_date - last_seen_date[field]).days <= max_stale:
+                    current[field] = last_seen[field]
+        for field in fresh_fields:
             value = current.get(field)
             if value is not None:
                 last_seen[field] = value
+                last_seen_date[field] = sample_date
 
     curves_by_date = build_curve_history(curve_rows, report_date=report_date)
     enrich_wide_with_curve_market_fields(wide_by_date, curves_by_date)
@@ -3598,6 +3660,8 @@ def _capability_result_tone(key: str, result: dict[str, object], status: str) ->
             return "negative"
         if risk == "LOW":
             return "positive"
+        # UNKNOWN / MEDIUM：不给出方向性 tone，避免无相关腿时伪装成积极信号
+        return "neutral"
     if key == "economic_cycle":
         phase = str(result.get("cycle_phase") or "")
         if phase == "recovery":
@@ -3847,14 +3911,35 @@ def _capability_result_evidence(key: str, result: dict[str, object]) -> list[str
     return []
 
 
+_DECISION_SUMMARY_OBSERVATION_KEYS = frozenset(
+    {
+        "merrill_clock_cn",
+        "cta_trend_cn",
+        "dcc_garch_cn",
+        "risk_parity_cn",
+        "cross_market_linkage",
+        "rate_turning_point",
+        "yield_curve_shape",
+        "credit_spread_risk",
+        "liquidity_stress",
+        "macro_portfolio_impact",
+    }
+)
+
+
 def _decision_summary_card(
     definition: dict[str, object],
     cards: list[dict[str, object]],
     report_date: date,
 ) -> dict[str, object]:
     usable_cards = [card for card in cards if card["status"] in {"complete", "degraded"}]
-    positive_count = sum(1 for card in usable_cards if card["tone"] == "positive")
-    negative_count = sum(1 for card in usable_cards if card["tone"] == "negative")
+    # observation_only 卡（美林时钟/CTA/DCC/风险平价）计入可用分母，
+    # 但不参与驱动久期/信用行动建议的方向投票。
+    voting_cards = [
+        card for card in usable_cards if str(card["key"]) not in _DECISION_SUMMARY_OBSERVATION_KEYS
+    ]
+    positive_count = sum(1 for card in voting_cards if card["tone"] == "positive")
+    negative_count = sum(1 for card in voting_cards if card["tone"] == "negative")
     missing_count = sum(1 for card in cards if card["status"] == "unavailable")
     total_count = len(cards)
     if not usable_cards:
@@ -3900,8 +3985,10 @@ def _decision_summary_card(
         "result": {
             "report_date": report_date.isoformat(),
             "data_status": status,
+            "formal_use_allowed": False,
             "positive_count": positive_count,
             "negative_count": negative_count,
+            "observation_excluded_count": len(usable_cards) - len(voting_cards),
             "missing_count": missing_count,
             "usable_count": len(usable_cards),
             "headline": headline,

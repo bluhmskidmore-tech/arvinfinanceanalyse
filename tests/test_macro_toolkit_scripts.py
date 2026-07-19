@@ -1456,6 +1456,8 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
               ('2026-04-10', 'treasury', '3Y', 1.98, 'choice',
                'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1'),
               ('2026-04-10', 'treasury', '7Y', 2.41, 'choice',
+               'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1'),
+              ('2026-04-10', 'treasury', '30Y', 2.62, 'choice',
                'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1')
             """
         )
@@ -1470,10 +1472,13 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
 
+    macro_toolkit_route.market_home_response_cache.invalidate()
+    system_sources.clear_system_macro_source_cache()
     try:
         response = client.get("/ui/macro/toolkit/analysis")
     finally:
         get_settings.cache_clear()
+        system_sources.clear_system_macro_source_cache()
 
     assert response.status_code == 200
     payload = response.json()
@@ -1503,19 +1508,20 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "deferred": False,
         "missing_aliases": ["M0041813"],
     }
-    # 种子补齐国债 1Y/3Y/7Y 后，M8 曲线形态由 unavailable 变为 complete。
-    # 新增美林/CTA/DCC/风险平价观察卡在种子库无足够价格腿时计为 unavailable。
+    # 种子补齐 1Y/3Y/5Y/7Y/10Y/30Y 后 M8 可 complete；其余可算模块多为 degraded。
+    # 美林/CTA/DCC/风险平价在种子库无足够价格腿时计 unavailable；
+    # M12 无可算对照相关腿时诚实计 unavailable（不再 degraded +「常态」）。
     assert data_health["capability_results"] == {
         "complete": 1,
-        "degraded": 5,
-        "unavailable": 9,
+        "degraded": 4,
+        "unavailable": 10,
         "total_count": 15,
         "deferred": False,
     }
-    # ready=6：种子补齐国债 1Y/3Y/7Y 后，除原有 2 个 ready 能力外，
-    # M7（原声明即含 S0059743）、M8、M13、M15 的声明输入全部命中。
+    # ready=5：种子补齐国债节点后 M7/M8/M13/M15 等声明输入命中；
+    # M12 改为真实别名（CA.BRENT/M0067855/S0059749）后，种子缺 Brent 不再计 ready。
     assert data_health["capability_plan"] == {
-        "ready_count": 6,
+        "ready_count": 5,
         "wired_count": 15,
         "total_count": 15,
         "deferred": False,

@@ -53,10 +53,44 @@ _LEGACY_ALIAS_CANDIDATES: dict[str, tuple[str, ...]] = {
     "usdcny": ("EMM00058124", "legacy.fx.choice.USD.CNY", "fx_daily_mid:USD/CNY", "USD/CNY"),
     "nh0100.nhf": ("NHCI.NH", "tushare.index_daily.NHCI.NH.close"),
     "nhci.nh": ("NH0100.NHF", "tushare.index_daily.NHCI.NH.close"),
-    "m0041653": ("EMM00088132", "cn_repo_7d", "M001", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
-    "cn-repo-7d": ("M001", "m0041653", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
-    "m001": ("cn_repo_7d", "m0041653", "legacy.wind_market_db.reverse_repo_7d", "公开市场7天逆回购利率"),
-    "公开市场7天逆回购利率": ("M001", "cn_repo_7d", "m0041653"),
+    # 7D OMO reverse-repo: Choice EDB target remains EMM00088132 (crisis backfill vendor
+    # code), but the only currently populated runtime series is the legacy external carry
+    # source. Prefer the populated series first so alias resolution / source_check evidence
+    # does not present an empty Choice code as the primary hit.
+    "m0041653": (
+        "legacy.wind_market_db.reverse_repo_7d",
+        "cn_repo_7d",
+        "M001",
+        "公开市场7天逆回购利率",
+        "EMM00088132",
+    ),
+    "cn-repo-7d": (
+        "legacy.wind_market_db.reverse_repo_7d",
+        "M001",
+        "m0041653",
+        "公开市场7天逆回购利率",
+        "EMM00088132",
+    ),
+    "m001": (
+        "legacy.wind_market_db.reverse_repo_7d",
+        "cn_repo_7d",
+        "m0041653",
+        "公开市场7天逆回购利率",
+        "EMM00088132",
+    ),
+    "公开市场7天逆回购利率": (
+        "legacy.wind_market_db.reverse_repo_7d",
+        "M001",
+        "cn_repo_7d",
+        "m0041653",
+        "EMM00088132",
+    ),
+    # Manufacturing PMI is not in choice_macro_catalog; it lands in fact_choice_macro_daily
+    # via cycle_rotation / NBS PMI release / tushare cn_pmi (see config/cycle_rotation_macro_series.json).
+    "m0017126": ("制造业PMI", "pmi", "cn_pmi"),
+    "制造业pmi": ("M0017126", "pmi", "cn_pmi"),
+    # Keys are looked up after _normalize_alias (underscore -> hyphen).
+    "cn-pmi": ("M0017126", "制造业PMI", "pmi"),
     "m0041813": ("NCD.SHIBOR.3M", "shibor:3m"),
     "dr007.ib": ("CA.DR007", "repo_rate_query:FDR007", "DR007.IB"),
     "s0059743": ("EMM00166458", "legacy.yield.choice.treasury.1Y", "legacy.yield.akshare.treasury.1Y"),

@@ -139,6 +139,46 @@ def test_merrill_clock_payload_from_wide_rows_maps_aliases() -> None:
     assert "INDUSTRIAL_VA_MISSING" not in payload["warnings"]
 
 
+def test_merrill_clock_stalled_growth_inputs_degrade_instead_of_fake_stagflation() -> None:
+    # 增长代理停更（常数序列 → rolling std=0 → 动量 NaN）时，
+    # 不得把 NaN 当 0 输出"滞胀/衰退"，必须显式不可用。
+    periods = 14
+    index = pd.date_range("2025-01-01", periods=periods, freq="MS")
+    frame = pd.DataFrame(
+        {
+            "pmi": [50.0] * periods,
+            "industrial_va": [4.0] * periods,
+            "cpi_yoy": [0.5 + i * 0.05 for i in range(periods)],
+            "ppi_yoy": [-1.0 + i * 0.12 for i in range(periods)],
+            "m2_yoy": [8.0 + i * 0.05 for i in range(periods)],
+            "social_financing": [9.0 + i * 0.04 for i in range(periods)],
+        },
+        index=index,
+    )
+
+    growth = compute_growth_momentum(frame)
+    assert growth.dropna().empty
+
+    payload = compute_merrill_clock_payload(frame, report_date=index[-1].date())
+    assert payload["data_status"] == "unavailable"
+    assert payload["regime_label"] == "不可用"
+    assert "MERRILL_CLOCK_MOMENTUM_INSUFFICIENT" in payload["warnings"]
+
+
+def test_growth_momentum_normalizes_by_row_available_weight() -> None:
+    # industrial_va 全 NaN 时，增长动量应等于 PMI 单指标动量，
+    # 而不是被列级总权重 (0.30+0.25) 压缩约 45%。
+    periods = 24
+    index = pd.date_range("2024-01-01", periods=periods, freq="MS")
+    pmi = pd.Series([48 + i * 0.15 for i in range(periods)], index=index)
+    frame = pd.DataFrame({"pmi": pmi, "industrial_va": [float("nan")] * periods}, index=index)
+
+    growth = compute_growth_momentum(frame)
+    pmi_only = compute_momentum(pmi)
+
+    assert growth.iloc[-1] == pytest.approx(float(pmi_only.iloc[-1]))
+
+
 def test_merrill_clock_payload_unavailable_without_inputs() -> None:
     payload = compute_merrill_clock_payload([], report_date=date(2026, 7, 10))
     assert payload["data_status"] == "unavailable"
@@ -282,3 +322,151 @@ def test_decision_summary_denominator_includes_merrill_clock() -> None:
     card = macro_toolkit_route._decision_summary_card(definition, cards, date(2026, 7, 10))
     assert card["primary_metric"]["unit"] == f"/{non_decision}"
     assert non_decision >= 11  # M7-M15 + Crisis + Merrill
+
+
+def test_merrill_clock_industrial_va_missing_is_non_blocking() -> None:
+    # M-2: industrial_va 与路由 required=False 对齐，缺失只提示不可用。
+    periods = 24
+    index = pd.date_range("2024-01-01", periods=periods, freq="MS")
+    frame = pd.DataFrame(
+        {
+            "pmi": [48 + i * 0.15 for i in range(periods)],
+            "cpi_yoy": [0.5 + i * 0.05 for i in range(periods)],
+            "ppi_yoy": [-1.0 + i * 0.12 for i in range(periods)],
+            "m2_yoy": [8.0 + i * 0.05 for i in range(periods)],
+            "social_financing": [9.0 + i * 0.04 for i in range(periods)],
+        },
+        index=index,
+    )
+    payload = compute_merrill_clock_payload(frame, report_date=index[-1].date())
+    assert "INDUSTRIAL_VA_MISSING" not in payload["warnings"]
+    assert "INDUSTRIAL_VA_UNAVAILABLE" in payload["warnings"]
+    assert payload["data_status"] == "complete"
+    assert payload["regime_label"] in {"复苏", "过热", "滞胀", "衰退"}
+
+
+def test_merrill_clock_social_financing_warning_matches_route_spelling() -> None:
+    # M-2: 社融 warning 与路由 SOCIAL_FINANCING_YOY_MISSING 对齐。
+    periods = 24
+    index = pd.date_range("2024-01-01", periods=periods, freq="MS")
+    frame = pd.DataFrame(
+        {
+            "pmi": [48 + i * 0.15 for i in range(periods)],
+            "industrial_va": [3.0 + i * 0.1 for i in range(periods)],
+            "cpi_yoy": [0.5 + i * 0.05 for i in range(periods)],
+            "ppi_yoy": [-1.0 + i * 0.12 for i in range(periods)],
+            "m2_yoy": [8.0 + i * 0.05 for i in range(periods)],
+        },
+        index=index,
+    )
+    payload = compute_merrill_clock_payload(frame, report_date=index[-1].date())
+    assert "SOCIAL_FINANCING_MISSING" not in payload["warnings"]
+    assert "SOCIAL_FINANCING_YOY_MISSING" in payload["warnings"]
+    assert payload["data_status"] == "degraded"
+
+
+def test_wide_ffill_stops_after_monthly_stale_cap() -> None:
+    # H-1: 月频 PMI 停更后，日频轴继续延伸不得超过 65 天 carry。
+    report_date = date(2026, 7, 10)
+    pmi_last = date(2026, 4, 1)  # ~100 天前，超过 monthly 65d 上限
+    frames_by_alias = {
+        alias: pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
+        for _, alias in macro_toolkit_route._WIDE_SERIES_ALIASES
+    }
+    frames_by_alias["M0017126"] = pd.DataFrame(
+        {
+            "date": pd.to_datetime([pmi_last]),
+            "value": [50.2],
+            "series_id": ["M0017126"],
+            "vendor_name": ["choice"],
+        }
+    )
+    frames_by_alias["DR007.IB"] = pd.DataFrame(
+        {
+            "date": pd.to_datetime([date(2026, 4, 1) + pd.Timedelta(days=i) for i in range(0, 101, 5)]),
+            "value": [1.8 + i * 0.001 for i in range(21)],
+            "series_id": ["CA.DR007"] * 21,
+            "vendor_name": ["choice"] * 21,
+        }
+    )
+
+    wide_rows = macro_toolkit_route._load_macro_wide_rows(
+        "unused.duckdb",
+        report_date,
+        [],
+        frames_by_alias=frames_by_alias,
+    )
+    assert wide_rows
+    late_rows = [
+        row
+        for row in wide_rows
+        if row.get("trade_date") is not None
+        and (row["trade_date"] - pmi_last).days
+        > macro_toolkit_route._WIDE_FFILL_MAX_STALE_DAYS["monthly"]
+    ]
+    assert late_rows
+    assert all("pmi" not in row for row in late_rows)
+    early_rows = [
+        row
+        for row in wide_rows
+        if row.get("trade_date") is not None
+        and 0 < (row["trade_date"] - pmi_last).days
+        <= macro_toolkit_route._WIDE_FFILL_MAX_STALE_DAYS["monthly"]
+    ]
+    assert early_rows
+    assert any("pmi" in row for row in early_rows)
+
+
+def test_capability_input_evidence_marks_stale_required_inputs() -> None:
+    # M-4: 两年前一条记录仍 available，但必须标 stale 并降级。
+    report_date = date(2026, 7, 10)
+    source_check_cache: dict[str, dict[str, object]] = {}
+    for requirement in macro_toolkit_route._CAPABILITY_INPUT_REQUIREMENTS["merrill_clock_cn"]:
+        for alias in requirement["aliases"]:
+            source_check_cache[str(alias)] = {
+                "alias": str(alias),
+                "row_count": 0,
+                "latest": None,
+            }
+    source_check_cache["M0017126"] = {
+        "alias": "M0017126",
+        "row_count": 1,
+        "latest": {
+            "date": "2024-06-01",
+            "series_id": "M0017126",
+            "vendor_name": "choice",
+            "value": 50.0,
+        },
+    }
+
+    item = macro_toolkit_route._capability_input_evidence_item(
+        {
+            "field": "pmi",
+            "label": "PMI",
+            "aliases": ("M0017126",),
+            "warning": "PMI_MISSING",
+            "required": True,
+            "cadence": "monthly",
+        },
+        duckdb_path="unused.duckdb",
+        report_date=report_date,
+        wide_rows=[],
+        source_check_cache=source_check_cache,
+    )
+    assert item["available"] is True
+    assert item["stale"] is True
+    assert item["stale_days"] is not None and item["stale_days"] > 45
+
+    enriched = macro_toolkit_route._with_capability_input_evidence(
+        "merrill_clock_cn",
+        {"data_status": "complete", "warnings": []},
+        duckdb_path="unused.duckdb",
+        report_date=report_date,
+        wide_rows=[],
+        source_check_cache=source_check_cache,
+    )
+    assert enriched["data_status"] == "degraded"
+    assert "PMI_STALE" in enriched["warnings"]
+    assert "PMI_STALE" in enriched["input_evidence"]["stale_inputs"]
+    # 其他 required 输入缺失会进入 missing_inputs，但不把 PMI 误判为 missing。
+    assert "PMI_MISSING" not in enriched["input_evidence"]["missing_inputs"]
