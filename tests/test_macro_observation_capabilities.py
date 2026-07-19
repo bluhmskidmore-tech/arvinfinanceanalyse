@@ -80,6 +80,20 @@ def test_risk_parity_payload_is_shadow_observation() -> None:
     assert abs(sum(item["rp_weight_pct"] for item in payload["weights"]) - 100) < 0.5
 
 
+def test_risk_parity_missing_clock_phase_defaults_to_recession_degraded() -> None:
+    frame = _correlated_prices(n=220)
+    payload = compute_risk_parity_payload(
+        frame,
+        report_date=frame.index[-1].date(),
+        clock_phase=None,
+    )
+    assert payload["clock_phase"] == "衰退"
+    assert payload["data_status"] == "degraded"
+    assert "CLOCK_PHASE_MISSING_DEFAULT_RECESSION" in payload["warnings"]
+    assert payload["shadow"] is True
+    assert payload["formal_use_allowed"] is False
+
+
 def test_capability_definitions_wired_for_observation_models() -> None:
     keys = {"cta_trend_cn", "dcc_garch_cn", "risk_parity_cn"}
     defs = {
@@ -118,3 +132,71 @@ def test_unavailable_when_prices_missing() -> None:
     assert compute_cta_trend_payload({}, report_date=report_date)["data_status"] == "unavailable"
     assert compute_dcc_garch_payload({}, report_date=report_date)["data_status"] == "unavailable"
     assert compute_risk_parity_payload({}, report_date=report_date)["data_status"] == "unavailable"
+
+
+def test_macro_capability_results_wires_multi_asset_observation_cards(monkeypatch) -> None:
+    frame = _correlated_prices(n=260)
+    report_date = frame.index[-1].date()
+
+    def fake_multi_asset_series(*_args, **_kwargs):
+        return {
+            column: [(ts.date(), float(value)) for ts, value in frame[column].items()]
+            for column in frame.columns
+        }
+
+    monkeypatch.setattr(macro_toolkit_route, "_parse_report_date", lambda value: report_date)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_load_macro_capability_context",
+        lambda *_args, **_kwargs: ([], None, []),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "load_series_by_aliases",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(macro_toolkit_route, "_load_macro_wide_rows", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_risk_tensor_to_liquidity_inputs",
+        lambda *_args, **_kwargs: ([], [], None),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "build_bond_portfolio_profile",
+        lambda *_args, **_kwargs: {"total_mv": 0.0, "weighted_duration": 0.0, "positions": []},
+    )
+    monkeypatch.setattr(macro_toolkit_route, "_current_gov_curve", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_with_capability_input_evidence",
+        lambda key, result, **_kwargs: result,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_source_checks_for_aliases",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_load_multi_asset_price_series",
+        fake_multi_asset_series,
+    )
+
+    observation_keys = {"cta_trend_cn", "dcc_garch_cn", "risk_parity_cn"}
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_run_capability",
+        lambda key, fn: fn() if key in observation_keys else {"data_status": "unavailable", "warnings": ["skipped"]},
+    )
+
+    cards = macro_toolkit_route._macro_capability_results(
+        "unused.duckdb",
+        report_date=report_date.isoformat(),
+    )
+    by_key = {item["key"]: item for item in cards}
+    for key in observation_keys:
+        card = by_key[key]
+        assert card["status"] in {"complete", "degraded"}
+        assert card["result"]["formal_use_allowed"] is False
+    assert by_key["risk_parity_cn"]["result"]["shadow"] is True

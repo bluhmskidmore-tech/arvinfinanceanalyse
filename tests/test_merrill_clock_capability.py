@@ -145,6 +145,16 @@ def test_merrill_clock_payload_unavailable_without_inputs() -> None:
     assert payload["regime_label"] == "不可用"
     assert payload["growth_momentum"] is None
     assert "NO_MERRILL_CLOCK_INPUTS" in payload["warnings"]
+    assert payload["observation_only"] is True
+    assert payload["formal_use_allowed"] is False
+
+
+def test_merrill_clock_payload_marks_observation_only_flags() -> None:
+    frame = _synthetic_clock_frame()
+    payload = compute_merrill_clock_payload(frame, report_date=frame.index[-1].date())
+    assert payload["data_status"] in {"complete", "degraded"}
+    assert payload["observation_only"] is True
+    assert payload["formal_use_allowed"] is False
 
 
 def test_merrill_clock_capability_card_surfaces_regime_and_top_asset() -> None:

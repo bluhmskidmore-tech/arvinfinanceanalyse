@@ -1746,6 +1746,22 @@ def _macro_capability_results(
     portfolio_profile = build_bond_portfolio_profile(positions, parsed_report_date)
     current_curve = _current_gov_curve(curve_rows, parsed_report_date)
 
+    merrill_raw = _run_capability(
+        "merrill_clock_cn",
+        lambda: compute_merrill_clock_payload(wide_rows, report_date=parsed_report_date),
+    )
+    risk_parity_clock_phase = _merrill_regime_from_payload(merrill_raw)
+    multi_asset_series_cache: dict[str, list[tuple[date, float]]] | None = None
+
+    def _shared_multi_asset_series() -> dict[str, list[tuple[date, float]]]:
+        nonlocal multi_asset_series_cache
+        if multi_asset_series_cache is None:
+            multi_asset_series_cache = _load_multi_asset_price_series(
+                duckdb_path,
+                parsed_report_date,
+            )
+        return multi_asset_series_cache
+
     raw_results: dict[str, dict[str, object]] = {
         "monetary_policy_stance": _run_capability(
             "monetary_policy_stance",
@@ -1792,16 +1808,14 @@ def _macro_capability_results(
             "economic_cycle",
             lambda: compute_economic_cycle(wide_rows, parsed_report_date),
         ),
-        "merrill_clock_cn": _run_capability(
-            "merrill_clock_cn",
-            lambda: compute_merrill_clock_payload(wide_rows, report_date=parsed_report_date),
-        ),
+        "merrill_clock_cn": merrill_raw,
         "cta_trend_cn": _run_capability(
             "cta_trend_cn",
             lambda: _compute_multi_asset_observation_capability(
                 "cta_trend_cn",
                 duckdb_path,
                 parsed_report_date,
+                series_data=_shared_multi_asset_series(),
             ),
         ),
         "dcc_garch_cn": _run_capability(
@@ -1810,6 +1824,7 @@ def _macro_capability_results(
                 "dcc_garch_cn",
                 duckdb_path,
                 parsed_report_date,
+                series_data=_shared_multi_asset_series(),
             ),
         ),
         "risk_parity_cn": _run_capability(
@@ -1818,10 +1833,8 @@ def _macro_capability_results(
                 "risk_parity_cn",
                 duckdb_path,
                 parsed_report_date,
-                clock_phase=_merrill_regime_for_risk_parity(
-                    wide_rows,
-                    parsed_report_date,
-                ),
+                clock_phase=risk_parity_clock_phase,
+                series_data=_shared_multi_asset_series(),
             ),
         ),
         "macro_portfolio_impact": _run_capability(
@@ -2396,11 +2409,9 @@ def _load_multi_asset_price_series(
     return series_data
 
 
-def _merrill_regime_for_risk_parity(
-    wide_rows: list[dict[str, object]] | Sequence[Mapping[str, object]],
-    report_date: date,
-) -> str | None:
-    payload = compute_merrill_clock_payload(wide_rows, report_date=report_date)
+def _merrill_regime_from_payload(payload: Mapping[str, object] | None) -> str | None:
+    if not payload:
+        return None
     regime = payload.get("regime_label")
     if regime in {"复苏", "过热", "滞胀", "衰退"}:
         return str(regime)
@@ -2413,15 +2424,20 @@ def _compute_multi_asset_observation_capability(
     report_date: date,
     *,
     clock_phase: str | None = None,
+    series_data: dict[str, list[tuple[date, float]]] | None = None,
 ) -> dict[str, object]:
-    series_data = _load_multi_asset_price_series(duckdb_path, report_date)
+    resolved_series = (
+        series_data
+        if series_data is not None
+        else _load_multi_asset_price_series(duckdb_path, report_date)
+    )
     if key == "cta_trend_cn":
-        return compute_cta_trend_payload(series_data, report_date=report_date)
+        return compute_cta_trend_payload(resolved_series, report_date=report_date)
     if key == "dcc_garch_cn":
-        return compute_dcc_garch_payload(series_data, report_date=report_date)
+        return compute_dcc_garch_payload(resolved_series, report_date=report_date)
     if key == "risk_parity_cn":
         return compute_risk_parity_payload(
-            series_data,
+            resolved_series,
             report_date=report_date,
             clock_phase=clock_phase,
         )

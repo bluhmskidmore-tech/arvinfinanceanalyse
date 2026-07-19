@@ -111,7 +111,9 @@ def compute_risk_parity_payload(
     columns = list(usable.columns)
     w_rp = solve_risk_parity(cov)
     phase = clock_phase if clock_phase in BUDGET_MAP else "衰退"
-    if clock_phase and clock_phase not in BUDGET_MAP:
+    if clock_phase is None:
+        warnings.append("CLOCK_PHASE_MISSING_DEFAULT_RECESSION")
+    elif clock_phase not in BUDGET_MAP:
         warnings.append(f"CLOCK_PHASE_FALLBACK:{clock_phase}->{phase}")
     budget = [BUDGET_MAP[phase].get(col, 1.0 / len(columns)) for col in columns]
     w_rb = solve_risk_budget(cov, budget)
