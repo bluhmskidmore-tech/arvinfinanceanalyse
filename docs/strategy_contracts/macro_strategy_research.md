@@ -167,3 +167,5 @@ Research Result 的 `status` 只允许以下值，且不得统一折叠为 `--`�
 - **已证据冻结**：全部 8 张系统源表无 `release_at/available_at/vintage/revision` 列，PIT 完整率为 0；依赖历史时点复现的结果必须按 §8 fail closed。
 - **部分证据化**：各输入族可用历史深度、当前新鲜度滞后基线、源表 schema 已量化（约 80 个 `EMM*` 序列仅 1 行快照，无法支撑历史窗口信号）。
 - **仍开放**：owner、`minimum_history` 具体门槛、stale SLA 数值、回测/admission 阈值，需业务 owner 确认。
+- **输入契约诚实化（同日续）**：`M0041653` 运行时首选 `legacy.wind_market_db.reverse_repo_7d`（`EMM00088132` 仍为空 Choice 目标）；`M0017126` PMI 别名已登记并落在 `fact_choice_macro_daily`（约 13 个月频点）。详见签核包 §2.5 / §4.6 第 1、7 项。
+- **观察能力接线（同日续）**：M13 利率拐点、M12 跨市场联动均已 `wired/visible`；无可算相关腿时 M12 输出 `unavailable/UNKNOWN`，不再伪装「常态」。Merrill Clock 审计 C-1/H-1/M-2/M-4 已修（见 `docs/audits/2026-07-19-merrill-clock-calc-audit.md`）。

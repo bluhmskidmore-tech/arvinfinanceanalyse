@@ -96,15 +96,15 @@
 | 输入 | 实际来源 | 历史深度 | 最新日期 / 滞后 | refresh_tier |
 | --- | --- | --- | --- | --- |
 | A 股个股日行情 | `choice_stock_daily_observation` | 2024-01-02 起，约 2.5 年 | 2026-07-14 / 5 天 | 不适用 |
-| Choice 因子表 | 合同 §2 引用实施计划 §2.2，本轮证据审计未单列因子表历史 | **待证据** | **待证据** | 不适用 |
+| Choice 因子表 | `choice_stock_factor_snapshot`（109955 行，5595 只股票） | 2024-08-08 起，约 2 年，但仅 **22 个快照日**（稀疏，非连续日频） | 2026-07-14 / 5 天 | 不适用 |
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
-| required_inputs 清单确认（因子表待证据补齐后复核） | | | |
+| required_inputs 清单确认（因子表已实测为 22 个稀疏快照，能否支撑因子历史窗口需 owner 裁定） | | | |
 
 **minimum_history**
 
-- 证据上限：日行情约 **2.5 年**；因子面历史深度**待证据**，在补齐前该家族的 minimum_history 只能以日行情上限为参考，且不得据此宣称因子历史充足。
+- 证据上限：日行情约 **2.5 年**；因子面（`choice_stock_factor_snapshot`）自 **2024-08-08**（约 2 年），但仅 **22 个快照日**——任何需要连续因子历史窗口的信号当前不可支撑，minimum_history 不得据此宣称因子历史充足。
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
@@ -112,7 +112,7 @@
 
 **stale SLA**
 
-- 实测基线：日行情滞后 **5 天**；因子面滞后**待证据**。
+- 实测基线：日行情滞后 **5 天**；因子面最新快照 2026-07-14，滞后 **5 天**（但快照间隔不规则，共 22 个快照日）。
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
@@ -217,11 +217,11 @@ M14 经济周期定位（字段级，全部 required=True）：
 
 | 字段 | 声明别名 | 实际解析来源（`system_sources.py`） | 历史深度 | 最新日期 / 滞后 | refresh_tier（catalog） |
 | --- | --- | --- | --- | --- | --- |
-| PMI | `M0017126` | 别名表中无该键，解析路径**待证据** | **待证据** | **待证据** | 不在 catalog |
+| PMI | `M0017126` | `fact_choice_macro_daily` 的 `M0017126`（经 cycle_rotation / NBS / tushare `cn_pmi` 落库；`_LEGACY_ALIAS_CANDIDATES` 已登记 `m0017126`/`制造业PMI`/`cn_pmi`） | **13 行**，2025-06-01～2026-06-01（月频，约 1 年） | 2026-06-01 / 约 18 天（相对 2026-07-19） | 不在 catalog |
 | CPI 同比 | `M0000612` | `EMM00072301` / tushare `cn_cpi_yoy` | tushare：1951/1978 年起，月频（`std_external_macro_daily`） | 2026-06-01 或 2026-06-30 / 最长 19 天；**无 vintage** | `EMM00072301`：fallback（latest-only，频率 unknown） |
 | PPI 同比 | `M0001227` | tushare `cn_ppi_yoy` | 同上（月频，历史充足） | 同上；**无 vintage** | 不在 catalog（tushare 源） |
 | M2 同比 | `M0001385` | tushare `cn_m2_yoy` | 同上（月频，历史充足） | 同上；**无 vintage** | 不在 catalog（tushare 源） |
-| 社融同比 | `M5525763` | `EMM00191807` | `EMM*` 快照族，逐序列行数**待证据**（约 80 个 `EMM*` 序列仅 1 行快照，证据审计 §2） | **待证据** | fallback（latest-only，频率 unknown）——latest-only 通道不积累历史 |
+| 社融同比 | `M5525763` | `EMM00191807` | `fact_choice_macro_daily` 中 `EMM00191807` **30 行**（2024-01-01～2026-06-01，月频，约 2.5 年）；`M5525763` 自身仅 2 行（2026-04-01～2026-05-01）；`std_external_macro_daily` 0 行 | 2026-06-01（月频，相对 2026-07-19 约 48 天） | fallback（latest-only，频率 unknown）——实况已积累 30 个月点，与 latest-only 声明不符 |
 
 M10 宏观领先指标（字段级，全部 required=True）：
 
@@ -236,7 +236,7 @@ M7 货币政策立场（字段级）：
 
 | 字段 | 声明别名 | required | 实际解析来源 | 历史深度 | 最新日期 / 滞后 | refresh_tier |
 | --- | --- | --- | --- | --- | --- | --- |
-| 7 天逆回购政策利率 | `M0041653` | 是 | 首选 `EMM00088132`（次选 `cn_repo_7d` 等） | **待证据**（`EMM00088132` 不在 catalog 且证据审计未单列） | **待证据** | **不在 catalog**（catalog 只有 14 天逆回购 `EMM00088133/134`，见第 4.6 项） |
+| 7 天逆回购政策利率 | `M0041653` | 是 | 运行时首选 `legacy.wind_market_db.reverse_repo_7d`（`std_external_macro_daily`）；`EMM00088132` 仍为 Choice vendor 目标但库内 0 行且不在 catalog | legacy：347 行（2025-03-07～2026-04-30；含 moss_derived 续写 27 行） | 2026-04-30 / **约 80 天 stale** | **不在 catalog**（catalog 只有 14 天逆回购 `EMM00088133/134`，见第 4.6 项） |
 | DR007 | `DR007.IB` | 是 | `CA.DR007`（249 行） | 2025-07-10 起，**仅 1 年** | 2026-07-10 | 不适用 |
 | 10Y 国债 | `S0059749` | 否 | `EMM00166466` | 122 行，自 2026-01-12 | 2026-07-07/10 | stable |
 
@@ -251,7 +251,7 @@ Merrill Clock 商品腿：商品序列（铜/铝/布油/钢）约 119 行、2026
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
-| required_inputs 清单确认（含 PMI 解析路径、社融历史两处待证据） | | | |
+| required_inputs 清单确认（PMI、社融历史均已证据化） | | | |
 
 **minimum_history**
 
@@ -261,7 +261,7 @@ Merrill Clock 商品腿：商品序列（铜/铝/布油/钢）约 119 行、2026
   - 10Y 国债（Choice 源）：**约 6 个月**（122 行）；1Y 及其余期限、Choice 信用序列：**无历史**（1 行快照）；
   - 商品：**约 6 个月**；
   - NCD/SHIBOR：**9 个交易日**（实质无历史）；
-  - PMI、社融：**待证据**。
+  - PMI：约 **1 年**（13 个月频点）；社融（`EMM00191807`）：约 **2.5 年**（30 个月频点，2024-01-01 起）。
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
@@ -293,7 +293,7 @@ Merrill Clock 商品腿：商品序列（铜/铝/布油/钢）约 119 行、2026
 | --- | --- | --- | --- | --- |
 | 商品序列（铜/铝/布油/钢） | `CA.COPPER` 等（各约 119 行） | **2026-01-12 起（约 6 个月）** | 2026-07-10 | 不适用 |
 | 指数（沪深300/中证500） | `CA.CSI300` / `CA.CSI500` | 2023-07-04 起，约 3 年 | 2026-07-10 | 不适用 |
-| 南华商品指数（如策略引用） | `NH0100.NHF` → `NHCI.NH`（tushare） | **待证据** | **待证据** | 不适用 |
+| 南华商品指数（如策略引用） | `NH0100.NHF` → `NHCI.NH`（tushare，`std_external_macro_daily` 280 行） | 2025-03-07 起，约 1.2 年（日频） | **2026-04-30 / 约 80 天（当前 stale）** | 不适用 |
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
@@ -377,21 +377,21 @@ Crisis Score（`data_aliases` 级）：
 | 沪深300 | `sh000300` | `CA.CSI300` | 约 3 年 | 2026-07-10 | 不适用 |
 | AA 5Y 信用收益率 | `S0059760` | `EMM00166683` | **1 行快照，无历史** | 2026-07-07 | stable（与实况不符，见第 4.6 项） |
 | 5Y 国债 | `S0059747` | `EMM00166462`（次选 `tushare.yc_cb.1001.CB.5Y`） | Choice 源 **1 行快照**；tushare 备选 286 行 | Choice 2026-07-07；tushare **至 2026-04-30（stale）** | stable（同上） |
-| 美元兑人民币 | `M0067855` | `EMM00058124` / `fx_daily_mid:USD/CNY` | `fx_daily_mid` 在 8 张被审计表中，但历史深度未单列——**待证据** | **待证据** | `EMM00058124`：stable |
-| 南华商品指数 | `NH0100.NHF` | `NHCI.NH`（tushare） | **待证据** | **待证据** | 不适用 |
+| 美元兑人民币 | `M0067855` | `EMM00058124` / `fx_daily_mid:USD/CNY` | `fx_daily_mid` USD/CNY **912 行**（2024-01-01 起，约 2.5 年；含 311 行 carry-forward） | 2026-06-30 / 19 天 | `EMM00058124`：stable |
+| 南华商品指数 | `NH0100.NHF` | `NHCI.NH`（tushare，`std_external_macro_daily` 280 行） | 2025-03-07 起，约 1.2 年（日频） | **2026-04-30 / 约 80 天（当前 stale）** | 不适用 |
 | DR007 | `DR007.IB` | `CA.DR007` | 1 年 | 2026-07-10 | 不适用 |
-| 7 天逆回购利率 | `M0041653` | 首选 `EMM00088132` | **待证据** | **待证据** | **不在 catalog** |
+| 7 天逆回购利率 | `M0041653` | 运行时 `legacy.wind_market_db.reverse_repo_7d`（`EMM00088132` 空） | 347 行，2025-03-07～2026-04-30 | 2026-04-30 / 约 80 天 | **不在 catalog** |
 
-M12 跨市场联动：`sh000300`（约 3 年）、`CU0` → `CA.COPPER`（**约 6 个月**）、`M0067855`（待证据）。
+M12 跨市场联动：`sh000300`（约 3 年）、`CU0` → `CA.COPPER`（**约 6 个月**）、`M0067855`（`fx_daily_mid` USD/CNY 约 2.5 年，最新 2026-06-30）。
 M16 宏观决策摘要：聚合 `DR007.IB`、`S0059749`、`sh000300`、`M0067855` 及其他能力卡结果，受各上游输入约束。
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
-| required_inputs 清单确认（信用/5Y 国债/FX/南华/7 天逆回购五处证据缺口） | | | |
+| required_inputs 清单确认（FX/南华已实测回填；信用/5Y 国债/7 天逆回购三处证据缺口仍在） | | | |
 
 **minimum_history**
 
-- 证据上限：股票腿约 **3 年**；资金腿 **1 年**；商品联动腿 **约 6 个月**；信用与 5Y 国债的 Choice 源 **无历史**（1 行快照），tushare 5Y 备选约 **286 个交易日**且已 stale。任何要求信用利差历史分位数的聚合逻辑，在 Choice 源上当前**不可算**（证据审计 §2）。
+- 证据上限：股票腿约 **3 年**；资金腿 **1 年**；商品联动腿 **约 6 个月**；FX（USD/CNY）约 **2.5 年**（912 行，含 311 行 carry-forward）；南华指数约 **1.2 年**（280 行，已停更至 2026-04-30）；信用与 5Y 国债的 Choice 源 **无历史**（1 行快照），tushare 5Y 备选约 **286 个交易日**且已 stale。任何要求信用利差历史分位数的聚合逻辑，在 Choice 源上当前**不可算**（证据审计 §2）。
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
@@ -422,19 +422,19 @@ M16 宏观决策摘要：聚合 `DR007.IB`、`S0059749`、`sh000300`、`M0067855
 | 输入 | 实际来源 | 历史深度 | 最新日期 / 滞后 | refresh_tier |
 | --- | --- | --- | --- | --- |
 | 债券期货日行情（基差/IRR） | `fact_commodity_futures_daily`（11043 行） | 2024-01-02 起 | **2026-06-26 / 滞后 23 天（当前 stale）** | 不适用 |
-| 正式收益率曲线（M8/M9/M13/M15 实际输入） | `fact_formal_yield_curve_daily`（`load_macro_capability_context` 的 `curve_rows`） | 在 8 张被审计表中，但历史深度未单列——**待证据** | **待证据** | 不适用 |
+| 正式收益率曲线（M8/M9/M13/M15 实际输入） | `fact_formal_yield_curve_daily`（`load_macro_capability_context` 的 `curve_rows`；共 780 行） | 2023-12-31 起，但仅 **24 个日期快照（多为月末，非日频）**；treasury/cdb/aaa_credit 各 9 个 tenor 自 2023-12-31，aa/aa+ 及利差曲线仅 2026-01-30～2026-04-30 | 2026-06-30 / 19 天 | 不适用 |
 | Choice 国债/信用序列（能力矩阵声明别名） | `EMM00166466`（10Y，122 行）；其余期限与信用序列各 1 行快照 | 10Y 约 6 个月；其余**无历史** | 2026-07-07/10 | stable（与实况不符） |
 | 信用 carry（tushare 备选） | `tushare.yc_cb.1001.CB.5Y`（286 行） | 约 286 个交易日 | **至 2026-04-30（stale）** | 不适用 |
 | 中金所席位 | `fact_cffex_member_rank_daily` | 2023-03-30 起 | 2026-06-26 / 23 天 | 不适用 |
-| 组合持仓 / 风险张量（M15） | `load_macro_capability_context` 的 positions / risk_tensor | 本轮未审计——**待证据** | **待证据** | 不适用 |
+| 组合持仓 / 风险张量（M15） | `fact_formal_bond_analytics_daily`（765105 行，518 个 report_date）；`fact_formal_risk_tensor_daily`（518 行，日粒度） | 2024-01-01 起，约 2.5 年 | 2026-06-30 / 19 天 | 不适用 |
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
-| required_inputs 清单确认（正式曲线表与组合持仓两处待证据） | | | |
+| required_inputs 清单确认（正式曲线表与组合持仓已实测回填；曲线表仅月末级快照需 owner 知悉） | | | |
 
 **minimum_history**
 
-- 证据上限：债券期货 **2024-01-02 起（约 2.5 年）**；完整曲线历史依赖 `fact_formal_yield_curve_daily` / `tushare.yc_cb`（深度分别为待证据 / 约 286 个交易日）；Choice 曲线源仅 10Y 有约 6 个月短历史（证据审计 §2："曲线形态/利率拐点只有 10Y 有短历史"）。
+- 证据上限：债券期货 **2024-01-02 起（约 2.5 年）**；完整曲线历史依赖 `fact_formal_yield_curve_daily` / `tushare.yc_cb`（深度分别为 2023-12-31 起但仅 24 个日期快照（多为月末） / 约 286 个交易日）；Choice 曲线源仅 10Y 有约 6 个月短历史（证据审计 §2："曲线形态/利率拐点只有 10Y 有短历史"）。
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
@@ -519,14 +519,14 @@ M16 宏观决策摘要：聚合 `DR007.IB`、`S0059749`、`sh000300`、`M0067855
 
 ### 4.6 本包发现的合同 / 代码 / 配置不一致处（需 owner 知悉并裁定归属）
 
-1. **`M0041653`（7 天逆回购）无 catalog 依据**：`system_sources.py` 将其首选解析到 `EMM00088132`，但 `choice_macro_catalog.json` 中不存在该序列（只有 14 天逆回购 `EMM00088133/134`）。该输入的刷新层级与历史深度均待证据。
+1. **`M0041653`（7 天逆回购）无 Choice catalog 依据（已证据化运行时路径）**：`EMM00088132` 仍不在 `choice_macro_catalog.json`（只有 14 天逆回购 `EMM00088133/134`）且 `fact_choice_macro_daily` 为 0 行。已修正（2026-07-19）：`_LEGACY_ALIAS_CANDIDATES` 将 `legacy.wind_market_db.reverse_repo_7d` 置于首选；实测 `std_external_macro_daily` 共 347 行、最新 2026-04-30（约 80 天 stale）。M7 能力声明改为 `wired/visible` 并登记 `std_external_macro_daily`。Owner 仍需裁定：是否将 `EMM00088132` 正式入 catalog，以及是否允许用 carry-forward 刷新把 4 月利率延到当前日。
 2. **catalog 声明与数据实况不符**：多条国债/信用 `EMM` 序列（如 `EMM00166458`、`EMM00166462`、`EMM00166655/57/59/79/81/83`）在 catalog `stable_daily` 批次（date_slice 日更），但 DuckDB 实况仅 1 行快照（证据审计 §2）。需数据侧解释是新近接入未回补，还是刷新链路未生效。
 3. **能力声明别名 ≠ 实际计算输入**：M8/M9/M13/M15 在 `_CAPABILITY_DEFINITIONS` 声明 `S00597xx` 系列别名，但实际计算通过 `load_macro_capability_context` 的 `curve_rows` 走 `fact_formal_yield_curve_daily`（正式曲线表）。登记 `required_inputs` 时应以实际计算路径为准；正式曲线表的历史深度本轮未单列，待证据。
-   - 已修正（2026-07-19）：`_CAPABILITY_DEFINITIONS` 为 M8/M9/M13/M15 新增 `data_tables` 字段声明正式表输入（均含 `fact_formal_yield_curve_daily`，M15 另含 `fact_formal_bond_analytics_daily`），并在 `_capability_payload` 透传；`data_aliases` 收敛为仍真实作为曲线回退点消费的别名（删除 M9 的 `S0059670`、M13 的 `DR007.IB`/`S0059747`、M15 的 `S0059760`/`M0067855`，补齐实际消费的国债节点）。测试锁定见 `tests/test_macro_toolkit_scripts.py::test_capability_definitions_declare_actual_curve_inputs_via_data_tables`。正式曲线表历史深度仍待证据。
+   - 已修正（2026-07-19）：`_CAPABILITY_DEFINITIONS` 为 M8/M9/M13/M15 新增 `data_tables` 字段声明正式表输入（均含 `fact_formal_yield_curve_daily`，M15 另含 `fact_formal_bond_analytics_daily`），并在 `_capability_payload` 透传；`data_aliases` 收敛为仍真实作为曲线回退点消费的别名（删除 M9 的 `S0059670`、M13 的 `DR007.IB`/`S0059747`、M15 的 `S0059760`/`M0067855`，补齐实际消费的国债节点）。测试锁定见 `tests/test_macro_toolkit_scripts.py::test_capability_definitions_declare_actual_curve_inputs_via_data_tables`。正式曲线表历史深度已回填（2026-07-19 实测）：780 行 / 仅 24 个日期快照（2023-12-31～2026-06-30，多为月末），见 2.9 节与 §5.3 第 7 项。
 4. **字段级输入要求覆盖不全**：`_CAPABILITY_INPUT_REQUIREMENTS` 仅覆盖 M7/M10/M14 三个能力；其余能力（含已 wired 的 Crisis Score、M16）只有 `data_aliases` 级声明，无 required/derived 标记。
 5. **家族与能力矩阵非一一映射**：合同 §2 的 9 个家族与 M7—M16 能力没有权威映射；M15（宏观情景组合影响）、M16（决策摘要）的家族归属是本包整理口径，需 owner 确认。
 6. **SHIBOR 命名空间分裂**：`M0041813` 解析到 `NCD.SHIBOR.3M`（9 行），而 catalog 的 SHIBOR 走 `EMM00166252-54 / EMM001676xx / EMM00167708`（`choice_funding_shibor_latest` 批次，latest-only）。两套序列是否同源、能否互补历史，待数据侧确认。
-7. **PMI（`M0017126`）解析路径缺失**：`_LEGACY_ALIAS_CANDIDATES` 中无 `m0017126` 键，catalog 中也无对应序列；M10/M14 均将 PMI 列为 required=True。PMI 的实际落库路径与历史深度待证据。
+7. **PMI（`M0017126`）解析路径已证据化**：已修正（2026-07-19）：`_LEGACY_ALIAS_CANDIDATES` 登记 `m0017126`/`制造业pmi`/`cn_pmi`；运行时落在 `fact_choice_macro_daily.M0017126`（13 行，2025-06～2026-06），来源为 cycle_rotation / NBS / tushare，**不在** `choice_macro_catalog`。M10/M14 能力声明保持 `wired/visible` 并登记 `fact_choice_macro_daily`。Owner 仍需裁定：是否把 PMI 正式纳入 Choice catalog，以及 minimum_history（当前上限约 1 年）。
 
 | 项 | owner 决定值 | 签核人 | 日期 |
 | --- | --- | --- | --- |
@@ -560,11 +560,11 @@ M16 宏观决策摘要：聚合 `DR007.IB`、`S0059749`、`sh000300`、`M0067855
 
 ### 5.3 「待证据」项汇总（MCP / 数据侧回补后需回填）
 
-1. PMI（`M0017126`）落库路径与历史深度（2.5 节）。
-2. 社融（`M5525763` → `EMM00191807`）历史行数（2.5 节）。
-3. `M0041653` → `EMM00088132` 历史深度与刷新层级（2.5、2.8 节）。
-4. Choice 因子表历史深度与新鲜度（2.2 节）。
-5. `fx_daily_mid`（USD/CNY）历史深度（2.8 节）。
-6. `NHCI.NH`（南华指数）历史深度（2.6、2.8 节）。
-7. `fact_formal_yield_curve_daily` 历史深度（2.9 节）。
-8. 组合持仓 / 风险张量输入的审计（2.9 节，M15）。
+1. ~~PMI（`M0017126`）落库路径与历史深度（2.5 节）~~ → 已回填：`fact_choice_macro_daily` / 13 行 / 约 1 年；catalog 准入与 minimum_history 仍待 owner。
+2. ~~社融（`M5525763` → `EMM00191807`）历史行数（2.5 节）~~ → 已回填：`fact_choice_macro_daily` 中 `EMM00191807` 30 行（2024-01-01～2026-06-01，月频）、`M5525763` 2 行（2026-04-01～2026-05-01）；`std_external_macro_daily` 0 行；latest-only 声明与 30 个月点实况不符，需数据侧解释；月频滞后判定待 owner。
+3. ~~`M0041653` → `EMM00088132` 历史深度与刷新层级（2.5、2.8 节）~~ → 已回填运行时路径为 legacy reverse_repo_7d（347 行 / 最新 2026-04-30）；`EMM00088132` 仍空且无 catalog；入 catalog / carry-forward 策略待 owner。
+4. ~~Choice 因子表历史深度与新鲜度（2.2 节）~~ → 已回填：`choice_stock_factor_snapshot` 109955 行 / 22 个快照日（2024-08-08～2026-07-14，5595 只股票），最新滞后 5 天；稀疏快照能否支撑因子历史窗口待 owner 裁定。
+5. ~~`fx_daily_mid`（USD/CNY）历史深度（2.8 节）~~ → 已回填：USD/CNY 912 行（2024-01-01～2026-06-30，其中 601 行实测 + 311 行 carry-forward），最新滞后 19 天；carry-forward 行是否计入有效历史待 owner。
+6. ~~`NHCI.NH`（南华指数）历史深度（2.6、2.8 节）~~ → 已回填：`std_external_macro_daily` 280 行（2025-03-07～2026-04-30，日频）；已停更约 80 天（当前 stale），回补与 stale 判定待数据侧 / owner。
+7. ~~`fact_formal_yield_curve_daily` 历史深度（2.9 节）~~ → 已回填：780 行 / 仅 24 个日期快照（2023-12-31～2026-06-30，多为月末，非日频）；treasury/cdb/aaa_credit 自 2023-12-31，aa/aa+ 与利差曲线仅 2026-01-30～2026-04-30；月末级快照能否满足曲线策略历史窗口待 owner。
+8. ~~组合持仓 / 风险张量输入的审计（2.9 节，M15）~~ → 已回填：`fact_formal_bond_analytics_daily` 765105 行 / 518 个 report_date（2024-01-01～2026-06-30）；`fact_formal_risk_tensor_daily` 518 行（同区间，日粒度），最新滞后 19 天；M15 输入口径确认待 owner。
