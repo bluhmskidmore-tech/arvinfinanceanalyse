@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: PnL Historical Cutoff Precompute Coverage
 status: paused-pending-adoption-decision
-stopped_at: Candidate audit line merged into integration branch codex/V1-merge-dateclosure; final merge-back to codex/V1 pending clean window
-last_updated: "2026-07-20T09:00:00.000Z"
+stopped_at: Merge-back complete — codex/V1-merge-dateclosure (aa9785aba) landed on codex/V1 as merge 5a3878beb; targeted regression green on the exact merge tree
+last_updated: "2026-07-20T09:50:00.000Z"
 last_activity: 2026-07-20
 progress:
   total_phases: 3
@@ -38,13 +38,14 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 - **PnL Bridge first-screen meta banner** — complete (Round-3 Task 2).
 - **PnL bridge quality-merge test harden + STATE sync** — complete (Round-3 Task 3).
 
-### Next actions (updated 2026-07-20 after isolated-worktree merge)
+### Next actions (updated 2026-07-20 after merge-back landed)
 
-1. **DONE (staging):** candidate line `codex/balance-analysis-date-closure` merged --no-ff into integration branch `codex/V1-merge-dateclosure` (HEAD `feadfc932`, based on V1 tip `9f80fb999`; worktree `F:/MOSS-V3-worktrees/v1-merge-dateclosure`). 10 conflicts resolved: mainline naming/contract precedence, candidate semantic fixes preserved; one latent auto-merge double-division (sub-1% yield /100 twice) corrected to mainline `raw_scale="percent"` form.
+1. **DONE (staging):** candidate line `codex/balance-analysis-date-closure` merged --no-ff into integration branch `codex/V1-merge-dateclosure` (`feadfc932`, based on V1 tip `9f80fb999`; worktree `F:/MOSS-V3-worktrees/v1-merge-dateclosure`). 10 conflicts resolved: mainline naming/contract precedence, candidate semantic fixes preserved; one latent auto-merge double-division (sub-1% yield /100 twice) corrected to mainline `raw_scale="percent"` form.
 2. **SUPERSEDED:** side branch `codex/pnl-bridge-date-closure` (`f70a536c1`) is NOT to be merged — mainline `5a25a4531` already landed equivalent bridge date metadata with the opposite PAGE-BRIDGE-001 ruling (curve trade dates are never promoted to `fallback_date`; `date_basis` stays empty). Keep the branch as reference only.
-3. **PENDING:** merge-back `codex/V1-merge-dateclosure` into `codex/V1` at the next clean-worktree window; V1 has advanced past `9f80fb999`, so re-run merge-tree preflight for the delta before merging.
-4. Worktree/branch cleanup only after an inventory; no bulk deletion.
-5. Phase 03/04 adoption remains a business decision — not current code work.
+3. **DONE (merge-back):** `codex/V1-merge-dateclosure` (tip `aa9785aba`, includes the ADB preview test copy alignment) merged --no-ff into `codex/V1` as `5a3878beb` (tree `672aa867b`, matches merge-tree preflight; 27 files, zero overlap with dirty worktree files). Evidence: backend `tests/test_boundary_surface_inventory.py` + `tests/test_yield_curve_term_structure_api.py` + `tests/test_frontend_playwright_smoke_scaffold.py` = 47 passed on the pure merge tree (temp verify worktree); frontend 8 candidate-line test files = 216 passed on the identical frontend tree (integration worktree). Operational notes carried in: monthly OA playwright smoke hard-fails without a state server; curve partial-missing reports `vendor_status=vendor_unavailable` (fail-visible).
+4. Integration branch/worktree `v1-merge-dateclosure` is now fully absorbed; it can be retired at the next worktree inventory (an uncommitted redundant `macro_toolkit.py` seam re-add from a parallel session remains there — content already on V1 via `ed7a8f544`; safe to discard, do not commit).
+5. Worktree/branch cleanup only after an inventory; no bulk deletion.
+6. Phase 03/04 adoption remains a business decision — not current code work.
 
 ## Performance Metrics
 
@@ -65,8 +66,7 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 ### Pending Todos
 
 - Decide whether the business adopts the Phase 03/04 side-branch capability; until then keep INC-01/INC-02/REC-01/PAR-01/PAR-02 unchecked.
-- Merge-back `codex/V1-merge-dateclosure` (`feadfc932`) into `codex/V1` after re-preflighting the post-`9f80fb999` delta.
-- Operational note for the merge-back: monthly OA playwright smoke now hard-fails without a state server (candidate-line intent); curve partial-missing now reports `vendor_status=vendor_unavailable` (fail-visible).
+- Retire `codex/V1-merge-dateclosure` branch + worktree at the next inventory (fully merged as `5a3878beb`; discard its uncommitted redundant `macro_toolkit.py` change).
 
 ### Blockers/Concerns
 
@@ -77,6 +77,6 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 ## Session Continuity
 
-**Last session:** 2026-07-20T09:00:00.000Z
-**Stopped at:** Candidate audit line staged on `codex/V1-merge-dateclosure` (`feadfc932`); post-merge regression running; merge-back to `codex/V1` pending clean window + delta preflight
+**Last session:** 2026-07-20T09:50:00.000Z
+**Stopped at:** Merge-back landed — `codex/V1` = `5a3878beb` (merge of `aa9785aba`); targeted backend+frontend regression green on the exact merge tree; integration branch ready for retirement after inventory
 **Resume file:** .planning/forensics/report-20260719-055254.md
