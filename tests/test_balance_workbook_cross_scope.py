@@ -272,11 +272,15 @@ def test_service_fetches_full_scope_rows_and_wires_them_under_asset_scope():
 
         def fetch_formal_zqtz_rows(self, **kwargs):
             calls.append(("zqtz", kwargs["position_scope"], kwargs["currency_basis"]))
-            if kwargs["currency_basis"] != "native":
-                return []
+            basis = kwargs["currency_basis"]
             if kwargs["position_scope"] == "all":
-                return [_native_zqtz("asset"), _native_zqtz("liability")]
-            return [_native_zqtz(kwargs["position_scope"])]
+                rows = [_native_zqtz("asset"), _native_zqtz("liability")]
+            else:
+                rows = [_native_zqtz(kwargs["position_scope"])]
+            # Echo requested basis so callers can assert currency_basis honor.
+            for row in rows:
+                row["currency_basis"] = basis
+            return rows
 
         def fetch_formal_tyw_rows(self, **kwargs):
             calls.append(("tyw", kwargs["position_scope"], kwargs["currency_basis"]))
@@ -310,14 +314,18 @@ def test_service_fetches_full_scope_rows_and_wires_them_under_asset_scope():
         reload_module_fn=lambda module: module,
     )
 
-    # scope=asset must trigger an extra all-scope native fetch on both sources.
-    assert ("zqtz", "all", "native") in calls
-    assert ("tyw", "all", "native") in calls
+    # H-2: requested CNY must drive main/full-row fetches (not hardcoded native).
+    assert ("zqtz", "asset", "CNY") in calls
+    assert ("zqtz", "all", "CNY") in calls
+    assert ("tyw", "all", "CNY") in calls
+    assert ("zqtz", "all", "native") not in calls
     # Full rows handed to the builder include both asset and liability zqtz rows.
     full_scopes = {row.position_scope for row in captured["zqtz_full_rows"]}
     assert full_scopes == {"asset", "liability"}
-    # Scoped rows stay asset-only.
+    # Scoped rows stay asset-only and keep CNY basis.
     assert {row.position_scope for row in captured["zqtz_rows"]} == {"asset"}
+    assert {row.currency_basis for row in captured["zqtz_rows"]} == {"CNY"}
+    assert captured["currency_basis"] == "CNY"
 
 
 def test_liability_scope_cross_scope_tables_match_all_scope():

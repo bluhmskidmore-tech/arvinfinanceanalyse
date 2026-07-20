@@ -347,45 +347,44 @@ def test_build_balance_workbook_payload_uses_shared_completed_build_lineage_help
             return ["2025-12-31"]
 
         def fetch_formal_zqtz_rows(self, **kwargs):
-            if kwargs["currency_basis"] == "native":
-                return [
-                    {
-                        "report_date": "2025-12-31",
-                        "instrument_code": "240001.IB",
-                        "instrument_name": "测试债券",
-                        "portfolio_name": "组合A",
-                        "cost_center": "CC100",
-                        "account_category": "可供出售类资产",
-                        "asset_class": "信用债",
-                        "bond_type": "企业债",
-                        "issuer_name": "发行人A",
-                        "industry_name": "工业",
-                        "rating": "AAA",
-                        "invest_type_std": "A",
-                        "accounting_basis": "FVOCI",
-                        "position_scope": kwargs["position_scope"],
-                        "currency_basis": kwargs["currency_basis"],
-                        "currency_code": "CNY",
-                        "face_value_amount": "100.00000000",
-                        "market_value_amount": "100.00000000",
-                        "amortized_cost_amount": "90.00000000",
-                        "accrued_interest_amount": "5.00000000",
-                        "coupon_rate": "0.03000000",
-                        "ytm_value": "0.03100000",
-                        "maturity_date": "2026-12-31",
-                        "interest_mode": "固定",
-                        "is_issuance_like": False,
-                        "overdue_principal_days": 0,
-                        "overdue_interest_days": 0,
-                        "value_date": "2025-12-31",
-                        "customer_attribute": "internal",
-                        "source_version": "sv_balance_analysis_test",
-                        "rule_version": "rv_balance_analysis_test",
-                        "ingest_batch_id": "ib-test",
-                        "trace_id": "trace-test",
-                    }
-                ]
-            return []
+            # Honor requested currency_basis (workbook H-2); fixture amounts are CNY-like.
+            return [
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240001.IB",
+                    "instrument_name": "测试债券",
+                    "portfolio_name": "组合A",
+                    "cost_center": "CC100",
+                    "account_category": "可供出售类资产",
+                    "asset_class": "信用债",
+                    "bond_type": "企业债",
+                    "issuer_name": "发行人A",
+                    "industry_name": "工业",
+                    "rating": "AAA",
+                    "invest_type_std": "A",
+                    "accounting_basis": "FVOCI",
+                    "position_scope": kwargs["position_scope"],
+                    "currency_basis": kwargs["currency_basis"],
+                    "currency_code": "CNY",
+                    "face_value_amount": "100.00000000",
+                    "market_value_amount": "100.00000000",
+                    "amortized_cost_amount": "90.00000000",
+                    "accrued_interest_amount": "5.00000000",
+                    "coupon_rate": "0.03000000",
+                    "ytm_value": "0.03100000",
+                    "maturity_date": "2026-12-31",
+                    "interest_mode": "固定",
+                    "is_issuance_like": False,
+                    "overdue_principal_days": 0,
+                    "overdue_interest_days": 0,
+                    "value_date": "2025-12-31",
+                    "customer_attribute": "internal",
+                    "source_version": "sv_balance_analysis_test",
+                    "rule_version": "rv_balance_analysis_test",
+                    "ingest_batch_id": "ib-test",
+                    "trace_id": "trace-test",
+                }
+            ]
 
         def fetch_formal_tyw_rows(self, **kwargs):
             return []

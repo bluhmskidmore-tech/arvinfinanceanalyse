@@ -47,70 +47,74 @@ def _build_balance_workbook_payload(
     if report_date not in repo.list_report_dates():
         raise ValueError(f"No balance-analysis data found for report_date={report_date}.")
 
-    zqtz_native_rows = [
+    # Main tables must honor the requested currency_basis. Previously they always
+    # fetched native rows while echoing currency_basis="CNY" in the payload
+    # (audit H-2: mixed-currency sum under a CNY label). currency_split still
+    # always uses CNY-converted fact rows.
+    zqtz_rows = [
         _to_formal_zqtz_fact_row(row)
         for row in repo.fetch_formal_zqtz_rows(
             report_date=report_date,
             position_scope=position_scope,
-            currency_basis="native",
+            currency_basis=currency_basis,
         )
     ]
-    tyw_native_rows = [
+    tyw_rows = [
         _to_formal_tyw_fact_row(row)
         for row in repo.fetch_formal_tyw_rows(
             report_date=report_date,
             position_scope=position_scope,
-            currency_basis="native",
+            currency_basis=currency_basis,
         )
     ]
-    zqtz_currency_rows = [
-        _to_formal_zqtz_fact_row(row)
-        for row in repo.fetch_formal_zqtz_rows(
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis="CNY",
-        )
-    ]
-    # Cross-scope tables (maturity gap, regulatory limits, cashflow calendar, rate
-    # distribution, counterparty types, cards, right-rail sections) need both asset and
-    # liability rows. When the caller narrows position_scope we fetch the unfiltered
-    # native rows once more and hand them to the builder so the missing side is not
-    # silently reported as 0. scope="all" reuses the already-fetched rows.
-    if position_scope == "all":
-        zqtz_full_native_rows = zqtz_native_rows
-        tyw_full_native_rows = tyw_native_rows
+    if currency_basis == "CNY":
+        zqtz_currency_rows = zqtz_rows
     else:
-        zqtz_full_native_rows = [
+        zqtz_currency_rows = [
+            _to_formal_zqtz_fact_row(row)
+            for row in repo.fetch_formal_zqtz_rows(
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis="CNY",
+            )
+        ]
+    # Cross-scope tables need both asset and liability rows at the same currency
+    # basis as the main tables. scope="all" reuses the already-fetched rows.
+    if position_scope == "all":
+        zqtz_full_rows = zqtz_rows
+        tyw_full_rows = tyw_rows
+    else:
+        zqtz_full_rows = [
             _to_formal_zqtz_fact_row(row)
             for row in repo.fetch_formal_zqtz_rows(
                 report_date=report_date,
                 position_scope="all",
-                currency_basis="native",
+                currency_basis=currency_basis,
             )
         ]
-        tyw_full_native_rows = [
+        tyw_full_rows = [
             _to_formal_tyw_fact_row(row)
             for row in repo.fetch_formal_tyw_rows(
                 report_date=report_date,
                 position_scope="all",
-                currency_basis="native",
+                currency_basis=currency_basis,
             )
         ]
     workbook_mod = import_module_fn(workbook_module_name)
     workbook_mod = reload_module_fn(workbook_mod)
     workbook = workbook_mod.build_balance_analysis_workbook_payload(
         report_date=(
-            zqtz_full_native_rows[0].report_date
-            if zqtz_full_native_rows
-            else tyw_full_native_rows[0].report_date
+            zqtz_full_rows[0].report_date
+            if zqtz_full_rows
+            else tyw_full_rows[0].report_date
         ),
         position_scope=position_scope,
         currency_basis=currency_basis,
-        zqtz_rows=zqtz_native_rows,
-        tyw_rows=tyw_native_rows,
+        zqtz_rows=zqtz_rows,
+        tyw_rows=tyw_rows,
         zqtz_currency_rows=zqtz_currency_rows,
-        zqtz_full_rows=zqtz_full_native_rows,
-        tyw_full_rows=tyw_full_native_rows,
+        zqtz_full_rows=zqtz_full_rows,
+        tyw_full_rows=tyw_full_rows,
     )
     return workbook, resolve_completed_formal_build_lineage_fn(
         governance_dir=governance_dir,

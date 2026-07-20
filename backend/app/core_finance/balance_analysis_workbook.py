@@ -17,7 +17,7 @@ New code should import from balance_workbook package instead.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.balance_analysis import (
@@ -1640,7 +1640,13 @@ def _table(key: str, title: str, columns: list[tuple[str, str]], rows: list[dict
 def _decimal_value(value: Any) -> Decimal:
     if value in (None, ""):
         return _ZERO
-    return Decimal(str(value))
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return _ZERO
+    if not result.is_finite():
+        return _ZERO
+    return result
 
 
 def _severity_from_gap(gap_value: Decimal) -> str:

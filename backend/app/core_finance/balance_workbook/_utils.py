@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.interest_mode import classify_interest_rate_style
@@ -50,8 +50,20 @@ def _group_rows(rows: list[Any], key_fn) -> dict[str, list[Any]]:
     return grouped
 
 
+def _to_finite_decimal(value: Any) -> Decimal:
+    if value in (None, ""):
+        return _ZERO
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return _ZERO
+    if not result.is_finite():
+        return _ZERO
+    return result
+
+
 def _sum_decimal(rows: list[Any], value_fn) -> Decimal:
-    return sum((Decimal(str(value_fn(row))) for row in rows), _ZERO)
+    return sum((_to_finite_decimal(value_fn(row)) for row in rows), _ZERO)
 
 
 def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
@@ -61,8 +73,11 @@ def _weighted_average(rows: list[Any], weight_fn, value_fn) -> Decimal | None:
         value = value_fn(row)
         if value in (None, ""):
             continue
-        weight = Decimal(str(weight_fn(row)))
-        numerator += weight * Decimal(str(value))
+        weight = _to_finite_decimal(weight_fn(row))
+        value_dec = _to_finite_decimal(value)
+        if weight == _ZERO:
+            continue
+        numerator += weight * value_dec
         denominator += weight
     if denominator == _ZERO:
         return None
