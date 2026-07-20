@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, Tooltip } from "antd";
+import { Alert, Card, Tooltip } from "antd";
 import "../../lib/agGridSetup";
 import { AgGridReact } from "ag-grid-react";
 import type { CellClassParams, ColDef, IHeaderParams } from "ag-grid-community";
@@ -16,7 +16,13 @@ import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { SectionLead } from "../../components/page/SectionLead";
-import type { Numeric, PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
+import type {
+  Numeric,
+  PnlBridgeQuality,
+  PnlBridgeRow,
+  PnlBridgeSummary,
+  ResultMeta,
+} from "../../api/contracts";
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
 import { toneFromNumeric } from "../../utils/tone";
@@ -52,7 +58,7 @@ const TRANSPARENT_BAR = {
   borderWidth: 0,
 } as const;
 
-function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
+export function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
   const displayStrings = [
     summary.total_carry.display,
     summary.total_roll_down.display,
@@ -67,23 +73,28 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
   ];
 
   const stepValues = [
-    summary.total_carry.raw ?? 0,
-    summary.total_roll_down.raw ?? 0,
-    summary.total_treasury_curve.raw ?? 0,
-    summary.total_credit_spread.raw ?? 0,
-    summary.total_fx_translation.raw ?? 0,
-    summary.total_realized_trading.raw ?? 0,
-    summary.total_unrealized_fv.raw ?? 0,
-    summary.total_manual_adjustment.raw ?? 0,
+    summary.total_carry.raw,
+    summary.total_roll_down.raw,
+    summary.total_treasury_curve.raw,
+    summary.total_credit_spread.raw,
+    summary.total_fx_translation.raw,
+    summary.total_realized_trading.raw,
+    summary.total_unrealized_fv.raw,
+    summary.total_manual_adjustment.raw,
   ];
 
-  const helperRaw: number[] = [];
-  const valueRaw: number[] = [];
+  const helperRaw: Array<number | null> = [];
+  const valueRaw: Array<number | null> = [];
   const barColors: string[] = [];
 
   let running = 0;
   for (const value of stepValues) {
-    if (value >= 0) {
+    // 缺失效应不画 0 值柱：value/helper 传 null，让 ECharts 留出断点，且不推进累计值。
+    if (value === null) {
+      helperRaw.push(null);
+      valueRaw.push(null);
+      barColors.push(designTokens.color.neutral[400]);
+    } else if (value >= 0) {
       helperRaw.push(running);
       valueRaw.push(value);
       barColors.push(designTokens.color.semantic.profit);
@@ -97,11 +108,11 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
   }
 
   helperRaw.push(0);
-  valueRaw.push(summary.total_explained_pnl.raw ?? 0);
+  valueRaw.push(summary.total_explained_pnl.raw);
   barColors.push(designTokens.color.primary[600]);
 
   helperRaw.push(0);
-  valueRaw.push(summary.total_actual_pnl.raw ?? 0);
+  valueRaw.push(summary.total_actual_pnl.raw);
   barColors.push(designTokens.color.primary[600]);
 
   return {
@@ -168,6 +179,41 @@ function qualityLabel(value: PnlBridgeQuality | null | undefined) {
     return "错误";
   }
   return "—";
+}
+
+function pickMetaEffectiveDate(state: DataSectionState, meta: ResultMeta | null): string | undefined {
+  if ((state.kind === "fallback" || state.kind === "stale") && state.effective_date) {
+    return state.effective_date;
+  }
+  return meta?.fallback_date ?? meta?.resolved_report_date ?? meta?.as_of_date ?? undefined;
+}
+
+/** Decision-level first-screen notice from envelope result_meta (adapter state). */
+export function buildPnlBridgeFirstScreenMetaNotice(
+  state: DataSectionState,
+  meta: ResultMeta | null,
+): string | null {
+  if (state.kind === "fallback") {
+    const parts = ["首屏读模型已回退至最近可用快照"];
+    const effectiveDate = pickMetaEffectiveDate(state, meta);
+    if (meta?.requested_report_date && effectiveDate && meta.requested_report_date !== effectiveDate) {
+      parts.push(`请求日 ${meta.requested_report_date} 回退至 ${effectiveDate}`);
+    } else if (effectiveDate) {
+      parts.push(`有效日 ${effectiveDate}`);
+    }
+    return `${parts.join("；")}。下方 KPI 与瀑布图基于上述回退数据，请以实际数据日期为准。`;
+  }
+
+  if (state.kind === "stale") {
+    const parts = ["首屏读模型数据偏旧"];
+    const effectiveDate = pickMetaEffectiveDate(state, meta);
+    if (effectiveDate) {
+      parts.push(`有效日 ${effectiveDate}`);
+    }
+    return `${parts.join("；")}。下方校验状态仍可能显示为正常，因其来自行级闭合质量，不代表读模型新鲜度。`;
+  }
+
+  return null;
 }
 
 function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
@@ -333,6 +379,11 @@ export default function PnlBridgePage() {
     return summaryState;
   }, [rows.length, summaryState]);
 
+  const firstScreenMetaNotice = useMemo(
+    () => buildPnlBridgeFirstScreenMetaNotice(summaryState, adapterOutput.meta),
+    [adapterOutput.meta, summaryState],
+  );
+
   const reportDatePlaceholder = datesQuery.isLoading
     ? "正在载入报告日"
     : datesQuery.isError
@@ -445,6 +496,17 @@ export default function PnlBridgePage() {
           title="损益闭合校验汇总"
           description="先看校验是否通过，再核对解释损益、实际损益、残差和质量标识；所有数值均来自后端正式桥接读模型。"
         />
+        {firstScreenMetaNotice ? (
+          <Alert
+            data-testid="pnl-bridge-meta-banner"
+            className="pnl-bridge-meta-banner"
+            role="status"
+            type="warning"
+            showIcon
+            message="首屏数据为回退/偏旧口径"
+            description={firstScreenMetaNotice}
+          />
+        ) : null}
         <DataSection
           title="汇总"
           state={summaryState}

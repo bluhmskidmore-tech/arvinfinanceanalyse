@@ -462,68 +462,41 @@ const requestActionWithBody = async <TResponse, TBody>(
   return (await response.json()) as TResponse;
 };
 
-// Cache only the mockApiClient *module* import so real-mode bundles stay free
-// of mock payloads. Each createApiClient({ mode: "mock" }) call still builds a
-// fresh composition so mutable mock state does not leak across callers/tests.
-let mockApiClientModulePromise: Promise<typeof import("./mockApiClient")> | null = null;
+// Lazy-load demo composition; cache module import only (not instances).
+let demoClientModulePromise: Promise<typeof import("./mockApiClient")> | null = null;
 let cachedApiClientMethodNames: string[] | null = null;
-let mockSurfaceAsserted = false;
+let demoSurfaceAsserted = false;
 
-function loadMockApiClientModule(): Promise<typeof import("./mockApiClient")> {
-  mockApiClientModulePromise ??= import("./mockApiClient");
-  return mockApiClientModulePromise;
-}
-
+/** Public method names from a throwaway real client (built once). */
 function getApiClientMethodNames(): string[] {
-  // Discover the public surface from a throwaway real client once. Mock calls
-  // must not rebuild the full real composition on every createApiClient().
   cachedApiClientMethodNames ??= Object.keys(
     createApiClient({ mode: "real", baseUrl: "", fetchImpl: defaultFetch }),
   );
   return cachedApiClientMethodNames;
 }
 
-function assertMockClientSurface(methodNames: string[], mockClient: ApiClient): void {
-  if (mockSurfaceAsserted) {
-    return;
-  }
-  if (!(import.meta.env.DEV || import.meta.env.MODE === "test")) {
-    return;
-  }
-  mockSurfaceAsserted = true;
-  const mockKeys = new Set(Object.keys(mockClient));
-  const missing = methodNames.filter((name) => name !== "mode" && !mockKeys.has(name));
-  if (missing.length > 0) {
-    throw new Error(
-      `Mock ApiClient is missing methods expected by the real surface: ${missing.join(", ")}`,
-    );
-  }
-}
-
-function createLazyMockClient(methodNames: string[]): ApiClient {
-  // Per-instance composition (not a module singleton).
-  const mockClientPromise = loadMockApiClientModule().then(({ createMockApiClient }) => {
-    const mockClient = createMockApiClient(delay, ensureMockClientBundle);
-    assertMockClientSurface(methodNames, mockClient);
-    return mockClient;
+function createLazyDemoClient(methodNames: string[]): ApiClient {
+  // Fresh composition per call so mutable demo state does not leak.
+  demoClientModulePromise ??= import("./mockApiClient");
+  const demoPromise = demoClientModulePromise.then(({ createMockApiClient }) => {
+    const composed = createMockApiClient(delay, ensureMockClientBundle);
+    if (!demoSurfaceAsserted && (import.meta.env.DEV || import.meta.env.MODE === "test")) {
+      demoSurfaceAsserted = true;
+      const keys = new Set(Object.keys(composed));
+      const missing = methodNames.filter((n) => n !== "mode" && !keys.has(n));
+      if (missing.length) throw new Error(`Demo ApiClient missing methods: ${missing.join(", ")}`);
+    }
+    return composed;
   });
-
-  // A plain object (not a Proxy) so object spread, Object.keys, and test spies
-  // behave exactly like the eager mock client did. Method names come from the
-  // real composition, which implements the same ApiClient surface.
+  // Plain object (not Proxy): spread / Object.keys / spies match eager client.
   const client = { mode: "mock" } as unknown as Record<string, unknown>;
   for (const name of methodNames) {
-    if (name === "mode") {
-      continue;
-    }
-    // Classic function preserves call-site `this` so fetchBondDashboardBundle
-    // can resolve sibling methods on the composed client (and test overrides).
+    if (name === "mode") continue;
+    // Classic function keeps call-site `this` for bundle assembly + overrides.
     client[name] = async function (this: unknown, ...args: unknown[]) {
-      const mockClient = await mockClientPromise;
-      const value = mockClient[name as keyof ApiClient];
-      if (typeof value !== "function") {
-        return value;
-      }
+      const composed = await demoPromise;
+      const value = composed[name as keyof ApiClient];
+      if (typeof value !== "function") return value;
       return (value as (this: unknown, ...methodArgs: unknown[]) => unknown).call(
         this ?? client,
         ...args,
@@ -540,8 +513,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
   if (mode === "mock") {
     void ensureMockClientBundle();
-    void loadMockApiClientModule();
-    return createLazyMockClient(getApiClientMethodNames());
+    demoClientModulePromise ??= import("./mockApiClient");
+    return createLazyDemoClient(getApiClientMethodNames());
   }
 
   return {
@@ -555,11 +528,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealCubeClient({ fetchImpl, baseUrl }),
     ...createRealPnlBusinessClient({ fetchImpl, baseUrl }),
     ...createRealAgentClient({ fetchImpl, baseUrl }),
-    ...createRealExecutiveClient({
-      fetchImpl,
-      baseUrl,
-      requestJson,
-    }),
+    ...createRealExecutiveClient({ fetchImpl, baseUrl, requestJson }),
     ...dashboardWorkbenchLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
     ...bondDashboardLiveEndpoints({ fetchImpl, baseUrl, requestJson }),
     ...createRealBondAnalyticsClient({ fetchImpl, baseUrl, requestJson, requestActionJson }),
@@ -570,29 +539,13 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealCashflowClient({ fetchImpl, baseUrl, requestJson }),
     ...createRealLiabilityAdbClient({ fetchImpl, baseUrl, requestJson }),
     ...createRealProductCategoryClient({
-      fetchImpl,
-      baseUrl,
-      requestJson,
-      requestActionJson,
-      requestText,
-      requestActionWithBody,
+      fetchImpl, baseUrl, requestJson, requestActionJson, requestText, requestActionWithBody,
     }),
     ...createRealQdbGlMonthlyAnalysisClient({
-      fetchImpl,
-      baseUrl,
-      requestJson,
-      requestActionJson,
-      requestText,
-      requestBlob,
-      requestActionWithBody,
+      fetchImpl, baseUrl, requestJson, requestActionJson, requestText, requestBlob, requestActionWithBody,
     }),
     ...createRealBalanceAnalysisClient({
-      fetchImpl,
-      baseUrl,
-      requestJson,
-      requestActionJson,
-      requestText,
-      requestBlob,
+      fetchImpl, baseUrl, requestJson, requestActionJson, requestText, requestBlob,
     }),
   };
 }

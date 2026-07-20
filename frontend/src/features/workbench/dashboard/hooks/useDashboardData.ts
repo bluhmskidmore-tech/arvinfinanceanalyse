@@ -11,6 +11,7 @@ import {
   DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
   DASHBOARD_MACRO_NEWS_TOPICS,
 } from "../dashboardMacroNewsTopics";
+import { mapBondBucketAnalysisToCockpitInput } from "../adapters/mapBondBucketAnalysisToCockpitInput";
 import {
   getAssetIncomeOverview,
   getBondBucketYield,
@@ -265,6 +266,10 @@ export function useDashboardData({
     })),
   });
 
+  const bondBucketCockpitYield = mapBondBucketAnalysisToCockpitInput(
+    bondBucketYieldQuery.data?.result,
+  );
+
   return {
     coreMetricsQuery,
     dailyChangesQuery,
@@ -277,6 +282,10 @@ export function useDashboardData({
     campisiFourEffectsQuery,
     yieldCurveTermStructureQuery,
     bondBucketYieldQuery,
+    /** Production path: payload.rows → cockpit bondBucketRows. */
+    bondBucketRows: bondBucketCockpitYield.bondBucketRows,
+    /** Production path: payload.merged_bucket_rows → cockpit bondBucketMergedRows. */
+    bondBucketMergedRows: bondBucketCockpitYield.bondBucketMergedRows,
     bondBucketMonthlyTrendQuery,
     decisionItemsQuery,
     researchCalendarQuery: researchCalendar.researchCalendarQuery,
@@ -297,6 +306,8 @@ export function useDashboardData({
     campisiFourEffectsQuery: typeof campisiFourEffectsQuery;
     yieldCurveTermStructureQuery: typeof yieldCurveTermStructureQuery;
     bondBucketYieldQuery: typeof bondBucketYieldQuery;
+    bondBucketRows: typeof bondBucketCockpitYield.bondBucketRows;
+    bondBucketMergedRows: typeof bondBucketCockpitYield.bondBucketMergedRows;
     bondBucketMonthlyTrendQuery: typeof bondBucketMonthlyTrendQuery;
     decisionItemsQuery: typeof decisionItemsQuery;
     macroNewsQueries: typeof macroNewsQueries;

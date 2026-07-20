@@ -161,6 +161,8 @@ export type DashboardCockpitModelInput = {
   bondHeadline?: BondDashboardHeadlinePayload | null;
   portfolio?: BondPortfolioHeadlinesPayload | null;
   bondBucketRows?: readonly PnlByBusinessAnalysisRow[] | null;
+  /** 后端 merged_bucket_rows（bond_bucket 维度），含“其他”合并桶的加权年化收益。 */
+  bondBucketMergedRows?: readonly PnlByBusinessAnalysisRow[] | null;
   marketPoints?: readonly ChoiceMacroLatestPoint[] | null;
   calendarItems?: readonly ResearchCalendarEvent[] | null;
 };
@@ -201,8 +203,10 @@ const ASSET_CLASS_ACCOUNT_ORDER: Record<string, number> = {
 const BOND_BUCKET_LABELS: Record<string, readonly string[]> = {
   credit: ["信用债"],
   rate: ["利率债"],
-  other: ["金融债", "其它债券", "其他债券"],
 };
+
+/** 后端 merged_bucket_rows 中“其他”合并桶（金融债+其它债券）的 dimension_key。 */
+const BOND_BUCKET_MERGED_OTHER_KEY = "other_merged";
 
 function cleanDate(value: string | null | undefined): string {
   return value?.trim() ?? "";
@@ -352,7 +356,10 @@ function buildRiskFocusReasonParts(input: {
   };
 }
 
-function buildBondBucketYieldDisplayMap(rows: readonly PnlByBusinessAnalysisRow[] | null | undefined) {
+function buildBondBucketYieldDisplayMap(
+  rows: readonly PnlByBusinessAnalysisRow[] | null | undefined,
+  mergedRows: readonly PnlByBusinessAnalysisRow[] | null | undefined,
+) {
   const normalizedRows = rows ?? [];
   const result: Partial<Record<string, string>> = {};
 
@@ -368,26 +375,12 @@ function buildBondBucketYieldDisplayMap(rows: readonly PnlByBusinessAnalysisRow[
     }
   }
 
-  const otherRows = BOND_BUCKET_LABELS.other
-    .map((label) => rowByLabel.get(label))
-    .filter((row): row is PnlByBusinessAnalysisRow => Boolean(row));
-  if (otherRows.length > 0) {
-    let weightedYield = 0;
-    let totalAvgBalance = 0;
-    for (const row of otherRows) {
-      const yieldPct = numericRaw(row.annualized_yield_pct);
-      const avgBalance = numericRaw(row.avg_balance);
-      if (yieldPct == null || avgBalance == null || avgBalance <= 0) {
-        continue;
-      }
-      weightedYield += yieldPct * avgBalance;
-      totalAvgBalance += avgBalance;
-    }
-    if (totalAvgBalance > 0) {
-      result.other = `${formatWithCommas(weightedYield / totalAvgBalance, 2)}%`;
-    } else {
-      result.other = percentPointDisplay(otherRows[0]?.annualized_yield_pct);
-    }
+  // “其他”桶不在前端加权补算：直读后端 merged_bucket_rows 的正式口径值。
+  const mergedOther = (mergedRows ?? []).find(
+    (row) => row.dimension_key === BOND_BUCKET_MERGED_OTHER_KEY,
+  );
+  if (mergedOther) {
+    result.other = percentPointDisplay(mergedOther.annualized_yield_pct);
   }
 
   return result;
@@ -430,10 +423,15 @@ function scaledLevel(value: NumericLike, maxRaw: number): number {
   return clampPercent((Math.abs(raw) / maxRaw) * 100);
 }
 
+/**
+ * 输入为 portfolio-headlines 的权重字段（issuer_top5_weight / credit_weight），
+ * 后端契约为 unit="ratio" 的小数比率（占比 ∈ [0,1]），固定 ×100 得到 0–100 级别，
+ * 不再使用 |x|<=1 启发式。
+ */
 function percentLevel(value: NumericLike): number {
   const raw = numericRaw(value);
   if (raw == null) return 0;
-  return clampPercent(Math.abs(raw) <= 1 ? Math.abs(raw) * 100 : Math.abs(raw));
+  return clampPercent(Math.abs(raw) * 100);
 }
 
 function buildSupplementalSection(input: {
@@ -1129,7 +1127,10 @@ function buildAccountRows(input: DashboardCockpitModelInput): DashboardCockpitAc
   const totalMarketValue = portfolio.total_market_value ?? headline?.kpis.total_market_value;
   const totalDv01 = headline?.kpis.total_dv01 ?? portfolio.total_dv01;
   const bondPortfolioChange = dayChange?.bond_investments_change ?? dayChange?.net_change;
-  const bondBucketYieldDisplay = buildBondBucketYieldDisplayMap(input.bondBucketRows);
+  const bondBucketYieldDisplay = buildBondBucketYieldDisplayMap(
+    input.bondBucketRows,
+    input.bondBucketMergedRows,
+  );
   const riskFocusReasons = buildRiskFocusReasonParts({
     issuerTop5Weight: portfolio.issuer_top5_weight,
     creditWeight: portfolio.credit_weight,

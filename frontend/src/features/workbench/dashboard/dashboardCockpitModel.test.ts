@@ -11,6 +11,7 @@ import type {
 } from "../../../api/contracts";
 import {
   buildDashboardCockpitModel,
+  buildRiskItems,
   type DashboardCockpitSectionStatus,
 } from "./dashboardCockpitModel";
 
@@ -246,6 +247,47 @@ function bondBucketRows(): PnlByBusinessAnalysisRow[] {
   ];
 }
 
+function bondBucketMergedRows(): PnlByBusinessAnalysisRow[] {
+  // 后端正式口径：合并桶 = Σtotal_pnl / Σavg_balance 年化（(60+40)/(600+400)），
+  // 不等于前端旧的按行 annualized_yield_pct × avg_balance 加权（那会得到 58.40）。
+  return [
+    {
+      dimension_key: "other_merged",
+      dimension_label: "其他",
+      interest_income: "0",
+      fair_value_change: "0",
+      capital_gain: "0",
+      manual_adjustment: "0",
+      total_pnl: "100.00",
+      avg_balance: "1000.00",
+      current_balance: "1000.00",
+      annualized_yield_pct: "43.800000",
+      ftp_rate_pct: "1.600000",
+      ftp_cost: "1.36",
+      ftp_net_pnl: "98.64",
+      ftp_net_annualized_yield_pct: "42.200000",
+      asset_count: 3,
+    },
+  ];
+}
+
+function portfolioWithOtherAssetClass(reportDate = "2026-04-30"): BondPortfolioHeadlinesPayload {
+  const base = portfolio(reportDate);
+  return {
+    ...base,
+    by_asset_class: [
+      ...base.by_asset_class,
+      {
+        asset_class: "other",
+        market_value: numeric("100.00 亿"),
+        duration: numeric("1.20"),
+        dv01: numeric("1,000,000", 1_000_000),
+        weight: numeric("2.91%"),
+      },
+    ],
+  };
+}
+
 function statusById(
   sections: ReturnType<typeof buildDashboardCockpitModel>["sections"],
   id: string,
@@ -479,6 +521,42 @@ describe("buildDashboardCockpitModel", () => {
     expect(cockpitCopy).not.toMatch(/headline|portfolio headlines|daily changes|adapter|mock/i);
   });
 
+  it("trusts the ratio contract for risk levels instead of the |x|<=1 percent heuristic", () => {
+    const base = backendScalarPortfolio();
+
+    // 契约内：raw 为小数比率，固定 ×100。
+    const decimalRatio = buildRiskItems(
+      {
+        ...base,
+        issuer_top5_weight: "0.41354965",
+        credit_weight: "0.0009",
+      } as unknown as BondPortfolioHeadlinesPayload,
+      "2026-04-30",
+    );
+    expect(decimalRatio.find((item) => item.id === "issuer-top5")?.level).toBe(41);
+    expect(decimalRatio.find((item) => item.id === "credit-weight")?.level).toBe(0);
+
+    // 越出契约（疑似百分点值）不再被启发式原样透传，×100 后按上限截断。
+    const outOfContract = buildRiskItems(
+      {
+        ...base,
+        issuer_top5_weight: "41.35",
+      } as unknown as BondPortfolioHeadlinesPayload,
+      "2026-04-30",
+    );
+    expect(outOfContract.find((item) => item.id === "issuer-top5")?.level).toBe(100);
+
+    // raw 缺失 → level 0（该字段有其他风险值时仍渲染行）。
+    const nullWeight = buildRiskItems(
+      {
+        ...base,
+        issuer_top5_weight: null,
+      } as unknown as BondPortfolioHeadlinesPayload,
+      "2026-04-30",
+    );
+    expect(nullWeight.find((item) => item.id === "issuer-top5")?.level).toBe(0);
+  });
+
   it("renders compact blocked placeholders when same-day portfolio rows are unusable", () => {
     const emptyPortfolio = {
       ...backendScalarPortfolio(),
@@ -581,6 +659,46 @@ describe("buildDashboardCockpitModel", () => {
       dailyChange: "--",
     });
     expect(model.accountRows.find((row) => row.id === "account-other")).toBeUndefined();
+  });
+
+  it("reads the merged other-bucket yield from the backend instead of weighting locally", () => {
+    const model = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      snapshotMode: "strict",
+      isMockMode: false,
+      coreMetrics: coreMetrics(),
+      dailyChanges: dailyChanges(),
+      bondHeadline: bondHeadline(),
+      portfolio: portfolioWithOtherAssetClass(),
+      bondBucketRows: bondBucketRows(),
+      bondBucketMergedRows: bondBucketMergedRows(),
+      marketPoints: [],
+      calendarItems: [],
+    });
+
+    // 直读后端 merged_bucket_rows（43.80%），不是前端旧加权口径（58.40%）。
+    expect(model.accountRows.find((row) => row.id === "account-other")).toMatchObject({
+      ytm: "43.80%",
+    });
+  });
+
+  it("keeps the other-bucket yield empty when the backend merged bucket is missing", () => {
+    const model = buildDashboardCockpitModel({
+      reportDate: "2026-04-30",
+      snapshotMode: "strict",
+      isMockMode: false,
+      coreMetrics: coreMetrics(),
+      dailyChanges: dailyChanges(),
+      bondHeadline: bondHeadline(),
+      portfolio: portfolioWithOtherAssetClass(),
+      bondBucketRows: bondBucketRows(),
+      marketPoints: [],
+      calendarItems: [],
+    });
+
+    expect(model.accountRows.find((row) => row.id === "account-other")).toMatchObject({
+      ytm: "--",
+    });
   });
 
   it("keeps supplement preview signals explicit when same-day supplement reads are blocked", () => {

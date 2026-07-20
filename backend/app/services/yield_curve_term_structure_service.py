@@ -99,6 +99,26 @@ def _merge_lineage_str(*values: str) -> str:
     return "__".join(sorted({v.strip() for v in values if v and v.strip()}))
 
 
+def _unified_envelope_dates(
+    *,
+    requested: str,
+    resolved_trade_dates: set[str],
+) -> tuple[str | None, str | None, str | None]:
+    """Return (resolved_report_date, as_of_date, fallback_date) for envelope meta.
+
+    Contract: unify only when every non-empty per-curve trade_date_resolved agrees.
+    Divergent curve days must not invent a single resolved/fallback_date
+    (docs/plans/2026-07-19-frontend-audit-round3-optimization.md Task 1;
+    docs/plans/2026-07-18-development-issue-remediation.md Task 6;
+    docs/page_contracts.md §4.2 + MacroToolkit §D unequal-block analogue).
+    """
+    if len(resolved_trade_dates) != 1:
+        return None, None, None
+    resolved = next(iter(resolved_trade_dates))
+    fallback = resolved if resolved != requested else None
+    return resolved, resolved, fallback
+
+
 def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str, ...]) -> dict:
     path = str(get_settings().duckdb_path)
     cache_key = _term_structure_cache_key(path, report_date, curve_types)
@@ -146,6 +166,7 @@ def _compute_yield_curve_term_structure(
     source_parts: list[str] = []
     rule_parts: list[str] = []
     vendor_parts: list[str] = []
+    resolved_trade_dates: set[str] = set()
     any_fallback = False
     all_missing = True
 
@@ -163,6 +184,8 @@ def _compute_yield_curve_term_structure(
         if snapshot is not None:
             all_missing = False
             td_resolved = str(snapshot.get("trade_date") or "")
+            if td_resolved:
+                resolved_trade_dates.add(td_resolved)
             source_parts.append(str(snapshot.get("source_version") or ""))
             rule_parts.append(str(snapshot.get("rule_version") or ""))
             vendor_parts.append(str(snapshot.get("vendor_version") or ""))
@@ -230,6 +253,10 @@ def _compute_yield_curve_term_structure(
     if all_missing and curve_types:
         warnings.append("No yield curve snapshots available for the requested report_date and curve types.")
 
+    resolved_report_date, as_of_date, fallback_date = _unified_envelope_dates(
+        requested=requested,
+        resolved_trade_dates=resolved_trade_dates,
+    )
     meta = build_formal_result_meta(
         trace_id=_trace_id(),
         result_kind=RESULT_KIND,
@@ -243,6 +270,10 @@ def _compute_yield_curve_term_structure(
         tables_used=[FACT_TABLE],
         filters_applied={"report_date": requested, "curve_types": list(curve_types)},
         source_surface="bond_analytics",
+        requested_report_date=requested,
+        resolved_report_date=resolved_report_date,
+        as_of_date=as_of_date,
+        fallback_date=fallback_date,
     )
     if any_fallback:
         meta = meta.model_copy(

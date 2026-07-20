@@ -16,7 +16,7 @@ vi.mock("../lib/echarts", () => ({
 import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { Numeric, PnlBridgePayload, PnlDatesPayload, ResultMeta } from "../api/contracts";
-import PnlBridgePage from "../features/pnl/PnlBridgePage";
+import PnlBridgePage, { buildWaterfallOption } from "../features/pnl/PnlBridgePage";
 import { designTokens } from "../theme/designSystem";
 
 function renderPnlBridgePage(client: ApiClient) {
@@ -256,6 +256,26 @@ describe("PnlBridgePage", () => {
     expect(effectSeries?.data?.[0]?.itemStyle?.color).toBe(designTokens.color.semantic.profit);
     expect(effectSeries?.data?.[3]?.itemStyle?.color).toBe(designTokens.color.semantic.loss);
   });
+
+  it("keeps missing waterfall steps as null gaps instead of drawing zero bars", () => {
+    const summary = buildBridgePayload("2025-12-31", "IC-NULL", "15.40").summary;
+    summary.total_fx_translation = { raw: null, unit: "yuan", display: "—", precision: 2, sign_aware: true };
+
+    const option = buildWaterfallOption(summary) as {
+      series?: Array<{
+        name?: string;
+        data?: Array<number | null | { value: number | null }>;
+      }>;
+    };
+    const helperSeries = option.series?.find((series) => series.name === "辅助");
+    const effectSeries = option.series?.find((series) => series.name === "效应");
+    const fxIndex = 4;
+
+    expect(helperSeries?.data?.[fxIndex]).toBeNull();
+    expect((effectSeries?.data?.[fxIndex] as { value: number | null }).value).toBeNull();
+    // 缺失步骤不推进累计值：下一步（已实现交易，正值）的辅助柱基线应仍是前四步之和。
+    expect(helperSeries?.data?.[fxIndex + 1]).toBeCloseTo(1.1 + 2.2 + 3.3 - 0.5);
+  });
   it("switches report date, refetches bridge payload, and updates debug meta", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "real" });
@@ -366,6 +386,113 @@ describe("PnlBridgePage", () => {
     });
     expect(screen.getAllByTestId("data-section-fallback-banner")).toHaveLength(2);
     expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("15.40");
+  });
+
+  it("shows a first-screen warning banner when adapter state is fallback", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2025-12-31", "IC-FALLBACK", "15.40");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_fs_fallback"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: {
+          ...buildMeta("pnl.bridge", "tr_bridge_fs_fallback"),
+          quality_flag: "stale" as const,
+          fallback_mode: "latest_snapshot" as const,
+          filters_applied: { report_date: "2025-12-30" },
+          requested_report_date: "2025-12-31",
+          resolved_report_date: "2025-12-30",
+          as_of_date: "2025-12-30",
+          fallback_date: "2025-12-30",
+        },
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            quality_flag: "ok" as const,
+          },
+        },
+      })),
+    });
+
+    const banner = await screen.findByTestId("pnl-bridge-meta-banner");
+    expect(banner).toHaveTextContent("回退至最近可用快照");
+    expect(banner).toHaveTextContent("2025-12-30");
+    expect(banner).not.toHaveTextContent("latest_snapshot");
+    expect(banner).not.toHaveTextContent("quality_flag");
+    expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("正常");
+  });
+
+  it("shows a first-screen warning banner when adapter state is stale", async () => {
+    const base = createApiClient({ mode: "real" });
+    const payload = buildBridgePayload("2025-12-31", "IC-STALE", "15.40");
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_fs_stale"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: {
+          ...buildMeta("pnl.bridge", "tr_bridge_fs_stale"),
+          quality_flag: "stale" as const,
+          vendor_status: "vendor_stale" as const,
+          filters_applied: { report_date: "2025-12-28" },
+          as_of_date: "2025-12-28",
+        },
+        result: {
+          ...payload,
+          summary: {
+            ...payload.summary,
+            quality_flag: "ok" as const,
+          },
+        },
+      })),
+    });
+
+    const banner = await screen.findByTestId("pnl-bridge-meta-banner");
+    expect(banner).toHaveTextContent("偏旧");
+    expect(banner).toHaveTextContent("2025-12-28");
+    expect(banner).toHaveTextContent("行级闭合质量");
+    expect(banner).not.toHaveTextContent("quality_flag");
+    expect(banner).not.toHaveTextContent("summary.quality_flag");
+    expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("正常");
+  });
+
+  it("does not show the first-screen meta banner when result_meta is healthy", async () => {
+    const base = createApiClient({ mode: "real" });
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_fs_ok"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.bridge", "tr_bridge_fs_ok"),
+        result: buildBridgePayload("2025-12-31", "IC-OK", "15.40"),
+      })),
+    });
+
+    await screen.findByTestId("pnl-bridge-summary-cards");
+    expect(screen.queryByTestId("pnl-bridge-meta-banner")).toBeNull();
   });
 
   it("refreshes bridge data for the selected report date and shows polling status", async () => {

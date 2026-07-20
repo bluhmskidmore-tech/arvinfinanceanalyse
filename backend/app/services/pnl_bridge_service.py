@@ -58,18 +58,15 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
-from backend.app.tasks.balance_analysis_materialize import (
-    CACHE_KEY as BALANCE_ANALYSIS_CACHE_KEY,
+# Aligned with task-module identity constants; avoid import-time broker/actor registration.
+BALANCE_ANALYSIS_CACHE_KEY = "balance_analysis:materialize:formal"
+BALANCE_ANALYSIS_CACHE_VERSION = (
+    "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
 )
-from backend.app.tasks.balance_analysis_materialize import (
-    CACHE_VERSION as BALANCE_ANALYSIS_CACHE_VERSION,
-)
-from backend.app.tasks.balance_analysis_materialize import (
-    RULE_VERSION as BALANCE_ANALYSIS_RULE_VERSION,
-)
-from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
-from backend.app.tasks.pnl_materialize import PNL_RESULT_CACHE_VERSION
-from backend.app.tasks.yield_curve_materialize import CACHE_VERSION as YIELD_CURVE_CACHE_VERSION
+BALANCE_ANALYSIS_RULE_VERSION = "rv_balance_analysis_formal_materialize_v1"
+PNL_CACHE_KEY = "pnl:phase2:materialize:formal"
+PNL_RESULT_CACHE_VERSION = "cv_pnl_formal__rv_pnl_phase2_materialize_v3"
+YIELD_CURVE_CACHE_VERSION = "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
 
 PHASE3_WARNING = (
     "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
@@ -210,6 +207,20 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
             lineage_warnings=lineage_warnings,
         ),
     )
+    # PAGE-BRIDGE-001: business report_date is exact (no report-date fallback).
+    # Curve trade dates are never promoted to fallback_date.
+    resolved_report_date = str(payload.report_date)
+    if curve_unavailable:
+        # Mixed vendor_unavailable + latest_snapshot: vendor_status reports unavailable,
+        # while quality_flag still merges stale from curve_latest_fallback (intentional).
+        fallback_mode = "none"
+        vendor_status = "vendor_unavailable"
+    elif curve_latest_fallback:
+        fallback_mode = "latest_snapshot"
+        vendor_status = "vendor_stale"
+    else:
+        fallback_mode = "none"
+        vendor_status = "ok"
     result_meta = build_formal_result_meta(
         trace_id=f"tr_pnl_bridge_{report_date}",
         result_kind="pnl.bridge",
@@ -218,24 +229,33 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         rule_version=str(lineage["rule_version"]),
         vendor_version=str(lineage["vendor_version"]),
         source_surface="pnl_bridge",
-    ).model_copy(
-        update={
-            "quality_flag": summary.quality_flag,
-            **(
-                {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-                if curve_unavailable
-                else (
-                    {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
-                    if curve_latest_fallback
-                    else {}
-                )
-            ),
-        }
+        quality_flag=_merge_bridge_quality_flag(
+            summary_quality=summary.quality_flag,
+            curve_latest_fallback=curve_latest_fallback,
+        ),
+        vendor_status=vendor_status,
+        fallback_mode=fallback_mode,
+        requested_report_date=report_date,
+        resolved_report_date=resolved_report_date,
+        as_of_date=resolved_report_date,
+        # PAGE-BRIDGE-001: business report_date has no fallback (exact match required upstream).
+        fallback_date=None,
     )
     return build_formal_result_envelope(
         result_meta=result_meta,
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def _merge_bridge_quality_flag(*, summary_quality: str, curve_latest_fallback: bool) -> str:
+    # error > stale > warning > ok; latest_snapshot adds stale; vendor_unavailable does not.
+    flags = {summary_quality}
+    if curve_latest_fallback:
+        flags.add("stale")
+    for flag in ("error", "stale", "warning"):
+        if flag in flags:
+            return flag
+    return "ok"
 
 
 def _build_summary(rows: list[PnlBridgeRow]) -> PnlBridgeSummarySchema:
