@@ -686,3 +686,126 @@ def test_no_alias_hit_means_no_block():
     prompt = service._build_hermes_prompt(AgentQueryRequest(question="What is today's meeting agenda?"))
 
     assert "MOSS ontology context" not in prompt
+
+def _reset_hermes_bridge_state():
+    service._HERMES_BRIDGE_PROCESS = None
+    service._HERMES_BRIDGE_CONFIG = None
+
+
+def _bridge_kwargs(**overrides):
+    base = {
+        "command": "wsl.exe",
+        "wsl_distro": "HermesUbuntu",
+        "hermes_home": "/home/hermes/.hermes",
+        "bridge_url": "http://127.0.0.1:7891",
+        "model": "gpt-test",
+        "toolsets": "evidence",
+        "max_turns": 3,
+        "timeout_seconds": 1.0,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_ensure_hermes_bridge_reuses_healthy_managed_process_with_same_config(monkeypatch):
+    _reset_hermes_bridge_state()
+    managed = SimpleNamespace(poll=lambda: None, terminate=lambda: None, wait=lambda timeout=None: 0, kill=lambda: None)
+    service._HERMES_BRIDGE_PROCESS = managed
+    service._HERMES_BRIDGE_CONFIG = service.HermesBridgeConfig(
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes",
+        bridge_url="http://127.0.0.1:7891",
+        model="gpt-test",
+        toolsets="evidence",
+        max_turns=3,
+    )
+    popen_calls = []
+
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *args, **kwargs: popen_calls.append((args, kwargs)) or managed)
+
+    service._ensure_hermes_bridge(**_bridge_kwargs())
+
+    assert popen_calls == []
+    assert service._HERMES_BRIDGE_PROCESS is managed
+
+
+def test_ensure_hermes_bridge_restarts_managed_process_when_config_changes(monkeypatch):
+    _reset_hermes_bridge_state()
+    stops = []
+    started = []
+
+    old = SimpleNamespace(
+        poll=lambda: None,
+        terminate=lambda: stops.append("terminate"),
+        wait=lambda timeout=None: 0,
+        kill=lambda: None,
+    )
+    new = SimpleNamespace(poll=lambda: None, terminate=lambda: None, wait=lambda timeout=None: 0, kill=lambda: None)
+    service._HERMES_BRIDGE_PROCESS = old
+    service._HERMES_BRIDGE_CONFIG = service.HermesBridgeConfig(
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes",
+        bridge_url="http://127.0.0.1:7891",
+        model="old-model",
+        toolsets="evidence",
+        max_turns=3,
+    )
+
+    health_state = {"healthy": False}
+
+    def fake_healthy(_url):
+        return health_state["healthy"]
+
+    def fake_popen(*args, **kwargs):
+        started.append(args)
+        health_state["healthy"] = True
+        return new
+
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", fake_healthy)
+    monkeypatch.setattr(service.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(service, "_build_hermes_bridge_command", lambda **kwargs: ["hermes-bridge"])
+    monkeypatch.setattr(service, "_build_hermes_subprocess_env", lambda *_args, **_kwargs: {})
+
+    service._ensure_hermes_bridge(**_bridge_kwargs(model="new-model"))
+
+    assert stops == ["terminate"]
+    assert len(started) == 1
+    assert service._HERMES_BRIDGE_PROCESS is new
+    assert service._HERMES_BRIDGE_CONFIG.model == "new-model"
+
+
+def test_ensure_hermes_bridge_does_not_kill_external_healthy_bridge(monkeypatch):
+    _reset_hermes_bridge_state()
+    popen_calls = []
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+    monkeypatch.setattr(service.subprocess, "Popen", lambda *args, **kwargs: popen_calls.append(1) or SimpleNamespace(poll=lambda: None))
+
+    service._ensure_hermes_bridge(**_bridge_kwargs())
+
+    assert popen_calls == []
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
+
+
+def test_ensure_hermes_bridge_clears_config_when_managed_process_exits(monkeypatch):
+    _reset_hermes_bridge_state()
+    exited = SimpleNamespace(poll=lambda: 1, terminate=lambda: None, wait=lambda timeout=None: 0, kill=lambda: None)
+    service._HERMES_BRIDGE_PROCESS = exited
+    service._HERMES_BRIDGE_CONFIG = service.HermesBridgeConfig(
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes",
+        bridge_url="http://127.0.0.1:7891",
+        model="gpt-test",
+        toolsets="evidence",
+        max_turns=3,
+    )
+    monkeypatch.setattr(service, "_hermes_bridge_healthy", lambda _url: True)
+
+    service._ensure_hermes_bridge(**_bridge_kwargs())
+
+    assert service._HERMES_BRIDGE_PROCESS is None
+    assert service._HERMES_BRIDGE_CONFIG is None
