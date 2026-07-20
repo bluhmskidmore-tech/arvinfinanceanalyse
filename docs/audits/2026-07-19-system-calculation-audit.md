@@ -93,6 +93,12 @@
 | 6 | PnL H-1 季/年分母 | `yield_by_period`：跨日桶分母改为各 `report_date` 组合规模均值（P1-05 方案 A）；写入 `docs/calc_rules.md`；补 quarterly/yearly 数值测试 | ✅ 已修，测试通过 |
 | 7 | PnL H-2 跨付息日票息 | `bond_four_effects` 全价路径补 `coupon_cash ≈ income − ΔAI`；跨付息日不再把选券打负 | ✅ 已修，测试通过 |
 | 8 | 固收 H-2 KRD 一名三义 | 读模型主字段改为 `avg_modified_duration`（桶内平均修正久期）；`krd` 保留一版弃用别名；曲线风险页标签同步更正；算法不变 | ✅ 已修（披露型改名） |
+| 9 | 余额 H-2 workbook 币种 | `_build_balance_workbook_payload` 主表/全量行改按请求 `currency_basis` 取数（方案 A）；currency_split 仍用 CNY 折算行；更新 cross-scope 与 service 假 repo 断言 | ✅ 已修，测试通过 |
+| 10 | PnL M-3 years 回退 | `campisi_decision_grade`：`None` 才回退 3Y，`0` 保留；缺失时写 `years_to_maturity_missing_fallback_3y` diagnostics | ✅ 已修（含披露） |
+| 11 | 共享 M-5 / M-2 | `safe_decimal`/`decimal_utils` 非有限值 → default；`interest_mode` 已含 monthly + fallback 告警 | ✅ 已核实通过 |
+| 12 | 宏观 M-1 / M-3 | 领先指标缺失月跳过均值并披露样本数；信贷脉冲整序列拒绝打 warning | ✅ 已核实 + 补测 |
+| 13 | PnL/固收 M-5 carry 天数 | `read_models.summarize_return_decomposition` carry 改为 exclusive `(end-start).days`（下限 1），与 campisi/attribution_daily 对齐 | ✅ 已修，测试通过 |
+| 14 | 共享 M-3 workbook Decimal | `balance_analysis_workbook._decimal_value` 与 `balance_workbook._utils` 对 NaN/非有限值回退 0 | ✅ 已修，测试通过 |
 
 ### 重要发现补充：engine 灰区回归属"潜伏 Critical"
 
@@ -118,11 +124,13 @@
 - 验证：`pytest tests/test_qdb_gl_monthly_analysis_core.py -k real_202603` → **14 passed**。
 - 残留风险：删除来源未定位；`kpi_bootstrap.json` 若有业务依赖需从外部备份补回。
 
-待业务 owner 裁决项：workbook 主表切 CNY 折算 vs 如实标 native（余额 H-2）——**取证已完成（2026-07-19）**：
-`balance_analysis_workbook_service.py:50-65` 主表硬编码取 `currency_basis="native"` 行混币直加，payload 原样回显请求方的
-`currency_basis="CNY"` 标签；仅 currency_split 用 `fx_daily_mid` 折算行。2026-06-30 资产端 31 笔 USD 债（折算 60.2 亿、占 1.77%），
-native 直加总额比 CNY 折算低 **51.4 亿（1.51%）**。同页 `/overview`、`/summary` 已是真 CNY 口径，与主表现状自相矛盾。
-影响面：余额分析页全部概览卡与 28 张主表、Excel 导出、决策事项接口。
-**推荐方案 A（主表切 CNY 折算行）**：native 混币直加是量纲错误而非可披露口径；折算行已带治理血缘存于事实表。
-实施需同步更新黄金样本、决策阈值断言与导出测试。
-已裁决/已修：514 VAT（runbook）；KRD 读模型披露型改名（固收 H-2，算法未改，真 KRD 贡献仍见 `krd.py` / risk_tensor ΣDV01）。
+**余额 H-2 已按方案 A 实施（2026-07-19）**：主表/跨 scope 全量行按请求 `currency_basis` 取数；API 默认 CNY 时不再混币直加。
+取证摘要：2026-06-30 资产端 native 直加相对 CNY 折算低估约 51.4 亿（1.51%）。
+
+已裁决/已修：514 VAT（runbook）；KRD 披露型改名；workbook CNY；多项 Medium（见修复表 9–12）。
+
+**仍开放（较低优先级 / 需谨慎）**：
+- 固收 M-7：`coupon_frequency` 默认值双路径（`bond_four_effects` 默认 2 vs `bond_duration`/`common` 默认 1）；正式物化走 `interest_mode→coupon_frequency_per_year`，改默认会影响次要调用方，暂不统一。
+- 固收 M-4：闭式久期碎期分叉——若在正式物化路径则勿改数值（需重物化裁决）。
+- PnL M-7 rolldown：`calc_rules.md` 与 `attribution_daily` 已同号（上行曲线为正）；若仍有旧注释漂移，按实现为准逐点清。
+- 其它 Medium（PnL M-1/M-4/M-6、固收 M-1/M-2/M-5 等）未本轮处理。

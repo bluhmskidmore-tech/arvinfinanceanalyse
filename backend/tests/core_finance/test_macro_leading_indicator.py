@@ -5,6 +5,8 @@
   None -> 0 默认值污染评分（credit_score 不应变成满分 100，term_score 不应变成
   中性 50 却仍参与加权），缺失分项应从 LEI 加权中剔除并对剩余分项权重重归一。
 - pmi == 0（真实值）不应被 `if pmi_val:` 误判为缺失。
+- 历史缺失月保留 None（审计 宏观 M-1）：均值只对可用月计算，不被 0 填充拉低；
+  有效样本数经 history_samples 披露，缺失月触发 *_HISTORY_MISSING_MONTHS 警告。
 """
 
 from __future__ import annotations
@@ -16,6 +18,8 @@ import pytest
 
 from backend.app.core_finance.macro.leading_indicator import (
     _M10_WEIGHTS,
+    _history_mean,
+    _monthly_series,
     compute_leading_indicator,
 )
 

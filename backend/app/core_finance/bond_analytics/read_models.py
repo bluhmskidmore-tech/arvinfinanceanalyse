@@ -146,7 +146,10 @@ def summarize_return_decomposition(
     fx_rates_prior: dict[str, Decimal] | None = None,
     _curve_lookup: _CurveRateLookup | None = None,
 ) -> dict[str, Any]:
-    days = Decimal((period_end - period_start).days + 1)
+    # Carry day-count aligns with campisi / attribution_daily: exclusive elapsed
+    # days (end - start).days, floor 1 for same-day windows. Inclusive +1 was a
+    # display-layer drift that overstated coupon income by one day (audit M-5).
+    days = Decimal(max((period_end - period_start).days, 1))
     roll_down_period_days = max((period_end - period_start).days, 0)
     curve_lookup = _curve_lookup or _CurveRateLookup()
     detail_rows = []

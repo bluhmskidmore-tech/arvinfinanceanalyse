@@ -69,19 +69,20 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
     assert payload["result_meta"]["source_version"] == "sv_bond_snap_1"
     assert result["bond_count"] == 2
     assert result["total_market_value"] == "330.00000000"
-    assert result["carry"] == "1.01917808"
-    assert result["actual_pnl"] == "1.01917808"
+    # Exclusive MoM day-count (Mar 1→31 = 30 days); legacy inclusive-31 goldens retired.
+    assert result["carry"] == "0.98630137"
+    assert result["actual_pnl"] == "0.98630137"
     assert service_mod.RETURN_TRADING_GAP_WARNING in result["warnings"]
     assert result["by_asset_class"] == [
         {
             "asset_class": "credit",
-            "carry": "1.01917808",
+            "carry": "0.98630137",
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
             "convexity_effect": "0.00000000",
             "trading": "0.00000000",
-            "total": "1.01917808",
+            "total": "0.98630137",
             "bond_count": 2,
             "market_value": "330.00000000",
         }
@@ -89,25 +90,25 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
     assert result["by_accounting_class"] == [
         {
             "asset_class": "OCI",
-            "carry": "0.50958904",
+            "carry": "0.49315068",
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
             "convexity_effect": "0.00000000",
             "trading": "0.00000000",
-            "total": "0.50958904",
+            "total": "0.49315068",
             "bond_count": 1,
             "market_value": "190.00000000",
         },
         {
             "asset_class": "TPL",
-            "carry": "0.50958904",
+            "carry": "0.49315068",
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
             "convexity_effect": "0.00000000",
             "trading": "0.00000000",
-            "total": "0.50958904",
+            "total": "0.49315068",
             "bond_count": 1,
             "market_value": "140.00000000",
         },

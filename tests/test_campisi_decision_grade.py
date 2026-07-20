@@ -482,5 +482,13 @@ def test_decision_grade_zero_years_to_maturity_is_valid_short_end_not_3y_fallbac
 
 
 def test_decision_grade_missing_years_to_maturity_still_falls_back_to_3y() -> None:
-    """缺失（None）保持既有 3Y 兜底行为不变。"""
+    """缺失（None）保持既有 3Y 兜底行为不变，并披露 diagnostics。"""
     assert _m3_curve_shape_effect(None) == pytest.approx(-1.0)
+    result = compute_decision_grade_row(
+        _m3_row(None),
+        treasury_start=_M3_TREASURY_START,
+        treasury_end=_M3_TREASURY_END,
+        credit_start_by_rating={},
+        credit_end_by_rating={},
+    )
+    assert "years_to_maturity_missing_fallback_3y" in result["diagnostics"]

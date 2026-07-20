@@ -473,7 +473,8 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     payload = service_mod.get_return_decomposition(date(2026, 3, 31), "MoM", "all", "all")
     result = payload["result"]
 
-    expected_days = Decimal("31")
+    # Exclusive day-count (Mar 1 → Mar 31): 30 days, aligned with campisi/attribution_daily.
+    expected_days = Decimal("30")
     expected_carry = (
         Decimal("0.02") * Decimal("100") * expected_days / Decimal("365")
         + Decimal("0.03") * Decimal("200") * expected_days / Decimal("365")

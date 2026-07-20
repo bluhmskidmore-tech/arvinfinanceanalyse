@@ -12,8 +12,8 @@ Campisi 风格债券归因（纯函数）。
 
 carry/income 天数口径：`num_days = (end_date - start_date).days`（不含头含尾；
 同日窗口下限 1 天），`income_return = coupon × face × num_days / 365`。
-与 attribution_daily 的日度口径一致；`bond_analytics.read_models.summarize_return_decomposition`
-的展示层 carry 仍为 `(end - start).days + 1`（含头含尾），属固收域待统一项。
+与 attribution_daily 及 `bond_analytics.read_models.summarize_return_decomposition`
+展示层 carry 口径一致（2026-07-19 已统一）。
 """
 
 from __future__ import annotations

@@ -185,6 +185,35 @@ def test_convexity_effect_with_curve_data() -> None:
     assert summary["bond_details"][0]["convexity_effect"] == expected
 
 
+def test_carry_uses_exclusive_elapsed_days_aligned_with_campisi() -> None:
+    """Carry 天数与 campisi/attribution_daily 一致：exclusive (end-start).days，同日下限 1。"""
+    summary = summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "Coupon Bond",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0.03"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("0"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+    )
+    # exclusive 30 days: 0.03 * 100 * 30 / 365
+    expected = Decimal("0.03") * Decimal("100") * Decimal("30") / Decimal("365")
+    assert summary["carry_total"] == expected
+    assert summary["bond_details"][0]["carry"] == expected
+
+
 def test_roll_down_uses_exclusive_elapsed_days_for_current_anchor() -> None:
     rm = _read_models_module()
     current_curve = {"1Y": Decimal("1.00"), "2Y": Decimal("2.00")}
@@ -764,10 +793,13 @@ def test_allocation_effect_sums_correctly() -> None:
         benchmark_curve_prior={"1Y": Decimal("2.00"), "5Y": Decimal("2.00")},
     )
 
-    assert summary["allocation_effect"] == Decimal("500.0000000")
-    assert summary["selection_effect"] == Decimal("1000.00000000")
+    # Carry uses exclusive day-count (2026 non-leap: 364 days), so effects scale by 364/365
+    # vs the legacy inclusive-365 golden values (500 / 1000).
+    scale = Decimal("364") / Decimal("365")
+    assert summary["allocation_effect"] == pytest.approx(Decimal("500") * scale)
+    assert summary["selection_effect"] == pytest.approx(Decimal("1000") * scale)
     # recon_error equals the unexplained residual (== the selection plug), non-zero here.
-    assert summary["recon_error"] == Decimal("1000.00000000")
+    assert summary["recon_error"] == pytest.approx(Decimal("1000") * scale)
     assert summary["explained_excess"] == summary["excess_return"]
 
 

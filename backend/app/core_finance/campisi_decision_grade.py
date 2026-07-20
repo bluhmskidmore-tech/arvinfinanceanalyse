@@ -161,11 +161,14 @@ def compute_decision_grade_row(
     spread_dv01 = decimal_value(row.get("spread_dv01"))
     # 0 是有效剩余期限（当日到期，取曲线短端）；仅在缺失时才回退 3Y 代理。
     years_raw = row.get("years_to_maturity")
-    years = Decimal("3") if years_raw is None else decimal_value(years_raw)
+    years_missing = years_raw is None
+    years = Decimal("3") if years_missing else decimal_value(years_raw)
     include_market_effects_in_formal_pnl = bool(row.get("include_market_effects_in_formal_pnl", True))
 
     diagnostics: list[str] = []
     residual_reasons: list[str] = []
+    if years_missing:
+        diagnostics.append("years_to_maturity_missing_fallback_3y")
     dy_level = parallel_shift_decimal(treasury_start, treasury_end)
     dy_tenor = tenor_shift_decimal(treasury_start, treasury_end, years)
 

@@ -223,6 +223,23 @@ def _ordered_points(
     return sorted(rows, key=lambda row: row[0])
 
 
+_CREDIT_IMPULSE_REJECT_DISCLOSED: set[tuple[str, str]] = set()
+
+
+def _warn_credit_impulse_rejected(reason: str, as_of_date: str) -> None:
+    """Fail-closed 拒绝必须 fail-loud 披露（审计 宏观 M-3）：每进程按 (reason, as_of) 去重。"""
+    key = (reason, as_of_date)
+    if key in _CREDIT_IMPULSE_REJECT_DISCLOSED:
+        return
+    _CREDIT_IMPULSE_REJECT_DISCLOSED.add(key)
+    logger.warning(
+        "credit_impulse component rejected (whole-series fail-closed): reason=%s as_of=%s; "
+        "macro score re-normalizes remaining weights without this component.",
+        reason,
+        as_of_date,
+    )
+
+
 def _latest_adjacent_month_pair(
     points: Iterable[tuple[str, float]] | None,
     *,
@@ -230,9 +247,9 @@ def _latest_adjacent_month_pair(
 ) -> tuple[str, float, str, float] | None:
     # Fail-closed by design: ANY malformed value, future-dated point, or
     # duplicated month in the input series returns None, which disables the
-    # credit-impulse component entirely. compute_macro_score then silently
-    # re-normalizes the remaining component weights, so one bad upstream row
-    # degrades the macro score composition without an explicit warning.
+    # credit-impulse component entirely. compute_macro_score then re-normalizes
+    # the remaining component weights; the rejection itself is disclosed via a
+    # deduplicated warning (audit macro M-3) plus the snapshot missing_inputs.
     # This is intentionally conservative (never compute an impulse from
     # suspect data) but brittle; revisit if upstream data quality allows
     # per-point filtering instead of whole-series rejection.
@@ -241,6 +258,7 @@ def _latest_adjacent_month_pair(
     try:
         evaluation_date = date.fromisoformat(as_of_date)
     except ValueError:
+        _warn_credit_impulse_rejected("invalid_as_of_date", as_of_date)
         return None
 
     rows: list[tuple[date, float]] = []
@@ -250,11 +268,14 @@ def _latest_adjacent_month_pair(
             reference_date = date.fromisoformat(str(raw_date)[:10])
             value = float(raw_value)
         except (TypeError, ValueError):
+            _warn_credit_impulse_rejected("malformed_point", as_of_date)
             return None
         if reference_date > evaluation_date:
+            _warn_credit_impulse_rejected("future_dated_point", as_of_date)
             return None
         month = (reference_date.year, reference_date.month)
         if month in months:
+            _warn_credit_impulse_rejected("duplicated_month", as_of_date)
             return None
         months.add(month)
         rows.append((reference_date, value))
@@ -266,6 +287,7 @@ def _latest_adjacent_month_pair(
     prior_month = prior[0].year * 12 + prior[0].month
     current_month = current[0].year * 12 + current[0].month
     if current_month - prior_month != 1:
+        _warn_credit_impulse_rejected("non_adjacent_months", as_of_date)
         return None
     return prior[0].isoformat(), prior[1], current[0].isoformat(), current[1]
 

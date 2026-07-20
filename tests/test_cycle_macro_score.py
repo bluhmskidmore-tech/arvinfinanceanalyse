@@ -75,6 +75,46 @@ def test_build_cycle_macro_snapshot_rejects_credit_when_any_point_is_after_as_of
     assert snapshot.pmi_value == 51.0
     assert snapshot.credit_impulse_ready is False
     assert snapshot.credit_impulse_value is None
+    assert "credit_impulse" in snapshot.missing_inputs
+
+
+def test_credit_impulse_whole_series_rejection_emits_warning(caplog) -> None:
+    """审计 宏观 M-3：fail-closed 整体拒绝必须 fail-loud 披露，不得静默消失。"""
+    import logging
+
+    from backend.app.core_finance import cycle_macro_score as mod
+
+    mod._CREDIT_IMPULSE_REJECT_DISCLOSED.clear()
+    with caplog.at_level(logging.WARNING, logger=mod.__name__):
+        snapshot = build_cycle_macro_snapshot(
+            pmi_points=[("2026-04-01", 51.0)],
+            social_financing_yoy_points=[
+                ("2026-03-01", 8.5),
+                ("2026-04-01", 9.2),
+                ("2026-06-01", 50.0),  # future-dated → whole-series rejection
+            ],
+            pe=14.0,
+            cn10y=2.1,
+            as_of_date="2026-05-08",
+        )
+    assert snapshot.credit_impulse_ready is False
+    warning_messages = [r.message for r in caplog.records if "credit_impulse" in r.message]
+    assert any("future_dated_point" in m for m in warning_messages)
+    # 同一 (reason, as_of) 每进程只披露一次
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger=mod.__name__):
+        build_cycle_macro_snapshot(
+            pmi_points=[("2026-04-01", 51.0)],
+            social_financing_yoy_points=[
+                ("2026-03-01", 8.5),
+                ("2026-04-01", 9.2),
+                ("2026-06-01", 50.0),
+            ],
+            pe=14.0,
+            cn10y=2.1,
+            as_of_date="2026-05-08",
+        )
+    assert not [r for r in caplog.records if "future_dated_point" in r.message]
 
 
 def test_build_cycle_macro_snapshot_reweights_when_all_points_are_future() -> None:
