@@ -9,10 +9,16 @@ import type {
   SourcePreviewSummary,
 } from "../../api/contracts";
 import { KpiCard } from "../../components/KpiCard";
+import {
+  EvidencePanel,
+  PageHeader,
+  PageSectionLead,
+  PageStateSurface,
+} from "../../components/page/PagePrimitives";
+import { SkeletonBarStack } from "../../components/SkeletonBars";
 import { EM_DASH } from "../../utils/format";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 
-import "./PlatformConfigPage.css";
+import styles from "./PlatformConfigPage.module.css";
 
 function resolveCheck(data: HealthResponse, key: string): HealthCheckStatus {
   const c = data.checks ?? {};
@@ -62,23 +68,9 @@ function healthProbeDisplay(q: {
 
 function StatusBadge({ ok }: { ok: boolean }) {
   return (
-    <span className="platform-config-page__status-badge" data-ok={ok ? "true" : "false"}>
+    <span className={styles.statusBadge} data-ok={ok ? "true" : "false"}>
       {ok ? "正常" : "异常"}
     </span>
-  );
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="platform-config-page__section-lead">
-      <span className="platform-config-page__section-eyebrow">{props.eyebrow}</span>
-      <h2 className="platform-config-page__section-title">{props.title}</h2>
-      <p className="platform-config-page__section-description">{props.description}</p>
-    </div>
   );
 }
 
@@ -136,25 +128,22 @@ export default function PlatformConfigPage() {
   const summaryProbe = healthProbeDisplay(healthSummaryQuery);
 
   return (
-    <section className="platform-config-page">
-      <div className="platform-config-page__header">
-        <div>
-          <h1 data-testid="platform-config-page-title" className="platform-config-page__title">
-            中台配置
-          </h1>
-          <p className="platform-config-page__intro">系统健康状态、数据源概览与治理信息。</p>
-        </div>
-        <span className="platform-config-page__mode-badge" data-mode={client.mode}>
-          {client.mode === "real" ? "真实治理读链路" : "本地演示数据"}
-        </span>
-      </div>
+    <section className={styles.page}>
+      <PageHeader
+        eyebrow="报表与数据"
+        title="中台配置"
+        titleTestId="platform-config-page-title"
+        description="系统健康状态、数据源概览与治理信息。"
+        badgeLabel={client.mode === "real" ? "真实治理读链路" : "本地演示数据"}
+        badgeTone={client.mode === "real" ? "positive" : "accent"}
+      />
 
-      <SectionLead
+      <PageSectionLead
         eyebrow="总览"
         title="平台概览"
         description="先看系统状态、运行环境和数据源摘要，再下钻到健康检查卡片与数据源表格，保持配置页的阅读顺序与其他标准壳层一致。"
       />
-      <div className="platform-config-page__summary-grid">
+      <div className={styles.kpiGrid}>
         <div data-testid="platform-config-overall-status">
           <KpiCard
             title="系统状态"
@@ -195,32 +184,42 @@ export default function PlatformConfigPage() {
         </div>
       </div>
 
-      <section
-        data-testid="platform-config-diagnostic-boundary"
-        className="platform-config-page__diagnostic-boundary"
-      >
-        <strong className="platform-config-page__boundary-code">PAGE-CONTRACT-PENDING:/platform-config</strong>
-        <span>
-          MTR-PLT-001、MTR-PLT-002、MTR-PLT-003 仅为候选诊断指标，来自 GET
-          /ui/preview/source-foundation；健康状态、状态文本与环境卡片不在此列，亦不构成数据质量审批。
-        </span>
-      </section>
+      <PageStateSurface
+        variant="definition-pending"
+        testId="platform-config-diagnostic-boundary"
+        className={styles.contractNote}
+        title="PAGE-CONTRACT-PENDING:/platform-config"
+        description="MTR-PLT-001、MTR-PLT-002、MTR-PLT-003 仅为候选诊断指标，来自 GET /ui/preview/source-foundation；健康状态、状态文本与环境卡片不在此列，亦不构成数据质量审批。"
+      />
 
-      <div className="platform-config-page__stack">
-        <SectionLead
+      <div className={styles.stack}>
+        <PageSectionLead
           eyebrow="健康"
           title="系统健康状态"
           description="分项来自 GET /health/ready 的检查项（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；存活探测与简易状态已在平台概览由 /health/live、GET /health 并列展示。"
         />
-        <AsyncSection
-          title="系统健康状态"
-          isLoading={healthQuery.isLoading}
-          isError={healthQuery.isError}
-          isEmpty={false}
-          onRetry={() => void healthQuery.refetch()}
-        >
-          {health && duck && redis && pg && objectStore ? (
-            <div className="platform-config-page__health-grid">
+        <EvidencePanel testId="platform-config-health-section">
+          {healthQuery.isLoading ? (
+            <PageStateSurface variant="loading" title="正在载入系统健康状态">
+              <SkeletonBarStack />
+            </PageStateSurface>
+          ) : healthQuery.isError ? (
+            <PageStateSurface
+              variant="error"
+              title="数据载入失败。"
+              description="当前页面保留重试入口，不在浏览器端自行拼接正式口径。"
+              actions={
+                <button
+                  type="button"
+                  className={styles.retryButton}
+                  onClick={() => void healthQuery.refetch()}
+                >
+                  重试
+                </button>
+              }
+            />
+          ) : health && duck && redis && pg && objectStore ? (
+            <div className={styles.kpiGrid}>
               <KpiCard
                 title="DuckDB 状态"
                 value={duck.ok ? "正常" : "异常"}
@@ -258,65 +257,80 @@ export default function PlatformConfigPage() {
               />
             </div>
           ) : null}
-        </AsyncSection>
+        </EvidencePanel>
 
-        <SectionLead
+        <PageSectionLead
           eyebrow="数据源"
           title="数据源列表"
           description="数据源列表继续展示最新批次、行数、更新时间和状态，作为治理页的只读汇总表。"
         />
-        <AsyncSection
-          title="数据源列表"
-          isLoading={sourcesQuery.isLoading}
-          isError={sourcesQuery.isError}
-          isEmpty={!sourcesQuery.isLoading && !sourcesQuery.isError && sources.length === 0}
-          onRetry={() => void sourcesQuery.refetch()}
-        >
-          <div className="platform-config-page__table-shell">
-            <table data-testid="platform-config-sources-table" className="platform-config-page__table">
-              <thead>
-                <tr>
-                  <th className="platform-config-page__th" scope="col">
-                    数据源名称
-                  </th>
-                  <th className="platform-config-page__th" scope="col">
-                    最新批次
-                  </th>
-                  <th className="platform-config-page__th" scope="col">
-                    行数
-                  </th>
-                  <th className="platform-config-page__th" scope="col">
-                    最后更新时间
-                  </th>
-                  <th className="platform-config-page__th" scope="col">
-                    状态
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sources.map((row, index) => {
-                  const ok = sourceRowOk(row);
-                  const key = `${row.source_family}:${row.ingest_batch_id ?? ""}:${index}`;
-                  return (
-                    <tr key={key}>
-                      <td className="platform-config-page__td">{row.source_family.toUpperCase()}</td>
-                      <td className="platform-config-page__td">{row.ingest_batch_id ?? EM_DASH}</td>
-                      <td className="platform-config-page__td platform-config-page__td--numeric">
-                        {row.total_rows}
-                      </td>
-                      <td className="platform-config-page__td platform-config-page__td--nowrap">
-                        {row.batch_created_at ?? EM_DASH}
-                      </td>
-                      <td className="platform-config-page__td">
-                        <StatusBadge ok={ok} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </AsyncSection>
+        <EvidencePanel testId="platform-config-sources-section">
+          {sourcesQuery.isLoading ? (
+            <PageStateSurface variant="loading" title="正在载入数据源列表">
+              <SkeletonBarStack />
+            </PageStateSurface>
+          ) : sourcesQuery.isError ? (
+            <PageStateSurface
+              variant="error"
+              title="数据载入失败。"
+              description="当前页面保留重试入口，不在浏览器端自行拼接正式口径。"
+              actions={
+                <button
+                  type="button"
+                  className={styles.retryButton}
+                  onClick={() => void sourcesQuery.refetch()}
+                >
+                  重试
+                </button>
+              }
+            />
+          ) : sources.length === 0 ? (
+            <PageStateSurface variant="empty" description="当前暂无可展示内容。" />
+          ) : (
+            <div className={styles.tableShell}>
+              <table data-testid="platform-config-sources-table" className={styles.table}>
+                <thead>
+                  <tr>
+                    <th className={styles.th} scope="col">
+                      数据源名称
+                    </th>
+                    <th className={styles.th} scope="col">
+                      最新批次
+                    </th>
+                    <th className={styles.th} scope="col">
+                      行数
+                    </th>
+                    <th className={styles.th} scope="col">
+                      最后更新时间
+                    </th>
+                    <th className={styles.th} scope="col">
+                      状态
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sources.map((row, index) => {
+                    const ok = sourceRowOk(row);
+                    const key = `${row.source_family}:${row.ingest_batch_id ?? ""}:${index}`;
+                    return (
+                      <tr key={key}>
+                        <td className={styles.td}>{row.source_family.toUpperCase()}</td>
+                        <td className={styles.td}>{row.ingest_batch_id ?? EM_DASH}</td>
+                        <td className={`${styles.td} ${styles.tdNumeric}`}>{row.total_rows}</td>
+                        <td className={`${styles.td} ${styles.tdNowrap}`}>
+                          {row.batch_created_at ?? EM_DASH}
+                        </td>
+                        <td className={styles.td}>
+                          <StatusBadge ok={ok} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </EvidencePanel>
       </div>
     </section>
   );

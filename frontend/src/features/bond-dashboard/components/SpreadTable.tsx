@@ -2,6 +2,7 @@ import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { Numeric, SpreadAnalysisItem, SpreadAnalysisPayload } from "../../../api/contracts";
+import styles from "../bondDashboard.module.css";
 import { formatRatePercent, formatYi } from "../utils/format";
 
 export function SpreadTable({
@@ -35,7 +36,7 @@ export function SpreadTable({
       loading={loading}
       title="利差分析"
       extra={<Button type="link">更多</Button>}
-      style={{ borderRadius: 8 }}
+      rootClassName={styles.card}
       styles={{ body: { padding: 0 } }}
     >
       <Table<SpreadAnalysisItem>

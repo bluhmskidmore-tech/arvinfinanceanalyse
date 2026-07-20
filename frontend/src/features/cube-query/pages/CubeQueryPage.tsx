@@ -1,7 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Button,
-  Card,
   Checkbox,
   Col,
   Collapse,
@@ -21,9 +20,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
 import type { CubeDrillPath, CubeQueryRequest, CubeQueryResult } from "../../../api/contracts";
+import {
+  EvidencePanel,
+  PageHeader,
+  PageStateSurface,
+} from "../../../components/page/PagePrimitives";
 import { EM_DASH } from "../../../utils/format";
 
-import "./CubeQueryPage.css";
+import styles from "./CubeQueryPage.module.css";
 
 const { Text } = Typography;
 
@@ -299,7 +303,7 @@ export default function CubeQueryPage() {
             {p.available_values.slice(0, 80).map((v) => (
               <Tag
                 key={`${p.dimension}:${v}`}
-                className="cube-query-page__drill-tag"
+                className={styles.drillTag}
                 onClick={() => onDrillValue(p.dimension, v)}
               >
                 {v}
@@ -328,21 +332,22 @@ export default function CubeQueryPage() {
   }, [selectedDimensions, measureRows]);
 
   return (
-    <div className="cube-query-page" data-testid="cube-query-page">
-      <Typography.Title level={3} className="cube-query-page__title">
-        多维查询
-      </Typography.Title>
-      <Text type="secondary">对正式口径事实表进行维度聚合、筛选与钻取。</Text>
+    <div className={styles.page} data-testid="cube-query-page">
+      <PageHeader
+        eyebrow="报表与数据"
+        title="多维查询"
+        description="对正式口径事实表进行维度聚合、筛选与钻取。"
+      />
 
-      <Card title="查询配置" className="cube-query-page__card" size="small">
-        <Space direction="vertical" size="middle" className="cube-query-page__stack">
+      <EvidencePanel heading="查询配置">
+        <Space direction="vertical" size="middle" className={styles.stack}>
           <Row gutter={[16, 8]}>
             <Col xs={24} md={8}>
               <Text strong>事实表</Text>
               <Select
                 aria-label="cube-fact-table"
                 data-testid="cube-fact-select"
-                className="cube-query-page__field-control"
+                className={styles.fieldControl}
                 value={factTable}
                 options={FACT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
                 onChange={(v) => {
@@ -355,7 +360,7 @@ export default function CubeQueryPage() {
               <Text strong>报告日期</Text>
               <DatePicker
                 aria-label="cube-report-date"
-                className="cube-query-page__field-control"
+                className={styles.fieldControl}
                 value={reportDate}
                 onChange={(d) => d && setReportDate(d)}
               />
@@ -366,7 +371,7 @@ export default function CubeQueryPage() {
                 data-testid="cube-execute"
                 loading={executeMutation.isPending}
                 onClick={handleExecute}
-                className="cube-query-page__execute"
+                className={styles.execute}
               >
                 执行查询
               </Button>
@@ -375,9 +380,15 @@ export default function CubeQueryPage() {
 
           <div data-testid="cube-dimensions">
             <Text strong>维度（多选）</Text>
-            <div className="cube-query-page__section-body">
+            <div className={styles.sectionBody}>
               {dimensionsQuery.isLoading ? (
-                <Text type="secondary">加载维度…</Text>
+                <PageStateSurface variant="loading" title="加载维度…" />
+              ) : dimensionsQuery.isError ? (
+                <PageStateSurface
+                  variant="error"
+                  title="维度加载失败"
+                  description="维度清单请求失败，请稍后重试或切换事实表。"
+                />
               ) : (
                 <Checkbox.Group
                   options={dimensionList.map((d) => ({ label: d, value: d }))}
@@ -407,11 +418,11 @@ export default function CubeQueryPage() {
                 添加度量
               </Button>
             </Space>
-            <Space direction="vertical" className="cube-query-page__stack cube-query-page__section-body">
+            <Space direction="vertical" className={`${styles.stack} ${styles.sectionBody}`}>
               {measureRows.map((row) => (
                 <Space key={row.key} wrap>
                   <Select
-                    style={{ width: 120 }}
+                    className={styles.selectNarrow}
                     value={row.agg}
                     options={AGG_OPTIONS.map((a) => ({ value: a, label: AGG_LABELS[a] }))}
                     onChange={(agg) =>
@@ -421,7 +432,7 @@ export default function CubeQueryPage() {
                     }
                   />
                   <Select
-                    style={{ width: 200 }}
+                    className={styles.selectMedium}
                     value={row.field || undefined}
                     placeholder="字段"
                     options={measureFields.map((f) => ({ value: f, label: f }))}
@@ -458,11 +469,11 @@ export default function CubeQueryPage() {
                 添加条件
               </Button>
             </Space>
-            <Space direction="vertical" className="cube-query-page__stack cube-query-page__section-body">
+            <Space direction="vertical" className={`${styles.stack} ${styles.sectionBody}`}>
               {filterRows.map((row) => (
-                <Space key={row.key} wrap className="cube-query-page__stack">
+                <Space key={row.key} wrap className={styles.stack}>
                   <Select
-                    style={{ width: 200 }}
+                    className={styles.selectMedium}
                     placeholder="维度"
                     value={row.dimension || undefined}
                     options={dimensionList.map((d) => ({ value: d, label: d }))}
@@ -474,7 +485,7 @@ export default function CubeQueryPage() {
                   />
                   <Select
                     mode="tags"
-                    style={{ minWidth: 280, flex: 1 }}
+                    className={styles.selectGrow}
                     placeholder="取值（可输入）"
                     value={row.values}
                     onChange={(values) =>
@@ -510,11 +521,11 @@ export default function CubeQueryPage() {
                 添加排序
               </Button>
             </Space>
-            <Space direction="vertical" className="cube-query-page__stack cube-query-page__section-body">
+            <Space direction="vertical" className={`${styles.stack} ${styles.sectionBody}`}>
               {orderRows.map((row) => (
                 <Space key={row.key} wrap>
                   <Select
-                    style={{ width: 220 }}
+                    className={styles.selectWide}
                     placeholder="字段"
                     value={row.field || undefined}
                     options={orderFieldOptions.map((f) => ({ value: f, label: f }))}
@@ -525,7 +536,7 @@ export default function CubeQueryPage() {
                     }
                   />
                   <Select
-                    style={{ width: 120 }}
+                    className={styles.selectNarrow}
                     value={row.descending ? "desc" : "asc"}
                     options={[
                       { value: "asc", label: "升序" },
@@ -551,11 +562,11 @@ export default function CubeQueryPage() {
             </Space>
           </div>
         </Space>
-      </Card>
+      </EvidencePanel>
 
-      <Row gutter={16} className="cube-query-page__results-row">
+      <Row gutter={16} className={styles.resultsRow}>
         <Col xs={24} lg={17}>
-          <Card title="查询结果" size="small">
+          <EvidencePanel heading="查询结果">
             <Table<Record<string, unknown>>
               data-testid="cube-results-table"
               size="small"
@@ -568,7 +579,7 @@ export default function CubeQueryPage() {
             />
             {lastResult ? (
               <Pagination
-                className="cube-query-page__pagination"
+                className={styles.pagination}
                 current={page}
                 pageSize={pageSize}
                 total={lastResult.total_rows}
@@ -582,21 +593,24 @@ export default function CubeQueryPage() {
                 }}
               />
             ) : null}
-          </Card>
+          </EvidencePanel>
         </Col>
         <Col xs={24} lg={7}>
-          <Card title="钻取路径" size="small">
+          <EvidencePanel heading="钻取路径">
             {lastResult?.drill_paths?.length ? (
               drillPanel(lastResult.drill_paths)
             ) : (
-              <Text type="secondary">执行查询后展示可选钻取值。</Text>
+              <PageStateSurface
+                variant="empty"
+                description="执行查询后展示可选钻取值。"
+              />
             )}
-          </Card>
+          </EvidencePanel>
         </Col>
       </Row>
 
       {lastResult?.result_meta ? (
-        <div className="cube-query-page__result-meta" data-testid="cube-result-meta">
+        <div className={styles.resultMeta} data-testid="cube-result-meta">
           <Text type="secondary">
             追踪编号={lastResult.result_meta.trace_id} · 质量标记=
             {resultMetaQualityLabel(lastResult.result_meta.quality_flag)}

@@ -1,0 +1,42 @@
+/*
+ * 集中度监控页局部样式（IB 浅色 token）。
+ * 承接原 components/page/pageStyles 内联对象（tableShellStyle / tableStyle / thStyle / tdStyle）
+ * 与 AsyncSection 重试按钮的页面本地实现；禁止裸 hex，全部走 --ib-* / --moss-* 变量。
+ */
+
+.tableShell {
+  overflow-x: auto;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ib-hairline);
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  text-align: left;
+}
+
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  color: var(--ib-ink);
+}
+
+.retryButton {
+  width: fit-content;
+  padding: 10px 16px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+  cursor: pointer;
+}

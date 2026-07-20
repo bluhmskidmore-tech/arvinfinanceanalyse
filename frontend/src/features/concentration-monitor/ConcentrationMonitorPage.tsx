@@ -6,12 +6,16 @@ import { useApiClient } from "../../api/client";
 import type { ResultMeta } from "../../api/contracts";
 import { apiQueryKeys } from "../../api/queryKeys";
 import { KpiCard } from "../../components/KpiCard";
-import { PageDecisionHero } from "../../components/page/PagePrimitives";
-import { tableShellStyle, tableStyle, tdStyle, thStyle } from "../../components/page/pageStyles";
+import {
+  EvidencePanel,
+  PageDecisionHero,
+  PageStateSurface,
+} from "../../components/page/PagePrimitives";
+import { SkeletonBarStack } from "../../components/SkeletonBars";
 import type { CreditSpreadMigrationResponse } from "../bond-analytics/types";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { limitTone, limitToneToKpi, type LimitTone } from "../workbench/components/kpiFormat";
 import { displayStr, formatConcentrationPercent, parseRatio } from "./concentrationFormat";
+import styles from "./concentrationMonitor.module.css";
 
 import "./ConcentrationMonitorPage.css";
 
@@ -80,30 +84,30 @@ function ConcentrationTable({
           HHI {displayStr(m.hhi)} · 前五 {displayStr(m.top5_concentration)}
         </p>
       ) : null}
-      <div style={tableShellStyle}>
-        <table style={tableStyle}>
+      <div className={styles.tableShell}>
+        <table className={styles.table}>
           <thead>
             <tr>
-              <th style={thStyle}>名称</th>
-              <th style={thStyle}>权重</th>
-              <th style={thStyle}>市值</th>
+              <th>名称</th>
+              <th>权重</th>
+              <th>市值</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={3} style={tdStyle} className="concentration-monitor-page__empty-cell">
+                <td colSpan={3} className="concentration-monitor-page__empty-cell">
                   暂无明细
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
                 <tr key={`${metricsKey}-${row.name}`}>
-                  <td style={tdStyle}>{row.name}</td>
-                  <td style={tdStyle} className="concentration-monitor-page__tabular">
+                  <td>{row.name}</td>
+                  <td className="concentration-monitor-page__tabular">
                     {displayStr(row.weight)}
                   </td>
-                  <td style={tdStyle} className="concentration-monitor-page__tabular">
+                  <td className="concentration-monitor-page__tabular">
                     {displayStr(row.market_value)}
                   </td>
                 </tr>
@@ -264,17 +268,41 @@ export default function ConcentrationMonitorPage() {
         ) : null}
       </div>
 
-      <AsyncSection
-        title="集中度与限额"
-        isLoading={datesQuery.isLoading || creditQuery.isLoading}
-        isError={datesBlockingError || creditQuery.isError}
-        isEmpty={datesEmpty}
-        onRetry={() => {
-          void datesQuery.refetch();
-          void creditQuery.refetch();
-        }}
-      >
-        {credit ? (
+      <EvidencePanel heading="集中度与限额" testId="concentration-monitor-section">
+        {datesQuery.isLoading || creditQuery.isLoading ? (
+          <PageStateSurface
+            variant="loading"
+            testId="concentration-monitor-section-loading"
+            title="正在载入集中度与限额"
+          >
+            <SkeletonBarStack className="moss-skeleton-bar-stack--spaced" />
+          </PageStateSurface>
+        ) : datesBlockingError || creditQuery.isError ? (
+          <PageStateSurface
+            variant="error"
+            testId="concentration-monitor-section-error"
+            title="数据载入失败。"
+            description="当前页面保留重试入口，不在浏览器端自行拼接正式口径。"
+            actions={
+              <button
+                type="button"
+                className={styles.retryButton}
+                onClick={() => {
+                  void datesQuery.refetch();
+                  void creditQuery.refetch();
+                }}
+              >
+                重试
+              </button>
+            }
+          />
+        ) : datesEmpty ? (
+          <PageStateSurface
+            variant="empty"
+            testId="concentration-monitor-section-empty"
+            title="当前暂无可展示内容。"
+          />
+        ) : credit ? (
           <>
             {creditMeta ? (
               <div
@@ -345,14 +373,14 @@ export default function ConcentrationMonitorPage() {
             <p className="concentration-monitor-page__limit-lead">
               超限标红，达到限额 80% 以上未超限标黄。阈值为本页常量，非后端下发。
             </p>
-            <div style={tableShellStyle} className="concentration-monitor-page__limit-table-shell">
-              <table style={tableStyle}>
+            <div className={`${styles.tableShell} concentration-monitor-page__limit-table-shell`}>
+              <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th style={thStyle}>指标</th>
-                    <th style={thStyle}>当前值</th>
-                    <th style={thStyle}>限额</th>
-                    <th style={thStyle}>状态</th>
+                    <th>指标</th>
+                    <th>当前值</th>
+                    <th>限额</th>
+                    <th>状态</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -361,20 +389,18 @@ export default function ConcentrationMonitorPage() {
                     const statusText = limitStatusText(row.tone, Boolean(missing));
                     return (
                       <tr key={row.label}>
-                        <td style={tdStyle}>{row.label}</td>
+                        <td>{row.label}</td>
                         <td
-                          style={tdStyle}
                           className="concentration-monitor-page__limit-cell concentration-monitor-page__tabular"
                           data-tone={missing ? undefined : row.tone}
                           data-missing={missing ? "true" : undefined}
                         >
                           {row.currentDisplay}
                         </td>
-                        <td style={tdStyle} className="concentration-monitor-page__tabular">
+                        <td className="concentration-monitor-page__tabular">
                           {row.limitDisplay}
                         </td>
                         <td
-                          style={tdStyle}
                           className="concentration-monitor-page__limit-status"
                           data-tone={missing ? undefined : row.tone}
                           data-missing={missing ? "true" : undefined}
@@ -397,7 +423,7 @@ export default function ConcentrationMonitorPage() {
             </footer>
           </>
         ) : null}
-      </AsyncSection>
+      </EvidencePanel>
     </section>
   );
 }

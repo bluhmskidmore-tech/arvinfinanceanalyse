@@ -77,7 +77,7 @@ export function AssetStructurePie({
         aria-label="bond-dashboard-asset-group"
         onChange={(value) => onGroupByChange(value as AssetGroupBy)}
         options={TAB_ITEMS.map((t) => ({ value: t.key, label: t.label }))}
-        style={{ marginBottom: 12 }}
+        className={styles.segmented}
       />
       <div className={styles.pieChartWrap}>
         <ReactECharts option={option} style={{ height: 280 }} notMerge lazyUpdate />

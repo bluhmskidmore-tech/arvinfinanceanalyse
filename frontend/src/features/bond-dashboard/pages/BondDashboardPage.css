@@ -1,7 +1,11 @@
 .bond-dashboard-page {
+  display: grid;
+  align-content: start;
+  gap: 16px;
   min-height: 100%;
   padding: 16px;
   background: var(--ib-paper);
+  color: var(--ib-ink);
 }
 
 .bond-dashboard-page__toolbar {
@@ -18,6 +22,25 @@
   gap: 8px;
 }
 
+.bond-dashboard-page__title {
+  margin: 0;
+  color: var(--ib-ink);
+  font-family: var(--ib-serif);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.bond-dashboard-page__toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bond-dashboard-page__report-select {
+  min-width: 160px;
+}
+
 .bond-dashboard-page__title-icon {
   color: var(--ib-ink-muted);
   font-size: 16px;
@@ -29,11 +52,17 @@
 }
 
 .bond-dashboard-page__conclusion {
+  padding: 16px;
   border-radius: var(--ib-radius, 2px);
   border: 1px solid var(--ib-hairline);
   border-left: 2px solid var(--ib-accent);
   background: var(--ib-accent-surface, var(--ib-surface-muted));
   box-shadow: var(--moss-shadow-card, var(--ib-shadow));
+}
+
+.bond-dashboard-page__conclusion-stack {
+  display: grid;
+  gap: 6px;
 }
 
 .bond-dashboard-page__conclusion-kicker {

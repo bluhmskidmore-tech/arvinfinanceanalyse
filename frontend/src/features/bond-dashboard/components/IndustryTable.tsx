@@ -2,6 +2,7 @@ import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { IndustryDistItem, IndustryDistPayload, Numeric } from "../../../api/contracts";
+import styles from "../bondDashboard.module.css";
 import { formatRatePercent, formatYi } from "../utils/format";
 
 export function IndustryTable({
@@ -35,7 +36,7 @@ export function IndustryTable({
       loading={loading}
       title="行业分布"
       extra={<Button type="link">更多</Button>}
-      style={{ borderRadius: 8 }}
+      rootClassName={styles.card}
       styles={{ body: { padding: 0 } }}
     >
       <Table<IndustryDistItem>

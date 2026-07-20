@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { InfoCircleOutlined } from "@ant-design/icons";
-import { Alert, Card, Col, Row, Select, Space, Tooltip, Typography, Table } from "antd";
+import { Alert, Col, Row, Select, Tooltip, Table } from "antd";
 import type { TableColumnsType } from "antd";
 
 import { useApiClient } from "../../../api/client";
@@ -13,6 +13,7 @@ import type {
   RiskIndicatorsPayload,
 } from "../../../api/contracts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
+import { EvidencePanel, PageStateSurface } from "../../../components/page/PagePrimitives";
 import {
   BOND_DASHBOARD_PAGE_BUNDLE_SECTIONS,
   bondDashboardAssetSectionForGroup,
@@ -235,189 +236,184 @@ export default function BondDashboardPage() {
 
   return (
     <div data-testid="bond-dashboard-page" className="bond-dashboard-page">
-      <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <div className="bond-dashboard-page__toolbar">
-          <div className="bond-dashboard-page__title-row">
-            <Typography.Title level={3} style={{ margin: 0 }}>
-              债券总览
-            </Typography.Title>
-            {datesQuery.data?.data_source === "bond_analytics_facts" ? (
-              <Tooltip title="数据来源：债券分析事实表（与余额分析页可能存在口径差异）">
-                <InfoCircleOutlined
-                  aria-label="债券驾驶舱数据来源说明"
-                  className="bond-dashboard-page__title-icon"
-                />
-              </Tooltip>
-            ) : null}
-          </div>
-          <Space>
-            <span className="bond-dashboard-page__report-label">报告日</span>
-            <Select
-              aria-label="bond-dashboard-report-date"
-              style={{ minWidth: 160 }}
-              value={reportDate ?? undefined}
-              loading={datesQuery.isLoading}
-              disabled={datesQuery.isLoading || datesQuery.isError || dateOptions.length === 0}
-              options={dateOptions.map((date) => ({ label: date, value: date }))}
-              onChange={(value) => setReportDate(value)}
-              placeholder="选择日期"
-            />
-          </Space>
+      <div className="bond-dashboard-page__toolbar">
+        <div className="bond-dashboard-page__title-row">
+          <h2 className="bond-dashboard-page__title">债券总览</h2>
+          {datesQuery.data?.data_source === "bond_analytics_facts" ? (
+            <Tooltip title="数据来源：债券分析事实表（与余额分析页可能存在口径差异）">
+              <InfoCircleOutlined
+                aria-label="债券驾驶舱数据来源说明"
+                className="bond-dashboard-page__title-icon"
+              />
+            </Tooltip>
+          ) : null}
         </div>
-
-        {datesQuery.isError ? (
-          <Alert
-            data-testid="bond-dashboard-page-state"
-            type="error"
-            showIcon
-            message="报告日加载失败"
-            description="当前无法获取债券驾驶舱可用报告日，请稍后重试。"
+        <div className="bond-dashboard-page__toolbar-controls">
+          <span className="bond-dashboard-page__report-label">报告日</span>
+          <Select
+            aria-label="bond-dashboard-report-date"
+            className="bond-dashboard-page__report-select"
+            value={reportDate ?? undefined}
+            loading={datesQuery.isLoading}
+            disabled={datesQuery.isLoading || datesQuery.isError || dateOptions.length === 0}
+            options={dateOptions.map((date) => ({ label: date, value: date }))}
+            onChange={(value) => setReportDate(value)}
+            placeholder="选择日期"
           />
-        ) : null}
+        </div>
+      </div>
 
-        {datesEmpty ? (
-          <Alert
-            data-testid="bond-dashboard-page-state"
-            type="info"
-            showIcon
-            message="暂无可用报告日"
-            description="债券驾驶舱当前没有可读的正式报告日，因此首屏模块不展示业务结论。"
+      {datesQuery.isError ? (
+        <Alert
+          data-testid="bond-dashboard-page-state"
+          type="error"
+          showIcon
+          message="报告日加载失败"
+          description="当前无法获取债券驾驶舱可用报告日，请稍后重试。"
+        />
+      ) : null}
+
+      {datesEmpty ? (
+        <Alert
+          data-testid="bond-dashboard-page-state"
+          type="info"
+          showIcon
+          message="暂无可用报告日"
+          description="债券驾驶舱当前没有可读的正式报告日，因此首屏模块不展示业务结论。"
+        />
+      ) : null}
+
+      {bundleError ? (
+        <Alert
+          data-testid="bond-dashboard-bundle-state"
+          type="error"
+          showIcon
+          message="债券总览数据加载失败"
+          description="当前无法获取债券总览聚合数据，请稍后重试。"
+        />
+      ) : null}
+
+      {firstScreenFallbackNotices.length > 0 ? (
+        <Alert
+          data-testid="bond-dashboard-stale-banner"
+          role="status"
+          type="warning"
+          showIcon
+          message="首屏数据为回退/降级口径"
+          description={`${firstScreenFallbackNotices.join("。")}。下方 KPI 与结论基于上述回退数据，请以实际数据日期为准。`}
+        />
+      ) : null}
+
+      {!datesEmpty && conclusion ? (
+        <section data-testid="bond-dashboard-conclusion" className="bond-dashboard-page__conclusion">
+          <div className="bond-dashboard-page__conclusion-stack">
+            <span className="bond-dashboard-page__conclusion-kicker">{conclusion.title}</span>
+            <div className="bond-dashboard-page__conclusion-body">{conclusion.body}</div>
+            <div className="bond-dashboard-page__conclusion-detail">{conclusion.detail}</div>
+          </div>
+        </section>
+      ) : null}
+
+      <HeadlineKpis data={headlineQuery.data?.result} loading={headlineQuery.isLoading} />
+
+      {hasFirstScreenMeta ? (
+        <FormalResultMetaPanel
+          testId="bond-dashboard-first-screen-result-meta"
+          title="债券首页首屏证据"
+          sections={[
+            {
+              key: "headline",
+              title: "首屏指标",
+              meta: headlineQuery.data?.result_meta,
+            },
+            {
+              key: "risk",
+              title: "风险指标",
+              meta: riskQuery.data?.result_meta,
+            },
+          ]}
+        />
+      ) : null}
+
+      {!datesEmpty ? (
+        <details className="bond-dashboard-page__governance-notes">
+          <summary>口径与指标边界（证据层）</summary>
+          <p data-testid="bond-dashboard-headline-candidate-boundary">
+            MTR-BOND-001~004 仍为 candidate，pending_confirmation=true；GS-BOND-HEADLINE-A 是页面样本，非字典级批准。
+          </p>
+          <p data-testid="bond-dashboard-risk-source-boundary">
+            GAP-BOND-DASH-RISK 尚未冻结 MTR-RSK-* 同源关系；风险指标面板不自动继承 GS-RISK-A。
+          </p>
+        </details>
+      ) : null}
+
+      <EvidencePanel
+        testId="bond-dashboard-business-type-metrics"
+        heading="业务类型加权指标"
+      >
+        {businessTypeMetricsQuery.isLoading ? (
+          <PageStateSurface variant="loading" description="载入中…" />
+        ) : businessTypeMetricsQuery.isError ? (
+          <PageStateSurface variant="error" description="指标暂不可用" />
+        ) : !(businessTypeMetricsQuery.data?.result.items.length ?? 0) ? (
+          <PageStateSurface variant="empty" description="暂无数据" />
+        ) : (
+          <Table
+            size="small"
+            pagination={false}
+            scroll={{ x: "max-content" }}
+            dataSource={businessTypeMetricRows}
+            columns={BUSINESS_TYPE_METRIC_COLUMNS}
           />
-        ) : null}
+        )}
+      </EvidencePanel>
 
-        {bundleError ? (
-          <Alert
-            data-testid="bond-dashboard-bundle-state"
-            type="error"
-            showIcon
-            message="债券总览数据加载失败"
-            description="当前无法获取债券总览聚合数据，请稍后重试。"
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={8}>
+          <AssetStructurePie
+            data={assetQuery.data?.result}
+            loading={assetQuery.isLoading}
+            groupBy={assetGroupBy}
+            onGroupByChange={setAssetGroupBy}
           />
-        ) : null}
-
-        {firstScreenFallbackNotices.length > 0 ? (
-          <Alert
-            data-testid="bond-dashboard-stale-banner"
-            role="status"
-            type="warning"
-            showIcon
-            message="首屏数据为回退/降级口径"
-            description={`${firstScreenFallbackNotices.join("。")}。下方 KPI 与结论基于上述回退数据，请以实际数据日期为准。`}
+        </Col>
+        <Col xs={24} lg={8}>
+          <YieldDistributionBar
+            yieldData={yieldQuery.data?.result}
+            tenorData={tenorBarQuery.data?.result}
+            loadingYield={yieldQuery.isLoading}
+            loadingTenor={tenorBarQuery.isLoading}
           />
-        ) : null}
+        </Col>
+        <Col xs={24} lg={8}>
+          <CreditRatingBlocks data={ratingQuery.data?.result} loading={ratingQuery.isLoading} />
+        </Col>
+      </Row>
 
-        {!datesEmpty && conclusion ? (
-          <Card data-testid="bond-dashboard-conclusion" className="bond-dashboard-page__conclusion">
-            <Space direction="vertical" size={6} style={{ width: "100%" }}>
-              <span className="bond-dashboard-page__conclusion-kicker">{conclusion.title}</span>
-              <div className="bond-dashboard-page__conclusion-body">{conclusion.body}</div>
-              <div className="bond-dashboard-page__conclusion-detail">{conclusion.detail}</div>
-            </Space>
-          </Card>
-        ) : null}
-
-        <HeadlineKpis data={headlineQuery.data?.result} loading={headlineQuery.isLoading} />
-
-        {hasFirstScreenMeta ? (
-          <FormalResultMetaPanel
-            testId="bond-dashboard-first-screen-result-meta"
-            title="债券首页首屏证据"
-            sections={[
-              {
-                key: "headline",
-                title: "首屏指标",
-                meta: headlineQuery.data?.result_meta,
-              },
-              {
-                key: "risk",
-                title: "风险指标",
-                meta: riskQuery.data?.result_meta,
-              },
-            ]}
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={8}>
+          <PortfolioTable
+            data={portfolioQuery.data?.result}
+            headline={headlineQuery.data?.result}
+            loading={portfolioQuery.isLoading}
           />
-        ) : null}
+        </Col>
+        <Col xs={24} lg={8}>
+          <SpreadTable data={spreadQuery.data?.result} loading={spreadQuery.isLoading} />
+        </Col>
+        <Col xs={24} lg={8}>
+          <RiskIndicatorsPanel data={riskQuery.data?.result} loading={riskQuery.isLoading} />
+        </Col>
+      </Row>
 
-        {!datesEmpty ? (
-          <details className="bond-dashboard-page__governance-notes">
-            <summary>口径与指标边界（证据层）</summary>
-            <p data-testid="bond-dashboard-headline-candidate-boundary">
-              MTR-BOND-001~004 仍为 candidate，pending_confirmation=true；GS-BOND-HEADLINE-A 是页面样本，非字典级批准。
-            </p>
-            <p data-testid="bond-dashboard-risk-source-boundary">
-              GAP-BOND-DASH-RISK 尚未冻结 MTR-RSK-* 同源关系；风险指标面板不自动继承 GS-RISK-A。
-            </p>
-          </details>
-        ) : null}
-
-        <Card
-          data-testid="bond-dashboard-business-type-metrics"
-          size="small"
-          title="业务类型加权指标"
-        >
-          {businessTypeMetricsQuery.isLoading ? (
-            <Typography.Text type="secondary">载入中…</Typography.Text>
-          ) : businessTypeMetricsQuery.isError ? (
-            <Typography.Text type="danger">指标暂不可用</Typography.Text>
-          ) : !(businessTypeMetricsQuery.data?.result.items.length ?? 0) ? (
-            <Typography.Text type="secondary">暂无数据</Typography.Text>
-          ) : (
-            <Table
-              size="small"
-              pagination={false}
-              scroll={{ x: "max-content" }}
-              dataSource={businessTypeMetricRows}
-              columns={BUSINESS_TYPE_METRIC_COLUMNS}
-            />
-          )}
-        </Card>
-
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={8}>
-            <AssetStructurePie
-              data={assetQuery.data?.result}
-              loading={assetQuery.isLoading}
-              groupBy={assetGroupBy}
-              onGroupByChange={setAssetGroupBy}
-            />
-          </Col>
-          <Col xs={24} lg={8}>
-            <YieldDistributionBar
-              yieldData={yieldQuery.data?.result}
-              tenorData={tenorBarQuery.data?.result}
-              loadingYield={yieldQuery.isLoading}
-              loadingTenor={tenorBarQuery.isLoading}
-            />
-          </Col>
-          <Col xs={24} lg={8}>
-            <CreditRatingBlocks data={ratingQuery.data?.result} loading={ratingQuery.isLoading} />
-          </Col>
-        </Row>
-
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={8}>
-            <PortfolioTable
-              data={portfolioQuery.data?.result}
-              headline={headlineQuery.data?.result}
-              loading={portfolioQuery.isLoading}
-            />
-          </Col>
-          <Col xs={24} lg={8}>
-            <SpreadTable data={spreadQuery.data?.result} loading={spreadQuery.isLoading} />
-          </Col>
-          <Col xs={24} lg={8}>
-            <RiskIndicatorsPanel data={riskQuery.data?.result} loading={riskQuery.isLoading} />
-          </Col>
-        </Row>
-
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={12}>
-            <MaturityStructureChart data={maturityQuery.data?.result} loading={maturityQuery.isLoading} />
-          </Col>
-          <Col xs={24} lg={12}>
-            <IndustryTable data={industryQuery.data?.result} loading={industryQuery.isLoading} />
-          </Col>
-        </Row>
-      </Space>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <MaturityStructureChart data={maturityQuery.data?.result} loading={maturityQuery.isLoading} />
+        </Col>
+        <Col xs={24} lg={12}>
+          <IndustryTable data={industryQuery.data?.result} loading={industryQuery.isLoading} />
+        </Col>
+      </Row>
     </div>
   );
 }

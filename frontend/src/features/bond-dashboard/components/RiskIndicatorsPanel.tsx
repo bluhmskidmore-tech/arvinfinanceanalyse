@@ -43,7 +43,7 @@ export function RiskIndicatorsPanel({
       extra={<Button type="link">更多</Button>}
       rootClassName={styles.card}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className={styles.riskList}>
         {ROWS.map((r) => (
           <div
             key={r.key}

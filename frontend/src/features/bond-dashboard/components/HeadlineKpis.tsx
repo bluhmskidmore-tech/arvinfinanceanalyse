@@ -1,8 +1,8 @@
 import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
-import { Card, Col, Row, Spin } from "antd";
+import { Col, Row, Spin } from "antd";
 
 import type { BondDashboardHeadlinePayload, Numeric } from "../../../api/contracts";
-import { designTokens, ibTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import styles from "../bondDashboard.module.css";
 import {
   formatDv01Wan,
   formatMomRatio,
@@ -35,8 +35,6 @@ const KPI_DEFS: {
   { key: "total_dv01", label: "DV01合计", unit: "万元", format: formatDv01Wan },
 ];
 
-const dt = designTokens;
-
 export function HeadlineKpis({
   data,
   loading,
@@ -46,7 +44,7 @@ export function HeadlineKpis({
 }) {
   if (loading && !data) {
     return (
-      <div style={{ textAlign: "center", padding: 48 }}>
+      <div className={styles.kpiLoading}>
         <Spin />
       </div>
     );
@@ -56,7 +54,7 @@ export function HeadlineKpis({
   const { kpis, prev_kpis } = data;
 
   return (
-    <Row gutter={[dt.space[3], dt.space[3]]} data-testid="bond-dashboard-headline-kpis">
+    <Row gutter={[12, 12]} data-testid="bond-dashboard-headline-kpis">
       {KPI_DEFS.map((def) => {
         const raw = kpis[def.key];
         const prevRaw = prev_kpis?.[def.key];
@@ -64,11 +62,7 @@ export function HeadlineKpis({
         const mom = formatMomRatio(raw, prevRaw);
         const up = mom !== null && mom.startsWith("+");
         const down = mom !== null && mom.startsWith("-");
-        const changeColor = up
-          ? ibTokens.color.up
-          : down
-            ? ibTokens.color.down
-            : ibTokens.color.inkMuted;
+        const momTone = mom === null ? "none" : up ? "up" : down ? "down" : "flat";
 
         return (
           <Col
@@ -80,59 +74,13 @@ export function HeadlineKpis({
             key={def.key}
             data-testid={`bond-dashboard-kpi-${def.key}`}
           >
-            <Card
-              size="small"
-              styles={{ body: { padding: `${dt.space[3]}px ${dt.space[3] - 2}px` } }}
-              style={{
-                borderRadius: ibTokens.radius,
-                boxShadow: ibTokens.shadow,
-                height: "100%",
-                borderColor: ibTokens.color.hairline,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: dt.fontSize[13],
-                  color: ibTokens.color.inkSecondary,
-                  marginBottom: dt.space[2],
-                }}
-              >
-                {def.label}
-              </div>
-              <div
-                style={{
-                  fontSize: dt.fontSize[24],
-                  fontWeight: 700,
-                  lineHeight: 1.15,
-                  color: ibTokens.color.accent,
-                  ...tabularNumsStyle,
-                }}
-              >
+            <div className={styles.kpiCard}>
+              <div className={styles.kpiLabel}>{def.label}</div>
+              <div className={styles.kpiValue}>
                 {display}
-                {display === "—" ? null : (
-                  <span
-                    style={{
-                      fontSize: dt.fontSize[13],
-                      fontWeight: 500,
-                      marginLeft: 4,
-                      color: ibTokens.color.inkMuted,
-                    }}
-                  >
-                    {def.unit}
-                  </span>
-                )}
+                {display === "—" ? null : <span className={styles.kpiUnit}>{def.unit}</span>}
               </div>
-              <div
-                style={{
-                  fontSize: dt.fontSize[12],
-                  marginTop: dt.space[2],
-                  color: mom ? changeColor : ibTokens.color.inkMuted,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  ...tabularNumsStyle,
-                }}
-              >
+              <div className={styles.kpiMom} data-tone={momTone}>
                 {mom ? (
                   <>
                     {up ? <ArrowUpOutlined /> : down ? <ArrowDownOutlined /> : null}
@@ -142,7 +90,7 @@ export function HeadlineKpis({
                   <span>环比 —</span>
                 )}
               </div>
-            </Card>
+            </div>
           </Col>
         );
       })}

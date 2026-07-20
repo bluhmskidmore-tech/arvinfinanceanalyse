@@ -1,0 +1,86 @@
+.page {
+  min-height: 100%;
+  padding: 24px;
+  background: var(--ib-paper);
+  color: var(--ib-ink);
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.contractNote {
+  margin-top: 16px;
+  margin-bottom: 4px;
+}
+
+.stack {
+  display: grid;
+  gap: 24px;
+}
+
+.retryButton {
+  width: fit-content;
+  padding: 10px 16px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius, 2px);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+  cursor: pointer;
+}
+
+.tableShell {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.th {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ib-hairline);
+  color: var(--ib-ink-secondary);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.td {
+  padding: 12px;
+  border-bottom: 1px solid var(--ib-hairline);
+  color: var(--ib-ink);
+  vertical-align: top;
+}
+
+.tdNowrap {
+  white-space: nowrap;
+}
+
+.tdNumeric {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: 999px;
+  background: var(--ib-surface-muted);
+  color: var(--ib-up);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.statusBadge[data-ok="false"] {
+  background: color-mix(in srgb, var(--ib-down) 8%, var(--ib-surface));
+  border-color: color-mix(in srgb, var(--ib-down) 35%, var(--ib-hairline));
+  color: var(--ib-down);
+}

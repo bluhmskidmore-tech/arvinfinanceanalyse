@@ -1,0 +1,58 @@
+.page {
+  min-height: 100%;
+  padding: 16px;
+  background: var(--ib-paper);
+  color: var(--ib-ink);
+}
+
+.stack {
+  width: 100%;
+}
+
+.fieldControl {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.execute {
+  margin-top: 28px;
+}
+
+.sectionBody {
+  margin-top: 8px;
+}
+
+.selectNarrow {
+  width: 120px;
+}
+
+.selectMedium {
+  width: 200px;
+}
+
+.selectWide {
+  width: 220px;
+}
+
+.selectGrow {
+  min-width: 280px;
+  flex: 1;
+}
+
+.resultsRow {
+  margin-top: 16px;
+}
+
+.pagination {
+  margin-top: 16px;
+}
+
+.resultMeta {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.drillTag {
+  cursor: pointer;
+}

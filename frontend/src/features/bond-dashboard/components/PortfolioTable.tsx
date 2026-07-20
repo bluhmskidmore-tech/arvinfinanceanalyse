@@ -2,6 +2,7 @@ import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { BondDashboardHeadlinePayload, Numeric, PortfolioComparisonItem, PortfolioComparisonPayload } from "../../../api/contracts";
+import styles from "../bondDashboard.module.css";
 import { formatDv01Wan, formatRatePercent, formatYears, formatYi, nativeToNumber } from "../utils/format";
 
 function sumComplete(values: (Numeric | null | undefined)[]): number | null {
@@ -66,7 +67,7 @@ export function PortfolioTable({
       loading={loading}
       title="组合表现"
       extra={<Button type="link">更多</Button>}
-      style={{ borderRadius: 8 }}
+      rootClassName={styles.card}
       styles={{ body: { padding: 0 } }}
     >
       <Table<PortfolioComparisonItem>
