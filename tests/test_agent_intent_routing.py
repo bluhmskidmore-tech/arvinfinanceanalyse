@@ -674,6 +674,10 @@ def test_pnl_summary_intent_routes_to_pnl_repo(tmp_path, monkeypatch):
     assert envelope.result_meta.basis == "formal"
     assert envelope.result_meta.filters_applied["report_date"] == "2026-03-31"
     assert envelope.evidence.tables_used == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
+    assert envelope.evidence.sql_executed
+    assert all(sql.lower().startswith("select") for sql in envelope.evidence.sql_executed)
+    assert any("from fact_formal_pnl_fi" in sql for sql in envelope.evidence.sql_executed)
+    assert envelope.result_meta.sql_executed == envelope.evidence.sql_executed
     assert any(card.title == "Total PnL" for card in envelope.cards)
 
 
@@ -727,6 +731,9 @@ def test_duration_risk_intent_routes_to_bond_analytics(tmp_path, monkeypatch):
     assert envelope.result_meta.basis == "formal"
     assert envelope.result_meta.filters_applied["report_date"] == "2026-03-31"
     assert envelope.evidence.tables_used == ["fact_formal_bond_analytics_daily"]
+    assert envelope.evidence.sql_executed
+    assert all(sql.lower().startswith("select") for sql in envelope.evidence.sql_executed)
+    assert any("from fact_formal_bond_analytics_daily" in sql for sql in envelope.evidence.sql_executed)
     assert any(card.title == "Portfolio DV01" for card in envelope.cards)
 
 
@@ -1551,6 +1558,14 @@ def test_financial_workflow_execute_mode_runs_mapped_intents_in_order(tmp_path):
         {"order": 2, "intent": "credit_exposure", "status": "ok", "quality_flag": "ok", "evidence_rows": 2},
         {"order": 3, "intent": "risk_tensor", "status": "ok", "quality_flag": "ok", "evidence_rows": 2},
     ]
+    memo_card = envelope.cards[0]
+    assert memo_card.title == "Workflow Memo"
+    assert memo_card.type == "markdown"
+    assert "duration_risk result" in memo_card.value
+    assert "credit_exposure result" in memo_card.value
+    assert "risk_tensor result" in memo_card.value
+    assert "数据质量提示" not in memo_card.value
+    assert "非正式结果，仅供分析参考（formal_use_allowed=false）" in memo_card.value
     assert envelope.suggested_actions == []
 
 
@@ -1608,6 +1623,12 @@ def test_financial_workflow_execute_mode_reports_step_failure_without_side_effec
         "quality_flag": "warning",
         "evidence_rows": 0,
     }
+    memo_card = next(card for card in envelope.cards if card.title == "Workflow Memo")
+    assert memo_card.type == "markdown"
+    assert "duration ok" in memo_card.value
+    assert "risk_tensor: 执行失败" in memo_card.value
+    assert "数据质量提示" in memo_card.value
+    assert "非正式结果，仅供分析参考（formal_use_allowed=false）" in memo_card.value
     assert "risk_tensor" in envelope.answer
 
 
@@ -1724,6 +1745,6 @@ def test_audit_log_is_appended(tmp_path, monkeypatch):
     payload = json.loads(content.splitlines()[-1])
     assert payload["user_id"] == "u_test"
     assert payload["query_text"] == "PnL summary"
-    assert payload["tools_used"] == ["analysis_view_tool", "evidence_tool"]
+    assert payload["tools_used"] == ["analysis_view_tool", "evidence_tool", "intent:pnl_summary"]
     assert payload["tables_used"] == ["fact_formal_pnl_fi"]
     assert payload["trace_id"] == "tr_agent_audit"

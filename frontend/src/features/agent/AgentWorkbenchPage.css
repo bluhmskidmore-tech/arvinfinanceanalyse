@@ -40,7 +40,7 @@
   order: 6;
 }
 
-.agent-workbench-shell:not(.agent-workbench-shell--embedded) > div[style] {
+.agent-workbench-shell:not(.agent-workbench-shell--embedded) > .agent-repo-memory {
   order: 7;
 }
 
@@ -1147,6 +1147,12 @@
   .agent-answer-panel p {
     animation: none;
   }
+
+  /* DESIGN.md §8：加载/进行中指示在 reduce 下退化为静态（保留元素与颜色） */
+  .agent-runtime-strip__dot--active,
+  .agent-thinking__dots span {
+    animation: none;
+  }
 }
 
 .agent-follow-up-chips {
@@ -1382,6 +1388,12 @@
   display: none;
 }
 
+.agent-side-panel__sql-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .agent-side-panel__details pre {
   margin: 6px 0 0;
   color: var(--moss-color-text-secondary);
@@ -1498,6 +1510,11 @@
   background: var(--moss-color-info-50);
 }
 
+.agent-suggested-actions__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .agent-suggested-actions__button--confirm {
   border-color: var(--moss-color-warning-300);
   background: var(--moss-color-warning-50);
@@ -1570,7 +1587,7 @@
   gap: 8px;
 }
 
-.agent-next-drill-row span {
+.agent-next-drill-row button {
   padding: 6px 10px;
   border: 1px solid #dbe4ef;
   border-radius: 999px;
@@ -1578,6 +1595,22 @@
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.agent-next-drill-row button:hover:not(:disabled) {
+  border-color: #b8cbe6;
+  color: var(--moss-color-link);
+}
+
+.agent-next-drill-row button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.agent-next-drill-row button:focus-visible {
+  outline: 2px solid var(--moss-color-link);
+  outline-offset: 2px;
 }
 
 .agent-chat-composer__quick-row,

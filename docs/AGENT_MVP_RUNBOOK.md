@@ -25,6 +25,18 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 - 请求体：见后端 **`backend/app/agent/schemas/agent_request.py::AgentQueryRequest`**
 - 成功：**HTTP 200**，正文 **`AgentEnvelope`**
 
+`POST /api/agent/runs`（异步）
+
+- 支持 `MOSS_AGENT_PROVIDER=local`（含默认）、`hermes`、`dexter`。executor 分流与 `/query` 完全一致：governed intent / research workflow / 分析闲聊类请求强制走 local 工具链（`execute_agent_query`），否则按 provider 分发。
+- 成功：**HTTP 200**，正文 **`AgentRunCreateResponse`**（含 `run_id`、`status=queued`）。
+- 执行记录追加写入治理 JSONL 流 `agent_run`；local 托管运行的 `provider` 字段如实记为 `local`。
+- 前端兼容性：此前 `local` 返回 400，前端 Workbench 以该 400 作为回退 `/query` 的信号；local 放行后前端不再收到 400，回退逻辑自然不再触发，属兼容变化（前端代码无需改动）。
+
+`GET /api/agent/runs/{run_id}`
+
+- 返回 **`AgentRunStatusResponse`**：`queued / starting / running / completed / failed` 与最终 `AgentEnvelope`（completed 时）。
+- 仅 run 的发起用户可查询（owner 校验）。
+
 认证与安全上下文：后端会通过 **`AuthContext`** 合并 **`context`**（如 `user_id`、`user_role`）；不要把 Agent 当作绕过权限的渠道。
 
 ---
@@ -45,10 +57,21 @@ Hermes 模式（`MOSS_AGENT_PROVIDER=hermes`）走 **`backend/app/services/herme
 | `risk_tensor` | 风险张量 |
 | `market_data` | 市场数据 |
 | `news` | 新闻 |
+| `research_radar_brief` | 研究速读（治理 Choice 新闻事件之上的本地分析简报，`formal_use_allowed=false`） |
 
 关键字路由（摘自 **`backend/app/agent/tools/analysis_view_tool.py`** 的 `_INTENT_PATTERNS`）：例如问题中含「组合概览」「资产规模」→ `portfolio_overview`；含「久期」「DV01」→ `duration_risk`。无法匹配时 intent 为 **`unknown`**，返回解释性答案而非 DuckDB 深度结果。
 
 也可在请求的 **`context.intent`** 中显式指定 intent（需与后端路由约定一致）。
+
+### Workflow（plan / execute 双模式）
+
+- 金融 workflow：slash 命令 `/portfolio-review`、`/pnl-review`、`/risk-memo`、`/market-brief` 或 `context.workflow_id`。默认返回 **plan 卡**（`result_kind=agent.workflow.<id>`，`formal_use_allowed=false`）；`context.workflow_mode="execute"` 时按目录顺序执行映射 intents 并返回汇总。详见 `docs/agent_financial_workflows.md`。
+- 研究 workflow：`/research-radar`、关键字「研究速读」「研究雷达」或 `context.workflow_id="research_radar_brief"`。默认同样返回 plan 卡；`context.workflow_mode="execute"` 时执行 `research_radar_brief` handler。显式 `context.intent="research_radar_brief"` 保持既有语义：直接执行简报（不经 plan 卡）。
+- 所有 workflow 结果均为 `formal_use_allowed=false`，不新增写路径、不触发副作用。
+
+### 证据披露（`sql_executed`）
+
+`portfolio_overview`、`pnl_summary`、`duration_risk`、`credit_exposure`、`research_radar_brief` 等 intent 的 `evidence.sql_executed` 披露该次查询实际执行/等价的只读 SELECT 模板（`?` 为参数占位符，绑定值见 `filters_applied`）。该字段**仅用于披露**：服务端从不执行客户端传入的 SQL。其余经嵌套服务 envelope 取数的 intent（如 `pnl_bridge`、`risk_tensor`、`market_data`、`news`、`product_pnl`）暂保持 `[]`，原因见 `agent_service.py` 内注释。
 
 ---
 

@@ -10,6 +10,7 @@ from backend.app.agent.runtime.financial_workflow_catalog import (
     resolve_financial_workflow,
 )
 from backend.app.agent.runtime.research_workflow_catalog import (
+    ResearchWorkflow,
     is_research_workflow_id,
     resolve_research_workflow,
 )
@@ -161,27 +162,14 @@ class AnalysisViewTool:
                 return self._execute_workflow_envelope(request, workflow)
             return self._workflow_envelope(request, workflow)
 
-        research_workflow = resolve_research_workflow(request.context)
+        research_workflow = resolve_research_workflow(request.question, request.context)
         if research_workflow is not None:
-            handler = self._intent_handlers.get(research_workflow.workflow_id)
-            if handler is None:
-                return self._error_envelope(
-                    request=request,
-                    intent=research_workflow.workflow_id,
-                    detail="No registered research workflow handler.",
-                )
-            try:
-                return self._payload_envelope(
-                    request=request,
-                    intent=research_workflow.workflow_id,
-                    payload=handler(request),
-                )
-            except Exception as exc:
-                return self._error_envelope(
-                    request=request,
-                    intent=research_workflow.workflow_id,
-                    detail=str(exc),
-                )
+            explicit_intent = str(request.context.get("intent") or "").strip().lower().replace("-", "_")
+            workflow_mode = str(request.context.get("workflow_mode") or "").strip().lower()
+            # 显式 context.intent 保持既有直接执行语义；其余入口与 financial workflow 对齐：默认 plan，execute 需显式声明。
+            if workflow_mode == "execute" or explicit_intent == research_workflow.workflow_id:
+                return self._execute_research_workflow(request, research_workflow)
+            return self._research_workflow_plan_envelope(request, research_workflow)
 
         intent = self._resolve_intent(request)
         try:
@@ -376,6 +364,7 @@ class AnalysisViewTool:
         detail_rows: list[dict[str, Any]] = []
         tables_used: list[str] = []
         filters_applied: dict[str, Any] = {}
+        sql_executed: list[str] = []
         evidence_rows = 0
         failed_intents: list[str] = []
 
@@ -457,6 +446,9 @@ class AnalysisViewTool:
             for table in envelope.evidence.tables_used:
                 if table not in tables_used:
                     tables_used.append(table)
+            for statement in envelope.evidence.sql_executed:
+                if statement not in sql_executed:
+                    sql_executed.append(statement)
             for key, value in envelope.evidence.filters_applied.items():
                 filters_applied[f"{intent}.{key}"] = value
             if envelope.result_meta.quality_flag != "ok":
@@ -468,6 +460,7 @@ class AnalysisViewTool:
             filters_applied=filters_applied,
             row_count=evidence_rows,
             quality_flag=quality_flag,
+            sql_executed=sql_executed,
         )
         result_meta = AgentResultMeta(
             trace_id=self._trace_id(f"agent.workflow.{workflow.workflow_id}"),
@@ -489,6 +482,13 @@ class AnalysisViewTool:
             next_drill=[],
         )
         cards = [
+            self._workflow_memo_card(
+                workflow_title=workflow.title,
+                workflow_id=workflow.workflow_id,
+                step_rows=step_rows,
+                detail_rows=detail_rows,
+                filters_applied=filters_applied,
+            ),
             AgentCard(
                 type="workflow_execution",
                 title="Workflow Execution Steps",
@@ -528,6 +528,163 @@ class AnalysisViewTool:
                 next_drill=[],
                 suggested_actions=[],
             )
+        )
+
+    def _execute_research_workflow(
+        self,
+        request: AgentQueryRequest,
+        workflow: ResearchWorkflow,
+    ) -> AgentEnvelope:
+        handler = self._intent_handlers.get(workflow.workflow_id)
+        if handler is None:
+            return self._error_envelope(
+                request=request,
+                intent=workflow.workflow_id,
+                detail="No registered research workflow handler.",
+            )
+        try:
+            return self._payload_envelope(
+                request=request,
+                intent=workflow.workflow_id,
+                payload=handler(request),
+            )
+        except Exception as exc:
+            return self._error_envelope(
+                request=request,
+                intent=workflow.workflow_id,
+                detail=str(exc),
+            )
+
+    def _research_workflow_plan_envelope(
+        self,
+        request: AgentQueryRequest,
+        workflow: ResearchWorkflow,
+    ) -> AgentEnvelope:
+        evidence = self._evidence.build_evidence(
+            tables_used=[],
+            filters_applied={},
+            row_count=0,
+            quality_flag="warning",
+        )
+        result_meta = AgentResultMeta(
+            trace_id=self._trace_id(f"agent.workflow.{workflow.workflow_id}"),
+            basis=request.basis,
+            result_kind=f"agent.workflow.{workflow.workflow_id}",
+            formal_use_allowed=False,
+            source_version=workflow.source_version,
+            vendor_version="vv_none",
+            rule_version=workflow.rule_version,
+            cache_version=workflow.cache_version,
+            quality_flag="warning",
+            vendor_status="ok",
+            fallback_mode="none",
+            scenario_flag=request.basis == "scenario",
+            tables_used=evidence.tables_used,
+            filters_applied=evidence.filters_applied,
+            sql_executed=evidence.sql_executed,
+            evidence_rows=evidence.evidence_rows,
+            next_drill=[],
+        )
+        cards = [
+            AgentCard(
+                type="workflow_plan",
+                title="Workflow Plan",
+                data={
+                    "workflow_id": workflow.workflow_id,
+                    "title": workflow.title,
+                    "description": workflow.description,
+                    "category": workflow.category,
+                    "source": "moss_research_workflow_catalog",
+                    "output_kind": workflow.result_kind,
+                    "phase": "plan_only",
+                },
+            ),
+            AgentCard(
+                type="workflow_intents",
+                title="Mapped MOSS Intents",
+                data=[{"order": 1, "intent": workflow.workflow_id}],
+            ),
+            AgentCard(
+                type="governance_notes",
+                title="Governance Notes",
+                data=[{"note": note} for note in workflow.governance_notes],
+            ),
+        ]
+        suggested_actions = [
+            self._suggested_action(
+                action_type="execute_intent",
+                label=f"Execute research workflow: {workflow.workflow_id}",
+                payload={
+                    "intent": workflow.workflow_id,
+                    "workflow_id": workflow.workflow_id,
+                    "workflow_mode": "execute",
+                },
+                requires_confirmation=True,
+            )
+        ]
+        return AgentEnvelope(
+            **self._finalize_envelope(
+                answer=(
+                    f"Identified research workflow '{workflow.title}' ({workflow.workflow_id}). "
+                    "This response is a workflow plan only, not a formal financial result. "
+                    "Set context.workflow_mode=\"execute\" (or use the suggested action) to run the governed "
+                    f"research intent: {workflow.workflow_id}."
+                ),
+                cards=cards,
+                evidence=evidence,
+                result_meta=result_meta,
+                next_drill=[],
+                suggested_actions=suggested_actions,
+            )
+        )
+
+    def _workflow_memo_card(
+        self,
+        *,
+        workflow_title: str,
+        workflow_id: str,
+        step_rows: list[dict[str, Any]],
+        detail_rows: list[dict[str, Any]],
+        filters_applied: dict[str, Any],
+    ) -> AgentCard:
+        """纯模板化 memo 合成（不调用 LLM）：仅重排既有子 envelope 结论，不新增取数或计算。"""
+        report_date = next(
+            (
+                str(value)
+                for key, value in filters_applied.items()
+                if key.endswith(".report_date") and str(value or "").strip()
+            ),
+            "未提供",
+        )
+        conclusion_lines: list[str] = []
+        for row in detail_rows:
+            intent = str(row.get("intent") or "")
+            if row.get("status") == "ok":
+                first_sentence = str(row.get("answer") or "").strip().splitlines()[0] if str(row.get("answer") or "").strip() else "已返回结果。"
+                conclusion_lines.append(f"- {intent}: {first_sentence}")
+            else:
+                conclusion_lines.append(
+                    f"- {intent}: 执行失败（{row.get('status')}）：{row.get('message', '')}"
+                )
+        quality_lines = [
+            f"- {row['intent']}: quality_flag={row['quality_flag']}（status={row['status']}）"
+            for row in step_rows
+            if str(row.get("quality_flag")) != "ok" or str(row.get("status")) != "ok"
+        ]
+        sections = [
+            f"## Workflow Memo：{workflow_title}（{workflow_id}）",
+            f"报告日期：{report_date}",
+            "",
+            "### 分步结论",
+            *conclusion_lines,
+        ]
+        if quality_lines:
+            sections.extend(["", "### 数据质量提示", *quality_lines])
+        sections.extend(["", "非正式结果，仅供分析参考（formal_use_allowed=false）。"])
+        return AgentCard(
+            type="markdown",
+            title="Workflow Memo",
+            value="\n".join(sections),
         )
 
     def _workflow_step_row(
@@ -776,6 +933,7 @@ class AnalysisViewTool:
             filters_applied=dict(payload.get("filters_applied", {})),
             row_count=int(payload.get("row_count", 0)),
             quality_flag=str(payload.get("quality_flag") or "warning"),
+            sql_executed=list(payload.get("sql_executed", [])),
         )
         result_meta = AgentResultMeta(
             trace_id=str(payload.get("trace_id") or self._trace_id(f"agent.{intent}")),

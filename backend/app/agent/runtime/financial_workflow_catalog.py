@@ -49,7 +49,7 @@ _WORKFLOWS: tuple[FinancialWorkflow, ...] = (
         governance_notes=[
             "Keeps formal PnL calculations inside existing MOSS intent handlers.",
             "Does not write adjustments or trigger downstream posting workflows.",
-            "Current phase returns a plan card only; no multi-intent execution is performed.",
+            "Plan card is the default; multi-intent execution requires explicit context.workflow_mode=execute.",
         ],
     ),
     FinancialWorkflow(

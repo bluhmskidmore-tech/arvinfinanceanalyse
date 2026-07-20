@@ -72,6 +72,9 @@ def _sample_agent_envelope():
                 "report_date": "2026-03-31",
                 "report_date_resolution": "latest_default",
             },
+            sql_executed=[
+                "select count(*), sum(total_pnl) from fact_formal_pnl_fi where report_date = ?",
+            ],
             evidence_rows=2,
             quality_flag="ok",
         ),
@@ -91,7 +94,9 @@ def _sample_agent_envelope():
                 "report_date": "2026-03-31",
                 "report_date_resolution": "latest_default",
             },
-            sql_executed=[],
+            sql_executed=[
+                "select count(*), sum(total_pnl) from fact_formal_pnl_fi where report_date = ?",
+            ],
             evidence_rows=2,
         ),
     )
@@ -334,6 +339,46 @@ def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
     assert payload["result_meta"]["result_kind"] == "agent.pnl_summary"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert calls
+
+
+def test_agent_envelope_contract_exposes_read_only_sql_disclosure(monkeypatch, tmp_path):
+    """Governed intent envelopes must disclose the executed/equivalent read-only SQL."""
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "execute_agent_query",
+        lambda request, duckdb_path, governance_dir: _sample_agent_envelope(),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith("select") for sql in payload["evidence"]["sql_executed"])
+    assert payload["result_meta"]["sql_executed"] == payload["evidence"]["sql_executed"]
 
 
 def test_agent_query_returns_disabled_when_agent_is_off(monkeypatch, tmp_path):

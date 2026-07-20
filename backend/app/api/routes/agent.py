@@ -84,6 +84,28 @@ def _should_execute_local_query(request: AgentQueryRequest) -> bool:
     return has_explicit_local_agent_context(request.context) or is_plain_analysis_chat_question(request.question)
 
 
+def _execute_local_agent_query(
+    request: AgentQueryRequest,
+    governance_dir: str,
+    settings: object,
+) -> AgentEnvelope:
+    return execute_agent_query(
+        request=request,
+        duckdb_path=str(getattr(settings, "duckdb_path", "")),
+        governance_dir=governance_dir,
+    )
+
+
+def _resolve_agent_executor(request: AgentQueryRequest, settings: object):
+    """Shared /query and /runs dispatch: forced-local contexts win, then provider."""
+    if _should_execute_local_query(request):
+        return "local", _execute_local_agent_query
+    executor = _run_executor_for_provider(settings)
+    if executor is None:
+        return "local", _execute_local_agent_query
+    return _provider_name(settings), executor
+
+
 def _contains_mutating_action(value: object) -> bool:
     if isinstance(value, str):
         normalized = value.strip().lower()
@@ -174,31 +196,8 @@ def query_agent(
     _ensure_agent_read_allowed(auth, settings)
 
     try:
-        if _should_execute_local_query(request):
-            return execute_agent_query(
-                request=request,
-                duckdb_path=str(settings.duckdb_path),
-                governance_dir=str(settings.governance_path),
-            )
-
-        provider = _provider_name(settings)
-        if provider == "hermes":
-            return execute_hermes_agent_query(
-                request=request,
-                governance_dir=str(settings.governance_path),
-                settings=settings,
-            )
-        if provider == "dexter":
-            return execute_dexter_agent_query(
-                request=request,
-                governance_dir=str(settings.governance_path),
-                settings=settings,
-            )
-        return execute_agent_query(
-            request=request,
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-        )
+        _provider, executor = _resolve_agent_executor(request, settings)
+        return executor(request, str(settings.governance_path), settings)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -224,14 +223,13 @@ def create_agent_run_endpoint(
             content=phase1_disabled_response().model_dump(mode="json"),
         )
     _ensure_agent_read_allowed(auth, settings)
-    executor = _run_executor_for_provider(settings)
-    if executor is None:
-        raise HTTPException(status_code=400, detail="Agent runs require MOSS_AGENT_PROVIDER=hermes or dexter.")
+    provider, executor = _resolve_agent_executor(request, settings)
 
     return create_agent_run(
         request=request,
         settings=settings,
         executor=executor,
+        provider=provider,
     )
 
 

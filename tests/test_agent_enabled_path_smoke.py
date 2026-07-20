@@ -154,6 +154,10 @@ def _seed_agent_balance_tables(duckdb_path: Path) -> None:
 
 
 def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> None:
+    risk_task_module = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -187,11 +191,18 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
               liquidity_gap_90d double,
               liquidity_gap_30d_ratio double,
               total_market_value double,
+              rate_risk_market_value double,
+              rate_risk_dv01 double,
+              rate_risk_modified_duration double,
+              duration_excluded_market_value double,
+              duration_excluded_count integer,
               bond_count integer,
               quality_flag varchar,
               warnings_json varchar,
               source_version varchar,
               upstream_source_version varchar,
+              upstream_rule_version varchar,
+              upstream_cache_version varchar,
               rule_version varchar,
               cache_version varchar,
               trace_id varchar
@@ -207,9 +218,9 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
         conn.execute(
             """
             insert into fact_formal_risk_tensor_daily values
-            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 0, 0, 0, 0, 250, 0.40, 1500, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_risk_tensor_1', 'cv_risk_tensor_1', 'tr-risk-1')
+            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 0, 0, 0, 0, 250, 0.40, 1500, 1500, 12.34, 4.20, 0, 0, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_bond_analytics_1', 'cv_bond_analytics_1', ?, ?, 'tr-risk-1')
             """,
-            [REPORT_DATE],
+            [REPORT_DATE, risk_task_module.RULE_VERSION, risk_task_module.CACHE_VERSION],
         )
     finally:
         conn.close()
@@ -560,7 +571,7 @@ def test_agent_query_enabled_path_returns_real_envelope_and_audit(tmp_path, monk
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_smoke"
     assert audit_payload["query_text"] == "PnL summary"
-    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool"]
+    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool", "intent:pnl_summary"]
     assert audit_payload["tables_used"] == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
 
 
@@ -607,7 +618,7 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_balance"
     assert audit_payload["query_text"] == "portfolio overview"
-    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool"]
+    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool", "intent:portfolio_overview"]
     assert audit_payload["tables_used"] == [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
@@ -639,6 +650,9 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     assert payload["result_meta"]["result_kind"] == "agent.risk_tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
+    assert any("from fact_formal_risk_tensor_daily" in sql for sql in payload["evidence"]["sql_executed"])
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "explicit",
@@ -652,7 +666,7 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_risk"
     assert audit_payload["query_text"] == "risk tensor KRD"
-    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool"]
+    assert audit_payload["tools_used"] == ["analysis_view_tool", "evidence_tool", "intent:risk_tensor"]
     assert audit_payload["tables_used"] == ["fact_formal_risk_tensor_daily"]
 
 
@@ -786,6 +800,9 @@ def test_agent_query_enabled_path_returns_real_news_and_audit(tmp_path, monkeypa
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["evidence"]["tables_used"] == ["choice_news_event"]
     assert payload["evidence"]["evidence_rows"] == 1
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
+    assert any("from choice_news_event" in sql for sql in payload["evidence"]["sql_executed"])
     assert any(card["title"] == "Event Count" for card in payload["cards"])
 
     audit_path = governance_dir / "agent_audit.jsonl"
@@ -822,6 +839,9 @@ def test_agent_query_enabled_path_returns_real_product_pnl_and_audit(tmp_path, m
     assert payload["result_meta"]["result_kind"] == "agent.product_pnl"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["product_category_pnl_formal_read_model"]
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
+    assert any("from product_category_pnl_formal_read_model" in sql for sql in payload["evidence"]["sql_executed"])
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "latest_default",

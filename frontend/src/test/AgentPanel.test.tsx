@@ -8,7 +8,6 @@ import { AgentPanel } from "../features/agent/AgentPanel";
 
 const AGENT_PAGE_CONTEXT_CHANGE_LABEL = "页面上下文已更新";
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
-const AGENT_CONVERSATION_LABEL = "Agent 对话记录";
 const REPO_PATH_LABEL = "GitNexus 仓库路径";
 
 function buildJsonResponse(payload: unknown, status = 200) {
@@ -383,55 +382,62 @@ describe("AgentPanel", () => {
     expect(screen.getByRole("button", { name: "\u7ec4\u5408\u6982\u89c8" })).toBeInTheDocument();
   });
 
-  it("keeps suggested governed intent actions in the same embedded conversation", async () => {
+  it("keeps execute_intent suggestions display-only in the read-only embedded panel", async () => {
     const user = userEvent.setup();
-    fetchMock
-      .mockResolvedValueOnce(
-        buildJsonResponse(
-          buildAgentResult({
-            suggestedActions: [
-              {
-                type: "execute_intent",
-                label: "\u7ec4\u5408\u6982\u89c8",
-                payload: { intent: "portfolio_overview" },
-                requires_confirmation: true,
-              },
-            ],
-          }),
-        ),
-      )
-      .mockResolvedValueOnce(
-        buildJsonResponse(
-          buildAgentResult({
-            answer: "Formal portfolio overview answered.",
-            resultKind: "agent.portfolio_overview",
-            qualityFlag: "ok",
-          }),
-        ),
-      );
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse(
+        buildAgentResult({
+          suggestedActions: [
+            {
+              type: "execute_intent",
+              label: "组合概览",
+              payload: { intent: "portfolio_overview" },
+              requires_confirmation: true,
+            },
+            {
+              type: "inspect_drill",
+              label: "期限桶",
+              payload: { dimension: "term_bucket" },
+              requires_confirmation: false,
+            },
+          ],
+        }),
+      ),
+    );
+    renderAgentPanel();
+
+    expect(screen.getByText("只读")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    await screen.findByTestId("agent-panel-answer");
+
+    const executeButton = screen.getByRole("button", { name: "组合概览" });
+    expect(executeButton).toBeDisabled();
+    expect(screen.getByText("只读 · 仅展示")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认执行：组合概览" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("更多建议 · 1 项"));
+    await user.click(screen.getByRole("button", { name: "期限桶" }));
+
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue(
+      "请基于当前 evidence 继续下钻：期限桶",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces governance signals in the embedded copilot result", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
     renderAgentPanel();
 
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
     await screen.findByTestId("agent-panel-answer");
-    await user.click(screen.getByRole("button", { name: "\u7ec4\u5408\u6982\u89c8" }));
-    expect(screen.getByRole("button", { name: "\u786e\u8ba4\u6267\u884c\uff1a\u7ec4\u5408\u6982\u89c8" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "\u786e\u8ba4\u6267\u884c\uff1a\u7ec4\u5408\u6982\u89c8" }));
 
-    expect(await screen.findByText("Formal portfolio overview answered.")).toBeInTheDocument();
-    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent(
-      "\u6267\u884c\u5efa\u8bae\u52a8\u4f5c\uff1a\u7ec4\u5408\u6982\u89c8",
-    );
-    const [, options] = fetchMock.mock.calls[1] ?? [];
-    expect(JSON.parse(String((options as RequestInit | undefined)?.body))).toMatchObject({
-      question: "\u7ec4\u5408\u6982\u89c8",
-      context: {
-        intent: "portfolio_overview",
-        conversation: {
-          recent_turns: [{ result_kind: "agent.analysis_chat" }],
-        },
-      },
-    });
+    const callout = screen.getByRole("status", { name: "数据可信状态提示" });
+    expect(callout).toHaveTextContent("证据质量存在预警，结论请人工复核");
+    expect(callout).toHaveTextContent("本结果不可作为正式口径，仅供分析参考");
   });
 
   it("keeps embedded conversation context when default question changes after an answer", async () => {

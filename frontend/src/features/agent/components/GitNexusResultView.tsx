@@ -1,5 +1,8 @@
+import type { CSSProperties } from "react";
+
 import { designTokens, ibTokens } from "../../../theme/designSystem";
-import { shellTokens as t } from "../../../theme/tokens";
+
+import "./GitNexusResultView.css";
 
 type GitNexusResultCard = {
   title: string;
@@ -81,87 +84,25 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
     Array.isArray(resourcesCard?.data) ? resourcesCard.data.filter(isRecord) : [];
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: 16,
-      }}
-    >
+    <div className="agent-gitnexus">
       {summaryCards.length > 0 ? (
-        <div
-          style={{
-            padding: 18,
-            borderRadius: ibTokens.radius,
-            border: `1px solid ${t.colorBorderSoft}`,
-            background: t.colorBgCanvas,
-            display: "grid",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: t.colorTextPrimary,
-            }}
-          >
-            索引摘要
-          </div>
+        <div className="agent-gitnexus__panel">
+          <div className="agent-gitnexus__panel-title">索引摘要</div>
           {summaryMetricCards.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                gap: 10,
-              }}
-            >
+            <div className="agent-gitnexus__metric-grid">
               {summaryMetricCards.map((card) => (
-                <div
-                  key={`summary-${card.title}`}
-                  style={{
-                    padding: 12,
-                    borderRadius: ibTokens.radius,
-                    background: t.colorBgSurface,
-                    display: "grid",
-                    gap: 6,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: t.colorTextMuted,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {card.title}
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: t.colorTextPrimary }}>
-                    {formatMetaValue(card.value)}
-                  </div>
+                <div key={`summary-${card.title}`} className="agent-gitnexus__metric">
+                  <div className="agent-gitnexus__metric-label">{card.title}</div>
+                  <div className="agent-gitnexus__metric-value">{formatMetaValue(card.value)}</div>
                 </div>
               ))}
             </div>
           ) : null}
           {summaryReferenceCards.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-              }}
-            >
+            <div className="agent-gitnexus__kv-list">
               {summaryReferenceCards.map((card) => (
-                <div
-                  key={`summary-ref-${card.title}`}
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    fontSize: 12,
-                    color: t.colorTextSecondary,
-                  }}
-                >
-                  <span style={{ color: t.colorTextMuted }}>{card.title}:</span>
+                <div key={`summary-ref-${card.title}`} className="agent-gitnexus__kv agent-gitnexus__kv--small">
+                  <span className="agent-gitnexus__kv-label">{card.title}:</span>
                   <span>{formatMetaValue(card.value)}</span>
                 </div>
               ))}
@@ -170,179 +111,56 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
         </div>
       ) : null}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
-          gap: 16,
-        }}
-      >
-        <div
-          style={{
-            padding: 18,
-            borderRadius: ibTokens.radius,
-            border: `1px solid ${t.colorBorderSoft}`,
-            background: t.colorBgCanvas,
-            display: "grid",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: t.colorTextPrimary,
-            }}
-          >
-            上下文概览
-          </div>
+      <div className="agent-gitnexus__columns">
+        <div className="agent-gitnexus__panel">
+          <div className="agent-gitnexus__panel-title">上下文概览</div>
           {contextCard?.value ? (
-            <div
-              style={{
-                fontSize: 13,
-                color: t.colorTextSecondary,
-                wordBreak: "break-all",
-              }}
-            >
-              {contextCard.value}
-            </div>
+            <div className="agent-gitnexus__context-value">{contextCard.value}</div>
           ) : null}
           {Array.isArray(contextCard?.data) ? (
-            <div
-              style={{
-                display: "grid",
-                gap: 6,
-              }}
-            >
+            <div className="agent-gitnexus__kv-list agent-gitnexus__kv-list--tight">
               {contextCard.data.filter(isRecord).map((item, index) => (
-                <div
-                  key={`context-${index}`}
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    fontSize: 13,
-                    color: t.colorTextSecondary,
-                  }}
-                >
-                  <span style={{ color: t.colorTextMuted }}>
-                    {String(item.label ?? "label")}:
-                  </span>
+                <div key={`context-${index}`} className="agent-gitnexus__kv">
+                  <span className="agent-gitnexus__kv-label">{String(item.label ?? "label")}:</span>
                   <span>{formatMetaValue(item.value)}</span>
                 </div>
               ))}
             </div>
           ) : null}
           {toolRows.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: t.colorTextMuted,
-                  textTransform: "uppercase",
-                }}
-              >
-                工具
-              </div>
+            <div className="agent-gitnexus__sublist">
+              <div className="agent-gitnexus__sublist-title">工具</div>
               {toolRows.map((row, index) => (
-                <div
-                  key={`tool-${index}`}
-                  style={{
-                    padding: 10,
-                    borderRadius: ibTokens.radius,
-                    background: t.colorBgSurface,
-                    display: "grid",
-                    gap: 4,
-                  }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: t.colorTextPrimary }}>
-                    {formatMetaValue(row.tool)}
-                  </div>
-                  <div style={{ fontSize: 12, color: t.colorTextSecondary }}>
-                    {formatMetaValue(row.description)}
-                  </div>
+                <div key={`tool-${index}`} className="agent-gitnexus__list-item">
+                  <div className="agent-gitnexus__list-item-title">{formatMetaValue(row.tool)}</div>
+                  <div className="agent-gitnexus__list-item-detail">{formatMetaValue(row.description)}</div>
                 </div>
               ))}
             </div>
           ) : null}
         </div>
 
-        <div
-          style={{
-            padding: 18,
-            borderRadius: ibTokens.radius,
-            border: `1px solid ${t.colorBorderSoft}`,
-            background: t.colorBgCanvas,
-            display: "grid",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: t.colorTextPrimary,
-            }}
-          >
-            执行流程
-          </div>
+        <div className="agent-gitnexus__panel">
+          <div className="agent-gitnexus__panel-title">执行流程</div>
           {processes.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-              }}
-            >
+            <div className="agent-gitnexus__sublist">
               {processes.map((row, index) => (
-                <div
-                  key={`process-${index}`}
-                  style={{
-                    padding: 12,
-                    borderRadius: ibTokens.radius,
-                    background: t.colorBgSurface,
-                    display: "grid",
-                    gap: 4,
-                  }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 600, color: t.colorTextPrimary }}>
-                    {formatMetaValue(row.name)}
-                  </div>
-                  <div style={{ fontSize: 12, color: t.colorTextSecondary }}>
-                    {formatMetaValue(row.type)} 路 步骤 {formatMetaValue(row.steps)}
+                <div key={`process-${index}`} className="agent-gitnexus__list-item agent-gitnexus__list-item--padded">
+                  <div className="agent-gitnexus__list-item-title">{formatMetaValue(row.name)}</div>
+                  <div className="agent-gitnexus__list-item-detail">
+                    {formatMetaValue(row.type)} · 步骤 {formatMetaValue(row.steps)}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div style={{ fontSize: 13, color: t.colorTextSecondary }}>
-              未返回流程列表。
-            </div>
+            <div className="agent-gitnexus__empty">未返回流程列表。</div>
           )}
           {resourceRows.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gap: 6,
-              }}
-            >
+            <div className="agent-gitnexus__kv-list agent-gitnexus__kv-list--tight">
               {resourceRows.map((row, index) => (
-                <div
-                  key={`resource-${index}`}
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    fontSize: 12,
-                    color: t.colorTextSecondary,
-                  }}
-                >
-                  <span style={{ color: t.colorTextMuted }}>{formatMetaValue(row.description)}:</span>
+                <div key={`resource-${index}`} className="agent-gitnexus__kv agent-gitnexus__kv--small">
+                  <span className="agent-gitnexus__kv-label">{formatMetaValue(row.description)}:</span>
                   <span>{formatMetaValue(row.uri)}</span>
                 </div>
               ))}
@@ -352,155 +170,35 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
       </div>
 
       {traceRows.length > 0 ? (
-        <div
-          style={{
-            padding: 18,
-            borderRadius: ibTokens.radius,
-            border: `1px solid ${t.colorBorderSoft}`,
-            background: t.colorBgCanvas,
-            display: "grid",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              color: t.colorTextPrimary,
-            }}
-          >
-            流程图
-          </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "stretch",
-              overflowX: "auto",
-              paddingBottom: 4,
-            }}
-          >
+        <div className="agent-gitnexus__panel">
+          <div className="agent-gitnexus__panel-title">流程图</div>
+          <div className="agent-gitnexus__trace">
             {traceRows.map((row, index) => {
               const moduleGroup = moduleGroupForTrace(row);
               const edgeLabel = edgeLabelForTrace(row);
 
               return (
-                <div
-                  key={`trace-${index}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    minWidth: 0,
-                  }}
-                >
+                <div key={`trace-${index}`} className="agent-gitnexus__trace-step">
                   <div
-                    style={{
-                      minWidth: 220,
-                      padding: 14,
-                      borderRadius: ibTokens.radius,
-                      background: t.colorBgSurface,
-                      border: `1px solid ${t.colorBorderSoft}`,
-                      boxShadow: `inset 4px 0 0 ${moduleGroup.color}`,
-                      display: "grid",
-                      gap: 8,
-                    }}
+                    className="agent-gitnexus__trace-node"
+                    style={{ "--agent-gitnexus-group-color": moduleGroup.color } as CSSProperties}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        alignItems: "center",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          letterSpacing: "0.04em",
-                          textTransform: "uppercase",
-                          color: t.colorTextMuted,
-                        }}
-                      >
+                    <div className="agent-gitnexus__trace-head">
+                      <span className="agent-gitnexus__trace-kicker">
                         步骤 {formatMetaValue(row.step)}
                       </span>
-                      <span
-                        style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: ibTokens.radius,
-                          background: t.colorAccent,
-                          color: t.colorBgCanvas,
-                          display: "grid",
-                          placeItems: "center",
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {formatMetaValue(row.step)}
-                      </span>
+                      <span className="agent-gitnexus__trace-index">{formatMetaValue(row.step)}</span>
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: t.colorTextPrimary }}>
-                      {formatMetaValue(row.symbol)}
-                    </div>
-                    <div
-                      style={{
-                        width: "fit-content",
-                        padding: "4px 8px",
-                        borderRadius: ibTokens.radius,
-                        background: `${moduleGroup.color}14`,
-                        color: moduleGroup.color,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.03em",
-                      }}
-                    >
-                      {moduleGroup.label}
-                    </div>
-                    <div style={{ fontSize: 12, color: t.colorTextSecondary }}>
-                      {formatMetaValue(row.file)}
-                    </div>
+                    <div className="agent-gitnexus__trace-symbol">{formatMetaValue(row.symbol)}</div>
+                    <div className="agent-gitnexus__trace-group">{moduleGroup.label}</div>
+                    <div className="agent-gitnexus__trace-file">{formatMetaValue(row.file)}</div>
                   </div>
                   {index < traceRows.length - 1 ? (
-                    <div
-                      aria-hidden="true"
-                      style={{
-                        display: "grid",
-                        gap: 4,
-                        justifyItems: "center",
-                        color: t.colorTextMuted,
-                        minWidth: 52,
-                      }}
-                    >
-                      <div
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: ibTokens.radius,
-                          background: t.colorBgSurface,
-                          border: `1px solid ${t.colorBorderSoft}`,
-                          fontSize: 11,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {edgeLabel}
-                      </div>
-                      <div
-                        style={{
-                          width: 36,
-                          height: 2,
-                          background: t.colorBorderSoft,
-                        }}
-                      />
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>鈫?</div>
-                      <div
-                        style={{
-                          width: 36,
-                          height: 2,
-                          background: t.colorBorderSoft,
-                        }}
-                      />
+                    <div aria-hidden="true" className="agent-gitnexus__trace-edge">
+                      <div className="agent-gitnexus__trace-edge-label">{edgeLabel}</div>
+                      <div className="agent-gitnexus__trace-edge-line" />
+                      <div className="agent-gitnexus__trace-edge-arrow">→</div>
+                      <div className="agent-gitnexus__trace-edge-line" />
                     </div>
                   ) : null}
                 </div>

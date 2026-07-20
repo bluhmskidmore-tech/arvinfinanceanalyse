@@ -13,12 +13,81 @@ from backend.app.governance.agent_audit import AgentAuditPayload, append_agent_a
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.pnl_repo import PnlRepository
-from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
+from backend.app.repositories.product_category_pnl_repo import (
+    PRODUCT_CATEGORY_PNL_ROWS_SQL,
+    ProductCategoryPnlRepository,
+)
 from backend.app.services.gitnexus_service import build_gitnexus_status_payload
 from backend.app.services.research_radar_service import research_radar_brief_payload
 
 RULE_VERSION = "rv_agent_mvp_v1"
 BalanceAnalysisRepository = None
+
+# 仅用于证据披露（sql_executed）：与 repository 实际执行语句等价的只读 SELECT 模板，
+# `?` 为参数占位符；实际绑定值见 evidence.filters_applied。服务端从不执行客户端传入 SQL。
+_PORTFOLIO_OVERVIEW_SQL_DISCLOSURE = [
+    (
+        "select count(*) as detail_row_count, sum(market_value_amount) as total_market_value_amount, "
+        "sum(amortized_cost_amount) as total_amortized_cost_amount, "
+        "sum(accrued_interest_amount) as total_accrued_interest_amount "
+        "from fact_formal_zqtz_balance_daily "
+        "where report_date = ? and currency_basis = ? and (? = 'all' or position_scope = ?)"
+    ),
+    (
+        "select count(*) as detail_row_count, sum(principal_amount) as total_market_value_amount, "
+        "sum(principal_amount) as total_amortized_cost_amount, "
+        "sum(accrued_interest_amount) as total_accrued_interest_amount "
+        "from fact_formal_tyw_balance_daily "
+        "where report_date = ? and currency_basis = ? and (? = 'all' or position_scope = ?)"
+    ),
+]
+_PNL_SUMMARY_SQL_DISCLOSURE = [
+    (
+        "select count(*) as formal_fi_row_count, sum(interest_income_514), sum(fair_value_change_516), "
+        "sum(capital_gain_517), sum(manual_adjustment), sum(total_pnl) "
+        "from fact_formal_pnl_fi where report_date = ?"
+    ),
+    (
+        "select count(*) as nonstd_bridge_row_count, sum(interest_income_514), sum(fair_value_change_516), "
+        "sum(capital_gain_517), sum(manual_adjustment), sum(total_pnl) "
+        "from fact_nonstd_pnl_bridge where report_date = ?"
+    ),
+]
+_DURATION_RISK_SQL_DISCLOSURE = [
+    (
+        "select instrument_code, market_value, macaulay_duration, modified_duration, convexity, dv01 "
+        "from fact_formal_bond_analytics_daily where report_date = ? order by instrument_code"
+    ),
+]
+_CREDIT_EXPOSURE_SQL_DISCLOSURE = [
+    (
+        "select instrument_code, market_value, is_credit, spread_dv01, accounting_class, rating "
+        "from fact_formal_bond_analytics_daily where report_date = ? order by instrument_code"
+    ),
+    (
+        "select instrument_code, market_value, is_credit, spread_dv01, accounting_class, rating "
+        "from fact_formal_bond_analytics_daily where report_date = ? and asset_class_std = 'credit' "
+        "order by instrument_code"
+    ),
+]
+# product_pnl 披露与 ProductCategoryPnlRepository.fetch_rows 执行的是同一份常量。
+_PRODUCT_PNL_SQL_DISCLOSURE = [PRODUCT_CATEGORY_PNL_ROWS_SQL]
+# risk_tensor 披露：与 RiskTensorRepository.fetch_risk_tensor_row 对已完整物化（v3 schema）事实表
+# 实际执行语句等价的只读模板；历史缺列时 repository 会以 null/coalesce 兜底，此处披露规范列清单。
+_RISK_TENSOR_SQL_DISCLOSURE = [
+    (
+        "select report_date, portfolio_dv01, regulatory_dv01, krd_1y, krd_3y, krd_5y, krd_7y, "
+        "krd_10y, krd_30y, cs01, portfolio_convexity, portfolio_modified_duration, "
+        "rate_risk_market_value, rate_risk_dv01, rate_risk_modified_duration, "
+        "duration_excluded_market_value, duration_excluded_count, issuer_concentration_hhi, "
+        "issuer_top5_weight, asset_cashflow_30d, asset_cashflow_90d, liability_cashflow_30d, "
+        "liability_cashflow_90d, liquidity_gap_30d, liquidity_gap_90d, liquidity_gap_30d_ratio, "
+        "total_market_value, bond_count, quality_flag, warnings_json, source_version, "
+        "upstream_source_version, upstream_rule_version, upstream_cache_version, "
+        "liability_source_version, liability_rule_version, rule_version, cache_version, trace_id "
+        "from fact_formal_risk_tensor_daily where report_date = ? limit 1"
+    ),
+]
 
 
 def phase1_disabled_response() -> AgentDisabledResponse:
@@ -72,6 +141,7 @@ def _build_intent_handlers(
     governance_dir: str,
 ) -> dict[str, Callable[[AgentQueryRequest], dict[str, Any]]]:
     return {
+        # gitnexus_status 非 DuckDB 查询（读 GitNexus 索引/MCP），sql_executed 保持 []。
         "gitnexus_status": lambda request: build_gitnexus_status_payload(request),
         "research_radar_brief": lambda request: research_radar_brief_payload(request, duckdb_path),
         "portfolio_overview": lambda request: _portfolio_overview_payload(request, duckdb_path),
@@ -126,6 +196,7 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
             },
         ),
         "row_count": int(overview["detail_row_count"]),
+        "sql_executed": _PORTFOLIO_OVERVIEW_SQL_DISCLOSURE,
         "quality_flag": "ok",
         "basis": "formal",
         "formal_use_allowed": True,
@@ -185,6 +256,7 @@ def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
         "tables_used": ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
         "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(overview["formal_fi_row_count"]) + int(overview["nonstd_bridge_row_count"]),
+        "sql_executed": _PNL_SUMMARY_SQL_DISCLOSURE,
         "quality_flag": "ok",
         "basis": "formal",
         "formal_use_allowed": True,
@@ -241,6 +313,7 @@ def _duration_risk_payload(request: AgentQueryRequest, duckdb_path: str) -> dict
         "tables_used": ["fact_formal_bond_analytics_daily"],
         "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(summary.get("bond_count", 0)),
+        "sql_executed": _DURATION_RISK_SQL_DISCLOSURE,
         "quality_flag": "ok",
         "basis": "formal",
         "formal_use_allowed": True,
@@ -281,6 +354,7 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
         "tables_used": ["fact_formal_bond_analytics_daily"],
         "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(summary.get("credit_bond_count", 0)),
+        "sql_executed": _CREDIT_EXPOSURE_SQL_DISCLOSURE,
         "quality_flag": "ok",
         "basis": "formal",
         "formal_use_allowed": True,
@@ -333,6 +407,7 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
             extra={"view": view},
         ),
         "row_count": len(rows),
+        "sql_executed": _PRODUCT_PNL_SQL_DISCLOSURE,
         "quality_flag": "ok",
         "basis": "formal",
         "formal_use_allowed": True,
@@ -352,6 +427,8 @@ def _pnl_bridge_payload(
     duckdb_path: str,
     governance_dir: str,
 ) -> dict[str, Any]:
+    # sql_executed 保持 []：结果来自 pnl_bridge_envelope 嵌套服务（多段 CTE + 治理缓存），
+    # 无单一等价 SELECT 可低成本披露。
     from backend.app.services.pnl_bridge_service import pnl_bridge_envelope
 
     repo = PnlRepository(duckdb_path)
@@ -425,6 +502,7 @@ def _risk_tensor_payload(
         "tables_used": ["fact_formal_risk_tensor_daily"],
         "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(result.get("bond_count", 0)),
+        "sql_executed": _RISK_TENSOR_SQL_DISCLOSURE,
         "quality_flag": str(meta.get("quality_flag") or "warning"),
         "basis": str(meta.get("basis") or "formal"),
         "formal_use_allowed": bool(meta.get("formal_use_allowed", True)),
@@ -441,6 +519,7 @@ def _risk_tensor_payload(
 
 
 def _market_data_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
+    # sql_executed 保持 []：聚合了 macro / FX 多个 vendor 服务 envelope，无单一等价 SELECT 可披露。
     from backend.app.services.macro_vendor_service import (
         choice_macro_latest_envelope,
         fx_analytical_envelope,
@@ -501,13 +580,24 @@ def _market_data_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
 
 
 def _news_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
-    from backend.app.services.choice_news_service import choice_news_latest_envelope
+    # sql_executed：由 choice_news_service 按本次相同过滤条件从执行同源模板生成主干只读语句，仅披露不执行。
+    from backend.app.services.choice_news_service import (
+        choice_news_latest_envelope,
+        choice_news_latest_sql_disclosure,
+    )
 
     limit = int(request.filters.get("limit") or 20)
     upstream = choice_news_latest_envelope(
         duckdb_path,
         limit=limit,
         offset=int(request.filters.get("offset") or 0),
+        group_id=request.filters.get("group_id"),
+        topic_code=request.filters.get("topic_code"),
+        error_only=bool(request.filters.get("error_only", False)),
+        received_from=request.filters.get("received_from"),
+        received_to=request.filters.get("received_to"),
+    )
+    sql_disclosure = choice_news_latest_sql_disclosure(
         group_id=request.filters.get("group_id"),
         topic_code=request.filters.get("topic_code"),
         error_only=bool(request.filters.get("error_only", False)),
@@ -526,6 +616,7 @@ def _news_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any
         "tables_used": ["choice_news_event"],
         "filters_applied": _audit_filters(request, None, resolution="not_applicable"),
         "row_count": len(events),
+        "sql_executed": sql_disclosure,
         "quality_flag": str(meta.get("quality_flag") or "ok"),
         "basis": str(meta.get("basis") or "analytical"),
         "formal_use_allowed": bool(meta.get("formal_use_allowed", False)),
@@ -550,11 +641,21 @@ def _append_envelope_audit(
         request=request,
         governance_dir=governance_dir,
         trace_id=envelope.result_meta.trace_id,
-        tools_used=["analysis_view_tool", "evidence_tool"],
+        tools_used=_envelope_tools_used(envelope),
         tables_used=list(envelope.evidence.tables_used),
         filters_applied=dict(envelope.evidence.filters_applied),
         result_meta=envelope.result_meta.model_dump(mode="json"),
     )
+
+
+def _envelope_tools_used(envelope: AgentEnvelope) -> list[str]:
+    """保持既有前两项不变（追加式 JSONL 向后兼容），第三项记录本次真实解析到的 intent。"""
+    tools_used = ["analysis_view_tool", "evidence_tool"]
+    result_kind = str(envelope.result_meta.result_kind or "").strip()
+    intent = result_kind.removeprefix("agent.")
+    if intent:
+        tools_used.append(f"intent:{intent}")
+    return tools_used
 
 
 def _append_audit(

@@ -10,6 +10,7 @@ Included in this phase:
 - Mapping from workflow IDs and slash commands to existing MOSS agent intents.
 - A plan-only `AgentEnvelope` response that preserves MOSS `result_meta`, evidence, and audit boundaries.
 - An explicit execute mode that runs the mapped MOSS intents in order and returns a workflow summary.
+- A template-synthesized `Workflow Memo` card on successful execute responses (no LLM involved).
 
 Not included in this phase:
 
@@ -44,6 +45,10 @@ The workflow envelope uses:
 
 The first suggested action points to the first mapped MOSS intent and requires confirmation. The catalog does not write data, does not trigger side effects, and does not let any external agent bypass MOSS metric definitions, lineage, `result_meta`, or audit contracts.
 
+Note: the `pnl_review` governance note previously said "plan card only"; that wording was stale. All four workflows support the explicit execute mode described below, and the catalog note now reads "Plan card is the default; multi-intent execution requires explicit `context.workflow_mode=execute`."
+
+The research workflow `research_radar_brief` (`/research-radar`, keywords 「研究速读」/「研究雷达」) follows the same plan-default / execute-on-request contract; see `docs/AGENT_MVP_RUNBOOK.md`.
+
 ## Usage
 
 Plan mode is the default:
@@ -72,9 +77,16 @@ The execute mode:
 
 - Calls the workflow's mapped MOSS intent handlers in catalog order.
 - Keeps the workflow-level `formal_use_allowed` value as `false`.
-- Preserves child intent evidence in the workflow cards and aggregates `tables_used` / `evidence_rows`.
+- Preserves child intent evidence in the workflow cards and aggregates `tables_used` / `evidence_rows` / `sql_executed`.
 - Returns `quality_flag=warning` if any mapped intent is missing, fails, or returns a non-OK quality flag.
 - Does not write data or trigger external systems.
+- Prepends a `Workflow Memo` card (`type=markdown`, first card) synthesized purely from templates, with no LLM call:
+  - workflow title and ID, plus the resolved report date taken from child intent filters;
+  - a one-line conclusion per child intent, taken directly from the first line of each child envelope's answer (failed or missing intents are listed as failures);
+  - a data-quality section listing any child intent whose `quality_flag` is not `ok`;
+  - a fixed closing statement: 「非正式结果，仅供分析参考（formal_use_allowed=false）。」
+
+The memo card does not change workflow-level `result_meta`: `formal_use_allowed` stays `false` and the quality-flag aggregation rule above is unchanged. The single-intent research workflow execute path (`research_radar_brief`) does not go through the multi-intent executor and has no memo card.
 
 ## Workbench Usage
 
@@ -101,5 +113,5 @@ Normal free-text questions in Agent Workbench continue through the managed `/api
 
 Future work can add:
 
-- Report or memo generation using completed MOSS intent envelopes.
+- Richer report generation beyond the template-synthesized `Workflow Memo` card (e.g. LLM-drafted narratives under explicit governance review).
 - Optional external MCP data access only through explicit MOSS governance, lineage, and licensing checks.

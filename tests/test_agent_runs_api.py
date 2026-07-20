@@ -70,6 +70,52 @@ def _sample_envelope() -> AgentEnvelope:
     )
 
 
+def _local_settings(tmp_path: Path) -> SimpleNamespace:
+    return SimpleNamespace(
+        agent_enabled=True,
+        agent_provider="local",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(tmp_path / "governance"),
+        **_agent_auth_fields(tmp_path),
+    )
+
+
+def _local_envelope() -> AgentEnvelope:
+    sample = _sample_envelope()
+    return sample.model_copy(
+        update={
+            "answer": "Local managed answer.",
+            "evidence": sample.evidence.model_copy(
+                update={
+                    "tables_used": ["fact_formal_bond_analytics_daily"],
+                    "filters_applied": {"report_date": "2026-03-31"},
+                    "sql_executed": ["select * from fact_formal_bond_analytics_daily where report_date = ?"],
+                }
+            ),
+            "result_meta": sample.result_meta.model_copy(
+                update={
+                    "result_kind": "agent.duration_risk",
+                    "tables_used": ["fact_formal_bond_analytics_daily"],
+                }
+            ),
+        }
+    )
+
+
+def _local_client(monkeypatch, tmp_path: Path, execute):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    settings = _local_settings(tmp_path)
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(route_module, "execute_agent_query", execute)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    return TestClient(app), settings
+
+
 def _client(monkeypatch, tmp_path: Path, execute):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -352,6 +398,131 @@ def test_agent_run_failure_records_error_message(monkeypatch, tmp_path):
     latest = [record for record in records if record["run_id"] == created["run_id"]][-1]
     assert latest["status"] == "failed"
     assert latest["error_message"] == "Hermes bridge unavailable"
+
+
+def test_agent_run_accepts_local_provider_and_completes_lifecycle(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_execute(request, duckdb_path, governance_dir):
+        calls.append((request.question, duckdb_path, governance_dir))
+        return _local_envelope()
+
+    client, settings = _local_client(monkeypatch, tmp_path, fake_execute)
+
+    response = client.post("/api/agent/runs", json={"question": "ping"})
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["status"] == "queued"
+    assert created["run_id"].startswith("agent_run:")
+    assert created["provider"] == "local"
+
+    completed = _wait_for_terminal(client, created["run_id"])
+    assert completed["status"] == "completed"
+    assert completed["provider"] == "local"
+    assert completed["result"]["answer"] == "Local managed answer."
+    assert completed["result"]["evidence"]["sql_executed"] == [
+        "select * from fact_formal_bond_analytics_daily where report_date = ?"
+    ]
+    assert completed["result"]["evidence"]["tables_used"] == ["fact_formal_bond_analytics_daily"]
+    assert AgentEnvelope.model_validate(completed["result"]).answer == "Local managed answer."
+    assert calls == [("ping", str(tmp_path / "moss.duckdb"), str(tmp_path / "governance"))]
+
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "governance" / "agent_run.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    matching = [record for record in records if record["run_id"] == created["run_id"]]
+    assert [record["status"] for record in matching] == [
+        "queued",
+        "starting",
+        "running",
+        "completed",
+    ]
+    assert all(record["provider"] == "local" for record in matching)
+
+
+def test_agent_run_local_failure_records_failed_status(monkeypatch, tmp_path):
+    def fake_execute(request, duckdb_path, governance_dir):
+        raise RuntimeError("local toolchain failed")
+
+    client, _ = _local_client(monkeypatch, tmp_path, fake_execute)
+
+    created = client.post("/api/agent/runs", json={"question": "ping"}).json()
+    failed = _wait_for_terminal(client, created["run_id"])
+
+    assert failed["status"] == "failed"
+    assert failed["provider"] == "local"
+    assert failed["error_message"] == "local toolchain failed"
+    assert "result" not in failed
+
+
+def test_agent_run_local_owner_isolation(monkeypatch, tmp_path):
+    def fake_execute(request, duckdb_path, governance_dir):
+        return _local_envelope()
+
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    client, settings = _local_client(monkeypatch, tmp_path, fake_execute)
+
+    created = client.post(
+        "/api/agent/runs",
+        json={"question": "ping"},
+        headers={"X-User-Id": "run-owner", "X-User-Role": "reviewer"},
+    ).json()
+    _wait_for_terminal_record(settings, created["run_id"])
+
+    denied = client.get(
+        f"/api/agent/runs/{created['run_id']}",
+        headers={"X-User-Id": "other-user", "X-User-Role": "reviewer"},
+    )
+    allowed = client.get(
+        f"/api/agent/runs/{created['run_id']}",
+        headers={"X-User-Id": "run-owner", "X-User-Role": "reviewer"},
+    )
+
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
+
+
+def test_agent_run_forced_local_context_uses_local_executor_even_with_hermes_provider(monkeypatch, tmp_path):
+    """/runs 的 executor 分流应与 /query 一致：governed intent 强制走 local 工具链。"""
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    settings = _settings(tmp_path)
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+
+    local_calls = []
+
+    def fake_local_execute(request, duckdb_path, governance_dir):
+        local_calls.append(request.question)
+        return _local_envelope()
+
+    def unexpected_hermes_execute(*_args, **_kwargs):
+        raise AssertionError("governed intent must not reach hermes executor")
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_local_execute)
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", unexpected_hermes_execute)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agent/runs",
+        json={"question": "ping", "context": {"intent": "duration_risk"}},
+    )
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["provider"] == "local"
+
+    completed = _wait_for_terminal(client, created["run_id"])
+    assert completed["status"] == "completed"
+    assert completed["provider"] == "local"
+    assert completed["result"]["answer"] == "Local managed answer."
+    assert local_calls == ["ping"]
 
 
 def test_agent_runs_accept_dexter_provider_and_persist_provider_metadata(monkeypatch, tmp_path):

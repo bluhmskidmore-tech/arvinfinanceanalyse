@@ -1,6 +1,7 @@
 type AgentEvidencePanelProps = {
   tablesUsed: string[];
   filtersApplied: Record<string, unknown>;
+  sqlExecuted?: string[];
   evidenceRows: number;
   qualityFlag: string;
 };
@@ -31,6 +32,7 @@ function formatFilterSummary(filtersApplied: Record<string, unknown>) {
 export function AgentEvidencePanel({
   tablesUsed,
   filtersApplied,
+  sqlExecuted = [],
   evidenceRows,
   qualityFlag,
 }: AgentEvidencePanelProps) {
@@ -61,6 +63,16 @@ export function AgentEvidencePanel({
         <summary>查看筛选参数</summary>
         <pre>{rawFilters}</pre>
       </details>
+      {sqlExecuted.length > 0 ? (
+        <details className="agent-side-panel__details" data-testid="agent-evidence-sql">
+          <summary>查看执行 SQL · {sqlExecuted.length} 条</summary>
+          <div className="agent-side-panel__sql-list">
+            {sqlExecuted.map((sql, index) => (
+              <pre key={`sql-${index}`}>{sql}</pre>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

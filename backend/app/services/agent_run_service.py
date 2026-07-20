@@ -28,6 +28,13 @@ AgentExecutor = Callable[[AgentQueryRequest, str, Any], AgentEnvelope]
 
 def _provider_runtime_fields(settings: Any, provider: str | None = None) -> tuple[str, str, str, str]:
     normalized_provider = str(provider or getattr(settings, "agent_provider", "hermes") or "hermes").strip().lower()
+    if normalized_provider == "local":
+        return (
+            "local",
+            "default",
+            "inline",
+            normalize_read_only_toolsets(""),
+        )
     if normalized_provider == "dexter":
         return (
             "dexter",
@@ -48,10 +55,11 @@ def create_agent_run(
     request: AgentQueryRequest,
     settings: Any,
     executor: AgentExecutor,
+    provider: str | None = None,
 ) -> AgentRunCreateResponse:
     run_id = _build_run_id()
     queued_at = _utc_now()
-    provider, model, transport, toolsets = _provider_runtime_fields(settings)
+    provider, model, transport, toolsets = _provider_runtime_fields(settings, provider)
     record = AgentRunRecord(
         run_id=run_id,
         status="queued",

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createRealAgentClient } from "../api/agentClient";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
-import AgentWorkbenchPage, { AgentPanel } from "../features/agent/AgentWorkbenchPage";
+import AgentWorkbenchPage, { EmbeddedAgentCopilot } from "../features/agent/AgentWorkbenchPage";
 
 const AGENT_WORKBENCH_CSS_PATH = resolve(process.cwd(), "src/features/agent/AgentWorkbenchPage.css");
 const AGENT_PLACEHOLDER =
@@ -550,8 +550,8 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "新对话" })).not.toBeInTheDocument();
   });
 
-  it("keeps the page shell while exposing AgentPanel as the reusable copilot body", () => {
-    render(<AgentPanel />);
+  it("keeps the page shell while exposing EmbeddedAgentCopilot as the reusable copilot body", () => {
+    render(<EmbeddedAgentCopilot showHeader={false} />);
 
     expect(screen.queryByRole("heading", { name: "智能体对话" })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toBeInTheDocument();
@@ -1269,6 +1269,111 @@ describe("AgentWorkbenchPage", () => {
         selected_rows: [{ portfolio_id: "core" }],
       },
     });
+  });
+
+  it("surfaces stale, fallback, and non-formal governance signals in a page-level callout", async () => {
+    const user = userEvent.setup();
+    const baseResult = buildLocalAnalysisChatResult();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        ...baseResult,
+        evidence: { ...baseResult.evidence, quality_flag: "stale" },
+        result_meta: { ...baseResult.result_meta, fallback_mode: "latest_snapshot" },
+      }),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    const callout = await screen.findByRole("status", { name: "数据可信状态提示" });
+    expect(callout).toHaveTextContent("数据状态提示");
+    expect(callout).toHaveTextContent("证据数据可能陈旧，请核对报告日期后再使用");
+    expect(callout).toHaveTextContent("结果使用最新快照降级数据，未命中请求日期");
+    expect(callout).toHaveTextContent("本结果不可作为正式口径，仅供分析参考");
+  });
+
+  it("shows a single governance callout combining warning quality and non-formal signals", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+
+    const callouts = screen.getAllByRole("status", { name: "数据可信状态提示" });
+    expect(callouts).toHaveLength(1);
+    expect(callouts[0]).toHaveTextContent("证据质量存在预警，结论请人工复核");
+    expect(callouts[0]).toHaveTextContent("本结果不可作为正式口径，仅供分析参考");
+    expect(callouts[0]).not.toHaveTextContent("降级");
+  });
+
+  it("keeps the governance callout hidden when the latest result carries no risk signals", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildGovernedPortfolioOverviewResult()));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "组合概览");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("正式组合概览结果：资产规模和风险摘要已返回。")).toBeInTheDocument();
+
+    expect(screen.queryByRole("status", { name: "数据可信状态提示" })).not.toBeInTheDocument();
+  });
+
+  it("reveals executed SQL from evidence as a read-only disclosure", async () => {
+    const user = userEvent.setup();
+    const baseResult = buildLocalAnalysisChatResult();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        ...baseResult,
+        evidence: {
+          ...baseResult.evidence,
+          sql_executed: ["SELECT report_date, market_value FROM fact_formal_zqtz_balance_daily LIMIT 10"],
+        },
+      }),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("查看依据 · 2 项"));
+    const sqlDisclosure = screen.getByTestId("agent-evidence-sql");
+    expect(sqlDisclosure).toHaveTextContent("查看执行 SQL · 1 条");
+    fireEvent.click(within(sqlDisclosure).getByText("查看执行 SQL · 1 条"));
+    expect(sqlDisclosure).toHaveTextContent(
+      "SELECT report_date, market_value FROM fact_formal_zqtz_balance_daily LIMIT 10",
+    );
+  });
+
+  it("fills the composer with a drill follow-up when a next_drill chip is clicked", async () => {
+    const user = userEvent.setup();
+    const baseResult = buildLocalAnalysisChatResult();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        ...baseResult,
+        next_drill: [{ dimension: "term_bucket", label: "期限桶" }],
+      }),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "继续下钻：期限桶" }));
+
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue(
+      "请基于当前 evidence 继续下钻：期限桶",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("requires an explicit second click before sending a confirmable suggested action token", async () => {
