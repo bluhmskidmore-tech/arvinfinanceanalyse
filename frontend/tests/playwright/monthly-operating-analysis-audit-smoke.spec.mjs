@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 
-const dataSource = process.env.VITE_DATA_SOURCE ?? "real";
+const REAL_STATE_BASE_URL =
+  process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL ??
+  (process.env.MOSS_PLAYWRIGHT_USE_WEB_SERVER === "1"
+    ? "http://127.0.0.1:" + (process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889")
+    : process.env.MOSS_PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5888");
 
 async function probeServer(baseURL) {
   if (!baseURL) {
@@ -40,13 +44,8 @@ function qdbMeta(resultKind) {
 }
 
 test.describe("monthly operating analysis audit browser smoke", () => {
-  test("renders the empty audit state as an operable real interface page", async ({ page }, testInfo) => {
-    test.skip(
-      dataSource !== "real",
-      "Monthly operating analysis audit smoke requires the real client with route-mocked API responses.",
-    );
-
-    const serverCheck = await probeServer(testInfo.project.use.baseURL);
+  test("renders the empty audit state as an operable real interface page", async ({ page }) => {
+    const serverCheck = await probeServer(REAL_STATE_BASE_URL);
     test.skip(!serverCheck.ok, serverCheck.reason);
 
     const requests = {
@@ -88,9 +87,11 @@ test.describe("monthly operating analysis audit browser smoke", () => {
       });
     });
 
-    await page.goto("/product-category-pnl/audit?branch=monthly_operating_analysis&report_month=202603", {
-      waitUntil: "domcontentloaded",
-    });
+    const targetUrl = new URL(
+      "/product-category-pnl/audit?branch=monthly_operating_analysis&report_month=202603",
+      REAL_STATE_BASE_URL,
+    );
+    await page.goto(targetUrl.toString(), { waitUntil: "domcontentloaded" });
 
     await expect(page.getByTestId("monthly-operating-analysis-audit-page")).toBeVisible({
       timeout: 60_000,

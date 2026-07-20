@@ -70,6 +70,21 @@ def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts
     assert "pnl-by-business-insights-reconciliation-section" in insights_spec_text
     assert 'violation.impact === "critical"' in insights_spec_text
 
+    monthly_spec_path = (
+        ROOT
+        / "frontend"
+        / "tests"
+        / "playwright"
+        / "monthly-operating-analysis-audit-smoke.spec.mjs"
+    )
+    assert monthly_spec_path.exists(), f"Missing monthly OA smoke spec: {monthly_spec_path}"
+    monthly_spec_text = monthly_spec_path.read_text(encoding="utf-8")
+    assert "MOSS_PLAYWRIGHT_STATE_BASE_URL" in monthly_spec_text
+    assert "MOSS_PLAYWRIGHT_STATE_PORT" in monthly_spec_text
+    assert "VITE_DATA_SOURCE" not in monthly_spec_text
+    assert "正式接口链路" in monthly_spec_text
+    assert "/product-category-pnl/audit?branch=monthly_operating_analysis" in monthly_spec_text
+
 
 def test_frontend_playwright_smoke_covers_high_risk_business_display_routes():
     coverage_report_path = ROOT / "docs" / "audits" / "business-display-coverage-report.json"
