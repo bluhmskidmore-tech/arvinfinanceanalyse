@@ -65,9 +65,13 @@ See: .planning/PROJECT.md (updated 2026-07-15 for v1.1)
 
 ### Pending Todos
 
-- Decide whether the business adopts the Phase 03/04 side-branch capability; until then keep INC-01/INC-02/REC-01/PAR-01/PAR-02 unchecked.
-- Retire `codex/V1-merge-dateclosure` branch + worktree at the next inventory (fully merged as `5a3878beb`; discard its uncommitted redundant `macro_toolkit.py` change).
-- Retire `codex/gs-bal-workbook-a-recapture` (merged as `5f7396fa0`) and `codex/fix-lazy-dispatch-proxy-fn` (merged as the lazy-proxy delegation merge on 2026-07-20) at the same inventory.
+- Push `codex/V1` to origin when explicitly requested (local is 35+ commits ahead; publishing withheld pending an explicit instruction).
+- Future inventory pass for the remaining ~136 needs-confirm branches (recovery/meta-status/04-25 batches); no bulk deletion.
+
+### Decisions recorded 2026-07-20
+
+- **Phase 03/04 NOT adopted now** (owner direction in-session): monthly PnL cadence with no routine historical backtrace makes automatic cascade rebuild a low-frequency protection mechanism, not current work. `codex/phase-03-incremental-rebuild` stays reference-only; INC-01/INC-02/REC-01/PAR-01/PAR-02 stay unchecked; revisit only if the business rule changes.
+- **Cleanup executed per inventory (no bulk deletion):** retired 4 completed worktrees (`v1-merge-dateclosure`, `gs-bal-workbook-a-recapture`, `lazy-dispatch-proxy-fn`, `pnl-bridge-date-closure`; the superseded `codex/pnl-bridge-date-closure` branch itself is kept as reference) and deleted 21 fully-merged branches (verified `rev-list --count codex/V1..branch == 0` each). `codex/phase-02-exact-cutoff` kept as the Phase 02 naming anchor.
 
 ### Landed 2026-07-20 (subagent fixes, reviewed and merged)
 
