@@ -1,10 +1,11 @@
 :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
-  width: min(100%, 1178px) !important;
-  max-width: 1178px !important;
+  width: min(100%, 1440px) !important;
+  max-width: 1440px !important;
+  justify-self: center !important;
 }
 
 .portfolioPage {
-  max-width: 1178px;
+  max-width: 1440px;
 }
 
 .holdingsHeroFigure {
@@ -3819,13 +3820,14 @@
   }
 
   :global(.workbench-shell-grid--cockpit:has([data-testid="module-workbench-home"]):has([data-testid="module-home-portfolio-cockpit"]) .workbench-main-column) {
-    width: 1178px !important;
-    max-width: 1178px !important;
+    width: min(100%, 1440px) !important;
+    max-width: 1440px !important;
+    justify-self: center !important;
   }
 
   .portfolioPage {
     gap: 16px;
-    max-width: 1178px;
+    max-width: 1440px;
     min-height: 0;
     padding: 0;
     border: 0;
@@ -5655,7 +5657,7 @@
 .decisionAction i[data-row-index] {
   color: var(--dh-api-blue, var(--dh-blue));
   font-family: var(--dh-font-mono, var(--moss-font-mono));
-  font-size: 10.5px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 760;
   letter-spacing: 0.08em;
@@ -5728,7 +5730,7 @@
 
 /* Decision fact labels read as quiet caps above tabular values. */
 .decisionFact span {
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.04em;
 }
 
@@ -5872,8 +5874,69 @@
   padding: 12px;
 }
 
+.holdingsHeroBand,
+.exposureWorkbenchSection {
+  border: 0;
+  background: var(--dh-api-panel-2);
+}
+
 .exposureLedgerTable {
-  border-radius: var(--dh-api-radius, 6px);
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.exposureLedgerHeader,
+.exposureLedgerRow {
+  gap: 0;
+  border-bottom: 1px solid var(--dh-line-soft);
+}
+
+.exposureLedgerHeader {
+  background: rgba(114, 167, 220, 0.055);
+}
+
+.exposureLedgerRow:last-child {
+  border-bottom: 0;
+}
+
+.exposureLedgerHeader span,
+.exposureLedgerRow span,
+.exposureLedgerRow strong,
+.exposureLedgerRow em {
+  padding-block: 9px;
+  background: transparent;
+}
+
+.kpiGridSecondary {
+  gap: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--dh-line-soft);
+}
+
+.kpiCard.kpiCardSecondary,
+.kpiCard.kpiCardSecondary:nth-child(-n + 2),
+.kpiCard.kpiCardSecondary[data-empty="true"] {
+  min-height: 74px;
+  padding: 12px 14px 10px;
+  border: 0;
+  border-right: 1px solid var(--dh-line-soft);
+  border-radius: 0;
+  background: transparent;
+}
+
+.kpiCard.kpiCardSecondary:last-child {
+  border-right: 0;
+}
+
+.kpiCard.kpiCardSecondary::before,
+.kpiCard.kpiCardSecondary::after {
+  content: none;
+}
+
+.kpiCard.kpiCardSecondary:hover {
+  background: rgba(114, 167, 220, 0.045);
 }
 
 .decisionActionDot {

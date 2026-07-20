@@ -78,7 +78,7 @@
   color: var(--ro-ink-2);
   display: inline-flex;
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   gap: 6px;
   letter-spacing: 0.03em;
@@ -249,7 +249,7 @@
 .roV6RateCap {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.16em;
 }
 
@@ -278,7 +278,7 @@
   color: var(--ro-mut);
   display: flex;
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   gap: 10px;
   letter-spacing: 0.16em;
@@ -287,7 +287,7 @@
 
 .roV6Gate h3 span {
   color: var(--ro-mut);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   letter-spacing: 0;
   min-width: 0;
@@ -319,7 +319,7 @@
 .roV6GateDetail {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   font-style: normal;
   width: 100%;
 }
@@ -384,7 +384,7 @@
   color: var(--ro-mut);
   display: flex;
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   justify-content: space-between;
   letter-spacing: 0.14em;
 }
@@ -486,7 +486,7 @@
   color: var(--ro-mut);
   display: flex;
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   height: 30px;
   justify-content: center;
   letter-spacing: 0.08em;
@@ -504,7 +504,7 @@
   border-radius: 999px;
   color: var(--ro-acc);
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.03em;
   padding: 2px 9px;
   white-space: nowrap;
@@ -518,13 +518,13 @@
 .roV6KpiChipVoid {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   padding: 2px 9px;
 }
 
 .roV6KpiSub {
   color: var(--ro-mut);
-  font-size: 10.5px;
+  font-size: 11px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -534,7 +534,7 @@
 .roV6SparkCap {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   margin-top: -12px;
   padding: 0 2px;
@@ -556,7 +556,7 @@
 .roV6BriefT {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.16em;
 }
 
@@ -615,7 +615,7 @@
 .roV6PanelHead span {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
   min-width: 0;
@@ -628,7 +628,7 @@
   border-top: 1px solid var(--ro-line);
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   margin-top: 10px;
   padding-top: 9px;
 }
@@ -709,7 +709,7 @@
   color: var(--ro-ink-2);
   display: inline-flex;
   font-family: var(--dh-font-mono);
-  font-size: 10px;
+  font-size: 11px;
   gap: 7px;
   padding: 3px 10px;
 }
@@ -760,7 +760,7 @@
 .roV6CurveTick {
   fill: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 path.roV6CurveLine {
@@ -811,7 +811,7 @@ circle.roV6CurveEndDot.roV6CurveAcc {
 
 .roV6CurveEndText {
   font-family: var(--dh-font-mono);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -898,7 +898,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roV6GapChip span {
   color: var(--ro-mut);
-  font-size: 9.5px;
+  font-size: 11px;
   letter-spacing: 0.12em;
 }
 
@@ -939,7 +939,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roV6TblHead span {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
 }
@@ -953,7 +953,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   border-bottom: 1px solid var(--ro-line-2);
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.16em;
   padding: 9px 0 7px;
@@ -985,7 +985,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roV6TblDt {
   color: var(--ro-mut);
-  font-size: 10.5px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -1045,7 +1045,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roV6LineageKey {
   color: var(--ro-mut);
-  font-size: 9.5px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   padding-top: 2px;
 }
@@ -1083,7 +1083,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondEvidenceHead span {
   color: var(--ro-acc);
   font-family: var(--dh-font-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.16em;
 }
@@ -1129,7 +1129,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondBoundary span {
   color: var(--ro-amber);
   font-family: var(--dh-font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.1em;
 }
@@ -1148,7 +1148,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   border-bottom: 1px solid var(--ro-line);
   color: var(--ro-ink-2);
   display: flex;
-  font-size: 10.5px;
+  font-size: 12px;
   gap: 12px;
   padding: 0 2px 9px;
 }
@@ -1157,7 +1157,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   color: var(--ro-acc);
   flex-shrink: 0;
   font-family: var(--dh-font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
 }
@@ -1216,7 +1216,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondCardHead > div > span {
   color: var(--ro-acc);
   font-family: var(--dh-font-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.14em;
 }
@@ -1249,7 +1249,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roBondMetric > span {
   color: var(--ro-mut);
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .roBondMetric strong {
@@ -1261,7 +1261,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roBondMetric small {
   color: var(--ro-mut);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1278,7 +1278,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   background: rgba(232, 238, 247, 0.025);
   color: var(--ro-ink-2);
   display: grid;
-  font-size: 9.5px;
+  font-size: 12px;
   gap: 4px 7px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   min-width: 0;
@@ -1287,11 +1287,11 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roBondComparison span {
   color: var(--ro-mut);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .roBondComparison strong {
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 650;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1299,7 +1299,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roBondComparison em {
   color: var(--ro-acc);
-  font-size: 9px;
+  font-size: 12px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -1320,7 +1320,7 @@ text.roV6CurveEndText.roV6CurveAcc {
   border-top: 1px solid var(--ro-line);
   color: var(--ro-mut);
   display: flex;
-  font-size: 10px;
+  font-size: 11px;
   justify-content: space-between;
   padding-top: 8px;
 }
@@ -1333,13 +1333,13 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondComparisonBasis {
   color: var(--ro-mut);
   display: grid;
-  font-size: 9.5px;
+  font-size: 11px;
   gap: 3px;
 }
 
 .roBondComparisonBasis span {
   font-family: var(--dh-font-mono);
-  font-size: 8.5px;
+  font-size: 11px;
   letter-spacing: 0.08em;
 }
 
@@ -1370,14 +1370,14 @@ text.roV6CurveEndText.roV6CurveAcc {
   align-items: baseline;
   color: var(--ro-mut);
   display: flex;
-  font-size: 8.5px;
+  font-size: 11px;
   gap: 8px;
   justify-content: space-between;
 }
 
 .roBondTrendValues b {
   color: var(--ro-ink-2);
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 650;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1386,7 +1386,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 
 .roBondTrendHead b {
   color: var(--ro-ink-2);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -1394,7 +1394,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondTrendDates {
   color: var(--ro-mut);
   font-family: var(--dh-font-mono);
-  font-size: 8.5px;
+  font-size: 11px;
 }
 
 .roBondTrendSvg {
@@ -1425,7 +1425,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondTrendEmpty,
 .roBondTrendNotice {
   color: var(--ro-mut);
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.45;
   margin: 0;
 }
@@ -1443,7 +1443,7 @@ text.roV6CurveEndText.roV6CurveAcc {
 .roBondNotices {
   color: var(--ro-amber);
   display: grid;
-  font-size: 10px;
+  font-size: 11px;
   gap: 4px;
   line-height: 1.45;
 }
@@ -1645,6 +1645,277 @@ text.roV6CurveEndText.roV6CurveAcc {
 @media (prefers-reduced-motion: reduce) {
   .roV6Kpi,
   .roDrillRow {
+    transition: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Consolidated visual pass（Tier 1，仅追加段 · 2026-07）
+   范围：/risk-overview 单页。宽屏限宽、页题/区块标题层级、KPI 单表面、
+   债券证据区去框套框、证据板去外框、状态点呼吸动效。
+   不改 DOM / testid / 指标语义；本段自带完整 reduced-motion 收尾。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1) 宽屏限宽：对齐组合 / 市场工作台首页（仅当主列内含本页时生效） ── */
+:global(.workbench-main-column):has([data-testid="risk-overview-page"]) {
+  width: min(100%, 1440px);
+  max-width: 1440px;
+  min-width: 0;
+  box-sizing: border-box;
+  justify-self: center;
+}
+
+.roV6Scope {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ── 2) 页题恢复：top rail 内的 <strong>（壳层 display:none 藏掉）。
+   路径 main.dhLayout > div.dhMain > div.dhApiTopRail > strong，
+   结构依赖 4 层；恢复后 rail 需回到三列，否则第二个 span 折行。 ── */
+.roV6Scope > main > div:first-child > div:first-child {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.roV6Scope > main > div:first-child > div:first-child > strong {
+  color: var(--ro-ink);
+  display: block !important;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* 区块标题提级：01–04 节题与债券证据区标题 */
+.roSecHead h2,
+.roBondEvidenceHead h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* ── 3) KPI 单表面：gap 格子墙 → 1px hairline 接缝的整块表面 ── */
+.roV6Kpis {
+  background: var(--ro-line);
+  border-radius: 6px;
+  gap: 1px;
+  overflow: hidden;
+  padding: 1px;
+}
+
+.roV6Kpi {
+  background: var(--ro-panel);
+  border-radius: 0;
+  box-shadow: none;
+  transition: none;
+}
+
+.roV6Kpi::before {
+  content: none;
+}
+
+.roV6Kpi:hover {
+  transform: none;
+}
+
+/* 告警卡语义改挂左侧 2px 实边，并补偿内边距避免内容位移 */
+.roV6KpiAlert {
+  border-left: 2px solid var(--ro-err);
+  padding-left: 16px;
+}
+
+/* ── 4) 债券证据区去框套框：外层去框；中层边框透明化，
+   state 语义（review / error / blocked）改挂左侧 2px 色条 ── */
+.roBondEvidence {
+  border: 0;
+  box-shadow: none;
+}
+
+.roBondCard {
+  border-color: transparent;
+}
+
+.roBondCardreview {
+  border-left: 2px solid var(--ro-amber);
+  padding-left: 13px;
+}
+
+.roBondCarderror,
+.roBondCardblocked {
+  border-left: 2px solid var(--ro-err);
+  padding-left: 13px;
+}
+
+/* 空态 / 加载态保留虚线可见性（语义仍是"未就绪"） */
+.roBondCardempty,
+.roBondCardloading {
+  border-color: var(--ro-line-2);
+}
+
+/* 内层：趋势块去边框留淡底；环比/同比小格去独立底色，对齐正文 */
+.roBondTrend {
+  background: rgba(232, 238, 247, 0.03);
+  border: 0;
+}
+
+.roBondComparison {
+  background: transparent;
+  padding: 5px 0;
+}
+
+/* ── 5) 证据板：去玻璃外框与阴影，保留内部行分隔 ── */
+.roV6Panel {
+  border: 0;
+  box-shadow: none;
+}
+
+/* ── 6) 状态点呼吸（.roStateDot / .roV6Pill i） ── */
+@keyframes roStatusBreathe {
+  0%,
+  100% {
+    opacity: 0.58;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.roStateDot,
+.roV6Pill i {
+  animation: roStatusBreathe 3.2s ease-in-out infinite;
+}
+
+/* ── 7) reduced-motion 收尾：本段与既有交互动效全部归零 ── */
+@media (prefers-reduced-motion: reduce) {
+  .roStateDot,
+  .roV6Pill i {
+    animation: none;
+    opacity: 1;
+  }
+
+  .roV6Kpi,
+  .roDrillRow {
+    transform: none;
+    transition: none;
+  }
+
+  .roV6Kpi:hover,
+  .roDrillRow:hover {
+    transform: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Supplemental visual pass（Tier 1，仅追加段 · 2026-07-20 第二轮）
+   范围：/risk-overview 单页。修复 1440 限宽被 cockpit 壳层覆盖、
+   编辑式主角数字层级、债券证据区压平、残余边框清理、动效克制、
+   语义 pill 可读性。不改 DOM / testid / 指标语义；
+   末尾自带 reduced-motion 收尾。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1) 1440 限宽落地：上一轮 :global(.workbench-main-column):has(...)
+   与 dashboardCockpit.css 的 .workbench-shell-grid--cockpit
+   .workbench-main-column（width:100%; justify-self:stretch）特异度
+   相同且无 !important，实测被覆盖（main 左贴边）。对齐
+   portfolioHome.module.css L1-4 的形态：提高特异度并加 !important。 ── */
+:global(.workbench-shell-grid--cockpit:has([data-testid="risk-overview-page"]) .workbench-main-column) {
+  justify-self: center !important;
+  max-width: 1440px !important;
+  width: min(100%, 1440px) !important;
+}
+
+/* ── 2) 编辑式主角：hero 数字为首屏唯一主角（36px），评级值压回
+   次级（20px），页题提到 24px；区块 h2 维持上一轮的 18px 不动。 ── */
+.roV6HeroNum {
+  font-size: 36px;
+}
+
+.roV6HeroNum small {
+  font-size: 16px;
+}
+
+.roV6RateVal {
+  font-size: 20px;
+}
+
+.roV6Scope > main > div:first-child > div:first-child > strong {
+  font-size: 24px;
+}
+
+/* 可选项：前两张 KPI 卡数字微放大，制造卡带内部主次 */
+.roV6Kpi:nth-child(-n + 2) .roV6KpiNum {
+  font-size: 24px;
+}
+
+/* ── 3) 债券证据区去"大盒子"：外层渐变/panel 底改透明；卡与趋势块
+   嵌套表面压平到与页面同层或极淡。data-state 的左侧语义色条与
+   empty/loading 虚线态沿用上一轮规则，不在此覆盖。 ── */
+.roBondEvidence {
+  background: transparent;
+}
+
+.roBondCard {
+  background: rgba(232, 238, 247, 0.02);
+}
+
+.roBondTrend {
+  background: transparent;
+}
+
+/* ── 4) 残余边框清理：图例 pill / 缺口 chip 去外框改淡底（保留语义
+   文字色，border 宽度保留避免布局位移）；封锁横幅琥珀外框减淡。 ── */
+.roV6CurveLegend span {
+  background: rgba(232, 238, 247, 0.045);
+  border-color: transparent;
+}
+
+.roV6GapChip {
+  background: color-mix(in srgb, var(--dh-api-red) 8%, transparent);
+  border-color: transparent;
+}
+
+.roV6GapChipDim {
+  background: rgba(232, 238, 247, 0.04);
+  border-color: transparent;
+}
+
+.roBlockedBand {
+  border-color: rgba(201, 165, 101, 0.22);
+}
+
+/* ── 5) 动效克制：呼吸动画只保留 .roStateDot；pill 内状态点改静态
+   （保留辉光）；下钻行 hover 位移移除（border-color 过渡保留）。 ── */
+.roV6Pill i {
+  animation: none;
+}
+
+.roDrillRow:hover {
+  transform: none;
+}
+
+/* ── 6) 语义 pill 可读性：半透明语义底色（不发明绿色成功态）。 ── */
+.roV6PillWarn {
+  background: color-mix(in srgb, var(--dh-api-amber) 13%, transparent);
+}
+
+.roV6PillBad {
+  background: color-mix(in srgb, var(--dh-api-red) 13%, transparent);
+}
+
+/* ── 7) reduced-motion 收尾（第二轮）：呼吸/位移全部归零。 ── */
+@media (prefers-reduced-motion: reduce) {
+  .roStateDot,
+  .roV6Pill i {
+    animation: none;
+    opacity: 1;
+  }
+
+  .roDrillRow,
+  .roDrillRow:hover {
+    transform: none;
     transition: none;
   }
 }
