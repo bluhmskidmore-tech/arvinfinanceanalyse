@@ -74,7 +74,8 @@ def compute_bond_spreads(
     if not bond_rows or not treasury_curve:
         return []
 
-    full_curve = build_full_curve({str(key): safe_decimal(value) for key, value in treasury_curve.items()})
+    normalized_curve = {str(key): safe_decimal(value) for key, value in treasury_curve.items()}
+    full_curve = build_full_curve(normalized_curve)
     if not full_curve:
         return []
 
@@ -98,7 +99,12 @@ def compute_bond_spreads(
     spread_rows: list[BondSpreadRow] = []
     for row, ytm_pct in candidate_rows:
         tenor_bucket = str(row.get("tenor_bucket") or "").strip()
-        benchmark_yield = _resolve_benchmark_yield(full_curve, tenor_bucket)
+        benchmark_yield = _resolve_actual_maturity_benchmark_yield(
+            normalized_curve,
+            row.get("years_to_maturity"),
+        )
+        if benchmark_yield is None:
+            benchmark_yield = _resolve_benchmark_yield(full_curve, tenor_bucket)
         market_value = safe_decimal(row.get("market_value"))
         face_value = safe_decimal(row.get("face_value"))
         if face_value == ZERO:
@@ -191,6 +197,35 @@ def _resolve_benchmark_yield(curve: dict[str, Decimal], tenor_bucket: str) -> De
         return safe_decimal(benchmark)
     points = build_curve_points(curve)
     return interpolate_rate(points, tenor_to_years(tenor_bucket))
+
+
+def _resolve_actual_maturity_benchmark_yield(
+    curve: dict[str, Decimal],
+    years_to_maturity: Any,
+) -> Decimal | None:
+    target_years = safe_decimal(years_to_maturity)
+    if target_years <= ZERO:
+        return None
+
+    points = build_curve_points(curve)
+    if not points:
+        return None
+    target = float(target_years)
+    if target <= points[0][0]:
+        return points[0][1]
+    if target >= points[-1][0]:
+        return points[-1][1]
+
+    for (left_years, left_rate), (right_years, right_rate) in zip(
+        points,
+        points[1:],
+        strict=False,
+    ):
+        if target <= right_years:
+            interval = Decimal(str(right_years - left_years))
+            elapsed = Decimal(str(target - left_years))
+            return left_rate + (right_rate - left_rate) * elapsed / interval
+    return points[-1][1]
 
 
 def _normalize_ytm_to_pct(value: Any) -> Decimal | None:

@@ -14,7 +14,11 @@ from decimal import Decimal
 
 import pytest
 
-from backend.app.core_finance.bond_four_effects import compute_bond_four_effects
+from backend.app.core_finance import bond_four_effects as bond_four_effects_module
+from backend.app.core_finance.bond_four_effects import (
+    compute_bond_four_effects,
+    compute_bond_six_effects,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -47,6 +51,51 @@ def _make_bond(
     if accrued_interest_end is not None:
         bond["accrued_interest_end"] = accrued_interest_end
     return bond
+
+
+# ---------------------------------------------------------------------------
+# Coupon-frequency contract
+# ---------------------------------------------------------------------------
+
+def test_six_effects_forwards_explicit_coupon_frequency_to_all_duration_helpers(
+    monkeypatch,
+):
+    seen_frequencies: list[int] = []
+
+    def fake_estimate_duration(**kwargs):
+        seen_frequencies.append(kwargs["coupon_frequency"])
+        return Decimal("4")
+
+    def fake_modified_duration_from_macaulay(**kwargs):
+        seen_frequencies.append(kwargs["coupon_frequency"])
+        return Decimal("3.8")
+
+    def fake_estimate_convexity_bond(*args, **kwargs):
+        seen_frequencies.append(kwargs["coupon_frequency"])
+        return Decimal("20")
+
+    monkeypatch.setattr(bond_four_effects_module, "estimate_duration", fake_estimate_duration)
+    monkeypatch.setattr(
+        bond_four_effects_module,
+        "modified_duration_from_macaulay",
+        fake_modified_duration_from_macaulay,
+    )
+    monkeypatch.setattr(
+        bond_four_effects_module,
+        "estimate_convexity_bond",
+        fake_estimate_convexity_bond,
+    )
+
+    compute_bond_six_effects(
+        _make_bond(),
+        num_days=30,
+        benchmark_yield_change=Decimal("0.001"),
+        spread_change=Decimal("0.0005"),
+        report_date=date(2026, 1, 1),
+        coupon_frequency=4,
+    )
+
+    assert seen_frequencies == [4, 4, 4, 4]
 
 
 # ---------------------------------------------------------------------------

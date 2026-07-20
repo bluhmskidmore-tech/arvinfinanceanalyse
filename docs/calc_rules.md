@@ -325,6 +325,16 @@ for `PAGE-BOND-ANALYSIS-001`. They do not replace business-owner sign-off.
 - `dv01_base=CNY_face_value`.
 - `market_value/dirty_value DV01 is not the current formal DV01 convention`.
 
+Coupon-frequency authority（2026-07-20）：
+- 正式 Bond Analytics 物化以 `interest_mode.coupon_frequency_per_year` 为唯一频率解析权威；`bond_analytics.engine` 必须把解析结果显式传入 Macaulay 久期、修正久期与凸性计算。
+- `bond_four_effects`、`bond_duration` 与 `bond_analytics.common` 的默认参数仅为兼容入口，不构成正式业务口径；正式调用链必须显式传入频率。
+- Campisi 正式归因当前尚未接入该权威：`merge_positions` 未保留 `interest_mode`，`campisi._coupon_freq` 仍按资产类别启发式取 1/2。切换该路径会改变历史归因结果，须经 owner 裁决并安排全期回归/重算；在此之前不得宣称 Campisi 与 Bond Analytics 已统一频率口径。
+
+Credit-spread benchmark tenor（2026-07-20）：
+- 信用利差逐券基准优先按 `years_to_maturity` 在同日国债曲线上线性插值。
+- `years_to_maturity` 缺失、非有限或非正时，才回退 `tenor_bucket` 兼容口径。
+- 评级利差 policy bucket 与本条国债基准期限插值是两套不同用途，不得互相替代。
+
 ## Period Yield Denominator（P1-05，2026-07-19）
 
 `yield_by_period` / `liability_analytics.yield_by_period` 的期间收益率分母：

@@ -83,7 +83,7 @@
 
 ## 修复计划（已确认授权：先修跨领域根因）
 
-| 顺序 | 项目 | 动作 | 状态（2026-07-19） |
+| 顺序 | 项目 | 动作 | 状态（截至 2026-07-20） |
 |---|---|---|---|
 | 1 | 514 VAT 越界守卫 | ~~fail-loud 守卫~~ 取消：窗口截止为 runbook 文档化业务决定（见取证 2）；改为 7/31 物化后一次性人工核对 514 量级 | 已裁决无需修 |
 | 2 | 利率单位统一 | 新增 `rate_units.normalize_percent_rate_to_decimal`；engine/`cashflow_projection` 消费 zqtz 利率字段改显式 percent（÷100）；`project_bond_cashflows` 增加 `coupon_rate_unit` 声明（risk_tensor 传 decimal）；`credit_spread_analysis._normalize_ytm_to_pct` 改显式小数×100+脏数据防护；修正 `docs/data_contracts.md` 错误声明；测试 fixture 全部改百分数并新增灰区回归 | ✅ 已修，测试通过 |
@@ -102,6 +102,47 @@
 | 15 | PnL M-1 FX 基数 | `pnl_bridge` FX 改优先脏市值原币（无市值才回退面值），与脏市值桥 / `read_models.fx_effect` 对齐；写入 `calc_rules.md` | ✅ 已修，测试通过 |
 | 16 | PnL M-6 配置效应 | 板块收益补入 `fx_effect`；**故意不含 spread**（超额分解已有独立 `spread_effect`，计入会双重计数） | ✅ 已核实并收口 |
 | 17 | 余额 M-4 reconciliation | `reconciliation_checks` 已用 Decimal + 缺键显式处理（非 float 静默 0） | ✅ 已核实通过 |
+| 18 | PnL M-4 量价归因 | `pnl_repo` 先聚合/分类 PnL，再让 strict 与 relaxed 共享同一余额持仓唯一消费集合，规模/余额行数只按 position 计一次；后端新增 `total_recon_error`，前端直接消费权威残差 | ✅ 已修，真实数据取证 + 测试通过 |
+| 19 | 共享 M-6 H/A/T rationale | 删除已下线 helper 的陈旧说明，明确 `infer_invest_type` 为唯一生产分类器；映射算法与矩阵不变 | ✅ 已修，测试通过 |
+| 20 | 余额 M-3 双实现漂移 | `balance_workbook.builder` 改为公开兼容入口并完整转发权威 monolith builder（含 `*_full_rows`） | ✅ 已修，测试通过 |
+| 21 | 宏观 M-2 复权因子 | 路径内缺失因子只用历史已知值前向填充；无可用前值才 raw fallback，并输出缺失/填充/回退计数 | ✅ 已修，测试通过 |
+| 22 | 余额 M-6 到期日缺失 | 风险预警末尾追加中文披露，仅统计 asset/liability 四类正式事实行；明确期限缺口、组合剩余期限 proxy、加权期限与日历的既有差异化语义 | ✅ 已修（披露型），测试通过 |
+| 23 | 固收 M-6 利差基准期限 | 逐券优先按实际 `years_to_maturity` 在线性国债曲线上插值；实际期限缺失/无效才回退 `tenor_bucket` | ✅ 已修，真实数据取证 + 测试通过 |
+| 24 | PnL M-7 roll-down | `calc_rules` 与 bridge/read-model/daily attribution 已统一为期末曲线、期末剩余期限和“上斜为正”口径；历史审计描述保留 | ✅ 已核实关单，测试通过 |
+| 25 | 固收 M-7 付息频率 | Bond Analytics 物化已显式消费 `interest_mode→coupon_frequency_per_year`；Campisi 仍按资产类别启发式取 1/2，未改默认值或历史数值 | ⚠️ 权威边界已披露，Campisi 待 owner/重算裁决 |
+| 26 | 共享 M-1 舍入 | 全仓已无显式 `ROUND_HALF_EVEN`，但多处 `Decimal.quantize(...)` 未传 `rounding`，仍隐式使用默认 HALF_EVEN | ⚠️ 复核未关单，禁止误标已收敛 |
+
+**PnL M-4 取证（2026-07-20）**：2026-06-30 的正式 PnL 表在旧连接键上有 13 个多行持仓，
+仅精确键即可确认重复计入余额规模 12,458,999,460 元。计入 `BOND-` 代码归一后，
+同一匹配 scope 内重复为 22,943,406,360 元；另有 strict/relaxed 跨 scope 复用同一余额
+26,240,639,140 元。旧读模型规模 394,297,400,667.06659468 元，完整修复后为
+345,113,355,167.06659468 元，合计纠正 49,184,045,500 元（491.840455 亿元）。
+修复改为先聚合/分类 PnL，再按实际余额持仓身份跨 strict/relaxed 唯一消费；
+损益合计仍为 593,434,554.50815953 元。
+该改动只修分析读模型，不改写正式事实表。同期总计未解释残差
+`total_recon_error = -10,610,636.66` 元现由后端权威计算并显式返回。
+
+**余额 M-6 取证（2026-07-20）**：本地只读正式库 2026-06-30、CNY 单一口径共有
+1,703 条正式事实行缺失 `maturity_date`：债券投资资产 127、发行类负债 0、
+同业资产 100、同业负债 1,476。披露告警按事实行计数、不去重、不纳入
+`position_scope="all"` 映射异常行，并追加在既有业务风险之后，避免改写页面首要风险。
+`moss-data-catalog` MCP 本轮发现失败，以上数量改用配置指向的本地正式 DuckDB 只读查询取证。
+
+**固收 M-6 取证（2026-07-20）**：本地只读正式库与同日国债曲线均取
+2026-06-30。1,092 条信用债分析行中有 1,091 条因实际剩余期限与桶锚点不同而改变；
+市值加权平均信用利差由 134.33544178 bp 调整为 134.93541530 bp，净增
+0.59997352 bp，单券绝对改变量最大 35.65741550 bp。该改动只影响信用利差实时分析
+读数，不改事实表、schema 或 API 字段；实际期限缺失时的旧桶口径由回归测试冻结。
+本轮 `moss-metric-contracts` MCP 发现失败、`moss-lineage-evidence` 仍在加载，故改用
+本地服务调用链、`calc_rules`、定向测试与正式 DuckDB 只读取证；外部契约/血缘复核仍为残余风险。
+
+**固收 M-7 / 共享 M-1 复核（2026-07-20）**：Bond Analytics engine 已把
+`interest_mode` 的权威解析结果显式传入 Macaulay 久期、修正久期和凸性；四/六效应
+也会把调用方显式频率继续传给底层久期与凸性 helper，相关 88 项测试通过。但 Campisi
+合并行未保留 `interest_mode`，仍用资产类别启发式频率，故只披露边界、不改数值。
+舍入方面，显式 `ROUND_HALF_EVEN` 虽已清零，但 `pnl.py`、`bond_duration.py`、
+`var_engine.py` 等仍存在未传 `rounding` 的 `quantize`，在默认 Decimal context 下
+等价于隐式 HALF_EVEN；共享 M-1 因此继续开放。
 
 ### 重要发现补充：engine 灰区回归属"潜伏 Critical"
 
@@ -130,10 +171,10 @@
 **余额 H-2 已按方案 A 实施（2026-07-19）**：主表/跨 scope 全量行按请求 `currency_basis` 取数；API 默认 CNY 时不再混币直加。
 取证摘要：2026-06-30 资产端 native 直加相对 CNY 折算低估约 51.4 亿（1.51%）。
 
-已裁决/已修：514 VAT（runbook）；KRD 披露型改名；workbook CNY；多项 Medium（见修复表 9–12）。
+已裁决/已修：514 VAT（runbook）；KRD 披露型改名；workbook CNY；多项 Medium（见修复表 9–22）。
 
 **仍开放（较低优先级 / 需谨慎）**：
-- 固收 M-7：`coupon_frequency` 默认值双路径（`bond_four_effects` 默认 2 vs `bond_duration`/`common` 默认 1）；正式物化走 `interest_mode→coupon_frequency_per_year`，改默认会影响次要调用方，暂不统一。
+- 固收 M-7：Bond Analytics 物化已走 `interest_mode→coupon_frequency_per_year`；Campisi 合并行仍不带 `interest_mode` 且按资产类别启发式取 1/2，切换前需 owner 裁决与全期回归/重算。
 - 固收 M-4：闭式久期碎期分叉——若在正式物化路径则勿改数值（需重物化裁决）。
-- PnL M-7 rolldown：`calc_rules.md` 与 `attribution_daily` 已同号（上行曲线为正）；若仍有旧注释漂移，按实现为准逐点清。
-- 其它 Medium（PnL M-4、固收 M-1/M-2/M-5 等）未本轮处理；PnL M-1/M-6 与余额 M-4 见修复表 15–17。
+- 共享 M-1：显式 `ROUND_HALF_EVEN` 已消失，但未指定 `rounding` 的 `Decimal.quantize` 仍按默认 HALF_EVEN；需逐指标 owner 裁决后迁移，不能全仓机械替换。
+- 其它 Medium（固收 M-1/M-2/M-5、余额 M-1/M-2、宏观 M-5/M-6、共享 M-4 等）仍未处理；本轮新增闭环见修复表 23–26。
