@@ -47,6 +47,39 @@ vi.mock("../lib/echarts", () => ({
   ),
 }));
 
+vi.mock("../features/agent/AgentPanel", () => ({
+  AgentPanel: function MockAgentPanel({
+    pageId,
+    reportDate = null,
+    currentFilters = {},
+    defaultFilters = {},
+    selectedRows = [],
+    contextNote = null,
+  }: {
+    pageId: string;
+    reportDate?: string | null;
+    currentFilters?: Record<string, unknown>;
+    defaultFilters?: Record<string, unknown>;
+    selectedRows?: Array<Record<string, unknown>>;
+    contextNote?: string | null;
+  }) {
+    const pageContext = {
+      page_id: pageId,
+      current_filters:
+        reportDate != null
+          ? { ...defaultFilters, ...currentFilters, report_date: reportDate }
+          : { ...defaultFilters, ...currentFilters },
+      selected_rows: selectedRows,
+      context_note: contextNote,
+    };
+    return (
+      <div data-testid="agent-panel">
+        <code data-testid="agent-panel-page-context">{JSON.stringify(pageContext)}</code>
+      </div>
+    );
+  },
+}));
+
 vi.mock("../app/ThemedRouteBoundary", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
@@ -832,6 +865,57 @@ describe("ModuleWorkbenchHomePage", () => {
       expect(within(page).getByTestId("risk-overview-drilldowns")).toBeInTheDocument();
       expect(within(page).getByTestId("risk-overview-data-note")).toBeInTheDocument();
     });
+  });
+
+  it("opens the review copilot drawer with the risk-overview page context", { timeout: 45_000 }, async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getRiskTensorDates: async () => {
+        const envelope = await base.getRiskTensorDates();
+        return {
+          ...envelope,
+          result: {
+            report_dates: ["2026-06-30"],
+            blocked_report_dates: [],
+          },
+        };
+      },
+    };
+
+    renderAt("/risk-overview", client);
+
+    const page = await screen.findByTestId("risk-overview-page", {}, { timeout: 10000 });
+    await within(page).findByTestId("risk-overview-decision");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("报告日 2026-06-30");
+    });
+
+    await user.click(within(page).getByTestId("risk-overview-agent-open"));
+
+    expect(
+      await screen.findByTestId("risk-overview-agent-drawer", undefined, { timeout: 30_000 }),
+    ).toBeInTheDocument();
+
+    const contextCode = await screen.findByTestId("agent-panel-page-context", undefined, {
+      timeout: 10_000,
+    });
+    const pageContext = JSON.parse(contextCode.textContent ?? "{}") as {
+      page_id: string;
+      current_filters: Record<string, unknown>;
+      selected_rows: unknown[];
+      context_note: string | null;
+    };
+
+    expect(pageContext.page_id).toBe("risk-overview");
+    expect(pageContext.current_filters.report_date).toBe("2026-06-30");
+    expect(pageContext.current_filters.kind).toBe("risk");
+    expect(pageContext.current_filters.shock_bps).toBe("1");
+    expect(pageContext.current_filters.top_n).toBe(1);
+    expect(pageContext.current_filters.accounting_classes).toEqual(["OCI", "TPL"]);
+    expect(pageContext.selected_rows).toEqual([]);
+    expect(pageContext.context_note).toContain("利率风险总览");
   });
 
   it("renders OCI and TPL current values, exact-month comparisons, and six-month trends", async () => {

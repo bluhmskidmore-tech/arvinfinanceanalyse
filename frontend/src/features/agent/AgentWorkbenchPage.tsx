@@ -1,7 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { EditOutlined, PlusOutlined } from "@ant-design/icons";
-import { runPollingTask } from "../../app/jobs/polling";
 import { AgentDisabledError } from "../../api/agentClient";
 import { useApiClient } from "../../api/client";
 import type {
@@ -18,11 +17,11 @@ import { AgentRuntimeStrip } from "./components/AgentRuntimeStrip";
 import { AgentShortcutDrawer } from "./components/AgentShortcutDrawer";
 import { AgentTurnErrorCallout } from "./components/AgentTurnErrorCallout";
 import { AgentTurnResultView } from "./components/AgentTurnResultView";
+import { runManagedAgentPolling } from "./hooks/runManagedAgentPolling";
 
 import "./AgentWorkbenchPage.css";
 
 import {
-  AGENT_RUN_POLL_MAX_ATTEMPTS,
   AGENT_STICKY_BOTTOM_THRESHOLD_PX,
   AgentDisabledQueryError,
   AgentManagedRunRequiresHermesError,
@@ -47,13 +46,10 @@ import {
   formatAgentWaitHint,
   formatAgentWaitPhase,
   formatConversationContextBadge,
-  formatManagedRunFailureMessage,
   formatQueuedComposerHint,
   formatRuntimeLabel,
   getAgentApiErrorPayload,
   getAgentApiErrorStatus,
-  getAgentRequestClockMs,
-  getAgentRunPollIntervalMs,
   getExecutableSuggestedIntent,
   getLocalAgentQueryIntent,
   getManagedRunRequiresHermesDetail,
@@ -64,7 +60,6 @@ import {
   isLocalOpenChatQuestion,
   normalizeAgentResult,
   normalizeAgentRunPayload,
-  normalizeAgentRunRequestLatencyMs,
   shouldDisplayAgentRunId,
   shouldScrollComposerInputIntoView,
   shouldUseLocalAnalysisConversation,
@@ -558,16 +553,12 @@ export function EmbeddedAgentCopilot({
     setAgentRun(null);
     setResult(null);
     try {
-      const finalPayload = await runPollingTask<AgentRunPayload>({
-        start: async () => {
-          const runRequestStartedAtMs = getAgentRequestClockMs();
-          const payload = await createAgentRun(requestBody);
-          const runRequestLatencyMs = normalizeAgentRunRequestLatencyMs(
-            getAgentRequestClockMs() - runRequestStartedAtMs,
-          );
-          if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
-            return payload;
-          }
+      const finalPayload = await runManagedAgentPolling({
+        requestBody,
+        createAgentRun,
+        fetchAgentRunStatus,
+        canCommit: () => canCommitProcessState(requestVersion, normalizedRepoPath),
+        onRunAccepted: (payload, runRequestLatencyMs) => {
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
           setConversationTurns((currentTurns) => {
@@ -578,15 +569,8 @@ export function EmbeddedAgentCopilot({
             return nextTurns;
           });
           persistPersistedLatestRunId(payload.run_id);
-          return payload;
         },
-        getStatus: fetchAgentRunStatus,
-        getIntervalMs: getAgentRunPollIntervalMs,
-        maxAttempts: AGENT_RUN_POLL_MAX_ATTEMPTS,
-        onUpdate: (payload) => {
-          if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
-            return;
-          }
+        onRunUpdate: (payload) => {
           setOrdinaryConversationMode("managed");
           setAgentRun(payload);
           updateConversationTurn(turnId, (turn) => ({
@@ -595,14 +579,6 @@ export function EmbeddedAgentCopilot({
           }));
         },
       });
-
-      if (finalPayload.status === "failed") {
-        throw new Error(finalPayload.error_message || formatManagedRunFailureMessage(finalPayload.provider));
-      }
-
-      if (!finalPayload.result) {
-        throw new Error("智能体任务完成但未返回结果。");
-      }
 
       if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
         return;

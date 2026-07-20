@@ -88,6 +88,50 @@ _RISK_TENSOR_SQL_DISCLOSURE = [
         "from fact_formal_risk_tensor_daily where report_date = ? limit 1"
     ),
 ]
+# pnl_bridge 披露主干只读事实拉取（桥接本身在 core_finance 内存计算，不另写 SQL）。
+_PNL_BRIDGE_SQL_DISCLOSURE = [
+    (
+        "select report_date, instrument_code, portfolio_name, cost_center, invest_type_std, "
+        "accounting_basis, currency_basis, interest_income_514, fair_value_change_516, "
+        "capital_gain_517, manual_adjustment, total_pnl, source_version, rule_version, "
+        "ingest_batch_id, trace_id "
+        "from fact_formal_pnl_fi where report_date = ?"
+    ),
+    (
+        "select * from fact_formal_zqtz_balance_daily "
+        "where report_date = ? and position_scope = 'asset' and currency_basis = 'CNY'"
+    ),
+]
+# market_data 披露主干：macro 最近点 + formal FX mid（动态币种 in-list 见 filters_applied）。
+_MARKET_DATA_SQL_DISCLOSURE = [
+    (
+        "with ranked as ( "
+        "select series_id, series_name, trade_date, value_numeric, frequency, unit, "
+        "source_version, vendor_version, quality_flag, "
+        "row_number() over(partition by series_id order by trade_date desc) as rn "
+        "from fact_choice_macro_daily "
+        ") "
+        "select series_id, series_name, trade_date, value_numeric, frequency, unit, "
+        "source_version, vendor_version, quality_flag, rn "
+        "from ranked where rn <= 20 order by series_id, rn"
+    ),
+    (
+        "with ranked as ( "
+        "select base_currency, quote_currency, cast(trade_date as varchar) as trade_date, "
+        "cast(observed_trade_date as varchar) as observed_trade_date, "
+        "cast(mid_rate as double) as mid_rate, source_name, "
+        "coalesce(vendor_name, '') as vendor_name, coalesce(vendor_version, '') as vendor_version, "
+        "source_version, is_business_day, is_carry_forward, "
+        "row_number() over (partition by upper(base_currency), upper(quote_currency) "
+        "order by trade_date desc) as rn "
+        "from fx_daily_mid "
+        "where upper(quote_currency) = 'CNY' "
+        ") "
+        "select base_currency, quote_currency, trade_date, observed_trade_date, mid_rate, "
+        "source_name, vendor_name, vendor_version, source_version, is_business_day, "
+        "is_carry_forward from ranked where rn = 1"
+    ),
+]
 
 
 def phase1_disabled_response() -> AgentDisabledResponse:
@@ -427,8 +471,7 @@ def _pnl_bridge_payload(
     duckdb_path: str,
     governance_dir: str,
 ) -> dict[str, Any]:
-    # sql_executed 保持 []：结果来自 pnl_bridge_envelope 嵌套服务（多段 CTE + 治理缓存），
-    # 无单一等价 SELECT 可低成本披露。
+    # sql_executed：披露桥接输入事实的主干只读拉取；曲线/FX/内存归因不在此展开。
     from backend.app.services.pnl_bridge_service import pnl_bridge_envelope
 
     repo = PnlRepository(duckdb_path)
@@ -456,6 +499,7 @@ def _pnl_bridge_payload(
         "tables_used": ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
         "filters_applied": base_filters,
         "row_count": int(summary.get("row_count", 0)),
+        "sql_executed": _PNL_BRIDGE_SQL_DISCLOSURE,
         "quality_flag": str(meta.get("quality_flag") or "warning"),
         "basis": str(meta.get("basis") or "formal"),
         "formal_use_allowed": bool(meta.get("formal_use_allowed", True)),
@@ -519,7 +563,7 @@ def _risk_tensor_payload(
 
 
 def _market_data_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
-    # sql_executed 保持 []：聚合了 macro / FX 多个 vendor 服务 envelope，无单一等价 SELECT 可披露。
+    # sql_executed：披露 macro 最近点与 formal FX mid 主干只读模板；tushare 补充链路不在此展开。
     from backend.app.services.macro_vendor_service import (
         choice_macro_latest_envelope,
         fx_analytical_envelope,
@@ -564,6 +608,7 @@ def _market_data_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
         "tables_used": ["fact_choice_macro_daily", "fx_daily_mid"],
         "filters_applied": _audit_filters(request, None, resolution="not_applicable"),
         "row_count": len(series) + len(fx_rows),
+        "sql_executed": _MARKET_DATA_SQL_DISCLOSURE,
         "quality_flag": "warning" if formal_fx_warning is not None else str(meta.get("quality_flag") or "warning"),
         "basis": "analytical",
         "formal_use_allowed": False,

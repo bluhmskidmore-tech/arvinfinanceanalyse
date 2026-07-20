@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -31,6 +31,12 @@ import {
 } from "./riskHomeAdapter";
 import dh from "../dashboard-home/dashboardHomeShell.module.css";
 import styles from "./riskOverview.module.css";
+
+const LazyRiskOverviewAgentDrawer = lazy(() =>
+  import("./RiskOverviewAgentDrawer").then((module) => ({
+    default: module.RiskOverviewAgentDrawer,
+  })),
+);
 
 type RiskOverviewPageProps = {
   kind?: ModuleWorkbenchHomeKind;
@@ -383,6 +389,13 @@ function V6KpiCardView({ card }: { card: RiskV6KpiCard }) {
 
 export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProps) {
   const client = useApiClient();
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+  const [agentPanelMounted, setAgentPanelMounted] = useState(false);
+
+  const openAgentPanel = useCallback(() => {
+    setAgentPanelMounted(true);
+    setAgentPanelOpen(true);
+  }, []);
 
   const riskDatesQuery = useQuery({
     queryKey: ["risk-overview", "risk-dates", client.mode],
@@ -702,6 +715,15 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
   };
 
   const reportDate = view.decision?.facts.find((fact) => fact.label === "报告日")?.value ?? "-";
+  const agentPanelFilters = useMemo(
+    () => ({
+      kind,
+      shock_bps: BOND_EVIDENCE_SHOCK_BPS,
+      top_n: BOND_EVIDENCE_TOP_N,
+      accounting_classes: [...BOND_EVIDENCE_CLASSES],
+    }),
+    [kind],
+  );
 
   const tones = [
     ...view.kpis.map((kpi) => kpi.tone),
@@ -759,6 +781,15 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
                 disabled={isFetching}
               >
                 {isFetching ? "刷新中…" : "刷新"}
+              </button>
+              <button
+                type="button"
+                className={`${dh.dhRefreshBtn} ${styles.roAgentEntryBtn}`}
+                data-testid="risk-overview-agent-open"
+                onClick={openAgentPanel}
+                aria-label="打开复核助手"
+              >
+                复核助手
               </button>
             </span>
           </div>
@@ -1303,6 +1334,17 @@ export default function RiskOverviewPage({ kind = "risk" }: RiskOverviewPageProp
           </section>
         </aside>
       </main>
+
+      {agentPanelMounted ? (
+        <Suspense fallback={null}>
+          <LazyRiskOverviewAgentDrawer
+            open={agentPanelOpen}
+            reportDate={riskReportDate}
+            currentFilters={agentPanelFilters}
+            onClose={() => setAgentPanelOpen(false)}
+          />
+        </Suspense>
+      ) : null}
     </section>
   );
 }

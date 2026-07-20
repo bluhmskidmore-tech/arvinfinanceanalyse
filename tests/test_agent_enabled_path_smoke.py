@@ -728,6 +728,10 @@ def test_agent_query_enabled_path_returns_real_market_data_and_audit(tmp_path, m
     assert payload["result_meta"]["result_kind"] == "agent.market_data"
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["evidence"]["tables_used"] == ["fact_choice_macro_daily", "fx_daily_mid"]
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith(("select", "with")) for sql in payload["evidence"]["sql_executed"])
+    assert any("from fact_choice_macro_daily" in sql for sql in payload["evidence"]["sql_executed"])
+    assert any("from fx_daily_mid" in sql for sql in payload["evidence"]["sql_executed"])
     series_val = int(next(c["value"] for c in payload["cards"] if c["title"] == "Series Count"))
     fx_formal_val = int(next(c["value"] for c in payload["cards"] if c["title"] == "Formal FX Candidates"))
     assert payload["evidence"]["evidence_rows"] == series_val + fx_formal_val
@@ -883,6 +887,10 @@ def test_agent_query_enabled_path_returns_real_pnl_bridge_and_audit(tmp_path, mo
     assert payload["result_meta"]["result_kind"] == "agent.pnl_bridge"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"]
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith("select") for sql in payload["evidence"]["sql_executed"])
+    assert any("from fact_formal_pnl_fi" in sql for sql in payload["evidence"]["sql_executed"])
+    assert any("from fact_formal_zqtz_balance_daily" in sql for sql in payload["evidence"]["sql_executed"])
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
         "report_date_resolution": "latest_default",
