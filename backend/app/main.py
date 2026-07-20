@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import threading
+import time
 from contextlib import asynccontextmanager
 
 from anyio import to_thread
@@ -34,6 +35,22 @@ if not logging.getLogger().handlers:
     )
 logging.getLogger("backend.app.services.executive_service").setLevel(logging.INFO)
 
+DEFAULT_HOME_BACKGROUND_WARMUP_DELAY_SECONDS = 2.0
+_HOME_BACKGROUND_WARMUP_DELAY_ENV = "MOSS_HOME_BACKGROUND_WARMUP_DELAY_SECONDS"
+
+
+def resolve_home_background_warmup_delay_seconds(
+    default: float = DEFAULT_HOME_BACKGROUND_WARMUP_DELAY_SECONDS,
+) -> float:
+    raw = os.getenv(_HOME_BACKGROUND_WARMUP_DELAY_ENV)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
 
 def warm_home_background_caches_if_configured(settings: object) -> bool:
     if not (
@@ -52,6 +69,9 @@ def warm_home_background_caches_if_configured(settings: object) -> bool:
 
 
 def _warm_home_background_caches_quietly(settings: object) -> None:
+    delay_seconds = resolve_home_background_warmup_delay_seconds()
+    if delay_seconds > 0:
+        time.sleep(delay_seconds)
     warm_home_income_trend_cache_in_current_thread_if_configured(settings)
     warm_market_home_cache_in_current_thread_if_configured(settings)
 

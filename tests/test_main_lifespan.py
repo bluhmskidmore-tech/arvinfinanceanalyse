@@ -70,10 +70,61 @@ def test_background_warmup_coordinator_runs_income_before_market(monkeypatch) ->
         "warm_market_home_cache_in_current_thread_if_configured",
         lambda value: calls.append(("market", value)),
     )
+    monkeypatch.setattr(module.time, "sleep", lambda *_args, **_kwargs: None)
 
     module._warm_home_background_caches_quietly(settings)
 
     assert calls == [("income", settings), ("market", settings)]
+
+
+def test_background_warmup_waits_before_competing_with_readiness(monkeypatch) -> None:
+    module = load_module("backend.app.main", "backend/app/main.py")
+    settings = object()
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        module,
+        "resolve_home_background_warmup_delay_seconds",
+        lambda: 1.5,
+    )
+    monkeypatch.setattr(
+        module.time,
+        "sleep",
+        lambda seconds: events.append(f"sleep:{seconds}"),
+    )
+    monkeypatch.setattr(
+        module,
+        "warm_home_income_trend_cache_in_current_thread_if_configured",
+        lambda value: events.append(f"income:{id(value)}"),
+    )
+    monkeypatch.setattr(
+        module,
+        "warm_market_home_cache_in_current_thread_if_configured",
+        lambda value: events.append(f"market:{id(value)}"),
+    )
+
+    module._warm_home_background_caches_quietly(settings)
+
+    assert events == [
+        "sleep:1.5",
+        f"income:{id(settings)}",
+        f"market:{id(settings)}",
+    ]
+
+
+def test_background_warmup_delay_defaults_conservatively(monkeypatch) -> None:
+    module = load_module("backend.app.main", "backend/app/main.py")
+    monkeypatch.delenv("MOSS_HOME_BACKGROUND_WARMUP_DELAY_SECONDS", raising=False)
+    assert module.resolve_home_background_warmup_delay_seconds() == 2.0
+
+    monkeypatch.setenv("MOSS_HOME_BACKGROUND_WARMUP_DELAY_SECONDS", "0")
+    assert module.resolve_home_background_warmup_delay_seconds() == 0.0
+
+    monkeypatch.setenv("MOSS_HOME_BACKGROUND_WARMUP_DELAY_SECONDS", "3.25")
+    assert module.resolve_home_background_warmup_delay_seconds() == 3.25
+
+    monkeypatch.setenv("MOSS_HOME_BACKGROUND_WARMUP_DELAY_SECONDS", "nope")
+    assert module.resolve_home_background_warmup_delay_seconds() == 2.0
 
 
 def test_background_warmup_coordinator_starts_one_daemon_thread(monkeypatch) -> None:
@@ -171,6 +222,7 @@ def test_income_warmup_failure_is_logged_and_does_not_block_market(
         logging.ERROR,
         logger="backend.app.services.executive_service",
     ):
+        monkeypatch.setattr(module.time, "sleep", lambda *_args, **_kwargs: None)
         module._warm_home_background_caches_quietly(settings)
 
     assert market_calls == [settings]
